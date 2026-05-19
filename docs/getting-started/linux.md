@@ -121,6 +121,26 @@ echo 'export PATH="/usr/local/bin:$PATH"' >> ~/.bashrc
 source ~/.bashrc
 ```
 
+### Installing a Release Package
+
+Release `.deb` and `.rpm` toolchain packages install `viper`, headers, runtime archives,
+CMake package files, manpages, and desktop/MIME associations. Install them through the
+distribution package manager so hard dependencies such as CMake, `make`, and a C++
+compiler are resolved:
+
+```bash
+# Debian / Ubuntu
+sudo apt install ./viper_<version>_amd64.deb
+
+# Fedora / RHEL
+sudo dnf install ./viper-<version>-1.x86_64.rpm
+```
+
+Portable `.tar.gz` packages include `install.sh`, `uninstall.sh`, and an install
+manifest. `install.sh` defaults to `/usr/local`, honors `PREFIX` and `DESTDIR`,
+and removes stale files from the previous Viper tarball manifest before copying
+the new payload.
+
 ---
 
 ## Your First Program

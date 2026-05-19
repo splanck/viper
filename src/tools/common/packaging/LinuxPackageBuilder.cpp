@@ -305,6 +305,9 @@ std::string toolchainDebDepends(const ToolchainInstallManifest &manifest) {
         "libc6",
         "libstdc++6 | libc++1",
         "libgcc-s1",
+        "cmake",
+        "g++ | clang++",
+        "make",
     };
     if (manifestNeedsX11(manifest))
         deps.push_back("libx11-6");
@@ -313,15 +316,14 @@ std::string toolchainDebDepends(const ToolchainInstallManifest &manifest) {
     return joinCommaSeparated(deps);
 }
 
-std::string toolchainDebRecommends() {
-    return "cmake, g++ | clang++";
-}
-
 std::vector<std::string> toolchainRpmRequires(const ToolchainInstallManifest &manifest) {
     std::vector<std::string> deps = {
         "glibc",
         "libstdc++",
         "libgcc",
+        "cmake",
+        "gcc-c++",
+        "make",
     };
     if (manifestNeedsX11(manifest))
         deps.push_back("libX11");
@@ -359,6 +361,8 @@ esac
 
 root=$(CDPATH= cd "$(dirname "$0")" && pwd)
 install_root=${destdir%/}$prefix
+old_manifest="$install_root/share/viper/install_manifest.txt"
+new_manifest="$root/share/viper/install_manifest.txt"
 
 set --
 for dir in bin include lib share; do
@@ -370,6 +374,18 @@ done
 if [ "$#" -eq 0 ]; then
     echo "No installable Viper payload directories were found" >&2
     exit 1
+fi
+
+if [ -f "$old_manifest" ] && [ -f "$new_manifest" ] && [ "$old_manifest" != "$new_manifest" ]; then
+    while IFS= read -r rel || [ -n "$rel" ]; do
+        case "$rel" in
+            ""|\#*) continue ;;
+            /*|..|../*|*/../*|*/..) echo "Unsafe old manifest path: $rel" >&2; exit 2 ;;
+        esac
+        if ! grep -F -x -- "$rel" "$new_manifest" >/dev/null 2>&1; then
+            rm -f "$install_root/$rel"
+        fi
+    done < "$old_manifest"
 fi
 
 mkdir -p "$install_root"
@@ -464,6 +480,8 @@ Stage into a package root without refreshing system caches:
 Uninstall:
   sudo ./uninstall.sh
 
+Before copying a new tarball payload, install.sh removes files listed in the
+currently installed manifest when those files are absent from the new manifest.
 The uninstaller removes only files listed in share/viper/install_manifest.txt.
 )VIPER_TEXT";
 }
@@ -1120,7 +1138,6 @@ void buildToolchainDebPackage(const LinuxToolchainBuildParams &params) {
         ctl << "Architecture: " << archStr << "\n";
         ctl << "Maintainer: Viper Project <noreply@example.invalid>\n";
         ctl << "Depends: " << toolchainDebDepends(manifest) << "\n";
-        ctl << "Recommends: " << toolchainDebRecommends() << "\n";
         uint64_t totalBytes = 0;
         for (const auto &df : dataFiles) {
             if (df.data.size() > std::numeric_limits<uint64_t>::max() - totalBytes)
@@ -1349,8 +1366,7 @@ void buildToolchainRpmPackage(const LinuxToolchainBuildParams &params) {
     spec << "Source0: %{name}-%{version}.tar.gz\n";
     for (const auto &dep : toolchainRpmRequires(manifest))
         spec << "Requires: " << dep << "\n";
-    spec << "Recommends: cmake\n";
-    spec << "Recommends: gcc-c++\n\n";
+    spec << "\n";
     spec << "%description\nViper compiler toolchain\n\n";
     spec << "%prep\n%setup -q\n\n";
     spec << "%build\n:\n\n";

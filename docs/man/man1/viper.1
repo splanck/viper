@@ -86,12 +86,14 @@ version, detects platform and architecture from the staged \fCviper\fR binary
 when possible, including \fCuniversal\fR for macOS fat32 and fat64 Mach-O payloads, and
 rejects native package targets that do not match that staged platform.
 \fB--target all\fR emits only the staged platform's native package type plus a
-portable tarball, with RPM included only when \fCrpmbuild\fR is available. Use
+portable tarball; on Linux it includes RPM and fails if \fCrpmbuild\fR is not
+available so release builds do not silently skip an expected artifact. Use
 \fB--macos-pkg-version\fR when the Viper version has suffixes that cannot be
 represented as a dotted numeric macOS package version. macOS toolchain packages
 are native XAR/CPIO product packages that install under \fC/usr/local/viper\fR,
-add receipt-owned command and manpage symlinks under \fC/usr/local\fR, and can be
-signed with \fB--macos-sign-identity\fR, notarized with
+add receipt-owned command and manpage symlinks under \fC/usr/local\fR, install a
+LaunchServices handler app for \fC.zia\fR, \fC.bas\fR, and \fC.il\fR files, provide
+\fC/usr/local/viper/share/viper/uninstall.sh\fR for local cleanup, and can be signed with \fB--macos-sign-identity\fR, notarized with
 \fB--macos-notary-profile\fR, and stapled with \fB--macos-staple\fR. Generated
 Windows toolchain installers default to a per-user install under
 \fC%LocalAppData%\\Viper\fR, add the installed \fCbin\fR directory to the user
@@ -111,10 +113,11 @@ runtime DLLs are staged next to \fCbin\\viper.exe\fR or the toolchain is built
 with a static runtime. Linux toolchain
 packages include desktop/MIME association metadata, preserve staged Unix modes,
 declare runtime package dependencies for libc/C++/libgcc and optional X11/ALSA
-support, and recommend CMake plus a C++ compiler for developer workflows. Linux
-toolchain tarballs include \fCinstall.sh\fR, \fCuninstall.sh\fR, and an install
-manifest; the scripts honor \fCPREFIX\fR and \fCDESTDIR\fR and remove only files
-listed in that manifest.
+support, and require CMake, make, and a C++ compiler for developer workflows.
+Linux toolchain tarballs include \fCinstall.sh\fR, \fCuninstall.sh\fR, and an install
+manifest; the scripts honor \fCPREFIX\fR and \fCDESTDIR\fR, remove stale files from
+the previous manifest before copying a new payload, and remove only files listed
+in the current manifest during uninstall.
 .SH BUILD AND RUN OPTIONS
 These options apply to \fBviper run\fR and \fBviper build\fR when relevant, and
 to legacy run modes where noted.

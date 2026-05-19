@@ -491,6 +491,16 @@ get_target_property(VIPER_LINK_LIBS viper LINK_LIBRARIES)
 message(STATUS "viper LINK_LIBRARIES: ${VIPER_LINK_LIBS}")
 install(TARGETS viper RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR})
 
+if (APPLE)
+    add_executable(viper-file-handler
+            tools/macos/ViperFileHandler.m)
+    set_target_properties(viper-file-handler PROPERTIES
+            RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/src/tools/macos)
+    target_link_libraries(viper-file-handler PRIVATE "-framework Cocoa")
+    install(TARGETS viper-file-handler
+            RUNTIME DESTINATION ${CMAKE_INSTALL_LIBEXECDIR}/viper)
+endif ()
+
 add_executable(vbasic
         tools/vbasic/main.cpp
         tools/vbasic/usage.cpp

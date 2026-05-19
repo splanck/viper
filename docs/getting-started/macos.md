@@ -113,6 +113,17 @@ echo 'export PATH="/usr/local/bin:$PATH"' >> ~/.zshrc
 source ~/.zshrc
 ```
 
+### Installing a Release Package
+
+The macOS `.pkg` toolchain installer places the toolchain under `/usr/local/viper`,
+adds command symlinks in `/usr/local/bin`, adds CMake discovery wrappers under
+`/usr/local/lib/cmake/Viper`, registers `.zia`, `.bas`, and `.il` files with the
+Viper Toolchain handler app, and installs `/usr/local/viper/share/viper/uninstall.sh`
+for local cleanup.
+
+The package does not install Xcode Command Line Tools or CMake. Install those
+prerequisites first, then run the `.pkg` and verify `viper --version`.
+
 ---
 
 ## Your First Program

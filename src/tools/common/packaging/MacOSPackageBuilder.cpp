@@ -34,12 +34,12 @@
 #include "common/RunProcess.hpp"
 
 #include <algorithm>
+#include <chrono>
 #include <filesystem>
 #include <fstream>
 #include <set>
 #include <sstream>
 #include <string_view>
-#include <chrono>
 
 #if defined(_WIN32)
 #include <process.h>
@@ -435,18 +435,144 @@ fs::path macOSManSymlinkTarget(const std::string &manRelPath) {
     return target;
 }
 
+std::string fileAssociationExtensionWithoutDot(const FileAssoc &assoc) {
+    std::string ext = assoc.extension;
+    while (!ext.empty() && ext.front() == '.')
+        ext.erase(ext.begin());
+    return ext;
+}
+
+std::string macOSFileAssociationUTI(const FileAssoc &assoc) {
+    const std::string ext = fileAssociationExtensionWithoutDot(assoc);
+    if (ext == "zia")
+        return "org.viper.zia-source";
+    if (ext == "bas")
+        return "org.viper.basic-source";
+    if (ext == "il")
+        return "org.viper.il-module";
+    return "org.viper." + ext;
+}
+
+const ToolchainFileEntry *findMacOSFileHandler(const ToolchainInstallManifest &manifest) {
+    auto it = std::find_if(manifest.files.begin(), manifest.files.end(), [](const auto &file) {
+        return !file.symlink &&
+               sanitizePackageRelativePath(file.stagedRelativePath, "macOS file handler path") ==
+                   "libexec/viper/viper-file-handler";
+    });
+    return it == manifest.files.end() ? nullptr : &*it;
+}
+
+std::string generateMacOSFileHandlerInfoPlist(const MacOSToolchainBuildParams &params,
+                                              const std::string &pkgVersion) {
+    std::ostringstream xml;
+    xml << "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n";
+    xml << "<!DOCTYPE plist PUBLIC \"-//Apple//DTD PLIST 1.0//EN\" "
+           "\"http://www.apple.com/DTDs/PropertyList-1.0.dtd\">\n";
+    xml << "<plist version=\"1.0\">\n";
+    xml << "<dict>\n";
+    xml << "  <key>CFBundleDevelopmentRegion</key><string>en</string>\n";
+    xml << "  <key>CFBundleDisplayName</key><string>Viper Toolchain</string>\n";
+    xml << "  <key>CFBundleExecutable</key><string>viper-file-handler</string>\n";
+    xml << "  <key>CFBundleIdentifier</key><string>"
+        << xmlEscape(params.identifier + ".filehandler") << "</string>\n";
+    xml << "  <key>CFBundleName</key><string>Viper Toolchain</string>\n";
+    xml << "  <key>CFBundlePackageType</key><string>APPL</string>\n";
+    xml << "  <key>CFBundleShortVersionString</key><string>" << xmlEscape(pkgVersion)
+        << "</string>\n";
+    xml << "  <key>CFBundleVersion</key><string>" << xmlEscape(pkgVersion) << "</string>\n";
+    xml << "  <key>LSUIElement</key><true/>\n";
+    xml << "  <key>CFBundleDocumentTypes</key>\n";
+    xml << "  <array>\n";
+    for (const auto &assoc : params.manifest.fileAssociations) {
+        const std::string ext = fileAssociationExtensionWithoutDot(assoc);
+        const std::string uti = macOSFileAssociationUTI(assoc);
+        const bool sourceType = ext == "zia" || ext == "bas";
+        xml << "    <dict>\n";
+        xml << "      <key>CFBundleTypeName</key><string>" << xmlEscape(assoc.description)
+            << "</string>\n";
+        xml << "      <key>CFBundleTypeRole</key><string>"
+            << (sourceType ? "Editor" : "Viewer") << "</string>\n";
+        xml << "      <key>LSHandlerRank</key><string>Default</string>\n";
+        xml << "      <key>LSItemContentTypes</key><array><string>" << xmlEscape(uti)
+            << "</string></array>\n";
+        xml << "    </dict>\n";
+    }
+    xml << "  </array>\n";
+    xml << "  <key>UTExportedTypeDeclarations</key>\n";
+    xml << "  <array>\n";
+    for (const auto &assoc : params.manifest.fileAssociations) {
+        const std::string ext = fileAssociationExtensionWithoutDot(assoc);
+        const std::string uti = macOSFileAssociationUTI(assoc);
+        const bool sourceType = ext == "zia" || ext == "bas";
+        xml << "    <dict>\n";
+        xml << "      <key>UTTypeIdentifier</key><string>" << xmlEscape(uti)
+            << "</string>\n";
+        xml << "      <key>UTTypeDescription</key><string>" << xmlEscape(assoc.description)
+            << "</string>\n";
+        xml << "      <key>UTTypeConformsTo</key><array><string>"
+            << (sourceType ? "public.source-code" : "public.data") << "</string></array>\n";
+        xml << "      <key>UTTypeTagSpecification</key>\n";
+        xml << "      <dict>\n";
+        xml << "        <key>public.filename-extension</key><array><string>"
+            << xmlEscape(ext) << "</string></array>\n";
+        if (!assoc.mimeType.empty()) {
+            xml << "        <key>public.mime-type</key><array><string>"
+                << xmlEscape(assoc.mimeType) << "</string></array>\n";
+        }
+        xml << "      </dict>\n";
+        xml << "    </dict>\n";
+    }
+    xml << "  </array>\n";
+    xml << "</dict>\n";
+    xml << "</plist>\n";
+    return xml.str();
+}
+
 std::string macOSInstallManifestText(const ToolchainInstallManifest &manifest) {
     std::vector<std::string> paths;
-    paths.reserve(manifest.files.size() + 1);
+    paths.reserve(manifest.files.size() + 2);
     for (const auto &file : manifest.files)
         paths.push_back(sanitizePackageRelativePath(file.stagedRelativePath, "macOS manifest path"));
     paths.push_back("share/viper/install_manifest.txt");
+    paths.push_back("share/viper/uninstall.sh");
     std::sort(paths.begin(), paths.end());
     paths.erase(std::unique(paths.begin(), paths.end()), paths.end());
     std::ostringstream out;
     for (const auto &path : paths)
         out << path << "\n";
     return out.str();
+}
+
+std::string generateMacOSUninstallScript(const std::string &packageIdentifier) {
+    std::ostringstream sh;
+    sh << "#!/bin/sh\n";
+    sh << "set -eu\n";
+    sh << "ROOT=/usr/local/viper\n";
+    sh << "MANIFEST=\"$ROOT/share/viper/install_manifest.txt\"\n";
+    sh << "APP=\"/Applications/Viper Toolchain.app\"\n";
+    sh << "LSREGISTER=/System/Library/Frameworks/CoreServices.framework/Frameworks/LaunchServices.framework/Support/lsregister\n";
+    sh << "if [ \"$(id -u)\" != \"0\" ]; then echo \"Run with sudo to remove Viper Toolchain\" >&2; exit 1; fi\n";
+    sh << "if [ -x \"$LSREGISTER\" ] && [ -d \"$APP\" ]; then \"$LSREGISTER\" -u \"$APP\" >/dev/null 2>&1 || true; fi\n";
+    sh << "if [ -f \"$MANIFEST\" ]; then\n";
+    sh << "  while IFS= read -r rel || [ -n \"$rel\" ]; do\n";
+    sh << "    [ -n \"$rel\" ] || continue\n";
+    sh << "    case \"$rel\" in /*|..|../*|*/../*|*/..) echo \"Unsafe manifest path: $rel\" >&2; exit 2 ;; esac\n";
+    sh << "    case \"$rel\" in\n";
+    sh << "      bin/*) link=\"/usr/local/bin/${rel#bin/}\"; if [ -L \"$link\" ]; then target=$(readlink \"$link\" || true); case \"$target\" in ../viper/bin/*|/usr/local/viper/bin/*) rm -f \"$link\" ;; esac; fi ;;\n";
+    sh << "      share/man/*) link=\"/usr/local/share/man/${rel#share/man/}\"; if [ -L \"$link\" ]; then target=$(readlink \"$link\" || true); case \"$target\" in *../viper/share/man/*|/usr/local/viper/share/man/*) rm -f \"$link\" ;; esac; fi ;;\n";
+    sh << "    esac\n";
+    sh << "    rm -f \"$ROOT/$rel\"\n";
+    sh << "  done < \"$MANIFEST\"\n";
+    sh << "fi\n";
+    sh << "rm -rf \"$APP\"\n";
+    sh << "rm -f /usr/local/lib/cmake/Viper/ViperConfig.cmake /usr/local/lib/cmake/Viper/ViperConfigVersion.cmake\n";
+    sh << "if [ -d \"$ROOT\" ]; then find \"$ROOT\" -depth -type d -empty -delete 2>/dev/null || true; fi\n";
+    sh << "for dir in /usr/local/lib/cmake/Viper /usr/local/share/man/man1 /usr/local/share/man/man7 /usr/local/viper; do rmdir \"$dir\" 2>/dev/null || true; done\n";
+    sh << "pkgutil --forget " << shQuote(packageIdentifier) << " >/dev/null 2>&1 || true\n";
+    sh << "if command -v mandb >/dev/null 2>&1; then mandb -q /usr/local/share/man >/dev/null 2>&1 || true; fi\n";
+    sh << "if command -v makewhatis >/dev/null 2>&1; then makewhatis /usr/local/share/man >/dev/null 2>&1 || true; fi\n";
+    sh << "exit 0\n";
+    return sh.str();
 }
 
 std::string generateMacOSPreinstallScript(const std::vector<std::string> &toolNames) {
@@ -495,7 +621,8 @@ std::string generateMacOSPreinstallScript(const std::vector<std::string> &toolNa
 }
 
 std::string generateMacOSPostinstallScript(const std::vector<std::string> &toolNames,
-                                           const std::vector<std::string> &manPagePaths) {
+                                           const std::vector<std::string> &manPagePaths,
+                                           bool registerFileAssociationApp) {
     std::ostringstream sh;
     sh << "#!/bin/sh\n";
     sh << "set -eu\n";
@@ -520,6 +647,11 @@ std::string generateMacOSPostinstallScript(const std::vector<std::string> &toolN
            << shQuote(link) << "\n";
         sh << "  fi\n";
         sh << "fi\n";
+    }
+    if (registerFileAssociationApp) {
+        sh << "APP=\"/Applications/Viper Toolchain.app\"\n";
+        sh << "LSREGISTER=/System/Library/Frameworks/CoreServices.framework/Frameworks/LaunchServices.framework/Support/lsregister\n";
+        sh << "if [ -x \"$LSREGISTER\" ] && [ -d \"$APP\" ]; then \"$LSREGISTER\" -f \"$APP\" >/dev/null 2>&1 || true; fi\n";
     }
     sh << "if command -v mandb >/dev/null 2>&1; then mandb -q /usr/local/share/man >/dev/null 2>&1 || true; fi\n";
     sh << "if command -v makewhatis >/dev/null 2>&1; then makewhatis /usr/local/share/man >/dev/null 2>&1 || true; fi\n";
@@ -895,6 +1027,36 @@ void buildMacOSToolchainPackage(const MacOSToolchainBuildParams &params) {
         createPackageSymlink(payloadRoot / "usr" / "local" / "share" / "man" / page,
                              macOSManSymlinkTarget(page));
 
+    const bool registerFileAssociationApp = !params.manifest.fileAssociations.empty();
+    if (registerFileAssociationApp) {
+        const ToolchainFileEntry *handler = findMacOSFileHandler(params.manifest);
+        if (handler == nullptr) {
+            throw std::runtime_error("macOS toolchain file associations require staged "
+                                     "libexec/viper/viper-file-handler");
+        }
+        const fs::path appContents =
+            payloadRoot / "Applications" / "Viper Toolchain.app" / "Contents";
+        const fs::path appMacOS = appContents / "MacOS";
+        fs::create_directories(appMacOS);
+        writeFileString(appContents / "Info.plist",
+                        generateMacOSFileHandlerInfoPlist(params, pkgVersion),
+                        fs::perms::owner_read | fs::perms::owner_write | fs::perms::group_read |
+                            fs::perms::others_read);
+        writeFileString(appContents / "PkgInfo",
+                        generatePkgInfo(),
+                        fs::perms::owner_read | fs::perms::owner_write | fs::perms::group_read |
+                            fs::perms::others_read);
+        const fs::path appHandler = appMacOS / "viper-file-handler";
+        fs::copy_file(handler->stagedAbsolutePath, appHandler, fs::copy_options::overwrite_existing);
+        fs::permissions(appHandler,
+                        fs::perms::owner_read | fs::perms::owner_write | fs::perms::owner_exec |
+                            fs::perms::group_read | fs::perms::group_exec |
+                            fs::perms::others_read | fs::perms::others_exec,
+                        fs::perm_options::replace);
+    }
+
+    writeExecutableScript(installRoot / "share" / "viper" / "uninstall.sh",
+                          generateMacOSUninstallScript(params.identifier));
     const std::string installManifest = macOSInstallManifestText(params.manifest);
     writeFileString(installRoot / "share" / "viper" / "install_manifest.txt",
                     installManifest,
@@ -905,7 +1067,9 @@ void buildMacOSToolchainPackage(const MacOSToolchainBuildParams &params) {
     fs::create_directories(scriptsRoot);
     writeExecutableScript(scriptsRoot / "preinstall", generateMacOSPreinstallScript(toolNames));
     writeExecutableScript(scriptsRoot / "postinstall",
-                          generateMacOSPostinstallScript(toolNames, manPagePaths));
+                          generateMacOSPostinstallScript(toolNames,
+                                                         manPagePaths,
+                                                         registerFileAssociationApp));
     writeFileString(scriptsRoot / "install_manifest.txt",
                     installManifest,
                     fs::perms::owner_read | fs::perms::owner_write | fs::perms::group_read |

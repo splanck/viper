@@ -24,13 +24,13 @@ An alpha-quality hardening cycle, not a feature release. No new public namespace
 
 | Metric | v0.2.5 | v0.2.6 | Delta |
 |---|---|---|---|
-| Commits | — | 134 | +134 |
-| Source files | 2,996 | 3,022 | +26 |
-| Production SLOC | 552K | 592K | +40K |
-| Test SLOC | 228K | 251K | +23K |
+| Commits | — | 139 | +139 |
+| Source files | 2,996 | 3,030 | +34 |
+| Production SLOC | 552K | 595K | +43K |
+| Test SLOC | 228K | 252K | +24K |
 | Demo SLOC | 188K | 189K | +1K |
 
-Counts via `scripts/count_sloc.sh` (production 592,483 / test 251,085 / demo 189,187 / source files 3,022).
+Counts via `scripts/count_sloc.sh` (production 595,414 / test 251,788 / demo 189,187 / source files 3,030).
 
 ---
 
@@ -41,6 +41,7 @@ Counts via `scripts/count_sloc.sh` (production 592,483 / test 251,085 / demo 189
 - GC phases 2/3 drop the lock during traversal; phase 3 restore is iterative worklist BFS; phase 4 wraps finalizers in `setjmp` recovery; snapshots retain through lock release. `rt_gc_track` growth uses overflow-safe load-factor math; `rt_gc_run_all_finalizers` snapshots `{obj, retained}` so the cleanup path only releases what it actually retained. `TotalCollected` saturates.
 - `rt_weakref_get` retains its target through a CAS loop inside the GC lock (closes a TOCTOU window). `WeakRef.Get` / `Alive` / `Reset` reject invalid or freed non-null handles with the same trap contract as other opaque runtime handles. Weak-ref targets must be a live runtime handle or string; non-handles trap up front. SSO and heap-backed strings share the same retain path. `RT_HEAP_IMMORTAL_REFCNT` (`SIZE_MAX-1`) is a sticky immortal value distinct from the `SIZE_MAX` corruption marker.
 - `rt_obj_get_hash_code` mixes the pointer through a splitmix64 finalizer so Map/Set bucket masks no longer cluster on adjacent allocations. `Box` rejects unboxes whose tag isn't `I64`/`F64`/`I1`/`STR`. `Box.ValueType.AddField` installs the field under `setjmp` recovery so a trapping `rt_gc_track` rolls back cleanly. Nine string-inspection helpers flipped to `nothrow=false` so the optimizer can't hoist them across exception boundaries.
+- Trap-safe ownership cleanup: value-type field release clears slots before child release, drains the remaining fields if a field finalizer traps, then re-raises the preserved trap after layout cleanup; value-type GC traversal retains children under trap recovery and releases partially-retained children on failure. Heap payloads that aren't `RT_HEAP_OBJECT` report no object/type class ID (array and other memory handles stay out of object introspection). `Future`/`Promise` owned value/error retains moved outside the promise mutex with trap messages preserved through cleanup, and `Promise.GetFuture` cache creation is race-proofed by publishing a candidate only while locked.
 
 ### Runtime objects and MessageBus
 
@@ -64,6 +65,7 @@ Counts via `scripts/count_sloc.sh` (production 592,483 / test 251,085 / demo 189
 - Windows VAPS installer: PE32+ payload validation against the x64/arm64 target, recursive adjacent-DLL discovery with redistributable classification, proper Add/Remove metadata (`SHGetKnownFolderPath`/VERSIONINFO/`InstallDate`, `/quiet` uninstall), `windows-install-scope machine|user`, `windows-sign-thumbprint` parity across `package`/`install-package`, and a `meta/manifest.sha256` integrity check with duplicate/uncovered-entry rejection. A non-elevated user-scope installer smoke and a headless XenoScape package-smoke ctest gate it.
 - macOS toolchain installer generation no longer shells out to `pkgbuild`/`productbuild`: Viper writes product/component XAR archives, gzip-compressed portable ASCII CPIO `Payload`/`Scripts`, SHA-1/zlib metadata, CMake discovery wrappers under `/usr/local/lib/cmake/Viper`, command/manpage symlinks, and upgrade cleanup scripts. Linux toolchain packages now advertise runtime/developer dependencies, and Linux toolchain tarballs carry `install.sh`, `uninstall.sh`, and a file manifest for prefix/DESTDIR installs. `install-package` gained native `.pkg` verification plus Developer ID Installer signing, notarization, and stapling options.
 - Windows installer correctness: the PATH update removes stale owned entries before appending (was skipping the update entirely); registry string value types are validated and queried buffers force-terminated; `/quiet`, `/silent`, `/norestart` are recognized only as standalone tokens; rollback cleanup is best-effort across every owned file and directory; the installer no longer blanket-cleans the install root and rejects missing debug MSVC runtime dependencies. PE import-descriptor scans are bounded to the declared import directory with null-terminated names and RVAs mapped through raw section bytes; empty text sections and out-of-range entry points are rejected. macOS app ZIP staging is symlink-aware, Linux app executable bits are preserved, root-level docs map to `/usr/share/doc/viper`, and CLI `--executable` resolves relative to the working directory with fat64 Mach-O universal-header support.
+- Windows toolchain installers default to a per-user `LocalAppData` / HKCU / `asInvoker` install and reject MSVC Debug-CRT payloads unless `--allow-debug-toolchain` is given (no more installers depending on `ucrtbased`/debug `msvcp`). New policy switches cover install scope/directory, PATH mutation, opt-in source/IL file associations, and Start-Menu shortcuts; the wrapper builds a Release payload once (no double build), registry reads behind PATH mutation fail safe on malformed values, and a developer-prompt shortcut plus optional VS Code extension flow are generated.
 
 ### Threads
 
@@ -152,6 +154,6 @@ Demos and docs were updated to track the runtime work above; stale Windows debug
 
 ### Commits
 
-See `git log v0.2.5-dev..HEAD -- .` for the full 134-commit history since v0.2.5.
+See `git log v0.2.5-dev..HEAD -- .` for the full 139-commit history since v0.2.5.
 
 <!-- END DRAFT -->

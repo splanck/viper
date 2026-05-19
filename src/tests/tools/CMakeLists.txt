@@ -87,6 +87,7 @@ function(viper_add_tools_tests)
     if (UNIX AND NOT APPLE)
         viper_add_ctest(linux_toolchain_deb_installer_smoke
                 ${CMAKE_COMMAND}
+                -DCMAKE_BIN=${CMAKE_COMMAND}
                 -DVIPER_BIN=$<TARGET_FILE:viper>
                 -DVIPER_BUILD_DIR=${CMAKE_BINARY_DIR}
                 -DVIPER_CONFIG=$<CONFIG>
@@ -99,6 +100,7 @@ function(viper_add_tools_tests)
 
         viper_add_ctest(linux_toolchain_rpm_installer_smoke
                 ${CMAKE_COMMAND}
+                -DCMAKE_BIN=${CMAKE_COMMAND}
                 -DVIPER_BIN=$<TARGET_FILE:viper>
                 -DVIPER_BUILD_DIR=${CMAKE_BINARY_DIR}
                 -DVIPER_CONFIG=$<CONFIG>

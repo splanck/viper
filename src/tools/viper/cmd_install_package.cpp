@@ -741,8 +741,14 @@ std::vector<std::string> requiredPayloadPaths(
                 }
             }
             paths.push_back("usr/local/viper/share/viper/install_manifest.txt");
+            paths.push_back("usr/local/viper/share/viper/uninstall.sh");
             paths.push_back("usr/local/lib/cmake/Viper/ViperConfig.cmake");
             paths.push_back("usr/local/lib/cmake/Viper/ViperConfigVersion.cmake");
+            if (!manifest.fileAssociations.empty()) {
+                paths.push_back("Applications/Viper Toolchain.app/Contents/Info.plist");
+                paths.push_back("Applications/Viper Toolchain.app/Contents/PkgInfo");
+                paths.push_back("Applications/Viper Toolchain.app/Contents/MacOS/viper-file-handler");
+            }
             break;
         case InstallPackageTarget::All:
             break;
@@ -783,6 +789,243 @@ std::set<std::string> parsePayloadListing(const std::string &text) {
     return paths;
 }
 
+struct RpmHeaderEntry {
+    uint32_t tag{0};
+    uint32_t type{0};
+    uint32_t offset{0};
+    uint32_t count{0};
+};
+
+struct RpmHeaderView {
+    size_t storeOffset{0};
+    size_t storeSize{0};
+    size_t endOffset{0};
+    std::vector<RpmHeaderEntry> entries;
+};
+
+bool parseRpmHeaderAt(const std::vector<uint8_t> &data,
+                      size_t offset,
+                      const char *name,
+                      RpmHeaderView &header,
+                      std::ostream &err) {
+    if (offset + 16 > data.size()) {
+        err << "rpm: missing " << name << " header\n";
+        return false;
+    }
+    if (data[offset] != 0x8E || data[offset + 1] != 0xAD || data[offset + 2] != 0xE8 ||
+        data[offset + 3] != 0x01) {
+        err << "rpm: missing " << name << " header magic\n";
+        return false;
+    }
+    const uint32_t indexCount = readBE32(data, offset + 8);
+    const uint32_t storeSize = readBE32(data, offset + 12);
+    const size_t entriesOffset = offset + 16;
+    if (indexCount > (data.size() - entriesOffset) / 16u) {
+        err << "rpm: " << name << " header index extends past end of file\n";
+        return false;
+    }
+    const size_t storeOffset = entriesOffset + static_cast<size_t>(indexCount) * 16u;
+    if (storeSize > data.size() - storeOffset) {
+        err << "rpm: " << name << " header store extends past end of file\n";
+        return false;
+    }
+
+    header.storeOffset = storeOffset;
+    header.storeSize = storeSize;
+    header.endOffset = storeOffset + storeSize;
+    header.entries.clear();
+    header.entries.reserve(indexCount);
+    for (uint32_t i = 0; i < indexCount; ++i) {
+        const size_t entryOffset = entriesOffset + static_cast<size_t>(i) * 16u;
+        RpmHeaderEntry entry;
+        entry.tag = readBE32(data, entryOffset);
+        entry.type = readBE32(data, entryOffset + 4);
+        entry.offset = readBE32(data, entryOffset + 8);
+        entry.count = readBE32(data, entryOffset + 12);
+        if (entry.offset > storeSize) {
+            err << "rpm: " << name << " header tag " << entry.tag
+                << " points past the header store\n";
+            return false;
+        }
+        header.entries.push_back(entry);
+    }
+    return true;
+}
+
+const RpmHeaderEntry *findRpmHeaderEntry(const RpmHeaderView &header, uint32_t tag) {
+    auto it = std::find_if(header.entries.begin(), header.entries.end(), [&](const auto &entry) {
+        return entry.tag == tag;
+    });
+    return it == header.entries.end() ? nullptr : &*it;
+}
+
+bool readRpmStringArray(const std::vector<uint8_t> &data,
+                        const RpmHeaderView &header,
+                        const RpmHeaderEntry &entry,
+                        std::vector<std::string> &values,
+                        std::ostream &err) {
+    static constexpr uint32_t kRpmString = 6;
+    static constexpr uint32_t kRpmStringArray = 8;
+    static constexpr uint32_t kRpmI18NString = 9;
+    if (entry.type != kRpmString && entry.type != kRpmStringArray &&
+        entry.type != kRpmI18NString) {
+        err << "rpm: header tag " << entry.tag << " is not a string array\n";
+        return false;
+    }
+    const uint32_t expected = entry.type == kRpmString ? 1u : entry.count;
+    size_t pos = header.storeOffset + entry.offset;
+    const size_t end = header.storeOffset + header.storeSize;
+    values.clear();
+    values.reserve(expected);
+    for (uint32_t i = 0; i < expected; ++i) {
+        if (pos >= end) {
+            err << "rpm: string array tag " << entry.tag << " is truncated\n";
+            return false;
+        }
+        size_t nul = pos;
+        while (nul < end && data[nul] != 0)
+            ++nul;
+        if (nul >= end) {
+            err << "rpm: string array tag " << entry.tag << " is missing a terminator\n";
+            return false;
+        }
+        values.emplace_back(reinterpret_cast<const char *>(data.data() + pos), nul - pos);
+        pos = nul + 1;
+    }
+    return true;
+}
+
+bool readRpmInt32Array(const std::vector<uint8_t> &data,
+                       const RpmHeaderView &header,
+                       const RpmHeaderEntry &entry,
+                       std::vector<uint32_t> &values,
+                       std::ostream &err) {
+    static constexpr uint32_t kRpmInt32 = 4;
+    if (entry.type != kRpmInt32) {
+        err << "rpm: header tag " << entry.tag << " is not an int32 array\n";
+        return false;
+    }
+    if (entry.count > (header.storeSize - entry.offset) / 4u) {
+        err << "rpm: int32 array tag " << entry.tag << " is truncated\n";
+        return false;
+    }
+    values.clear();
+    values.reserve(entry.count);
+    size_t pos = header.storeOffset + entry.offset;
+    for (uint32_t i = 0; i < entry.count; ++i) {
+        values.push_back(readBE32(data, pos));
+        pos += 4;
+    }
+    return true;
+}
+
+std::string normalizeRpmListedPath(std::string path) {
+    while (!path.empty() && path.front() == '/')
+        path.erase(path.begin());
+    if (path.rfind("./", 0) == 0)
+        path.erase(0, 2);
+    return path;
+}
+
+bool readRpmPayloadPaths(const std::vector<uint8_t> &data,
+                         std::set<std::string> *payloadPaths,
+                         std::ostream &err) {
+    if (data.size() < 112 || data[0] != 0xED || data[1] != 0xAB || data[2] != 0xEE ||
+        data[3] != 0xDB) {
+        err << "rpm: missing lead magic\n";
+        return false;
+    }
+    if (data[4] != 3) {
+        err << "rpm: unsupported lead major version " << static_cast<int>(data[4]) << "\n";
+        return false;
+    }
+    if (readBE16(data, 78) != 5) {
+        err << "rpm: unsupported signature type\n";
+        return false;
+    }
+
+    RpmHeaderView signature;
+    if (!parseRpmHeaderAt(data, 96, "signature", signature, err))
+        return false;
+    const size_t mainOff = (signature.endOffset + 7ull) & ~7ull;
+    RpmHeaderView mainHeader;
+    if (!parseRpmHeaderAt(data, mainOff, "main", mainHeader, err))
+        return false;
+    if (mainHeader.endOffset == data.size()) {
+        err << "rpm: package has no payload after main header\n";
+        return false;
+    }
+    bool sawPayloadByte = false;
+    for (size_t i = mainHeader.endOffset; i < data.size(); ++i) {
+        if (data[i] != 0) {
+            sawPayloadByte = true;
+            break;
+        }
+    }
+    if (!sawPayloadByte) {
+        err << "rpm: package payload is empty\n";
+        return false;
+    }
+    if (payloadPaths == nullptr)
+        return true;
+
+    static constexpr uint32_t kRpmTagOldFileNames = 1027;
+    static constexpr uint32_t kRpmTagDirIndexes = 1116;
+    static constexpr uint32_t kRpmTagBaseNames = 1117;
+    static constexpr uint32_t kRpmTagDirNames = 1118;
+    static constexpr uint32_t kRpmTagFileNames = 5000;
+
+    payloadPaths->clear();
+    std::vector<std::string> fullNames;
+    if (const auto *fileNamesEntry = findRpmHeaderEntry(mainHeader, kRpmTagFileNames)) {
+        if (!readRpmStringArray(data, mainHeader, *fileNamesEntry, fullNames, err))
+            return false;
+    } else if (const auto *oldFileNamesEntry =
+                   findRpmHeaderEntry(mainHeader, kRpmTagOldFileNames)) {
+        if (!readRpmStringArray(data, mainHeader, *oldFileNamesEntry, fullNames, err))
+            return false;
+    }
+    if (!fullNames.empty()) {
+        for (auto &path : fullNames) {
+            path = normalizeRpmListedPath(std::move(path));
+            if (!path.empty())
+                payloadPaths->insert(path);
+        }
+        return true;
+    }
+
+    const auto *baseEntry = findRpmHeaderEntry(mainHeader, kRpmTagBaseNames);
+    const auto *dirEntry = findRpmHeaderEntry(mainHeader, kRpmTagDirNames);
+    const auto *indexEntry = findRpmHeaderEntry(mainHeader, kRpmTagDirIndexes);
+    if (baseEntry == nullptr || dirEntry == nullptr || indexEntry == nullptr) {
+        err << "rpm: main header does not contain file name tags\n";
+        return false;
+    }
+
+    std::vector<std::string> basenames;
+    std::vector<std::string> dirnames;
+    std::vector<uint32_t> dirindexes;
+    if (!readRpmStringArray(data, mainHeader, *baseEntry, basenames, err) ||
+        !readRpmStringArray(data, mainHeader, *dirEntry, dirnames, err) ||
+        !readRpmInt32Array(data, mainHeader, *indexEntry, dirindexes, err)) {
+        return false;
+    }
+    if (basenames.size() != dirindexes.size()) {
+        err << "rpm: basename and directory index counts differ\n";
+        return false;
+    }
+    for (size_t i = 0; i < basenames.size(); ++i) {
+        if (dirindexes[i] >= dirnames.size()) {
+            err << "rpm: file directory index points past directory table\n";
+            return false;
+        }
+        std::string path = normalizeRpmListedPath(dirnames[dirindexes[i]] + basenames[i]);
+        if (!path.empty())
+            payloadPaths->insert(path);
+    }
+    return true;
+}
+
 bool verifyArtifact(const fs::path &artifact,
                     InstallPackageTarget target,
                     std::ostream &err,
@@ -816,81 +1059,18 @@ bool verifyArtifact(const fs::path &artifact,
                 return viper::pkg::verifyMacOSPkgPayload(
                     data, requiredPayloadPaths(target, *manifest), err);
             return viper::pkg::verifyMacOSPkg(data, err);
-        case InstallPackageTarget::LinuxRpm:
-            if (data.size() < 112 || data[0] != 0xED || data[1] != 0xAB || data[2] != 0xEE ||
-                data[3] != 0xDB) {
-                err << "rpm: missing lead magic\n";
-                return false;
-            }
-            if (data[4] != 3) {
-                err << "rpm: unsupported lead major version " << static_cast<int>(data[4])
-                    << "\n";
-                return false;
-            }
-            if (readBE16(data, 78) != 5) {
-                err << "rpm: unsupported signature type\n";
-                return false;
-            }
-            if (data[96] != 0x8E || data[97] != 0xAD || data[98] != 0xE8 || data[99] != 0x01) {
-                err << "rpm: missing signature header magic\n";
-                return false;
-            }
-            {
-                const uint32_t sigIndexCount = readBE32(data, 104);
-                const uint32_t sigStoreSize = readBE32(data, 108);
-                const uint64_t sigEnd = 96ull + 16ull + static_cast<uint64_t>(sigIndexCount) * 16ull +
-                                        sigStoreSize;
-                if (sigEnd > data.size()) {
-                    err << "rpm: signature header extends past end of file\n";
-                    return false;
-                }
-                const size_t mainOff = static_cast<size_t>((sigEnd + 7ull) & ~7ull);
-                if (mainOff + 16 > data.size()) {
-                    err << "rpm: missing main header\n";
-                    return false;
-                }
-                if (data[mainOff] != 0x8E || data[mainOff + 1] != 0xAD ||
-                    data[mainOff + 2] != 0xE8 || data[mainOff + 3] != 0x01) {
-                    err << "rpm: missing main header magic\n";
-                    return false;
-                }
-                const uint32_t mainIndexCount = readBE32(data, mainOff + 8);
-                const uint32_t mainStoreSize = readBE32(data, mainOff + 12);
-                const uint64_t mainEnd = static_cast<uint64_t>(mainOff) + 16ull +
-                                         static_cast<uint64_t>(mainIndexCount) * 16ull +
-                                         mainStoreSize;
-                if (mainEnd > data.size()) {
-                    err << "rpm: main header extends past end of file\n";
-                    return false;
-                }
-                if (mainEnd == data.size()) {
-                    err << "rpm: package has no payload after main header\n";
-                    return false;
-                }
-                bool sawPayloadByte = false;
-                for (size_t i = static_cast<size_t>(mainEnd); i < data.size(); ++i) {
-                    if (data[i] != 0) {
-                        sawPayloadByte = true;
-                        break;
-                    }
-                }
-                if (!sawPayloadByte) {
-                    err << "rpm: package payload is empty\n";
-                    return false;
-                }
-            }
+        case InstallPackageTarget::LinuxRpm: {
             if (manifest) {
-                const RunResult rr = run_process({"rpm", "-qpl", artifact.string()});
-                if (rr.exit_code != 0) {
-                    err << "rpm: rpm could not list package payload:\n" << rr.out << rr.err;
+                std::set<std::string> payloadPaths;
+                if (!readRpmPayloadPaths(data, &payloadPaths, err))
                     return false;
-                }
-                return requireListedPayloadPaths(parsePayloadListing(rr.out),
+                return requireListedPayloadPaths(payloadPaths,
                                                  requiredPayloadPaths(target, *manifest),
                                                  "rpm",
                                                  err);
             }
-            return true;
+            return readRpmPayloadPaths(data, nullptr, err);
+        }
         case InstallPackageTarget::All:
         default:
             return false;
@@ -1016,8 +1196,7 @@ std::vector<InstallPackageTarget> selectedTargets(InstallPackageTarget target,
         result.push_back(InstallPackageTarget::MacOS);
     } else if (platform == "linux") {
         result.push_back(InstallPackageTarget::LinuxDeb);
-        if (rpmbuildAvailable())
-            result.push_back(InstallPackageTarget::LinuxRpm);
+        result.push_back(InstallPackageTarget::LinuxRpm);
     }
     result.push_back(InstallPackageTarget::Tarball);
     return result;
@@ -1125,8 +1304,14 @@ int cmdInstallPackage(int argc, char **argv) {
             return 1;
         }
         if (target == InstallPackageTarget::LinuxRpm && !rpmbuildAvailable()) {
-            std::cerr << "error: --target linux-rpm requires rpmbuild; install rpm-build "
-                         "or use --target linux-deb/tarball\n";
+            if (args.target == InstallPackageTarget::All) {
+                std::cerr << "error: --target all for a Linux toolchain includes linux-rpm "
+                             "and requires rpmbuild; install rpm-build or choose "
+                             "--target linux-deb/tarball explicitly\n";
+            } else {
+                std::cerr << "error: --target linux-rpm requires rpmbuild; install rpm-build "
+                             "or use --target linux-deb/tarball\n";
+            }
             return 1;
         }
         fs::path artifactPath =
