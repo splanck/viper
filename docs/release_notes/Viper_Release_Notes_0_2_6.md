@@ -15,7 +15,7 @@ An alpha-quality hardening cycle, not a feature release. The Zia frontend reache
 - **Memory, GC & threads ownership.** Validated `Retain`/`Release` wrappers; weak-ref CAS retain inside the GC lock; trap-safe finalizers; class-ID validation on every public threads / MessageBus entry; saturated wait deadlines on Win32 and POSIX.
 - **Crypto, TLS & IO security.** `Viper.Crypto.*` canonicalized (scrypt-SHA256, AES-GCM+AAD, approved-mode module, fixed-schedule ECDSA P-256); TLS enforces Key Usage / Basic Constraints / EKU and DNS-name limits; hardened temp-file, archive, and ZIP64 paths.
 - **Network protocol correctness.** Independent HPACK encode/decode tables, strict RFC 7230 `Transfer-Encoding` parsing (closes a request-smuggling avenue), WebSocket frame and close-code validation.
-- **Native toolchain becomes real.** All four object-file readers and three writers received multiple bounds-checking, alignment-UB, and reloc-correctness rounds, capped by a shared-helper consolidation that re-homes `readLE*`/`writeLE*`/`putLE*`/checked-arithmetic helpers and `physicalSymbolValue` into a single `ObjFileWriterUtil` header so future hardening rounds stay in sync across formats; COFF, ELF, and Mach-O agree on the addend convention end-to-end; the `fe_zia` frontend is now native-linked into `zia`, with a broadened `rt_zia_*` completion bridge and keyboard/text-input plumbing carrying ViperIDE's IntelliSense / hover / diagnostics / symbols against the real semantic engine.
+- **Native toolchain becomes real.** Multiple bounds-checking, alignment-UB, and reloc-correctness rounds across all four object-file readers and three writers, capped by an `ObjFileWriterUtil` shared-helper consolidation so future hardening stays in sync across COFF, ELF, and Mach-O. The `fe_zia` frontend is now native-linked into `zia`, carrying ViperIDE's IntelliSense / hover / diagnostics / symbols against the real semantic engine.
 - **Toolchain installer completion.** Native-emitted Windows `.msi`/`.exe`, macOS `.pkg`, and Linux `.deb`/`.rpm`/tarball toolchain packages reach feature parity: PE32+ payload validation, ad-hoc-by-default macOS signing with optional Developer ID + notarization + stapling, Linux runtime/developer dependency advertisement, file-association registration on all three platforms, and deep post-build verification of every staged path.
 - **Standard-library namespace de-clutter (breaking).** Seven root modules re-home under their documented taxonomy: `Lazy`/`LazySeq` → `Viper.Functional`, `Machine`/`Environment`/`Exec` → `Viper.System`, `Log` → `Viper.Diagnostics`, `Fmt` → `Viper.Text`. No back-compat aliases; `Math`, `String`, `Terminal`, and the intrinsic `Option`/`Result`/`Error` stay at root.
 - **Backends, bytecode VM & Windows HiDPI.** x86-64 cross-block fold liveness + AT&T operand-class validation; AArch64 sub-word transfers, terminator/CFG, def-operand fixes; bytecode-VM two's-complement wrapping arithmetic and checked float→int traps; Windows physical-pixel sizing via `AdjustWindowRectExForDpi` and waitable-timer frame pacing.
@@ -26,13 +26,13 @@ An alpha-quality hardening cycle, not a feature release. The Zia frontend reache
 
 | Metric | v0.2.5 | v0.2.6 | Delta |
 |---|---|---|---|
-| Commits | — | 148 | +148 |
-| Source files | 2,996 | 3,034 | +38 |
-| Production SLOC | 552K | 599K | +47K |
+| Commits | — | 151 | +151 |
+| Source files | 2,996 | 3,037 | +41 |
+| Production SLOC | 552K | 600K | +48K |
 | Test SLOC | 228K | 255K | +27K |
 | Demo SLOC | 188K | 189K | +1K |
 
-Counts via `scripts/count_sloc.sh` (production 599,454 / test 255,235 / demo 189,273 / source files 3,034).
+Counts via `scripts/count_sloc.sh` (production 599,623 / test 255,396 / demo 189,273 / source files 3,037).
 
 ---
 
@@ -52,10 +52,10 @@ Counts via `scripts/count_sloc.sh` (production 599,454 / test 255,235 / demo 189
 
 ### Crypto, TLS, and IO security
 
-- Password / KeyDerive / Aes / Cipher / Hash / Rand are canonical members of `Viper.Crypto.*`. New: `KeyDerive.ScryptSHA256` (RFC 7914, bounded memory cap), `Password.Hash` default `SCRYPT$…` with PBKDF2 legacy-verify, `Cipher.EncryptAAD`/`DecryptAAD` for AES-128/256-GCM, a 16-byte `VAK1` AEAD magic, `Viper.Crypto.Module` approved-mode + self-tests + HMAC-DRBG, and `Hash.ConstantTimeEquals`.
+- Password / KeyDerive / Aes / Cipher / Hash / Rand are canonical members of `Viper.Crypto.*`. New surface: `KeyDerive.ScryptSHA256` (RFC 7914), `Password.Hash` default `SCRYPT$…` with PBKDF2 legacy-verify, `Cipher.EncryptAAD`/`DecryptAAD` for AES-128/256-GCM, `Viper.Crypto.Module` approved-mode + self-tests + HMAC-DRBG, and `Hash.ConstantTimeEquals`.
 - RSA modulus floor raised to 1024 bits with parity/size validation and secure-zero key buffers; ECDSA P-256 signing uses a fixed-schedule scalar multiply and validates every public point at ingress.
 - TLS chain validation enforces Key Usage, Basic Constraints (cA), and EKU; intermediates without cA and leaves without Server-Auth EKU are rejected; SAN hostname checks scan every DNS name instead of the extraction cap; chains with malformed tails or more than 16 intermediates fail closed; non-minimal DER long-form lengths are rejected.
-- Temp-file creation uses a 64-bit `/dev/urandom`/`rand_s`+`QueryPerformanceCounter` nonce; assets decode into a private `mkdtemp` directory; `asset_name_is_safe()` rejects absolute paths, drive letters, dots, and embedded NULs; recursive directory removal uses `openat`/`fstatat`/`unlinkat` with `AT_SYMLINK_NOFOLLOW`; ZIP64 sentinels, encryption flags, and `version_needed >= 45` are rejected at the central directory.
+- Temp-file creation uses a 64-bit OS-entropy nonce; assets decode into a private `mkdtemp` directory; `asset_name_is_safe()` rejects absolute paths, drive letters, dots, and embedded NULs; recursive directory removal uses `openat`/`unlinkat` with `AT_SYMLINK_NOFOLLOW`; ZIP64 sentinels and unsupported encryption flags are rejected at the central directory.
 
 ### Threads
 
@@ -101,6 +101,7 @@ Counts via `scripts/count_sloc.sh` (production 599,454 / test 255,235 / demo 189
 - x86-64: cross-block fold-liveness guards on SIB and IMUL→LEA prevent address-strength reductions from erasing virtual registers still consumed in another block; IMUL→LEA refusal under live flags; block-DCE preserves physical registers at exits; AT&T `AsmEmitter` rejects invalid `CALL`/`JMP`/`JCC`/`LEA`/`SETcc`/`MOVZX` operand classes and non-`RCX` shift counts before printing.
 - Bytecode VM: arithmetic uses explicit two's-complement wrapping helpers (add/sub/mul, shifts, local inc/dec) instead of host signed-overflow behaviour; checked float→int conversions raise consistent `InvalidCast`/`Overflow` traps; local indexes, memory pointers, and alloca sizes are validated before host state is touched.
 - Optimizer ownership-effect model gains `ownedOutArgMask` for pointer args that receive owned references, plumbed through `RuntimeOwnership.hpp`; the retain-on-return contract is captured via `returnsOwned` on every collection accessor so optimizer-side defensive retains are eliminated.
+- Structural cleanup across both backends: AArch64's largest hot functions (`encodeInstruction`, `materializeValueToVReg`, `lowerFunction`, `lowerTerminators`, `runPeephole`, `scheduleBlock`) decompose into named per-family / per-phase helpers, three duplicate dominator implementations unify into one shared bit-vector pass, and the AArch64 binary-encoder dispatch is now table-driven over the homogeneous opcode families.
 
 ### Native toolchain (linker, readers, writers)
 
@@ -109,7 +110,7 @@ Counts via `scripts/count_sloc.sh` (production 599,454 / test 255,235 / demo 189
 - COFF weak externals carry the `Characteristics` field through the reader; `SymbolResolver` honors `IMAGE_WEAK_EXTERN_SEARCH_NOLIBRARY` (kept as weak alias without forcing archive extraction) while library-search fallbacks still drive the iterative resolver. Identity hashing (hashU64/hashString/hashRelocTarget) keeps duplicate-symbol and reloc-target detection deterministic across re-runs.
 - Three new reloc kinds (`A64LdSt32Off12`, `A64LdSt128Off12`, corrected `IMAGE_REL_ARM64_BRANCH19`); `RelocApplier` validates AArch64 instruction class per reloc kind and forbids duplicate input-section chunks; branch trampolines key dedup on `symName + addend` and resolve targets after placement.
 - Section identity is preserved across reader-to-writer copies via shared `CodeSection` aliases so multi-section COFF and ELF writers resolve section-offset relocations even when sections are passed by value; AArch64 reloc decoding is shared between the Mach-O reader and the binary encoder so load/store page-offset relocations agree across paths.
-- P1 hardening: Mach-O TLV descriptor sections carry an explicit `OutputSection::tlvDescriptors` flag (the `_tlv_bootstrap` bind loop no longer disambiguates by section name), a non-24-byte-multiple TLV descriptor section is a hard link error instead of silently dropping the trailing record, ADDR32NB RVAs come from `LinkLayout::imageBase` so applier and writer share one source of truth, Mach-O `n_sect` past the parsed section table now errors out instead of resolving the symbol as undefined, `BranchTrampoline` errors on an out-of-bounds patch site rather than emitting an island and leaving the original branch unredirected, `DynStubGen` GOT slots live in `.got.viper_stubs` instead of colliding with user `.data` by name, and `ICF::archForObject` returns `optional<LinkArch>` so unknown machine codes are skipped rather than misclassified as x86_64.
+- A round of targeted P1 fixes across the linker: Mach-O TLV descriptor validation, ADDR32NB RVAs sourced from `LinkLayout::imageBase`, Mach-O `n_sect` out-of-range hard error, `BranchTrampoline` out-of-bounds detection, `DynStubGen` GOT slots namespaced under `.got.viper_stubs`, and ICF arch detection that skips rather than misclassifies unknown machine codes.
 - ELF emits `PT_TLS` for TLS segments; TLS and `.bss`/`.tbss` use logical memory sizes without serializing zero-fill bytes. Mach-O `MH_SUBSECTIONS_VIA_SYMBOLS` splits `__TEXT,__text` per atom and merges same-named ObjC metadata from reader-created and linker-synthetic inputs. PE writer narrows through `checkedU32`/`checkedRva` overflow-checked helpers; dead-strip preserves EH / unwind and `.debug*` roots.
 
 ### Standard-library namespace de-clutter
@@ -161,6 +162,6 @@ Demos and docs tracked the runtime work above; stale Windows debug/O0 pins for C
 
 ### Commits
 
-See `git log 929a6d787..HEAD -- .` for the full 148-commit history since v0.2.5.
+See `git log v0.2.5-dev..HEAD -- .` for the full 151-commit history since v0.2.5.
 
 <!-- END DRAFT -->

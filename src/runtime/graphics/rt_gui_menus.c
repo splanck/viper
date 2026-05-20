@@ -58,12 +58,13 @@ static vg_menubar_t *rt_gui_menu_owner_from_item(const vg_menu_item_t *item) {
     return item && item->parent_menu ? item->parent_menu->owner_menubar : NULL;
 }
 
-/// @brief Push the menubar's current state into the macOS native menu strip.
+/// @brief Refresh runtime and native accelerator state after a menubar mutation.
 ///
-/// No-op on Linux/Windows. Called after every mutation (add item,
-/// remove menu, toggle visibility) so the system menu stays in
-/// sync with the in-process model.
+/// The in-process accelerator table is used by non-native menu dispatch on every
+/// platform; macOS also mirrors the same model into the native menu strip.
 static void rt_gui_menu_sync_menubar(vg_menubar_t *menubar) {
+    if (menubar)
+        vg_menubar_rebuild_accelerators(menubar);
     rt_gui_macos_menu_sync_for_menubar(menubar);
 }
 
@@ -828,16 +829,15 @@ void rt_statusbar_set_left_text(void *bar, rt_string text) {
     if (!sb)
         return;
     vg_statusbar_item_t *item = get_zone_text_item(sb, VG_STATUSBAR_ZONE_LEFT);
+    char *ctext = rt_string_to_gui_cstr(text);
+    if (!ctext)
+        return;
     if (item) {
-        char *ctext = rt_string_to_gui_cstr(text);
         vg_statusbar_item_set_text(item, ctext);
-        free(ctext);
     } else {
-        // Create a new text item
-        char *ctext = rt_string_to_gui_cstr(text);
         vg_statusbar_add_text(sb, VG_STATUSBAR_ZONE_LEFT, ctext);
-        free(ctext);
     }
+    free(ctext);
 }
 
 /// @brief Set the center text of the statusbar.
@@ -847,15 +847,15 @@ void rt_statusbar_set_center_text(void *bar, rt_string text) {
     if (!sb)
         return;
     vg_statusbar_item_t *item = get_zone_text_item(sb, VG_STATUSBAR_ZONE_CENTER);
+    char *ctext = rt_string_to_gui_cstr(text);
+    if (!ctext)
+        return;
     if (item) {
-        char *ctext = rt_string_to_gui_cstr(text);
         vg_statusbar_item_set_text(item, ctext);
-        free(ctext);
     } else {
-        char *ctext = rt_string_to_gui_cstr(text);
         vg_statusbar_add_text(sb, VG_STATUSBAR_ZONE_CENTER, ctext);
-        free(ctext);
     }
+    free(ctext);
 }
 
 /// @brief Set the right text of the statusbar.
@@ -865,15 +865,15 @@ void rt_statusbar_set_right_text(void *bar, rt_string text) {
     if (!sb)
         return;
     vg_statusbar_item_t *item = get_zone_text_item(sb, VG_STATUSBAR_ZONE_RIGHT);
+    char *ctext = rt_string_to_gui_cstr(text);
+    if (!ctext)
+        return;
     if (item) {
-        char *ctext = rt_string_to_gui_cstr(text);
         vg_statusbar_item_set_text(item, ctext);
-        free(ctext);
     } else {
-        char *ctext = rt_string_to_gui_cstr(text);
         vg_statusbar_add_text(sb, VG_STATUSBAR_ZONE_RIGHT, ctext);
-        free(ctext);
     }
+    free(ctext);
 }
 
 /// @brief Get the left text of the statusbar.
@@ -930,6 +930,8 @@ void *rt_statusbar_add_text(void *bar, rt_string text, int64_t zone) {
     if (!sb || !rt_statusbar_zone_checked(zone, &checked_zone))
         return NULL;
     char *ctext = rt_string_to_gui_cstr(text);
+    if (!ctext)
+        return NULL;
     vg_statusbar_item_t *item = vg_statusbar_add_text(sb, checked_zone, ctext);
     free(ctext);
     return item;
@@ -943,6 +945,8 @@ void *rt_statusbar_add_button(void *bar, rt_string text, int64_t zone) {
     if (!sb || !rt_statusbar_zone_checked(zone, &checked_zone))
         return NULL;
     char *ctext = rt_string_to_gui_cstr(text);
+    if (!ctext)
+        return NULL;
     vg_statusbar_item_t *item =
         vg_statusbar_add_button(sb, checked_zone, ctext, rt_statusbar_button_clicked, NULL);
     free(ctext);
@@ -1034,6 +1038,8 @@ void rt_statusbaritem_set_text(void *item, rt_string text) {
     if (!vg_statusbar_item_is_live((vg_statusbar_item_t *)item))
         return;
     char *ctext = rt_string_to_gui_cstr(text);
+    if (!ctext)
+        return;
     vg_statusbar_item_set_text((vg_statusbar_item_t *)item, ctext);
     free(ctext);
 }
@@ -1056,6 +1062,8 @@ void rt_statusbaritem_set_tooltip(void *item, rt_string tooltip) {
     if (!vg_statusbar_item_is_live((vg_statusbar_item_t *)item))
         return;
     char *ctext = rt_string_to_gui_cstr(tooltip);
+    if (!ctext)
+        return;
     vg_statusbar_item_set_tooltip((vg_statusbar_item_t *)item, ctext);
     free(ctext);
 }
@@ -1090,11 +1098,12 @@ void rt_statusbaritem_set_visible(void *item, int64_t visible) {
 /// @param item
 void rt_gui_set_clicked_statusbar_item(void *item) {
     RT_ASSERT_MAIN_THREAD();
-    rt_gui_app_t *app = rt_gui_get_active_app();
-    if (!app)
-        app = s_current_app;
-    if (app && vg_statusbar_item_is_live((vg_statusbar_item_t *)item))
-        app->last_statusbar_clicked = (vg_statusbar_item_t *)item;
+    vg_statusbar_item_t *sbi = (vg_statusbar_item_t *)item;
+    if (!vg_statusbar_item_is_live(sbi) || !sbi->owner)
+        return;
+    rt_gui_app_t *app = rt_gui_app_from_widget(&sbi->owner->base);
+    if (app)
+        app->last_statusbar_clicked = sbi;
 }
 
 /// @brief Check if a status bar item was clicked this frame (edge-triggered).
@@ -1102,9 +1111,10 @@ int64_t rt_statusbaritem_was_clicked(void *item) {
     RT_ASSERT_MAIN_THREAD();
     if (!vg_statusbar_item_is_live((vg_statusbar_item_t *)item))
         return 0;
-    rt_gui_app_t *app = rt_gui_get_active_app();
-    if (!app)
-        app = s_current_app;
+    vg_statusbar_item_t *sbi = (vg_statusbar_item_t *)item;
+    if (!sbi->owner)
+        return 0;
+    rt_gui_app_t *app = rt_gui_app_from_widget(&sbi->owner->base);
     if (!app || app->last_statusbar_clicked != item)
         return 0;
     app->last_statusbar_clicked = NULL;
@@ -1177,6 +1187,11 @@ void *rt_toolbar_add_button(void *toolbar, rt_string icon_path, rt_string toolti
         return NULL;
     char *cicon = rt_string_to_cstr(icon_path);
     char *ctooltip = rt_string_to_gui_cstr(tooltip);
+    if ((icon_path && !cicon) || !ctooltip) {
+        free(cicon);
+        free(ctooltip);
+        return NULL;
+    }
 
     vg_icon_t icon = rt_gui_icon_from_path_cstr(cicon);
     free(cicon);
@@ -1207,6 +1222,12 @@ void *rt_toolbar_add_button_with_text(void *toolbar,
     char *cicon = rt_string_to_cstr(icon_path);
     char *ctext = rt_string_to_gui_cstr(text);
     char *ctooltip = rt_string_to_gui_cstr(tooltip);
+    if ((icon_path && !cicon) || !ctext || !ctooltip) {
+        free(cicon);
+        free(ctext);
+        free(ctooltip);
+        return NULL;
+    }
 
     vg_icon_t icon = rt_gui_icon_from_path_cstr(cicon);
     free(cicon);
@@ -1233,6 +1254,11 @@ void *rt_toolbar_add_toggle(void *toolbar, rt_string icon_path, rt_string toolti
         return NULL;
     char *cicon = rt_string_to_cstr(icon_path);
     char *ctooltip = rt_string_to_gui_cstr(tooltip);
+    if ((icon_path && !cicon) || !ctooltip) {
+        free(cicon);
+        free(ctooltip);
+        return NULL;
+    }
 
     vg_icon_t icon = rt_gui_icon_from_path_cstr(cicon);
     free(cicon);
@@ -1268,6 +1294,8 @@ void *rt_toolbar_add_dropdown(void *toolbar, rt_string tooltip) {
     if (!tb)
         return NULL;
     char *ctooltip = rt_string_to_gui_cstr(tooltip);
+    if (!ctooltip)
+        return NULL;
 
     vg_icon_t icon = {0};
     icon.type = VG_ICON_NONE;
@@ -1389,6 +1417,8 @@ void rt_toolbaritem_set_text(void *item, rt_string text) {
     if (!vg_toolbar_item_is_live((vg_toolbar_item_t *)item))
         return;
     char *ctext = rt_string_to_gui_cstr(text);
+    if (!ctext)
+        return;
     vg_toolbar_item_set_text((vg_toolbar_item_t *)item, ctext);
     free(ctext);
 }
@@ -1399,6 +1429,8 @@ void rt_toolbaritem_set_tooltip(void *item, rt_string tooltip) {
     if (!vg_toolbar_item_is_live((vg_toolbar_item_t *)item))
         return;
     char *ctooltip = rt_string_to_gui_cstr(tooltip);
+    if (!ctooltip)
+        return;
     vg_toolbar_item_set_tooltip((vg_toolbar_item_t *)item, ctooltip);
     free(ctooltip);
 }
@@ -1439,11 +1471,12 @@ int64_t rt_toolbaritem_is_toggled(void *item) {
 /// @param item
 void rt_gui_set_clicked_toolbar_item(void *item) {
     RT_ASSERT_MAIN_THREAD();
-    rt_gui_app_t *app = rt_gui_get_active_app();
-    if (!app)
-        app = s_current_app;
-    if (app && vg_toolbar_item_is_live((vg_toolbar_item_t *)item))
-        app->last_toolbar_clicked = (vg_toolbar_item_t *)item;
+    vg_toolbar_item_t *ti = (vg_toolbar_item_t *)item;
+    if (!vg_toolbar_item_is_live(ti) || !ti->owner)
+        return;
+    rt_gui_app_t *app = rt_gui_app_from_widget(&ti->owner->base);
+    if (app)
+        app->last_toolbar_clicked = ti;
 }
 
 /// @brief Check if a toolbar button was clicked this frame (edge-triggered).
@@ -1454,16 +1487,14 @@ int64_t rt_toolbaritem_was_clicked(void *item) {
     vg_toolbar_item_t *ti = (vg_toolbar_item_t *)item;
     if (ti->was_clicked) {
         ti->was_clicked = false;
-        rt_gui_app_t *app = rt_gui_get_active_app();
-        if (!app)
-            app = s_current_app;
-        if (app)
+        rt_gui_app_t *app = ti->owner ? rt_gui_app_from_widget(&ti->owner->base) : NULL;
+        if (app && app->last_toolbar_clicked == item)
             app->last_toolbar_clicked = NULL;
         return 1;
     }
-    rt_gui_app_t *app = rt_gui_get_active_app();
-    if (!app)
-        app = s_current_app;
+    if (!ti->owner)
+        return 0;
+    rt_gui_app_t *app = rt_gui_app_from_widget(&ti->owner->base);
     if (app && app->last_toolbar_clicked == item) {
         app->last_toolbar_clicked = NULL;
         return 1;

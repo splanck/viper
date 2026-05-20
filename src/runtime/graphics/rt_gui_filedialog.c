@@ -493,6 +493,16 @@ static void rt_filedialog_unregister_wrapper(rt_filedialog_data_t *data) {
     }
 }
 
+static int rt_filedialog_wrapper_is_registered(const rt_filedialog_data_t *data) {
+    if (!data)
+        return 0;
+    for (size_t i = 0; i < s_filedialog_wrapper_count; i++) {
+        if (s_filedialog_wrappers[i] == data)
+            return 1;
+    }
+    return 0;
+}
+
 void rt_filedialog_invalidate_dialog(vg_dialog_t *dialog) {
     if (!dialog)
         return;
@@ -510,7 +520,9 @@ void rt_filedialog_invalidate_dialog(vg_dialog_t *dialog) {
 /// @brief Safe-cast an opaque handle to the file-dialog wrapper by magic tag.
 static rt_filedialog_data_t *rt_filedialog_wrapper_checked(void *dialog) {
     rt_filedialog_data_t *data = (rt_filedialog_data_t *)dialog;
-    return data && data->magic == RT_FILEDIALOG_DATA_MAGIC ? data : NULL;
+    return rt_filedialog_wrapper_is_registered(data) && data->magic == RT_FILEDIALOG_DATA_MAGIC
+               ? data
+               : NULL;
 }
 
 /// @brief Safe-cast an opaque handle to a wrapper with a live backing dialog.
@@ -615,8 +627,7 @@ void *rt_filedialog_new(int64_t type) {
             mode = VG_FILEDIALOG_SELECT_FOLDER;
             break;
         default:
-            mode = VG_FILEDIALOG_OPEN;
-            break;
+            return NULL;
     }
 
     vg_filedialog_t *dlg = vg_filedialog_create(mode);

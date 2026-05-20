@@ -66,6 +66,60 @@ typedef struct {
     int64_t was_selected;
 } rt_commandpalette_data_t;
 
+static rt_commandpalette_data_t **s_commandpalette_wrappers = NULL;
+static size_t s_commandpalette_wrapper_count = 0;
+static size_t s_commandpalette_wrapper_cap = 0;
+
+static int rt_commandpalette_register_wrapper(rt_commandpalette_data_t *data) {
+    if (!data)
+        return 0;
+    for (size_t i = 0; i < s_commandpalette_wrapper_count; i++) {
+        if (s_commandpalette_wrappers[i] == data)
+            return 1;
+    }
+    if (s_commandpalette_wrapper_count >= s_commandpalette_wrapper_cap) {
+        size_t new_cap = s_commandpalette_wrapper_cap ? s_commandpalette_wrapper_cap : 8;
+        while (new_cap <= s_commandpalette_wrapper_count) {
+            if (new_cap > SIZE_MAX / 2)
+                return 0;
+            new_cap *= 2;
+        }
+        if (new_cap > SIZE_MAX / sizeof(*s_commandpalette_wrappers))
+            return 0;
+        void *p = realloc(s_commandpalette_wrappers, new_cap * sizeof(*s_commandpalette_wrappers));
+        if (!p)
+            return 0;
+        s_commandpalette_wrappers = (rt_commandpalette_data_t **)p;
+        s_commandpalette_wrapper_cap = new_cap;
+    }
+    s_commandpalette_wrappers[s_commandpalette_wrapper_count++] = data;
+    return 1;
+}
+
+static void rt_commandpalette_unregister_wrapper(rt_commandpalette_data_t *data) {
+    if (!data)
+        return;
+    for (size_t i = 0; i < s_commandpalette_wrapper_count; i++) {
+        if (s_commandpalette_wrappers[i] != data)
+            continue;
+        memmove(&s_commandpalette_wrappers[i],
+                &s_commandpalette_wrappers[i + 1],
+                (s_commandpalette_wrapper_count - i - 1) * sizeof(*s_commandpalette_wrappers));
+        s_commandpalette_wrapper_count--;
+        return;
+    }
+}
+
+static int rt_commandpalette_wrapper_is_registered(const rt_commandpalette_data_t *data) {
+    if (!data)
+        return 0;
+    for (size_t i = 0; i < s_commandpalette_wrapper_count; i++) {
+        if (s_commandpalette_wrappers[i] == data)
+            return 1;
+    }
+    return 0;
+}
+
 static void rt_commandpalette_clear_selection(rt_commandpalette_data_t *data) {
     if (!data)
         return;
@@ -77,7 +131,10 @@ static void rt_commandpalette_clear_selection(rt_commandpalette_data_t *data) {
 /// @brief Authenticate a CommandPalette handle via its magic tag (NULL if not).
 static rt_commandpalette_data_t *rt_commandpalette_checked(void *palette) {
     rt_commandpalette_data_t *data = (rt_commandpalette_data_t *)palette;
-    return data && data->magic == RT_COMMANDPALETTE_DATA_MAGIC ? data : NULL;
+    return rt_commandpalette_wrapper_is_registered(data) &&
+                   data->magic == RT_COMMANDPALETTE_DATA_MAGIC
+               ? data
+               : NULL;
 }
 
 /// @brief Release the command palette widget, unregister it from the app, and zero all fields.
@@ -96,6 +153,7 @@ static void rt_commandpalette_dispose(rt_commandpalette_data_t *data) {
     data->was_selected = 0;
     data->app = NULL;
     data->magic = 0;
+    rt_commandpalette_unregister_wrapper(data);
 }
 
 /// @brief GC finalizer — delegates to `rt_commandpalette_dispose`.
@@ -113,7 +171,8 @@ static void rt_commandpalette_on_execute(vg_commandpalette_t *palette,
                                          vg_command_t *cmd,
                                          void *user_data) {
     rt_commandpalette_data_t *data = (rt_commandpalette_data_t *)user_data;
-    if (data && data->magic == RT_COMMANDPALETTE_DATA_MAGIC && cmd && cmd->id) {
+    if (rt_commandpalette_wrapper_is_registered(data) &&
+        data->magic == RT_COMMANDPALETTE_DATA_MAGIC && cmd && cmd->id) {
         char *copy = strdup(cmd->id);
         if (!copy)
             return;
@@ -157,6 +216,10 @@ void *rt_commandpalette_new(void *parent) {
     data->selected_command = NULL;
     data->was_selected = 0;
     palette->base.user_data = data;
+    if (!rt_commandpalette_register_wrapper(data)) {
+        rt_commandpalette_dispose(data);
+        return NULL;
+    }
     rt_obj_set_finalizer(data, rt_commandpalette_finalize);
 
     vg_commandpalette_set_callbacks(palette, rt_commandpalette_on_execute, NULL, data);
@@ -1608,6 +1671,8 @@ void rt_widget_set_drag_data(void *widget, rt_string type, rt_string data) {
     vg_widget_t *w = rt_gui_widget_handle_checked(widget);
     if (!w)
         return;
+    if (rt_string_contains_nul(type) || rt_string_contains_nul(data))
+        return;
     char *new_type = type ? rt_string_to_cstr(type) : NULL;
     char *new_data = data ? rt_string_to_cstr(data) : NULL;
     if ((type && !new_type) || (data && !new_data)) {
@@ -1644,6 +1709,8 @@ void rt_widget_set_accepted_drop_types(void *widget, rt_string types) {
     RT_ASSERT_MAIN_THREAD();
     vg_widget_t *w = rt_gui_widget_handle_checked(widget);
     if (!w)
+        return;
+    if (rt_string_contains_nul(types))
         return;
     char *new_types = types ? rt_string_to_cstr(types) : NULL;
     if (types && !new_types)

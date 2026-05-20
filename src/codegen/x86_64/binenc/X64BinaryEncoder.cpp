@@ -979,55 +979,37 @@ void X64BinaryEncoder::encodeInstructionImpl(const MInstr &instr,
         // --- Branches and calls ---
         case MOpcode::JMP: {
             requireOps(1);
-            if (std::holds_alternative<OpLabel>(ops[0])) {
-                encodeBranchLabel(op, labelFromOperand(ops[0]).name, 0, text);
-            } else if (std::holds_alternative<OpReg>(ops[0])) {
-                encodeBranchReg(op, gprFromOperand(ops[0], "JMP target"), text);
-            } else if (std::holds_alternative<OpMem>(ops[0])) {
-                encodeBranchMem(op, memFromOperand(ops[0]), text);
-            } else {
-                throw std::runtime_error(
-                    "x86-64 binary encoder: JMP requires a label, register, or memory target");
-            }
+            encodeBranchOperand(op, ops[0], /*cc=*/0, text,
+                                "JMP requires a label, register, or memory target");
             return;
         }
 
         case MOpcode::JCC: {
             requireOps(2);
             int cc = static_cast<int>(immFromOperand(ops[0]));
-            if (std::holds_alternative<OpLabel>(ops[1])) {
-                encodeBranchLabel(op, labelFromOperand(ops[1]).name, cc, text);
-            } else {
+            if (!std::holds_alternative<OpLabel>(ops[1]))
                 throw std::runtime_error("x86-64 binary encoder: JCC requires a label target");
-            }
+            encodeBranchLabel(op, labelFromOperand(ops[1]).name, cc, text);
             return;
         }
 
         case MOpcode::CALL: {
             requireOps(1);
+            // CALL handles label specially (direct internal vs. PLT external), so
+            // the operand-kind dispatcher only covers the non-label paths.
             if (std::holds_alternative<OpLabel>(ops[0])) {
                 const auto &label = labelFromOperand(ops[0]);
-                // Check if this is an internal function label.
-                auto it = labelOffsets_.find(label.name);
-                if (it != labelOffsets_.end()) {
-                    // Internal call — use direct encoding with patch.
+                if (labelOffsets_.find(label.name) != labelOffsets_.end()) {
                     encodeBranchLabel(op, label.name, 0, text);
                 } else {
-                    // External call — generate relocation.
                     encodeCallExternal(label.name, text, isDarwin);
                 }
             } else if (std::holds_alternative<OpRipLabel>(ops[0])) {
-                // RIP-relative label — treat as external call (same relocation).
-                // This arises from call.indirect when the callee is a global label.
-                const auto &rip = ripFromOperand(ops[0]);
-                encodeCallExternal(rip.name, text, isDarwin);
-            } else if (std::holds_alternative<OpReg>(ops[0])) {
-                encodeBranchReg(op, gprFromOperand(ops[0], "CALL target"), text);
-            } else if (std::holds_alternative<OpMem>(ops[0])) {
-                encodeBranchMem(op, memFromOperand(ops[0]), text);
+                // call.indirect through a global label → same relocation as external.
+                encodeCallExternal(ripFromOperand(ops[0]).name, text, isDarwin);
             } else {
-                throw std::runtime_error(
-                    "x86-64 binary encoder: CALL has unsupported operand shape");
+                encodeBranchOperand(op, ops[0], /*cc=*/0, text,
+                                    "CALL has unsupported operand shape");
             }
             return;
         }
@@ -1617,6 +1599,27 @@ void X64BinaryEncoder::encodeBranchMem(MOpcode op, const OpMem &mem, objfile::Co
                        /*mandatoryPrefix=*/0,
                        0xFF,
                        0);
+}
+
+// === Branch / call operand-kind dispatcher ===
+
+/// @brief Dispatch JMP/CALL target by operand variant kind.
+/// @details Centralises the label/reg/mem switch shared by JMP and CALL so the
+///          giant @ref encodeInstructionImpl dispatcher stays a thin glue layer.
+void X64BinaryEncoder::encodeBranchOperand(MOpcode op,
+                                           const Operand &target,
+                                           int condCode,
+                                           objfile::CodeSection &cs,
+                                           const char *errPrefix) {
+    if (std::holds_alternative<OpLabel>(target)) {
+        encodeBranchLabel(op, labelFromOperand(target).name, condCode, cs);
+    } else if (std::holds_alternative<OpReg>(target)) {
+        encodeBranchReg(op, gprFromOperand(target, "branch target"), cs);
+    } else if (std::holds_alternative<OpMem>(target)) {
+        encodeBranchMem(op, memFromOperand(target), cs);
+    } else {
+        throw std::runtime_error(std::string{"x86-64 binary encoder: "} + errPrefix);
+    }
 }
 
 // === External CALL (generates relocation) ===

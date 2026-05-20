@@ -32,6 +32,7 @@ Dropdown menu (returned by `MenuBar.AddMenu()`).
 Disabled top-level menus render in the disabled state and ignore mouse and keyboard open requests.
 Menu and menu-item handles are owner-checked; removing an item through the wrong menu, or a menu through the wrong menubar, is ignored rather than corrupting either list.
 Removed menu-item handles become inert, open/highlighted menu state is cleared when its item disappears, and stale accelerator entries are ignored instead of firing removed actions.
+Menu-item shortcuts registered through `SetShortcut()` or add-with-shortcut runtime paths are rebuilt after menu mutations and dispatch from menu-bar key events as well as native macOS menus.
 
 | Method                  | Signature          | Description                    |
 |-------------------------|--------------------|--------------------------------|
@@ -217,7 +218,7 @@ if copyItem.WasClicked() == 1 { /* copy */ }
 Find and replace bar for text searching.
 
 `GetFindText()` and `GetReplaceText()` read the live text currently shown in the inputs, `Replace()` returns `0` when there is no active editor or no current match to replace, and pointer input now routes through the standard widget event pipeline so focus, hover, and click behavior match the rest of the toolkit.
-`SetRegex(1)` enables regular-expression search in the bound `CodeEditor`; matches may have variable length and still honor case-sensitive and whole-word options.
+`SetRegex(1)` enables regular-expression search in the bound `CodeEditor`; matches may have variable length and still honor case-sensitive and whole-word options. POSIX-style regular expressions are used on platforms that provide them, and Windows builds use the built-in regex subset for literals, `.`, character classes, `^`/`$`, and `*`/`+`/`?`.
 If the parent widget destroys the underlying bar, the runtime wrapper disconnects from it and all later `FindBar` calls become no-ops. If the bound `CodeEditor` is destroyed, the bar unbinds itself before any later search or replace call. Boolean option getters return normalized `0` or `1` from the live widget state, including user checkbox clicks and `Ctrl+H` replace-mode toggles.
 
 **Constructor:** `NEW Viper.GUI.FindBar(parent)`
@@ -450,6 +451,7 @@ Save dialogs honor the default filename field, append the configured default ext
 Object-style dialogs snapshot their accepted path list on each `Show()`, so repeated `Show()` / `Destroy()` cycles and multi-select accessors stay valid.
 Destroying an object-style dialog removes it from the app's modal stack before freeing it, and destroyed handles are inert for setters, `Show()`, and path accessors.
 Object-style dialogs remember the app that created them, include the default bookmarks used by static dialogs, and do not switch owners just because another app becomes active before a failed `Show()`.
+`FileDialog.New(type)` returns `NULL` for unknown mode values instead of silently creating an open-file dialog.
 On macOS, one-shot static dialogs use native panels, including native multi-select for `OpenMultiple`. On other GUI builds, static and object-style dialogs use the same in-app modal dialog and therefore require an active `Viper.GUI.App` window; they return an empty string or `0` when no active GUI window is available. The lower-level C convenience API can install a modal runner so `Open`, `Save`, and `SelectFolder` wait for the in-app dialog instead of returning immediately.
 `OpenMultiple()` returns selected paths joined with semicolons. Literal semicolons and backslashes inside paths are escaped as `\;` and `\\`; use `PathListCount()` and `PathListGet()` to decode the list without truncating paths that contain those characters.
 The in-app dialog implementation now scrolls long file and bookmark lists, keeps the selected row visible during keyboard navigation, clips long path text, and supports caret-aware editing in the save-name field (`Left` / `Right`, `Home`, `End`, `Backspace`, `Delete`).
@@ -808,6 +810,7 @@ vid.Destroy()
 ```
 
 `VideoWidget.Destroy` releases the decoder and its GUI subtree immediately. The runtime finalizer also destroys the subtree if the wrapper is collected while still attached, so controls are not left alive without their player. Call `Update` once per frame inside the application loop — do not drive it from a background thread.
+All `VideoWidget` layout, visibility, child, and playback methods are GUI main-thread operations. The widget accepts decoded frame-size changes from the underlying player and resizes the internal image surface safely when the frame dimensions change.
 
 ---
 

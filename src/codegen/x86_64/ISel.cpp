@@ -903,6 +903,22 @@ bool foldCompareBranch(const MFunction &func, MBasicBlock &block, std::size_t in
     return true;
 }
 
+/// @brief Erase a set of instruction indices from a block, deduplicated and in
+///        reverse order so each erase leaves remaining indices valid.
+/// @details Shared by SIB/IMUL/LEA folding passes. Indices past the block end
+///          are silently skipped (defensive — callers should only push valid
+///          indices but this matches the existing behaviour).
+void eraseInstructionsReverse(MBasicBlock &block, std::vector<std::size_t> &indices) {
+    std::sort(indices.begin(), indices.end(), std::greater<std::size_t>());
+    indices.erase(std::unique(indices.begin(), indices.end()), indices.end());
+    for (std::size_t eraseIdx : indices) {
+        if (eraseIdx < block.instructions.size()) {
+            block.instructions.erase(block.instructions.begin() +
+                                     static_cast<std::ptrdiff_t>(eraseIdx));
+        }
+    }
+}
+
 } // namespace
 
 /// @brief Construct an instruction selector bound to a target description.
@@ -1233,15 +1249,7 @@ void ISel::foldSibAddressing(MFunction &func) const {
             }
         }
 
-        // Erase marked instructions in reverse order
-        std::sort(toErase.begin(), toErase.end(), std::greater<std::size_t>());
-        toErase.erase(std::unique(toErase.begin(), toErase.end()), toErase.end());
-        for (std::size_t eraseIdx : toErase) {
-            if (eraseIdx < block.instructions.size()) {
-                block.instructions.erase(block.instructions.begin() +
-                                         static_cast<std::ptrdiff_t>(eraseIdx));
-            }
-        }
+        eraseInstructionsReverse(block, toErase);
     }
 }
 
@@ -1379,15 +1387,7 @@ void ISel::lowerMulToLea(MFunction &func) const {
             toErase.push_back(def.defIdx);
         }
 
-        // Erase marked instructions in reverse index order.
-        std::sort(toErase.begin(), toErase.end(), std::greater<std::size_t>());
-        toErase.erase(std::unique(toErase.begin(), toErase.end()), toErase.end());
-        for (const std::size_t eraseIdx : toErase) {
-            if (eraseIdx < block.instructions.size()) {
-                block.instructions.erase(block.instructions.begin() +
-                                         static_cast<std::ptrdiff_t>(eraseIdx));
-            }
-        }
+        eraseInstructionsReverse(block, toErase);
     }
 }
 
@@ -1458,14 +1458,7 @@ void ISel::foldLeaIntoMem(MFunction &func) const {
             }
         }
 
-        std::sort(toErase.begin(), toErase.end(), std::greater<std::size_t>());
-        toErase.erase(std::unique(toErase.begin(), toErase.end()), toErase.end());
-        for (std::size_t eraseIdx : toErase) {
-            if (eraseIdx < block.instructions.size()) {
-                block.instructions.erase(block.instructions.begin() +
-                                         static_cast<std::ptrdiff_t>(eraseIdx));
-            }
-        }
+        eraseInstructionsReverse(block, toErase);
     }
 }
 

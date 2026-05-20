@@ -44,57 +44,42 @@ constexpr int64_t kErrOverflow = 4;
 ///          width is unsupported and traps via @ref phaseAUnsupported.
 /// @param widthBits Target signed-integer width (16, 32, or 64).
 /// @return 64-bit IEEE-754 bit pattern.
-uint64_t signedMinF64Bits(std::uint8_t widthBits) {
-    switch (widthBits) {
-        case 16:
-            return 0xC0E0000000000000ULL; // -2^15
-        case 32:
-            return 0xC1E0000000000000ULL; // -2^31
-        case 64:
-            return 0xC3E0000000000000ULL; // -2^63
-        default:
-            phaseAUnsupported("checked fp-to-si cast: unsupported result width");
-    }
+/// @brief Encode 2^@p exponent as the 64-bit pattern of a positive IEEE-754 double.
+/// @details Computes the biased exponent (1023 + @p exponent) and packs it into
+///          bits 52–62; mantissa is zero. Branch-free, constexpr-evaluable, and
+///          covers all the bounds we need without per-width switch tables.
+[[nodiscard]] constexpr uint64_t f64BitsForPowerOfTwo(int exponent) noexcept {
+    return static_cast<uint64_t>(1023 + exponent) << 52;
 }
 
-/// @brief Return the IEEE-754 bit pattern of @c 2^widthBits-1 + 1 as a double.
+/// @brief Return the IEEE-754 bit pattern of @c -2^(widthBits-1) as a double.
+/// @details Lower (inclusive) bound for checked fp-to-signed-int. The sign bit
+///          is or-ed in to negate the positive power-of-two encoding.
+uint64_t signedMinF64Bits(std::uint8_t widthBits) {
+    if (widthBits != 16 && widthBits != 32 && widthBits != 64)
+        phaseAUnsupported("checked fp-to-si cast: unsupported result width");
+    constexpr uint64_t kSignBit = 0x8000000000000000ULL;
+    return kSignBit | f64BitsForPowerOfTwo(widthBits - 1);
+}
+
+/// @brief Return the IEEE-754 bit pattern of @c 2^(widthBits-1) as a double.
 /// @details The "upper exclusive" bound for checked fp-to-signed-int. The
 ///          input must be strictly less than this value to fit in the
-///          signed range. Encoded as a non-inclusive upper bound so the
-///          subsequent JCC can use unsigned-above semantics.
-/// @param widthBits Target signed-integer width (16, 32, or 64).
-/// @return 64-bit IEEE-754 bit pattern.
+///          signed range.
 uint64_t signedUpperExclusiveF64Bits(std::uint8_t widthBits) {
-    switch (widthBits) {
-        case 16:
-            return 0x40E0000000000000ULL; // 2^15
-        case 32:
-            return 0x41E0000000000000ULL; // 2^31
-        case 64:
-            return 0x43E0000000000000ULL; // 2^63
-        default:
-            phaseAUnsupported("checked fp-to-si cast: unsupported result width");
-    }
+    if (widthBits != 16 && widthBits != 32 && widthBits != 64)
+        phaseAUnsupported("checked fp-to-si cast: unsupported result width");
+    return f64BitsForPowerOfTwo(widthBits - 1);
 }
 
 /// @brief Return the IEEE-754 bit pattern of @c 2^widthBits as a double.
-/// @details Used as the upper exclusive bound for checked fp-to-unsigned-int
-///          conversion. For 64-bit unsigned conversion this is 2^64, which
-///          must be handled via the "subtract-and-set-sign-bit" trick in
-///          @ref emitFpToUi because CVTTSD2SI cannot represent it directly.
-/// @param widthBits Target unsigned-integer width (16, 32, or 64).
-/// @return 64-bit IEEE-754 bit pattern.
+/// @details Upper exclusive bound for checked fp-to-unsigned-int. For 64-bit
+///          unsigned conversion this is 2^64, handled in @ref emitFpToUi via
+///          the subtract-and-set-bit-63 trick because CVTTSD2SI is signed-only.
 uint64_t unsignedUpperExclusiveF64Bits(std::uint8_t widthBits) {
-    switch (widthBits) {
-        case 16:
-            return 0x40F0000000000000ULL; // 2^16
-        case 32:
-            return 0x41F0000000000000ULL; // 2^32
-        case 64:
-            return 0x43F0000000000000ULL; // 2^64
-        default:
-            phaseAUnsupported("checked fp-to-ui cast: unsupported result width");
-    }
+    if (widthBits != 16 && widthBits != 32 && widthBits != 64)
+        phaseAUnsupported("checked fp-to-ui cast: unsupported result width");
+    return f64BitsForPowerOfTwo(widthBits);
 }
 
 /// @brief True if @p kind is integer-like (I64/I1/PTR) — GPR-eligible.

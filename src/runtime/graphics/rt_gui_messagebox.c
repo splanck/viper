@@ -338,6 +338,16 @@ static void rt_messagebox_unregister_wrapper(rt_messagebox_data_t *data) {
     }
 }
 
+static int rt_messagebox_wrapper_is_registered(const rt_messagebox_data_t *data) {
+    if (!data)
+        return 0;
+    for (size_t i = 0; i < s_messagebox_wrapper_count; i++) {
+        if (s_messagebox_wrappers[i] == data)
+            return 1;
+    }
+    return 0;
+}
+
 void rt_messagebox_invalidate_dialog(vg_dialog_t *dialog) {
     if (!dialog)
         return;
@@ -354,7 +364,9 @@ void rt_messagebox_invalidate_dialog(vg_dialog_t *dialog) {
 /// @brief Authenticate a MessageBox handle via its magic tag (NULL if not).
 static rt_messagebox_data_t *rt_messagebox_checked(void *box) {
     rt_messagebox_data_t *data = (rt_messagebox_data_t *)box;
-    return data && data->magic == RT_MESSAGEBOX_DATA_MAGIC ? data : NULL;
+    return rt_messagebox_wrapper_is_registered(data) && data->magic == RT_MESSAGEBOX_DATA_MAGIC
+               ? data
+               : NULL;
 }
 
 /// @brief Release all resources: free custom button labels, destroy the VG dialog,

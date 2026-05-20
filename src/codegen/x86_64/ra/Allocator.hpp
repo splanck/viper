@@ -185,6 +185,28 @@ class LinearScanAllocator {
     /// mid-rewrite.
     void pinInstructionVRegs(const MInstr &instr);
 
+    /// @brief Predicate: is @p reg caller-saved in register class @p cls?
+    [[nodiscard]] bool isCallerSaved(PhysReg reg, RegClass cls) const noexcept;
+
+    /// @brief Pop and return the first free callee-saved register for @p cls.
+    /// @return {true, reg} if a callee-saved register is available, {false, _} otherwise.
+    [[nodiscard]] std::pair<bool, PhysReg> takeFreeCalleeSaved(RegClass cls);
+
+    /// @brief Collect vregs in @p cls whose live values would be clobbered by a CALL.
+    /// @details A vreg is included if it is currently in a caller-saved register and
+    ///          (a) it is live-out of the current block, or (b) its interval extends
+    ///          past the CALL, or (c) interval info is missing (conservative).
+    [[nodiscard]] std::vector<uint16_t> collectCallerSavedToSpill(RegClass cls) const;
+
+    /// @brief Re-home or spill caller-saved values for one register class across a CALL.
+    /// @details For each candidate vreg: first try to move it into a free callee-saved
+    ///          register (a register-to-register copy emitted into @p prefix). If no
+    ///          callee-saved register is available, spill the value to memory and remove
+    ///          it from the active set.
+    void spillOrRehomeAcrossCall(RegClass cls,
+                                 const std::vector<uint16_t> &candidates,
+                                 std::vector<MInstr> &prefix);
+
     /// @brief Release or spill registers at block boundaries using CFG-aware liveOut.
     /// @details Spills vregs that are in the liveOut set for this block, and simply
     ///          releases registers for vregs that are not live across the boundary.

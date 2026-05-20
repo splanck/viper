@@ -166,6 +166,19 @@ class EmitCommon {
     [[nodiscard]] std::optional<Operand> tryMakeIndexedMem(const ILInstr &addrProducer,
                                                            std::size_t displacementOperandIndex);
 
+    /// @brief Fold an oversized displacement into the base by materialising it.
+    /// @details If @p disp does not fit a signed 32-bit immediate, emits the
+    ///          three-instruction sequence (MOVri scratch, MOVrr addr, ADDrr
+    ///          addr+scratch) into the builder and returns the new addr operand
+    ///          paired with disp=0. Otherwise returns @p baseOp unchanged and
+    ///          @p disp untouched. Used by @ref emitLoad and @ref emitStore so
+    ///          the imm32 boundary is handled in one place.
+    /// @param baseOp Input base register operand (will be cloned).
+    /// @param disp Displacement in bytes; reset to 0 when folded.
+    /// @return Effective base operand (either @p baseOp or a freshly allocated
+    ///         GPR temp holding base + disp).
+    [[nodiscard]] Operand materialiseDisplacement(const Operand &baseOp, int64_t &disp);
+
   private:
     MIRBuilder *builder_{nullptr};
 };

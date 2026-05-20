@@ -10726,7 +10726,7 @@ void rt_canvas3d_draw_vegetation(void *c, void *v) {
 /// @param path Filesystem path to the video file (ignored).
 ///
 /// @return `NULL`.
-void *rt_videowidget_new(void *p, void *path) {
+void *rt_videowidget_new(void *p, rt_string path) {
     (void)p;
     (void)path;
     return NULL;
@@ -10938,7 +10938,7 @@ void rt_videowidget_add_child(void *v, void *child) {
 /// @param p Filesystem path to the video file (ignored).
 ///
 /// @return `NULL`.
-void *rt_videoplayer_open(void *p) {
+void *rt_videoplayer_open(rt_string p) {
     (void)p;
     return NULL;
 }

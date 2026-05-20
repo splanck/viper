@@ -20,6 +20,7 @@
 //===----------------------------------------------------------------------===//
 #pragma once
 
+#include "rt_string.h"
 #include <stdint.h>
 
 #ifdef __cplusplus
@@ -27,7 +28,7 @@ extern "C" {
 #endif
 
 /// @brief Create a video-playback widget under @p parent that loads the file at @p path.
-void *rt_videowidget_new(void *parent, void *path);
+void *rt_videowidget_new(void *parent, rt_string path);
 /// @brief Destroy the widget subtree and release the owned VideoPlayer immediately.
 /// Safe to call multiple times; later calls are no-ops.
 void rt_videowidget_destroy(void *vw);

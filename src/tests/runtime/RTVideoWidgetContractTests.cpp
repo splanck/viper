@@ -92,9 +92,15 @@ int64_t g_open_height = 32;
 constexpr uint64_t kVideoWidgetMagic = 0x5254564944454F57ull;
 int g_release_count = 0;
 int g_widget_destroy_count = 0;
-int g_open_count = 0;
+    int g_open_count = 0;
 
-void reset_open_state() {
+    rt_string stub_video_path() {
+        static char path[] = "video.ogv";
+        static StubString str{path};
+        return reinterpret_cast<rt_string>(&str);
+    }
+
+    void reset_open_state() {
     g_open_should_fail = false;
     g_parent_valid = true;
     g_open_width = 64;
@@ -135,6 +141,10 @@ extern "C" int64_t rt_pixels_width(void *pixels) {
 
 extern "C" int64_t rt_pixels_height(void *pixels) {
     return pixels ? static_cast<StubPixels *>(pixels)->height : 0;
+}
+
+extern "C" const uint32_t *rt_pixels_raw_buffer(void *pixels) {
+    return pixels ? static_cast<StubPixels *>(pixels)->data : nullptr;
 }
 
 extern "C" void *rt_image_new(void *) {
@@ -253,7 +263,7 @@ extern "C" rt_string rt_string_from_bytes(const char *data, size_t len) {
     return reinterpret_cast<rt_string>(str);
 }
 
-extern "C" void *rt_videoplayer_open(void *) {
+extern "C" void *rt_videoplayer_open(rt_string) {
     g_open_count++;
     if (g_open_should_fail)
         return nullptr;
@@ -336,21 +346,25 @@ static void test_constructor_validates_inputs() {
     StubWidget parent{};
     reset_open_state();
 
-    assert(rt_videowidget_new(nullptr, reinterpret_cast<void *>(1)) == nullptr);
+    assert(rt_videowidget_new(nullptr, stub_video_path()) == nullptr);
     assert(rt_videowidget_new(&parent, nullptr) == nullptr);
     assert(g_open_count == 0);
 
     g_parent_valid = false;
-    assert(rt_videowidget_new(&parent, reinterpret_cast<void *>(1)) == nullptr);
+    assert(rt_videowidget_new(&parent, stub_video_path()) == nullptr);
     assert(g_open_count == 0);
     g_parent_valid = true;
 
     g_open_should_fail = true;
-    assert(rt_videowidget_new(&parent, reinterpret_cast<void *>(1)) == nullptr);
+    assert(rt_videowidget_new(&parent, stub_video_path()) == nullptr);
 
     g_open_should_fail = false;
+    g_open_width = static_cast<int64_t>(std::numeric_limits<int32_t>::max()) + 1;
+    g_open_height = 32;
+    assert(rt_videowidget_new(&parent, stub_video_path()) == nullptr);
+
     g_open_width = 0;
-    assert(rt_videowidget_new(&parent, reinterpret_cast<void *>(1)) == nullptr);
+    assert(rt_videowidget_new(&parent, stub_video_path()) == nullptr);
     assert(g_release_count > 0);
 }
 
@@ -359,7 +373,7 @@ static void test_successful_construction_sets_up_widgets() {
     reset_open_state();
 
     auto *widget = static_cast<rt_videowidget_view *>(
-        rt_videowidget_new(&parent, reinterpret_cast<void *>(1)));
+        rt_videowidget_new(&parent, stub_video_path()));
     assert(widget != nullptr);
     assert(widget->magic == kVideoWidgetMagic);
     assert(parent.child_count == 1);
@@ -384,7 +398,7 @@ static void test_controls_drive_player_state() {
     reset_open_state();
 
     auto *widget = static_cast<rt_videowidget_view *>(
-        rt_videowidget_new(&parent, reinterpret_cast<void *>(1)));
+        rt_videowidget_new(&parent, stub_video_path()));
     auto *player = static_cast<StubPlayer *>(widget->player);
 
     static_cast<StubWidget *>(widget->play_button)->clicked = 1;
@@ -405,7 +419,7 @@ static void test_slider_seek_and_looping() {
     reset_open_state();
 
     auto *widget = static_cast<rt_videowidget_view *>(
-        rt_videowidget_new(&parent, reinterpret_cast<void *>(1)));
+        rt_videowidget_new(&parent, stub_video_path()));
     auto *player = static_cast<StubPlayer *>(widget->player);
     auto *slider = static_cast<StubWidget *>(widget->position_slider);
 
@@ -432,7 +446,7 @@ static void test_root_widget_proxy_methods() {
     reset_open_state();
 
     auto *widget = static_cast<rt_videowidget_view *>(
-        rt_videowidget_new(&parent, reinterpret_cast<void *>(1)));
+        rt_videowidget_new(&parent, stub_video_path()));
     auto *root = static_cast<StubWidget *>(widget->root_widget);
 
     assert(rt_videowidget_get_root(widget) == widget->root_widget);
@@ -464,12 +478,34 @@ static void test_root_widget_proxy_methods() {
     assert(root->child_count == before_child_count + 1);
 }
 
+static void test_frame_upload_accepts_dimension_changes() {
+    StubWidget parent{};
+    reset_open_state();
+
+    auto *widget = static_cast<rt_videowidget_view *>(rt_videowidget_new(&parent, stub_video_path()));
+    auto *player = static_cast<StubPlayer *>(widget->player);
+    auto *frame = player->frame;
+    auto *image = static_cast<StubWidget *>(widget->image_widget);
+
+    frame->width = 80;
+    frame->height = 40;
+    rt_videowidget_update(widget, 0.0);
+
+    assert(image->last_pixels == frame);
+    assert(image->last_pixels_w == 80);
+    assert(image->last_pixels_h == 40);
+    assert(widget->video_width == 80);
+    assert(widget->video_height == 40);
+    assert(image->width == 80);
+    assert(image->height == 40);
+}
+
 static void test_visibility_and_volume_are_clamped() {
     StubWidget parent{};
     reset_open_state();
 
     auto *widget = static_cast<rt_videowidget_view *>(
-        rt_videowidget_new(&parent, reinterpret_cast<void *>(1)));
+        rt_videowidget_new(&parent, stub_video_path()));
     auto *controls = static_cast<StubWidget *>(widget->controls_widget);
     auto *player = static_cast<StubPlayer *>(widget->player);
 
@@ -500,7 +536,7 @@ static void test_nonfinite_update_delta_is_ignored() {
     reset_open_state();
 
     auto *widget = static_cast<rt_videowidget_view *>(
-        rt_videowidget_new(&parent, reinterpret_cast<void *>(1)));
+        rt_videowidget_new(&parent, stub_video_path()));
     auto *player = static_cast<StubPlayer *>(widget->player);
     int before = player->update_calls;
 
@@ -517,7 +553,7 @@ static void test_destroy_releases_player_and_widget_tree() {
     reset_open_state();
 
     auto *widget = static_cast<rt_videowidget_view *>(
-        rt_videowidget_new(&parent, reinterpret_cast<void *>(1)));
+        rt_videowidget_new(&parent, stub_video_path()));
     assert(widget != nullptr);
     assert(widget->player != nullptr);
     assert(widget->root_widget != nullptr);
@@ -541,6 +577,7 @@ int main() {
     test_controls_drive_player_state();
     test_slider_seek_and_looping();
     test_root_widget_proxy_methods();
+    test_frame_upload_accepts_dimension_changes();
     test_visibility_and_volume_are_clamped();
     test_nonfinite_update_delta_is_ignored();
     test_destroy_releases_player_and_widget_tree();

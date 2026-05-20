@@ -153,6 +153,16 @@ class X64BinaryEncoder {
     /// Encode JMP/CALL with memory target (indirect via memory).
     void encodeBranchMem(MOpcode op, const OpMem &mem, objfile::CodeSection &cs);
 
+    /// @brief Dispatch a branch/call target by operand kind.
+    /// @details Selects between @ref encodeBranchLabel, @ref encodeBranchReg,
+    ///          and @ref encodeBranchMem based on @p target. Throws with the
+    ///          supplied @p errPrefix when the operand kind is unsupported.
+    void encodeBranchOperand(MOpcode op,
+                             const Operand &target,
+                             int condCode,
+                             objfile::CodeSection &cs,
+                             const char *errPrefix);
+
     /// Encode CALL with external label (generates relocation; symbol name stays unmangled).
     void encodeCallExternal(const std::string &name, objfile::CodeSection &cs, bool isDarwin);
 

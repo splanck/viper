@@ -2029,7 +2029,14 @@ void vg_filedialog_add_filter(vg_filedialog_t *dialog, const char *name, const c
         return;
 
     if (dialog->filter_count >= dialog->filter_capacity) {
-        size_t new_cap = dialog->filter_capacity == 0 ? 4 : dialog->filter_capacity * 2;
+        size_t new_cap = dialog->filter_capacity == 0 ? 4 : dialog->filter_capacity;
+        while (new_cap <= dialog->filter_count) {
+            if (new_cap > SIZE_MAX / 2)
+                return;
+            new_cap *= 2;
+        }
+        if (new_cap > SIZE_MAX / sizeof(vg_file_filter_t))
+            return;
         vg_file_filter_t *new_filters =
             realloc(dialog->filters, new_cap * sizeof(vg_file_filter_t));
         if (!new_filters)
@@ -2039,12 +2046,19 @@ void vg_filedialog_add_filter(vg_filedialog_t *dialog, const char *name, const c
     }
 
 #ifdef _WIN32
-    dialog->filters[dialog->filter_count].name = _strdup(name);
-    dialog->filters[dialog->filter_count].pattern = _strdup(pattern);
+    char *name_copy = _strdup(name);
+    char *pattern_copy = _strdup(pattern);
 #else
-    dialog->filters[dialog->filter_count].name = strdup(name);
-    dialog->filters[dialog->filter_count].pattern = strdup(pattern);
+    char *name_copy = strdup(name);
+    char *pattern_copy = strdup(pattern);
 #endif
+    if (!name_copy || !pattern_copy) {
+        free(name_copy);
+        free(pattern_copy);
+        return;
+    }
+    dialog->filters[dialog->filter_count].name = name_copy;
+    dialog->filters[dialog->filter_count].pattern = pattern_copy;
     dialog->filter_count++;
 }
 

@@ -301,6 +301,8 @@ widget returned by `app.Root`.
 
 ### Drag and Drop
 
+Drag/drop type and payload strings are stored as C-string payloads by the GUI layer. `SetDragData(type, data)` and `SetAcceptedDropTypes(types)` reject strings containing embedded NUL bytes instead of truncating them.
+
 | Method                        | Signature              | Description                                              |
 |-------------------------------|------------------------|----------------------------------------------------------|
 | `SetDraggable(enabled)`       | `Void(Integer)`        | Enable or disable dragging this widget                   |

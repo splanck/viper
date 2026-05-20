@@ -3818,6 +3818,121 @@ TEST(filedialog_convenience_uses_installed_modal_runner) {
     vg_filedialog_set_modal_runner(NULL, NULL);
 }
 
+TEST(menubar_key_event_dispatches_accelerator) {
+    vg_menubar_t *menubar = vg_menubar_create(NULL);
+    ASSERT_NOT_NULL(menubar);
+    vg_menu_t *menu = vg_menubar_add_menu(menubar, "File");
+    ASSERT_NOT_NULL(menu);
+    vg_menu_item_t *item = vg_menu_add_item(menu, "New", "Ctrl+N", round8_menu_accel_action, NULL);
+    ASSERT_NOT_NULL(item);
+    vg_menubar_rebuild_accelerators(menubar);
+
+    g_round8_menu_accel_calls = 0;
+    vg_event_t event = vg_event_key(VG_EVENT_KEY_DOWN, VG_KEY_N, 0, VG_MOD_CTRL);
+    ASSERT_TRUE(vg_event_send(&menubar->base, &event));
+    ASSERT_EQ(g_round8_menu_accel_calls, 1);
+
+    vg_widget_destroy(&menubar->base);
+}
+
+TEST(toolbar_capacity_overflow_is_rejected) {
+    vg_toolbar_t *toolbar = vg_toolbar_create(NULL, VG_TOOLBAR_HORIZONTAL);
+    ASSERT_NOT_NULL(toolbar);
+    vg_toolbar_item_t **old_items = toolbar->items;
+    size_t old_count = toolbar->item_count;
+    size_t old_capacity = toolbar->item_capacity;
+
+    toolbar->item_count = SIZE_MAX;
+    toolbar->item_capacity = SIZE_MAX;
+    ASSERT_NULL(vg_toolbar_add_button(toolbar, "overflow", "overflow", vg_icon_from_glyph('x'), NULL, NULL));
+
+    toolbar->items = old_items;
+    toolbar->item_count = old_count;
+    toolbar->item_capacity = old_capacity;
+    vg_widget_destroy(&toolbar->base);
+}
+
+TEST(statusbar_capacity_overflow_is_rejected) {
+    vg_statusbar_t *statusbar = vg_statusbar_create(NULL);
+    ASSERT_NOT_NULL(statusbar);
+    vg_statusbar_item_t **old_items = statusbar->left_items;
+    size_t old_count = statusbar->left_count;
+    size_t old_capacity = statusbar->left_capacity;
+
+    statusbar->left_count = SIZE_MAX;
+    statusbar->left_capacity = SIZE_MAX;
+    ASSERT_NULL(vg_statusbar_add_text(statusbar, VG_STATUSBAR_ZONE_LEFT, "overflow"));
+
+    statusbar->left_items = old_items;
+    statusbar->left_count = old_count;
+    statusbar->left_capacity = old_capacity;
+    vg_widget_destroy(&statusbar->base);
+}
+
+TEST(contextmenu_capacity_overflow_is_rejected) {
+    vg_contextmenu_t *menu = vg_contextmenu_create();
+    ASSERT_NOT_NULL(menu);
+    vg_menu_item_t **old_items = menu->items;
+    size_t old_count = menu->item_count;
+    size_t old_capacity = menu->item_capacity;
+
+    menu->item_count = SIZE_MAX;
+    menu->item_capacity = SIZE_MAX;
+    ASSERT_NULL(vg_contextmenu_add_item(menu, "overflow", NULL, NULL, NULL));
+
+    menu->items = old_items;
+    menu->item_count = old_count;
+    menu->item_capacity = old_capacity;
+    vg_contextmenu_destroy(menu);
+}
+
+TEST(filedialog_filter_capacity_overflow_is_rejected) {
+    vg_filedialog_t *dialog = vg_filedialog_create(VG_FILEDIALOG_OPEN);
+    ASSERT_NOT_NULL(dialog);
+    vg_file_filter_t *old_filters = dialog->filters;
+    size_t old_count = dialog->filter_count;
+    size_t old_capacity = dialog->filter_capacity;
+
+    dialog->filter_count = SIZE_MAX;
+    dialog->filter_capacity = SIZE_MAX;
+    vg_filedialog_add_filter(dialog, "overflow", "*");
+    ASSERT_EQ(dialog->filter_count, SIZE_MAX);
+
+    dialog->filters = old_filters;
+    dialog->filter_count = old_count;
+    dialog->filter_capacity = old_capacity;
+    vg_filedialog_destroy(dialog);
+}
+
+TEST(icon_from_pixels_rejects_size_overflow) {
+    uint8_t pixel = 0;
+    vg_icon_t icon = vg_icon_from_pixels(&pixel, UINT32_MAX, UINT32_MAX);
+    ASSERT_EQ(icon.type, VG_ICON_NONE);
+}
+
+TEST(contextmenu_registry_grows_beyond_legacy_cap) {
+    enum { MENU_COUNT = 70 };
+    vg_widget_t *widgets[MENU_COUNT] = {0};
+    vg_contextmenu_t *menus[MENU_COUNT] = {0};
+
+    for (int i = 0; i < MENU_COUNT; i++) {
+        widgets[i] = vg_widget_create(VG_WIDGET_CONTAINER);
+        menus[i] = vg_contextmenu_create();
+        ASSERT_NOT_NULL(widgets[i]);
+        ASSERT_NOT_NULL(menus[i]);
+        vg_contextmenu_register_for_widget(widgets[i], menus[i]);
+    }
+
+    vg_event_t event = vg_event_mouse(VG_EVENT_MOUSE_DOWN, 12.0f, 14.0f, VG_MOUSE_RIGHT, 0);
+    ASSERT_TRUE(vg_contextmenu_process_event(widgets[MENU_COUNT - 1], &event));
+    ASSERT_TRUE(menus[MENU_COUNT - 1]->is_visible);
+
+    for (int i = 0; i < MENU_COUNT; i++) {
+        vg_contextmenu_destroy(menus[i]);
+        vg_widget_destroy(widgets[i]);
+    }
+}
+
 //=============================================================================
 // Main
 //=============================================================================
@@ -3997,6 +4112,15 @@ int main(void) {
     RUN(box_layout_center_alignment_accounts_for_margins);
     RUN(non_dropdown_capture_does_not_synthesize_outside_click);
     RUN(filedialog_convenience_uses_installed_modal_runner);
+
+    printf("\nRound 10 - Viper.GUI runtime bug-fix follow-up coverage\n");
+    RUN(menubar_key_event_dispatches_accelerator);
+    RUN(toolbar_capacity_overflow_is_rejected);
+    RUN(statusbar_capacity_overflow_is_rejected);
+    RUN(contextmenu_capacity_overflow_is_rejected);
+    RUN(filedialog_filter_capacity_overflow_is_rejected);
+    RUN(icon_from_pixels_rejects_size_overflow);
+    RUN(contextmenu_registry_grows_beyond_legacy_cap);
 
     printf("\n=== Results: %d passed, %d failed ===\n", g_passed, g_failed);
     return g_failed > 0 ? 1 : 0;
