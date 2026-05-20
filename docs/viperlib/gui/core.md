@@ -143,7 +143,7 @@ handles are ignored.
 | `SetWindowSize(w, h)`     | `Void(Integer, Integer)` | Resize the window                           |
 | `GetFontSize()`           | `Number()`        | Get current UI font size                             |
 | `SetFontSize(size)`       | `Void(Number)`    | Set UI font size                                     |
-| `WasCloseRequested()`     | `Integer()`       | 1 when the window received a close request this frame |
+| `WasCloseRequested()`     | `Integer()`       | Consumes and returns 1 once when the window received a close request |
 
 ### Lifecycle And Validation
 
@@ -152,7 +152,8 @@ handles are ignored.
 `SetSize()` and `SetWindowSize()` share the same window-size validation. Width and height are clamped to at least one pixel and to the platform `int32` range, and invalid font sizes, scale factors, and non-finite numeric values fall back to bounded defaults.
 When `SetPreventClose(1)` is active, a window close request no longer sets
 `ShouldClose`; poll `WasCloseRequested()` after `Poll()` to decide whether to
-save, confirm, or close manually.
+save, confirm, or close manually. `WasCloseRequested()` is edge-consuming:
+after it returns `1`, later calls return `0` until another close request arrives.
 
 Low-level widget dispatch keeps focus, hover, modal, click, and capture state
 separate for each recently dispatched root. When a subtree is hidden, detached,
@@ -241,6 +242,11 @@ app.SetFont(font, 14);
 ## Common Widget Functions
 
 All widgets share these common functions:
+
+Concrete widget classes such as `Button`, `Label`, `TextInput`, `ScrollView`,
+`TreeView`, `ListBox`, `Image`, `VBox`, `HBox`, and `FloatingPanel` expose these
+common methods directly. The `Widget` receiver remains useful when code stores
+heterogeneous widget handles.
 
 Focusable widgets now participate in standard desktop keyboard traversal: `Tab` moves to the next focusable widget and `Shift+Tab` moves to the previous one, respecting modal roots when a dialog or popup is active.
 Passing `NULL` to `Focus()` is a no-op. Detached widgets no longer inherit the current app's font or theme until they are attached to an app-owned tree or explicitly configured.

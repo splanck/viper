@@ -472,11 +472,13 @@ void vg_findreplacebar_find_prev(vg_findreplacebar_t *bar);
 
 /// @brief Replace the current match with the replacement text.
 /// @param bar Find/replace bar.
-void vg_findreplacebar_replace_current(vg_findreplacebar_t *bar);
+/// @return true when a replacement was applied.
+bool vg_findreplacebar_replace_current(vg_findreplacebar_t *bar);
 
 /// @brief Replace every match in the document with the replacement text.
 /// @param bar Find/replace bar.
-void vg_findreplacebar_replace_all(vg_findreplacebar_t *bar);
+/// @return Number of replacements applied.
+size_t vg_findreplacebar_replace_all(vg_findreplacebar_t *bar);
 
 /// @brief Get the total number of matches found by the last search.
 /// @param bar Find/replace bar.

@@ -453,20 +453,26 @@ struct DepNode {
 /// @param body Instructions to schedule (terminators excluded by caller).
 /// @param target Target info providing caller-saved register lists for ABI-correct barriers.
 /// @return Reordered instruction vector (same multiset, different order).
-static std::vector<MInstr> scheduleBlock(std::vector<MInstr> body, const TargetInfo &target) {
+/// @brief Build the dependency graph for a single basic-block body.
+/// @details Walks the body in program order, tracking last-def / uses-since-def
+///          per tracked register slot, an FP-relative memory history, and the
+///          caller-saved register set.  Adds RAW / WAW / WAR / memory / call /
+///          flag / SP dependency edges.  Returns deduplicated predecessor lists.
+///
+///          State invariants:
+///            * `lastDef[ri] == kNone` means no instruction has yet defined `ri`.
+///            * `usesSinceDef[ri]` contains every reader between the last def
+///              and now; cleared on each new definition.
+///            * `memoryHistory` lists every memory access plus call barriers in
+///              program order; `memoryStoreHistory` is the store-only filter
+///              used by load-only RAW edges.
+static std::vector<DepNode> buildDependencyGraph(const std::vector<MInstr> &body,
+                                                 const TargetInfo &target) {
     const std::size_t N = body.size();
-    if (N <= 1)
-        return body;
-
-    // -----------------------------------------------------------------------
-    // Build dependency graph.
-    // -----------------------------------------------------------------------
-
     std::vector<DepNode> nodes(N);
     for (std::size_t i = 0; i < N; ++i)
         nodes[i].instrIdx = i;
 
-    // Helper: add a dependency edge from instruction i to predecessor p.
     auto addDep = [&](std::size_t i, std::size_t p, unsigned lat) {
         if (p != i) {
             nodes[i].preds.push_back(p);
@@ -474,11 +480,6 @@ static std::vector<MInstr> scheduleBlock(std::vector<MInstr> body, const TargetI
         }
     };
 
-    // last_def[regSlot] = index of the last instruction that defined the register.
-    // usesSinceDef[regSlot] = indices of ALL instructions that read the register
-    //   since its last definition.  When a new def occurs we add WAR deps to every
-    //   entry, ensuring the def cannot be reordered before ANY earlier reader.
-    // Flat arrays indexed by regIdx() for O(1) cache-friendly access.
     constexpr auto kNone = static_cast<std::size_t>(~0ULL);
     std::array<std::size_t, kNumTracked> lastDef;
     lastDef.fill(kNone);
@@ -491,8 +492,6 @@ static std::vector<MInstr> scheduleBlock(std::vector<MInstr> body, const TargetI
     std::vector<MemoryHistoryEntry> memoryStoreHistory;
     memoryStoreHistory.reserve(N);
 
-    // Caller-saved registers that Bl/Blr implicitly clobber.  Pull these from
-    // the selected target so scheduling follows Darwin/Linux/Windows ABI data.
     std::vector<uint32_t> callerSaved;
     callerSaved.reserve(target.callerSavedGPR.size() + target.callerSavedFPR.size());
     for (const PhysReg reg : target.callerSavedGPR)
@@ -500,12 +499,8 @@ static std::vector<MInstr> scheduleBlock(std::vector<MInstr> body, const TargetI
     for (const PhysReg reg : target.callerSavedFPR)
         callerSaved.push_back(static_cast<uint32_t>(reg));
 
-    for (std::size_t i = 0; i < N; ++i) {
-        const MInstr &mi = body[i];
-
-        // --- Register USE dependencies (RAW) ---
-        // Register allocator operand roles are the single source of truth for
-        // explicit register uses and defs.
+    // --- Per-dep-type emitters -------------------------------------------------
+    auto emitRegRAW = [&](std::size_t i, const MInstr &mi) {
         for (std::size_t opIdx = 0; opIdx < mi.ops.size(); ++opIdx) {
             const auto roles = ra::operandRoles(mi, opIdx);
             if (!roles.first)
@@ -518,23 +513,22 @@ static std::vector<MInstr> scheduleBlock(std::vector<MInstr> body, const TargetI
                 addDep(i, lastDef[ri], instrLatency(body[lastDef[ri]].opc));
             usesSinceDef[ri].push_back(i);
         }
+    };
 
-        // --- NZCV flag dependencies (RAW on flags) ---
-        // If this instruction uses flags, depend on the last flag-setter.
+    auto emitFlagUse = [&](std::size_t i, const MInstr &mi) {
         if (usesFlags(mi.opc)) {
             if (lastDef[kIdxNZCV] != kNone)
                 addDep(i, lastDef[kIdxNZCV], 1);
             usesSinceDef[kIdxNZCV].push_back(i);
         }
+    };
 
-        // --- Stack pointer dependencies ---
-        // SP-relative ops (StrRegSpImm, SubSpImm, AddSpImm) implicitly read SP.
+    auto emitStackPointer = [&](std::size_t i, const MInstr &mi) {
         if (usesSP(mi.opc)) {
             if (lastDef[kIdxSP] != kNone)
                 addDep(i, lastDef[kIdxSP], 1);
             usesSinceDef[kIdxSP].push_back(i);
         }
-        // SubSpImm/AddSpImm implicitly define SP (WAW + WAR).
         if (modifiesSP(mi.opc)) {
             if (lastDef[kIdxSP] != kNone)
                 addDep(i, lastDef[kIdxSP], 1);
@@ -543,73 +537,116 @@ static std::vector<MInstr> scheduleBlock(std::vector<MInstr> body, const TargetI
             usesSinceDef[kIdxSP].clear();
             lastDef[kIdxSP] = i;
         }
+    };
 
-        // --- Memory dependencies ---
+    auto emitMemoryDeps = [&](std::size_t i, const MInstr &mi) {
         const bool memLoad = isLoad(mi.opc);
         const bool memStore = isStore(mi.opc);
-        const auto memClass =
-            (memLoad || memStore) ? classifyMemoryAccess(mi, trackedAddrs) : std::nullopt;
-        if (memLoad || memStore) {
-            const auto &dependencyHistory = (memLoad && !memStore) ? memoryStoreHistory
-                                                                   : memoryHistory;
-            for (const auto &prev : dependencyHistory) {
-                if (prev.isBarrier) {
-                    addDep(i, prev.instrIdx, 1);
-                    continue;
-                }
-                if (!mayAliasMemory(memClass, prev.accessClass))
-                    continue;
-                if (memLoad && prev.isStore)
-                    addDep(i, prev.instrIdx, 1);
-                if (memStore && (prev.isLoad || prev.isStore))
-                    addDep(i, prev.instrIdx, 1);
-            }
-            MemoryHistoryEntry entry{i, memLoad, memStore, false, memClass};
-            memoryHistory.push_back(entry);
-            if (memStore)
-                memoryStoreHistory.push_back(entry);
-        }
-
-        // --- Calls act as full memory barriers ---
-        if (isCall(mi.opc)) {
-            for (const auto &prev : memoryHistory)
+        if (!memLoad && !memStore)
+            return;
+        const auto memClass = classifyMemoryAccess(mi, trackedAddrs);
+        const auto &dependencyHistory = (memLoad && !memStore) ? memoryStoreHistory
+                                                               : memoryHistory;
+        for (const auto &prev : dependencyHistory) {
+            if (prev.isBarrier) {
                 addDep(i, prev.instrIdx, 1);
-            // Call also reads any live registers (conservatively: depend on all
-            // recent defs of caller-saved regs so they aren't reordered past call).
-            for (uint32_t r : callerSaved) {
-                const std::size_t ri = regIdx(r);
-                if (lastDef[ri] != kNone)
-                    addDep(i, lastDef[ri], 1);
+                continue;
             }
-            if (lastDef[kIdxNZCV] != kNone)
-                addDep(i, lastDef[kIdxNZCV], 1);
-            MemoryHistoryEntry barrier{i, false, false, true, std::nullopt};
-            memoryHistory.push_back(barrier);
-            memoryStoreHistory.push_back(barrier);
+            if (!mayAliasMemory(memClass, prev.accessClass))
+                continue;
+            if (memLoad && prev.isStore)
+                addDep(i, prev.instrIdx, 1);
+            if (memStore && (prev.isLoad || prev.isStore))
+                addDep(i, prev.instrIdx, 1);
         }
+        MemoryHistoryEntry entry{i, memLoad, memStore, false, memClass};
+        memoryHistory.push_back(entry);
+        if (memStore)
+            memoryStoreHistory.push_back(entry);
+    };
 
-        // --- WAW + WAR dependencies, then update DEF map ---
-        // WAW: if this instruction defines a register that was previously defined,
-        //      it must come after the old definition.
-        // WAR: if this instruction defines a register that was previously read,
-        //      it must come after that reader (so the reader sees the old value).
+    auto emitCallBarrier = [&](std::size_t i, const MInstr &mi) {
+        if (!isCall(mi.opc))
+            return;
+        for (const auto &prev : memoryHistory)
+            addDep(i, prev.instrIdx, 1);
+        for (uint32_t r : callerSaved) {
+            const std::size_t ri = regIdx(r);
+            if (lastDef[ri] != kNone)
+                addDep(i, lastDef[ri], 1);
+        }
+        if (lastDef[kIdxNZCV] != kNone)
+            addDep(i, lastDef[kIdxNZCV], 1);
+        MemoryHistoryEntry barrier{i, false, false, true, std::nullopt};
+        memoryHistory.push_back(barrier);
+        memoryStoreHistory.push_back(barrier);
+    };
+
+    auto emitRegDefs = [&](std::size_t i, const MInstr &mi) {
         for (std::size_t opIdx = 0; opIdx < mi.ops.size(); ++opIdx) {
             const auto [isUse, isDef] = ra::operandRoles(mi, opIdx);
             if (!isDef)
                 continue;
-            if (mi.ops[opIdx].kind == MOperand::Kind::Reg && mi.ops[opIdx].reg.isPhys) {
-                const std::size_t ri = regIdx(mi.ops[opIdx].reg.idOrPhys);
-                if (lastDef[ri] != kNone)
-                    addDep(i, lastDef[ri], 1); // WAW dependency
-                for (auto u : usesSinceDef[ri])
-                    addDep(i, u, 1); // WAR dependency
-                usesSinceDef[ri].clear();
-                lastDef[ri] = i;
-                if (ri < kNumPhysRegs && mi.ops[opIdx].reg.cls == RegClass::GPR)
-                    trackedAddrs[ri] = std::nullopt;
-            }
+            if (mi.ops[opIdx].kind != MOperand::Kind::Reg || !mi.ops[opIdx].reg.isPhys)
+                continue;
+            const std::size_t ri = regIdx(mi.ops[opIdx].reg.idOrPhys);
+            if (lastDef[ri] != kNone)
+                addDep(i, lastDef[ri], 1); // WAW
+            for (auto u : usesSinceDef[ri])
+                addDep(i, u, 1); // WAR
+            usesSinceDef[ri].clear();
+            lastDef[ri] = i;
+            if (ri < kNumPhysRegs && mi.ops[opIdx].reg.cls == RegClass::GPR)
+                trackedAddrs[ri] = std::nullopt;
         }
+    };
 
+    auto emitFlagDef = [&](std::size_t i, const MInstr &mi) {
+        if (!setsFlags(mi.opc))
+            return;
+        if (lastDef[kIdxNZCV] != kNone)
+            addDep(i, lastDef[kIdxNZCV], 1);
+        for (auto u : usesSinceDef[kIdxNZCV])
+            addDep(i, u, 1);
+        usesSinceDef[kIdxNZCV].clear();
+        lastDef[kIdxNZCV] = i;
+    };
+
+    auto emitCallClobbers = [&](std::size_t i, const MInstr &mi) {
+        if (!isCall(mi.opc))
+            return;
+        for (uint32_t r : callerSaved) {
+            const std::size_t ri = regIdx(r);
+            if (lastDef[ri] != kNone)
+                addDep(i, lastDef[ri], 1); // WAW
+            for (auto u : usesSinceDef[ri])
+                addDep(i, u, 1); // WAR
+            usesSinceDef[ri].clear();
+            lastDef[ri] = i;
+            if (ri < kNumPhysRegs)
+                trackedAddrs[ri] = std::nullopt;
+        }
+        if (lastDef[kIdxNZCV] != kNone)
+            addDep(i, lastDef[kIdxNZCV], 1);
+        for (auto u : usesSinceDef[kIdxNZCV])
+            addDep(i, u, 1);
+        usesSinceDef[kIdxNZCV].clear();
+        lastDef[kIdxNZCV] = i;
+    };
+
+    // --- Main loop -------------------------------------------------------------
+    for (std::size_t i = 0; i < N; ++i) {
+        const MInstr &mi = body[i];
+
+        emitRegRAW(i, mi);
+        emitFlagUse(i, mi);
+        emitStackPointer(i, mi);
+        emitMemoryDeps(i, mi);
+        emitCallBarrier(i, mi);
+        emitRegDefs(i, mi);
+
+        // Track derived address values (e.g., adr+add page-off chains) for the
+        // memory alias analysis above.
         if (const auto tracked = deriveTrackedAddressValue(mi, trackedAddrs);
             tracked && !mi.ops.empty() && mi.ops[0].kind == MOperand::Kind::Reg &&
             mi.ops[0].reg.isPhys && mi.ops[0].reg.cls == RegClass::GPR) {
@@ -618,44 +655,14 @@ static std::vector<MInstr> scheduleBlock(std::vector<MInstr> body, const TargetI
                 trackedAddrs[ri] = tracked;
         }
 
-        // Flag definitions — WAW + WAR on flags too.
-        if (setsFlags(mi.opc)) {
-            if (lastDef[kIdxNZCV] != kNone)
-                addDep(i, lastDef[kIdxNZCV], 1);
-            for (auto u : usesSinceDef[kIdxNZCV])
-                addDep(i, u, 1);
-            usesSinceDef[kIdxNZCV].clear();
-            lastDef[kIdxNZCV] = i;
-        }
-
-        // Call clobbers: Bl/Blr implicitly define all caller-saved registers
-        // and flags (the callee may clobber them).  Add WAW + WAR deps.
-        if (isCall(mi.opc)) {
-            for (uint32_t r : callerSaved) {
-                const std::size_t ri = regIdx(r);
-                if (lastDef[ri] != kNone)
-                    addDep(i, lastDef[ri], 1); // WAW
-                for (auto u : usesSinceDef[ri])
-                    addDep(i, u, 1); // WAR
-                usesSinceDef[ri].clear();
-                lastDef[ri] = i;
-                if (ri < kNumPhysRegs)
-                    trackedAddrs[ri] = std::nullopt;
-            }
-            if (lastDef[kIdxNZCV] != kNone)
-                addDep(i, lastDef[kIdxNZCV], 1);
-            for (auto u : usesSinceDef[kIdxNZCV])
-                addDep(i, u, 1);
-            usesSinceDef[kIdxNZCV].clear();
-            lastDef[kIdxNZCV] = i;
-        }
+        emitFlagDef(i, mi);
+        emitCallClobbers(i, mi);
     }
 
-    // Deduplicate predecessor lists (a node may have been added multiple times).
+    // Deduplicate predecessor lists (multiple emitters may add the same edge).
     for (auto &n : nodes) {
         auto &p = n.preds;
         auto &l = n.predLat;
-        // Sort by pred index, then remove duplicates keeping max latency.
         std::vector<std::pair<std::size_t, unsigned>> pl;
         pl.reserve(p.size());
         for (std::size_t k = 0; k < p.size(); ++k)
@@ -673,6 +680,19 @@ static std::vector<MInstr> scheduleBlock(std::vector<MInstr> body, const TargetI
         }
         n.predsDone = 0;
     }
+
+    return nodes;
+}
+
+static std::vector<MInstr> scheduleBlock(std::vector<MInstr> body, const TargetInfo &target) {
+    const std::size_t N = body.size();
+    if (N <= 1)
+        return body;
+
+    // -----------------------------------------------------------------------
+    // Phase 1: Build dependency graph.
+    // -----------------------------------------------------------------------
+    std::vector<DepNode> nodes = buildDependencyGraph(body, target);
 
     // -----------------------------------------------------------------------
     // Compute successors (reverse of preds) for predsDone tracking.

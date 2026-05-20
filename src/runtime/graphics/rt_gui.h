@@ -905,7 +905,7 @@ void rt_image_set_opacity(void *image, double opacity);
 /// @param image Image widget handle.
 /// @param path File path (runtime string).
 /// @return 1 on success, 0 on failure.
-int64_t rt_image_load_file(void *image, void *path);
+int64_t rt_image_load_file(void *image, rt_string path);
 
 //=========================================================================
 // Theme Functions
@@ -2840,6 +2840,9 @@ void rt_zia_completion_clear_cache(void);
 
 /// @brief Create a floating overlay panel attached to @p root.
 void *rt_floatingpanel_new(void *root);
+
+/// @brief Destroy a floating panel and its overlay children.
+void rt_floatingpanel_destroy(void *panel);
 
 /// @brief Set absolute screen position.
 void rt_floatingpanel_set_position(void *panel, double x, double y);

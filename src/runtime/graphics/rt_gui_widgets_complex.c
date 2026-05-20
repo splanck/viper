@@ -1138,7 +1138,8 @@ int64_t rt_listbox_get_count(void *listbox) {
     vg_listbox_t *lb = rt_listbox_checked(listbox);
     if (!lb)
         return 0;
-    return (int64_t)lb->item_count;
+    size_t count = lb->virtual_mode ? lb->total_item_count : (size_t)lb->item_count;
+    return count > (size_t)INT64_MAX ? INT64_MAX : (int64_t)count;
 }
 
 /// @brief Get the selected index of the listbox.
@@ -1177,16 +1178,10 @@ int64_t rt_listbox_was_selection_changed(void *listbox) {
     if (!lb)
         return 0;
 
-    if (lb->virtual_mode) {
-        if (lb->selected_index != lb->prev_selected_index) {
-            lb->prev_selected_index = lb->selected_index;
-            return 1;
-        }
-        return 0;
-    }
-
-    if (lb->selected != lb->prev_selected) {
+    if (lb->selection_revision != lb->reported_selection_revision) {
+        lb->reported_selection_revision = lb->selection_revision;
         lb->prev_selected = lb->selected;
+        lb->prev_selected_index = lb->selected_index;
         return 1;
     }
     return 0;
@@ -1541,7 +1536,7 @@ void rt_image_set_opacity(void *image, double opacity) {
 /// @param image Image widget.
 /// @param path File path (runtime string).
 /// @return 1 on success, 0 on failure.
-int64_t rt_image_load_file(void *image, void *path) {
+int64_t rt_image_load_file(void *image, rt_string path) {
     RT_ASSERT_MAIN_THREAD();
     vg_image_t *img = rt_image_checked(image);
     if (!img || !path)
@@ -1588,6 +1583,14 @@ void *rt_floatingpanel_new(void *root) {
 static vg_floatingpanel_t *rt_floatingpanel_checked(void *panel) {
     vg_floatingpanel_t *fp = (vg_floatingpanel_t *)panel;
     return vg_floatingpanel_is_live(fp) ? fp : NULL;
+}
+
+/// @brief Destroy a floating panel and its overlay children.
+void rt_floatingpanel_destroy(void *panel) {
+    RT_ASSERT_MAIN_THREAD();
+    vg_floatingpanel_t *fp = rt_floatingpanel_checked(panel);
+    if (fp)
+        rt_widget_destroy(&fp->base);
 }
 
 /// @brief Set the position of the floatingpanel.
@@ -2206,7 +2209,7 @@ void rt_image_set_opacity(void *image, double opacity) {
 }
 
 /// @brief Load image file stub (graphics disabled).
-int64_t rt_image_load_file(void *image, void *path) {
+int64_t rt_image_load_file(void *image, rt_string path) {
     (void)image;
     (void)path;
     return 0;
@@ -2216,6 +2219,11 @@ int64_t rt_image_load_file(void *image, void *path) {
 void *rt_floatingpanel_new(void *root) {
     (void)root;
     return NULL;
+}
+
+/// @brief Destroy floating panel stub (graphics disabled).
+void rt_floatingpanel_destroy(void *panel) {
+    (void)panel;
 }
 
 /// @brief Set the position of the floatingpanel.

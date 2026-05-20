@@ -31,9 +31,19 @@ struct StubWidget {
     int child_count;
     int visible;
     double flex;
+    double preferred_w;
+    double preferred_h;
+    double max_w;
+    double max_h;
+    int64_t x;
+    int64_t y;
+    int64_t margin;
+    int enabled;
     int64_t width;
     int64_t height;
     double slider_value;
+    double slider_min;
+    double slider_max;
     int clicked;
     const void *last_pixels;
     int64_t last_pixels_w;
@@ -154,6 +164,32 @@ extern "C" void rt_widget_set_visible(void *widget, int64_t visible) {
     static_cast<StubWidget *>(widget)->visible = visible ? 1 : 0;
 }
 
+extern "C" void rt_widget_set_enabled(void *widget, int64_t enabled) {
+    static_cast<StubWidget *>(widget)->enabled = enabled ? 1 : 0;
+}
+
+extern "C" void rt_widget_set_preferred_size(void *widget, double w, double h) {
+    auto *stub = static_cast<StubWidget *>(widget);
+    stub->preferred_w = w;
+    stub->preferred_h = h;
+}
+
+extern "C" void rt_widget_set_max_size(void *widget, double w, double h) {
+    auto *stub = static_cast<StubWidget *>(widget);
+    stub->max_w = w;
+    stub->max_h = h;
+}
+
+extern "C" void rt_widget_set_margin(void *widget, int64_t margin) {
+    static_cast<StubWidget *>(widget)->margin = margin;
+}
+
+extern "C" void rt_widget_set_position(void *widget, int64_t x, int64_t y) {
+    auto *stub = static_cast<StubWidget *>(widget);
+    stub->x = x;
+    stub->y = y;
+}
+
 extern "C" void rt_widget_destroy(void *widget) {
     g_widget_destroy_count++;
     std::free(widget);
@@ -200,6 +236,12 @@ extern "C" void rt_slider_set_value(void *slider, double value) {
 
 extern "C" double rt_slider_get_value(void *slider) {
     return static_cast<StubWidget *>(slider)->slider_value;
+}
+
+extern "C" void rt_slider_set_range(void *slider, double min, double max) {
+    auto *stub = static_cast<StubWidget *>(slider);
+    stub->slider_min = min;
+    stub->slider_max = max;
 }
 
 extern "C" rt_string rt_string_from_bytes(const char *data, size_t len) {
@@ -326,6 +368,9 @@ static void test_successful_construction_sets_up_widgets() {
     assert(widget->controls_widget != nullptr);
     assert(widget->video_width == g_open_width);
     assert(widget->video_height == g_open_height);
+    auto *slider = static_cast<StubWidget *>(widget->position_slider);
+    assert(slider->slider_min == 0.0);
+    assert(slider->slider_max == 1.0);
 
     auto *player = static_cast<StubPlayer *>(widget->player);
     auto *image = static_cast<StubWidget *>(widget->image_widget);
@@ -373,8 +418,50 @@ static void test_slider_seek_and_looping() {
     player->playing = 0;
     player->position = 2.0;
     rt_videowidget_update(widget, 0.0);
-    assert(player->stop_calls >= 1);
-    assert(player->play_calls >= 1);
+    assert(player->stop_calls == 0);
+    assert(player->play_calls == 0);
+
+    player->position = player->duration;
+    rt_videowidget_update(widget, 0.0);
+    assert(player->stop_calls == 1);
+    assert(player->play_calls == 1);
+}
+
+static void test_root_widget_proxy_methods() {
+    StubWidget parent{};
+    reset_open_state();
+
+    auto *widget = static_cast<rt_videowidget_view *>(
+        rt_videowidget_new(&parent, reinterpret_cast<void *>(1)));
+    auto *root = static_cast<StubWidget *>(widget->root_widget);
+
+    assert(rt_videowidget_get_root(widget) == widget->root_widget);
+    rt_videowidget_set_visible(widget, 0);
+    rt_videowidget_set_enabled(widget, 1);
+    rt_videowidget_set_size(widget, 320, 180);
+    rt_videowidget_set_preferred_size(widget, 400.0, 240.0);
+    rt_videowidget_set_max_size(widget, 800.0, 600.0);
+    rt_videowidget_set_flex(widget, 2.0);
+    rt_videowidget_set_margin(widget, 6);
+    rt_videowidget_set_position(widget, 12, 34);
+
+    StubWidget child{};
+    int before_child_count = root->child_count;
+    rt_videowidget_add_child(widget, &child);
+
+    assert(root->visible == 0);
+    assert(root->enabled == 1);
+    assert(root->width == 320);
+    assert(root->height == 180);
+    assert(root->preferred_w == 400.0);
+    assert(root->preferred_h == 240.0);
+    assert(root->max_w == 800.0);
+    assert(root->max_h == 600.0);
+    assert(root->flex == 2.0);
+    assert(root->margin == 6);
+    assert(root->x == 12);
+    assert(root->y == 34);
+    assert(root->child_count == before_child_count + 1);
 }
 
 static void test_visibility_and_volume_are_clamped() {
@@ -453,6 +540,7 @@ int main() {
     test_successful_construction_sets_up_widgets();
     test_controls_drive_player_state();
     test_slider_seek_and_looping();
+    test_root_widget_proxy_methods();
     test_visibility_and_volume_are_clamped();
     test_nonfinite_update_delta_is_ignored();
     test_destroy_releases_player_and_widget_tree();

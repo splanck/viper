@@ -982,9 +982,8 @@ int64_t rt_treeview_was_selection_changed(void *tree) {
     if (!tv)
         return 0;
 
-    // Per-instance selection tracking using prev_selected field
-    // (matches the pattern used by rt_tabbar_was_changed / prev_active_tab).
-    if (tv->selected != tv->prev_selected) {
+    if (tv->selection_revision != tv->reported_selection_revision) {
+        tv->reported_selection_revision = tv->selection_revision;
         tv->prev_selected = tv->selected;
         return 1;
     }

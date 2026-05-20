@@ -737,6 +737,20 @@ static void test_findbar_runtime_reads_live_text_and_reports_noop_replace(void) 
     assert(rt_findbar_is_regex(bar) == 1);
 
     rt_findbar_data_view_t *view = (rt_findbar_data_view_t *)bar;
+    view->bar->show_replace = false;
+    view->bar->options.case_sensitive = false;
+    view->bar->options.whole_word = false;
+    view->bar->options.use_regex = false;
+    assert(rt_findbar_is_replace_mode(bar) == 0);
+    assert(rt_findbar_is_case_sensitive(bar) == 0);
+    assert(rt_findbar_is_whole_word(bar) == 0);
+    assert(rt_findbar_is_regex(bar) == 0);
+
+    rt_findbar_set_find_text(bar, rt_const_cstr("alpha"));
+    assert(rt_findbar_find_next(bar) == 1);
+    assert(rt_findbar_get_match_count(bar) == 1);
+    assert(rt_findbar_get_current_match(bar) == 1);
+
     vg_textinput_set_text((vg_textinput_t *)view->bar->find_input, "beta");
     vg_textinput_set_text((vg_textinput_t *)view->bar->replace_input, "theta");
 
@@ -1127,6 +1141,18 @@ static void test_listbox_selection_changed_is_edge_triggered(void) {
     assert(rt_listbox_was_selection_changed(listbox) == 1);
     assert(rt_listbox_was_selection_changed(listbox) == 0);
 
+    vg_listbox_remove_item(listbox, second);
+    assert(rt_listbox_get_selected(listbox) == NULL);
+    assert(rt_listbox_was_selection_changed(listbox) == 1);
+    assert(rt_listbox_was_selection_changed(listbox) == 0);
+
+    rt_listbox_select(listbox, first);
+    assert(rt_listbox_was_selection_changed(listbox) == 1);
+    vg_listbox_clear(listbox);
+    assert(rt_listbox_get_selected(listbox) == NULL);
+    assert(rt_listbox_was_selection_changed(listbox) == 1);
+    assert(rt_listbox_was_selection_changed(listbox) == 0);
+
     vg_widget_destroy(&listbox->base);
     printf("test_listbox_selection_changed_is_edge_triggered: PASSED\n");
 }
@@ -1143,6 +1169,7 @@ static void test_runtime_listbox_select_index_rejects_out_of_range_indices(void)
     assert(rt_listbox_get_selected_index(listbox) == 1);
 
     vg_listbox_set_virtual_mode(listbox, true, 2, 20.0f);
+    assert(rt_listbox_get_count(listbox) == 2);
     rt_listbox_select_index(listbox, 1);
     assert(rt_listbox_get_selected_index(listbox) == 1);
     rt_listbox_select_index(listbox, 2);
@@ -1150,6 +1177,36 @@ static void test_runtime_listbox_select_index_rejects_out_of_range_indices(void)
 
     vg_widget_destroy(&listbox->base);
     printf("test_runtime_listbox_select_index_rejects_out_of_range_indices: PASSED\n");
+}
+
+static void test_treeview_selection_changed_reports_removal_and_clear(void) {
+    vg_treeview_t *tree = vg_treeview_create(NULL);
+    assert(tree);
+    vg_tree_node_t *first = vg_treeview_add_node(tree, NULL, "first");
+    vg_tree_node_t *second = vg_treeview_add_node(tree, NULL, "second");
+    assert(first && second);
+
+    assert(rt_treeview_was_selection_changed(tree) == 0);
+    rt_treeview_select(tree, first);
+    assert(rt_treeview_was_selection_changed(tree) == 1);
+    assert(rt_treeview_was_selection_changed(tree) == 0);
+
+    rt_treeview_select(tree, second);
+    assert(rt_treeview_was_selection_changed(tree) == 1);
+    vg_treeview_remove_node(tree, second);
+    assert(rt_treeview_get_selected(tree) == NULL);
+    assert(rt_treeview_was_selection_changed(tree) == 1);
+    assert(rt_treeview_was_selection_changed(tree) == 0);
+
+    rt_treeview_select(tree, first);
+    assert(rt_treeview_was_selection_changed(tree) == 1);
+    vg_treeview_clear(tree);
+    assert(rt_treeview_get_selected(tree) == NULL);
+    assert(rt_treeview_was_selection_changed(tree) == 1);
+    assert(rt_treeview_was_selection_changed(tree) == 0);
+
+    vg_widget_destroy(&tree->base);
+    printf("test_treeview_selection_changed_reports_removal_and_clear: PASSED\n");
 }
 
 static void test_removed_listbox_and_treeview_handles_are_inert(void) {
@@ -1678,6 +1735,8 @@ static void test_breadcrumb_clicked_data_preserves_embedded_nuls(void) {
     assert(rt_str_len(clicked) == (int64_t)sizeof(payload));
     assert(memcmp(rt_string_cstr(clicked), payload, sizeof(payload)) == 0);
     assert(rt_breadcrumb_was_item_clicked(crumb) == 0);
+    assert(rt_breadcrumb_get_clicked_index(crumb) == -1);
+    assert(rt_str_len(rt_breadcrumb_get_clicked_data(crumb)) == 0);
 
     rt_breadcrumb_destroy(crumb);
     cleanup_fake_app(&app);
@@ -1738,6 +1797,7 @@ static void test_close_prevention_tracks_request_without_closing(void) {
     app.close_requested = 1;
     app.should_close = 0;
     assert(rt_app_was_close_requested(&app) == 1);
+    assert(rt_app_was_close_requested(&app) == 0);
     assert(rt_gui_app_should_close(&app) == 0);
 
     rt_app_set_prevent_close(&app, 0);
@@ -1834,6 +1894,10 @@ static void test_floatingpanel_and_tabbar_reject_wrong_or_out_of_range_handles(v
     assert(label->base.parent == NULL);
     rt_floatingpanel_add_child(panel, label);
     assert(label->base.parent == &panel->base);
+    rt_floatingpanel_destroy(&app);
+    assert(vg_widget_is_live(&panel->base));
+    rt_floatingpanel_destroy(panel);
+    assert(!vg_widget_is_live(&panel->base));
 
     vg_tabbar_t *tabbar = (vg_tabbar_t *)rt_tabbar_new(app.root);
     assert(tabbar);
@@ -2120,10 +2184,15 @@ static void test_app_destroy_invalidates_stateful_dialog_wrappers(void) {
 
     void *box = rt_messagebox_new_info(rt_const_cstr("title"), rt_const_cstr("body"));
     void *file = rt_filedialog_new_open();
-    assert(box && file);
+    void *editor = rt_codeeditor_new(app.root);
+    void *bar = rt_findbar_new(NULL);
+    assert(box && file && editor && bar);
     rt_messagebox_data_view_t *box_view = (rt_messagebox_data_view_t *)box;
     rt_filedialog_data_view_t *file_view = (rt_filedialog_data_view_t *)file;
+    rt_findbar_data_view_t *bar_view = (rt_findbar_data_view_t *)bar;
     assert(box_view->dialog && file_view->dialog);
+    rt_findbar_bind_editor(bar, editor);
+    assert(bar_view->bound_editor == editor);
 
     vg_dialog_show(box_view->dialog);
     vg_filedialog_show(file_view->dialog);
@@ -2134,11 +2203,14 @@ static void test_app_destroy_invalidates_stateful_dialog_wrappers(void) {
     rt_gui_app_destroy(&app);
     assert(box_view->dialog == NULL);
     assert(file_view->dialog == NULL);
+    assert(bar_view->bound_editor == NULL);
+    assert(bar_view->bar->target_editor == NULL);
     assert(rt_messagebox_show(box) == -1);
     assert(rt_filedialog_show(file) == 0);
 
     rt_messagebox_destroy(box);
     rt_filedialog_destroy(file);
+    rt_findbar_destroy(bar);
     rt_gui_activate_app(NULL);
     printf("test_app_destroy_invalidates_stateful_dialog_wrappers: PASSED\n");
 }
@@ -2354,8 +2426,8 @@ static void test_codeeditor_gutter_slots_are_validated_and_click_coords_are_fres
     assert(rt_codeeditor_get_gutter_clicked_slot(editor) == 2);
     assert(rt_codeeditor_was_gutter_clicked(editor) == 1);
     assert(rt_codeeditor_was_gutter_clicked(editor) == 0);
-    assert(rt_codeeditor_get_gutter_clicked_line(editor) == 7);
-    assert(rt_codeeditor_get_gutter_clicked_slot(editor) == 2);
+    assert(rt_codeeditor_get_gutter_clicked_line(editor) == -1);
+    assert(rt_codeeditor_get_gutter_clicked_slot(editor) == -1);
 
     cleanup_fake_app(&app);
     printf("test_codeeditor_gutter_slots_are_validated_and_click_coords_are_fresh: PASSED\n");
@@ -2402,6 +2474,7 @@ int main(void) {
     test_treeview_and_listbox_data_preserve_embedded_nuls();
     test_listbox_selection_changed_is_edge_triggered();
     test_runtime_listbox_select_index_rejects_out_of_range_indices();
+    test_treeview_selection_changed_reports_removal_and_clear();
     test_removed_listbox_and_treeview_handles_are_inert();
     test_listbox_and_treeview_reject_foreign_child_handles();
     test_contextmenu_separator_returns_item_handle();

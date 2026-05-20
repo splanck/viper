@@ -489,14 +489,14 @@ static void on_find_next_click(vg_widget_t *btn, void *user_data) {
 static void on_replace_click(vg_widget_t *btn, void *user_data) {
     (void)btn;
     vg_findreplacebar_t *bar = (vg_findreplacebar_t *)user_data;
-    vg_findreplacebar_replace_current(bar);
+    (void)vg_findreplacebar_replace_current(bar);
 }
 
 /// @brief Button callback: replaces all matches in the linked editor.
 static void on_replace_all_click(vg_widget_t *btn, void *user_data) {
     (void)btn;
     vg_findreplacebar_t *bar = (vg_findreplacebar_t *)user_data;
-    vg_findreplacebar_replace_all(bar);
+    (void)vg_findreplacebar_replace_all(bar);
 }
 
 /// @brief Button callback: hides the find/replace bar when the close button is clicked.
@@ -989,15 +989,15 @@ void vg_findreplacebar_find_prev(vg_findreplacebar_t *bar) {
 /// @details After replacement the search is re-run to update the match list.
 ///
 /// @param bar The find/replace bar to use.
-void vg_findreplacebar_replace_current(vg_findreplacebar_t *bar) {
+bool vg_findreplacebar_replace_current(vg_findreplacebar_t *bar) {
     vg_codeeditor_t *ed = findreplacebar_live_target(bar);
     if (!bar || bar->match_count == 0 || !ed)
-        return;
+        return false;
 
     vg_textinput_t *replace_input = (vg_textinput_t *)bar->replace_input;
     vg_textinput_t *find_input = (vg_textinput_t *)bar->find_input;
     if (!replace_input || !find_input)
-        return;
+        return false;
 
     const char *replace_text = vg_textinput_get_text(replace_input);
     const char *find_text = vg_textinput_get_text(find_input);
@@ -1015,6 +1015,7 @@ void vg_findreplacebar_replace_current(vg_findreplacebar_t *bar) {
 
     // Re-search
     perform_search(bar);
+    return true;
 }
 
 /// @brief Replace every match with the replace-input text in a single pass.
@@ -1023,20 +1024,21 @@ void vg_findreplacebar_replace_current(vg_findreplacebar_t *bar) {
 ///          column positions.  The search is re-run after all replacements.
 ///
 /// @param bar The find/replace bar to use.
-void vg_findreplacebar_replace_all(vg_findreplacebar_t *bar) {
+size_t vg_findreplacebar_replace_all(vg_findreplacebar_t *bar) {
     vg_codeeditor_t *ed = findreplacebar_live_target(bar);
     if (!bar || bar->match_count == 0 || !ed)
-        return;
+        return 0;
 
     vg_textinput_t *replace_input = (vg_textinput_t *)bar->replace_input;
     vg_textinput_t *find_input = (vg_textinput_t *)bar->find_input;
     if (!replace_input || !find_input)
-        return;
+        return 0;
 
     const char *replace_text = vg_textinput_get_text(replace_input);
     const char *find_text = vg_textinput_get_text(find_input);
     if (!replace_text)
         replace_text = "";
+    size_t replacement_count = bar->match_count;
 
     // Replace from end to start to preserve positions
     for (size_t i = bar->match_count; i > 0; i--) {
@@ -1058,6 +1060,7 @@ void vg_findreplacebar_replace_all(vg_findreplacebar_t *bar) {
 
     // Re-search (should find nothing)
     perform_search(bar);
+    return replacement_count;
 }
 
 /// @brief Return the number of matches found in the last search.

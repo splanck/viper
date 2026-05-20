@@ -69,4 +69,58 @@ void forEachRestoreReg(const std::vector<PhysReg> &regs, OnPair onPair, OnSingle
     }
 }
 
+/// @brief Walk the AArch64 prologue step sequence, dispatching each step to the
+///        caller-provided emitter.
+/// @details The step ordering is the single source of truth for "what a function
+///          prologue looks like." Both AsmEmitter (text) and A64BinaryEncoder
+///          (binary) call this with their own Steps struct so a future addition
+///          (e.g., a new ABI step) only needs to be added here, not duplicated.
+///
+///          The Steps callable must expose: paciasp(), stpFpLrPre(), movFpSp(),
+///          subSp(int32_t), stpGprPair(PhysReg,PhysReg), strGprSingle(PhysReg),
+///          stpFprPair(PhysReg,PhysReg), strFprSingle(PhysReg).
+template <typename Steps>
+void iteratePrologue(const std::vector<PhysReg> &savedGPRs,
+                     const std::vector<PhysReg> &savedFPRs,
+                     int localFrameSize,
+                     bool needPaciasp,
+                     const Steps &s) {
+    if (needPaciasp)
+        s.paciasp();
+    s.stpFpLrPre();
+    s.movFpSp();
+    if (localFrameSize > 0)
+        s.subSp(localFrameSize);
+    forEachSaveReg(savedGPRs,
+                   [&](PhysReg a, PhysReg b) { s.stpGprPair(a, b); },
+                   [&](PhysReg a) { s.strGprSingle(a); });
+    forEachSaveReg(savedFPRs,
+                   [&](PhysReg a, PhysReg b) { s.stpFprPair(a, b); },
+                   [&](PhysReg a) { s.strFprSingle(a); });
+}
+
+/// @brief Walk the AArch64 epilogue step sequence (reverse of prologue).
+/// @details Required Steps members (mirrors iteratePrologue): ldpFprPair,
+///          ldrFprSingle, ldpGprPair, ldrGprSingle, addSp(int32_t), ldpFpLrPost(),
+///          autiasp(), ret().
+template <typename Steps>
+void iterateEpilogue(const std::vector<PhysReg> &savedGPRs,
+                     const std::vector<PhysReg> &savedFPRs,
+                     int localFrameSize,
+                     bool needAutiasp,
+                     const Steps &s) {
+    forEachRestoreReg(savedFPRs,
+                      [&](PhysReg a, PhysReg b) { s.ldpFprPair(a, b); },
+                      [&](PhysReg a) { s.ldrFprSingle(a); });
+    forEachRestoreReg(savedGPRs,
+                      [&](PhysReg a, PhysReg b) { s.ldpGprPair(a, b); },
+                      [&](PhysReg a) { s.ldrGprSingle(a); });
+    if (localFrameSize > 0)
+        s.addSp(localFrameSize);
+    s.ldpFpLrPost();
+    if (needAutiasp)
+        s.autiasp();
+    s.ret();
+}
+
 } // namespace viper::codegen::aarch64

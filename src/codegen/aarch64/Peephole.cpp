@@ -23,6 +23,7 @@
 #include "Noreturn.hpp"
 #include "peephole/BranchOpt.hpp"
 #include "peephole/CopyPropDCE.hpp"
+#include "peephole/Dominators.hpp"
 #include "peephole/IdentityElim.hpp"
 #include "peephole/LoopOpt.hpp"
 #include "peephole/MemoryOpt.hpp"
@@ -451,80 +452,18 @@ static bool blocksContainCall(const MFunction &fn, const std::unordered_set<std:
     return false;
 }
 
-/// @brief Bit-vector dominator sets — one 64-bit-word vector per basic block.
-using DominatorSets = std::vector<std::vector<std::uint64_t>>;
-
-/// @brief Set the bit for @p index in the dominator bit-vector @p bits.
-static void setDomBit(std::vector<std::uint64_t> &bits, std::size_t index) {
-    bits[index / 64] |= std::uint64_t{1} << (index % 64);
-}
-
-/// @brief Return true if block @p block is dominated by block @p bit.
-static bool hasDomBit(const DominatorSets &dom, std::size_t block, std::size_t bit) {
-    return block < dom.size() && bit / 64 < dom[block].size() &&
-           (dom[block][bit / 64] & (std::uint64_t{1} << (bit % 64))) != 0;
-}
-
-/// @brief Compute dominator sets for all blocks using iterative bit-vector dataflow.
-/// @details Entry block dominates only itself; all others initialised to all-ones and
-///          refined by intersecting predecessor dom sets until a fixed point is reached.
-static DominatorSets computeDominators(
+/// @brief Adapt the name-keyed predecessor map produced by buildPredecessorMap into
+///        the dense index-keyed form consumed by ph::computeDominators.
+static std::vector<std::vector<std::size_t>> indexedPreds(
     const MFunction &fn,
     const std::unordered_map<std::string, std::vector<std::size_t>> &preds) {
-    const std::size_t blockCount = fn.blocks.size();
-    const std::size_t wordCount = (blockCount + 63) / 64;
-    DominatorSets dom(blockCount, std::vector<std::uint64_t>(wordCount, 0));
-    if (fn.blocks.empty())
-        return dom;
-
-    const auto maskUnusedTailBits = [&]() {
-        if (blockCount == 0 || (blockCount % 64) == 0)
-            return std::numeric_limits<std::uint64_t>::max();
-        return (std::uint64_t{1} << (blockCount % 64)) - 1;
-    };
-    const std::uint64_t tailMask = maskUnusedTailBits();
-
-    for (std::size_t i = 0; i < blockCount; ++i) {
-        if (i == 0) {
-            setDomBit(dom[i], i);
-            continue;
-        }
-        std::fill(dom[i].begin(), dom[i].end(), std::numeric_limits<std::uint64_t>::max());
-        dom[i].back() &= tailMask;
+    std::vector<std::vector<std::size_t>> result(fn.blocks.size());
+    for (std::size_t i = 0; i < fn.blocks.size(); ++i) {
+        auto it = preds.find(fn.blocks[i].name);
+        if (it != preds.end())
+            result[i] = it->second;
     }
-
-    bool changed = true;
-    while (changed) {
-        changed = false;
-        for (std::size_t i = 1; i < blockCount; ++i) {
-            std::vector<std::uint64_t> next(wordCount, 0);
-            auto predIt = preds.find(fn.blocks[i].name);
-            if (predIt == preds.end() || predIt->second.empty()) {
-                setDomBit(next, i);
-            } else {
-                bool firstPred = true;
-                for (std::size_t predIndex : predIt->second) {
-                    if (predIndex >= dom.size())
-                        continue;
-                    if (firstPred) {
-                        next = dom[predIndex];
-                        firstPred = false;
-                        continue;
-                    }
-                    for (std::size_t word = 0; word < wordCount; ++word)
-                        next[word] &= dom[predIndex][word];
-                }
-                setDomBit(next, i);
-            }
-
-            if (dom[i] != next) {
-                dom[i] = std::move(next);
-                changed = true;
-            }
-        }
-    }
-
-    return dom;
+    return result;
 }
 
 /// @brief Replace leading FP-relative loads in single-predecessor join blocks with copies.
@@ -612,7 +551,7 @@ static bool forwardSinglePredPhiLoads(MFunction &fn, PeepholeStats &stats) {
 static bool coalesceJoinPhiLoads(MFunction &fn, PeepholeStats &stats) {
     bool changed = false;
     const auto preds = buildPredecessorMap(fn);
-    const auto dominators = computeDominators(fn, preds);
+    const auto dominators = ph::computeDominators(fn.blocks.size(), indexedPreds(fn, preds));
 
     for (std::size_t blockIndex = 0; blockIndex < fn.blocks.size(); ++blockIndex) {
         auto &block = fn.blocks[blockIndex];
@@ -632,7 +571,7 @@ static bool coalesceJoinPhiLoads(MFunction &fn, PeepholeStats &stats) {
         for (std::size_t predIndex : predIt->second) {
             if (predIndex < blockIndex)
                 continue;
-            if (!hasDomBit(dominators, predIndex, blockIndex))
+            if (!dominators.dominates(blockIndex, predIndex))
                 continue;
             const auto loopBlocks = collectNaturalLoopBlocks(fn, preds, blockIndex, predIndex);
             if (blocksContainCall(fn, loopBlocks)) {
@@ -763,39 +702,195 @@ static bool coalesceJoinPhiLoads(MFunction &fn, PeepholeStats &stats) {
     return changed;
 }
 
-} // namespace
+/// @brief Pass 4.8 — forward store/load pairs between layout-adjacent blocks.
+/// @details When block A ends with `str Rx, [fp, #off]` and its single successor
+///          B begins with `ldr Ry, [fp, #off]`, replace the load with `mov Ry, Rx`.
+///          Only triggers when B has exactly one predecessor (A); multi-predecessor
+///          joins are handled by other passes that prove all incoming paths agree.
+static void forwardLayoutSuccessorStoreLoad(MFunction &fn, PeepholeStats &stats) {
+    const auto preds = buildPredecessorMap(fn);
 
-PeepholeStats runPeephole(MFunction &fn, const TargetInfo *target) {
-    PeepholeStats stats;
+    for (std::size_t bi = 0; bi + 1 < fn.blocks.size(); ++bi) {
+        auto &predInstrs = fn.blocks[bi].instrs;
+        auto &succBlock = fn.blocks[bi + 1];
+        auto &succInstrs = succBlock.instrs;
 
-    // Pass 0: Reorder blocks for better code layout
-    stats.blocksReordered = static_cast<int>(ph::reorderBlocks(fn));
+        if (predInstrs.empty() || succInstrs.empty())
+            continue;
 
-    // Pass 0.5: Hoist loop-invariant MovRI out of loop bodies.
-    // LoopOpt now rejects merge-like headers, non-preheader entries, and uses
-    // that can observe the value before a dominating definition inside the loop.
-    stats.loopConstsHoisted = static_cast<int>(ph::hoistLoopConstants(fn));
+        // Only forward to blocks with exactly one real predecessor — including
+        // fallthrough edges — otherwise short-circuit boolean joins can be
+        // miscompiled by forwarding only one incoming value.
+        auto predIt = preds.find(succBlock.name);
+        if (predIt == preds.end() || predIt->second.size() != 1 ||
+            predIt->second.front() != bi)
+            continue;
 
-    // Pass 0.7: Cross-block dead spill-store elimination.
-    // Run after the local rewrites below so merged loads/stores are visible,
-    // but before the later block-pair forwarding stage mutates cross-block uses.
+        // Verify the layout predecessor actually reaches the successor; an
+        // unconditional branch to a DIFFERENT block disqualifies the fallthrough.
+        {
+            bool reachesSucc = false;
+            for (const auto &mi : predInstrs) {
+                if (mi.opc == MOpcode::Br && !mi.ops.empty() &&
+                    mi.ops[0].kind == MOperand::Kind::Label &&
+                    mi.ops[0].label == succBlock.name) {
+                    reachesSucc = true;
+                    break;
+                }
+                if ((mi.opc == MOpcode::BCond || mi.opc == MOpcode::Cbz ||
+                     mi.opc == MOpcode::Cbnz) &&
+                    mi.ops.size() >= 2 && mi.ops[1].kind == MOperand::Kind::Label &&
+                    mi.ops[1].label == succBlock.name) {
+                    reachesSucc = true;
+                    break;
+                }
+            }
+            if (!reachesSucc && !predInstrs.empty()) {
+                const auto &last = predInstrs.back();
+                if (last.opc != MOpcode::Br && last.opc != MOpcode::Ret)
+                    reachesSucc = true;
+            }
+            if (!reachesSucc)
+                continue;
+        }
 
-    // (Pass 0.6 - loop phi spill elimination - runs after Pass 4.8 below)
+        // Collect trailing FP-relative stores in the predecessor.
+        struct StoreInfo {
+            std::size_t idx;
+            MOperand srcReg;
+        };
 
+        std::unordered_map<int64_t, StoreInfo> endStores;
+
+        for (std::size_t i = predInstrs.size(); i-- > 0;) {
+            const auto &instr = predInstrs[i];
+
+            if (instr.opc == MOpcode::Br || instr.opc == MOpcode::BCond ||
+                instr.opc == MOpcode::Ret || instr.opc == MOpcode::Cbz ||
+                instr.opc == MOpcode::Cbnz)
+                continue;
+
+            if (instr.opc == MOpcode::StrRegFpImm && instr.ops.size() >= 2 &&
+                ph::isPhysReg(instr.ops[0]) && instr.ops[1].kind == MOperand::Kind::Imm) {
+                const int64_t off = instr.ops[1].imm;
+                if (endStores.find(off) == endStores.end())
+                    endStores[off] = {i, instr.ops[0]};
+                continue;
+            }
+
+            break; // Non-store, non-terminator: stop scanning backward.
+        }
+
+        if (endStores.empty())
+            continue;
+
+        struct PrefixLoad {
+            std::size_t idx;
+            MInstr instr;
+        };
+        struct ForwardPair {
+            std::size_t idx;
+            MOperand dstReg;
+            MOperand srcReg;
+        };
+
+        std::vector<PrefixLoad> prefixLoads;
+        for (std::size_t j = 0; j < succInstrs.size(); ++j) {
+            const auto &instr = succInstrs[j];
+            if (instr.opc != MOpcode::LdrRegFpImm)
+                break;
+            if (instr.ops.size() < 2 || !ph::isPhysReg(instr.ops[0]) ||
+                instr.ops[1].kind != MOperand::Kind::Imm)
+                break;
+            prefixLoads.push_back({j, instr});
+        }
+        if (prefixLoads.empty())
+            continue;
+
+        std::vector<ForwardPair> pending;
+        std::unordered_set<std::size_t> forwardedIdx;
+        pending.reserve(prefixLoads.size());
+        for (const auto &load : prefixLoads) {
+            const int64_t off = load.instr.ops[1].imm;
+            auto it = endStores.find(off);
+            if (it == endStores.end())
+                continue;
+            pending.push_back({load.idx, load.instr.ops[0], it->second.srcReg});
+        }
+        if (pending.empty())
+            continue;
+
+        // Greedy topological ordering — a destination cannot be overwritten
+        // before its value has been read elsewhere in the move set.
+        std::vector<ForwardPair> ordered;
+        ordered.reserve(pending.size());
+        while (!pending.empty()) {
+            auto readyIt = pending.end();
+            for (auto it = pending.begin(); it != pending.end(); ++it) {
+                const auto dstPhys = it->dstReg.reg.idOrPhys;
+                bool dstUsedAsSource = false;
+                for (auto jt = pending.begin(); jt != pending.end(); ++jt) {
+                    if (it == jt)
+                        continue;
+                    if (jt->srcReg.reg.idOrPhys == dstPhys) {
+                        dstUsedAsSource = true;
+                        break;
+                    }
+                }
+                if (!dstUsedAsSource) {
+                    readyIt = it;
+                    break;
+                }
+            }
+            if (readyIt == pending.end())
+                break; // Remaining copies form a cycle; keep their loads.
+            forwardedIdx.insert(readyIt->idx);
+            ordered.push_back(*readyIt);
+            pending.erase(readyIt);
+        }
+
+        if (ordered.empty())
+            continue;
+
+        std::vector<MInstr> newPrefix;
+        newPrefix.reserve(prefixLoads.size());
+        for (const auto &pair : ordered) {
+            if (pair.dstReg.reg.idOrPhys == pair.srcReg.reg.idOrPhys)
+                continue;
+            newPrefix.push_back(MInstr{MOpcode::MovRR, {pair.dstReg, pair.srcReg}});
+            ++stats.deadInstructionsRemoved;
+        }
+        for (const auto &load : prefixLoads) {
+            if (forwardedIdx.count(load.idx))
+                continue;
+            newPrefix.push_back(load.instr);
+        }
+
+        succInstrs.erase(succInstrs.begin(),
+                         succInstrs.begin() +
+                             static_cast<std::ptrdiff_t>(prefixLoads.back().idx + 1));
+        succInstrs.insert(succInstrs.begin(), newPrefix.begin(), newPrefix.end());
+    }
+}
+
+/// @brief Run the local per-block rewrite passes (formerly inline in `runPeephole`).
+/// @details Encompasses passes 0.9 through 4.6 — division strength reduction,
+///          constant-aware single-instruction rewrites, fusion (cbz, cset+branch,
+///          madd, ldp/stp), store/load forwarding, identity-move removal, and
+///          local DCE. Behaviour is unchanged from the original inline loop.
+static void runPerBlockRewrites(MFunction &fn,
+                                PeepholeStats &stats,
+                                const TargetInfo *target) {
     for (auto &block : fn.blocks) {
         auto &instrs = block.instrs;
         if (instrs.empty())
             continue;
 
         // Pass 0.9: Division/remainder strength reduction (multi-instruction patterns).
-        // This must run BEFORE Pass 1's single-instruction strength reduction,
-        // because Pass 1 converts UDIV->LSR which would break the UDIV+MSUB
-        // remainder pattern. Remainder fusion must see the original UDIV/SDIV.
+        // Must run BEFORE Pass 1's single-instruction strength reduction, because
+        // Pass 1 converts UDIV->LSR which would break the UDIV+MSUB remainder
+        // pattern. Remainder fusion must see the original UDIV/SDIV.
         {
-            // Track only dominating constants while walking forward. A full-block
-            // pre-scan lets later redefinitions leak backward into earlier div/rem
-            // patterns, which can rewrite `x / 3` as `x / 5` after the rhs register
-            // is reused later in the block.
             bool changed = true;
             while (changed) {
                 changed = false;
@@ -809,8 +904,6 @@ PeepholeStats runPeephole(MFunction &fn, const TargetInfo *target) {
                 }
             }
 
-            // Second pass: try standalone UDIV/SDIV strength reduction
-            // (only for divs not already consumed by remainder fusion)
             changed = true;
             while (changed) {
                 changed = false;
@@ -831,81 +924,53 @@ PeepholeStats runPeephole(MFunction &fn, const TargetInfo *target) {
             }
         }
 
-        // Pass 1: Build register constant map and apply rewrites
+        // Pass 1: Single-instruction constant-aware rewrites.
         ph::RegConstMap knownConsts;
         for (auto &instr : instrs) {
-            // Track constants loaded via MovRI
             ph::updateKnownConsts(instr, knownConsts);
-
-            // Try cmp reg, #0 -> tst reg, reg
             if (ph::tryCmpZeroToTst(instr, stats))
                 continue;
-
-            // Try arithmetic identity elimination (add #0, sub #0, shift #0)
             if (ph::tryArithmeticIdentity(instr, stats))
                 continue;
-
-            // Try strength reduction (mul power-of-2 -> shift, udiv power-of-2 -> lsr)
             (void)ph::tryStrengthReduction(instr, knownConsts, stats);
             (void)ph::tryDivStrengthReduction(instr, knownConsts, stats);
-
-            // Try immediate folding (add/sub RRR -> RI when operand is known const)
             (void)ph::tryImmediateFolding(instr, knownConsts, stats);
         }
 
-        // Pass 1.5: Copy propagation - replace uses with original sources
+        // Pass 1.5: Copy propagation.
         ph::propagateCopies(instrs, stats);
 
-        // Pass 1.6: CBZ/CBNZ fusion (cmp #0 + b.eq/ne -> cbz/cbnz)
+        // Pass 1.6 / 1.65 / 1.7 / 1.8: instruction-level fusions.
         for (std::size_t i = 0; i + 1 < instrs.size(); ++i) {
-            if (ph::tryCbzCbnzFusion(instrs, i, stats)) {
-                if (i > 0)
-                    --i;
-            }
+            if (ph::tryCbzCbnzFusion(instrs, i, stats) && i > 0)
+                --i;
         }
-
-        // Pass 1.65: Cset+cbnz/cbz -> b.cond fusion
         for (std::size_t i = 0; i < instrs.size(); ++i) {
-            if (ph::tryCsetBranchFusion(instrs, i, stats)) {
-                if (i > 0)
-                    --i;
-            }
+            if (ph::tryCsetBranchFusion(instrs, i, stats) && i > 0)
+                --i;
         }
-
-        // Pass 1.7: MADD fusion (mul + add -> madd)
         for (std::size_t i = 0; i + 1 < instrs.size(); ++i) {
-            if (ph::tryMaddFusion(instrs, i, stats)) {
-                if (i > 0)
-                    --i;
-            }
+            if (ph::tryMaddFusion(instrs, i, stats) && i > 0)
+                --i;
         }
-
-        // Pass 1.8: LDP/STP merging (consecutive ldr/str with adjacent offsets)
         for (std::size_t i = 0; i + 1 < instrs.size(); ++i) {
-            if (ph::tryLdpStpMerge(instrs, i, stats)) {
-                if (i > 0)
-                    --i;
-            }
+            if (ph::tryLdpStpMerge(instrs, i, stats) && i > 0)
+                --i;
         }
 
-        // Pass 1.85: Dead FP store elimination (str+str to same offset -> remove earlier)
+        // Pass 1.85 / 1.9 / 1.97: local store/load shuffling.
         ph::eliminateDeadFpStores(instrs, stats);
-
-        // Pass 1.9: Store-load forwarding (str+ldr at same FP offset -> mov)
         ph::forwardStoreLoads(instrs, stats);
-
-        // Pass 1.97: Compute-into-target fold (op Rd, ...; mov Rt, Rd -> op Rt, ...)
         ph::foldComputeIntoTarget(instrs, stats);
 
-        // Pass 2: Try to fold consecutive moves (including imm-then-move)
+        // Pass 2: Fold consecutive moves.
         for (std::size_t i = 0; i + 1 < instrs.size(); ++i) {
             if (!ph::tryFoldImmThenMove(instrs, i, stats))
                 (void)ph::tryFoldConsecutiveMoves(instrs, i, stats);
         }
 
-        // Pass 3: Mark identity moves for removal
+        // Pass 3+4: Mark and remove identity moves.
         std::vector<bool> toRemove(instrs.size(), false);
-
         for (std::size_t i = 0; i < instrs.size(); ++i) {
             if (ph::isIdentityMovRR(instrs[i])) {
                 toRemove[i] = true;
@@ -915,24 +980,79 @@ PeepholeStats runPeephole(MFunction &fn, const TargetInfo *target) {
                 ++stats.identityFMovesRemoved;
             }
         }
-
-        // Pass 4: Remove marked instructions
-        if (std::any_of(toRemove.begin(), toRemove.end(), [](bool v) { return v; })) {
+        if (std::any_of(toRemove.begin(), toRemove.end(), [](bool v) { return v; }))
             ph::removeMarkedInstructions(instrs, toRemove);
-        }
 
-        // Pass 4.5: Dead code elimination - remove instructions with unused results.
-        // The modular pipeline supplies TargetInfo and runs the CFG-aware variant
-        // after all blocks have been locally simplified. Direct unit tests keep
-        // the legacy per-block behaviour by omitting the target.
+        // Pass 4.5: Local DCE. The modular pipeline runs the CFG-aware variant
+        // post-block; direct unit tests (no target) keep the legacy per-block path.
         if (target == nullptr)
             ph::removeDeadInstructions(instrs, stats);
 
-        // Pass 4.6: Dead flag-setter elimination -- must run AFTER general DCE
-        // so that dead Cset/Csel instructions (which read flags) are removed
-        // first, exposing flag-setters whose results are truly unused.
+        // Pass 4.6: Dead flag-setter elimination AFTER DCE so dead readers of
+        // flags are gone before we judge a flag-setter unused.
         ph::removeDeadFlagSetters(instrs, stats);
     }
+}
+
+/// @brief Apply branch inversion and branch-to-next removal across the function.
+/// @details Shared by both `runPeephole` (final pass 5) and `runPostSchedulePeephole`:
+///          previously copy-pasted in two places.
+static void runBranchInversionAndCleanup(MFunction &fn, PeepholeStats &stats) {
+    for (std::size_t bi = 0; bi + 1 < fn.blocks.size(); ++bi) {
+        auto &block = fn.blocks[bi];
+        const auto &nextBlock = fn.blocks[bi + 1];
+
+        if (block.instrs.empty())
+            continue;
+
+        // Branch inversion: b.cond .Ltarget; b .Lfallthrough
+        // when .Ltarget == next block -> b.!cond .Lfallthrough (remove b .Lfallthrough)
+        if (block.instrs.size() >= 2) {
+            auto &secondLast = block.instrs[block.instrs.size() - 2];
+            auto &last = block.instrs[block.instrs.size() - 1];
+
+            if (secondLast.opc == MOpcode::BCond && secondLast.ops.size() == 2 &&
+                secondLast.ops[0].kind == MOperand::Kind::Cond &&
+                secondLast.ops[1].kind == MOperand::Kind::Label && last.opc == MOpcode::Br &&
+                last.ops.size() == 1 && last.ops[0].kind == MOperand::Kind::Label) {
+                if (secondLast.ops[1].label == nextBlock.name) {
+                    const char *inv = ph::invertCondition(secondLast.ops[0].cond);
+                    if (inv) {
+                        secondLast.ops[0] = MOperand::condOp(inv);
+                        secondLast.ops[1] = last.ops[0];
+                        block.instrs.pop_back();
+                        ++stats.branchInversions;
+                        continue;
+                    }
+                }
+            }
+        }
+
+        // Remove branches to the immediately following block.
+        if (ph::isBranchTo(block.instrs.back(), nextBlock.name)) {
+            block.instrs.pop_back();
+            ++stats.branchesToNextRemoved;
+        }
+    }
+}
+
+} // namespace
+
+PeepholeStats runPeephole(MFunction &fn, const TargetInfo *target) {
+    PeepholeStats stats;
+
+    // Pass 0: Reorder blocks for better code layout
+    stats.blocksReordered = static_cast<int>(ph::reorderBlocks(fn));
+
+    // Pass 0.5: Hoist loop-invariant MovRI out of loop bodies.
+    // LoopOpt now rejects merge-like headers, non-preheader entries, and uses
+    // that can observe the value before a dominating definition inside the loop.
+    stats.loopConstsHoisted = static_cast<int>(ph::hoistLoopConstants(fn));
+
+    // Passes 0.9 through 4.6: local per-block rewrites (division strength reduction,
+    // constant-aware rewrites, fusions, identity removal, local DCE/flag DCE).
+    // (Pass 0.6 — loop phi spill elimination — runs after Pass 4.8 below.)
+    runPerBlockRewrites(fn, stats, target);
 
     if (target != nullptr) {
         ph::removeDeadInstructionsCFG(fn, stats, *target);
@@ -943,185 +1063,9 @@ PeepholeStats runPeephole(MFunction &fn, const TargetInfo *target) {
     ph::eliminateDeadFpStoresCrossBlock(fn, stats);
 
     // Pass 4.8: Cross-block store-load forwarding for phi stores/loads.
-    // When block A ends with str Rx, [fp, #off] and its layout successor B
-    // starts with ldr Ry, [fp, #off], replace the load with mov Ry, Rx.
-    // This eliminates the store->load round-trip through the stack for block
-    // parameter passing (phi stores/loads from IL block params).
-    //
-    // SAFETY: Only forward when block B has exactly ONE predecessor (block A).
-    // If B has multiple predecessors, different paths may store different values
-    // to the same FP offset.
-    {
-        const auto preds = buildPredecessorMap(fn);
-
-        for (std::size_t bi = 0; bi + 1 < fn.blocks.size(); ++bi) {
-            auto &predInstrs = fn.blocks[bi].instrs;
-            auto &succBlock = fn.blocks[bi + 1];
-            auto &succInstrs = succBlock.instrs;
-
-            if (predInstrs.empty() || succInstrs.empty())
-                continue;
-
-            // Only forward to blocks with exactly one real predecessor. This
-            // must include fallthrough edges; otherwise short-circuit boolean
-            // joins can be miscompiled by forwarding only one incoming value.
-            auto predIt = preds.find(succBlock.name);
-            if (predIt == preds.end() || predIt->second.size() != 1 ||
-                predIt->second.front() != bi)
-                continue;
-
-            // Verify the layout predecessor actually reaches the successor.
-            // If block A ends with an unconditional branch to a DIFFERENT block,
-            // it does NOT fall through to the layout successor.
-            {
-                bool reachesSucc = false;
-                for (const auto &mi : predInstrs) {
-                    // Unconditional branch to successor
-                    if (mi.opc == MOpcode::Br && !mi.ops.empty() &&
-                        mi.ops[0].kind == MOperand::Kind::Label &&
-                        mi.ops[0].label == succBlock.name) {
-                        reachesSucc = true;
-                        break;
-                    }
-                    // Conditional branch to successor (fallthrough also possible)
-                    if ((mi.opc == MOpcode::BCond || mi.opc == MOpcode::Cbz ||
-                         mi.opc == MOpcode::Cbnz) &&
-                        mi.ops.size() >= 2 && mi.ops[1].kind == MOperand::Kind::Label &&
-                        mi.ops[1].label == succBlock.name) {
-                        reachesSucc = true;
-                        break;
-                    }
-                }
-                // Also check fallthrough: if last instruction is NOT an
-                // unconditional branch or ret, execution falls through.
-                if (!reachesSucc && !predInstrs.empty()) {
-                    const auto &last = predInstrs.back();
-                    if (last.opc != MOpcode::Br && last.opc != MOpcode::Ret)
-                        reachesSucc = true;
-                }
-                if (!reachesSucc)
-                    continue;
-            }
-
-            // Collect stores at the end of the predecessor block.
-            struct StoreInfo {
-                std::size_t idx;
-                MOperand srcReg;
-            };
-
-            std::unordered_map<int64_t, StoreInfo> endStores;
-
-            for (std::size_t i = predInstrs.size(); i-- > 0;) {
-                const auto &instr = predInstrs[i];
-
-                // Skip terminators
-                if (instr.opc == MOpcode::Br || instr.opc == MOpcode::BCond ||
-                    instr.opc == MOpcode::Ret || instr.opc == MOpcode::Cbz ||
-                    instr.opc == MOpcode::Cbnz)
-                    continue;
-
-                // Record FP-relative stores
-                if (instr.opc == MOpcode::StrRegFpImm && instr.ops.size() >= 2 &&
-                    ph::isPhysReg(instr.ops[0]) && instr.ops[1].kind == MOperand::Kind::Imm) {
-                    const int64_t off = instr.ops[1].imm;
-                    if (endStores.find(off) == endStores.end())
-                        endStores[off] = {i, instr.ops[0]};
-                    continue;
-                }
-
-                // Stop scanning at non-store, non-terminator
-                break;
-            }
-
-            if (endStores.empty())
-                continue;
-
-            struct PrefixLoad {
-                std::size_t idx;
-                MInstr instr;
-            };
-            struct ForwardPair {
-                std::size_t idx;
-                MOperand dstReg;
-                MOperand srcReg;
-            };
-
-            std::vector<PrefixLoad> prefixLoads;
-            for (std::size_t j = 0; j < succInstrs.size(); ++j) {
-                const auto &instr = succInstrs[j];
-                if (instr.opc != MOpcode::LdrRegFpImm)
-                    break;
-                if (instr.ops.size() < 2 || !ph::isPhysReg(instr.ops[0]) ||
-                    instr.ops[1].kind != MOperand::Kind::Imm)
-                    break;
-                prefixLoads.push_back({j, instr});
-            }
-            if (prefixLoads.empty())
-                continue;
-
-            std::vector<ForwardPair> pending;
-            std::unordered_set<std::size_t> forwardedIdx;
-            pending.reserve(prefixLoads.size());
-            for (const auto &load : prefixLoads) {
-                const int64_t off = load.instr.ops[1].imm;
-                auto it = endStores.find(off);
-                if (it == endStores.end())
-                    continue;
-                pending.push_back({load.idx, load.instr.ops[0], it->second.srcReg});
-            }
-            if (pending.empty())
-                continue;
-
-            std::vector<ForwardPair> ordered;
-            ordered.reserve(pending.size());
-            while (!pending.empty()) {
-                auto readyIt = pending.end();
-                for (auto it = pending.begin(); it != pending.end(); ++it) {
-                    const auto dstPhys = it->dstReg.reg.idOrPhys;
-                    bool dstUsedAsSource = false;
-                    for (auto jt = pending.begin(); jt != pending.end(); ++jt) {
-                        if (it == jt)
-                            continue;
-                        if (jt->srcReg.reg.idOrPhys == dstPhys) {
-                            dstUsedAsSource = true;
-                            break;
-                        }
-                    }
-                    if (!dstUsedAsSource) {
-                        readyIt = it;
-                        break;
-                    }
-                }
-                if (readyIt == pending.end())
-                    break; // Remaining copies form a cycle; keep their loads.
-                forwardedIdx.insert(readyIt->idx);
-                ordered.push_back(*readyIt);
-                pending.erase(readyIt);
-            }
-
-            if (ordered.empty())
-                continue;
-
-            std::vector<MInstr> newPrefix;
-            newPrefix.reserve(prefixLoads.size());
-            for (const auto &pair : ordered) {
-                if (pair.dstReg.reg.idOrPhys == pair.srcReg.reg.idOrPhys)
-                    continue;
-                newPrefix.push_back(MInstr{MOpcode::MovRR, {pair.dstReg, pair.srcReg}});
-                ++stats.deadInstructionsRemoved;
-            }
-            for (const auto &load : prefixLoads) {
-                if (forwardedIdx.count(load.idx))
-                    continue;
-                newPrefix.push_back(load.instr);
-            }
-
-            succInstrs.erase(succInstrs.begin(),
-                             succInstrs.begin() +
-                                 static_cast<std::ptrdiff_t>(prefixLoads.back().idx + 1));
-            succInstrs.insert(succInstrs.begin(), newPrefix.begin(), newPrefix.end());
-        }
-    }
+    // Forwards single-predecessor join blocks; multi-predecessor joins handled
+    // by passes 4.86 / 4.88 below.
+    forwardLayoutSuccessorStoreLoad(fn, stats);
 
     // Pass 4.86: Forward single-predecessor phi-entry loads from predecessor
     // edge stores when the edge is acyclic and the source register survives to
@@ -1158,44 +1102,7 @@ PeepholeStats runPeephole(MFunction &fn, const TargetInfo *target) {
     ph::eliminateDeadFpStoresCrossBlock(fn, stats);
 
     // Pass 5: Branch inversion and branch-to-next removal.
-    // This must be done after per-block passes since it looks at adjacent blocks.
-    for (std::size_t bi = 0; bi + 1 < fn.blocks.size(); ++bi) {
-        auto &block = fn.blocks[bi];
-        const auto &nextBlock = fn.blocks[bi + 1];
-
-        if (block.instrs.empty())
-            continue;
-
-        // Branch inversion: b.cond .Ltarget; b .Lfallthrough
-        // when .Ltarget == next block -> b.!cond .Lfallthrough (remove b .Lfallthrough)
-        if (block.instrs.size() >= 2) {
-            auto &secondLast = block.instrs[block.instrs.size() - 2];
-            auto &last = block.instrs[block.instrs.size() - 1];
-
-            if (secondLast.opc == MOpcode::BCond && secondLast.ops.size() == 2 &&
-                secondLast.ops[0].kind == MOperand::Kind::Cond &&
-                secondLast.ops[1].kind == MOperand::Kind::Label && last.opc == MOpcode::Br &&
-                last.ops.size() == 1 && last.ops[0].kind == MOperand::Kind::Label) {
-                if (secondLast.ops[1].label == nextBlock.name) {
-                    const char *inv = ph::invertCondition(secondLast.ops[0].cond);
-                    if (inv) {
-                        secondLast.ops[0] = MOperand::condOp(inv);
-                        secondLast.ops[1] = last.ops[0];
-                        block.instrs.pop_back();
-                        ++stats.branchInversions;
-                        continue;
-                    }
-                }
-            }
-        }
-
-        // Remove branches to the immediately following block
-        auto &lastInstr = block.instrs.back();
-        if (ph::isBranchTo(lastInstr, nextBlock.name)) {
-            block.instrs.pop_back();
-            ++stats.branchesToNextRemoved;
-        }
-    }
+    runBranchInversionAndCleanup(fn, stats);
 
     return stats;
 }
@@ -1233,36 +1140,7 @@ PeepholeStats runPostSchedulePeephole(MFunction &fn, const TargetInfo *target) {
         ph::removeDeadFlagSetters(instrs, stats);
     }
 
-    for (std::size_t bi = 0; bi + 1 < fn.blocks.size(); ++bi) {
-        auto &block = fn.blocks[bi];
-        const auto &nextBlock = fn.blocks[bi + 1];
-        if (block.instrs.empty())
-            continue;
-
-        if (block.instrs.size() >= 2) {
-            auto &secondLast = block.instrs[block.instrs.size() - 2];
-            auto &last = block.instrs[block.instrs.size() - 1];
-            if (secondLast.opc == MOpcode::BCond && secondLast.ops.size() == 2 &&
-                secondLast.ops[0].kind == MOperand::Kind::Cond &&
-                secondLast.ops[1].kind == MOperand::Kind::Label && last.opc == MOpcode::Br &&
-                last.ops.size() == 1 && last.ops[0].kind == MOperand::Kind::Label &&
-                secondLast.ops[1].label == nextBlock.name) {
-                const char *inv = ph::invertCondition(secondLast.ops[0].cond);
-                if (inv) {
-                    secondLast.ops[0] = MOperand::condOp(inv);
-                    secondLast.ops[1] = last.ops[0];
-                    block.instrs.pop_back();
-                    ++stats.branchInversions;
-                    continue;
-                }
-            }
-        }
-
-        if (ph::isBranchTo(block.instrs.back(), nextBlock.name)) {
-            block.instrs.pop_back();
-            ++stats.branchesToNextRemoved;
-        }
-    }
+    runBranchInversionAndCleanup(fn, stats);
 
     return stats;
 }

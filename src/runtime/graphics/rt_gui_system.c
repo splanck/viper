@@ -867,7 +867,9 @@ int64_t rt_app_was_close_requested(void *app) {
     rt_gui_app_t *gui_app = rt_app_checked(app);
     if (!gui_app)
         return 0;
-    return gui_app->close_requested;
+    int64_t requested = gui_app->close_requested ? 1 : 0;
+    gui_app->close_requested = 0;
+    return requested;
 }
 
 /// @brief Get the monitor width of the app.

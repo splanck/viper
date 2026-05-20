@@ -885,18 +885,21 @@ int64_t rt_codeeditor_was_gutter_clicked(void *editor) {
     if (!ce)
         return 0;
     int64_t result = ce->gutter_clicked ? 1 : 0;
-    if (result)
+    if (result) {
         ce->gutter_clicked = false; // Edge-triggered: clear after read
+        ce->gutter_clicked_line = -1;
+        ce->gutter_clicked_slot = -1;
+    }
     return result;
 }
 
 /// @brief `CodeEditor.GetGutterClickedLine` — line number of the most recent click.
 ///
-/// Returns -1 for NULL receiver or no click. Stale after `WasGutterClicked`
-/// reads/clears the flag.
+/// Returns -1 for NULL receiver or no unconsumed click. Read before
+/// `WasGutterClicked`, which consumes the click payload.
 int64_t rt_codeeditor_get_gutter_clicked_line(void *editor) {
     vg_codeeditor_t *ce = rt_codeeditor_handle_checked(editor);
-    if (!ce || ce->gutter_clicked_line < 0)
+    if (!ce || !ce->gutter_clicked || ce->gutter_clicked_line < 0)
         return -1;
     return ce->gutter_clicked_line;
 }
@@ -904,7 +907,7 @@ int64_t rt_codeeditor_get_gutter_clicked_line(void *editor) {
 /// @brief `CodeEditor.GetGutterClickedSlot` — slot index of the most recent click.
 int64_t rt_codeeditor_get_gutter_clicked_slot(void *editor) {
     vg_codeeditor_t *ce = rt_codeeditor_handle_checked(editor);
-    if (!ce || ce->gutter_clicked_slot < 0)
+    if (!ce || !ce->gutter_clicked || ce->gutter_clicked_slot < 0)
         return -1;
     return ce->gutter_clicked_slot;
 }

@@ -94,13 +94,12 @@ static rt_videowidget *videowidget_checked(void *obj) {
     return w && w->magic == RT_VIDEOWIDGET_MAGIC ? w : NULL;
 }
 
-/// @brief GC finalizer for a VideoWidget — disposes resources without destroying the
-///        widget tree, since the GUI tree has its own ownership chain.
-/// @details Passes `destroy_widget_tree = 0` because by the time the GC collects
-///   the VideoWidget the widget tree has already been torn down through the normal
-///   GUI destruction path. Destroying it a second time here would be a double-free.
+/// @brief GC finalizer for a VideoWidget.
+/// @details The wrapper owns the transport subtree it created. If user code
+///          drops the wrapper while the GUI tree is still attached, destroy the
+///          subtree so controls are not left orphaned with a released player.
 static void videowidget_finalizer(void *obj) {
-    videowidget_dispose((rt_videowidget *)obj, 0);
+    videowidget_dispose((rt_videowidget *)obj, 1);
 }
 
 /// @brief Release a GC-managed object if it exists, freeing it when the refcount drops to zero.
@@ -113,8 +112,7 @@ static void release_gc_object(void *obj) {
 /// @details Clears all widget pointers (image, controls, buttons, slider) to prevent
 ///   dangling references after disposal. When @p destroy_widget_tree is non-zero it
 ///   also calls `rt_widget_destroy` on the root, which tears down the entire GUI
-///   subtree — used during explicit `VideoWidget.Destroy` calls. GC-driven cleanup
-///   uses `destroy_widget_tree = 0` since the tree is already gone.
+///   subtree — used during explicit `VideoWidget.Destroy` calls and GC finalization.
 static void videowidget_dispose(rt_videowidget *w, int destroy_widget_tree) {
     if (!w || w->magic != RT_VIDEOWIDGET_MAGIC)
         return;
@@ -221,6 +219,7 @@ void *rt_videowidget_new(void *parent, void *path) {
         w->position_slider = rt_slider_new(w->controls_widget, 1);
         if (w->position_slider) {
             rt_widget_set_flex(w->position_slider, 1.0);
+            rt_slider_set_range(w->position_slider, 0.0, 1.0);
             rt_slider_set_value(w->position_slider, 0.0);
         }
     }
@@ -302,9 +301,11 @@ void rt_videowidget_update(void *obj, double dt) {
     if (isfinite(dt) && dt > 0.0)
         rt_videoplayer_update(w->player, dt);
 
-    /* Check for loop */
+    /* Check for natural end-of-video before auto-looping. Paused videos also
+       report !is_playing, so position must be at the end of the stream. */
     if (w->looping && rt_videoplayer_get_is_playing(w->player) == 0 &&
-        rt_videoplayer_get_position(w->player) > 0.0) {
+        rt_videoplayer_get_duration(w->player) > 0.0 &&
+        rt_videoplayer_get_position(w->player) >= rt_videoplayer_get_duration(w->player) - 0.001) {
         rt_videoplayer_stop(w->player);
         rt_videoplayer_play(w->player);
     }
@@ -418,6 +419,66 @@ double rt_videowidget_get_duration(void *obj) {
     if (!w)
         return 0.0;
     return w->player ? rt_videoplayer_get_duration(w->player) : 0.0;
+}
+
+void *rt_videowidget_get_root(void *obj) {
+    RT_ASSERT_MAIN_THREAD();
+    rt_videowidget *w = videowidget_checked(obj);
+    return w ? w->root_widget : NULL;
+}
+
+void rt_videowidget_set_visible(void *obj, int64_t visible) {
+    rt_videowidget *w = videowidget_checked(obj);
+    if (w && w->root_widget)
+        rt_widget_set_visible(w->root_widget, visible);
+}
+
+void rt_videowidget_set_enabled(void *obj, int64_t enabled) {
+    rt_videowidget *w = videowidget_checked(obj);
+    if (w && w->root_widget)
+        rt_widget_set_enabled(w->root_widget, enabled);
+}
+
+void rt_videowidget_set_size(void *obj, int64_t width, int64_t height) {
+    rt_videowidget *w = videowidget_checked(obj);
+    if (w && w->root_widget)
+        rt_widget_set_size(w->root_widget, width, height);
+}
+
+void rt_videowidget_set_preferred_size(void *obj, double width, double height) {
+    rt_videowidget *w = videowidget_checked(obj);
+    if (w && w->root_widget)
+        rt_widget_set_preferred_size(w->root_widget, width, height);
+}
+
+void rt_videowidget_set_max_size(void *obj, double width, double height) {
+    rt_videowidget *w = videowidget_checked(obj);
+    if (w && w->root_widget)
+        rt_widget_set_max_size(w->root_widget, width, height);
+}
+
+void rt_videowidget_set_flex(void *obj, double flex) {
+    rt_videowidget *w = videowidget_checked(obj);
+    if (w && w->root_widget)
+        rt_widget_set_flex(w->root_widget, flex);
+}
+
+void rt_videowidget_set_margin(void *obj, int64_t margin) {
+    rt_videowidget *w = videowidget_checked(obj);
+    if (w && w->root_widget)
+        rt_widget_set_margin(w->root_widget, margin);
+}
+
+void rt_videowidget_set_position(void *obj, int64_t x, int64_t y) {
+    rt_videowidget *w = videowidget_checked(obj);
+    if (w && w->root_widget)
+        rt_widget_set_position(w->root_widget, x, y);
+}
+
+void rt_videowidget_add_child(void *obj, void *child) {
+    rt_videowidget *w = videowidget_checked(obj);
+    if (w && w->root_widget)
+        rt_widget_add_child(w->root_widget, child);
 }
 
 #else

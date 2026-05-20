@@ -208,6 +208,156 @@ static bool cbrConsumesTemp(const il::core::BasicBlock &bb, unsigned tempId) {
 ///          labels per function (combined with the function name prefix).
 static thread_local unsigned trapLabelCounter;
 
+/// @brief Spill the entry-block parameters (function arguments) into stack slots
+///        and create vregs reloaded from those slots.
+/// @details Why spill immediately: ABI registers (x0-x7 / v0-v7) are caller-saved
+///          and will be clobbered by the first call in the function body. Loading
+///          each param into a vreg backed by its own spill slot means the value
+///          survives across calls without the allocator needing to know.
+///
+///          Uses `planParamClasses` (shared with x86_64) so register-vs-stack
+///          assignment matches the platform ABI exactly.
+static void spillEntryBlockParams(const il::core::Function &fn,
+                                  const il::core::BasicBlock &bbIn,
+                                  const TargetInfo &ti,
+                                  FrameBuilder &fb,
+                                  MBasicBlock &out,
+                                  std::unordered_map<unsigned, uint16_t> &tempVReg,
+                                  std::unordered_map<unsigned, RegClass> &tempRegClass,
+                                  std::unordered_map<unsigned, int> &funcParamSpillOffset,
+                                  uint16_t &nextVRegId) {
+    std::vector<viper::codegen::common::CallArgClass> paramClasses;
+    paramClasses.reserve(bbIn.params.size());
+    for (const auto &param : bbIn.params) {
+        paramClasses.push_back(param.type.kind == il::core::Type::Kind::F64
+                                   ? viper::codegen::common::CallArgClass::FPR
+                                   : viper::codegen::common::CallArgClass::GPR);
+    }
+    const auto layout = viper::codegen::common::planParamClasses(
+        paramClasses,
+        viper::codegen::common::CallArgLayoutConfig{
+            .maxGPRArgs = ti.intArgOrder.size(),
+            .maxFPRArgs = ti.f64ArgOrder.size(),
+            .slotModel = viper::codegen::common::CallSlotModel::IndependentRegisterBanks,
+            .variadicTailOnStack = fn.isVarArg && ti.usesStackVariadicTail(),
+            .numNamedArgs = paramClasses.size()});
+
+    for (std::size_t pi = 0; pi < bbIn.params.size(); ++pi) {
+        const auto &param = bbIn.params[pi];
+        const auto &loc = layout.locations[pi];
+        const RegClass cls = (loc.cls == viper::codegen::common::CallArgClass::FPR)
+                                 ? RegClass::FPR
+                                 : RegClass::GPR;
+
+        // Use param.id (not pi) for the spill key so it matches LivenessAnalysis's
+        // cross-block spill keys — otherwise entry-block and later-block reloads
+        // would point at different stack slots for the same parameter (BUG-005).
+        const int spillOffset = fb.ensureSpill(spillKeyForCrossBlockTemp(param.id));
+        funcParamSpillOffset[param.id] = spillOffset;
+
+        if (loc.inRegister) {
+            const PhysReg src = (cls == RegClass::FPR)
+                                    ? ti.f64ArgOrder[loc.regIndex]
+                                    : ti.intArgOrder[loc.regIndex];
+            const MOpcode storeOpc = (cls == RegClass::FPR) ? MOpcode::StrFprFpImm
+                                                            : MOpcode::StrRegFpImm;
+            out.instrs.push_back(MInstr{
+                storeOpc, {MOperand::regOp(src), MOperand::immOp(spillOffset)}});
+        } else {
+            // Stack parameter: caller placed it at [FP + 16 + slotIdx * 8] after
+            // our prologue (stp x29, x30, [sp, #-16]!; mov x29, sp). Round-trip
+            // through a vreg so the allocator chooses a non-conflicting scratch.
+            const int callerArgOffset = 16 + static_cast<int>(loc.stackSlotIndex) * 8;
+            const uint16_t tmpVid = allocateNextVReg(nextVRegId);
+            const MOpcode loadOpc = (cls == RegClass::FPR) ? MOpcode::LdrFprFpImm
+                                                           : MOpcode::LdrRegFpImm;
+            const MOpcode storeOpc = (cls == RegClass::FPR) ? MOpcode::StrFprFpImm
+                                                            : MOpcode::StrRegFpImm;
+            out.instrs.push_back(MInstr{
+                loadOpc,
+                {MOperand::vregOp(cls, tmpVid), MOperand::immOp(callerArgOffset)}});
+            out.instrs.push_back(MInstr{
+                storeOpc,
+                {MOperand::vregOp(cls, tmpVid), MOperand::immOp(spillOffset)}});
+        }
+
+        // Reload from the spill slot into a fresh vreg for first use.
+        const uint16_t vid = allocateNextVReg(nextVRegId);
+        tempVReg[param.id] = vid;
+        tempRegClass[param.id] = cls;
+        const MOpcode reloadOpc = (cls == RegClass::FPR) ? MOpcode::LdrFprFpImm
+                                                          : MOpcode::LdrRegFpImm;
+        out.instrs.push_back(MInstr{
+            reloadOpc, {MOperand::vregOp(cls, vid), MOperand::immOp(spillOffset)}});
+    }
+}
+
+/// @brief Walk the IL function and register each Alloca as a frame local.
+/// @details Populates @p fb with one local per Alloca and returns the set of
+///          temp ids that are allocas (used by liveness to exclude them from
+///          cross-block spilling).
+/// @throws std::out_of_range if any alloca size is out-of-range (<=0 or > INT_MAX).
+static std::unordered_set<unsigned> setupFrameLocals(const il::core::Function &fn,
+                                                     FrameBuilder &fb) {
+    std::unordered_set<unsigned> allocaTemps;
+    for (const auto &bb : fn.blocks) {
+        for (const auto &instr : bb.instructions) {
+            if (instr.op != il::core::Opcode::Alloca || !instr.result || instr.operands.empty())
+                continue;
+            if (instr.operands[0].kind != il::core::Value::Kind::ConstInt)
+                continue;
+            const long long rawSize = instr.operands[0].i64;
+            if (rawSize <= 0 || rawSize > std::numeric_limits<int>::max()) {
+                throw std::out_of_range("AArch64 codegen: alloca size must be in range "
+                                        "1..INT_MAX bytes");
+            }
+            const int size = static_cast<int>(rawSize);
+            fb.addLocal(*instr.result, size, kSlotSizeBytes);
+            allocaTemps.insert(*instr.result);
+        }
+    }
+    return allocaTemps;
+}
+
+/// @brief Assign canonical phi vregs and a dedicated spill slot per block parameter.
+/// @details Skips the entry block (its params come in via ABI registers); all other
+///          blocks get a vreg per param plus a stack slot so edges can spill their
+///          phi arguments before branching.
+struct PhiAssignment {
+    std::unordered_map<std::string, std::vector<uint16_t>> vregId;
+    std::unordered_map<std::string, std::vector<RegClass>> regClass;
+    std::unordered_map<std::string, std::vector<int>> spillOffset;
+};
+
+static PhiAssignment allocatePhiSlots(const il::core::Function &fn, FrameBuilder &fb) {
+    PhiAssignment out;
+    uint16_t phiNextId = kPhiVRegStart; // reserve a distinct vreg range
+    for (std::size_t bi = 1; bi < fn.blocks.size(); ++bi) {
+        const auto &bb = fn.blocks[bi];
+        if (bb.params.empty())
+            continue;
+        std::vector<uint16_t> ids;
+        std::vector<RegClass> classes;
+        std::vector<int> spillOffsets;
+        ids.reserve(bb.params.size());
+        classes.reserve(bb.params.size());
+        spillOffsets.reserve(bb.params.size());
+        for (const auto &param : bb.params) {
+            const uint16_t id = allocatePhiVReg(phiNextId);
+            ids.push_back(id);
+            const RegClass cls = (param.type.kind == il::core::Type::Kind::F64)
+                                     ? RegClass::FPR
+                                     : RegClass::GPR;
+            classes.push_back(cls);
+            spillOffsets.push_back(fb.ensureSpill(id));
+        }
+        out.vregId.emplace(bb.label, std::move(ids));
+        out.regClass.emplace(bb.label, std::move(classes));
+        out.spillOffset.emplace(bb.label, std::move(spillOffsets));
+    }
+    return out;
+}
+
 } // namespace
 
 std::optional<std::size_t> LowerILToMIR::knownVarArgNamedArgs(std::string_view callee) const {
@@ -240,64 +390,15 @@ MFunction LowerILToMIR::lowerFunction(const il::core::Function &fn) const {
 
     const auto &argOrder = ti_->intArgOrder;
 
-    // Build stack frame locals from allocas
-    // Track which temps are allocas so we can exclude them from cross-block spilling
-    std::unordered_set<unsigned> allocaTemps;
+    // Phase 1: Walk allocas → frame locals.
     FrameBuilder fb{mf};
-    for (const auto &bb : fn.blocks) {
-        for (const auto &instr : bb.instructions) {
-            if (instr.op == il::core::Opcode::Alloca && instr.result && !instr.operands.empty()) {
-                if (instr.operands[0].kind == il::core::Value::Kind::ConstInt) {
-                    const long long rawSize = instr.operands[0].i64;
-                    if (rawSize <= 0 || rawSize > std::numeric_limits<int>::max()) {
-                        throw std::out_of_range("AArch64 codegen: alloca size must be in range "
-                                                "1..INT_MAX bytes");
-                    }
-                    const int size = static_cast<int>(rawSize);
-                    fb.addLocal(*instr.result, size, kSlotSizeBytes);
-                    allocaTemps.insert(*instr.result);
-                }
-            }
-        }
-    }
+    const std::unordered_set<unsigned> allocaTemps = setupFrameLocals(fn, fb);
 
-    // Assign canonical vregs for block parameters (phi-elimination by edge moves).
-    // We use spill slots to pass values across block boundaries since the register
-    // allocator releases vreg→phys mappings at block ends.
-    // NOTE: Skip the entry block (bi == 0) - its params are function args passed via ABI registers.
-    std::unordered_map<std::string, std::vector<uint16_t>>
-        phiVregId; // block label -> vreg per param
-    std::unordered_map<std::string, std::vector<RegClass>>
-        phiRegClass; // block label -> reg class per param
-    std::unordered_map<std::string, std::vector<int>>
-        phiSpillOffset;                 // block label -> spill offset per param
-    uint16_t phiNextId = kPhiVRegStart; // reserve a distinct vreg range for phi temporaries
-    for (std::size_t bi = 1; bi < fn.blocks.size(); ++bi) // Start at 1, skip entry block
-    {
-        const auto &bb = fn.blocks[bi];
-        if (!bb.params.empty()) {
-            std::vector<uint16_t> ids;
-            std::vector<RegClass> classes;
-            std::vector<int> spillOffsets;
-            ids.reserve(bb.params.size());
-            classes.reserve(bb.params.size());
-            spillOffsets.reserve(bb.params.size());
-            for (std::size_t pi = 0; pi < bb.params.size(); ++pi) {
-                uint16_t id = allocatePhiVReg(phiNextId);
-                ids.push_back(id);
-                const auto &pt = bb.params[pi].type;
-                const RegClass cls =
-                    (pt.kind == il::core::Type::Kind::F64) ? RegClass::FPR : RegClass::GPR;
-                classes.push_back(cls);
-                // Allocate a dedicated spill slot for this phi value
-                int offset = fb.ensureSpill(id);
-                spillOffsets.push_back(offset);
-            }
-            phiVregId.emplace(bb.label, std::move(ids));
-            phiRegClass.emplace(bb.label, std::move(classes));
-            phiSpillOffset.emplace(bb.label, std::move(spillOffsets));
-        }
-    }
+    // Phase 2: Assign canonical phi vregs + spill slots for non-entry block params.
+    PhiAssignment phi = allocatePhiSlots(fn, fb);
+    auto &phiVregId = phi.vregId;
+    auto &phiRegClass = phi.regClass;
+    auto &phiSpillOffset = phi.spillOffset;
 
     // ===========================================================================
     // Global Liveness Analysis for Cross-Block Temps
@@ -375,106 +476,9 @@ MFunction LowerILToMIR::lowerFunction(const il::core::Function &fn) const {
         // Entry block (bi == 0): Spill function parameters to stack slots immediately.
         // This ensures parameters are preserved across function calls within the entry block.
         // ABI registers (x0-x7, v0-v7) are caller-saved and will be clobbered by calls.
-        if (bi == 0 && !bbIn.params.empty()) {
-            std::vector<viper::codegen::common::CallArgClass> paramClasses;
-            paramClasses.reserve(bbIn.params.size());
-            for (const auto &param : bbIn.params) {
-                paramClasses.push_back(param.type.kind == il::core::Type::Kind::F64
-                                           ? viper::codegen::common::CallArgClass::FPR
-                                           : viper::codegen::common::CallArgClass::GPR);
-            }
-            const auto layout = viper::codegen::common::planParamClasses(
-                paramClasses,
-                viper::codegen::common::CallArgLayoutConfig{
-                    .maxGPRArgs = ti_->intArgOrder.size(),
-                    .maxFPRArgs = ti_->f64ArgOrder.size(),
-                    .slotModel = viper::codegen::common::CallSlotModel::IndependentRegisterBanks,
-                    .variadicTailOnStack = fn.isVarArg && ti_->usesStackVariadicTail(),
-                    .numNamedArgs = paramClasses.size()});
-
-            for (std::size_t pi = 0; pi < bbIn.params.size(); ++pi) {
-                const auto &param = bbIn.params[pi];
-                const auto &loc = layout.locations[pi];
-                const RegClass cls = (loc.cls == viper::codegen::common::CallArgClass::FPR)
-                                         ? RegClass::FPR
-                                         : RegClass::GPR;
-
-                // Allocate spill slot for this parameter
-                // IMPORTANT: Use param.id (not pi index) to match LivenessAnalysis.cpp
-                // cross-block spill keys. Without this,
-                // the entry block and other blocks would use different spill slots for the
-                // same parameter, causing BUG-005 (BYREF parameters not working).
-                const int spillOffset = fb.ensureSpill(spillKeyForCrossBlockTemp(param.id));
-                funcParamSpillOffset[param.id] = spillOffset;
-
-                bool isStackParam = false;
-                PhysReg src{};
-                if (loc.inRegister) {
-                    if (cls == RegClass::FPR)
-                        src = ti_->f64ArgOrder[loc.regIndex];
-                    else
-                        src = ti_->intArgOrder[loc.regIndex];
-                } else {
-                    isStackParam = true;
-                }
-
-                if (isStackParam) {
-                    // Stack parameter: load from caller's outgoing arg area.
-                    // After prologue (stp x29, x30, [sp, #-16]!; mov x29, sp),
-                    // caller's stack args are at [FP + 16 + stackArgIdx * 8].
-                    const int callerArgOffset = 16 + static_cast<int>(loc.stackSlotIndex) * 8;
-
-                    // Load from caller's stack arg area into spill slot via a temporary
-                    // vreg. IMPORTANT: We must NOT use a hardcoded physical register here
-                    // because the register allocator may have assigned that register to a
-                    // vreg for an earlier parameter that is still live. Using a vreg lets
-                    // the allocator pick a non-conflicting physical register.
-                    if (cls == RegClass::FPR) {
-                        const uint16_t tmpVid = allocateNextVReg(nextVRegId);
-                        bbOutFn().instrs.push_back(MInstr{MOpcode::LdrFprFpImm,
-                                                          {MOperand::vregOp(RegClass::FPR, tmpVid),
-                                                           MOperand::immOp(callerArgOffset)}});
-                        bbOutFn().instrs.push_back(MInstr{MOpcode::StrFprFpImm,
-                                                          {MOperand::vregOp(RegClass::FPR, tmpVid),
-                                                           MOperand::immOp(spillOffset)}});
-                    } else {
-                        const uint16_t tmpVid = allocateNextVReg(nextVRegId);
-                        bbOutFn().instrs.push_back(MInstr{MOpcode::LdrRegFpImm,
-                                                          {MOperand::vregOp(RegClass::GPR, tmpVid),
-                                                           MOperand::immOp(callerArgOffset)}});
-                        bbOutFn().instrs.push_back(MInstr{MOpcode::StrRegFpImm,
-                                                          {MOperand::vregOp(RegClass::GPR, tmpVid),
-                                                           MOperand::immOp(spillOffset)}});
-                    }
-                } else {
-                    // Register parameter: store ABI register to spill slot
-                    if (cls == RegClass::FPR) {
-                        bbOutFn().instrs.push_back(
-                            MInstr{MOpcode::StrFprFpImm,
-                                   {MOperand::regOp(src), MOperand::immOp(spillOffset)}});
-                    } else {
-                        bbOutFn().instrs.push_back(
-                            MInstr{MOpcode::StrRegFpImm,
-                                   {MOperand::regOp(src), MOperand::immOp(spillOffset)}});
-                    }
-                }
-
-                // Create vreg for this param and load from spill slot
-                const uint16_t vid = allocateNextVReg(nextVRegId);
-                tempVReg[param.id] = vid;
-                tempRegClass[param.id] = cls;
-
-                if (cls == RegClass::FPR) {
-                    bbOutFn().instrs.push_back(MInstr{
-                        MOpcode::LdrFprFpImm,
-                        {MOperand::vregOp(RegClass::FPR, vid), MOperand::immOp(spillOffset)}});
-                } else {
-                    bbOutFn().instrs.push_back(MInstr{
-                        MOpcode::LdrRegFpImm,
-                        {MOperand::vregOp(RegClass::GPR, vid), MOperand::immOp(spillOffset)}});
-                }
-            }
-        }
+        if (bi == 0 && !bbIn.params.empty())
+            spillEntryBlockParams(fn, bbIn, *ti_, fb, bbOutFn(),
+                                  tempVReg, tempRegClass, funcParamSpillOffset, nextVRegId);
 
         // Load block parameters from spill slots into fresh vregs at block entry.
         // The edge copies store values to these spill slots before branching here.

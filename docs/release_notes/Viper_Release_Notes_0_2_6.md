@@ -15,7 +15,7 @@ An alpha-quality hardening cycle, not a feature release. The Zia frontend reache
 - **Memory, GC & threads ownership.** Validated `Retain`/`Release` wrappers; weak-ref CAS retain inside the GC lock; trap-safe finalizers; class-ID validation on every public threads / MessageBus entry; saturated wait deadlines on Win32 and POSIX.
 - **Crypto, TLS & IO security.** `Viper.Crypto.*` canonicalized (scrypt-SHA256, AES-GCM+AAD, approved-mode module, fixed-schedule ECDSA P-256); TLS enforces Key Usage / Basic Constraints / EKU and DNS-name limits; hardened temp-file, archive, and ZIP64 paths.
 - **Network protocol correctness.** Independent HPACK encode/decode tables, strict RFC 7230 `Transfer-Encoding` parsing (closes a request-smuggling avenue), WebSocket frame and close-code validation.
-- **Native toolchain becomes real.** All four object-file readers and three writers received multiple bounds-checking, alignment-UB, and reloc-correctness rounds; COFF, ELF, and Mach-O agree on the addend convention end-to-end; the `fe_zia` frontend is now native-linked into `zia`, with a broadened `rt_zia_*` completion bridge and keyboard/text-input plumbing carrying ViperIDE's IntelliSense / hover / diagnostics / symbols against the real semantic engine.
+- **Native toolchain becomes real.** All four object-file readers and three writers received multiple bounds-checking, alignment-UB, and reloc-correctness rounds, capped by a shared-helper consolidation that re-homes `readLE*`/`writeLE*`/`putLE*`/checked-arithmetic helpers and `physicalSymbolValue` into a single `ObjFileWriterUtil` header so future hardening rounds stay in sync across formats; COFF, ELF, and Mach-O agree on the addend convention end-to-end; the `fe_zia` frontend is now native-linked into `zia`, with a broadened `rt_zia_*` completion bridge and keyboard/text-input plumbing carrying ViperIDE's IntelliSense / hover / diagnostics / symbols against the real semantic engine.
 - **Toolchain installer completion.** Native-emitted Windows `.msi`/`.exe`, macOS `.pkg`, and Linux `.deb`/`.rpm`/tarball toolchain packages reach feature parity: PE32+ payload validation, ad-hoc-by-default macOS signing with optional Developer ID + notarization + stapling, Linux runtime/developer dependency advertisement, file-association registration on all three platforms, and deep post-build verification of every staged path.
 - **Standard-library namespace de-clutter (breaking).** Seven root modules re-home under their documented taxonomy: `Lazy`/`LazySeq` → `Viper.Functional`, `Machine`/`Environment`/`Exec` → `Viper.System`, `Log` → `Viper.Diagnostics`, `Fmt` → `Viper.Text`. No back-compat aliases; `Math`, `String`, `Terminal`, and the intrinsic `Option`/`Result`/`Error` stay at root.
 - **Backends, bytecode VM & Windows HiDPI.** x86-64 cross-block fold liveness + AT&T operand-class validation; AArch64 sub-word transfers, terminator/CFG, def-operand fixes; bytecode-VM two's-complement wrapping arithmetic and checked float→int traps; Windows physical-pixel sizing via `AdjustWindowRectExForDpi` and waitable-timer frame pacing.
@@ -26,13 +26,13 @@ An alpha-quality hardening cycle, not a feature release. The Zia frontend reache
 
 | Metric | v0.2.5 | v0.2.6 | Delta |
 |---|---|---|---|
-| Commits | — | 146 | +146 |
+| Commits | — | 148 | +148 |
 | Source files | 2,996 | 3,034 | +38 |
 | Production SLOC | 552K | 599K | +47K |
 | Test SLOC | 228K | 255K | +27K |
 | Demo SLOC | 188K | 189K | +1K |
 
-Counts via `scripts/count_sloc.sh` (production 599,473 / test 254,998 / demo 189,273 / source files 3,034).
+Counts via `scripts/count_sloc.sh` (production 599,454 / test 255,235 / demo 189,273 / source files 3,034).
 
 ---
 
@@ -161,6 +161,6 @@ Demos and docs tracked the runtime work above; stale Windows debug/O0 pins for C
 
 ### Commits
 
-See `git log 929a6d787..HEAD -- .` for the full 146-commit history since v0.2.5.
+See `git log 929a6d787..HEAD -- .` for the full 148-commit history since v0.2.5.
 
 <!-- END DRAFT -->

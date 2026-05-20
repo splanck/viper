@@ -1367,6 +1367,7 @@ void rt_gui_app_destroy(void *app_ptr) {
     free(app->title);
     app->title = NULL;
     if (app->root) {
+        rt_widget_forget_runtime_refs(app, app->root);
         vg_widget_destroy(app->root);
         app->root = NULL;
     }

@@ -263,6 +263,8 @@ typedef struct vg_treeview {
     vg_tree_node_t *selected;      ///< Currently selected node
     vg_tree_node_t *prev_selected; ///< Previous selection (for change detection)
     vg_tree_node_t *retired_nodes; ///< Detached stale node subtrees freed on tree destroy
+    uint64_t selection_revision;   ///< Incremented whenever logical selection changes
+    uint64_t reported_selection_revision; ///< Last selection revision reported to runtime callers
     vg_font_t *font;               ///< Font for rendering
     float font_size;               ///< Font size
 

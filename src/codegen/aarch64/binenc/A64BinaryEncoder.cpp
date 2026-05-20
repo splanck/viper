@@ -739,6 +739,62 @@ size_t A64BinaryEncoder::measureInstructionSize(
         return size_t{8};
     };
 
+    // Single source of truth for "given a load/store opcode, where is its
+    // immediate offset and how many bytes does it access?" This matches the
+    // shape consumed by encodeFpRelLdStInstr / encodeBaseRelLdStInstr, so the
+    // measurement loop and the emission loop cannot drift apart per-opcode.
+    struct LdStInfo {
+        size_t offsetOpIndex;
+        unsigned bytes;
+    };
+    auto classifyLdSt = [](MOpcode opc) -> std::optional<LdStInfo> {
+        switch (opc) {
+            // FP-relative, single-width-8.
+            case MOpcode::LdrRegFpImm:
+            case MOpcode::PhiStoreGPR:
+            case MOpcode::StrRegFpImm:
+            case MOpcode::LdrFprFpImm:
+            case MOpcode::PhiStoreFPR:
+            case MOpcode::StrFprFpImm:
+                return LdStInfo{1, 8};
+            // FP-relative narrow widths.
+            case MOpcode::Ldr8RegFpImm:
+            case MOpcode::Str8RegFpImm:
+                return LdStInfo{1, 1};
+            case MOpcode::Ldr16RegFpImm:
+            case MOpcode::Str16RegFpImm:
+                return LdStInfo{1, 2};
+            case MOpcode::Ldr32RegFpImm:
+            case MOpcode::Str32RegFpImm:
+                return LdStInfo{1, 4};
+            // Base-relative, single-width-8.
+            case MOpcode::LdrRegBaseImm:
+            case MOpcode::StrRegBaseImm:
+            case MOpcode::LdrFprBaseImm:
+            case MOpcode::StrFprBaseImm:
+                return LdStInfo{2, 8};
+            // Base-relative narrow widths.
+            case MOpcode::Ldr8RegBaseImm:
+            case MOpcode::Str8RegBaseImm:
+                return LdStInfo{2, 1};
+            case MOpcode::Ldr16RegBaseImm:
+            case MOpcode::Str16RegBaseImm:
+                return LdStInfo{2, 2};
+            case MOpcode::Ldr32RegBaseImm:
+            case MOpcode::Str32RegBaseImm:
+                return LdStInfo{2, 4};
+            default:
+                return std::nullopt;
+        }
+    };
+
+    if (const auto info = classifyLdSt(mi.opc)) {
+        const long long offset = getImm(mi.ops[info->offsetOpIndex]);
+        return scalarLdStSizeForOffset(offset, info->bytes) != 0
+                   ? size_t{4}
+                   : largeOffsetLdStSize(offset);
+    }
+
     switch (mi.opc) {
         case MOpcode::Ret:
             return skipFrame_ ? 4 : epilogueSize(*currentFn_);
@@ -754,56 +810,6 @@ size_t A64BinaryEncoder::measureInstructionSize(
                 return 4;
             return movImm64Size(static_cast<uint64_t>(imm)) + 4;
         }
-
-        case MOpcode::LdrRegFpImm:
-        case MOpcode::PhiStoreGPR:
-        case MOpcode::StrRegFpImm:
-        case MOpcode::LdrFprFpImm:
-        case MOpcode::PhiStoreFPR:
-        case MOpcode::StrFprFpImm:
-            return scalarLdStSizeForOffset(getImm(mi.ops[1]), 8) != 0
-                       ? 4
-                       : largeOffsetLdStSize(getImm(mi.ops[1]));
-
-        case MOpcode::Ldr8RegFpImm:
-        case MOpcode::Str8RegFpImm:
-            return scalarLdStSizeForOffset(getImm(mi.ops[1]), 1) != 0
-                       ? 4
-                       : largeOffsetLdStSize(getImm(mi.ops[1]));
-        case MOpcode::Ldr16RegFpImm:
-        case MOpcode::Str16RegFpImm:
-            return scalarLdStSizeForOffset(getImm(mi.ops[1]), 2) != 0
-                       ? 4
-                       : largeOffsetLdStSize(getImm(mi.ops[1]));
-        case MOpcode::Ldr32RegFpImm:
-        case MOpcode::Str32RegFpImm:
-            return scalarLdStSizeForOffset(getImm(mi.ops[1]), 4) != 0
-                       ? 4
-                       : largeOffsetLdStSize(getImm(mi.ops[1]));
-
-        case MOpcode::LdrRegBaseImm:
-        case MOpcode::StrRegBaseImm:
-        case MOpcode::LdrFprBaseImm:
-        case MOpcode::StrFprBaseImm:
-            return scalarLdStSizeForOffset(getImm(mi.ops[2]), 8) != 0
-                       ? 4
-                       : largeOffsetLdStSize(getImm(mi.ops[2]));
-
-        case MOpcode::Ldr8RegBaseImm:
-        case MOpcode::Str8RegBaseImm:
-            return scalarLdStSizeForOffset(getImm(mi.ops[2]), 1) != 0
-                       ? 4
-                       : largeOffsetLdStSize(getImm(mi.ops[2]));
-        case MOpcode::Ldr16RegBaseImm:
-        case MOpcode::Str16RegBaseImm:
-            return scalarLdStSizeForOffset(getImm(mi.ops[2]), 2) != 0
-                       ? 4
-                       : largeOffsetLdStSize(getImm(mi.ops[2]));
-        case MOpcode::Ldr32RegBaseImm:
-        case MOpcode::Str32RegBaseImm:
-            return scalarLdStSizeForOffset(getImm(mi.ops[2]), 4) != 0
-                       ? 4
-                       : largeOffsetLdStSize(getImm(mi.ops[2]));
 
         case MOpcode::LdpRegFpImm:
         case MOpcode::StpRegFpImm:
@@ -1175,46 +1181,44 @@ void A64BinaryEncoder::encodePrologue(const MFunction &fn, objfile::CodeSection 
     const uint32_t fp = hwGPR(PhysReg::X29);
     const uint32_t lr = hwGPR(PhysReg::X30);
 
-    // Sign LR with SP before saving (Pointer Authentication, ARMv8.3+).
-    // Executes as NOP on older hardware.
-    if (currentAbi_ == ABIFormat::Darwin)
-        emit32(kPaciasp, cs);
-
-    // stp x29, x30, [sp, #-16]!  (pre-indexed, -16/8 = -2)
-    emit32(encodePair(kStpGprPre, fp, lr, sp, static_cast<int32_t>(-16 / 8)), cs);
-
-    // mov x29, sp  →  add x29, sp, #0
-    emit32(encodeAddSubImm(kAddRI, fp, sp, 0), cs);
-
-    // Allocate local frame.
-    if (fn.localFrameSize > 0)
-        encodeSubSp(fn.localFrameSize, cs);
-
-    // Save callee-saved GPRs (shared iteration logic).
-    forEachSaveReg(
-        fn.savedGPRs,
-        [&](PhysReg r0, PhysReg r1) {
-            emit32(encodePair(kStpGprPre, hwGPR(r0), hwGPR(r1), sp, static_cast<int32_t>(-16 / 8)),
-                   cs);
-        },
-        [&](PhysReg r0) {
-            emit32(kStrGprPre | ((static_cast<uint32_t>(-16) & 0x1FF) << 12) | (sp << 5) |
-                       hwGPR(r0),
-                   cs);
-        });
-
-    // Save callee-saved FPRs.
-    forEachSaveReg(
-        fn.savedFPRs,
-        [&](PhysReg r0, PhysReg r1) {
-            emit32(encodePair(kStpFprPre, hwFPR(r0), hwFPR(r1), sp, static_cast<int32_t>(-16 / 8)),
-                   cs);
-        },
-        [&](PhysReg r0) {
-            emit32(kStrFprPre | ((static_cast<uint32_t>(-16) & 0x1FF) << 12) | (sp << 5) |
-                       hwFPR(r0),
-                   cs);
-        });
+    // Step emitter for binary output — each step corresponds one-to-one with a
+    // call in FrameCodegen.hpp::iteratePrologue.
+    struct Steps {
+        A64BinaryEncoder &self;
+        objfile::CodeSection &cs;
+        uint32_t sp;
+        uint32_t fp;
+        uint32_t lr;
+        void paciasp() const { self.emit32(kPaciasp, cs); }
+        void stpFpLrPre() const {
+            self.emit32(encodePair(kStpGprPre, fp, lr, sp, static_cast<int32_t>(-16 / 8)), cs);
+        }
+        void movFpSp() const { self.emit32(encodeAddSubImm(kAddRI, fp, sp, 0), cs); }
+        void subSp(int32_t n) const { self.encodeSubSp(n, cs); }
+        void stpGprPair(PhysReg r0, PhysReg r1) const {
+            self.emit32(encodePair(kStpGprPre, hwGPR(r0), hwGPR(r1), sp,
+                                   static_cast<int32_t>(-16 / 8)),
+                        cs);
+        }
+        void strGprSingle(PhysReg r0) const {
+            self.emit32(kStrGprPre | ((static_cast<uint32_t>(-16) & 0x1FF) << 12) |
+                            (sp << 5) | hwGPR(r0),
+                        cs);
+        }
+        void stpFprPair(PhysReg r0, PhysReg r1) const {
+            self.emit32(encodePair(kStpFprPre, hwFPR(r0), hwFPR(r1), sp,
+                                   static_cast<int32_t>(-16 / 8)),
+                        cs);
+        }
+        void strFprSingle(PhysReg r0) const {
+            self.emit32(kStrFprPre | ((static_cast<uint32_t>(-16) & 0x1FF) << 12) |
+                            (sp << 5) | hwFPR(r0),
+                        cs);
+        }
+    };
+    iteratePrologue(fn.savedGPRs, fn.savedFPRs, fn.localFrameSize,
+                    currentAbi_ == ABIFormat::Darwin,
+                    Steps{*this, cs, sp, fp, lr});
 }
 
 void A64BinaryEncoder::encodeEpilogue(const MFunction &fn, objfile::CodeSection &cs) {
@@ -1222,42 +1226,38 @@ void A64BinaryEncoder::encodeEpilogue(const MFunction &fn, objfile::CodeSection 
     const uint32_t fp = hwGPR(PhysReg::X29);
     const uint32_t lr = hwGPR(PhysReg::X30);
 
-    // Restore callee-saved FPRs (reverse order, shared iteration logic).
-    forEachRestoreReg(
-        fn.savedFPRs,
-        [&](PhysReg r0, PhysReg r1) {
-            emit32(encodePair(kLdpFprPost, hwFPR(r0), hwFPR(r1), sp, static_cast<int32_t>(16 / 8)),
-                   cs);
-        },
-        [&](PhysReg r0) {
-            emit32(kLdrFprPost | ((16u & 0x1FF) << 12) | (sp << 5) | hwFPR(r0), cs);
-        });
-
-    // Restore callee-saved GPRs (reverse order).
-    forEachRestoreReg(
-        fn.savedGPRs,
-        [&](PhysReg r0, PhysReg r1) {
-            emit32(encodePair(kLdpGprPost, hwGPR(r0), hwGPR(r1), sp, static_cast<int32_t>(16 / 8)),
-                   cs);
-        },
-        [&](PhysReg r0) {
-            emit32(kLdrGprPost | ((16u & 0x1FF) << 12) | (sp << 5) | hwGPR(r0), cs);
-        });
-
-    // Deallocate local frame.
-    if (fn.localFrameSize > 0)
-        encodeAddSp(fn.localFrameSize, cs);
-
-    // ldp x29, x30, [sp], #16  → post-indexed, imm7 = 16/8 = 2
-    emit32(encodePair(kLdpGprPost, fp, lr, sp, static_cast<int32_t>(16 / 8)), cs);
-
-    // Verify LR signature before return (Pointer Authentication, ARMv8.3+).
-    // Executes as NOP on older hardware.
-    if (currentAbi_ == ABIFormat::Darwin)
-        emit32(kAutiasp, cs);
-
-    // ret
-    emit32(kRet, cs);
+    struct Steps {
+        A64BinaryEncoder &self;
+        objfile::CodeSection &cs;
+        uint32_t sp;
+        uint32_t fp;
+        uint32_t lr;
+        void ldpFprPair(PhysReg r0, PhysReg r1) const {
+            self.emit32(encodePair(kLdpFprPost, hwFPR(r0), hwFPR(r1), sp,
+                                   static_cast<int32_t>(16 / 8)),
+                        cs);
+        }
+        void ldrFprSingle(PhysReg r0) const {
+            self.emit32(kLdrFprPost | ((16u & 0x1FF) << 12) | (sp << 5) | hwFPR(r0), cs);
+        }
+        void ldpGprPair(PhysReg r0, PhysReg r1) const {
+            self.emit32(encodePair(kLdpGprPost, hwGPR(r0), hwGPR(r1), sp,
+                                   static_cast<int32_t>(16 / 8)),
+                        cs);
+        }
+        void ldrGprSingle(PhysReg r0) const {
+            self.emit32(kLdrGprPost | ((16u & 0x1FF) << 12) | (sp << 5) | hwGPR(r0), cs);
+        }
+        void addSp(int32_t n) const { self.encodeAddSp(n, cs); }
+        void ldpFpLrPost() const {
+            self.emit32(encodePair(kLdpGprPost, fp, lr, sp, static_cast<int32_t>(16 / 8)), cs);
+        }
+        void autiasp() const { self.emit32(kAutiasp, cs); }
+        void ret() const { self.emit32(kRet, cs); }
+    };
+    iterateEpilogue(fn.savedGPRs, fn.savedFPRs, fn.localFrameSize,
+                    currentAbi_ == ABIFormat::Darwin,
+                    Steps{*this, cs, sp, fp, lr});
 }
 
 void A64BinaryEncoder::recordWindowsArm64UnwindEntry(const MFunction &fn,
@@ -1622,7 +1622,7 @@ void A64BinaryEncoder::encodeInstruction(const MInstr &mi, objfile::CodeSection 
     }
 
     switch (mi.opc) {
-        // ─── Ret (triggers epilogue synthesis) ───
+        // ─── Ret (triggers epilogue synthesis) — kept inline because tiny ───
         case MOpcode::Ret:
             if (skipFrame_)
                 emit32(kRet, cs);
@@ -1630,337 +1630,339 @@ void A64BinaryEncoder::encodeInstruction(const MInstr &mi, objfile::CodeSection 
                 encodeEpilogue(*currentFn_, cs);
             return;
 
-        // ─── Add/Sub Immediate ───
         case MOpcode::AddRI:
         case MOpcode::SubRI:
         case MOpcode::AddsRI:
-        case MOpcode::SubsRI: {
-            const uint32_t rd = hwGPR(getReg(mi.ops[0]));
-            const uint32_t rn = hwGPR(getReg(mi.ops[1]));
-            const long long immValue = getImm(mi.ops[2]);
-            const uint64_t imm = absImmUnsigned(immValue);
-            const auto enc = classifyAddSubImmEncoding(imm);
-            if (!enc.has_value()) {
-                throw std::runtime_error(
-                    "AArch64 binary encoder: " + std::string(opcodeName(mi.opc)) +
-                    " immediate reached encoder without legalization");
-            }
-            uint32_t tmpl = kAddRI;
-            switch (mi.opc) {
-                case MOpcode::AddRI:
-                    tmpl = immValue < 0 ? kSubRI : kAddRI;
-                    break;
-                case MOpcode::SubRI:
-                    tmpl = immValue < 0 ? kAddRI : kSubRI;
-                    break;
-                case MOpcode::AddsRI:
-                    tmpl = immValue < 0 ? kSubsRI : kAddsRI;
-                    break;
-                case MOpcode::SubsRI:
-                    tmpl = immValue < 0 ? kAddsRI : kSubsRI;
-                    break;
-                default:
-                    break;
-            }
-            emit32(enc->shift12 ? encodeAddSubImmShift(tmpl, rd, rn, enc->imm12)
-                                : encodeAddSubImm(tmpl, rd, rn, enc->imm12),
-                   cs);
+        case MOpcode::SubsRI:
+            encodeAddSubImmInstr(mi, cs);
             return;
-        }
 
-        // ─── Move ───
         case MOpcode::MovRR:
-            // orr Xd, XZR, Xm
-            emit32(kMovRR | (hwGPR(getReg(mi.ops[1])) << 16) | hwGPR(getReg(mi.ops[0])), cs);
+        case MOpcode::MovRI:
+            encodeMoveInstr(mi, cs);
             return;
-        case MOpcode::MovRI: {
-            long long imm = getImm(mi.ops[1]);
-            uint32_t rd = hwGPR(getReg(mi.ops[0]));
-            if (!needsWideImmSequence(imm)) {
-                if (imm < 0) {
-                    // MOVN Xd, #(~imm & 0xFFFF) — inverts all 64 bits to produce the negative
-                    // value.
-                    emit32(kMovN | (static_cast<uint32_t>(~imm & 0xFFFF) << 5) | rd, cs);
-                } else {
-                    // MOVZ Xd, #imm16 — zero-extends the 16-bit immediate.
-                    emit32(kMovZ | (static_cast<uint32_t>(imm & 0xFFFF) << 5) | rd, cs);
-                }
-            } else {
-                encodeMovImm64(rd, static_cast<uint64_t>(imm), cs);
-            }
-            return;
-        }
 
-        // ─── Shift by Immediate ───
+        case MOpcode::LslRI:
+        case MOpcode::LsrRI:
+        case MOpcode::AsrRI:
+            encodeShiftImmInstr(mi, cs);
+            return;
+
+        case MOpcode::CmpRR:
+        case MOpcode::CmpRI:
+        case MOpcode::TstRR:
+            encodeCompareInstr(mi, cs);
+            return;
+
+        case MOpcode::Cset:
+        case MOpcode::Csel:
+            encodeConditionalInstr(mi, cs);
+            return;
+
+        case MOpcode::LdrRegFpImm:
+        case MOpcode::PhiStoreGPR:
+        case MOpcode::StrRegFpImm:
+        case MOpcode::Ldr8RegFpImm:
+        case MOpcode::Ldr16RegFpImm:
+        case MOpcode::Ldr32RegFpImm:
+        case MOpcode::Str8RegFpImm:
+        case MOpcode::Str16RegFpImm:
+        case MOpcode::Str32RegFpImm:
+        case MOpcode::LdrFprFpImm:
+        case MOpcode::PhiStoreFPR:
+        case MOpcode::StrFprFpImm:
+            encodeFpRelLdStInstr(mi, cs);
+            return;
+
+        case MOpcode::LdrRegBaseImm:
+        case MOpcode::StrRegBaseImm:
+        case MOpcode::Ldr8RegBaseImm:
+        case MOpcode::Ldr16RegBaseImm:
+        case MOpcode::Ldr32RegBaseImm:
+        case MOpcode::Str8RegBaseImm:
+        case MOpcode::Str16RegBaseImm:
+        case MOpcode::Str32RegBaseImm:
+        case MOpcode::LdrFprBaseImm:
+        case MOpcode::StrFprBaseImm:
+            encodeBaseRelLdStInstr(mi, cs);
+            return;
+
+        case MOpcode::LdpRegFpImm:
+        case MOpcode::StpRegFpImm:
+        case MOpcode::LdpFprFpImm:
+        case MOpcode::StpFprFpImm:
+            encodeLdStPairInstr(mi, cs);
+            return;
+
+        case MOpcode::SubSpImm:
+        case MOpcode::AddSpImm:
+        case MOpcode::StrRegSpImm:
+        case MOpcode::StrFprSpImm:
+            encodeSpOpInstr(mi, cs);
+            return;
+
+        case MOpcode::AddFpImm:
+            encodeAddFpImmInstr(mi, cs);
+            return;
+
+        case MOpcode::AndRI:
+        case MOpcode::OrrRI:
+        case MOpcode::EorRI:
+            encodeLogicalImmInstr(mi, cs);
+            return;
+
+        case MOpcode::FCmpRR:
+        case MOpcode::FMovRR:
+        case MOpcode::FRintN:
+        case MOpcode::FMovRI:
+            encodeFpSpecialInstr(mi, cs);
+            return;
+
+        case MOpcode::Br:
+        case MOpcode::BCond:
+        case MOpcode::Cbz:
+        case MOpcode::Cbnz:
+        case MOpcode::Bl:
+        case MOpcode::Blr:
+            encodeBranchInstr(mi, cs);
+            return;
+
+        case MOpcode::AdrPage:
+        case MOpcode::AddPageOff:
+            encodeAddressInstr(mi, cs);
+            return;
+
+        // ─── Pseudo-instructions that should have been expanded ───
+        case MOpcode::AddOvfRRR:
+        case MOpcode::SubOvfRRR:
+        case MOpcode::AddOvfRI:
+        case MOpcode::SubOvfRI:
+        case MOpcode::MulOvfRRR:
+            throw std::runtime_error("AArch64 binary encoder: overflow pseudo-op '" +
+                                     std::string(opcodeName(mi.opc)) +
+                                     "' reached binary emission before LowerOvf");
+
+        default:
+            break;
+    }
+    throw std::runtime_error("AArch64 binary encoder: unhandled opcode '" +
+                             std::string(opcodeName(mi.opc)) + "'");
+}
+
+// ─── Per-family encoder definitions ────────────────────────────────────────
+
+void A64BinaryEncoder::encodeAddSubImmInstr(const MInstr &mi, objfile::CodeSection &cs) {
+    const uint32_t rd = hwGPR(getReg(mi.ops[0]));
+    const uint32_t rn = hwGPR(getReg(mi.ops[1]));
+    const long long immValue = getImm(mi.ops[2]);
+    const uint64_t imm = absImmUnsigned(immValue);
+    const auto enc = classifyAddSubImmEncoding(imm);
+    if (!enc.has_value()) {
+        throw std::runtime_error(
+            "AArch64 binary encoder: " + std::string(opcodeName(mi.opc)) +
+            " immediate reached encoder without legalization");
+    }
+    uint32_t tmpl = kAddRI;
+    switch (mi.opc) {
+        case MOpcode::AddRI:  tmpl = immValue < 0 ? kSubRI  : kAddRI;  break;
+        case MOpcode::SubRI:  tmpl = immValue < 0 ? kAddRI  : kSubRI;  break;
+        case MOpcode::AddsRI: tmpl = immValue < 0 ? kSubsRI : kAddsRI; break;
+        case MOpcode::SubsRI: tmpl = immValue < 0 ? kAddsRI : kSubsRI; break;
+        default: break;
+    }
+    emit32(enc->shift12 ? encodeAddSubImmShift(tmpl, rd, rn, enc->imm12)
+                        : encodeAddSubImm(tmpl, rd, rn, enc->imm12),
+           cs);
+}
+
+void A64BinaryEncoder::encodeMoveInstr(const MInstr &mi, objfile::CodeSection &cs) {
+    if (mi.opc == MOpcode::MovRR) {
+        // orr Xd, XZR, Xm
+        emit32(kMovRR | (hwGPR(getReg(mi.ops[1])) << 16) | hwGPR(getReg(mi.ops[0])), cs);
+        return;
+    }
+    // MovRI: small immediates use MOVZ/MOVN directly; wide values fall through
+    // to the movz+movk sequence in encodeMovImm64.
+    const long long imm = getImm(mi.ops[1]);
+    const uint32_t rd = hwGPR(getReg(mi.ops[0]));
+    if (!needsWideImmSequence(imm)) {
+        if (imm < 0) {
+            emit32(kMovN | (static_cast<uint32_t>(~imm & 0xFFFF) << 5) | rd, cs);
+        } else {
+            emit32(kMovZ | (static_cast<uint32_t>(imm & 0xFFFF) << 5) | rd, cs);
+        }
+    } else {
+        encodeMovImm64(rd, static_cast<uint64_t>(imm), cs);
+    }
+}
+
+void A64BinaryEncoder::encodeShiftImmInstr(const MInstr &mi, objfile::CodeSection &cs) {
+    const uint32_t rd = hwGPR(getReg(mi.ops[0]));
+    const uint32_t rn = hwGPR(getReg(mi.ops[1]));
+    const uint32_t sh = checkedShiftAmount(getImm(mi.ops[2]),
+                                           mi.opc == MOpcode::LslRI ? "lsl"
+                                           : mi.opc == MOpcode::LsrRI ? "lsr" : "asr");
+    switch (mi.opc) {
         case MOpcode::LslRI: {
-            uint32_t rd = hwGPR(getReg(mi.ops[0]));
-            uint32_t rn = hwGPR(getReg(mi.ops[1]));
-            uint32_t sh = checkedShiftAmount(getImm(mi.ops[2]), "lsl");
             // lsl is ubfm Xd, Xn, #(64-n)&63, #(63-n)
-            uint32_t immr = (64 - sh) & 63;
-            uint32_t imms = 63 - sh;
+            const uint32_t immr = (64 - sh) & 63;
+            const uint32_t imms = 63 - sh;
             emit32(kUbfm | (immr << 16) | (imms << 10) | (rn << 5) | rd, cs);
             return;
         }
-        case MOpcode::LsrRI: {
-            uint32_t rd = hwGPR(getReg(mi.ops[0]));
-            uint32_t rn = hwGPR(getReg(mi.ops[1]));
-            uint32_t sh = checkedShiftAmount(getImm(mi.ops[2]), "lsr");
+        case MOpcode::LsrRI:
             // lsr is ubfm Xd, Xn, #n, #63
             emit32(kUbfm | (sh << 16) | (63 << 10) | (rn << 5) | rd, cs);
             return;
-        }
-        case MOpcode::AsrRI: {
-            uint32_t rd = hwGPR(getReg(mi.ops[0]));
-            uint32_t rn = hwGPR(getReg(mi.ops[1]));
-            uint32_t sh = checkedShiftAmount(getImm(mi.ops[2]), "asr");
+        case MOpcode::AsrRI:
             // asr is sbfm Xd, Xn, #n, #63
             emit32(kSbfm | (sh << 16) | (63 << 10) | (rn << 5) | rd, cs);
             return;
-        }
+        default: break;
+    }
+}
 
-        // ─── Compare / Test ───
+void A64BinaryEncoder::encodeCompareInstr(const MInstr &mi, objfile::CodeSection &cs) {
+    switch (mi.opc) {
         case MOpcode::CmpRR:
             // subs XZR, Xn, Xm
-            emit32(encode3Reg(kSubsRRR, 31, hwGPR(getReg(mi.ops[0])), hwGPR(getReg(mi.ops[1]))),
+            emit32(encode3Reg(kSubsRRR, 31, hwGPR(getReg(mi.ops[0])),
+                              hwGPR(getReg(mi.ops[1]))),
+                   cs);
+            return;
+        case MOpcode::TstRR:
+            // ands XZR, Xn, Xm
+            emit32(encode3Reg(kAndsRRR, 31, hwGPR(getReg(mi.ops[0])),
+                              hwGPR(getReg(mi.ops[1]))),
                    cs);
             return;
         case MOpcode::CmpRI: {
-            long long imm = getImm(mi.ops[1]);
-            uint32_t rn = hwGPR(getReg(mi.ops[0]));
+            const long long imm = getImm(mi.ops[1]);
+            const uint32_t rn = hwGPR(getReg(mi.ops[0]));
             if (imm >= 0 && imm <= 4095) {
-                // subs XZR, Xn, #imm
                 emit32(encodeAddSubImm(kSubsRI, 31, rn, static_cast<uint32_t>(imm)), cs);
             } else if (imm >= -4095 && imm < 0) {
                 // cmn = adds XZR, Xn, #(-imm)
                 emit32(encodeAddSubImm(kAddsRI, 31, rn, static_cast<uint32_t>(-imm)), cs);
             } else {
-                // Large: materialize the immediate into the reserved secondary scratch.
-                uint32_t scratch = chooseGprScratch(rn);
+                // Large: materialise into the reserved scratch, then subs reg-reg.
+                const uint32_t scratch = chooseGprScratch(rn);
                 encodeMovImm64(scratch, static_cast<uint64_t>(imm), cs);
                 emit32(encode3Reg(kSubsRRR, 31, rn, scratch), cs);
             }
             return;
         }
-        case MOpcode::TstRR:
-            // ands XZR, Xn, Xm
-            emit32(encode3Reg(kAndsRRR, 31, hwGPR(getReg(mi.ops[0])), hwGPR(getReg(mi.ops[1]))),
-                   cs);
-            return;
+        default: break;
+    }
+}
 
-        // ─── Conditional ───
-        case MOpcode::Cset: {
-            uint32_t rd = hwGPR(getReg(mi.ops[0]));
-            uint32_t cc = getCondCode(mi.ops[1]);
-            // csinc Xd, XZR, XZR, invert(cond)
-            emit32(kCset | (invertCond(cc) << 12) | rd, cs);
-            return;
-        }
-        case MOpcode::Csel: {
-            uint32_t rd = hwGPR(getReg(mi.ops[0]));
-            uint32_t rn = hwGPR(getReg(mi.ops[1]));
-            uint32_t rm = hwGPR(getReg(mi.ops[2]));
-            uint32_t cc = getCondCode(mi.ops[3]);
-            emit32(kCsel | (rm << 16) | (cc << 12) | (rn << 5) | rd, cs);
-            return;
-        }
+void A64BinaryEncoder::encodeConditionalInstr(const MInstr &mi, objfile::CodeSection &cs) {
+    if (mi.opc == MOpcode::Cset) {
+        const uint32_t rd = hwGPR(getReg(mi.ops[0]));
+        const uint32_t cc = getCondCode(mi.ops[1]);
+        // csinc Xd, XZR, XZR, invert(cond)
+        emit32(kCset | (invertCond(cc) << 12) | rd, cs);
+        return;
+    }
+    // Csel
+    const uint32_t rd = hwGPR(getReg(mi.ops[0]));
+    const uint32_t rn = hwGPR(getReg(mi.ops[1]));
+    const uint32_t rm = hwGPR(getReg(mi.ops[2]));
+    const uint32_t cc = getCondCode(mi.ops[3]);
+    emit32(kCsel | (rm << 16) | (cc << 12) | (rn << 5) | rd, cs);
+}
 
-        // ─── Load/Store (FP-relative) ───
-        case MOpcode::LdrRegFpImm:
-        case MOpcode::PhiStoreGPR: // After RA, same encoding as StrRegFpImm
-        {
-            uint32_t rt = hwGPR(getReg(mi.ops[0]));
-            long long offset = getImm(mi.ops[1]);
-            uint32_t fp = hwGPR(PhysReg::X29);
-            bool isLoad = (mi.opc == MOpcode::LdrRegFpImm);
-            encodeScalarLdSt(rt, fp, offset, isLoad, false, 8, cs);
-            return;
-        }
-        case MOpcode::StrRegFpImm: {
-            uint32_t rt = hwGPR(getReg(mi.ops[0]));
-            long long offset = getImm(mi.ops[1]);
-            uint32_t fp = hwGPR(PhysReg::X29);
-            encodeScalarLdSt(rt, fp, offset, false, false, 8, cs);
-            return;
-        }
-        case MOpcode::Ldr8RegFpImm:
-        case MOpcode::Ldr16RegFpImm:
-        case MOpcode::Ldr32RegFpImm: {
-            uint32_t rt = hwGPR(getReg(mi.ops[0]));
-            long long offset = getImm(mi.ops[1]);
-            uint32_t fp = hwGPR(PhysReg::X29);
-            const unsigned bytes = mi.opc == MOpcode::Ldr8RegFpImm   ? 1
-                                   : mi.opc == MOpcode::Ldr16RegFpImm ? 2
-                                                                       : 4;
-            encodeScalarLdSt(rt, fp, offset, true, false, bytes, cs);
-            return;
-        }
-        case MOpcode::Str8RegFpImm:
-        case MOpcode::Str16RegFpImm:
-        case MOpcode::Str32RegFpImm: {
-            uint32_t rt = hwGPR(getReg(mi.ops[0]));
-            long long offset = getImm(mi.ops[1]);
-            uint32_t fp = hwGPR(PhysReg::X29);
-            const unsigned bytes = mi.opc == MOpcode::Str8RegFpImm   ? 1
-                                   : mi.opc == MOpcode::Str16RegFpImm ? 2
-                                                                       : 4;
-            encodeScalarLdSt(rt, fp, offset, false, false, bytes, cs);
-            return;
-        }
-        case MOpcode::LdrFprFpImm:
-        case MOpcode::PhiStoreFPR: {
-            uint32_t rt = hwFPR(getReg(mi.ops[0]));
-            long long offset = getImm(mi.ops[1]);
-            uint32_t fp = hwGPR(PhysReg::X29);
-            bool isLoad = (mi.opc == MOpcode::LdrFprFpImm);
-            encodeScalarLdSt(rt, fp, offset, isLoad, true, 8, cs);
-            return;
-        }
-        case MOpcode::StrFprFpImm: {
-            uint32_t rt = hwFPR(getReg(mi.ops[0]));
-            long long offset = getImm(mi.ops[1]);
-            uint32_t fp = hwGPR(PhysReg::X29);
-            encodeScalarLdSt(rt, fp, offset, false, true, 8, cs);
-            return;
-        }
+void A64BinaryEncoder::encodeFpRelLdStInstr(const MInstr &mi, objfile::CodeSection &cs) {
+    // GPR Ldr/Str + PhiStore (single-width) — width 8 access.
+    if (mi.opc == MOpcode::LdrRegFpImm || mi.opc == MOpcode::PhiStoreGPR ||
+        mi.opc == MOpcode::StrRegFpImm) {
+        const uint32_t rt = hwGPR(getReg(mi.ops[0]));
+        const long long offset = getImm(mi.ops[1]);
+        const uint32_t fp = hwGPR(PhysReg::X29);
+        const bool isLoad = (mi.opc == MOpcode::LdrRegFpImm);
+        encodeScalarLdSt(rt, fp, offset, isLoad, false, 8, cs);
+        return;
+    }
+    // GPR Ldr/Str narrow-width variants (1/2/4 bytes).
+    if (mi.opc == MOpcode::Ldr8RegFpImm || mi.opc == MOpcode::Ldr16RegFpImm ||
+        mi.opc == MOpcode::Ldr32RegFpImm || mi.opc == MOpcode::Str8RegFpImm ||
+        mi.opc == MOpcode::Str16RegFpImm || mi.opc == MOpcode::Str32RegFpImm) {
+        const uint32_t rt = hwGPR(getReg(mi.ops[0]));
+        const long long offset = getImm(mi.ops[1]);
+        const uint32_t fp = hwGPR(PhysReg::X29);
+        const bool isLoad = (mi.opc == MOpcode::Ldr8RegFpImm ||
+                             mi.opc == MOpcode::Ldr16RegFpImm ||
+                             mi.opc == MOpcode::Ldr32RegFpImm);
+        const unsigned bytes =
+            (mi.opc == MOpcode::Ldr8RegFpImm || mi.opc == MOpcode::Str8RegFpImm)   ? 1
+            : (mi.opc == MOpcode::Ldr16RegFpImm || mi.opc == MOpcode::Str16RegFpImm) ? 2
+                                                                                      : 4;
+        encodeScalarLdSt(rt, fp, offset, isLoad, false, bytes, cs);
+        return;
+    }
+    // FPR Ldr/Str (single-width 8).
+    const uint32_t rt = hwFPR(getReg(mi.ops[0]));
+    const long long offset = getImm(mi.ops[1]);
+    const uint32_t fp = hwGPR(PhysReg::X29);
+    const bool isLoad = (mi.opc == MOpcode::LdrFprFpImm);
+    encodeScalarLdSt(rt, fp, offset, isLoad, true, 8, cs);
+}
 
-        // ─── Load/Store (Base-relative) ───
-        case MOpcode::LdrRegBaseImm: {
-            uint32_t rt = hwGPR(getReg(mi.ops[0]));
-            uint32_t base = hwGPR(getReg(mi.ops[1]));
-            long long offset = getImm(mi.ops[2]);
-            encodeScalarLdSt(rt, base, offset, true, false, 8, cs);
-            return;
-        }
-        case MOpcode::StrRegBaseImm: {
-            uint32_t rt = hwGPR(getReg(mi.ops[0]));
-            uint32_t base = hwGPR(getReg(mi.ops[1]));
-            long long offset = getImm(mi.ops[2]);
-            encodeScalarLdSt(rt, base, offset, false, false, 8, cs);
-            return;
-        }
-        case MOpcode::Ldr8RegBaseImm:
-        case MOpcode::Ldr16RegBaseImm:
-        case MOpcode::Ldr32RegBaseImm: {
-            uint32_t rt = hwGPR(getReg(mi.ops[0]));
-            uint32_t base = hwGPR(getReg(mi.ops[1]));
-            long long offset = getImm(mi.ops[2]);
-            const unsigned bytes = mi.opc == MOpcode::Ldr8RegBaseImm   ? 1
-                                   : mi.opc == MOpcode::Ldr16RegBaseImm ? 2
-                                                                         : 4;
-            encodeScalarLdSt(rt, base, offset, true, false, bytes, cs);
-            return;
-        }
-        case MOpcode::Str8RegBaseImm:
-        case MOpcode::Str16RegBaseImm:
-        case MOpcode::Str32RegBaseImm: {
-            uint32_t rt = hwGPR(getReg(mi.ops[0]));
-            uint32_t base = hwGPR(getReg(mi.ops[1]));
-            long long offset = getImm(mi.ops[2]);
-            const unsigned bytes = mi.opc == MOpcode::Str8RegBaseImm   ? 1
-                                   : mi.opc == MOpcode::Str16RegBaseImm ? 2
-                                                                         : 4;
-            encodeScalarLdSt(rt, base, offset, false, false, bytes, cs);
-            return;
-        }
-        case MOpcode::LdrFprBaseImm: {
-            uint32_t rt = hwFPR(getReg(mi.ops[0]));
-            uint32_t base = hwGPR(getReg(mi.ops[1]));
-            long long offset = getImm(mi.ops[2]);
-            encodeScalarLdSt(rt, base, offset, true, true, 8, cs);
-            return;
-        }
-        case MOpcode::StrFprBaseImm: {
-            uint32_t rt = hwFPR(getReg(mi.ops[0]));
-            uint32_t base = hwGPR(getReg(mi.ops[1]));
-            long long offset = getImm(mi.ops[2]);
-            encodeScalarLdSt(rt, base, offset, false, true, 8, cs);
-            return;
-        }
+void A64BinaryEncoder::encodeBaseRelLdStInstr(const MInstr &mi, objfile::CodeSection &cs) {
+    // FPR base-relative.
+    if (mi.opc == MOpcode::LdrFprBaseImm || mi.opc == MOpcode::StrFprBaseImm) {
+        const uint32_t rt = hwFPR(getReg(mi.ops[0]));
+        const uint32_t base = hwGPR(getReg(mi.ops[1]));
+        const long long offset = getImm(mi.ops[2]);
+        const bool isLoad = (mi.opc == MOpcode::LdrFprBaseImm);
+        encodeScalarLdSt(rt, base, offset, isLoad, true, 8, cs);
+        return;
+    }
+    // GPR base-relative, possibly narrow-width.
+    const uint32_t rt = hwGPR(getReg(mi.ops[0]));
+    const uint32_t base = hwGPR(getReg(mi.ops[1]));
+    const long long offset = getImm(mi.ops[2]);
+    const bool isLoad = (mi.opc == MOpcode::LdrRegBaseImm ||
+                         mi.opc == MOpcode::Ldr8RegBaseImm ||
+                         mi.opc == MOpcode::Ldr16RegBaseImm ||
+                         mi.opc == MOpcode::Ldr32RegBaseImm);
+    const unsigned bytes =
+        (mi.opc == MOpcode::Ldr8RegBaseImm || mi.opc == MOpcode::Str8RegBaseImm)   ? 1
+        : (mi.opc == MOpcode::Ldr16RegBaseImm || mi.opc == MOpcode::Str16RegBaseImm) ? 2
+        : (mi.opc == MOpcode::Ldr32RegBaseImm || mi.opc == MOpcode::Str32RegBaseImm) ? 4
+                                                                                      : 8;
+    encodeScalarLdSt(rt, base, offset, isLoad, false, bytes, cs);
+}
 
-        // ─── Load/Store Pair (FP-relative) ───
-        case MOpcode::LdpRegFpImm: {
-            uint32_t rt = hwGPR(getReg(mi.ops[0]));
-            uint32_t rt2 = hwGPR(getReg(mi.ops[1]));
-            const auto rawOffset = getImm(mi.ops[2]);
-            uint32_t fp = hwGPR(PhysReg::X29);
-            if (!isPairImm7Offset(rawOffset)) {
-                encodeScalarLdSt(rt, fp, rawOffset, true, false, 8, cs);
-                encodeScalarLdSt(rt2,
-                                 fp,
-                                 checkedAddI64(rawOffset, 8, "AArch64 ldp fallback offset"),
-                                 true,
-                                 false,
-                                 8,
-                                 cs);
-                return;
-            }
-            auto offset = checkedPairImm7(rawOffset, "ldp");
-            emit32(encodePair(kLdpGpr, rt, rt2, fp, offset), cs);
-            return;
-        }
-        case MOpcode::StpRegFpImm: {
-            uint32_t rt = hwGPR(getReg(mi.ops[0]));
-            uint32_t rt2 = hwGPR(getReg(mi.ops[1]));
-            const auto rawOffset = getImm(mi.ops[2]);
-            uint32_t fp = hwGPR(PhysReg::X29);
-            if (!isPairImm7Offset(rawOffset)) {
-                encodeScalarLdSt(rt, fp, rawOffset, false, false, 8, cs);
-                encodeScalarLdSt(rt2,
-                                 fp,
-                                 checkedAddI64(rawOffset, 8, "AArch64 stp fallback offset"),
-                                 false,
-                                 false,
-                                 8,
-                                 cs);
-                return;
-            }
-            auto offset = checkedPairImm7(rawOffset, "stp");
-            emit32(encodePair(kStpGpr, rt, rt2, fp, offset), cs);
-            return;
-        }
-        case MOpcode::LdpFprFpImm: {
-            uint32_t rt = hwFPR(getReg(mi.ops[0]));
-            uint32_t rt2 = hwFPR(getReg(mi.ops[1]));
-            const auto rawOffset = getImm(mi.ops[2]);
-            uint32_t fp = hwGPR(PhysReg::X29);
-            if (!isPairImm7Offset(rawOffset)) {
-                encodeScalarLdSt(rt, fp, rawOffset, true, true, 8, cs);
-                encodeScalarLdSt(rt2,
-                                 fp,
-                                 checkedAddI64(rawOffset, 8, "AArch64 ldp fallback offset"),
-                                 true,
-                                 true,
-                                 8,
-                                 cs);
-                return;
-            }
-            auto offset = checkedPairImm7(rawOffset, "ldp");
-            emit32(encodePair(kLdpFpr, rt, rt2, fp, offset), cs);
-            return;
-        }
-        case MOpcode::StpFprFpImm: {
-            uint32_t rt = hwFPR(getReg(mi.ops[0]));
-            uint32_t rt2 = hwFPR(getReg(mi.ops[1]));
-            const auto rawOffset = getImm(mi.ops[2]);
-            uint32_t fp = hwGPR(PhysReg::X29);
-            if (!isPairImm7Offset(rawOffset)) {
-                encodeScalarLdSt(rt, fp, rawOffset, false, true, 8, cs);
-                encodeScalarLdSt(rt2,
-                                 fp,
-                                 checkedAddI64(rawOffset, 8, "AArch64 stp fallback offset"),
-                                 false,
-                                 true,
-                                 8,
-                                 cs);
-                return;
-            }
-            auto offset = checkedPairImm7(rawOffset, "stp");
-            emit32(encodePair(kStpFpr, rt, rt2, fp, offset), cs);
-            return;
-        }
+void A64BinaryEncoder::encodeLdStPairInstr(const MInstr &mi, objfile::CodeSection &cs) {
+    // Common shape: two transfer regs + base (always FP) + offset; the only
+    // axes are GPR-vs-FPR and load-vs-store.
+    const bool isLoad = (mi.opc == MOpcode::LdpRegFpImm || mi.opc == MOpcode::LdpFprFpImm);
+    const bool isFpr  = (mi.opc == MOpcode::LdpFprFpImm || mi.opc == MOpcode::StpFprFpImm);
+    const uint32_t rt  = isFpr ? hwFPR(getReg(mi.ops[0])) : hwGPR(getReg(mi.ops[0]));
+    const uint32_t rt2 = isFpr ? hwFPR(getReg(mi.ops[1])) : hwGPR(getReg(mi.ops[1]));
+    const auto rawOffset = getImm(mi.ops[2]);
+    const uint32_t fp = hwGPR(PhysReg::X29);
+    const uint32_t tmpl = isLoad ? (isFpr ? kLdpFpr : kLdpGpr)
+                                 : (isFpr ? kStpFpr : kStpGpr);
+    const char *ctx = isLoad ? "ldp" : "stp";
 
-        // ─── Stack Pointer Operations ───
+    if (!isPairImm7Offset(rawOffset)) {
+        // Offset doesn't fit the imm7 pair encoding: split into two scalar
+        // load/stores at +0 and +8.
+        encodeScalarLdSt(rt, fp, rawOffset, isLoad, isFpr, 8, cs);
+        encodeScalarLdSt(rt2,
+                         fp,
+                         checkedAddI64(rawOffset, 8, "AArch64 ldp/stp fallback offset"),
+                         isLoad, isFpr, 8, cs);
+        return;
+    }
+    const auto offset = checkedPairImm7(rawOffset, ctx);
+    emit32(encodePair(tmpl, rt, rt2, fp, offset), cs);
+}
+
+void A64BinaryEncoder::encodeSpOpInstr(const MInstr &mi, objfile::CodeSection &cs) {
+    switch (mi.opc) {
         case MOpcode::SubSpImm:
             encodeSubSp(getImm(mi.ops[0]), cs);
             return;
@@ -1968,130 +1970,139 @@ void A64BinaryEncoder::encodeInstruction(const MInstr &mi, objfile::CodeSection 
             encodeAddSp(getImm(mi.ops[0]), cs);
             return;
         case MOpcode::StrRegSpImm: {
-            uint32_t rt = hwGPR(getReg(mi.ops[0]));
+            const uint32_t rt = hwGPR(getReg(mi.ops[0]));
             const auto offset = static_cast<int64_t>(getImm(mi.ops[1]));
             encodeSpOffsetStore(rt, offset, false, cs);
             return;
         }
         case MOpcode::StrFprSpImm: {
-            uint32_t rt = hwFPR(getReg(mi.ops[0]));
+            const uint32_t rt = hwFPR(getReg(mi.ops[0]));
             const auto offset = static_cast<int64_t>(getImm(mi.ops[1]));
             encodeSpOffsetStore(rt, offset, true, cs);
             return;
         }
+        default: break;
+    }
+}
 
-        // ─── AddFpImm (address computation: dst = x29 + offset) ───
-        case MOpcode::AddFpImm: {
-            uint32_t rd = hwGPR(getReg(mi.ops[0]));
-            long long offset = getImm(mi.ops[1]);
-            uint32_t fp = hwGPR(PhysReg::X29);
-            const uint64_t magnitude = absImmUnsigned(offset);
-            uint32_t tmpl = (offset >= 0) ? kAddRI : kSubRI;
-            if (const auto enc = classifyAddSubImmEncoding(magnitude)) {
-                emit32(enc->shift12 ? encodeAddSubImmShift(tmpl, rd, fp, enc->imm12)
-                                    : encodeAddSubImm(tmpl, rd, fp, enc->imm12),
-                       cs);
-            } else {
-                // Large offset: use a reserved scratch; register allocation never assigns it.
-                uint32_t scratch = chooseGprScratch(fp, rd);
-                encodeMovImm64(scratch, magnitude, cs);
-                if (offset >= 0)
-                    emit32(encode3Reg(kAddRRR, rd, fp, scratch), cs);
-                else
-                    emit32(encode3Reg(kSubRRR, rd, fp, scratch), cs);
-            }
-            return;
-        }
+void A64BinaryEncoder::encodeAddFpImmInstr(const MInstr &mi, objfile::CodeSection &cs) {
+    const uint32_t rd = hwGPR(getReg(mi.ops[0]));
+    const long long offset = getImm(mi.ops[1]);
+    const uint32_t fp = hwGPR(PhysReg::X29);
+    const uint64_t magnitude = absImmUnsigned(offset);
+    const uint32_t tmpl = (offset >= 0) ? kAddRI : kSubRI;
+    if (const auto enc = classifyAddSubImmEncoding(magnitude)) {
+        emit32(enc->shift12 ? encodeAddSubImmShift(tmpl, rd, fp, enc->imm12)
+                            : encodeAddSubImm(tmpl, rd, fp, enc->imm12),
+               cs);
+    } else {
+        // Large offset: use a reserved scratch; register allocation never assigns it.
+        const uint32_t scratch = chooseGprScratch(fp, rd);
+        encodeMovImm64(scratch, magnitude, cs);
+        emit32(encode3Reg(offset >= 0 ? kAddRRR : kSubRRR, rd, fp, scratch), cs);
+    }
+}
 
-        // ─── Logical Immediate ───
-        case MOpcode::AndRI: {
-            uint32_t rd = hwGPR(getReg(mi.ops[0]));
-            uint32_t rn = hwGPR(getReg(mi.ops[1]));
-            auto imm = static_cast<uint64_t>(getImm(mi.ops[2]));
-            int32_t enc = encodeLogicalImmediate(imm);
-            if (enc >= 0) {
-                emit32(encodeLogImm(kAndImm, rd, rn, enc), cs);
-            } else {
-                uint32_t scratch = chooseGprScratch(rn);
-                encodeMovImm64(scratch, imm, cs);
-                emit32(encode3Reg(kAndRRR, rd, rn, scratch), cs);
-            }
-            return;
-        }
-        case MOpcode::OrrRI: {
-            uint32_t rd = hwGPR(getReg(mi.ops[0]));
-            uint32_t rn = hwGPR(getReg(mi.ops[1]));
-            auto imm = static_cast<uint64_t>(getImm(mi.ops[2]));
-            int32_t enc = encodeLogicalImmediate(imm);
-            if (enc >= 0) {
-                emit32(encodeLogImm(kOrrImm, rd, rn, enc), cs);
-            } else {
-                uint32_t scratch = chooseGprScratch(rn);
-                encodeMovImm64(scratch, imm, cs);
-                emit32(encode3Reg(kOrrRRR, rd, rn, scratch), cs);
-            }
-            return;
-        }
-        case MOpcode::EorRI: {
-            uint32_t rd = hwGPR(getReg(mi.ops[0]));
-            uint32_t rn = hwGPR(getReg(mi.ops[1]));
-            auto imm = static_cast<uint64_t>(getImm(mi.ops[2]));
-            int32_t enc = encodeLogicalImmediate(imm);
-            if (enc >= 0) {
-                emit32(encodeLogImm(kEorImm, rd, rn, enc), cs);
-            } else {
-                uint32_t scratch = chooseGprScratch(rn);
-                encodeMovImm64(scratch, imm, cs);
-                emit32(encode3Reg(kEorRRR, rd, rn, scratch), cs);
-            }
-            return;
-        }
+void A64BinaryEncoder::encodeLogicalImmInstr(const MInstr &mi, objfile::CodeSection &cs) {
+    // Three textually-identical patterns (And/Orr/Eor) differing only in
+    // instruction templates: try the immediate encoding; on failure materialise
+    // the value in a scratch register and emit the register-register form.
+    uint32_t immTpl = 0, regTpl = 0;
+    switch (mi.opc) {
+        case MOpcode::AndRI: immTpl = kAndImm; regTpl = kAndRRR; break;
+        case MOpcode::OrrRI: immTpl = kOrrImm; regTpl = kOrrRRR; break;
+        case MOpcode::EorRI: immTpl = kEorImm; regTpl = kEorRRR; break;
+        default: break;
+    }
+    const uint32_t rd = hwGPR(getReg(mi.ops[0]));
+    const uint32_t rn = hwGPR(getReg(mi.ops[1]));
+    const auto imm = static_cast<uint64_t>(getImm(mi.ops[2]));
+    const int32_t enc = encodeLogicalImmediate(imm);
+    if (enc >= 0) {
+        emit32(encodeLogImm(immTpl, rd, rn, enc), cs);
+    } else {
+        const uint32_t scratch = chooseGprScratch(rn);
+        encodeMovImm64(scratch, imm, cs);
+        emit32(encode3Reg(regTpl, rd, rn, scratch), cs);
+    }
+}
 
-        // ─── Floating Point — special (non-table cases) ───
-        // FAddRRR / FSubRRR / FMulRRR / FDivRRR are dispatched via kReg3FprTable above.
-        // SCvtF / FCvtZS / UCvtF / FCvtZU / FMovGR are dispatched via kConv2RegTable above.
+void A64BinaryEncoder::encodeFpSpecialInstr(const MInstr &mi, objfile::CodeSection &cs) {
+    // FAddRRR / FSubRRR / FMulRRR / FDivRRR are dispatched via kReg3FprTable.
+    // SCvtF / FCvtZS / UCvtF / FCvtZU / FMovGR via kConv2RegTable. The cases
+    // here are the irregular ones that don't fit those tables.
+    switch (mi.opc) {
         case MOpcode::FCmpRR:
             // fcmp Dn, Dm (Rd field = 0)
-            emit32(kFCmpRR | (hwFPR(getReg(mi.ops[1])) << 16) | (hwFPR(getReg(mi.ops[0])) << 5),
+            emit32(kFCmpRR | (hwFPR(getReg(mi.ops[1])) << 16) |
+                       (hwFPR(getReg(mi.ops[0])) << 5),
                    cs);
             return;
         case MOpcode::FMovRR: {
-            PhysReg src = getReg(mi.ops[1]);
+            const PhysReg src = getReg(mi.ops[1]);
             if (isGPR(src)) {
-                throw std::runtime_error("AArch64 binary encoder: FMovRR requires an FPR source; "
-                                         "use FMovGR for GPR-to-FPR bit transfers");
+                throw std::runtime_error(
+                    "AArch64 binary encoder: FMovRR requires an FPR source; "
+                    "use FMovGR for GPR-to-FPR bit transfers");
             }
             emit32(encode2Reg(kFMovRR, hwFPR(getReg(mi.ops[0])), hwFPR(src)), cs);
             return;
         }
         case MOpcode::FRintN:
-            emit32(encode2Reg(kFRintN, hwFPR(getReg(mi.ops[0])), hwFPR(getReg(mi.ops[1]))), cs);
+            emit32(encode2Reg(kFRintN, hwFPR(getReg(mi.ops[0])), hwFPR(getReg(mi.ops[1]))),
+                   cs);
             return;
-
-        // ─── FMovRI (float immediate) ───
         case MOpcode::FMovRI: {
-            uint32_t rd = hwFPR(getReg(mi.ops[0]));
+            const uint32_t rd = hwFPR(getReg(mi.ops[0]));
             double val;
             std::memcpy(&val, &mi.ops[1].imm, sizeof(val));
-
-            // Try FP8 immediate encoding first (single instruction).
-            int32_t fp8 = encodeFP8Immediate(val);
+            const int32_t fp8 = encodeFP8Immediate(val);
             if (fp8 >= 0) {
                 // FMOV Dd, #imm8 — imm8 at bits [20:13].
                 emit32(kFMovDImm | (static_cast<uint32_t>(fp8) << 13) | rd, cs);
                 return;
             }
-
             // Fallback: materialise 64-bit IEEE 754 bits in a GPR, then FMOV Dd, Xn.
             uint64_t bits;
             std::memcpy(&bits, &val, sizeof(bits));
-            uint32_t scratch = hwGPR(kScratchGPR);
+            const uint32_t scratch = hwGPR(kScratchGPR);
             encodeMovImm64(scratch, bits, cs);
             emit32(encode2Reg(kFMovGR, rd, scratch), cs);
             return;
         }
+        default: break;
+    }
+}
 
-        // ─── Branch Instructions ───
+void A64BinaryEncoder::encodeAddressInstr(const MInstr &mi, objfile::CodeSection &cs) {
+    // ADRP / ADD page-off: both generate linker-resolved relocations. ADRP
+    // takes 2 operands (rd, label); AddPageOff takes 3 (rd, rn, label).
+    const bool isAdrp = (mi.opc == MOpcode::AdrPage);
+    const uint32_t rd = hwGPR(getReg(mi.ops[0]));
+    const std::string sym =
+        mapRuntimeSymbol(getLabel(mi.ops[isAdrp ? 1 : 2]));
+    const uint32_t rodataSymIdx =
+        currentRodata_ != nullptr ? currentRodata_->symbols().find(sym) : 0;
+    const auto relocKind =
+        isAdrp ? objfile::RelocKind::A64AdrpPage21 : objfile::RelocKind::A64AddPageOff12;
+    if (rodataSymIdx != 0) {
+        const auto &rodataSym = currentRodata_->symbols().at(rodataSymIdx);
+        cs.addSectionOffsetRelocation(relocKind, *currentRodata_,
+                                      objfile::SymbolSection::Rodata, rodataSym.offset);
+    } else {
+        const uint32_t symIdx = cs.findOrDeclareSymbol(sym);
+        cs.addRelocation(relocKind, symIdx, 0);
+    }
+    if (isAdrp) {
+        emit32(kAdrp | rd, cs); // immediate filled by linker
+    } else {
+        const uint32_t rn = hwGPR(getReg(mi.ops[1]));
+        emit32(encodeAddSubImm(kAddRI, rd, rn, 0), cs); // imm12 filled by linker
+    }
+}
+
+void A64BinaryEncoder::encodeBranchInstr(const MInstr &mi, objfile::CodeSection &cs) {
+    switch (mi.opc) {
         case MOpcode::Br: {
             std::string target = getSanitizedNonEmptyLabel(mi.ops[0], "AArch64 branch");
             auto it = labelOffsets_.find(target);
@@ -2269,66 +2280,9 @@ void A64BinaryEncoder::encodeInstruction(const MInstr &mi, objfile::CodeSection 
         case MOpcode::Blr:
             emit32(kBlr | (hwGPR(getReg(mi.ops[0])) << 5), cs);
             return;
-
-        // ─── Address Materialization ───
-        case MOpcode::AdrPage: {
-            uint32_t rd = hwGPR(getReg(mi.ops[0]));
-            std::string sym = mapRuntimeSymbol(getLabel(mi.ops[1]));
-            const uint32_t rodataSymIdx =
-                currentRodata_ != nullptr ? currentRodata_->symbols().find(sym) : 0;
-            if (rodataSymIdx != 0) {
-                const auto &rodataSym = currentRodata_->symbols().at(rodataSymIdx);
-                cs.addSectionOffsetRelocation(objfile::RelocKind::A64AdrpPage21,
-                                              *currentRodata_,
-                                              objfile::SymbolSection::Rodata,
-                                              rodataSym.offset);
-            } else {
-                uint32_t symIdx = cs.findOrDeclareSymbol(sym);
-                cs.addRelocation(objfile::RelocKind::A64AdrpPage21, symIdx, 0);
-            }
-            emit32(kAdrp | rd, cs); // immediate filled by linker
-            return;
-        }
-        case MOpcode::AddPageOff: {
-            uint32_t rd = hwGPR(getReg(mi.ops[0]));
-            uint32_t rn = hwGPR(getReg(mi.ops[1]));
-            std::string sym = mapRuntimeSymbol(getLabel(mi.ops[2]));
-            const uint32_t rodataSymIdx =
-                currentRodata_ != nullptr ? currentRodata_->symbols().find(sym) : 0;
-            if (rodataSymIdx != 0) {
-                const auto &rodataSym = currentRodata_->symbols().at(rodataSymIdx);
-                cs.addSectionOffsetRelocation(objfile::RelocKind::A64AddPageOff12,
-                                              *currentRodata_,
-                                              objfile::SymbolSection::Rodata,
-                                              rodataSym.offset);
-            } else {
-                uint32_t symIdx = cs.findOrDeclareSymbol(sym);
-                cs.addRelocation(objfile::RelocKind::A64AddPageOff12, symIdx, 0);
-            }
-            emit32(encodeAddSubImm(kAddRI, rd, rn, 0), cs); // imm12 filled by linker
-            return;
-        }
-
-        // ─── Pseudo-instructions that should have been expanded ───
-        case MOpcode::AddOvfRRR:
-        case MOpcode::SubOvfRRR:
-        case MOpcode::AddOvfRI:
-        case MOpcode::SubOvfRI:
-        case MOpcode::MulOvfRRR:
-            throw std::runtime_error("AArch64 binary encoder: overflow pseudo-op '" +
-                                     std::string(opcodeName(mi.opc)) +
-                                     "' reached binary emission before LowerOvf");
-
-        // Opcodes dispatched via the table loops above (kReg3GprTable, kReg4GprTable,
-        // kReg3FprTable, kConv2RegTable) reach here only if the table-dispatch fast
-        // path was bypassed; fall through to the unhandled-opcode throw.
         default:
             break;
-    } // end switch
-
-    // If we reach here, the opcode was not handled.
-    throw std::runtime_error("AArch64 binary encoder: unhandled opcode '" +
-                             std::string(opcodeName(mi.opc)) + "'");
+    }
 }
 
 } // namespace viper::codegen::aarch64::binenc

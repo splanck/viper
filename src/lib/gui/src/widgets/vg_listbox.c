@@ -310,6 +310,23 @@ static void listbox_clear_nonvirtual_selection(vg_listbox_t *lb) {
         item->selected = false;
 }
 
+static void listbox_note_selection_changed(vg_listbox_t *lb) {
+    if (lb)
+        lb->selection_revision++;
+}
+
+static bool listbox_has_nonvirtual_selection(vg_listbox_t *lb) {
+    if (!lb)
+        return false;
+    if (lb->selected)
+        return true;
+    for (vg_listbox_item_t *item = lb->first_item; item; item = item->next) {
+        if (item->selected)
+            return true;
+    }
+    return false;
+}
+
 /// @brief Zeroes the entire selection bitmap in virtual mode, deselecting all rows.
 static void listbox_clear_virtual_selection(vg_listbox_t *lb) {
     if (!lb || !lb->selection_bitmap)
@@ -346,12 +363,15 @@ static void listbox_select_nonvirtual_with_modifiers(vg_listbox_t *lb,
                                                      bool range) {
     if (!lb || !vg_listbox_item_is_live(item) || item->owner != lb)
         return;
+    vg_listbox_item_t *old_selected = lb->selected;
 
     if (!lb->multi_select || (!toggle && !range)) {
         listbox_clear_nonvirtual_selection(lb);
         item->selected = true;
         lb->selected = item;
         lb->anchor_selected = item;
+        if (lb->selected != old_selected)
+            listbox_note_selection_changed(lb);
         return;
     }
 
@@ -373,6 +393,8 @@ static void listbox_select_nonvirtual_with_modifiers(vg_listbox_t *lb,
             }
         }
         lb->selected = item;
+        if (lb->selected != old_selected)
+            listbox_note_selection_changed(lb);
         return;
     }
 
@@ -386,6 +408,8 @@ static void listbox_select_nonvirtual_with_modifiers(vg_listbox_t *lb,
         if (lb->anchor_selected == item)
             lb->anchor_selected = lb->selected;
     }
+    if (lb->selected != old_selected)
+        listbox_note_selection_changed(lb);
 }
 
 /// @brief Applies Ctrl/Shift selection semantics for row @p index in virtual mode using the selection bitmap.
@@ -395,6 +419,7 @@ static void listbox_select_virtual_with_modifiers(vg_listbox_t *lb,
                                                   bool range) {
     if (!lb || index >= lb->total_item_count)
         return;
+    size_t old_selected = lb->selected_index;
 
     if (!lb->multi_select || (!toggle && !range)) {
         listbox_clear_virtual_selection(lb);
@@ -402,6 +427,8 @@ static void listbox_select_virtual_with_modifiers(vg_listbox_t *lb,
         if (lb->selection_bitmap && index < lb->selection_bitmap_size)
             lb->selection_bitmap[index] = true;
         lb->anchor_selected_index = index;
+        if (lb->selected_index != old_selected)
+            listbox_note_selection_changed(lb);
         return;
     }
 
@@ -415,6 +442,8 @@ static void listbox_select_virtual_with_modifiers(vg_listbox_t *lb,
              i++)
             lb->selection_bitmap[i] = true;
         lb->selected_index = index;
+        if (lb->selected_index != old_selected)
+            listbox_note_selection_changed(lb);
         return;
     }
 
@@ -431,6 +460,8 @@ static void listbox_select_virtual_with_modifiers(vg_listbox_t *lb,
         if (lb->anchor_selected_index == index)
             lb->anchor_selected_index = lb->selected_index;
     }
+    if (lb->selected_index != old_selected)
+        listbox_note_selection_changed(lb);
 }
 
 /// @brief VTable destroy: clears all items, frees the virtual cache, selection bitmap, and retired-item list.
@@ -925,8 +956,10 @@ void vg_listbox_remove_item(vg_listbox_t *listbox, vg_listbox_item_t *item) {
     else
         listbox->last_item = item->prev;
 
-    if (listbox->selected == item)
+    if (listbox->selected == item) {
         listbox->selected = NULL;
+        listbox_note_selection_changed(listbox);
+    }
     if (listbox->hovered == item)
         listbox->hovered = NULL;
     if (listbox->anchor_selected == item)
@@ -947,6 +980,7 @@ void vg_listbox_clear(vg_listbox_t *listbox) {
     if (!listbox)
         return;
 
+    bool had_selection = listbox_has_nonvirtual_selection(listbox);
     vg_listbox_item_t *item = listbox->first_item;
     while (item) {
         vg_listbox_item_t *next = item->next;
@@ -959,6 +993,8 @@ void vg_listbox_clear(vg_listbox_t *listbox) {
     listbox->prev_selected = NULL;
     listbox->anchor_selected = NULL;
     listbox->item_count = 0;
+    if (had_selection)
+        listbox_note_selection_changed(listbox);
     listbox->base.needs_layout = true;
     listbox->base.needs_paint = true;
 }
@@ -972,6 +1008,7 @@ void vg_listbox_select(vg_listbox_t *listbox, vg_listbox_item_t *item) {
         return;
     if (item && (!vg_listbox_item_is_live(item) || item->owner != listbox))
         return;
+    vg_listbox_item_t *old_selected = listbox->selected;
 
     if (!listbox->multi_select)
         listbox_clear_nonvirtual_selection(listbox);
@@ -984,6 +1021,8 @@ void vg_listbox_select(vg_listbox_t *listbox, vg_listbox_item_t *item) {
             listbox->on_select(&listbox->base, item, listbox->on_select_data);
         }
     }
+    if (listbox->selected != old_selected)
+        listbox_note_selection_changed(listbox);
     listbox->base.needs_paint = true;
 }
 
@@ -1043,6 +1082,8 @@ void vg_listbox_set_virtual_mode(vg_listbox_t *listbox,
     if (enabled && total_count > 0 && total_count > SIZE_MAX / sizeof(bool))
         return;
 
+    size_t old_virtual_selected = listbox->selected_index;
+    vg_listbox_item_t *old_selected = listbox->selected;
     listbox->virtual_mode = enabled;
     listbox->total_item_count = enabled ? total_count : 0;
     listbox->hovered_index = SIZE_MAX;
@@ -1097,6 +1138,8 @@ void vg_listbox_set_virtual_mode(vg_listbox_t *listbox,
     listbox->scroll_y = 0;
     listbox->visible_start = 0;
     listbox->visible_count = 0;
+    if (old_selected || old_virtual_selected != SIZE_MAX)
+        listbox_note_selection_changed(listbox);
     listbox->base.needs_paint = true;
     listbox->base.needs_layout = true;
 }
@@ -1159,6 +1202,7 @@ void vg_listbox_set_total_count(vg_listbox_t *listbox, size_t count) {
         listbox->selected_index = SIZE_MAX;
         listbox->prev_selected_index = SIZE_MAX;
         listbox->anchor_selected_index = SIZE_MAX;
+        listbox_note_selection_changed(listbox);
     }
     if (listbox->anchor_selected_index >= count)
         listbox->anchor_selected_index = SIZE_MAX;

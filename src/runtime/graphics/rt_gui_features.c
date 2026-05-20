@@ -941,15 +941,13 @@ static void rt_breadcrumb_widget_destroy(vg_widget_t *widget) {
         s_breadcrumb_original_vtable->destroy(widget);
 }
 
-static void rt_breadcrumb_detach_wrapper(rt_breadcrumb_data_t *data) {
+static void rt_breadcrumb_clear_click_state(rt_breadcrumb_data_t *data) {
     if (!data)
         return;
-    if (data->breadcrumb && vg_widget_is_live(&data->breadcrumb->base)) {
-        if (data->breadcrumb->base.user_data == data)
-            data->breadcrumb->base.user_data = NULL;
-        vg_breadcrumb_set_on_click(data->breadcrumb, NULL, NULL);
-    }
-    data->breadcrumb = NULL;
+    free(data->clicked_data);
+    data->clicked_data = NULL;
+    data->clicked_index = -1;
+    data->was_clicked = 0;
 }
 
 /// @brief Release breadcrumb widget and free the clicked-item string buffer.
@@ -960,24 +958,16 @@ static void rt_breadcrumb_dispose(rt_breadcrumb_data_t *data) {
         vg_breadcrumb_destroy(data->breadcrumb);
         data->breadcrumb = NULL;
     }
-    free(data->clicked_data);
-    data->clicked_data = NULL;
-    data->clicked_index = -1;
-    data->was_clicked = 0;
+    rt_breadcrumb_clear_click_state(data);
     data->magic = 0;
 }
 
-/// @brief GC finalizer — delegates to `rt_breadcrumb_dispose`.
+/// @brief GC finalizer — releases the backing widget and click payload.
 static void rt_breadcrumb_finalize(void *crumb) {
     rt_breadcrumb_data_t *data = (rt_breadcrumb_data_t *)crumb;
     if (!data)
         return;
-    free(data->clicked_data);
-    data->clicked_data = NULL;
-    data->clicked_index = -1;
-    data->was_clicked = 0;
-    rt_breadcrumb_detach_wrapper(data);
-    data->magic = 0;
+    rt_breadcrumb_dispose(data);
 }
 
 /// @brief Breadcrumb segment click callback — captures index + per-item data for polling.
@@ -1107,6 +1097,7 @@ void rt_breadcrumb_set_path(void *crumb, rt_string path, rt_string separator) {
     char *cpath = rt_string_to_gui_cstr(path);
     char *csep = rt_string_to_gui_cstr(separator);
 
+    rt_breadcrumb_clear_click_state(data);
     // Clear existing items
     vg_breadcrumb_clear(data->breadcrumb);
 
@@ -1140,6 +1131,7 @@ void rt_breadcrumb_set_items(void *crumb, rt_string items) {
 
     char *citems = rt_string_to_gui_cstr(items);
 
+    rt_breadcrumb_clear_click_state(data);
     // Clear existing items
     vg_breadcrumb_clear(data->breadcrumb);
 
@@ -1203,6 +1195,7 @@ void rt_breadcrumb_clear(void *crumb) {
     rt_breadcrumb_data_t *data = rt_breadcrumb_checked(crumb);
     if (!data || !data->breadcrumb)
         return;
+    rt_breadcrumb_clear_click_state(data);
     vg_breadcrumb_clear(data->breadcrumb);
 }
 
@@ -1214,6 +1207,8 @@ int64_t rt_breadcrumb_was_item_clicked(void *crumb) {
         return 0;
     int64_t result = data->was_clicked;
     data->was_clicked = 0; // Reset after checking
+    if (!result)
+        rt_breadcrumb_clear_click_state(data);
     return result;
 }
 

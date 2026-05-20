@@ -377,6 +377,7 @@ Virtual list cache invalidation refreshes visible rows on the next paint even wh
 Virtual list selection and cache growth now fail closed if allocation or size
 checks fail; the widget does not publish a larger virtual item count until its
 selection bitmap can represent that range.
+In virtual mode, `Count` reports the logical virtual item total rather than the number of materialized cache rows. `WasSelectionChanged()` reports real selection transitions, including selected-item removal and `Clear()` calls that remove a selection.
 
 **Constructor:** `NEW Viper.GUI.ListBox(parent)`
 

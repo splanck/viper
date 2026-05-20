@@ -218,7 +218,7 @@ Find and replace bar for text searching.
 
 `GetFindText()` and `GetReplaceText()` read the live text currently shown in the inputs, `Replace()` returns `0` when there is no active editor or no current match to replace, and pointer input now routes through the standard widget event pipeline so focus, hover, and click behavior match the rest of the toolkit.
 `SetRegex(1)` enables regular-expression search in the bound `CodeEditor`; matches may have variable length and still honor case-sensitive and whole-word options.
-If the parent widget destroys the underlying bar, the runtime wrapper disconnects from it and all later `FindBar` calls become no-ops. If the bound `CodeEditor` is destroyed, the bar unbinds itself before any later search or replace call. Boolean option getters return normalized `0` or `1`.
+If the parent widget destroys the underlying bar, the runtime wrapper disconnects from it and all later `FindBar` calls become no-ops. If the bound `CodeEditor` is destroyed, the bar unbinds itself before any later search or replace call. Boolean option getters return normalized `0` or `1` from the live widget state, including user checkbox clicks and `Ctrl+H` replace-mode toggles.
 
 **Constructor:** `NEW Viper.GUI.FindBar(parent)`
 
@@ -227,7 +227,7 @@ If the parent widget destroys the underlying bar, the runtime wrapper disconnect
 | `FindNext()`                | `Integer()`     | Find next match; returns 1 if found      |
 | `FindPrev()`                | `Integer()`     | Find previous match; returns 1 if found  |
 | `Focus()`                   | `Void()`        | Focus the find input                     |
-| `GetCurrentMatch()`         | `Integer()`     | Get current match index                  |
+| `GetCurrentMatch()`         | `Integer()`     | Get current match as a 1-based index, or 0 when there is no match |
 | `GetFindText()`             | `String()`      | Get search text                          |
 | `GetMatchCount()`           | `Integer()`     | Get total match count                    |
 | `GetReplaceText()`          | `String()`      | Get replacement text                     |
@@ -313,6 +313,9 @@ Breadcrumb wrappers install runtime finalizers and ignore calls after `Destroy()
 `SetPath(path, separator)` treats `separator` as a literal string. For example,
 `"alpha::beta"` split with `"::"` yields `alpha`, `beta`; it does not split on
 each `:` character independently.
+Replacing or clearing items also clears stale click payloads. After
+`WasItemClicked()` reports `0`, `GetClickedIndex()` returns `-1` and
+`GetClickedData()` returns an empty string until the next click.
 
 **Constructor:** `NEW Viper.GUI.Breadcrumb(parent)`
 
@@ -754,6 +757,7 @@ Embedded video player widget that renders decoded frames inside a GUI layout. Wr
 | `IsPlaying`    | Integer | Read   | Non-zero while the video is playing |
 | `Position`     | Double  | Read   | Current playback position in seconds |
 | `Duration`     | Double  | Read   | Total duration in seconds |
+| `Root`         | Widget  | Read   | Internal root widget for advanced composition |
 | `ShowControls` | Boolean | Read/Write | Show or hide built-in play/pause controls |
 | `Loop`         | Boolean | Read/Write | Loop the video when it ends |
 
@@ -766,6 +770,10 @@ Embedded video player widget that renders decoded frames inside a GUI layout. Wr
 | `Stop()` | `Void()` | Stop and reset to the start |
 | `Update(deltaSeconds)` | `Void(Double)` | Advance the video decoder; finite positive values only |
 | `SetVolume(volume)` | `Void(Double)` | Set playback volume `[0.0–1.0]`; non-finite values become `0.0` |
+| `SetFlex(flex)` / `SetMargin(margin)` | `Void(...)` | Proxy layout configuration to the internal root widget |
+| `SetSize(w, h)` / `SetPreferredSize(w, h)` / `SetMaxSize(w, h)` | `Void(...)` | Proxy sizing to the internal root widget |
+| `SetVisible(flag)` / `SetEnabled(flag)` | `Void(Integer)` | Proxy visibility/enabled state to the internal root widget |
+| `AddChild(widget)` | `Void(Object)` | Add extra content to the widget's internal root container |
 | `Destroy()` | `Void()` | Release decoder resources |
 
 ```rust
@@ -799,7 +807,7 @@ WEND
 vid.Destroy()
 ```
 
-`VideoWidget.Destroy` must be called when done; the widget does not release the decoder automatically when removed from the layout. Call `Update` once per frame inside the application loop — do not drive it from a background thread.
+`VideoWidget.Destroy` releases the decoder and its GUI subtree immediately. The runtime finalizer also destroys the subtree if the wrapper is collected while still attached, so controls are not left alive without their player. Call `Update` once per frame inside the application loop — do not drive it from a background thread.
 
 ---
 
