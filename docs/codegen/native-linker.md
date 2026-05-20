@@ -180,15 +180,17 @@ ObjFile
   counts are decoded from section header 0. `SHT_GROUP` COMDAT groups carry their signature and member list into the
   linker object model, relocation table byte sizes must be exact multiples of their entry size, `SHN_COMMON` symbols
   are preserved as tentative definitions for linker-wide coalescing, weak undefined symbols stay
-  undefined/weak-external, and absolute symbols keep their absolute values. Symbols and relocation sections that
-  reference unsupported or unmapped section indexes are hard errors.
+  undefined/weak-external, and absolute symbols keep their absolute values. Each relocation section is resolved
+  through its own `sh_link` symbol table, and symbol tables must link to an in-bounds `SHT_STRTAB`. Symbols and
+  relocation sections that reference unsupported or unmapped section indexes are hard errors.
 - **Mach-O**: Addends are extracted from instruction bytes or from ARM64 `ADDEND` relocations. x86_64 branch/signed
   PC-relative addends are normalized to Viper's internal `S + A - P` convention, where a raw displacement field of
   zero becomes internal addend `-4`. Leading `_` is
   stripped from external symbol names (Mach-O convention). Non-extern section-relative relocations resolve through
   synthetic local section symbols, ARM64 `ADDEND` payloads are sign-extended, consecutive addend records are
-  rejected, and `__DWARF`/debug sections are decoded as non-alloc sections. `MH_SUBSECTIONS_VIA_SYMBOLS`
-  `__TEXT,__text` inputs are split at global function-symbol boundaries for the native linker, preserving
+  rejected, ARM64 unsigned data-pointer relocations preserve their embedded 8-byte addends, and `__DWARF`/debug
+  sections are decoded as non-alloc sections. `MH_SUBSECTIONS_VIA_SYMBOLS`
+  `__TEXT,__text` inputs are split at local, weak, and global symbol boundaries for the native linker, preserving
   function-level dead-strip and ICF behavior even when the object writer emitted one Mach-O text section.
   Executable and writable flags are inferred from both section attributes and data-like segment names. Read-only
   Mach-O data segments such as `__DATA_CONST` and `__AUTH_CONST` remain data-segment sections without being treated
@@ -199,7 +201,9 @@ ObjFile
   fields so writer-emitted placeholders do not become bogus addends. Common symbols are preserved as tentative
   definitions with COFF-size-derived alignment.
   Weak extern fallback records, BigObj symbol tables, associative COMDAT section relationships, and COFF relocation
-  overflow records are parsed. COMDAT `ANY`, `SAME_SIZE`, `EXACT_MATCH`, `LARGEST`, and `NODUPLICATES` policies are
+  overflow records are parsed. BigObj headers must carry the COFF BigObj class ID, relocations may not target
+  auxiliary symbol records, weak externs must have valid auxiliary fallback records, and defined symbols must point
+  inside their section. COMDAT `ANY`, `SAME_SIZE`, `EXACT_MATCH`, `LARGEST`, and `NODUPLICATES` policies are
   represented explicitly; unsupported selection values are rejected.
 
 ### Reader Validation
@@ -232,6 +236,8 @@ requested output target:
 | Windows | COFF | selected architecture |
 
 Missing extra objects, unreadable archives, format mismatches, and machine mismatches are hard link errors.
+The compatibility check uses an explicit `ObjFile::synthetic` marker for linker-created helpers; user or archive
+members whose names happen to start with `<` are still validated as real inputs.
 
 ---
 
@@ -245,9 +251,9 @@ Symbol resolution uses an iterative fixed-point algorithm:
 
 1. **Seed**: Add the user's `.o` file. All its globals → defined, all its extern refs → undefined.
 2. **Scan archives**: For each undefined symbol, including COFF weak-external fallback names that request library
-   search, check each archive's symbol index. If found, extract that member, parse it, add its definitions and new
-   undefined refs. `IMAGE_WEAK_EXTERN_SEARCH_NOLIBRARY` fallbacks are kept as weak aliases but do not force archive
-   extraction.
+   search or `IMAGE_WEAK_EXTERN_SEARCH_ALIAS`, check each archive's symbol index. If found, extract that member,
+   parse it, add its definitions and new undefined refs. `IMAGE_WEAK_EXTERN_SEARCH_NOLIBRARY` fallbacks are kept as
+   weak aliases but do not force archive extraction.
    Duplicate index entries are tried in archive order across fixed-point iterations.
 3. **Repeat** until no new definitions are found (handles cross-archive dependencies).
 4. **Classify remaining**: Unresolved symbols are marked as dynamic (expected from shared libraries).
@@ -338,8 +344,9 @@ while still giving symbols, TLS layout, segment memory sizes, and relocation bou
 | Linux | `0x400000` (traditional non-PIE) |
 | Windows | `0x140000000` (PE default ImageBase) |
 
-The section merger and executable writers share the same `defaultImageBaseForPlatform()` helper so relocation
-application and PE/Mach-O/ELF output agree on the platform image base.
+The section merger seeds `LinkLayout::imageBase` from `defaultImageBaseForPlatform(platform)` if not set, and
+the relocation applier (for COFF `ADDR32NB`) and PE/Mach-O/ELF executable writers all read the same field so a
+future per-link image-base override only has to be plumbed through `NativeLinkerOptions` once.
 
 ---
 
@@ -408,6 +415,10 @@ require an unsigned-offset load/store of the exact relocated width, and branch19
   pairs use the same register validation while keeping TLV descriptor-address semantics.
 - GOT relocations that use a synthetic GOT slot require that slot to have a resolved output address. A stale
   placeholder symbol is diagnosed instead of being treated as address zero.
+- Mach-O TLV descriptor offset fixups must be converted to TLS-template-relative offsets. If the target cannot be
+  matched to a TLS template section, relocation application fails instead of leaving an absolute address behind.
+- Mach-O 64-bit GOT pointer fixups in data-segment sections, including read-only `__DATA_CONST`/`__AUTH_CONST`,
+  record rebase entries when they write nonzero addresses.
 - x86_64 ELF `GOTPCRELX`/`REX_GOTPCRELX` local relaxation requires the exact RIP-relative `MOV r*, disp32(%rip)`
   encoding before rewriting it to `LEA`.
 - `Abs32` relocations must fit in the unsigned 32-bit range.
@@ -442,6 +453,12 @@ against user and global symbols before insertion. After island insertion shifts 
 addresses are resolved again before ADRP/ADD/BR encoding. Trampoline placement and AArch64 page relocations
 validate address arithmetic before encoding branch islands. Generated island bytes are recorded as synthetic chunks
 so later relocation passes do not confuse linker-owned bytes with input sections.
+On macOS, trampoline symbol lookup uses the same underscore fallback rules as normal relocation resolution.
+
+If the original branch's patch site falls outside the output section after island insertion (an upstream
+corruption or address-arithmetic bug), the trampoline pass aborts the link with an explicit diagnostic instead of
+silently emitting the island while leaving the branch unredirected — the dropped patch would otherwise produce a
+binary that traps at run time with no link-time diagnostic.
 
 ### String Deduplication
 
@@ -449,6 +466,8 @@ String deduplication only scans allocatable sections marked as C-string sections
 generic read-only data, symbols with explicit sizes that do not match the full NUL-terminated byte range, and
 sections containing non-local symbols are left un-compacted so aliases cannot invalidate exported or section-level
 references.
+Duplicate string groups are processed in sorted byte-content order, so synthetic dedup symbol names are stable across
+processes and standard-library hash iteration differences.
 
 ### Dead Strip and ICF
 
@@ -457,6 +476,8 @@ Dead stripping keeps EH/unwind metadata roots alive (`.eh_frame`, `.gcc_except_t
 `NativeLinkerOptions::preserveDebugSections` is set. ELF constructor/destructor arrays are live by prefix, including
 priority-suffixed `.preinit_array.*`, `.init_array.*`, and `.fini_array.*` inputs. Legacy `.ctors*` and `.dtors*`
 sections are rooted as constructor/destructor metadata too.
+Dead zero-fill sections are stripped by clearing their logical memory size as well as their data/relocation lists, so
+unreachable BSS/common storage cannot survive solely because it had no file-backed bytes.
 Weak COFF external fallback definitions are also marked live when referenced. Identical Code Folding includes local
 relocation identity in function signatures and skips candidates with extra local symbols in the function section,
 preventing folds that would strand non-redirectable local labels. Executable-section relocations that materialize a
@@ -607,6 +628,13 @@ The Viper runtime uses 13 thread-local variables across 9 `.c` files. The linker
 applier using the appropriate format-specific types. ELF output emits `PT_TLS`; PE output emits the TLS data
 directory and reports zero-filled TLS separately from initialized template bytes. TLS offset calculations use the
 logical memory size of `.tbss`, not the number of bytes materialized in the object model.
+
+On Mach-O, the section merger splits TLV descriptors (`__thread_vars` — fixed 24-byte `{thunk, key, offset}`
+records) from TLS template data (`__thread_data` — the initializer image), and tags the descriptor output with
+`OutputSection::tlvDescriptors`. `MachOBindRebase` selects descriptor sections by this flag, not by the legacy
+`.tdata` name — `.tdata` is reused on ELF/PE for TLS template bytes, which must never be walked as descriptors.
+A descriptor section whose size is not an exact multiple of 24 is rejected with a hard link error; silently
+truncating the count would leave a trailing thunk field uninitialized and dyld then aborts on first TLV access.
 
 ---
 

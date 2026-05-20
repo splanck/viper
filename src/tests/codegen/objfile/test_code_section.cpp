@@ -356,6 +356,19 @@ int main() {
         CHECK(a.relocations()[0].targetSectionIdentity == a.sectionIdentity());
     }
 
+    // --- copied sections receive fresh identities and keep self-target relocs coherent ---
+    {
+        CodeSection original;
+        original.addSectionOffsetRelocationAt(
+            0, RelocKind::PCRel32, original, SymbolSection::Text, 0, -4);
+        original.emit32LE(0);
+
+        CodeSection copy = original;
+        CHECK(copy.sectionIdentity() != original.sectionIdentity());
+        CHECK(copy.relocations().size() == 1);
+        CHECK(copy.relocations()[0].targetSectionIdentity == copy.sectionIdentity());
+    }
+
     // --- appendSection rejects ambiguous section-offset relocations without identity ---
     {
         CodeSection a;

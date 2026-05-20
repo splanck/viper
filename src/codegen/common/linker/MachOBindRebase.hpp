@@ -24,6 +24,7 @@
 #include "codegen/common/linker/LinkTypes.hpp"
 
 #include <cstdint>
+#include <ostream>
 #include <string>
 #include <unordered_map>
 #include <unordered_set>
@@ -35,12 +36,16 @@ namespace viper::codegen::linker {
 /// Appends bind opcodes to \p bindData, terminated with BIND_OPCODE_DONE.
 /// @param symOrdinals  Map from symbol name to 1-based dylib ordinal.
 ///                     Ordinal 0 means flat lookup. Missing symbols default to ordinal 1.
-void buildBindOpcodes(std::vector<uint8_t> &bindData,
+/// @returns false on hard layout errors (e.g. a TLV-descriptor section whose
+///          size isn't an exact multiple of 24 bytes). Diagnostics are written
+///          to @p err and \p bindData is left in an unspecified state.
+bool buildBindOpcodes(std::vector<uint8_t> &bindData,
                       const std::vector<GotEntry> &gotEntries,
                       const LinkLayout &layout,
                       uint64_t dataSegVmAddr,
                       uint32_t dataSegIndex,
-                      const std::unordered_map<std::string, uint32_t> &symOrdinals);
+                      const std::unordered_map<std::string, uint32_t> &symOrdinals,
+                      std::ostream &err);
 
 /// Build rebase opcodes for ASLR pointer fixups in writable sections.
 /// dyld processes these at load time, adding the ASLR slide to each pointer.

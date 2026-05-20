@@ -246,6 +246,55 @@ int main() {
         CHECK(patched == 0x401010);
     }
 
+    // --- Abs64 high-bit addend wraps in the 64-bit field ---
+    {
+        std::vector<uint8_t> code(16, 0);
+        auto caller = makeObj("test_abs64_high_bit.o",
+                              ObjFileFormat::MachO,
+                              code,
+                              "global_var",
+                              macho_a64::kUnsigned,
+                              /*relocOff=*/0,
+                              std::numeric_limits<int64_t>::min());
+
+        ObjFile dataObj;
+        dataObj.name = "data.o";
+        dataObj.format = ObjFileFormat::MachO;
+        dataObj.sections.push_back({});
+        ObjSection dataSec;
+        dataSec.name = "__DATA,__const";
+        dataSec.data.resize(8, 0x42);
+        dataSec.alloc = true;
+        dataSec.alignment = 8;
+        dataObj.sections.push_back(dataSec);
+        dataObj.symbols.push_back({});
+        ObjSymbol dataSym;
+        dataSym.name = "global_var";
+        dataSym.binding = ObjSymbol::Global;
+        dataSym.sectionIndex = 1;
+        dataSym.offset = 0;
+        dataObj.symbols.push_back(dataSym);
+
+        std::vector<ObjFile> objs = {caller, dataObj};
+        auto layout = makeLayout(objs, 0x401000);
+
+        GlobalSymEntry entry;
+        entry.name = "global_var";
+        entry.binding = GlobalSymEntry::Global;
+        entry.objIndex = 1;
+        entry.secIndex = 1;
+        entry.offset = 0;
+        layout.globalSyms["global_var"] = entry;
+
+        std::ostringstream err;
+        std::unordered_set<std::string> dynSyms;
+        bool ok =
+            applyRelocations(objs, layout, dynSyms, LinkPlatform::macOS, LinkArch::AArch64, err);
+        CHECK(ok);
+        uint64_t patched = readLE64(layout.sections[0].data.data());
+        CHECK(patched == (uint64_t{0x8000000000000000} + 0x401010));
+    }
+
     // --- Undefined symbol produces error (validates Phase 1A fix) ---
     {
         std::vector<uint8_t> code(8, 0);
@@ -503,6 +552,107 @@ int main() {
             branchObjs, branchLayout, dynSyms, LinkPlatform::Linux, LinkArch::X86_64, branchErr));
         CHECK(branchErr.str().find("weak undefined symbol 'maybe_missing' cannot resolve to address zero") !=
               std::string::npos);
+    }
+
+    // --- Mach-O TLV descriptor offsets must convert to TLS-relative values ---
+    {
+        ObjFile obj;
+        obj.name = "bad_tlv.o";
+        obj.format = ObjFileFormat::MachO;
+        obj.sections.push_back({});
+        ObjSection tdata;
+        tdata.name = ".tdata";
+        tdata.data.resize(8, 0);
+        tdata.alloc = true;
+        tdata.writable = true;
+        tdata.tls = true;
+        ObjReloc rel;
+        rel.offset = 0;
+        rel.type = macho_a64::kUnsigned;
+        rel.symIndex = 1;
+        rel.length = 3;
+        tdata.relocs.push_back(rel);
+        obj.sections.push_back(tdata);
+        obj.symbols.push_back({});
+        ObjSymbol sym;
+        sym.name = "tlv_init";
+        sym.binding = ObjSymbol::Local;
+        sym.absolute = true;
+        sym.offset = 0x1234;
+        obj.symbols.push_back(sym);
+
+        std::vector<ObjFile> objs = {obj};
+        LinkLayout layout;
+        OutputSection out;
+        out.name = ".tdata";
+        out.data.resize(8, 0);
+        out.virtualAddr = 0x100000000;
+        out.alloc = true;
+        out.writable = true;
+        out.tls = true;
+        out.chunks.push_back(InputChunk{0, 1, 0, 8});
+        layout.sections.push_back(out);
+
+        std::ostringstream err;
+        std::unordered_set<std::string> dynSyms;
+        CHECK(!applyRelocations(
+            objs, layout, dynSyms, LinkPlatform::macOS, LinkArch::AArch64, err));
+        CHECK(err.str().find("could not be converted to TLS-relative") != std::string::npos);
+    }
+
+    // --- Mach-O GOT pointer rebases include read-only data segments ---
+    {
+        ObjFile obj;
+        obj.name = "got_data_const.o";
+        obj.format = ObjFileFormat::MachO;
+        obj.sections.push_back({});
+        ObjSection data;
+        data.name = "__DATA_CONST,__got";
+        data.data.resize(8, 0);
+        data.alloc = true;
+        data.dataSegment = true;
+        ObjReloc rel;
+        rel.offset = 0;
+        rel.type = macho_a64::kPointerToGot;
+        rel.symIndex = 1;
+        rel.length = 3;
+        data.relocs.push_back(rel);
+        obj.sections.push_back(data);
+        obj.symbols.push_back({});
+        ObjSymbol sym;
+        sym.name = "target";
+        sym.binding = ObjSymbol::Undefined;
+        obj.symbols.push_back(sym);
+
+        std::vector<ObjFile> objs = {obj};
+        LinkLayout layout;
+        OutputSection out;
+        out.name = "__DATA_CONST,__got";
+        out.data.resize(8, 0);
+        out.virtualAddr = 0x100002000;
+        out.alloc = true;
+        out.dataSegment = true;
+        out.chunks.push_back(InputChunk{0, 1, 0, 8});
+        layout.sections.push_back(out);
+        GlobalSymEntry got;
+        got.name = "__got_target";
+        got.binding = GlobalSymEntry::Global;
+        got.resolvedAddr = 0x100003000;
+        got.resolvedAddrValid = true;
+        layout.globalSyms["__got_target"] = got;
+        GlobalSymEntry targetEntry;
+        targetEntry.name = "target";
+        targetEntry.binding = GlobalSymEntry::Global;
+        targetEntry.resolvedAddr = 0x100004000;
+        targetEntry.resolvedAddrValid = true;
+        layout.globalSyms["target"] = targetEntry;
+
+        std::ostringstream err;
+        std::unordered_set<std::string> dynSyms;
+        CHECK(applyRelocations(
+            objs, layout, dynSyms, LinkPlatform::macOS, LinkArch::AArch64, err));
+        CHECK(readLE64(layout.sections[0].data.data()) == 0x100003000);
+        CHECK(layout.rebaseEntries.size() == 1);
     }
 
     // --- Duplicate input-section chunks are rejected before relocation patching ---
@@ -1876,6 +2026,80 @@ int main() {
             applyRelocations(objs, layout, dynSyms, LinkPlatform::Linux, LinkArch::X86_64, err);
         CHECK(!ok);
         CHECK(err.str().find("unknown reloc type") != std::string::npos);
+    }
+
+    // --- COFF ADDR32NB honors layout.imageBase override (P1 #3) ---
+    // Regression: applyRelocations used to subtract
+    // defaultImageBaseForPlatform(Windows) unconditionally. If a future
+    // configurable image base is wired through NativeLinkerOptions /
+    // LinkLayout, the applier must pick it up from the layout instead so
+    // RVAs in instruction bytes match the value the PE writer stamps into
+    // the optional header.
+    {
+        std::vector<uint8_t> code(8, 0);
+        auto obj = makeObj("test_addr32nb_basecfg.obj",
+                           ObjFileFormat::COFF,
+                           code,
+                           "unwind_info",
+                           /*IMAGE_REL_AMD64_ADDR32NB=*/3,
+                           /*relocOff=*/0,
+                           /*addend=*/0);
+
+        std::vector<ObjFile> objs = {obj};
+        // Use a custom (non-default) image base. The symbol VA is base+0x2000.
+        const uint64_t customBase = 0x180000000ULL;
+        auto layout = makeLayout(objs, customBase + 0x1000);
+        layout.imageBase = customBase;
+
+        GlobalSymEntry entry;
+        entry.name = "unwind_info";
+        entry.binding = GlobalSymEntry::Dynamic;
+        entry.resolvedAddr = customBase + 0x2000ULL;
+        layout.globalSyms["unwind_info"] = entry;
+
+        std::ostringstream err;
+        std::unordered_set<std::string> dynSyms;
+        bool ok =
+            applyRelocations(objs, layout, dynSyms, LinkPlatform::Windows, LinkArch::X86_64, err);
+        CHECK(ok);
+
+        // RVA = S - imageBase = 0x2000. If the applier had still subtracted
+        // 0x140000000 (the platform default), the result would be a different
+        // very large number that would also overflow checkedU32Value.
+        uint32_t patched = readLE32(layout.sections[0].data.data());
+        CHECK(patched == 0x2000);
+    }
+
+    // --- COFF AArch64 ADDR32NB honors layout.imageBase override (P1 #3) ---
+    {
+        std::vector<uint8_t> code(8, 0);
+        auto obj = makeObj("test_addr32nb_arm64_basecfg.obj",
+                           ObjFileFormat::COFF,
+                           code,
+                           "unwind_info_a64",
+                           /*IMAGE_REL_ARM64_ADDR32NB=*/2,
+                           /*relocOff=*/0,
+                           /*addend=*/0);
+
+        std::vector<ObjFile> objs = {obj};
+        const uint64_t customBase = 0x180000000ULL;
+        auto layout = makeLayout(objs, customBase + 0x1000);
+        layout.imageBase = customBase;
+
+        GlobalSymEntry entry;
+        entry.name = "unwind_info_a64";
+        entry.binding = GlobalSymEntry::Dynamic;
+        entry.resolvedAddr = customBase + 0x3000ULL;
+        layout.globalSyms["unwind_info_a64"] = entry;
+
+        std::ostringstream err;
+        std::unordered_set<std::string> dynSyms;
+        bool ok =
+            applyRelocations(objs, layout, dynSyms, LinkPlatform::Windows, LinkArch::AArch64, err);
+        CHECK(ok);
+
+        uint32_t patched = readLE32(layout.sections[0].data.data());
+        CHECK(patched == 0x3000);
     }
 
     // --- Result ---

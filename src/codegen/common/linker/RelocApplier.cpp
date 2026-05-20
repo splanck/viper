@@ -17,6 +17,7 @@
 //===----------------------------------------------------------------------===//
 
 #include "codegen/common/linker/RelocApplier.hpp"
+#include "codegen/common/AArch64RelocUtil.hpp"
 #include "codegen/common/linker/NameMangling.hpp"
 #include "codegen/common/linker/RelocClassify.hpp"
 #include "codegen/common/linker/RelocConstants.hpp"
@@ -96,12 +97,7 @@ static bool checkPageOffsetAlignment(uint32_t pageOff,
 }
 
 static bool aarch64UnsignedLdStOffsetShift(uint32_t insn, uint32_t &shift) {
-    if ((insn & 0x3B000000u) != 0x39000000u)
-        return false;
-    shift = insn >> 30;
-    if ((insn & 0x04800000u) == 0x04800000u)
-        shift = 4;
-    return true;
+    return viper::codegen::a64UnsignedLdStOffsetShift(insn, shift);
 }
 
 static bool isAArch64UnsignedLdStOffset(uint32_t insn) {
@@ -110,7 +106,7 @@ static bool isAArch64UnsignedLdStOffset(uint32_t insn) {
 }
 
 static bool isAArch64AddImmediate(uint32_t insn) {
-    return (insn & 0x7F000000u) == 0x11000000u;
+    return viper::codegen::isA64AddImmediate(insn);
 }
 
 static bool isAArch64LdrXUnsignedOffset(uint32_t insn) {
@@ -709,7 +705,15 @@ bool applyRelocations(const std::vector<ObjFile> &objects,
                     if (rel.type == coff_x64::kAddr32Nb) {
                         if (!requirePatchBytes(4, "ADDR32NB"))
                             return false;
-                        const uint64_t imageBase = defaultImageBaseForPlatform(LinkPlatform::Windows);
+                        // Pull the active image base from the layout, not the
+                        // platform default constant. The two agree today, but
+                        // if a configurable image base is ever wired through
+                        // NativeLinkerOptions, the writer-side RVA computation
+                        // and the applier here will only stay aligned if they
+                        // share the same source of truth.
+                        const uint64_t imageBase = layout.imageBase != 0
+                                                       ? layout.imageBase
+                                                       : defaultImageBaseForPlatform(platform);
                         uint64_t target = 0;
                         int64_t rva = 0;
                         uint32_t val = 0;
@@ -784,7 +788,11 @@ bool applyRelocations(const std::vector<ObjFile> &objects,
                     if (rel.type == coff_a64::kAddr32Nb) {
                         if (!requirePatchBytes(4, "ADDR32NB"))
                             return false;
-                        const uint64_t imageBase = defaultImageBaseForPlatform(LinkPlatform::Windows);
+                        // See the x86_64 ADDR32NB path above for why the
+                        // image base must come from the layout.
+                        const uint64_t imageBase = layout.imageBase != 0
+                                                       ? layout.imageBase
+                                                       : defaultImageBaseForPlatform(platform);
                         uint64_t target = 0;
                         int64_t rva = 0;
                         uint32_t val = 0;
@@ -922,9 +930,11 @@ bool applyRelocations(const std::vector<ObjFile> &objects,
                     case RelocAction::Abs64: {
                         if (!requirePatchBytes(8, "64-bit absolute"))
                             return false;
-                        uint64_t val = 0;
-                        if (!checkedRelocTarget(S, A, obj, symName, "64-bit absolute", err, val))
-                            return false;
+                        // A 64-bit absolute relocation can represent the full wrapped
+                        // result. Mach-O arm64 also uses high bits in some relocated
+                        // pointer fields (for example RTTI name flags), so signed
+                        // overflow checks here reject valid object contents.
+                        uint64_t val = S + static_cast<uint64_t>(A);
 
                         const bool isDynamicSym =
                             !symName.empty() &&
@@ -990,8 +1000,9 @@ bool applyRelocations(const std::vector<ObjFile> &objects,
                                 }
                             }
                             if (!tlvMatch && val != 0) {
-                                err << "warning: TLV offset for '" << symName
+                                err << "error: TLV offset for '" << symName
                                     << "' could not be converted to TLS-relative\n";
+                                return false;
                             }
                         }
 
@@ -1475,7 +1486,8 @@ bool applyRelocations(const std::vector<ObjFile> &objects,
                             if (!requirePatchBytes(8, "GOT pointer"))
                                 return false;
                             writeLE64(patch, target);
-                            if (platform == LinkPlatform::macOS && outSec.writable && target != 0)
+                            if (platform == LinkPlatform::macOS &&
+                                (outSec.writable || outSec.dataSegment) && target != 0)
                                 layout.rebaseEntries.push_back({outSecIdx, patchOff});
                         } else if (rel.length == 2) {
                             if (!requirePatchBytes(4, "GOT pointer"))

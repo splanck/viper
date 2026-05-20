@@ -507,7 +507,9 @@ bool writeMachOExe(const std::string &path,
             rebaseData.push_back(0);
 
         // Bind opcodes: dynamic symbol resolution + TLV descriptor thunks.
-        buildBindOpcodes(bindData, layout.gotEntries, layout, dataSegVmAddr, 2, symOrdinals);
+        if (!buildBindOpcodes(
+                bindData, layout.gotEntries, layout, dataSegVmAddr, 2, symOrdinals, err))
+            return false;
         while (bindData.size() % 8 != 0)
             bindData.push_back(0);
     }

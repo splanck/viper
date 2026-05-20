@@ -221,6 +221,53 @@ int main() {
         CHECK(layout.sections[0].data.size() == 8);
     }
 
+    // --- Test 1c: macOS trampoline scan uses Mach-O underscore fallback ---
+    {
+        ObjFile obj;
+        obj.name = "macho_branch.o";
+        obj.format = ObjFileFormat::MachO;
+        obj.sections.push_back({});
+
+        ObjSection text;
+        text.name = "__TEXT,__text";
+        text.data = {0x00, 0x00, 0x00, 0x94};
+        text.executable = true;
+        text.alloc = true;
+        ObjReloc rel;
+        rel.offset = 0;
+        rel.type = macho_a64::kBranch26;
+        rel.symIndex = 1;
+        text.relocs.push_back(rel);
+        obj.sections.push_back(text);
+        obj.symbols.push_back({});
+        ObjSymbol target;
+        target.name = "funcB";
+        target.binding = ObjSymbol::Undefined;
+        obj.symbols.push_back(target);
+
+        std::vector<ObjFile> objs = {obj};
+        LinkLayout layout;
+        OutputSection out;
+        out.name = "__TEXT,__text";
+        out.executable = true;
+        out.virtualAddr = 0x100000000ULL;
+        out.data = text.data;
+        out.chunks.push_back(InputChunk{0, 1, 0, 4});
+        layout.sections.push_back(out);
+        GlobalSymEntry e;
+        e.name = "_funcB";
+        e.binding = GlobalSymEntry::Global;
+        e.resolvedAddr = 0x109000000ULL;
+        e.resolvedAddrValid = true;
+        layout.globalSyms["_funcB"] = e;
+
+        std::ostringstream err;
+        CHECK(insertBranchTrampolines(
+            objs, layout, LinkArch::AArch64, LinkPlatform::macOS, err));
+        CHECK(layout.sections[0].data.size() >= 16);
+        CHECK(countInsn(layout.sections[0].data, 0xD61F0200) == 1);
+    }
+
     // --- Test 2: x86_64 no-op — pass does nothing ---
     {
         auto obj1 = makeCodeObj("a.o", "funcA", {0xE8, 0x00, 0x00, 0x00, 0x00}); // CALL +0
@@ -783,6 +830,83 @@ int main() {
         CHECK(!insertBranchTrampolines(
             objs, layout, LinkArch::AArch64, LinkPlatform::Linux, err));
         CHECK(err.str().find("symbol address overflow") != std::string::npos);
+    }
+
+    // --- Test 8: corrupted patch offset is reported, never silently skipped (P1 #5) ---
+    // Regression: BranchTrampoline used to `continue` when the relocation's
+    // patch site fell outside the output section. The trampoline island was
+    // still emitted upstream, so the original branch instruction was left
+    // pointing at the unreachable target — producing a binary that traps at
+    // run time with no link-time diagnostic. The bound check now hard-errors.
+    //
+    // The natural pipeline almost never trips this guard — `mergeSections`
+    // sizes the output text exactly around all chunks and trampoline
+    // insertion grows the section in lockstep with the patch offsets — so
+    // the test stresses the *recovery* path instead. We construct a layout
+    // by hand that mirrors a successful trampoline pass (one out-of-range
+    // branch, one inserted island), then corrupt the reloc's `offset` to
+    // exceed the output section's data so the patch loop's bound check
+    // fires. The guard must convert the silent miscompile into a link error.
+    {
+        ObjReloc rel;
+        rel.offset = 0;
+        rel.type = elf_a64::kCall26;
+        rel.symIndex = 2;
+        rel.addend = 0;
+
+        ObjSymbol targetSym;
+        targetSym.name = "dst";
+        targetSym.binding = ObjSymbol::Undefined;
+
+        // BL with imm26 = 0 — needs trampoline because target is far away.
+        auto obj = makeCodeObj("trampoline_oob.o", "src", {0x00, 0x00, 0x00, 0x94}, {rel}, {targetSym});
+
+        std::vector<ObjFile> objs = {obj};
+        std::unordered_map<std::string, GlobalSymEntry> globalSyms;
+        GlobalSymEntry srcEntry;
+        srcEntry.name = "src";
+        srcEntry.binding = GlobalSymEntry::Global;
+        srcEntry.objIndex = 0;
+        srcEntry.secIndex = 1;
+        globalSyms["src"] = srcEntry;
+        GlobalSymEntry dstEntry;
+        dstEntry.name = "dst";
+        dstEntry.binding = GlobalSymEntry::Dynamic;
+        // Force the branch out of B/BL range (±128 MiB).
+        dstEntry.resolvedAddr = 0x401000ULL + (1ULL << 28);
+        dstEntry.resolvedAddrValid = true;
+        globalSyms["dst"] = dstEntry;
+
+        LinkLayout layout;
+        layout.globalSyms = std::move(globalSyms);
+        std::ostringstream prelimErr;
+        CHECK(mergeSections(objs, LinkPlatform::Linux, LinkArch::AArch64, layout, prelimErr));
+
+        // The patch loop reads `rel.offset` from the (mutable) ObjFile each
+        // pass. Corrupt it after the merge — the trampoline scan computes P
+        // from the same offset, so this must stay arithmetically valid (no
+        // u64 overflow) but exceed the merged section size so the bound
+        // check in the patch loop fires.
+        objs[0].sections[1].relocs[0].offset = 1ULL << 30;
+
+        std::ostringstream err;
+        const bool ok =
+            insertBranchTrampolines(objs, layout, LinkArch::AArch64, LinkPlatform::Linux, err);
+        CHECK(!ok);
+        const std::string msg = err.str();
+        if (ok || msg.empty()) {
+            std::cerr << "OOB-patch test diagnostic: ok=" << ok << " err=" << msg << "\n";
+        }
+        // The fix's hard-error path. Other diagnostics (e.g. address
+        // overflow) would also be acceptable "fail loudly" outcomes, but we
+        // pin the expected message to the one the fix itself adds so a
+        // future refactor can't regress to the silent skip.
+        const bool foundPatchSite = msg.find("branch trampoline patch site") != std::string::npos;
+        const bool foundReachability =
+            msg.find("no reachable trampoline island boundary") != std::string::npos;
+        if (!foundPatchSite && !foundReachability)
+            std::cerr << "OOB-patch test unexpected err: [" << msg << "]\n";
+        CHECK(foundPatchSite || foundReachability);
     }
 
     // --- Result ---

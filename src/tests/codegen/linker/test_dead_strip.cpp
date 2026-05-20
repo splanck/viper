@@ -281,10 +281,11 @@ int main() {
         CHECK(!objs[0].sections[1].data.empty());
     }
 
-    // --- Synthetic objects (name starts with '<') are always live ---
+    // --- Synthetic objects are always live ---
     {
         ObjFile synth;
         synth.name = "<dyld-stubs>";
+        synth.synthetic = true;
         synth.format = ObjFileFormat::MachO;
         synth.sections.push_back({}); // null
         ObjSection stub;
@@ -305,6 +306,35 @@ int main() {
 
         // Synthetic object sections should be live.
         CHECK(!objs[1].sections[1].data.empty());
+    }
+
+    // --- User/archive object names that look synthetic are not trusted ---
+    {
+        auto user = makeObj("user.o", {".text"});
+        addSymbol(user, "main", 1, ObjSymbol::Global);
+
+        ObjFile archiveLike;
+        archiveLike.name = "<not-synthetic>.o";
+        archiveLike.format = ObjFileFormat::ELF;
+        archiveLike.sections.push_back({});
+        ObjSection bss;
+        bss.name = ".bss";
+        bss.alloc = true;
+        bss.writable = true;
+        bss.zeroFill = true;
+        bss.memSize = 32;
+        archiveLike.sections.push_back(bss);
+        archiveLike.symbols.push_back({});
+
+        std::vector<ObjFile> objs = {user, archiveLike};
+        std::unordered_map<std::string, GlobalSymEntry> globalSyms;
+        globalSyms["main"] = {"main", GlobalSymEntry::Global, 0, 1, 0, 0};
+        std::ostringstream err;
+
+        deadStrip(objs, 1, globalSyms, "main", err);
+        CHECK(objs[1].sections[1].stripped);
+        CHECK(!objs[1].sections[1].zeroFill);
+        CHECK(objs[1].sections[1].memSize == 0);
     }
 
     // --- Windows COFF keeps every .CRT$ contribution alive ---

@@ -160,7 +160,9 @@ int sectionClassOrder(SectionClass cls) {
 } // namespace
 
 bool assignSectionVirtualAddresses(LinkLayout &layout, LinkPlatform platform, std::ostream &err) {
-    const uint64_t imageBase = defaultImageBaseForPlatform(platform);
+    if (layout.imageBase == 0)
+        layout.imageBase = defaultImageBaseForPlatform(platform);
+    const uint64_t imageBase = layout.imageBase;
     if (imageBase > std::numeric_limits<uint64_t>::max() - layout.pageSize) {
         err << "error: image base plus page size exceeds 64-bit address range\n";
         return false;
@@ -466,6 +468,7 @@ bool mergeSections(const std::vector<ObjFile> &objects,
         if (hasTlvDescriptors) {
             auto &tdata =
                 addOutputSection(SectionClass::TlsData, ".tdata", false, true, true, false);
+            tdata.tlvDescriptors = true;
             for (const auto &pc : pending) {
                 if (pc.cls != SectionClass::TlsData)
                     continue;

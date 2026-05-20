@@ -134,6 +134,7 @@ void ensurePeImportFunction(std::vector<DllImport> &imports,
 ObjFile makeUndefinedRootObject(const ObjFile &userObj, const std::string &symbolName) {
     ObjFile root;
     root.name = "<entry-root>";
+    root.synthetic = true;
     root.format = userObj.format;
     root.is64bit = userObj.is64bit;
     root.isLittleEndian = userObj.isLittleEndian;
@@ -160,6 +161,7 @@ ObjFile makeUndefinedRootObject(const ObjFile &userObj, const std::string &symbo
 ObjFile makeDsoHandleObject(const ObjFile &userObj) {
     ObjFile obj;
     obj.name = "<dso-handle>";
+    obj.synthetic = true;
     obj.format = userObj.format;
     obj.is64bit = userObj.is64bit;
     obj.isLittleEndian = userObj.isLittleEndian;
@@ -287,8 +289,9 @@ const char *formatName(ObjFileFormat format) {
 }
 
 /// @brief Reject any input ObjFile whose format/machine does not match the target.
-/// @details Synthetic objects (whose name starts with `<`) are exempt from the
-///          check because they were minted with the target's format already.
+/// @details Synthetic objects are exempt from the check because they were minted
+///          with the target's format already. User/archive object names are not
+///          trusted for this decision.
 bool validateInputObjects(const std::vector<ObjFile> &objects,
                           LinkPlatform platform,
                           LinkArch arch,
@@ -296,7 +299,7 @@ bool validateInputObjects(const std::vector<ObjFile> &objects,
     const ObjFileFormat wantFormat = expectedFormat(platform);
     const uint16_t wantMachine = expectedMachine(platform, arch);
     for (const auto &obj : objects) {
-        if (obj.name.size() > 0 && obj.name[0] == '<')
+        if (obj.synthetic)
             continue;
         if (obj.format != wantFormat) {
             err << "error: " << obj.name << ": " << formatName(obj.format)
@@ -335,6 +338,7 @@ ObjFile generateWindowsX64Helpers(const std::unordered_set<std::string> &dynamic
                                   bool needTlsIndex) {
     ObjFile obj;
     obj.name = "<win64-helpers>";
+    obj.synthetic = true;
     obj.format = ObjFileFormat::COFF;
     obj.is64bit = true;
     obj.isLittleEndian = true;
@@ -660,6 +664,7 @@ ObjFile generateWindowsArm64Helpers(const std::unordered_set<std::string> &dynam
                                     bool needTlsIndex) {
     ObjFile obj;
     obj.name = "<winarm64-helpers>";
+    obj.synthetic = true;
     obj.format = ObjFileFormat::COFF;
     obj.is64bit = true;
     obj.isLittleEndian = true;

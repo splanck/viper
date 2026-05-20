@@ -101,6 +101,8 @@ writing output. Format limits are reported through the writer error stream inste
 Section-offset relocations can also carry the identity of the target `CodeSection`; multi-text object emission uses
 that identity to select the exact section anchor and rejects legacy offset-only relocations when the offset is
 ambiguous across function sections.
+`CodeSection` copies receive fresh section identities and self-targeted section-offset relocations are retargeted to
+the copy, so copied buffers cannot accidentally alias another section's relocation anchors.
 
 ---
 
@@ -175,6 +177,8 @@ The `PhysReg` enum order differs from hardware encoding. The encoder maps via lo
   hardware encoding tables. This catches malformed post-RA MIR instead of encoding the wrong register class.
 - **Win64 unwind metadata**: COFF unwind emission requires every planned prologue operation to match emitted code,
   and rejects prologue/code offsets that exceed the 8-bit PE unwind fields.
+- **AArch64 relocation shapes**: ADD-immediate and unsigned-offset load/store relocation sites use shared validation
+  helpers across the writers and linker so page-offset relocations are only accepted on compatible instruction forms.
 - **Symbol names**: Encoders record canonical, unmangled names in `CodeSection`; platform ABI spelling is applied
   by the object writer. This keeps ELF/COFF/Mach-O inputs comparable until serialization.
 - **Symbol offsets**: Object writers serialize physical offsets within emitted section bytes. `CodeSection` logical

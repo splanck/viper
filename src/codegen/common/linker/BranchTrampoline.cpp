@@ -22,6 +22,7 @@
 #include "codegen/common/linker/BranchTrampoline.hpp"
 
 #include "codegen/common/linker/AlignUtil.hpp"
+#include "codegen/common/linker/NameMangling.hpp"
 #include "codegen/common/linker/RelocClassify.hpp"
 #include "codegen/common/linker/SectionMerger.hpp"
 
@@ -142,8 +143,9 @@ bool resolveLocalSymbol(const ObjSymbol &sym,
 
 bool resolveGlobalSymbol(const std::string &name,
                          const LinkLayout &layout,
+                         LinkPlatform platform,
                          uint64_t &addr) {
-    auto it = layout.globalSyms.find(name);
+    auto it = findWithPlatformFallback(layout.globalSyms, name, platform);
     if (it == layout.globalSyms.end())
         return false;
     if (!it->second.resolvedAddrValid && it->second.resolvedAddr == 0 &&
@@ -158,11 +160,12 @@ bool resolveRelocSymbol(const ObjSymbol &sym,
                         size_t objIdx,
                         const LocationMap &locMap,
                         const LinkLayout &layout,
+                        LinkPlatform platform,
                         uint64_t &addr) {
     if ((sym.sectionIndex > 0 || sym.absolute) &&
         resolveLocalSymbol(sym, objIdx, locMap, layout, addr))
         return true;
-    if (!sym.name.empty() && resolveGlobalSymbol(sym.name, layout, addr))
+    if (!sym.name.empty() && resolveGlobalSymbol(sym.name, layout, platform, addr))
         return true;
     return false;
 }
@@ -344,7 +347,7 @@ bool insertBranchTrampolines(std::vector<ObjFile> &objects,
                 const ObjSymbol &targetSym = obj.symbols[rel.symIndex];
                 const std::string &symName = targetSym.name;
                 uint64_t S = 0;
-                if (!resolveRelocSymbol(targetSym, oi, locMap, layout, S))
+                if (!resolveRelocSymbol(targetSym, oi, locMap, layout, platform, S))
                     continue;
                 const int64_t A = rel.addend;
                 uint64_t P = 0;
@@ -574,7 +577,8 @@ bool insertBranchTrampolines(std::vector<ObjFile> &objects,
         }
         uint64_t resolvedTarget = 0;
         const auto &targetSym = objects[trampoline.targetObjIdx].symbols[trampoline.targetSymIndex];
-        if (!resolveRelocSymbol(targetSym, trampoline.targetObjIdx, locMap, layout, resolvedTarget) ||
+        if (!resolveRelocSymbol(
+                targetSym, trampoline.targetObjIdx, locMap, layout, platform, resolvedTarget) ||
             !checkedAddI64(resolvedTarget, trampoline.targetAddend, trampoline.targetAddr)) {
             err << "error: trampoline target address overflow for '"
                 << trampoline.targetSymName << "'\n";
@@ -635,9 +639,26 @@ bool insertBranchTrampolines(std::vector<ObjFile> &objects,
         auto &outSec = layout.sections[outSecIdx];
 
         auto &rel = objects[oob.objIdx].sections[oob.secIdx].relocs[oob.relocIdx];
-        const size_t patchOff = chunkBase + rel.offset;
-        if (patchOff + 4 > outSec.data.size())
-            continue;
+        size_t patchOff = 0;
+        if (!checkedAddSize(chunkBase, rel.offset, patchOff)) {
+            err << "error: branch trampoline patch site offset overflow for '"
+                << oob.targetSymName << "'\n";
+            return false;
+        }
+        size_t patchEnd = 0;
+        if (!checkedAddSize(patchOff, 4u, patchEnd) || patchEnd > outSec.data.size()) {
+            // The trampoline island was already inserted upstream and any
+            // chunk shifts have been recorded. If the original branch site
+            // is now out of range, we cannot redirect it — silently dropping
+            // the patch would leave an unreachable branch pointing at the
+            // original target, producing a binary that fails at run time
+            // with no diagnostic.
+            err << "error: " << objects[oob.objIdx].name
+                << ": branch trampoline patch site at offset " << patchOff
+                << " is out of bounds in output section '" << outSec.name << "' (size="
+                << outSec.data.size() << ")\n";
+            return false;
+        }
 
         const auto trampIt =
             std::find_if(trampolines.begin(), trampolines.end(), [&](const auto &entry) {

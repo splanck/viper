@@ -116,6 +116,13 @@ struct OutputSection {
     bool zeroFill = false; ///< Occupies memory but has no file backing.
     bool alloc = true; ///< Section is loadable (false for debug sections).
     bool dataSegment = false; ///< Emit in data segment even when final protections are read-only.
+    /// True when this section contains Mach-O TLV descriptors (24-byte
+    /// {thunk, key, offset} records). Set by SectionMerger when merging
+    /// `__thread_vars` inputs. MachOBindRebase uses this to gate the
+    /// `_tlv_bootstrap` thunk-binding loop instead of matching by section
+    /// name, which avoids confusing TLV descriptors with TLS template data
+    /// (the two had to share the `.tdata` name historically).
+    bool tlvDescriptors = false;
 };
 
 inline size_t outputSectionMemSize(const OutputSection &sec) {
@@ -277,6 +284,13 @@ struct LinkLayout {
     std::vector<OutputSection> sections;                        ///< Merged output sections.
     std::unordered_map<std::string, GlobalSymEntry> globalSyms; ///< All resolved symbols.
     uint64_t entryAddr = 0;                                     ///< Entry point virtual address.
+    /// Image base virtual address. SectionMerger seeds this from
+    /// `defaultImageBaseForPlatform(platform)`. RelocApplier, MachOBindRebase,
+    /// and the executable writers must all read it from here so that any
+    /// future per-link override of the image base only has to be plumbed
+    /// through one field instead of dozens of `defaultImageBaseForPlatform`
+    /// call sites.
+    uint64_t imageBase = 0;
     size_t pageSize = 0x1000;                                   ///< Page size (platform-dependent).
     std::vector<GotEntry> gotEntries;       ///< GOT entries for dynamic linking.
     std::vector<RebaseEntry> rebaseEntries; ///< Locations needing ASLR pointer rebase.

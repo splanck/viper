@@ -23,6 +23,7 @@
 #include "codegen/common/linker/ObjFileReader.hpp"
 
 #include <algorithm>
+#include <cstddef>
 #include <cstring>
 #include <string>
 #include <unordered_map>
@@ -39,24 +40,24 @@ size_t deduplicateStrings(std::vector<ObjFile> &allObjects,
         uint32_t secIdx;
         size_t originalOffset;
         size_t strLen;
-        std::string content;
         bool keepBytes = true;
     };
 
-    auto objectSymbolExists = [&](const std::string &name) -> bool {
-        for (const auto &obj : allObjects) {
-            for (const auto &sym : obj.symbols) {
-                if (sym.name == name)
-                    return true;
-            }
+    std::unordered_set<std::string> usedSymbolNames;
+    usedSymbolNames.reserve(globalSyms.size());
+    for (const auto &entry : globalSyms)
+        usedSymbolNames.insert(entry.first);
+    for (const auto &obj : allObjects) {
+        for (const auto &sym : obj.symbols) {
+            if (!sym.name.empty())
+                usedSymbolNames.insert(sym.name);
         }
-        return false;
-    };
+    }
 
     auto makeDedupSymbolName = [&](size_t &counter) -> std::string {
         for (;;) {
             std::string name = "__viper_dedup_str_" + std::to_string(counter++);
-            if (globalSyms.find(name) == globalSyms.end() && !objectSymbolExists(name))
+            if (usedSymbolNames.insert(name).second)
                 return name;
         }
     };
@@ -108,6 +109,8 @@ size_t deduplicateStrings(std::vector<ObjFile> &allObjects,
             // Extract NUL-terminated content starting at sym.offset.
             if (sym.offset >= sec.data.size())
                 continue;
+            if (sym.offset > 0 && sec.data[sym.offset - 1] != 0)
+                continue;
 
             const uint8_t *start = sec.data.data() + sym.offset;
             size_t maxLen = sec.data.size() - sym.offset;
@@ -131,7 +134,7 @@ size_t deduplicateStrings(std::vector<ObjFile> &allObjects,
             // Use the raw bytes (including NUL) as the content key.
             std::string content(reinterpret_cast<const char *>(start), strLen);
             const size_t locIdx = locations.size();
-            locations.push_back({oi, si, sym.sectionIndex, sym.offset, strLen, content, true});
+            locations.push_back({oi, si, sym.sectionIndex, sym.offset, strLen, true});
             contentMap[content].push_back(locIdx);
             sectionMap[InputSectionKey{oi, sym.sectionIndex}].push_back(locIdx);
         }
@@ -141,7 +144,16 @@ size_t deduplicateStrings(std::vector<ObjFile> &allObjects,
     size_t dedupCounter = 0;
     size_t eliminated = 0;
 
-    for (auto &[content, locs] : contentMap) {
+    std::vector<const std::string *> contentKeys;
+    contentKeys.reserve(contentMap.size());
+    for (const auto &entry : contentMap)
+        contentKeys.push_back(&entry.first);
+    std::sort(contentKeys.begin(), contentKeys.end(), [](const auto *lhs, const auto *rhs) {
+        return *lhs < *rhs;
+    });
+
+    for (const std::string *content : contentKeys) {
+        auto &locs = contentMap[*content];
         if (locs.size() < 2)
             continue;
 
@@ -180,7 +192,19 @@ size_t deduplicateStrings(std::vector<ObjFile> &allObjects,
 
     // Step 3: Compact cstring sections when every byte belongs to a symbolized
     // string. This turns dedup from symbol aliasing into actual size reduction.
-    for (auto &[sectionKey, locIndices] : sectionMap) {
+    std::vector<InputSectionKey> sectionKeys;
+    sectionKeys.reserve(sectionMap.size());
+    for (const auto &entry : sectionMap)
+        sectionKeys.push_back(entry.first);
+    std::sort(sectionKeys.begin(), sectionKeys.end(), [](const InputSectionKey &a,
+                                                         const InputSectionKey &b) {
+        if (a.objIndex != b.objIndex)
+            return a.objIndex < b.objIndex;
+        return a.secIndex < b.secIndex;
+    });
+
+    for (const auto &sectionKey : sectionKeys) {
+        auto &locIndices = sectionMap[sectionKey];
         if (locIndices.empty())
             continue;
 
@@ -235,7 +259,10 @@ size_t deduplicateStrings(std::vector<ObjFile> &allObjects,
                 continue;
 
             const size_t newOffset = newData.size();
-            newData.insert(newData.end(), loc.content.begin(), loc.content.end());
+            newData.insert(newData.end(),
+                           sec.data.begin() + static_cast<std::ptrdiff_t>(loc.originalOffset),
+                           sec.data.begin() +
+                               static_cast<std::ptrdiff_t>(loc.originalOffset + loc.strLen));
             sym.sectionIndex = firstLoc.secIdx;
             sym.offset = newOffset;
 

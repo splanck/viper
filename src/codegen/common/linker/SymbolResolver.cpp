@@ -165,11 +165,14 @@ static uint64_t hashComdatSection(const ObjFile &obj, const ObjSection &sec) {
 }
 
 static bool weakExternalSearchesFallbackLibrary(const ObjSymbol &sym) {
-    // COFF values: 1=NOLIBRARY, 2=LIBRARY, 3=ALIAS. Viper-created tests and
-    // older readers used 0; keep that legacy value as "search fallback".
+    // COFF values: 1=NOLIBRARY, 2=LIBRARY, 3=ALIAS. ALIAS must also seed
+    // archive extraction; otherwise an archive-only fallback is never loaded.
+    // Viper-created tests and older readers used 0; keep that legacy value as
+    // "search fallback".
     if (!sym.weakExternal || sym.weakDefaultName.empty())
         return false;
-    return sym.weakExternalCharacteristics == 0 || sym.weakExternalCharacteristics == 2;
+    return sym.weakExternalCharacteristics == 0 || sym.weakExternalCharacteristics == 2 ||
+           sym.weakExternalCharacteristics == 3;
 }
 
 static bool getComdatDefinition(const ObjFile &obj,

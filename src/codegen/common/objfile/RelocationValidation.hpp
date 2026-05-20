@@ -22,6 +22,7 @@
 
 #pragma once
 
+#include "codegen/common/AArch64RelocUtil.hpp"
 #include "codegen/common/objfile/ObjectFileWriter.hpp"
 
 #include <cstddef>
@@ -39,21 +40,15 @@ inline uint32_t readRelocLE32(const CodeSection &section, size_t logicalOffset) 
 }
 
 inline bool isA64AddImmediate(uint32_t insn) {
-    return (insn & 0x7F000000u) == 0x11000000u;
+    return viper::codegen::isA64AddImmediate(insn);
 }
 
 inline bool a64UnsignedLdStOffsetShift(uint32_t insn, uint32_t &shift) {
-    if ((insn & 0x3B000000u) != 0x39000000u)
-        return false;
-    shift = insn >> 30;
-    if ((insn & 0x04800000u) == 0x04800000u)
-        shift = 4;
-    return true;
+    return viper::codegen::a64UnsignedLdStOffsetShift(insn, shift);
 }
 
 inline bool isA64UnsignedLdStOffsetWithShift(uint32_t insn, uint32_t expectedShift) {
-    uint32_t shift = 0;
-    return a64UnsignedLdStOffsetShift(insn, shift) && shift == expectedShift;
+    return viper::codegen::isA64UnsignedLdStOffsetWithShift(insn, expectedShift);
 }
 
 /// @brief Return the canonical short name for a RelocKind enum value.

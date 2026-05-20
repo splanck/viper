@@ -742,6 +742,41 @@ int main() {
         CHECK(globalSyms.count("fallback_func") == 0);
     }
 
+    // --- COFF weak external ALIAS fallback also triggers archive extraction ---
+    {
+        auto user = makeObj("weak_alias_user.obj", {".text"});
+        addSymbol(user, "main", 1, ObjSymbol::Global);
+        ObjSymbol weak;
+        weak.name = "maybe_func";
+        weak.binding = ObjSymbol::Undefined;
+        weak.weakExternal = true;
+        weak.weakDefaultName = "fallback_alias_func";
+        weak.weakExternalCharacteristics = 3; // IMAGE_WEAK_EXTERN_SEARCH_ALIAS.
+        user.symbols.push_back(std::move(weak));
+
+        auto providerBytes =
+            writeElfObjectWithGlobals("build/test-out/weak_alias_provider.o", {"fallback_alias_func"});
+        Archive archive;
+        archive.path = "synthetic_weak_alias.a";
+        archive.data = providerBytes;
+        archive.members.push_back({"fallback.o", 0, archive.data.size()});
+        archive.symbolIndex["fallback_alias_func"] = 0;
+
+        std::vector<ObjFile> initObjs = {user};
+        std::vector<Archive> archives = {archive};
+        std::unordered_map<std::string, GlobalSymEntry> globalSyms;
+        std::vector<ObjFile> allObjects;
+        std::unordered_set<std::string> dynamicSyms;
+        std::ostringstream err;
+
+        bool ok = resolveSymbols(initObjs, archives, globalSyms, allObjects, dynamicSyms, err);
+        CHECK(ok);
+        CHECK(err.str().empty());
+        CHECK(allObjects.size() == 2);
+        CHECK(globalSyms.count("fallback_alias_func") == 1);
+        CHECK(globalSyms["fallback_alias_func"].objIndex == 1);
+    }
+
     // --- Archive duplicate symbol candidates are retried after stale entries ---
     {
         auto user = makeObj("dup_candidate_user.o", {".text"});

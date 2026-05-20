@@ -17,6 +17,7 @@
 //===----------------------------------------------------------------------===//
 
 #include "codegen/common/linker/ObjFileReader.hpp"
+#include "codegen/common/AArch64RelocUtil.hpp"
 #include "codegen/common/linker/RelocConstants.hpp"
 
 #include <algorithm>
@@ -166,20 +167,6 @@ static void splitMachOTextSubsections(ObjFile &obj) {
     std::vector<uint32_t> directMap(obj.sections.size(), 0);
     std::vector<Range> ranges;
 
-    auto findRange = [&](uint32_t oldSec, size_t off) -> const Range * {
-        const Range *lastForSection = nullptr;
-        for (const auto &range : ranges) {
-            if (range.oldSec != oldSec)
-                continue;
-            lastForSection = &range;
-            if (off >= range.start && off < range.end)
-                return &range;
-        }
-        if (lastForSection && off == lastForSection->end)
-            return lastForSection;
-        return nullptr;
-    };
-
     for (uint32_t si = 1; si < obj.sections.size(); ++si) {
         const auto &sec = obj.sections[si];
         const bool splitCandidate =
@@ -187,10 +174,11 @@ static void splitMachOTextSubsections(ObjFile &obj) {
 
         std::vector<size_t> cuts;
         if (splitCandidate) {
+            cuts.push_back(0);
             for (const auto &sym : obj.symbols) {
                 if (sym.sectionIndex != si || sym.name.empty())
                     continue;
-                if (sym.binding != ObjSymbol::Global && sym.binding != ObjSymbol::Weak)
+                if (sym.name.rfind("$sect.", 0) == 0)
                     continue;
                 if (sym.offset < sec.data.size())
                     cuts.push_back(sym.offset);
@@ -211,12 +199,23 @@ static void splitMachOTextSubsections(ObjFile &obj) {
             if (start >= end)
                 continue;
 
-            ObjSection part = sec;
+            ObjSection part;
             part.name = "__TEXT,__text";
+            part.alignment = sec.alignment;
+            part.executable = sec.executable;
+            part.writable = sec.writable;
+            part.alloc = sec.alloc;
+            part.tls = sec.tls;
+            part.zeroFill = sec.zeroFill;
+            part.dataSegment = sec.dataSegment;
+            part.isCStringSection = sec.isCStringSection;
+            part.associativeSection = sec.associativeSection;
+            part.comdatSelection = sec.comdatSelection;
+            part.comdatKey = sec.comdatKey;
+            part.stripped = sec.stripped;
             for (const auto &sym : obj.symbols) {
-                if (sym.sectionIndex == si && sym.offset == start &&
-                    (sym.binding == ObjSymbol::Global || sym.binding == ObjSymbol::Weak) &&
-                    !sym.name.empty()) {
+                if (sym.sectionIndex == si && sym.offset == start && !sym.name.empty() &&
+                    sym.name.rfind("$sect.", 0) != 0) {
                     part.name = "__TEXT,__text." + sym.name;
                     break;
                 }
@@ -224,7 +223,6 @@ static void splitMachOTextSubsections(ObjFile &obj) {
             part.data.assign(sec.data.begin() + static_cast<std::ptrdiff_t>(start),
                              sec.data.begin() + static_cast<std::ptrdiff_t>(end));
             part.memSize = part.data.size();
-            part.relocs.clear();
             const uint32_t newSecIdx = static_cast<uint32_t>(newSections.size());
             ranges.push_back({si, newSecIdx, start, end});
             newSections.push_back(std::move(part));
@@ -240,6 +238,37 @@ static void splitMachOTextSubsections(ObjFile &obj) {
     // first to avoid applying direct-mapped section relocations twice.
     for (size_t si = 1; si < newSections.size(); ++si)
         newSections[si].relocs.clear();
+
+    std::vector<std::vector<const Range *>> rangesByOldSec(obj.sections.size());
+    for (const auto &range : ranges) {
+        if (range.oldSec < rangesByOldSec.size())
+            rangesByOldSec[range.oldSec].push_back(&range);
+    }
+
+    auto findRange = [&](uint32_t oldSec, size_t off) -> const Range * {
+        if (oldSec >= rangesByOldSec.size())
+            return nullptr;
+        const auto &sectionRanges = rangesByOldSec[oldSec];
+        if (sectionRanges.empty())
+            return nullptr;
+
+        auto it = std::upper_bound(sectionRanges.begin(),
+                                   sectionRanges.end(),
+                                   off,
+                                   [](size_t value, const Range *range) {
+                                       return value < range->start;
+                                   });
+        if (it != sectionRanges.begin()) {
+            --it;
+            if (off >= (*it)->start && off < (*it)->end)
+                return *it;
+        }
+
+        const Range *last = sectionRanges.back();
+        if (off == last->end)
+            return last;
+        return nullptr;
+    };
 
     for (auto &sym : obj.symbols) {
         if (sym.sectionIndex == 0 || sym.sectionIndex >= directMap.size())
@@ -281,14 +310,42 @@ static uint32_t readLE32(const uint8_t *p) {
            (static_cast<uint32_t>(p[2]) << 16) | (static_cast<uint32_t>(p[3]) << 24);
 }
 
+/// Read little-endian 64-bit from raw bytes.
+static uint64_t readLE64(const uint8_t *p) {
+    uint64_t v = 0;
+    for (unsigned i = 0; i < 8; ++i)
+        v |= static_cast<uint64_t>(p[i]) << (i * 8);
+    return v;
+}
+
 /// Extract relocation addend from instruction bytes (Mach-O has no explicit addend).
 static int64_t extractMachOAddend(const uint8_t *sectionData,
                                   size_t sectionSize,
                                   size_t offset,
                                   uint32_t relocType,
-    uint32_t relocLength,
-    bool isArm64) {
+                                  uint32_t relocLength,
+                                  bool isArm64) {
     if (isArm64) {
+        if (relocType == macho_a64::kUnsigned) {
+            const size_t fieldSize = size_t{1} << relocLength;
+            if (!checkedRange(offset, fieldSize, sectionSize))
+                return 0;
+            if (fieldSize == 8)
+                return static_cast<int64_t>(readLE64(sectionData + offset));
+            if (fieldSize == 4) {
+                int32_t val = 0;
+                std::memcpy(&val, sectionData + offset, 4);
+                return val;
+            }
+            if (fieldSize == 2) {
+                int16_t val = 0;
+                std::memcpy(&val, sectionData + offset, 2);
+                return val;
+            }
+            int8_t val = 0;
+            std::memcpy(&val, sectionData + offset, 1);
+            return val;
+        }
         if (!checkedRange(offset, 4, sectionSize))
             return 0;
         const uint32_t insn = readLE32(sectionData + offset);
@@ -306,10 +363,8 @@ static int64_t extractMachOAddend(const uint8_t *sectionData,
             case macho_a64::kGotLoadPageOff12:
             case macho_a64::kTlvpLoadPageOff12: {
                 uint32_t pageOff = (insn >> 10) & 0xFFFu;
-                if ((insn & 0x3B000000) == 0x39000000) {
-                    uint32_t shift = insn >> 30;
-                    if ((insn & 0x04800000) == 0x04800000)
-                        shift = 4;
+                uint32_t shift = 0;
+                if (viper::codegen::a64UnsignedLdStOffsetShift(insn, shift)) {
                     pageOff <<= shift;
                 }
                 return static_cast<int64_t>(pageOff);
@@ -558,7 +613,7 @@ bool readMachOObj(
                     const uint32_t relType = (info >> 28) & 0xF;
 
                     // ARM64_RELOC_ADDEND (type 10): stores addend for next relocation.
-	                    if (isArm64 && relType == 10) {
+                    if (isArm64 && relType == 10) {
                         if (hasPendingAddend) {
                             err << "error: " << name
                                 << ": consecutive ARM64_RELOC_ADDEND entries in Mach-O section "
@@ -567,17 +622,20 @@ bool readMachOObj(
                         }
                         pendingAddend = signExtend(symbolNum, 24);
                         hasPendingAddend = true;
-	                        continue;
-	                    }
+                        continue;
+                    }
 
-	                    const size_t fixupSize = isArm64 ? 4u : (size_t{1} << relLength);
-	                    if (!checkedRange(static_cast<size_t>(ri->r_address), fixupSize, os.data.size())) {
-	                        err << "error: " << name << ": Mach-O relocation at offset "
-	                            << ri->r_address << " extends beyond section " << os.name << "\n";
-	                        return false;
-	                    }
+                    const size_t fixupSize =
+                        isArm64 && relType != macho_a64::kUnsigned ? 4u : (size_t{1} << relLength);
+                    if (!checkedRange(static_cast<size_t>(ri->r_address),
+                                      fixupSize,
+                                      os.data.size())) {
+                        err << "error: " << name << ": Mach-O relocation at offset "
+                            << ri->r_address << " extends beyond section " << os.name << "\n";
+                        return false;
+                    }
 
-	                    ObjReloc rel;
+                    ObjReloc rel;
                     rel.offset = static_cast<size_t>(ri->r_address);
                     rel.symIndex = symbolNum; // nlist index or section ordinal.
                     rel.type = relType;
@@ -709,8 +767,25 @@ bool readMachOObj(
             // Map Mach-O 1-based section number to our section index.
             // machoSecMap translates Mach-O indices (which include skipped debug
             // sections) to ObjFile section indices.
-            if (nl->n_sect > 0 && nl->n_sect < machoSecMap.size())
+            //
+            // An n_sect that is past the number of sections we actually saw in
+            // the load commands indicates a truncated or malformed Mach-O. We
+            // must not silently fall through with sectionIndex = 0 because the
+            // symbol would then masquerade as undefined and could turn into a
+            // bogus dynamic import downstream. (n_sect == 0 with N_SECT type
+            // is also illegal per the Mach-O ABI.) machoSecMap[n_sect] == 0
+            // for a non-debug section is legitimate — it means the section
+            // was skipped (e.g. it was a debug section) — so let that case
+            // pass through with os.sectionIndex left at 0.
+            if (nl->n_sect > 0 && nl->n_sect < machoSecMap.size()) {
                 os.sectionIndex = machoSecMap[nl->n_sect];
+            } else if (nType == 0x0E) {
+                err << "error: " << name << ": Mach-O symbol '" << os.name
+                    << "' references section " << static_cast<unsigned>(nl->n_sect)
+                    << " which is outside the parsed section table (size="
+                    << machoSecMap.size() << ")\n";
+                return false;
+            }
             // Convert Mach-O absolute n_value to section-relative offset.
             // n_value is an address in the .o's virtual space; subtract section base.
             if (nl->n_sect > 0 && nl->n_sect < secAddrs.size() && os.sectionIndex > 0) {

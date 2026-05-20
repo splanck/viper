@@ -309,8 +309,10 @@ bool readElfObj(
     size_t shstrndx = ehdr->e_shstrndx;
     if (shstrndx == elf::SHN_XINDEX)
         shstrndx = sh0->sh_link;
-    if (shnum == 0)
+    if (shnum == 0) {
+        obj.sections.assign(1, ObjSection{});
         return true;
+    }
     if (shnum > kMaxObjSections) {
         err << "error: " << name << ": section count " << shnum << " exceeds limit\n";
         return false;
@@ -351,6 +353,7 @@ bool readElfObj(
             return std::nullopt;
         const auto &symtab = shdrs[symtabIndex];
         if (symtab.sh_type != elf::SHT_SYMTAB || symtab.sh_link >= shnum ||
+            shdrs[symtab.sh_link].sh_type != elf::SHT_STRTAB ||
             (symtab.sh_entsize != 0 && symtab.sh_entsize != sizeof(elf::Elf64_Sym)) ||
             (symtab.sh_size % sizeof(elf::Elf64_Sym)) != 0)
             return std::nullopt;
@@ -508,27 +511,16 @@ bool readElfObj(
         }
     }
 
-    // Find symbol table.
-    const elf::Elf64_Shdr *symSh = nullptr;
-    size_t symShIndex = 0;
-    for (size_t i = 1; i < shnum; ++i) {
-        if (shdrs[i].sh_type == elf::SHT_SYMTAB) {
-            symSh = &shdrs[i];
-            symShIndex = i;
-            break;
+    // Read all symbol tables. Relocation sections use sh_link to select the
+    // symbol table they reference, so keeping only the first SHT_SYMTAB can
+    // misresolve otherwise valid objects.
+    std::vector<std::vector<uint32_t>> symMapsBySection(shnum);
+    auto parseSymtab = [&](size_t symShIndex) -> bool {
+        const auto *symSh = &shdrs[symShIndex];
+        if (symSh->sh_link >= shnum || shdrs[symSh->sh_link].sh_type != elf::SHT_STRTAB) {
+            err << "error: " << name << ": ELF symbol table has invalid string table link\n";
+            return false;
         }
-    }
-
-    // Locate string table for symbols.
-    size_t strOff = 0, strSize = 0;
-    if (symSh && symSh->sh_link < shnum) {
-        strOff = static_cast<size_t>(shdrs[symSh->sh_link].sh_offset);
-        strSize = static_cast<size_t>(shdrs[symSh->sh_link].sh_size);
-    }
-
-    // Read symbols.
-    std::vector<uint32_t> symMap; // ELF sym index → ObjFile sym index.
-    if (symSh) {
         if (!checkedRange(static_cast<size_t>(symSh->sh_offset),
                           static_cast<size_t>(symSh->sh_size),
                           size)) {
@@ -553,7 +545,16 @@ bool readElfObj(
             err << "error: " << name << ": symbol count " << symCount << " exceeds limit\n";
             return false;
         }
-        symMap.resize(symCount, 0);
+
+        auto &symMap = symMapsBySection[symShIndex];
+        symMap.assign(symCount, 0);
+        const auto &strSh = shdrs[symSh->sh_link];
+        const size_t strOff = static_cast<size_t>(strSh.sh_offset);
+        const size_t strSize = static_cast<size_t>(strSh.sh_size);
+        if (!checkedRange(strOff, strSize, size)) {
+            err << "error: " << name << ": ELF symbol string table is out of bounds\n";
+            return false;
+        }
 
         std::vector<uint32_t> extendedSectionIndexes;
         for (size_t si = 1; si < shnum; ++si) {
@@ -661,9 +662,19 @@ bool readElfObj(
                 }
             }
 
+            if (obj.symbols.size() >= kMaxObjSymbols) {
+                err << "error: " << name << ": combined ELF symbol count exceeds limit\n";
+                return false;
+            }
             symMap[i] = static_cast<uint32_t>(obj.symbols.size());
             obj.symbols.push_back(std::move(os));
         }
+        return true;
+    };
+
+    for (size_t i = 1; i < shnum; ++i) {
+        if (shdrs[i].sh_type == elf::SHT_SYMTAB && !parseSymtab(i))
+            return false;
     }
 
     // Read relocations from .rela/.rel sections.
@@ -736,6 +747,13 @@ bool readElfObj(
 
             rel.type = static_cast<uint32_t>(rInfo & 0xFFFFFFFF);
             const uint32_t elfSymIdx = static_cast<uint32_t>(rInfo >> 32);
+            if (shdrs[i].sh_link >= shnum || shdrs[shdrs[i].sh_link].sh_type != elf::SHT_SYMTAB ||
+                symMapsBySection[shdrs[i].sh_link].empty()) {
+                err << "error: " << name
+                    << ": ELF relocation section has invalid symbol table link\n";
+                return false;
+            }
+            const auto &symMap = symMapsBySection[shdrs[i].sh_link];
             if (elfSymIdx >= symMap.size()) {
                 err << "error: " << name << ": relocation references invalid symbol index "
                     << elfSymIdx << "\n";

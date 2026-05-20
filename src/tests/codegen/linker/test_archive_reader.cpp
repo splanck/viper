@@ -256,7 +256,10 @@ static std::vector<uint8_t> makeSyntheticBigObj() {
     appendLE16(obj, 2);      // Version
     appendLE16(obj, kMachineAmd64);
     appendLE32(obj, 0); // TimeDateStamp
-    appendZeros(obj, 16);
+    const uint8_t bigObjClassId[16] = {
+        0xC7, 0xA1, 0xBA, 0xD1, 0xEE, 0xBA, 0xA9, 0x4B,
+        0xAF, 0x20, 0xFA, 0xF6, 0x6A, 0xA4, 0xDC, 0xB8};
+    obj.insert(obj.end(), bigObjClassId, bigObjClassId + sizeof(bigObjClassId));
     appendLE32(obj, 0); // SizeOfData
     appendLE32(obj, 0); // Flags
     appendLE32(obj, 0); // MetaDataSize

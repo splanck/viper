@@ -1166,7 +1166,7 @@ bool CoffWriter::write(const std::string &path,
             return false;
         uint32_t targetIdx = 0;
         if (rel.hasSymbolRef) {
-            if (rel.symbolSectionIdentity != text.sectionIdentity()) {
+            if (!text.matchesSectionIdentity(rel.symbolSectionIdentity)) {
                 err << "CoffWriter: .pdata relocation for '" << rel.symbolName
                     << "' references a different text section identity\n";
                 return false;
@@ -1795,7 +1795,7 @@ bool CoffWriter::write(const std::string &path,
                     textIdx = SIZE_MAX;
                     size_t matches = 0;
                     for (size_t ti = 0; ti < textCount; ++ti) {
-                        if (textSections[ti].sectionIdentity() == rel.targetSectionIdentity) {
+                        if (textSections[ti].matchesSectionIdentity(rel.targetSectionIdentity)) {
                             textIdx = ti;
                             ++matches;
                         }
@@ -1925,7 +1925,7 @@ bool CoffWriter::write(const std::string &path,
             size_t textIdx = SIZE_MAX;
             size_t matches = 0;
             for (size_t ti = 0; ti < textCount; ++ti) {
-                if (textSections[ti].sectionIdentity() == rel.symbolSectionIdentity) {
+                if (textSections[ti].matchesSectionIdentity(rel.symbolSectionIdentity)) {
                     textIdx = ti;
                     ++matches;
                 }

@@ -107,6 +107,7 @@ struct ObjFile {
     ObjFileFormat format = ObjFileFormat::Unknown;
     bool is64bit = true;
     bool isLittleEndian = true;
+    bool synthetic = false; ///< True for linker-created helper objects, never user/archive input.
     uint16_t machine = 0; ///< Machine type (EM_X86_64, EM_AARCH64, etc.)
 
     std::vector<ObjSection> sections; ///< Index 0 is reserved (null section).

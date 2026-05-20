@@ -1056,7 +1056,7 @@ bool ElfWriter::write(const std::string &path,
                         textIdx = SIZE_MAX;
                         size_t matches = 0;
                         for (size_t ti = 0; ti < N; ++ti) {
-                            if (textSections[ti].sectionIdentity() == rel.targetSectionIdentity) {
+                            if (textSections[ti].matchesSectionIdentity(rel.targetSectionIdentity)) {
                                 textIdx = ti;
                                 ++matches;
                             }

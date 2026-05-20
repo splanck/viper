@@ -51,6 +51,12 @@ static ObjFile makeTextObj(const std::string &name,
     ObjFile obj;
     obj.name = name;
     obj.format = ObjFileFormat::ELF;
+    // The existing fixtures use x86_64 RET/NOP byte sequences, so default the
+    // machine code to EM_X86_64. Previously this field was left at 0 and the
+    // ICF pass quietly assumed x86_64 — `archForObject` no longer does that
+    // (it returns nullopt for unknown machines), so tests must set this
+    // explicitly to land in the right reloc-classification space.
+    obj.machine = 62; // EM_X86_64
 
     // Section 0: null.
     obj.sections.push_back({});
@@ -447,6 +453,35 @@ int main() {
         registerGlobal(globalSyms, "funcB", 1, 1);
 
         size_t folded = foldIdenticalCode(objs, globalSyms);
+        CHECK(folded == 0);
+        CHECK(!objs[0].sections[1].data.empty());
+        CHECK(!objs[1].sections[1].data.empty());
+    }
+
+    // --- Test: unknown machine code is skipped, not silently treated as x86_64 (P1 #7) ---
+    // Regression: archForObject used to default to LinkArch::X86_64 for any
+    // machine code that wasn't EM_AARCH64 (183) or IMAGE_FILE_MACHINE_ARM64
+    // (0xAA64). Synthetic stub objects that forget to set `machine` would
+    // then have their relocations classified through x86_64's reloc-type
+    // space, producing wrong RelocAction values and incorrect address-taken
+    // accounting. The ICF pass must now skip objects whose machine code
+    // isn't a known native target.
+    {
+        // Two objects with identical bytes and no machine code set (i.e. 0).
+        auto obj1 = makeTextObj("unknown1.o", "funcA", {0xC3, 0x90, 0x90, 0x90});
+        auto obj2 = makeTextObj("unknown2.o", "funcB", {0xC3, 0x90, 0x90, 0x90});
+        obj1.machine = 0;
+        obj2.machine = 0;
+
+        std::vector<ObjFile> objs = {obj1, obj2};
+        std::unordered_map<std::string, GlobalSymEntry> globalSyms;
+        registerGlobal(globalSyms, "funcA", 0, 1);
+        registerGlobal(globalSyms, "funcB", 1, 1);
+
+        // No fold should happen because the objects' machine codes are
+        // unknown — the conservative skip prevents wrong-arch reloc
+        // classification.
+        const size_t folded = foldIdenticalCode(objs, globalSyms);
         CHECK(folded == 0);
         CHECK(!objs[0].sections[1].data.empty());
         CHECK(!objs[1].sections[1].data.empty());

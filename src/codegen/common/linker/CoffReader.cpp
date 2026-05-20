@@ -17,6 +17,7 @@
 //===----------------------------------------------------------------------===//
 
 #include "codegen/common/linker/ObjFileReader.hpp"
+#include "codegen/common/AArch64RelocUtil.hpp"
 #include "codegen/common/linker/RelocConstants.hpp"
 
 #include <cstring>
@@ -29,6 +30,10 @@ namespace viper::codegen::linker {
 namespace coff {
 static constexpr uint16_t IMAGE_FILE_MACHINE_AMD64 = 0x8664;
 static constexpr uint16_t IMAGE_FILE_MACHINE_ARM64 = 0xAA64;
+
+static constexpr uint8_t kBigObjClassId[16] = {
+    0xC7, 0xA1, 0xBA, 0xD1, 0xEE, 0xBA, 0xA9, 0x4B,
+    0xAF, 0x20, 0xFA, 0xF6, 0x6A, 0xA4, 0xDC, 0xB8};
 
 static constexpr uint16_t IMAGE_SYM_CLASS_EXTERNAL = 2;
 static constexpr uint16_t IMAGE_SYM_CLASS_STATIC = 3;
@@ -355,9 +360,9 @@ static int64_t extractCoffAddend(uint16_t machine,
         case coff_a64::kPageOff12A:
             return static_cast<int64_t>((insn >> 10) & 0xFFFu);
         case coff_a64::kPageOff12L: {
-            uint32_t shift = insn >> 30;
-            if ((insn & 0x04800000u) == 0x04800000u)
-                shift = 4;
+            uint32_t shift = 0;
+            if (!viper::codegen::a64UnsignedLdStOffsetShift(insn, shift))
+                return 0;
             return static_cast<int64_t>(((insn >> 10) & 0xFFFu) << shift);
         }
         case coff_a64::kSecRelLow12A:
@@ -365,9 +370,9 @@ static int64_t extractCoffAddend(uint16_t machine,
         case coff_a64::kSecRelHigh12A:
             return static_cast<int64_t>(((insn >> 10) & 0xFFFu) << 12);
         case coff_a64::kSecRelLow12L: {
-            uint32_t shift = insn >> 30;
-            if ((insn & 0x04800000u) == 0x04800000u)
-                shift = 4;
+            uint32_t shift = 0;
+            if (!viper::codegen::a64UnsignedLdStOffsetShift(insn, shift))
+                return 0;
             return static_cast<int64_t>(((insn >> 10) & 0xFFFu) << shift);
         }
         default:
@@ -397,7 +402,8 @@ bool readCoffObj(
 
     if (bigObj) {
         const auto *big = coffAt<coff::BigObjHeader>(data, size, 0);
-        if (!big || big->Sig1 != 0 || big->Sig2 != 0xFFFF || big->Version < 2) {
+        if (!big || big->Sig1 != 0 || big->Sig2 != 0xFFFF || big->Version < 2 ||
+            std::memcmp(big->ClassID, coff::kBigObjClassId, sizeof(coff::kBigObjClassId)) != 0) {
             err << "error: " << name << ": malformed COFF BigObj header\n";
             return false;
         }
@@ -425,11 +431,19 @@ bool readCoffObj(
         err << "error: " << name << ": section count " << numberOfSections << " exceeds limit\n";
         return false;
     }
+    if (numberOfSymbols > kMaxObjSymbols) {
+        err << "error: " << name << ": symbol count " << numberOfSymbols << " exceeds limit\n";
+        return false;
+    }
 
     // Locate string table (immediately after symbol table).
     size_t symtabBytes = 0;
     if (!checkedMul(static_cast<size_t>(numberOfSymbols), symbolSize, symtabBytes)) {
         err << "error: " << name << ": COFF symbol table size overflows address space\n";
+        return false;
+    }
+    if (numberOfSymbols > 0 && pointerToSymbolTable == 0) {
+        err << "error: " << name << ": COFF symbol table pointer is missing\n";
         return false;
     }
     if (numberOfSymbols > 0 &&
@@ -438,7 +452,9 @@ bool readCoffObj(
         return false;
     }
     size_t strTabOff = 0;
-    if (!checkedAdd(static_cast<size_t>(pointerToSymbolTable), symtabBytes, strTabOff)) {
+    if (numberOfSymbols == 0 && pointerToSymbolTable == 0) {
+        strTabOff = size;
+    } else if (!checkedAdd(static_cast<size_t>(pointerToSymbolTable), symtabBytes, strTabOff)) {
         err << "error: " << name << ": COFF string table offset overflows address space\n";
         return false;
     }
@@ -492,6 +508,24 @@ bool readCoffObj(
         !checkedRange(secOff, secBytes, size)) {
         err << "error: " << name << ": COFF section header table is out of bounds\n";
         return false;
+    }
+
+    const uint32_t kNoPrimarySymbol = std::numeric_limits<uint32_t>::max();
+    std::vector<uint32_t> primarySymbolByRawIndex(numberOfSymbols, kNoPrimarySymbol);
+    for (uint32_t i = 0; i < numberOfSymbols;) {
+        CoffSymbolView sym{};
+        if (!readCoffSymbolView(
+                data, size, pointerToSymbolTable, symbolSize, i, bigObj, sym)) {
+            err << "error: " << name << ": COFF symbol table is truncated\n";
+            return false;
+        }
+        if (sym.auxCount > numberOfSymbols - i - 1) {
+            err << "error: " << name << ": COFF auxiliary symbol count exceeds symbol table\n";
+            return false;
+        }
+        for (uint32_t a = 1; a <= sym.auxCount; ++a)
+            primarySymbolByRawIndex[i + a] = i;
+        i += 1 + sym.auxCount;
     }
 
     // Parse sections.
@@ -623,6 +657,11 @@ bool readCoffObj(
                     << cr->SymbolTableIndex << "\n";
                 return false;
             }
+            if (primarySymbolByRawIndex[cr->SymbolTableIndex] != kNoPrimarySymbol) {
+                err << "error: " << name << ": COFF relocation references auxiliary symbol index "
+                    << cr->SymbolTableIndex << "\n";
+                return false;
+            }
             rel.symIndex = cr->SymbolTableIndex + 1; // +1 because ObjFile has null sym at 0.
             rel.addend =
                 extractCoffAddend(machine, static_cast<uint16_t>(rel.type), sec.data, rel.offset);
@@ -634,11 +673,6 @@ bool readCoffObj(
     }
 
     // Parse symbols.
-    if (numberOfSymbols > kMaxObjSymbols) {
-        err << "error: " << name << ": symbol count " << numberOfSymbols << " exceeds limit\n";
-        return false;
-    }
-
     auto symbolRecordOffset = [&](uint32_t index, size_t &offset) -> bool {
         size_t scaled = 0;
         return checkedMul(static_cast<size_t>(index), symbolSize, scaled) &&
@@ -745,30 +779,46 @@ bool readCoffObj(
             os.binding = ObjSymbol::Undefined;
             if (sym.storageClass == coff::IMAGE_SYM_CLASS_WEAK_EXTERNAL) {
                 os.weakExternal = true;
-                if (sym.auxCount > 0) {
-                    size_t auxOffset = 0;
-                    if (!symbolRecordOffset(i + 1, auxOffset)) {
-                        err << "error: " << name << ": COFF weak auxiliary symbol offset overflows\n";
-                        return false;
-                    }
-                    const auto *aux = coffAt<coff::CoffAuxWeakExternal>(data, size, auxOffset);
-                    if (aux && aux->TagIndex < numberOfSymbols) {
-                        os.weakExternalCharacteristics = aux->Characteristics;
-                        CoffSymbolView fallback{};
-                        if (!readCoffSymbolView(data,
-                                                size,
-                                                pointerToSymbolTable,
-                                                symbolSize,
-                                                aux->TagIndex,
-                                                bigObj,
-                                                fallback)) {
-                            err << "error: " << name << ": COFF weak fallback symbol is truncated\n";
-                            return false;
-                        }
-                        if (!readSymName(fallback, os.weakDefaultName))
-                            return false;
-                    }
+                if (sym.auxCount == 0) {
+                    err << "error: " << name << ": COFF weak external is missing auxiliary record\n";
+                    return false;
                 }
+                size_t auxOffset = 0;
+                if (!symbolRecordOffset(i + 1, auxOffset)) {
+                    err << "error: " << name << ": COFF weak auxiliary symbol offset overflows\n";
+                    return false;
+                }
+                const auto *aux = coffAt<coff::CoffAuxWeakExternal>(data, size, auxOffset);
+                if (!aux) {
+                    err << "error: " << name << ": COFF weak auxiliary symbol is truncated\n";
+                    return false;
+                }
+                if (aux->TagIndex >= numberOfSymbols ||
+                    primarySymbolByRawIndex[aux->TagIndex] != kNoPrimarySymbol) {
+                    err << "error: " << name
+                        << ": COFF weak external references invalid fallback symbol\n";
+                    return false;
+                }
+                if (aux->Characteristics < 1 || aux->Characteristics > 3) {
+                    err << "error: " << name
+                        << ": COFF weak external has unsupported search characteristic "
+                        << aux->Characteristics << "\n";
+                    return false;
+                }
+                os.weakExternalCharacteristics = aux->Characteristics;
+                CoffSymbolView fallback{};
+                if (!readCoffSymbolView(data,
+                                        size,
+                                        pointerToSymbolTable,
+                                        symbolSize,
+                                        aux->TagIndex,
+                                        bigObj,
+                                        fallback)) {
+                    err << "error: " << name << ": COFF weak fallback symbol is truncated\n";
+                    return false;
+                }
+                if (!readSymName(fallback, os.weakDefaultName))
+                    return false;
             }
         } else if (sym.sectionNumber == coff::IMAGE_SYM_ABSOLUTE ||
                    sym.sectionNumber == coff::IMAGE_SYM_DEBUG) {
@@ -783,10 +833,24 @@ bool readCoffObj(
         }
 
         // Map 1-based COFF section number to our section index.
-        if (sym.sectionNumber > 0 && static_cast<uint32_t>(sym.sectionNumber) <= numberOfSections)
+        if (sym.sectionNumber > 0) {
+            if (static_cast<uint32_t>(sym.sectionNumber) > numberOfSections) {
+                err << "error: " << name << ": COFF symbol '" << os.name
+                    << "' references invalid section " << sym.sectionNumber << "\n";
+                return false;
+            }
             os.sectionIndex = static_cast<uint32_t>(sym.sectionNumber);
+        }
         if (!offsetAlreadySet)
             os.offset = sym.value;
+        if (!os.common && os.sectionIndex > 0 && os.sectionIndex < obj.sections.size()) {
+            const size_t secSize = objSectionMemSize(obj.sections[os.sectionIndex]);
+            if (os.offset > secSize) {
+                err << "error: " << name << ": COFF symbol '" << os.name
+                    << "' is outside section '" << obj.sections[os.sectionIndex].name << "'\n";
+                return false;
+            }
+        }
 
         obj.symbols.push_back(std::move(os));
 
