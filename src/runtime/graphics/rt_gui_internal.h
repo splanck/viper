@@ -165,6 +165,16 @@ void rt_gui_apply_default_font(vg_widget_t *widget);
 void rt_gui_reapply_default_font(rt_gui_app_t *app);
 /// @brief Clear cached app-level runtime references that point into @p widget's subtree.
 void rt_widget_forget_runtime_refs(rt_gui_app_t *app, vg_widget_t *widget);
+/// @brief Return non-zero if @p root contains @p needle in its subtree.
+int rt_gui_widget_tree_contains(vg_widget_t *root, const vg_widget_t *needle);
+/// @brief Disconnect FindBar wrappers targeting a CodeEditor inside @p subtree.
+void rt_findbar_forget_editor_subtree(vg_widget_t *subtree);
+/// @brief Disconnect Minimap wrappers targeting a CodeEditor inside @p subtree.
+void rt_minimap_forget_editor_subtree(vg_widget_t *subtree);
+/// @brief Drop wrapper references to @p dialog before an app destroys it.
+void rt_messagebox_invalidate_dialog(vg_dialog_t *dialog);
+/// @brief Drop wrapper references to @p dialog before an app destroys it.
+void rt_filedialog_invalidate_dialog(vg_dialog_t *dialog);
 /// @brief Register a command palette so @p app routes its shortcut to it.
 void rt_gui_register_command_palette(rt_gui_app_t *app, vg_commandpalette_t *palette);
 /// @brief Unregister a previously registered command palette.

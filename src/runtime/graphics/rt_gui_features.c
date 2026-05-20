@@ -1290,6 +1290,60 @@ typedef struct rt_minimap_data {
     vg_widget_vtable_t vtable;
 } rt_minimap_data_t;
 
+static rt_minimap_data_t **s_minimap_wrappers = NULL;
+static size_t s_minimap_wrapper_count = 0;
+static size_t s_minimap_wrapper_cap = 0;
+
+static int rt_minimap_register_wrapper(rt_minimap_data_t *data) {
+    if (!data)
+        return 0;
+    for (size_t i = 0; i < s_minimap_wrapper_count; i++) {
+        if (s_minimap_wrappers[i] == data)
+            return 1;
+    }
+    if (s_minimap_wrapper_count >= s_minimap_wrapper_cap) {
+        size_t new_cap = s_minimap_wrapper_cap ? s_minimap_wrapper_cap * 2 : 8;
+        if (new_cap < s_minimap_wrapper_cap || new_cap > SIZE_MAX / sizeof(*s_minimap_wrappers))
+            return 0;
+        void *p = realloc(s_minimap_wrappers, new_cap * sizeof(*s_minimap_wrappers));
+        if (!p)
+            return 0;
+        s_minimap_wrappers = (rt_minimap_data_t **)p;
+        s_minimap_wrapper_cap = new_cap;
+    }
+    s_minimap_wrappers[s_minimap_wrapper_count++] = data;
+    return 1;
+}
+
+static void rt_minimap_unregister_wrapper(rt_minimap_data_t *data) {
+    if (!data)
+        return;
+    for (size_t i = 0; i < s_minimap_wrapper_count; i++) {
+        if (s_minimap_wrappers[i] != data)
+            continue;
+        memmove(&s_minimap_wrappers[i],
+                &s_minimap_wrappers[i + 1],
+                (s_minimap_wrapper_count - i - 1) * sizeof(*s_minimap_wrappers));
+        s_minimap_wrapper_count--;
+        return;
+    }
+}
+
+void rt_minimap_forget_editor_subtree(vg_widget_t *subtree) {
+    if (!subtree)
+        return;
+    for (size_t i = 0; i < s_minimap_wrapper_count; i++) {
+        rt_minimap_data_t *data = s_minimap_wrappers[i];
+        if (!data || !data->minimap || !vg_widget_is_live(&data->minimap->base))
+            continue;
+        vg_widget_t *target = (vg_widget_t *)data->minimap->editor;
+        if (target && rt_gui_widget_tree_contains(subtree, target)) {
+            vg_minimap_set_editor(data->minimap, NULL);
+            vg_widget_invalidate(&data->minimap->base);
+        }
+    }
+}
+
 /// @brief Authenticate a Minimap handle via its magic tag (NULL if not).
 static rt_minimap_data_t *rt_minimap_checked(void *minimap) {
     rt_minimap_data_t *data = (rt_minimap_data_t *)minimap;
@@ -1315,6 +1369,7 @@ static void rt_minimap_dispose(rt_minimap_data_t *data) {
         data->minimap = NULL;
     }
     data->magic = 0;
+    rt_minimap_unregister_wrapper(data);
 }
 
 /// @brief GC finalizer — delegates to `rt_minimap_dispose`.
@@ -1351,6 +1406,10 @@ void *rt_minimap_new(void *parent) {
         data->vtable.destroy = rt_minimap_widget_destroy;
         minimap->base.vtable = &data->vtable;
         minimap->base.user_data = data;
+    }
+    if (!rt_minimap_register_wrapper(data)) {
+        rt_minimap_dispose(data);
+        return NULL;
     }
     rt_obj_set_finalizer(data, rt_minimap_finalize);
     minimap->base.constraints.min_width = (float)data->width;

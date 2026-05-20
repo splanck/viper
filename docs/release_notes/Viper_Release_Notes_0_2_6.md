@@ -8,29 +8,31 @@
 
 ### What this release is about
 
-An alpha-quality hardening cycle, not a feature release. The Zia frontend reached alpha quality, raw pointers were removed from both source languages, the native linker became real enough to consume optimized C++ object input, and a broad runtime correctness/ownership pass landed across memory, threads, crypto, IO, graphics, the bytecode VM, and packaging. The one additive surface is a targeted set of game-engine helpers (plan 24).
+An alpha-quality hardening cycle, not a feature release. The Zia frontend reached alpha quality, raw pointers were removed from both source languages, the native linker became real enough to consume optimized C++ object input and ship ViperIDE's IntelliSense end-to-end, and a broad runtime correctness/ownership pass landed across memory, threads, crypto, IO, graphics, the bytecode VM, packaging, and toolchain installers. The one additive surface is a targeted set of game-engine helpers (plan 24).
 
 - **Zia frontend → alpha quality.** `defer`; structured `try`/`catch`/`finally`, multi-catch, bare rethrow; `Result[T]` with `?` propagation; weak fields, function references, constrained generics, default interface methods; declaration-order independence; module-scoped name-collision disambiguation.
 - **Pointer-safety gate (the biggest user-visible change).** Zia and BASIC reject raw `Ptr` types and pointer-signature runtime APIs; the `--unsafe-pointers` escape hatch was added then removed — the typed surface is now the only surface.
 - **Memory, GC & threads ownership.** Validated `Retain`/`Release` wrappers; weak-ref CAS retain inside the GC lock; trap-safe finalizers; class-ID validation on every public threads / MessageBus entry; saturated wait deadlines on Win32 and POSIX.
 - **Crypto, TLS & IO security.** `Viper.Crypto.*` canonicalized (scrypt-SHA256, AES-GCM+AAD, approved-mode module, fixed-schedule ECDSA P-256); TLS enforces Key Usage / Basic Constraints / EKU and DNS-name limits; hardened temp-file, archive, and ZIP64 paths.
 - **Network protocol correctness.** Independent HPACK encode/decode tables, strict RFC 7230 `Transfer-Encoding` parsing (closes a request-smuggling avenue), WebSocket frame and close-code validation.
-- **Native toolchain becomes real.** All four object-file readers and three writers received bounds-checking and reloc-correctness passes; the `fe_zia` frontend is now native-linked into `zia` so ViperIDE's IntelliSense / hover / diagnostics / symbols run against the real semantic engine instead of weak stubs.
+- **Native toolchain becomes real.** All four object-file readers and three writers received multiple bounds-checking, alignment-UB, and reloc-correctness rounds; COFF, ELF, and Mach-O agree on the addend convention end-to-end; the `fe_zia` frontend is now native-linked into `zia`, with a broadened `rt_zia_*` completion bridge and keyboard/text-input plumbing carrying ViperIDE's IntelliSense / hover / diagnostics / symbols against the real semantic engine.
+- **Toolchain installer completion.** Native-emitted Windows `.msi`/`.exe`, macOS `.pkg`, and Linux `.deb`/`.rpm`/tarball toolchain packages reach feature parity: PE32+ payload validation, ad-hoc-by-default macOS signing with optional Developer ID + notarization + stapling, Linux runtime/developer dependency advertisement, file-association registration on all three platforms, and deep post-build verification of every staged path.
 - **Standard-library namespace de-clutter (breaking).** Seven root modules re-home under their documented taxonomy: `Lazy`/`LazySeq` → `Viper.Functional`, `Machine`/`Environment`/`Exec` → `Viper.System`, `Log` → `Viper.Diagnostics`, `Fmt` → `Viper.Text`. No back-compat aliases; `Math`, `String`, `Terminal`, and the intrinsic `Option`/`Result`/`Error` stay at root.
 - **Backends, bytecode VM & Windows HiDPI.** x86-64 cross-block fold liveness + AT&T operand-class validation; AArch64 sub-word transfers, terminator/CFG, def-operand fixes; bytecode-VM two's-complement wrapping arithmetic and checked float→int traps; Windows physical-pixel sizing via `AdjustWindowRectExForDpi` and waitable-timer frame pacing.
+- **GUI correctness audit.** Multi-round audit closing handle-validation, dialog-lifetime, focus-routing, and menubar/context-menu/toolbar/statusbar gaps; every public `Viper.GUI.*` entry routes through `rt_gui_widget_handle_checked`.
 - **Game-engine surface (plan 24, the one additive piece).** New `Viper.Game.UI` widgets, `AnimTimeline` + multi-event `AnimStateMachine`, `Projectile2D`, rotated-texture `Renderer2D` draws, named audio mixer groups, and a `Viper.System.Clipboard` text surface.
 
 ### By the Numbers
 
 | Metric | v0.2.5 | v0.2.6 | Delta |
 |---|---|---|---|
-| Commits | — | 123 | +123 |
-| Source files | 2,996 | 3,031 | +35 |
+| Commits | — | 146 | +146 |
+| Source files | 2,996 | 3,034 | +38 |
 | Production SLOC | 552K | 599K | +47K |
-| Test SLOC | 228K | 254K | +26K |
+| Test SLOC | 228K | 255K | +27K |
 | Demo SLOC | 188K | 189K | +1K |
 
-Counts via `scripts/count_sloc.sh` (production 598,814 / test 253,960 / demo 189,273 / source files 3,031).
+Counts via `scripts/count_sloc.sh` (production 599,473 / test 254,998 / demo 189,273 / source files 3,034).
 
 ---
 
@@ -76,7 +78,7 @@ Counts via `scripts/count_sloc.sh` (production 598,814 / test 253,960 / demo 189
 
 - `Viper.Audio.*` rebuilt from `RT_ALIAS` forwarders into full typed `RT_CLASS_BEGIN`/`RT_FUNC`/`RT_METHOD`/`RT_PROP` registrations across Audio/Sound/Voice/Music/Playlist/SoundBank/Synth/MusicGen — `RT_ALIAS` couldn't carry typed-object returns.
 - 2D graphics correctness: saturating int64 clip math; class-ID validation on AutoTile2D / Path2D / ShapeRenderer2D / TextRenderer2D / RenderPass2D; premultiplied-alpha bilerp on transparent edges; alpha-preserving `Canvas.BlitAlpha` and particle source-over; Lighting2D tile lights in a per-frame pool.
-- Pixels raw-vs-Color boundary: `Pixels.Get`/`Set`/`Fill` keep their raw `0xRRGGBBAA` contract; new `GetColor`/`SetColor`/`FillColor` accept `Viper.Graphics.Color`. `RT_PIXELS_COLOR_EXPLICIT_ALPHA_FLAG` (bit 56) distinguishes tagged `Color.RGBA(...,0)` from legacy `0x00RRGGBB`.
+- Pixels raw-vs-Color boundary: `Pixels.Get`/`Set`/`Fill` keep their raw `0xRRGGBBAA` contract but now route through `rt_pixels_rgba_or_tagged_color_to_rgba` so a tagged `Color.RGBA(...)` argument is unpacked instead of bit-reinterpreted (fixes the cyan-bevel artifact in Xenoscape's tile overlay); new `GetColor`/`SetColor`/`FillColor` are canonical accessors. `RT_PIXELS_COLOR_EXPLICIT_ALPHA_FLAG` (bit 56) distinguishes tagged `Color.RGBA(...,0)` from legacy `0x00RRGGBB`.
 - Image IO hardening: PNG chunk validation; BMP pixel-offset/size checks (no partial save on failure); JPEG table/orientation handling; GIF normalized per-frame delays; Canvas titles round-trip embedded NULs via independent byte length.
 - Graphics3D: `Canvas3D` gains `DrawMeshSkinned`/`DrawMeshMorphed`/`DrawMeshBlended` plus HUD/overlay draws; `Mesh3D.SetSkeleton` retain/release integration; `Physics3D` deduplicates joints and surfaces `started_penetrating`; `Scene3D` reparent is atomic; `Terrain3D.GeneratePerlin` clamps NaN/inf inputs; new `Viper.Graphics3D.GLTF` runtime class plus `Scene3D.Load`.
 
@@ -90,8 +92,8 @@ Counts via `scripts/count_sloc.sh` (production 598,814 / test 253,960 / demo 189
 
 - HTTP/2: independent encode/decode HPACK tables, `pthread_once`-guarded Huffman init, length-aware decode preserves embedded NULs. HTTP/1.1: strict RFC 7230 §3.3.1 `Transfer-Encoding` token-list parsing closes the smuggling avenue; the URL parser validates IPv6 brackets, empty hosts, and out-of-range ports.
 - WebSocket servers reject non-minimal-length frames per §5.2; clients validate close codes per §7.4. SSE host/target validators reject control bytes and non-leading-`/` targets; UDP detects truncation via `MSG_TRUNC`/`WSAEMSGSIZE`; TLS `ServerHello` `key_share` exact-length validated.
-- GUI handles route through `rt_gui_widget_handle_checked` so every public entry rejects NULL / destroyed / wrong-type before casting. Menubar, context-menu, statusbar, toolbar, FindBar, CommandPalette, Breadcrumb, Minimap, Toast, and VideoWidget runtime handles all participate; context-menu `Clear()` retires stale handles after dismissing active submenus.
-- GUI event/layout correctness: a non-shifting `VG_EVENT_NONE` sentinel filters unknown platform events; focus and modifier state survive the VGFX→GUI translation on every backend; a handled mouse-up suppresses synthetic click/double-click; non-wrapped flex-grow sizes from each child's measured basis plus margins before distributing the remainder.
+- GUI handles route through `rt_gui_widget_handle_checked` so every public entry rejects NULL / destroyed / wrong-type before casting. Across five audit rounds, menubar, context-menu, statusbar, toolbar, FindBar, CommandPalette, Breadcrumb, Minimap, Toast, VideoWidget, ProgressBar, ColorPicker, FileDialog, and the dialog/modal stack all participate; context-menu `Clear()` retires stale handles after dismissing active submenus.
+- GUI event/layout correctness: a non-shifting `VG_EVENT_NONE` sentinel filters unknown platform events; focus and modifier state survive the VGFX→GUI translation on every backend; a handled mouse-up suppresses synthetic click/double-click; non-wrapped flex-grow sizes from each child's measured basis plus margins before distributing the remainder; shortcut routing now flows through focus.
 
 ### Compiler, IL, codegen
 
@@ -106,6 +108,7 @@ Counts via `scripts/count_sloc.sh` (production 598,814 / test 253,960 / demo 189
 - COFF reloc addend convention now agrees across reader, applier, and writer: AMD64 `REL32[_n]` keeps the raw 32-bit displacement field as the internal addend and `RelocApplier` owns the COFF end-of-field bias when patching, mirroring the ELF and Mach-O paths. ARM64 ADRP/page-offset/branch decoders are unchanged.
 - COFF weak externals carry the `Characteristics` field through the reader; `SymbolResolver` honors `IMAGE_WEAK_EXTERN_SEARCH_NOLIBRARY` (kept as weak alias without forcing archive extraction) while library-search fallbacks still drive the iterative resolver. Identity hashing (hashU64/hashString/hashRelocTarget) keeps duplicate-symbol and reloc-target detection deterministic across re-runs.
 - Three new reloc kinds (`A64LdSt32Off12`, `A64LdSt128Off12`, corrected `IMAGE_REL_ARM64_BRANCH19`); `RelocApplier` validates AArch64 instruction class per reloc kind and forbids duplicate input-section chunks; branch trampolines key dedup on `symName + addend` and resolve targets after placement.
+- Section identity is preserved across reader-to-writer copies via shared `CodeSection` aliases so multi-section COFF and ELF writers resolve section-offset relocations even when sections are passed by value; AArch64 reloc decoding is shared between the Mach-O reader and the binary encoder so load/store page-offset relocations agree across paths.
 - P1 hardening: Mach-O TLV descriptor sections carry an explicit `OutputSection::tlvDescriptors` flag (the `_tlv_bootstrap` bind loop no longer disambiguates by section name), a non-24-byte-multiple TLV descriptor section is a hard link error instead of silently dropping the trailing record, ADDR32NB RVAs come from `LinkLayout::imageBase` so applier and writer share one source of truth, Mach-O `n_sect` past the parsed section table now errors out instead of resolving the symbol as undefined, `BranchTrampoline` errors on an out-of-bounds patch site rather than emitting an island and leaving the original branch unredirected, `DynStubGen` GOT slots live in `.got.viper_stubs` instead of colliding with user `.data` by name, and `ICF::archForObject` returns `optional<LinkArch>` so unknown machine codes are skipped rather than misclassified as x86_64.
 - ELF emits `PT_TLS` for TLS segments; TLS and `.bss`/`.tbss` use logical memory sizes without serializing zero-fill bytes. Mach-O `MH_SUBSECTIONS_VIA_SYMBOLS` splits `__TEXT,__text` per atom and merges same-named ObjC metadata from reader-created and linker-synthetic inputs. PE writer narrows through `checkedU32`/`checkedRva` overflow-checked helpers; dead-strip preserves EH / unwind and `.debug*` roots.
 
@@ -124,6 +127,8 @@ Counts via `scripts/count_sloc.sh` (production 598,814 / test 253,960 / demo 189
 ### ViperIDE and IntelliSense
 
 - The `zia` binary force-loads `fe_zia` (`-force_load` on macOS, `--whole-archive` on Linux) so IntelliSense / hover / diagnostics / symbols are no longer satisfied by the weak stubs in `rt_zia_completion_stub.c`. A new `rt_zia_highlight.cpp` bridge exposes `rt_zia_is_keyword`; the GUI tokenizer reads the live 52-keyword set from `Lexer::lookupKeyword`.
+- The `rt_zia_*` completion bridge and its `ZiaCompletion.cpp` public query surface were broadened so the editor can ask the live semantic engine for symbol lookups, kind/signature metadata, and dotted-path completions. Matching weak-stub parity and `RuntimeSurfacePolicy.inc` registration ensure the frontend resolves the surface the IDE calls.
+- A text-input enable path and broadened keyboard handling landed in the input runtime (`rt_input.c`, `rt_gui_app.c`, `rt_gui.h`) so the editor receives text-entry events distinct from raw key events; the editor wires text input on setup and clamps diagnostic highlight columns to a valid 1-based span.
 - Editor surface: `codeeditor_max_scroll_y` uses half-viewport `scrollBeyondLastLine` padding; mouse-wheel drops to 0.3 lines per delta on macOS trackpads; toolbar uses BMP-only Geometric Shapes / Arrows glyphs. Untitled and welcome buffers begin with `module UntitledN;` / `module Welcome;` so the completion engine parses them on the first keystroke.
 
 ### Windows, MSVC, and HiDPI
@@ -135,9 +140,9 @@ Counts via `scripts/count_sloc.sh` (production 598,814 / test 253,960 / demo 189
 ### Packaging
 
 - Windows VAPS installer: PE32+ payload validation against the x64/arm64 target, recursive adjacent-DLL discovery with redistributable classification, proper Add/Remove metadata, `windows-install-scope machine|user`, `windows-sign-thumbprint` parity across `package`/`install-package`, and a `meta/manifest.sha256` integrity check with duplicate/uncovered-entry rejection. A non-elevated user-scope installer smoke and a headless XenoScape package-smoke ctest gate it.
-- Windows toolchain installers default to per-user `LocalAppData` / HKCU / `asInvoker` and reject MSVC Debug-CRT payloads unless `--allow-debug-toolchain` is given. New policy switches cover install scope, PATH mutation, opt-in source/IL file associations, and Start-Menu shortcuts; PATH update removes stale owned entries before appending; registry string types are validated and force-terminated.
-- macOS toolchain generation no longer shells out to `pkgbuild`/`productbuild`: Viper writes product/component XAR archives, gzip-compressed portable ASCII CPIO `Payload`/`Scripts`, SHA-1/zlib metadata, CMake discovery wrappers under `/usr/local/lib/cmake/Viper`, command/manpage symlinks, and upgrade cleanup scripts. `install-package` gained native `.pkg` verification plus Developer ID Installer signing, notarization, and stapling.
-- Linux toolchain packages advertise runtime/developer dependencies; tarballs carry `install.sh`/`uninstall.sh` and a file manifest for prefix/DESTDIR installs. VAPS asset packaging reads through a resolved safe-directory iterator validated against the project root (not a mutable symlink path) and fails on escaping symlinks; archive writers harden zero-byte `ar` members, USTAR long directory-path splitting, normalized ZIP/TAR symlink targets, and `SOURCE_DATE_EPOCH` thread-safety.
+- Windows toolchain installers default to per-user `LocalAppData` / HKCU / `asInvoker` and reject MSVC Debug-CRT payloads unless `--allow-debug-toolchain` is given. New policy switches cover install scope, PATH mutation, opt-in source/IL file associations, and Start-Menu shortcuts; PATH update removes stale owned entries before appending; registry string types are validated and force-terminated. A post-build hardening pass validates the emitted `.msi`/`.exe` against the staged manifest before the run is reported as successful.
+- macOS toolchain generation no longer shells out to `pkgbuild`/`productbuild`: Viper writes product/component XAR archives, gzip-compressed portable ASCII CPIO `Payload`/`Scripts`, SHA-1/zlib metadata, CMake discovery wrappers under `/usr/local/lib/cmake/Viper`, command/manpage symlinks, and upgrade cleanup scripts. `install-package` gained native `.pkg` verification plus Developer ID Installer signing, notarization, and stapling; a follow-on round closed gaps in the staged-bundle metadata, payload-script line endings, and post-build XAR TOC verification.
+- Linux toolchain packages advertise runtime/developer dependencies; tarballs carry `install.sh`/`uninstall.sh` and a file manifest for prefix/DESTDIR installs. A follow-on round validated `.deb` control-field encoding, `.rpm` header sanity, and shared-MIME registration for `.zia`/`.il`. VAPS asset packaging reads through a resolved safe-directory iterator validated against the project root (not a mutable symlink path) and fails on escaping symlinks; archive writers harden zero-byte `ar` members, USTAR long directory-path splitting, normalized ZIP/TAR symlink targets, and `SOURCE_DATE_EPOCH` thread-safety.
 
 ### Tests
 
@@ -152,10 +157,10 @@ Counts via `scripts/count_sloc.sh` (production 598,814 / test 253,960 / demo 189
 
 ---
 
-Demos and docs tracked the runtime work above; stale Windows debug/O0 pins for Chess, XENOSCAPE, and Baseball were removed after optimized x86-64 builds were restored, and `docs/viperlib/` plus the native-linker / native-assembler design docs were refreshed alongside.
+Demos and docs tracked the runtime work above; stale Windows debug/O0 pins for Chess, XENOSCAPE, and Baseball were removed after optimized x86-64 builds were restored, the XENOSCAPE Windows installer reached parity with the macOS path, and `docs/viperlib/` plus the native-linker / native-assembler design docs were refreshed alongside.
 
 ### Commits
 
-See `git log a6054e7ad..HEAD -- .` for the full 123-commit history since v0.2.5.
+See `git log 929a6d787..HEAD -- .` for the full 146-commit history since v0.2.5.
 
 <!-- END DRAFT -->

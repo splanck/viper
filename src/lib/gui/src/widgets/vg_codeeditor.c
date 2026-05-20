@@ -159,9 +159,17 @@ static bool ensure_text_capacity(vg_code_line_t *line, size_t needed) {
     return true;
 }
 
+static int codeeditor_line_length_i32(const vg_codeeditor_t *editor, int line) {
+    if (!editor || line < 0 || line >= editor->line_count)
+        return 0;
+    return editor->lines[line].length > (size_t)INT_MAX
+               ? INT_MAX
+               : (int)editor->lines[line].length;
+}
+
 /// @brief Allocates and copies @p len bytes from @p text into @p line, zero-initializing all other fields.
 static bool init_line_text(vg_code_line_t *line, const char *text, size_t len) {
-    if (!line || len > SIZE_MAX - 1)
+    if (!line || len > SIZE_MAX - 1 || len > (size_t)INT_MAX)
         return false;
     char *copy = (char *)malloc(len + 1);
     if (!copy)
@@ -497,8 +505,10 @@ static void update_gutter_width(vg_codeeditor_t *editor) {
 
 /// @brief Returns the number of characters that fit per wrap row given @p content_width; 0 if word_wrap is off.
 static int codeeditor_chars_per_row(const vg_codeeditor_t *editor, float content_width) {
-    if (!editor || !editor->word_wrap || editor->char_width <= 0.0f || content_width <= 0.0f)
+    if (!editor || !editor->word_wrap || editor->char_width <= 0.0f)
         return 0;
+    if (content_width <= 0.0f)
+        return 1;
     int chars = (int)(content_width / editor->char_width);
     return chars > 0 ? chars : 1;
 }
@@ -515,7 +525,8 @@ static int codeeditor_wrapped_rows_for_line(const vg_codeeditor_t *editor,
     size_t len = editor->lines[line].length;
     if (len == 0)
         return 1;
-    return (int)((len + (size_t)chars_per_row - 1) / (size_t)chars_per_row);
+    size_t rows = (len + (size_t)chars_per_row - 1) / (size_t)chars_per_row;
+    return rows > (size_t)INT_MAX ? INT_MAX : (int)rows;
 }
 
 /// @brief Returns the visual row count for @p line (0 if hidden, 1 if no word-wrap, else wrapped row count).
@@ -804,8 +815,9 @@ static void codeeditor_local_point_to_position(const vg_codeeditor_t *editor,
         if (col_in_row < 0)
             col_in_row = 0;
         int col = row_in_line * chars_per_row + col_in_row;
-        if (col > (int)editor->lines[line].length)
-            col = (int)editor->lines[line].length;
+        int line_len = codeeditor_line_length_i32(editor, line);
+        if (col > line_len)
+            col = line_len;
         if (out_line)
             *out_line = line;
         if (out_col)
@@ -822,8 +834,9 @@ static void codeeditor_local_point_to_position(const vg_codeeditor_t *editor,
     int col = editor->char_width > 0.0f ? (int)(content_local_x / editor->char_width + 0.5f) : 0;
     if (col < 0)
         col = 0;
-    if (col > (int)editor->lines[line].length)
-        col = (int)editor->lines[line].length;
+    int line_len = codeeditor_line_length_i32(editor, line);
+    if (col > line_len)
+        col = line_len;
     if (out_line)
         *out_line = line;
     if (out_col)
@@ -861,8 +874,9 @@ static void codeeditor_move_cursor_vertical(vg_codeeditor_t *editor,
 
     int chars_per_row = codeeditor_chars_per_row(editor, content_width);
     int target_col = target_row_in_line * chars_per_row + col_in_row;
-    if (target_col > (int)editor->lines[target_line].length)
-        target_col = (int)editor->lines[target_line].length;
+    int target_line_len = codeeditor_line_length_i32(editor, target_line);
+    if (target_col > target_line_len)
+        target_col = target_line_len;
 
     editor->cursor_line = target_line;
     editor->cursor_col = target_col;
@@ -2418,7 +2432,8 @@ VG_UNUSED static void insert_bytes(vg_codeeditor_t *editor, const char *bytes, s
     codeeditor_clamp_cursor_to_visible(editor, &editor->cursor_line, &editor->cursor_col);
     vg_code_line_t *line = &editor->lines[editor->cursor_line];
 
-    if (line->length > SIZE_MAX - 1 || n > SIZE_MAX - line->length - 1)
+    if (line->length > SIZE_MAX - 1 || n > SIZE_MAX - line->length - 1 ||
+        line->length > (size_t)INT_MAX || n > (size_t)INT_MAX - line->length)
         return;
     if (!ensure_text_capacity(line, line->length + n + 1))
         return;
@@ -2429,7 +2444,7 @@ VG_UNUSED static void insert_bytes(vg_codeeditor_t *editor, const char *bytes, s
 
     memcpy(line->text + editor->cursor_col, bytes, n);
     line->length += n;
-    editor->cursor_col += n;
+    editor->cursor_col += (int)n;
     editor->modified = true;
     line->modified = true;
 }
@@ -2440,7 +2455,7 @@ VG_UNUSED static void insert_char(vg_codeeditor_t *editor, char c) {
     codeeditor_clamp_cursor_to_visible(editor, &editor->cursor_line, &editor->cursor_col);
     vg_code_line_t *line = &editor->lines[editor->cursor_line];
 
-    if (line->length > SIZE_MAX - 2)
+    if (line->length > SIZE_MAX - 2 || line->length >= (size_t)INT_MAX)
         return;
     if (!ensure_text_capacity(line, line->length + 2))
         return;
@@ -2471,10 +2486,12 @@ static bool codeeditor_insert_bytes_at(vg_codeeditor_t *editor,
         return false;
     if (*col < 0)
         *col = 0;
-    if (*col > (int)line->length)
-        *col = (int)line->length;
+    int line_len = line->length > (size_t)INT_MAX ? INT_MAX : (int)line->length;
+    if (*col > line_len)
+        *col = line_len;
 
-    if (line->length > SIZE_MAX - 1 || n > SIZE_MAX - line->length - 1)
+    if (line->length > SIZE_MAX - 1 || n > SIZE_MAX - line->length - 1 ||
+        line->length > (size_t)INT_MAX || n > (size_t)INT_MAX - line->length)
         return false;
     if (n > (size_t)(INT_MAX - *col))
         return false;
@@ -2501,8 +2518,9 @@ static bool codeeditor_split_line_at(vg_codeeditor_t *editor, int line_idx, int 
         return false;
     if (col < 0)
         col = 0;
-    if (col > (int)current->length)
-        col = (int)current->length;
+    int current_len = current->length > (size_t)INT_MAX ? INT_MAX : (int)current->length;
+    if (col > current_len)
+        col = current_len;
 
     size_t split_col = (size_t)col;
     size_t remaining = current->length - split_col;
@@ -2560,7 +2578,9 @@ VG_UNUSED static void delete_char_backward(vg_codeeditor_t *editor) {
 
         size_t new_col = prev->length;
 
-        if (!ensure_text_capacity(prev, prev->length + current->length + 1))
+        if (prev->length > (size_t)INT_MAX ||
+            current->length > (size_t)INT_MAX - prev->length ||
+            !ensure_text_capacity(prev, prev->length + current->length + 1))
             return;
 
         memcpy(prev->text + prev->length, current->text, current->length + 1);

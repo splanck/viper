@@ -254,6 +254,9 @@ dropdowns, tree views, toolbars, and menus reject runtime children.
 leave manually positioned children at their assigned coordinates, so use
 preferred size, flex, and margins for children that should remain managed by
 VBox/HBox/Flex/Grid/Dock layout.
+The app root owns the window-sized layout surface, so `SetSize()`,
+`SetPreferredSize()`, and `SetMaxSize()` are ignored when called on the root
+widget returned by `app.Root`.
 
 | Method                        | Signature                | Description                              |
 |-------------------------------|--------------------------|------------------------------------------|

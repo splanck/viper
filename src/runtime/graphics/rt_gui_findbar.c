@@ -51,13 +51,87 @@ typedef struct {
 
 static const vg_widget_vtable_t *s_findbar_original_vtable = NULL;
 static vg_widget_vtable_t s_findbar_runtime_vtable;
+static rt_findbar_data_t **s_findbar_wrappers = NULL;
+static size_t s_findbar_wrapper_count = 0;
+static size_t s_findbar_wrapper_cap = 0;
+
+static vg_codeeditor_t *rt_findbar_editor_checked(void *editor);
+
+static int rt_findbar_register_wrapper(rt_findbar_data_t *data) {
+    if (!data)
+        return 0;
+    for (size_t i = 0; i < s_findbar_wrapper_count; i++) {
+        if (s_findbar_wrappers[i] == data)
+            return 1;
+    }
+    if (s_findbar_wrapper_count >= s_findbar_wrapper_cap) {
+        size_t new_cap = s_findbar_wrapper_cap ? s_findbar_wrapper_cap * 2 : 8;
+        if (new_cap < s_findbar_wrapper_cap || new_cap > SIZE_MAX / sizeof(*s_findbar_wrappers))
+            return 0;
+        void *p = realloc(s_findbar_wrappers, new_cap * sizeof(*s_findbar_wrappers));
+        if (!p)
+            return 0;
+        s_findbar_wrappers = (rt_findbar_data_t **)p;
+        s_findbar_wrapper_cap = new_cap;
+    }
+    s_findbar_wrappers[s_findbar_wrapper_count++] = data;
+    return 1;
+}
+
+static void rt_findbar_unregister_wrapper(rt_findbar_data_t *data) {
+    if (!data)
+        return;
+    for (size_t i = 0; i < s_findbar_wrapper_count; i++) {
+        if (s_findbar_wrappers[i] != data)
+            continue;
+        memmove(&s_findbar_wrappers[i],
+                &s_findbar_wrappers[i + 1],
+                (s_findbar_wrapper_count - i - 1) * sizeof(*s_findbar_wrappers));
+        s_findbar_wrapper_count--;
+        return;
+    }
+}
+
+static void rt_findbar_unbind_data(rt_findbar_data_t *data) {
+    if (!data)
+        return;
+    data->bound_editor = NULL;
+    if (data->bar && vg_widget_is_live(&data->bar->base))
+        vg_findreplacebar_set_target(data->bar, NULL);
+}
+
+static int rt_findbar_has_live_editor(rt_findbar_data_t *data) {
+    if (!data || !data->bound_editor)
+        return 0;
+    if (!rt_findbar_editor_checked(data->bound_editor)) {
+        rt_findbar_unbind_data(data);
+        return 0;
+    }
+    return 1;
+}
+
+void rt_findbar_forget_editor_subtree(vg_widget_t *subtree) {
+    if (!subtree)
+        return;
+    for (size_t i = 0; i < s_findbar_wrapper_count; i++) {
+        rt_findbar_data_t *data = s_findbar_wrappers[i];
+        vg_widget_t *target = data ? (vg_widget_t *)data->bound_editor : NULL;
+        if (target && rt_gui_widget_tree_contains(subtree, target))
+            rt_findbar_unbind_data(data);
+    }
+}
+
+/// @brief Safe-cast an opaque handle to the find-bar wrapper by magic tag.
+static rt_findbar_data_t *rt_findbar_wrapper_checked(void *bar) {
+    rt_findbar_data_t *data = (rt_findbar_data_t *)bar;
+    return data && data->magic == RT_FINDBAR_DATA_MAGIC ? data : NULL;
+}
 
 /// @brief Safe-cast an opaque handle to the find-bar wrapper, validating its
 ///        backing widget is still live. Returns NULL otherwise.
 static rt_findbar_data_t *rt_findbar_checked(void *bar) {
-    rt_findbar_data_t *data = (rt_findbar_data_t *)bar;
-    return data && data->magic == RT_FINDBAR_DATA_MAGIC && data->bar &&
-                   vg_widget_is_live(&data->bar->base)
+    rt_findbar_data_t *data = rt_findbar_wrapper_checked(bar);
+    return data && data->bar && vg_widget_is_live(&data->bar->base)
                ? data
                : NULL;
 }
@@ -71,8 +145,10 @@ static vg_codeeditor_t *rt_findbar_editor_checked(void *editor) {
 /// @brief Widget destroy override — clears the runtime wrapper back-pointer before chaining.
 static void rt_findbar_widget_destroy(vg_widget_t *widget) {
     rt_findbar_data_t *data = widget ? (rt_findbar_data_t *)widget->user_data : NULL;
-    if (data && data->bar == (vg_findreplacebar_t *)widget)
+    if (data && data->bar == (vg_findreplacebar_t *)widget) {
         data->bar = NULL;
+        data->bound_editor = NULL;
+    }
     if (s_findbar_original_vtable && s_findbar_original_vtable->destroy)
         s_findbar_original_vtable->destroy(widget);
 }
@@ -107,6 +183,7 @@ static void rt_findbar_dispose(rt_findbar_data_t *data) {
     }
     data->bound_editor = NULL;
     data->magic = 0;
+    rt_findbar_unregister_wrapper(data);
 }
 
 /// @brief GC finalizer — delegates to `rt_findbar_dispose`.
@@ -120,6 +197,7 @@ static void rt_findbar_finalize(void *bar) {
     data->replace_text = NULL;
     rt_findbar_detach_wrapper(data);
     data->magic = 0;
+    rt_findbar_unregister_wrapper(data);
 }
 
 /// @brief Create a new find/replace bar widget.
@@ -163,6 +241,10 @@ void *rt_findbar_new(void *parent) {
         bar->base.vtable = &s_findbar_runtime_vtable;
         bar->base.user_data = data;
     }
+    if (!rt_findbar_register_wrapper(data)) {
+        rt_findbar_dispose(data);
+        return NULL;
+    }
     rt_obj_set_finalizer(data, rt_findbar_finalize);
     if (parent_widget) {
         vg_widget_add_child(parent_widget, &bar->base);
@@ -176,7 +258,7 @@ void *rt_findbar_new(void *parent) {
 /// @brief Destroy the find bar, freeing the vg widget and cached text.
 /// @param bar Find bar handle (safe to pass NULL).
 void rt_findbar_destroy(void *bar) {
-    rt_findbar_data_t *data = rt_findbar_checked(bar);
+    rt_findbar_data_t *data = rt_findbar_wrapper_checked(bar);
     if (!data)
         return;
     rt_findbar_dispose(data);
@@ -206,8 +288,7 @@ void rt_findbar_unbind_editor(void *bar) {
     rt_findbar_data_t *data = rt_findbar_checked(bar);
     if (!data)
         return;
-    data->bound_editor = NULL;
-    vg_findreplacebar_set_target(data->bar, NULL);
+    rt_findbar_unbind_data(data);
 }
 
 /// @brief Toggle between find-only mode and find+replace mode.
@@ -215,8 +296,8 @@ void rt_findbar_set_replace_mode(void *bar, int64_t replace) {
     rt_findbar_data_t *data = rt_findbar_checked(bar);
     if (!data)
         return;
-    data->replace_mode = replace;
-    vg_findreplacebar_set_show_replace(data->bar, replace != 0);
+    data->replace_mode = replace != 0 ? 1 : 0;
+    vg_findreplacebar_set_show_replace(data->bar, data->replace_mode != 0);
 }
 
 /// @brief Check whether the find bar is in replace mode.
@@ -308,7 +389,7 @@ void rt_findbar_set_case_sensitive(void *bar, int64_t sensitive) {
     rt_findbar_data_t *data = rt_findbar_checked(bar);
     if (!data)
         return;
-    data->case_sensitive = sensitive;
+    data->case_sensitive = sensitive != 0 ? 1 : 0;
     rt_findbar_update_options(data);
 }
 
@@ -325,7 +406,7 @@ void rt_findbar_set_whole_word(void *bar, int64_t whole) {
     rt_findbar_data_t *data = rt_findbar_checked(bar);
     if (!data)
         return;
-    data->whole_word = whole;
+    data->whole_word = whole != 0 ? 1 : 0;
     rt_findbar_update_options(data);
 }
 
@@ -342,7 +423,7 @@ void rt_findbar_set_regex(void *bar, int64_t regex) {
     rt_findbar_data_t *data = rt_findbar_checked(bar);
     if (!data)
         return;
-    data->regex = regex;
+    data->regex = regex != 0 ? 1 : 0;
     rt_findbar_update_options(data);
 }
 
@@ -358,7 +439,7 @@ int64_t rt_findbar_is_regex(void *bar) {
 /// @return 1 if at least one match exists, 0 otherwise.
 int64_t rt_findbar_find_next(void *bar) {
     rt_findbar_data_t *data = rt_findbar_checked(bar);
-    if (!data || !data->bound_editor)
+    if (!data || !rt_findbar_has_live_editor(data))
         return 0;
     vg_findreplacebar_find_next(data->bar);
     return vg_findreplacebar_get_match_count(data->bar) > 0 ? 1 : 0;
@@ -368,7 +449,7 @@ int64_t rt_findbar_find_next(void *bar) {
 /// @return 1 if at least one match exists, 0 otherwise.
 int64_t rt_findbar_find_previous(void *bar) {
     rt_findbar_data_t *data = rt_findbar_checked(bar);
-    if (!data || !data->bound_editor)
+    if (!data || !rt_findbar_has_live_editor(data))
         return 0;
     vg_findreplacebar_find_prev(data->bar);
     return vg_findreplacebar_get_match_count(data->bar) > 0 ? 1 : 0;
@@ -378,7 +459,7 @@ int64_t rt_findbar_find_previous(void *bar) {
 /// @return 1 on success.
 int64_t rt_findbar_replace(void *bar) {
     rt_findbar_data_t *data = rt_findbar_checked(bar);
-    if (!data || !data->bound_editor)
+    if (!data || !rt_findbar_has_live_editor(data))
         return 0;
     size_t count_before = vg_findreplacebar_get_match_count(data->bar);
     if (count_before == 0)
@@ -391,7 +472,7 @@ int64_t rt_findbar_replace(void *bar) {
 /// @return The number of matches that existed before replacement.
 int64_t rt_findbar_replace_all(void *bar) {
     rt_findbar_data_t *data = rt_findbar_checked(bar);
-    if (!data || !data->bound_editor)
+    if (!data || !rt_findbar_has_live_editor(data))
         return 0;
     size_t count_before = vg_findreplacebar_get_match_count(data->bar);
     vg_findreplacebar_replace_all(data->bar);

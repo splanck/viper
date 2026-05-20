@@ -289,6 +289,7 @@ typedef struct {
     vg_dialog_t *dialog;
     int64_t result;
     int64_t default_button;
+    int has_default_button;
     rt_gui_app_t *owner_app;
     // Custom button tracking for rt_messagebox_add_button
     vg_dialog_button_def_t *custom_buttons;
@@ -296,6 +297,59 @@ typedef struct {
     size_t custom_button_count;
     size_t custom_button_cap;
 } rt_messagebox_data_t;
+
+static rt_messagebox_data_t **s_messagebox_wrappers = NULL;
+static size_t s_messagebox_wrapper_count = 0;
+static size_t s_messagebox_wrapper_cap = 0;
+
+static int rt_messagebox_register_wrapper(rt_messagebox_data_t *data) {
+    if (!data)
+        return 0;
+    for (size_t i = 0; i < s_messagebox_wrapper_count; i++) {
+        if (s_messagebox_wrappers[i] == data)
+            return 1;
+    }
+    if (s_messagebox_wrapper_count >= s_messagebox_wrapper_cap) {
+        size_t new_cap = s_messagebox_wrapper_cap ? s_messagebox_wrapper_cap * 2 : 8;
+        if (new_cap < s_messagebox_wrapper_cap ||
+            new_cap > SIZE_MAX / sizeof(*s_messagebox_wrappers))
+            return 0;
+        void *p = realloc(s_messagebox_wrappers, new_cap * sizeof(*s_messagebox_wrappers));
+        if (!p)
+            return 0;
+        s_messagebox_wrappers = (rt_messagebox_data_t **)p;
+        s_messagebox_wrapper_cap = new_cap;
+    }
+    s_messagebox_wrappers[s_messagebox_wrapper_count++] = data;
+    return 1;
+}
+
+static void rt_messagebox_unregister_wrapper(rt_messagebox_data_t *data) {
+    if (!data)
+        return;
+    for (size_t i = 0; i < s_messagebox_wrapper_count; i++) {
+        if (s_messagebox_wrappers[i] != data)
+            continue;
+        memmove(&s_messagebox_wrappers[i],
+                &s_messagebox_wrappers[i + 1],
+                (s_messagebox_wrapper_count - i - 1) * sizeof(*s_messagebox_wrappers));
+        s_messagebox_wrapper_count--;
+        return;
+    }
+}
+
+void rt_messagebox_invalidate_dialog(vg_dialog_t *dialog) {
+    if (!dialog)
+        return;
+    for (size_t i = 0; i < s_messagebox_wrapper_count; i++) {
+        rt_messagebox_data_t *data = s_messagebox_wrappers[i];
+        if (data && data->dialog == dialog) {
+            data->dialog = NULL;
+            data->owner_app = NULL;
+            data->result = -1;
+        }
+    }
+}
 
 /// @brief Authenticate a MessageBox handle via its magic tag (NULL if not).
 static rt_messagebox_data_t *rt_messagebox_checked(void *box) {
@@ -325,6 +379,7 @@ static void rt_messagebox_dispose(rt_messagebox_data_t *data) {
     }
     data->result = -1;
     data->magic = 0;
+    rt_messagebox_unregister_wrapper(data);
 }
 
 /// @brief GC finalizer — delegates to `rt_messagebox_dispose` to free custom button labels
@@ -378,11 +433,16 @@ void *rt_messagebox_new(rt_string title, rt_string message, int64_t type) {
     data->magic = RT_MESSAGEBOX_DATA_MAGIC;
     data->result = -1;
     data->default_button = 0;
+    data->has_default_button = 0;
     data->owner_app = rt_messagebox_app();
     data->custom_buttons = NULL;
     data->custom_button_ids = NULL;
     data->custom_button_count = 0;
     data->custom_button_cap = 0;
+    if (!rt_messagebox_register_wrapper(data)) {
+        rt_messagebox_dispose(data);
+        return NULL;
+    }
     rt_obj_set_finalizer(data, rt_messagebox_finalize);
 
     return data;
@@ -462,7 +522,7 @@ void rt_messagebox_add_button(void *box, rt_string text, int64_t id) {
     vg_dialog_button_def_t *btn = &data->custom_buttons[index];
     btn->label = clabel;
     btn->result = (vg_dialog_result_t)(index + 1);
-    btn->is_default = (id == data->default_button);
+    btn->is_default = data->has_default_button && id == data->default_button;
     btn->is_cancel = rt_messagebox_label_is_cancel(btn->label);
     data->custom_button_ids[index] = id;
 }
@@ -477,6 +537,7 @@ void rt_messagebox_set_default_button(void *box, int64_t id) {
     if (!data->dialog)
         return;
     data->default_button = id;
+    data->has_default_button = 1;
     for (size_t i = 0; i < data->custom_button_count; i++) {
         data->custom_buttons[i].is_default = (data->custom_button_ids[i] == id);
     }
@@ -501,7 +562,8 @@ int64_t rt_messagebox_show(void *box) {
         for (size_t i = 0; i < data->custom_button_count; i++) {
             data->custom_buttons[i].result = (vg_dialog_result_t)(i + 1);
             data->custom_buttons[i].is_default =
-                data->custom_button_ids && data->custom_button_ids[i] == data->default_button;
+                data->has_default_button && data->custom_button_ids &&
+                data->custom_button_ids[i] == data->default_button;
         }
         vg_dialog_set_custom_buttons(data->dialog, data->custom_buttons, data->custom_button_count);
     }

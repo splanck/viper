@@ -451,12 +451,72 @@ typedef struct {
     int64_t result;
 } rt_filedialog_data_t;
 
-/// @brief Safe-cast an opaque handle to the file-dialog wrapper.
-/// @details Validates the magic tag and that the backing dialog widget is
-///          still live; returns NULL on any mismatch.
-static rt_filedialog_data_t *rt_filedialog_data_checked(void *dialog) {
+static void rt_filedialog_clear_selected_paths(rt_filedialog_data_t *data);
+
+static rt_filedialog_data_t **s_filedialog_wrappers = NULL;
+static size_t s_filedialog_wrapper_count = 0;
+static size_t s_filedialog_wrapper_cap = 0;
+
+static int rt_filedialog_register_wrapper(rt_filedialog_data_t *data) {
+    if (!data)
+        return 0;
+    for (size_t i = 0; i < s_filedialog_wrapper_count; i++) {
+        if (s_filedialog_wrappers[i] == data)
+            return 1;
+    }
+    if (s_filedialog_wrapper_count >= s_filedialog_wrapper_cap) {
+        size_t new_cap = s_filedialog_wrapper_cap ? s_filedialog_wrapper_cap * 2 : 8;
+        if (new_cap < s_filedialog_wrapper_cap ||
+            new_cap > SIZE_MAX / sizeof(*s_filedialog_wrappers))
+            return 0;
+        void *p = realloc(s_filedialog_wrappers, new_cap * sizeof(*s_filedialog_wrappers));
+        if (!p)
+            return 0;
+        s_filedialog_wrappers = (rt_filedialog_data_t **)p;
+        s_filedialog_wrapper_cap = new_cap;
+    }
+    s_filedialog_wrappers[s_filedialog_wrapper_count++] = data;
+    return 1;
+}
+
+static void rt_filedialog_unregister_wrapper(rt_filedialog_data_t *data) {
+    if (!data)
+        return;
+    for (size_t i = 0; i < s_filedialog_wrapper_count; i++) {
+        if (s_filedialog_wrappers[i] != data)
+            continue;
+        memmove(&s_filedialog_wrappers[i],
+                &s_filedialog_wrappers[i + 1],
+                (s_filedialog_wrapper_count - i - 1) * sizeof(*s_filedialog_wrappers));
+        s_filedialog_wrapper_count--;
+        return;
+    }
+}
+
+void rt_filedialog_invalidate_dialog(vg_dialog_t *dialog) {
+    if (!dialog)
+        return;
+    for (size_t i = 0; i < s_filedialog_wrapper_count; i++) {
+        rt_filedialog_data_t *data = s_filedialog_wrappers[i];
+        if (data && data->dialog && &data->dialog->base == dialog) {
+            data->dialog = NULL;
+            data->owner_app = NULL;
+            data->result = 0;
+            rt_filedialog_clear_selected_paths(data);
+        }
+    }
+}
+
+/// @brief Safe-cast an opaque handle to the file-dialog wrapper by magic tag.
+static rt_filedialog_data_t *rt_filedialog_wrapper_checked(void *dialog) {
     rt_filedialog_data_t *data = (rt_filedialog_data_t *)dialog;
-    return data && data->magic == RT_FILEDIALOG_DATA_MAGIC && data->dialog &&
+    return data && data->magic == RT_FILEDIALOG_DATA_MAGIC ? data : NULL;
+}
+
+/// @brief Safe-cast an opaque handle to a wrapper with a live backing dialog.
+static rt_filedialog_data_t *rt_filedialog_data_checked(void *dialog) {
+    rt_filedialog_data_t *data = rt_filedialog_wrapper_checked(dialog);
+    return data && data->dialog &&
                    vg_widget_is_live(&data->dialog->base.base)
                ? data
                : NULL;
@@ -530,6 +590,7 @@ static void rt_filedialog_dispose(rt_filedialog_data_t *data) {
     data->owner_app = NULL;
     data->result = 0;
     data->magic = 0;
+    rt_filedialog_unregister_wrapper(data);
 }
 
 /// @brief GC finalizer — delegates to `rt_filedialog_dispose`.
@@ -561,6 +622,7 @@ void *rt_filedialog_new(int64_t type) {
     vg_filedialog_t *dlg = vg_filedialog_create(mode);
     if (!dlg)
         return NULL;
+    vg_filedialog_add_default_bookmarks(dlg);
 
     rt_filedialog_data_t *data =
         (rt_filedialog_data_t *)rt_obj_new_i64(0, (int64_t)sizeof(rt_filedialog_data_t));
@@ -574,6 +636,10 @@ void *rt_filedialog_new(int64_t type) {
     data->selected_paths = NULL;
     data->selected_count = 0;
     data->result = 0;
+    if (!rt_filedialog_register_wrapper(data)) {
+        rt_filedialog_dispose(data);
+        return NULL;
+    }
     rt_obj_set_finalizer(data, rt_filedialog_finalize);
 
     return data;
@@ -700,13 +766,13 @@ int64_t rt_filedialog_show(void *dialog) {
 
     // Replace any previous selection snapshot with the latest dialog result.
     rt_filedialog_clear_selected_paths(data);
-    rt_gui_app_t *app = rt_filedialog_app();
-    if (app)
-        data->owner_app = app;
+    rt_gui_app_t *app =
+        rt_gui_is_app_handle(data->owner_app) ? data->owner_app : rt_filedialog_app();
     if (!rt_filedialog_show_modal(app, data->dialog)) {
         data->result = 0;
         return 0;
     }
+    data->owner_app = app;
     if (!rt_filedialog_copy_selected_paths(data)) {
         data->result = 0;
         return 0;
@@ -760,7 +826,7 @@ rt_string rt_filedialog_get_path_at(void *dialog, int64_t index) {
 /// this, so explicit destruction is optional — useful for early cleanup before GC catches up.
 void rt_filedialog_destroy(void *dialog) {
     RT_ASSERT_MAIN_THREAD();
-    rt_filedialog_data_t *data = rt_filedialog_data_checked(dialog);
+    rt_filedialog_data_t *data = rt_filedialog_wrapper_checked(dialog);
     if (!data)
         return;
     rt_filedialog_dispose(data);

@@ -114,6 +114,14 @@ int main() {
     assert(guiCodeEditorCls != nullptr && "Viper.GUI.CodeEditor not found in catalog");
     assert(hasMethod(*guiCodeEditorCls, "GetGutterClickSlot", "i64()"));
 
+    const il::runtime::RuntimeClass *guiMessageBoxCls = findClass("Viper.GUI.MessageBox");
+    assert(guiMessageBoxCls != nullptr && "Viper.GUI.MessageBox not found in catalog");
+    assert(hasMethod(*guiMessageBoxCls, "New", "obj(str,str,i64)"));
+
+    const il::runtime::RuntimeClass *guiFileDialogCls = findClass("Viper.GUI.FileDialog");
+    assert(guiFileDialogCls != nullptr && "Viper.GUI.FileDialog not found in catalog");
+    assert(hasMethod(*guiFileDialogCls, "New", "obj(i64)"));
+
     const il::runtime::RuntimeClass *guiToolbarCls = findClass("Viper.GUI.Toolbar");
     assert(guiToolbarCls != nullptr && "Viper.GUI.Toolbar not found in catalog");
     assert(hasMethod(*guiToolbarCls, "NewVertical", "obj(obj)"));

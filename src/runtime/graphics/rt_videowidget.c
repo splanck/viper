@@ -22,6 +22,7 @@
 #ifdef VIPER_ENABLE_GRAPHICS
 
 #include "rt_videowidget.h"
+#include "rt_gui.h"
 #include "rt_platform.h"
 #include "rt_string.h"
 #include "rt_videoplayer.h"
@@ -35,28 +36,11 @@ extern void *rt_obj_new_i64(int64_t class_id, int64_t byte_size);
 extern void rt_obj_set_finalizer(void *obj, void (*fn)(void *));
 extern int rt_obj_release_check0(void *obj);
 extern void rt_obj_free(void *obj);
-extern const char *rt_string_cstr(rt_string str);
-extern int64_t rt_pixels_width(void *pixels);
-extern int64_t rt_pixels_height(void *pixels);
 
-/* GUI widget creation functions */
-extern void *rt_image_new(void *parent);
-extern void rt_image_set_pixels(void *image, void *pixels, int64_t w, int64_t h);
-extern void rt_image_set_scale_mode(void *image, int64_t mode);
-extern void rt_widget_destroy(void *widget);
-extern void rt_widget_set_size(void *widget, int64_t w, int64_t h);
-extern void rt_widget_set_flex(void *widget, double flex);
-extern void rt_widget_set_visible(void *widget, int64_t visible);
-extern int64_t rt_widget_was_clicked(void *widget);
-extern void *rt_vbox_new(void);
-extern void *rt_hbox_new(void);
-extern void rt_container_set_spacing(void *container, double spacing);
-extern void rt_widget_add_child(void *parent, void *child);
-extern void *rt_button_new(void *parent, void *text);
-extern void *rt_slider_new(void *parent, int64_t horizontal);
-extern void rt_slider_set_value(void *slider, double value);
-extern double rt_slider_get_value(void *slider);
-extern rt_string rt_string_from_bytes(const char *data, size_t len);
+/* GUI parent validation shim implemented by rt_gui_widgets.c. Kept as a
+ * single external dependency so isolated VideoWidget contract tests can stub
+ * the runtime GUI layer without linking all widget/app objects. */
+extern void *rt_gui_widget_parent_container_checked(void *handle);
 
 /* VideoPlayer functions */
 extern void *rt_videoplayer_open(void *path);
@@ -174,6 +158,9 @@ void *rt_videowidget_new(void *parent, void *path) {
     RT_ASSERT_MAIN_THREAD();
     if (!parent || !path)
         return NULL;
+    void *parent_widget = rt_gui_widget_parent_container_checked(parent);
+    if (!parent_widget)
+        return NULL;
 
     /* Open video file */
     void *player = rt_videoplayer_open(path);
@@ -239,7 +226,7 @@ void *rt_videowidget_new(void *parent, void *path) {
     }
 
     rt_obj_set_finalizer(w, videowidget_finalizer);
-    rt_widget_add_child(parent, w->root_widget);
+    rt_widget_add_child(parent_widget, w->root_widget);
     if (w->controls_widget)
         rt_widget_add_child(w->root_widget, w->controls_widget);
 

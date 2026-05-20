@@ -87,6 +87,12 @@ static int rt_codeeditor_gutter_slot_checked(int64_t slot, int *out_type) {
     return 1;
 }
 
+static int rt_codeeditor_line_length_i32(const vg_codeeditor_t *ce, int line) {
+    if (!ce || line < 0 || line >= ce->line_count)
+        return 0;
+    return ce->lines[line].length > (size_t)INT_MAX ? INT_MAX : (int)ce->lines[line].length;
+}
+
 /// @brief Linear-scan the editor's user-supplied keyword list for an exact match.
 ///
 /// Custom keywords let scripts add domain-specific syntax (e.g., your
@@ -757,6 +763,10 @@ void rt_codeeditor_set_gutter_icon(void *editor, int64_t line, void *pixels, int
     if (!rt_codeeditor_gutter_slot_checked(slot, &type))
         return;
     int line_i = rt_gui_clamp_i64_to_i32(line, 0, INT32_MAX);
+    if (!pixels) {
+        rt_codeeditor_clear_gutter_icon(editor, line_i, slot);
+        return;
+    }
     /* Update existing icon on same line+type if present */
     for (int i = 0; i < ce->gutter_icon_count; i++) {
         if (ce->gutter_icons[i].line == line_i && ce->gutter_icons[i].type == type) {
@@ -875,11 +885,8 @@ int64_t rt_codeeditor_was_gutter_clicked(void *editor) {
     if (!ce)
         return 0;
     int64_t result = ce->gutter_clicked ? 1 : 0;
-    if (result) {
+    if (result)
         ce->gutter_clicked = false; // Edge-triggered: clear after read
-        ce->gutter_clicked_line = -1;
-        ce->gutter_clicked_slot = -1;
-    }
     return result;
 }
 
@@ -889,7 +896,7 @@ int64_t rt_codeeditor_was_gutter_clicked(void *editor) {
 /// reads/clears the flag.
 int64_t rt_codeeditor_get_gutter_clicked_line(void *editor) {
     vg_codeeditor_t *ce = rt_codeeditor_handle_checked(editor);
-    if (!ce || !ce->gutter_clicked)
+    if (!ce || ce->gutter_clicked_line < 0)
         return -1;
     return ce->gutter_clicked_line;
 }
@@ -897,7 +904,7 @@ int64_t rt_codeeditor_get_gutter_clicked_line(void *editor) {
 /// @brief `CodeEditor.GetGutterClickedSlot` — slot index of the most recent click.
 int64_t rt_codeeditor_get_gutter_clicked_slot(void *editor) {
     vg_codeeditor_t *ce = rt_codeeditor_handle_checked(editor);
-    if (!ce || !ce->gutter_clicked)
+    if (!ce || ce->gutter_clicked_slot < 0)
         return -1;
     return ce->gutter_clicked_slot;
 }
@@ -1102,7 +1109,7 @@ void rt_codeeditor_set_auto_fold_detection(void *editor, int64_t enable) {
                 nxt_indent++;
 
             // Skip blank lines
-            if (cur_indent >= (int)ce->lines[i].length)
+            if ((size_t)cur_indent >= ce->lines[i].length)
                 continue;
 
             // Fold region starts when indentation increases
@@ -1117,7 +1124,7 @@ void rt_codeeditor_set_auto_fold_detection(void *editor, int64_t enable) {
                     int indent = 0;
                     while (line[indent] == ' ' || line[indent] == '\t')
                         indent++;
-                    if (indent >= (int)ce->lines[j].length) {
+                    if ((size_t)indent >= ce->lines[j].length) {
                         end_line = j; // blank line extends the fold
                         continue;
                     }
@@ -1172,8 +1179,9 @@ static void rt_codeeditor_clamp_position(vg_codeeditor_t *ce, int *line, int *co
         *line = ce->line_count - 1;
     if (*col < 0)
         *col = 0;
-    if (*col > (int)ce->lines[*line].length)
-        *col = (int)ce->lines[*line].length;
+    int line_len = rt_codeeditor_line_length_i32(ce, *line);
+    if (*col > line_len)
+        *col = line_len;
 }
 
 /// @brief `CodeEditor.GetCursorCount` — number of active cursors (always >= 1).
@@ -1553,8 +1561,10 @@ static int rt_codeeditor_visible_anchor_line(const vg_codeeditor_t *ce, int line
 ///          the caller's division never trips on a zero divisor.
 /// @return Characters per row (>= 1 with word-wrap on; 0 with word-wrap off).
 static int rt_codeeditor_chars_per_row(const vg_codeeditor_t *ce, float content_width) {
-    if (!ce || !ce->word_wrap || ce->char_width <= 0.0f || content_width <= 0.0f)
+    if (!ce || !ce->word_wrap || ce->char_width <= 0.0f)
         return 0;
+    if (content_width <= 0.0f)
+        return 1;
     int chars = (int)(content_width / ce->char_width);
     return chars > 0 ? chars : 1;
 }
@@ -1576,7 +1586,8 @@ static int rt_codeeditor_wrapped_rows_for_line(const vg_codeeditor_t *ce,
     size_t len = ce->lines[line].length;
     if (len == 0)
         return 1;
-    return (int)((len + (size_t)chars_per_row - 1) / (size_t)chars_per_row);
+    size_t rows = (len + (size_t)chars_per_row - 1) / (size_t)chars_per_row;
+    return rows > (size_t)INT_MAX ? INT_MAX : (int)rows;
 }
 
 /// @brief Combine fold-hiding and word-wrap to get the on-screen row count for a line.
@@ -1867,8 +1878,9 @@ int64_t rt_codeeditor_get_col_at_pixel(void *editor, int64_t x, int64_t y) {
     }
     if (col < 0)
         col = 0;
-    if (col > (int)ce->lines[line].length)
-        col = (int)ce->lines[line].length;
+    int line_len = rt_codeeditor_line_length_i32(ce, line);
+    if (col > line_len)
+        col = line_len;
     return col;
 }
 
@@ -1893,7 +1905,7 @@ rt_string rt_codeeditor_get_word_at_cursor(void *editor) {
     if (ce->cursor_line < 0 || ce->cursor_line >= ce->line_count)
         return rt_str_empty();
     const char *text = ce->lines[ce->cursor_line].text;
-    int len = (int)ce->lines[ce->cursor_line].length;
+    int len = rt_codeeditor_line_length_i32(ce, ce->cursor_line);
     int col = ce->cursor_col < len ? ce->cursor_col : len;
 
     /* scan left to find word start */
@@ -1919,7 +1931,7 @@ void rt_codeeditor_replace_word_at_cursor(void *editor, rt_string new_text) {
     if (ce->cursor_line < 0 || ce->cursor_line >= ce->line_count)
         return;
     const char *text = ce->lines[ce->cursor_line].text;
-    int len = (int)ce->lines[ce->cursor_line].length;
+    int len = rt_codeeditor_line_length_i32(ce, ce->cursor_line);
     int col = ce->cursor_col < len ? ce->cursor_col : len;
 
     /* find word boundaries */

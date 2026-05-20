@@ -295,10 +295,12 @@ void rt_shortcuts_register(rt_string id, rt_string keys, rt_string description) 
     rt_gui_app_t *app = rt_shortcuts_app();
     if (!app)
         return;
+    if (rt_string_contains_nul(id) || rt_string_contains_nul(keys))
+        return;
 
     char *cid = rt_string_to_cstr(id);
     char *ckeys = rt_string_to_cstr(keys);
-    char *cdesc = rt_string_to_cstr(description);
+    char *cdesc = rt_string_to_gui_cstr(description);
 
     if (!cid || !ckeys) {
         free(cid);
@@ -368,6 +370,8 @@ void rt_shortcuts_unregister(rt_string id) {
     rt_gui_app_t *app = rt_shortcuts_app();
     if (!app)
         return;
+    if (rt_string_contains_nul(id))
+        return;
     char *cid = rt_string_to_cstr(id);
     if (!cid)
         return;
@@ -414,6 +418,8 @@ int64_t rt_shortcuts_was_triggered(rt_string id) {
     RT_ASSERT_MAIN_THREAD();
     rt_gui_app_t *app = rt_shortcuts_app();
     if (!app)
+        return 0;
+    if (rt_string_contains_nul(id))
         return 0;
 
     char *cid = rt_string_to_cstr(id);
@@ -536,6 +542,8 @@ void rt_shortcuts_set_enabled(rt_string id, int64_t enabled) {
     rt_gui_app_t *app = rt_shortcuts_app();
     if (!app)
         return;
+    if (rt_string_contains_nul(id))
+        return;
     char *cid = rt_string_to_cstr(id);
     if (!cid)
         return;
@@ -555,6 +563,8 @@ int64_t rt_shortcuts_is_enabled(rt_string id) {
     RT_ASSERT_MAIN_THREAD();
     rt_gui_app_t *app = rt_shortcuts_app();
     if (!app)
+        return 0;
+    if (rt_string_contains_nul(id))
         return 0;
     char *cid = rt_string_to_cstr(id);
     if (!cid)
@@ -645,7 +655,7 @@ void rt_app_set_title(void *app, rt_string title) {
         return;
     if (!gui_app->window)
         return;
-    char *cstr = rt_string_to_cstr(title);
+    char *cstr = rt_string_to_gui_cstr(title);
     if (!cstr)
         return;
     char *stored = strdup(cstr);

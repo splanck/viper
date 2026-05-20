@@ -76,18 +76,22 @@ struct rt_videowidget_view {
 };
 
 bool g_open_should_fail = false;
+bool g_parent_valid = true;
 int64_t g_open_width = 64;
 int64_t g_open_height = 32;
 constexpr uint64_t kVideoWidgetMagic = 0x5254564944454F57ull;
 int g_release_count = 0;
 int g_widget_destroy_count = 0;
+int g_open_count = 0;
 
 void reset_open_state() {
     g_open_should_fail = false;
+    g_parent_valid = true;
     g_open_width = 64;
     g_open_height = 32;
     g_release_count = 0;
     g_widget_destroy_count = 0;
+    g_open_count = 0;
 }
 
 } // namespace
@@ -105,6 +109,10 @@ extern "C" int rt_obj_release_check0(void *) {
 extern "C" void rt_obj_free(void *obj) {
     g_release_count++;
     std::free(obj);
+}
+
+extern "C" void *rt_gui_widget_parent_container_checked(void *handle) {
+    return g_parent_valid ? handle : nullptr;
 }
 
 extern "C" const char *rt_string_cstr(rt_string str) {
@@ -204,6 +212,7 @@ extern "C" rt_string rt_string_from_bytes(const char *data, size_t len) {
 }
 
 extern "C" void *rt_videoplayer_open(void *) {
+    g_open_count++;
     if (g_open_should_fail)
         return nullptr;
     auto *player = static_cast<StubPlayer *>(std::calloc(1, sizeof(StubPlayer)));
@@ -287,6 +296,12 @@ static void test_constructor_validates_inputs() {
 
     assert(rt_videowidget_new(nullptr, reinterpret_cast<void *>(1)) == nullptr);
     assert(rt_videowidget_new(&parent, nullptr) == nullptr);
+    assert(g_open_count == 0);
+
+    g_parent_valid = false;
+    assert(rt_videowidget_new(&parent, reinterpret_cast<void *>(1)) == nullptr);
+    assert(g_open_count == 0);
+    g_parent_valid = true;
 
     g_open_should_fail = true;
     assert(rt_videowidget_new(&parent, reinterpret_cast<void *>(1)) == nullptr);

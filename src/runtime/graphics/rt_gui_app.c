@@ -1109,6 +1109,8 @@ static void rt_gui_inherit_font_to_widget(vg_widget_t *widget, vg_font_t *font, 
             break;
         }
         default:
+            if (widget->vtable && widget->vtable->set_font)
+                widget->vtable->set_font(widget, font, size);
             break;
     }
 
@@ -1194,7 +1196,7 @@ void *rt_gui_app_new(rt_string title, int64_t width, int64_t height) {
     vgfx_window_params_t params = vgfx_window_params_default();
     params.width = (int32_t)(width < 1 ? 1 : width > INT32_MAX ? INT32_MAX : width);
     params.height = (int32_t)(height < 1 ? 1 : height > INT32_MAX ? INT32_MAX : height);
-    char *ctitle = rt_string_to_cstr(title);
+    char *ctitle = rt_string_to_gui_cstr(title);
     if (ctitle) {
         params.title = ctitle;
     }
@@ -1328,6 +1330,8 @@ void rt_gui_app_destroy(void *app_ptr) {
 
     for (int i = 0; i < app->dialog_count; i++) {
         if (app->dialog_stack[i]) {
+            rt_messagebox_invalidate_dialog(app->dialog_stack[i]);
+            rt_filedialog_invalidate_dialog(app->dialog_stack[i]);
             vg_widget_destroy(&app->dialog_stack[i]->base);
         }
     }
@@ -1570,6 +1574,11 @@ static void rt_gui_update_drag_over_target(rt_gui_app_t *app, vg_widget_t *event
         return;
 
     vg_widget_t *next = NULL;
+    if (app->drag_source && !vg_widget_is_live(app->drag_source))
+        app->drag_source = NULL;
+    if (app->drag_over_widget && !vg_widget_is_live(app->drag_over_widget))
+        app->drag_over_widget = NULL;
+
     if (app->drag_source && event_root) {
         vg_widget_t *hit =
             vg_widget_hit_test(event_root, (float)app->mouse_x, (float)app->mouse_y);
@@ -1629,6 +1638,11 @@ static void rt_gui_complete_drag_drop(rt_gui_app_t *app, vg_widget_t *event_root
     rt_gui_cancel_drag_candidate(app);
     if (!app->drag_source)
         return;
+    if (!vg_widget_is_live(app->drag_source)) {
+        app->drag_source = NULL;
+        rt_gui_update_drag_over_target(app, event_root);
+        return;
+    }
 
     vg_widget_t *source = app->drag_source;
     source->_is_being_dragged = false;
