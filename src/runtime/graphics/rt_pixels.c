@@ -275,15 +275,18 @@ static void rt_pixels_set_raw_internal(
     pixels_touch(p);
 }
 
-/// @brief Write raw `color` (0xRRGGBBAA) at (x, y). Out-of-bounds is a silent no-op.
+/// @brief Write `color` at (x, y). Out-of-bounds is a silent no-op.
+/// @details Accepts raw `0xRRGGBBAA` or tagged Color.RGBA values; raw values pass
+///   through unchanged, tagged values are unpacked from their ARGB+tag form.
 void rt_pixels_set(void *pixels, int64_t x, int64_t y, int64_t color) {
-    rt_pixels_set_raw_internal(pixels, x, y, rt_pixels_raw_rgba(color), "Pixels.Set: null pixels");
+    rt_pixels_set_raw_internal(
+        pixels, x, y, rt_pixels_rgba_or_tagged_color_to_rgba(color), "Pixels.Set: null pixels");
 }
 
-/// @brief Explicit raw-RGBA alias for scripts that distinguish raw storage from color values.
+/// @brief Write `rgba` at (x, y), accepting raw `0xRRGGBBAA` or tagged Color.RGBA values.
 void rt_pixels_set_rgba(void *pixels, int64_t x, int64_t y, int64_t rgba) {
     rt_pixels_set_raw_internal(
-        pixels, x, y, rt_pixels_raw_rgba(rgba), "Pixels.SetRGBA: null pixels");
+        pixels, x, y, rt_pixels_rgba_or_tagged_color_to_rgba(rgba), "Pixels.SetRGBA: null pixels");
 }
 
 /// @brief Write Canvas RGB or Color.RGBA at (x, y), converting to raw 0xRRGGBBAA.
@@ -331,14 +334,18 @@ static void rt_pixels_fill_raw_internal(void *pixels, uint32_t color, const char
     pixels_touch(p);
 }
 
-/// @brief Fill the entire buffer with raw `color` (0xRRGGBBAA). Optimized for color=0.
+/// @brief Fill the entire buffer with `color`. Optimized for color=0.
+/// @details Accepts raw `0xRRGGBBAA` or tagged Color.RGBA values; raw values pass
+///   through unchanged, tagged values are unpacked from their ARGB+tag form.
 void rt_pixels_fill(void *pixels, int64_t color) {
-    rt_pixels_fill_raw_internal(pixels, rt_pixels_raw_rgba(color), "Pixels.Fill: null pixels");
+    rt_pixels_fill_raw_internal(
+        pixels, rt_pixels_rgba_or_tagged_color_to_rgba(color), "Pixels.Fill: null pixels");
 }
 
-/// @brief Explicit raw-RGBA alias for scripts that distinguish raw storage from color values.
+/// @brief Fill with `rgba`, accepting raw `0xRRGGBBAA` or tagged Color.RGBA values.
 void rt_pixels_fill_rgba(void *pixels, int64_t rgba) {
-    rt_pixels_fill_raw_internal(pixels, rt_pixels_raw_rgba(rgba), "Pixels.FillRGBA: null pixels");
+    rt_pixels_fill_raw_internal(
+        pixels, rt_pixels_rgba_or_tagged_color_to_rgba(rgba), "Pixels.FillRGBA: null pixels");
 }
 
 /// @brief Fill with Canvas RGB or Color.RGBA, converting to raw 0xRRGGBBAA.
