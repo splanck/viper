@@ -19,6 +19,7 @@
 #include "codegen/common/linker/ObjFileReader.hpp"
 #include "codegen/common/AArch64RelocUtil.hpp"
 #include "codegen/common/linker/RelocConstants.hpp"
+#include "codegen/common/objfile/ObjFileWriterUtil.hpp"
 
 #include <cstring>
 #include <limits>
@@ -26,6 +27,13 @@
 #include <vector>
 
 namespace viper::codegen::linker {
+
+using viper::codegen::objfile::checkedAdd;
+using viper::codegen::objfile::checkedMul;
+using viper::codegen::objfile::checkedRange;
+using viper::codegen::objfile::readLE16;
+using viper::codegen::objfile::readLE32;
+using viper::codegen::objfile::readLE64;
 
 namespace coff {
 static constexpr uint16_t IMAGE_FILE_MACHINE_AMD64 = 0x8664;
@@ -158,46 +166,6 @@ struct CoffAuxWeakExternal {
 
 #pragma pack(pop)
 } // namespace coff
-
-/// @brief Decode an unaligned little-endian uint32 from @p p.
-static uint32_t readLE32(const uint8_t *p) {
-    return static_cast<uint32_t>(p[0]) | (static_cast<uint32_t>(p[1]) << 8) |
-           (static_cast<uint32_t>(p[2]) << 16) | (static_cast<uint32_t>(p[3]) << 24);
-}
-
-/// @brief Decode an unaligned little-endian uint16 from @p p.
-static uint16_t readLE16(const uint8_t *p) {
-    return static_cast<uint16_t>(p[0]) | (static_cast<uint16_t>(p[1]) << 8);
-}
-
-/// @brief Decode an unaligned little-endian uint64 from @p p.
-static uint64_t readLE64(const uint8_t *p) {
-    uint64_t v = 0;
-    for (unsigned i = 0; i < 8; ++i)
-        v |= static_cast<uint64_t>(p[i]) << (i * 8);
-    return v;
-}
-
-/// @brief Verify that the byte range [@p off, @p off+@p len) fits within @p size.
-static bool checkedRange(size_t off, size_t len, size_t size) {
-    return off <= size && len <= size - off;
-}
-
-/// @brief Add @p lhs + @p rhs into @p out, returning false on size_t overflow.
-static bool checkedAdd(size_t lhs, size_t rhs, size_t &out) {
-    if (lhs > std::numeric_limits<size_t>::max() - rhs)
-        return false;
-    out = lhs + rhs;
-    return true;
-}
-
-/// @brief Multiply @p lhs * @p rhs into @p out, returning false on size_t overflow.
-static bool checkedMul(size_t lhs, size_t rhs, size_t &out) {
-    if (lhs != 0 && rhs > std::numeric_limits<size_t>::max() / lhs)
-        return false;
-    out = lhs * rhs;
-    return true;
-}
 
 /// @brief Copy a NUL-terminated string out of @p data within the @p len-byte window.
 /// @return false if no NUL is found inside the bounds.

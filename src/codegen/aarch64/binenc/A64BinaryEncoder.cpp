@@ -1518,8 +1518,108 @@ void A64BinaryEncoder::encodeSpOffsetStore(uint32_t rt,
 // encodeInstruction — main dispatch
 // =============================================================================
 
+// Homogeneous-pattern dispatch tables — each row encodes one instruction with
+// a fixed template constant and a uniform operand shape. Keeps `encodeInstruction`
+// readable while still letting heterogeneous opcodes use the switch.
+namespace {
+
+struct Reg3GprEntry {
+    MOpcode op;
+    uint32_t tmpl;
+};
+constexpr Reg3GprEntry kReg3GprTable[] = {
+    {MOpcode::AddRRR, kAddRRR},     {MOpcode::SubRRR, kSubRRR},
+    {MOpcode::AndRRR, kAndRRR},     {MOpcode::OrrRRR, kOrrRRR},
+    {MOpcode::EorRRR, kEorRRR},     {MOpcode::AddsRRR, kAddsRRR},
+    {MOpcode::SubsRRR, kSubsRRR},   {MOpcode::LslvRRR, kLslvRRR},
+    {MOpcode::LsrvRRR, kLsrvRRR},   {MOpcode::AsrvRRR, kAsrvRRR},
+    {MOpcode::MulRRR, kMulRRR},     {MOpcode::SmulhRRR, kSmulhRRR},
+    {MOpcode::UmulhRRR, kUmulhRRR}, {MOpcode::SDivRRR, kSDivRRR},
+    {MOpcode::UDivRRR, kUDivRRR},
+};
+
+struct Reg4GprEntry {
+    MOpcode op;
+    uint32_t tmpl;
+};
+constexpr Reg4GprEntry kReg4GprTable[] = {
+    {MOpcode::MSubRRRR, kMSubRRRR},
+    {MOpcode::MAddRRRR, kMAddRRRR},
+};
+
+struct Reg3FprEntry {
+    MOpcode op;
+    uint32_t tmpl;
+};
+constexpr Reg3FprEntry kReg3FprTable[] = {
+    {MOpcode::FAddRRR, kFAddRRR},
+    {MOpcode::FSubRRR, kFSubRRR},
+    {MOpcode::FMulRRR, kFMulRRR},
+    {MOpcode::FDivRRR, kFDivRRR},
+};
+
+struct Conv2RegEntry {
+    MOpcode op;
+    uint32_t tmpl;
+    bool dstIsGpr;  ///< true: dst uses hwGPR, false: hwFPR
+    bool srcIsGpr;  ///< true: src uses hwGPR, false: hwFPR
+};
+constexpr Conv2RegEntry kConv2RegTable[] = {
+    {MOpcode::SCvtF, kSCvtF, false, true},     ///< FPR <- GPR
+    {MOpcode::FCvtZS, kFCvtZS, true, false},   ///< GPR <- FPR
+    {MOpcode::UCvtF, kUCvtF, false, true},     ///< FPR <- GPR
+    {MOpcode::FCvtZU, kFCvtZU, true, false},   ///< GPR <- FPR
+    {MOpcode::FMovGR, kFMovGR, false, true},   ///< FPR <- GPR (bit transfer)
+};
+
+} // namespace
+
 void A64BinaryEncoder::encodeInstruction(const MInstr &mi, objfile::CodeSection &cs) {
     validateOperandCount(mi);
+
+    // Fast paths for homogeneous dispatch-table patterns. Order does not matter
+    // because the tables are disjoint on MOpcode.
+    for (const auto &e : kReg3GprTable) {
+        if (mi.opc == e.op) {
+            emit32(encode3Reg(e.tmpl,
+                              hwGPR(getReg(mi.ops[0])),
+                              hwGPR(getReg(mi.ops[1])),
+                              hwGPR(getReg(mi.ops[2]))),
+                   cs);
+            return;
+        }
+    }
+    for (const auto &e : kReg4GprTable) {
+        if (mi.opc == e.op) {
+            emit32(encode4Reg(e.tmpl,
+                              hwGPR(getReg(mi.ops[0])),
+                              hwGPR(getReg(mi.ops[1])),
+                              hwGPR(getReg(mi.ops[2])),
+                              hwGPR(getReg(mi.ops[3]))),
+                   cs);
+            return;
+        }
+    }
+    for (const auto &e : kReg3FprTable) {
+        if (mi.opc == e.op) {
+            emit32(encode3Reg(e.tmpl,
+                              hwFPR(getReg(mi.ops[0])),
+                              hwFPR(getReg(mi.ops[1])),
+                              hwFPR(getReg(mi.ops[2]))),
+                   cs);
+            return;
+        }
+    }
+    for (const auto &e : kConv2RegTable) {
+        if (mi.opc == e.op) {
+            const uint32_t dst = e.dstIsGpr ? hwGPR(getReg(mi.ops[0]))
+                                            : hwFPR(getReg(mi.ops[0]));
+            const uint32_t src = e.srcIsGpr ? hwGPR(getReg(mi.ops[1]))
+                                            : hwFPR(getReg(mi.ops[1]));
+            emit32(encode2Reg(e.tmpl, dst, src), cs);
+            return;
+        }
+    }
 
     switch (mi.opc) {
         // ─── Ret (triggers epilogue synthesis) ───
@@ -1528,133 +1628,6 @@ void A64BinaryEncoder::encodeInstruction(const MInstr &mi, objfile::CodeSection 
                 emit32(kRet, cs);
             else
                 encodeEpilogue(*currentFn_, cs);
-            return;
-
-        // ─── Data Processing — Three-Register ───
-        case MOpcode::AddRRR:
-            emit32(encode3Reg(kAddRRR,
-                              hwGPR(getReg(mi.ops[0])),
-                              hwGPR(getReg(mi.ops[1])),
-                              hwGPR(getReg(mi.ops[2]))),
-                   cs);
-            return;
-        case MOpcode::SubRRR:
-            emit32(encode3Reg(kSubRRR,
-                              hwGPR(getReg(mi.ops[0])),
-                              hwGPR(getReg(mi.ops[1])),
-                              hwGPR(getReg(mi.ops[2]))),
-                   cs);
-            return;
-        case MOpcode::AndRRR:
-            emit32(encode3Reg(kAndRRR,
-                              hwGPR(getReg(mi.ops[0])),
-                              hwGPR(getReg(mi.ops[1])),
-                              hwGPR(getReg(mi.ops[2]))),
-                   cs);
-            return;
-        case MOpcode::OrrRRR:
-            emit32(encode3Reg(kOrrRRR,
-                              hwGPR(getReg(mi.ops[0])),
-                              hwGPR(getReg(mi.ops[1])),
-                              hwGPR(getReg(mi.ops[2]))),
-                   cs);
-            return;
-        case MOpcode::EorRRR:
-            emit32(encode3Reg(kEorRRR,
-                              hwGPR(getReg(mi.ops[0])),
-                              hwGPR(getReg(mi.ops[1])),
-                              hwGPR(getReg(mi.ops[2]))),
-                   cs);
-            return;
-        case MOpcode::AddsRRR:
-            emit32(encode3Reg(kAddsRRR,
-                              hwGPR(getReg(mi.ops[0])),
-                              hwGPR(getReg(mi.ops[1])),
-                              hwGPR(getReg(mi.ops[2]))),
-                   cs);
-            return;
-        case MOpcode::SubsRRR:
-            emit32(encode3Reg(kSubsRRR,
-                              hwGPR(getReg(mi.ops[0])),
-                              hwGPR(getReg(mi.ops[1])),
-                              hwGPR(getReg(mi.ops[2]))),
-                   cs);
-            return;
-
-        // ─── Variable Shift ───
-        case MOpcode::LslvRRR:
-            emit32(encode3Reg(kLslvRRR,
-                              hwGPR(getReg(mi.ops[0])),
-                              hwGPR(getReg(mi.ops[1])),
-                              hwGPR(getReg(mi.ops[2]))),
-                   cs);
-            return;
-        case MOpcode::LsrvRRR:
-            emit32(encode3Reg(kLsrvRRR,
-                              hwGPR(getReg(mi.ops[0])),
-                              hwGPR(getReg(mi.ops[1])),
-                              hwGPR(getReg(mi.ops[2]))),
-                   cs);
-            return;
-        case MOpcode::AsrvRRR:
-            emit32(encode3Reg(kAsrvRRR,
-                              hwGPR(getReg(mi.ops[0])),
-                              hwGPR(getReg(mi.ops[1])),
-                              hwGPR(getReg(mi.ops[2]))),
-                   cs);
-            return;
-
-        // ─── Multiply / Divide ───
-        case MOpcode::MulRRR:
-            emit32(encode3Reg(kMulRRR,
-                              hwGPR(getReg(mi.ops[0])),
-                              hwGPR(getReg(mi.ops[1])),
-                              hwGPR(getReg(mi.ops[2]))),
-                   cs);
-            return;
-        case MOpcode::SmulhRRR:
-            emit32(encode3Reg(kSmulhRRR,
-                              hwGPR(getReg(mi.ops[0])),
-                              hwGPR(getReg(mi.ops[1])),
-                              hwGPR(getReg(mi.ops[2]))),
-                   cs);
-            return;
-        case MOpcode::UmulhRRR:
-            emit32(encode3Reg(kUmulhRRR,
-                              hwGPR(getReg(mi.ops[0])),
-                              hwGPR(getReg(mi.ops[1])),
-                              hwGPR(getReg(mi.ops[2]))),
-                   cs);
-            return;
-        case MOpcode::SDivRRR:
-            emit32(encode3Reg(kSDivRRR,
-                              hwGPR(getReg(mi.ops[0])),
-                              hwGPR(getReg(mi.ops[1])),
-                              hwGPR(getReg(mi.ops[2]))),
-                   cs);
-            return;
-        case MOpcode::UDivRRR:
-            emit32(encode3Reg(kUDivRRR,
-                              hwGPR(getReg(mi.ops[0])),
-                              hwGPR(getReg(mi.ops[1])),
-                              hwGPR(getReg(mi.ops[2]))),
-                   cs);
-            return;
-        case MOpcode::MSubRRRR:
-            emit32(encode4Reg(kMSubRRRR,
-                              hwGPR(getReg(mi.ops[0])),
-                              hwGPR(getReg(mi.ops[1])),
-                              hwGPR(getReg(mi.ops[2])),
-                              hwGPR(getReg(mi.ops[3]))),
-                   cs);
-            return;
-        case MOpcode::MAddRRRR:
-            emit32(encode4Reg(kMAddRRRR,
-                              hwGPR(getReg(mi.ops[0])),
-                              hwGPR(getReg(mi.ops[1])),
-                              hwGPR(getReg(mi.ops[2])),
-                              hwGPR(getReg(mi.ops[3]))),
-                   cs);
             return;
 
         // ─── Add/Sub Immediate ───
@@ -2074,35 +2047,9 @@ void A64BinaryEncoder::encodeInstruction(const MInstr &mi, objfile::CodeSection 
             return;
         }
 
-        // ─── Floating Point — Three-Register ───
-        case MOpcode::FAddRRR:
-            emit32(encode3Reg(kFAddRRR,
-                              hwFPR(getReg(mi.ops[0])),
-                              hwFPR(getReg(mi.ops[1])),
-                              hwFPR(getReg(mi.ops[2]))),
-                   cs);
-            return;
-        case MOpcode::FSubRRR:
-            emit32(encode3Reg(kFSubRRR,
-                              hwFPR(getReg(mi.ops[0])),
-                              hwFPR(getReg(mi.ops[1])),
-                              hwFPR(getReg(mi.ops[2]))),
-                   cs);
-            return;
-        case MOpcode::FMulRRR:
-            emit32(encode3Reg(kFMulRRR,
-                              hwFPR(getReg(mi.ops[0])),
-                              hwFPR(getReg(mi.ops[1])),
-                              hwFPR(getReg(mi.ops[2]))),
-                   cs);
-            return;
-        case MOpcode::FDivRRR:
-            emit32(encode3Reg(kFDivRRR,
-                              hwFPR(getReg(mi.ops[0])),
-                              hwFPR(getReg(mi.ops[1])),
-                              hwFPR(getReg(mi.ops[2]))),
-                   cs);
-            return;
+        // ─── Floating Point — special (non-table cases) ───
+        // FAddRRR / FSubRRR / FMulRRR / FDivRRR are dispatched via kReg3FprTable above.
+        // SCvtF / FCvtZS / UCvtF / FCvtZU / FMovGR are dispatched via kConv2RegTable above.
         case MOpcode::FCmpRR:
             // fcmp Dn, Dm (Rd field = 0)
             emit32(kFCmpRR | (hwFPR(getReg(mi.ops[1])) << 16) | (hwFPR(getReg(mi.ops[0])) << 5),
@@ -2119,23 +2066,6 @@ void A64BinaryEncoder::encodeInstruction(const MInstr &mi, objfile::CodeSection 
         }
         case MOpcode::FRintN:
             emit32(encode2Reg(kFRintN, hwFPR(getReg(mi.ops[0])), hwFPR(getReg(mi.ops[1]))), cs);
-            return;
-
-        // ─── Floating Point — Conversions ───
-        case MOpcode::SCvtF:
-            emit32(encode2Reg(kSCvtF, hwFPR(getReg(mi.ops[0])), hwGPR(getReg(mi.ops[1]))), cs);
-            return;
-        case MOpcode::FCvtZS:
-            emit32(encode2Reg(kFCvtZS, hwGPR(getReg(mi.ops[0])), hwFPR(getReg(mi.ops[1]))), cs);
-            return;
-        case MOpcode::UCvtF:
-            emit32(encode2Reg(kUCvtF, hwFPR(getReg(mi.ops[0])), hwGPR(getReg(mi.ops[1]))), cs);
-            return;
-        case MOpcode::FCvtZU:
-            emit32(encode2Reg(kFCvtZU, hwGPR(getReg(mi.ops[0])), hwFPR(getReg(mi.ops[1]))), cs);
-            return;
-        case MOpcode::FMovGR:
-            emit32(encode2Reg(kFMovGR, hwFPR(getReg(mi.ops[0])), hwGPR(getReg(mi.ops[1]))), cs);
             return;
 
         // ─── FMovRI (float immediate) ───
@@ -2389,6 +2319,11 @@ void A64BinaryEncoder::encodeInstruction(const MInstr &mi, objfile::CodeSection 
                                      std::string(opcodeName(mi.opc)) +
                                      "' reached binary emission before LowerOvf");
 
+        // Opcodes dispatched via the table loops above (kReg3GprTable, kReg4GprTable,
+        // kReg3FprTable, kConv2RegTable) reach here only if the table-dispatch fast
+        // path was bypassed; fall through to the unhandled-opcode throw.
+        default:
+            break;
     } // end switch
 
     // If we reach here, the opcode was not handled.

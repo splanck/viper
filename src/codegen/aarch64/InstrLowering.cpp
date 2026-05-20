@@ -420,6 +420,65 @@ uint16_t emitConstStrGlobalToVReg(
 // Value Materialization
 //===----------------------------------------------------------------------===//
 
+/// @brief Materialize an "immediate" IL value (ConstInt / ConstFloat / NullPtr /
+///        GlobalAddr) into a fresh vreg. Returns false if @p v is not one of
+///        those kinds, allowing the caller's full dispatcher to handle Temp.
+/// @details Extracted from `materializeValueToVReg` so the 549-LOC monster can
+///          read as "if immediate handle here, else handle Temp" — the four
+///          immediate kinds share a common shape (push instr, return) and were
+///          repeating boilerplate around outVReg/outCls assignment.
+static bool materializeImmediateValue(const il::core::Value &v,
+                                      MBasicBlock &out,
+                                      uint16_t &nextVRegId,
+                                      uint16_t &outVReg,
+                                      RegClass &outCls) {
+    using Kind = il::core::Value::Kind;
+    if (v.kind == Kind::ConstInt || v.kind == Kind::NullPtr) {
+        const long long imm = (v.kind == Kind::ConstInt) ? v.i64 : 0;
+        outVReg = allocateNextVReg(nextVRegId);
+        outCls = RegClass::GPR;
+        out.instrs.push_back(MInstr{
+            MOpcode::MovRI,
+            {MOperand::vregOp(outCls, outVReg), MOperand::immOp(imm)}});
+        return true;
+    }
+    if (v.kind == Kind::ConstFloat) {
+        // Materialize FP constant by moving its bit-pattern via a GPR into an FPR.
+        long long bits;
+        static_assert(sizeof(double) == sizeof(long long), "size");
+        std::memcpy(&bits, &v.f64, sizeof(double));
+        const uint16_t tmpG = allocateNextVReg(nextVRegId);
+        out.instrs.push_back(MInstr{
+            MOpcode::MovRI,
+            {MOperand::vregOp(RegClass::GPR, tmpG), MOperand::immOp(bits)}});
+        outVReg = allocateNextVReg(nextVRegId);
+        outCls = RegClass::FPR;
+        // fmov dV, xTmp  (bit-cast)
+        out.instrs.push_back(MInstr{
+            MOpcode::FMovGR,
+            {MOperand::vregOp(RegClass::FPR, outVReg),
+             MOperand::vregOp(RegClass::GPR, tmpG)}});
+        return true;
+    }
+    if (v.kind == Kind::GlobalAddr) {
+        // Direct GlobalAddr (function pointer or global symbol address)
+        // Materialize via PC-relative AdrPage + AddPageOff
+        outVReg = allocateNextVReg(nextVRegId);
+        outCls = RegClass::GPR;
+        const std::string sym = mapExternalSymbol(v.str);
+        out.instrs.push_back(MInstr{
+            MOpcode::AdrPage,
+            {MOperand::vregOp(RegClass::GPR, outVReg), MOperand::labelOp(sym)}});
+        out.instrs.push_back(MInstr{
+            MOpcode::AddPageOff,
+            {MOperand::vregOp(RegClass::GPR, outVReg),
+             MOperand::vregOp(RegClass::GPR, outVReg),
+             MOperand::labelOp(sym)}});
+        return true;
+    }
+    return false;
+}
+
 bool materializeValueToVReg(const il::core::Value &v,
                             const il::core::BasicBlock &bb,
                             const TargetInfo &ti,
@@ -434,52 +493,8 @@ bool materializeValueToVReg(const il::core::Value &v,
                                 *stringLiteralByteLengths) {
     using Opcode = il::core::Opcode;
 
-    if (v.kind == il::core::Value::Kind::ConstInt) {
-        outVReg = allocateNextVReg(nextVRegId);
-        outCls = RegClass::GPR;
-        out.instrs.push_back(
-            MInstr{MOpcode::MovRI, {MOperand::vregOp(outCls, outVReg), MOperand::immOp(v.i64)}});
+    if (materializeImmediateValue(v, out, nextVRegId, outVReg, outCls))
         return true;
-    }
-    if (v.kind == il::core::Value::Kind::ConstFloat) {
-        // Materialize FP constant by moving its bit-pattern via a GPR into an FPR.
-        long long bits;
-        static_assert(sizeof(double) == sizeof(long long), "size");
-        std::memcpy(&bits, &v.f64, sizeof(double));
-        const uint16_t tmpG = allocateNextVReg(nextVRegId);
-        // Load 64-bit pattern into a GPR vreg
-        out.instrs.push_back(
-            MInstr{MOpcode::MovRI, {MOperand::vregOp(RegClass::GPR, tmpG), MOperand::immOp(bits)}});
-        outVReg = allocateNextVReg(nextVRegId);
-        outCls = RegClass::FPR;
-        // fmov dV, xTmp  (bit-cast)
-        out.instrs.push_back(MInstr{
-            MOpcode::FMovGR,
-            {MOperand::vregOp(RegClass::FPR, outVReg), MOperand::vregOp(RegClass::GPR, tmpG)}});
-        return true;
-    }
-    if (v.kind == il::core::Value::Kind::NullPtr) {
-        // Null pointer is just immediate 0
-        outVReg = allocateNextVReg(nextVRegId);
-        outCls = RegClass::GPR;
-        out.instrs.push_back(
-            MInstr{MOpcode::MovRI, {MOperand::vregOp(outCls, outVReg), MOperand::immOp(0)}});
-        return true;
-    }
-    if (v.kind == il::core::Value::Kind::GlobalAddr) {
-        // Direct GlobalAddr (function pointer or global symbol address)
-        // Materialize via PC-relative AdrPage + AddPageOff
-        outVReg = allocateNextVReg(nextVRegId);
-        outCls = RegClass::GPR;
-        const std::string sym = mapExternalSymbol(v.str);
-        out.instrs.push_back(MInstr{
-            MOpcode::AdrPage, {MOperand::vregOp(RegClass::GPR, outVReg), MOperand::labelOp(sym)}});
-        out.instrs.push_back(MInstr{MOpcode::AddPageOff,
-                                    {MOperand::vregOp(RegClass::GPR, outVReg),
-                                     MOperand::vregOp(RegClass::GPR, outVReg),
-                                     MOperand::labelOp(sym)}});
-        return true;
-    }
     if (v.kind == il::core::Value::Kind::Temp) {
         // First check if we already materialized this temp (includes block params
         // loaded from spill slots in non-entry blocks)

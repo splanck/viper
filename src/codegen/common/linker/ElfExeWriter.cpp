@@ -20,6 +20,7 @@
 
 #include "codegen/common/linker/AlignUtil.hpp"
 #include "codegen/common/linker/ExeWriterUtil.hpp"
+#include "codegen/common/objfile/ObjFileWriterUtil.hpp"
 
 #include <algorithm>
 #include <cstring>
@@ -323,13 +324,7 @@ bool fitsInt32(int64_t value) {
     return value >= -2147483648LL && value <= 2147483647LL;
 }
 
-/// @brief Patch a 32-bit little-endian value at @p offset within @p buf.
-void putLE32(std::vector<uint8_t> &buf, size_t offset, uint32_t val) {
-    buf[offset] = static_cast<uint8_t>(val);
-    buf[offset + 1] = static_cast<uint8_t>(val >> 8);
-    buf[offset + 2] = static_cast<uint8_t>(val >> 16);
-    buf[offset + 3] = static_cast<uint8_t>(val >> 24);
-}
+using viper::codegen::objfile::putLE32;
 
 /// @brief Compute the SVR4 ELF hash (`DT_HASH`) of a symbol name.
 /// @details The original Bourne-shell-era PJW hash, specified by the System V

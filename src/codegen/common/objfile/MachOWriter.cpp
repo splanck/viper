@@ -139,24 +139,16 @@ static bool checkedRelocSymbolNum(uint32_t value, const char *what, std::ostream
     return true;
 }
 
+/// Adapter to the shared @ref viper::codegen::objfile::physicalSymbolValue helper
+/// that pins the writerName to "MachOWriter:" so existing call sites compile
+/// unchanged.
 static bool physicalSymbolValue(const CodeSection &section,
                                 const Symbol &sym,
                                 const char *sectionName,
                                 std::ostream &err,
                                 uint64_t &out) {
-    if (sym.offset < section.logicalOffsetBias()) {
-        err << "MachOWriter: symbol '" << sym.name << "' in " << sectionName
-            << " is before the section logical offset bias\n";
-        return false;
-    }
-    const size_t physicalOffset = sym.offset - section.logicalOffsetBias();
-    if (physicalOffset > section.bytes().size()) {
-        err << "MachOWriter: symbol '" << sym.name << "' in " << sectionName
-            << " is outside section contents\n";
-        return false;
-    }
-    out = static_cast<uint64_t>(physicalOffset);
-    return true;
+    return viper::codegen::objfile::physicalSymbolValue(
+        section, sym, sectionName, "MachOWriter", err, out);
 }
 
 // =============================================================================

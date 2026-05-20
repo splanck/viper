@@ -21,6 +21,7 @@
 #include "codegen/common/linker/NameMangling.hpp"
 #include "codegen/common/linker/RelocClassify.hpp"
 #include "codegen/common/linker/RelocConstants.hpp"
+#include "codegen/common/objfile/ObjFileWriterUtil.hpp"
 
 #include <algorithm>
 #include <array>
@@ -29,27 +30,10 @@
 
 namespace viper::codegen::linker {
 
-static void writeLE32(uint8_t *p, uint32_t v) {
-    p[0] = static_cast<uint8_t>(v);
-    p[1] = static_cast<uint8_t>(v >> 8);
-    p[2] = static_cast<uint8_t>(v >> 16);
-    p[3] = static_cast<uint8_t>(v >> 24);
-}
-
-static void writeLE16(uint8_t *p, uint16_t v) {
-    p[0] = static_cast<uint8_t>(v);
-    p[1] = static_cast<uint8_t>(v >> 8);
-}
-
-static void writeLE64(uint8_t *p, uint64_t v) {
-    for (int i = 0; i < 8; ++i)
-        p[i] = static_cast<uint8_t>(v >> (i * 8));
-}
-
-static uint32_t readLE32(const uint8_t *p) {
-    return static_cast<uint32_t>(p[0]) | (static_cast<uint32_t>(p[1]) << 8) |
-           (static_cast<uint32_t>(p[2]) << 16) | (static_cast<uint32_t>(p[3]) << 24);
-}
+using viper::codegen::objfile::readLE32;
+using viper::codegen::objfile::writeLE16;
+using viper::codegen::objfile::writeLE32;
+using viper::codegen::objfile::writeLE64;
 
 static bool writeCheckedRel32(uint8_t *patch,
                               int64_t value,
@@ -245,6 +229,46 @@ static bool checkedU32Value(int64_t value,
         err << " for '" << symName << "'";
     err << "\n";
     return false;
+}
+
+/// @brief Validate the patch site for one relocation and compute the place address.
+/// @details Extracted from the per-relocation iteration in @ref applyRelocations so
+///          the format-dispatch core can read as "compute patch site, then dispatch"
+///          instead of inlining ~25 LOC of overflow + bounds + zero-fill checks per
+///          relocation. Outputs the place virtual address @p P and the patch file
+///          offset @p patchOff on success.
+static bool computeRelocPatchSite(const OutputSection &outSec,
+                                  const ObjFile &obj,
+                                  const ObjReloc &rel,
+                                  size_t chunkBase,
+                                  uint64_t secVA,
+                                  std::ostream &err,
+                                  uint64_t &P,
+                                  size_t &patchOff) {
+    uint64_t secChunkVA = 0;
+    if (!checkedAddU64(secVA, static_cast<uint64_t>(chunkBase), secChunkVA) ||
+        !checkedAddU64(secChunkVA, static_cast<uint64_t>(rel.offset), P)) {
+        err << "error: " << obj.name << ": relocation place address overflow in '"
+            << outSec.name << "'\n";
+        return false;
+    }
+    if (rel.offset > std::numeric_limits<size_t>::max() - chunkBase) {
+        err << "error: " << obj.name << ": relocation file offset overflow in '"
+            << outSec.name << "'\n";
+        return false;
+    }
+    patchOff = chunkBase + rel.offset;
+    if (outSec.zeroFill) {
+        err << "error: relocation in zero-fill output section '" << outSec.name
+            << "' has no file-backed bytes to patch\n";
+        return false;
+    }
+    if (patchOff > outSec.data.size()) {
+        err << "error: relocation at offset " << patchOff << " out of bounds in '"
+            << outSec.name << "' (size=" << outSec.data.size() << ")\n";
+        return false;
+    }
+    return true;
 }
 
 static bool sortWindowsPdata(LinkLayout &layout, LinkArch arch, std::ostream &err) {
@@ -623,32 +647,9 @@ bool applyRelocations(const std::vector<ObjFile> &objects,
 
                 const int64_t A = rel.addend;
                 uint64_t P = 0;
-                uint64_t secChunkVA = 0;
-                if (!checkedAddU64(secVA, static_cast<uint64_t>(chunkBase), secChunkVA) ||
-                    !checkedAddU64(secChunkVA, static_cast<uint64_t>(rel.offset), P)) {
-                    err << "error: " << obj.name << ": relocation place address overflow in '"
-                        << outSec.name << "'\n";
+                size_t patchOff = 0;
+                if (!computeRelocPatchSite(outSec, obj, rel, chunkBase, secVA, err, P, patchOff))
                     return false;
-                }
-                if (rel.offset > std::numeric_limits<size_t>::max() - chunkBase) {
-                    err << "error: " << obj.name << ": relocation file offset overflow in '"
-                        << outSec.name << "'\n";
-                    return false;
-                }
-                const size_t patchOff = chunkBase + rel.offset;
-
-                if (outSec.zeroFill) {
-                    err << "error: relocation in zero-fill output section '" << outSec.name
-                        << "' has no file-backed bytes to patch\n";
-                    return false;
-                }
-
-                if (patchOff > outSec.data.size()) {
-                    err << "error: relocation at offset " << patchOff << " out of bounds in '"
-                        << outSec.name << "' (size=" << outSec.data.size() << ")\n";
-                    return false;
-                }
-
                 uint8_t *patch = outSec.data.data() + patchOff;
                 auto requirePatchBytes = [&](size_t width, const char *kind) -> bool {
                     if (width <= outSec.data.size() - patchOff)

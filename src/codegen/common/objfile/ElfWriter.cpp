@@ -151,24 +151,16 @@ static uint32_t elfRelocType(RelocKind kind, ObjArch arch) {
     return 0;
 }
 
+/// Adapter to the shared @ref viper::codegen::objfile::physicalSymbolValue helper
+/// that pins the writerName to "ElfWriter:" so existing call sites compile
+/// unchanged.
 static bool physicalSymbolValue(const CodeSection &section,
                                 const Symbol &sym,
                                 const char *sectionName,
                                 std::ostream &err,
                                 uint64_t &out) {
-    if (sym.offset < section.logicalOffsetBias()) {
-        err << "ElfWriter: symbol '" << sym.name << "' in " << sectionName
-            << " is before the section logical offset bias\n";
-        return false;
-    }
-    const size_t physicalOffset = sym.offset - section.logicalOffsetBias();
-    if (physicalOffset > section.bytes().size()) {
-        err << "ElfWriter: symbol '" << sym.name << "' in " << sectionName
-            << " is outside section contents\n";
-        return false;
-    }
-    out = static_cast<uint64_t>(physicalOffset);
-    return true;
+    return viper::codegen::objfile::physicalSymbolValue(
+        section, sym, sectionName, "ElfWriter", err, out);
 }
 
 static bool reserveFileBytes(uint64_t offShtab,

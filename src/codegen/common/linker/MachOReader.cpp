@@ -19,6 +19,7 @@
 #include "codegen/common/linker/ObjFileReader.hpp"
 #include "codegen/common/AArch64RelocUtil.hpp"
 #include "codegen/common/linker/RelocConstants.hpp"
+#include "codegen/common/objfile/ObjFileWriterUtil.hpp"
 
 #include <algorithm>
 #include <cstring>
@@ -28,6 +29,10 @@
 #include <vector>
 
 namespace viper::codegen::linker {
+
+using viper::codegen::objfile::checkedRange;
+using viper::codegen::objfile::readLE32;
+using viper::codegen::objfile::readLE64;
 
 namespace macho {
 static constexpr uint32_t MH_MAGIC_64 = 0xFEEDFACF;
@@ -124,10 +129,6 @@ template <typename T> static std::optional<T> readAt(const uint8_t *data, size_t
 }
 
 /// @brief Verify that the byte range [@p off, @p off+@p len) fits within @p size.
-static bool checkedRange(size_t off, size_t len, size_t size) {
-    return off <= size && len <= size - off;
-}
-
 /// @brief Copy @p s up to the first NUL or @p maxLen bytes (Mach-O fixed-name fields).
 /// @details Mach-O segment/section names occupy fixed 16-byte slots that are
 ///          NUL-padded; this helper trims to the actual logical length.
@@ -302,20 +303,6 @@ static int64_t signExtend(uint64_t value, unsigned bits) {
     const uint64_t mask = (uint64_t{1} << bits) - 1;
     value &= mask;
     return static_cast<int64_t>((value ^ signBit) - signBit);
-}
-
-/// Read little-endian 32-bit from raw bytes.
-static uint32_t readLE32(const uint8_t *p) {
-    return static_cast<uint32_t>(p[0]) | (static_cast<uint32_t>(p[1]) << 8) |
-           (static_cast<uint32_t>(p[2]) << 16) | (static_cast<uint32_t>(p[3]) << 24);
-}
-
-/// Read little-endian 64-bit from raw bytes.
-static uint64_t readLE64(const uint8_t *p) {
-    uint64_t v = 0;
-    for (unsigned i = 0; i < 8; ++i)
-        v |= static_cast<uint64_t>(p[i]) << (i * 8);
-    return v;
 }
 
 /// Extract relocation addend from instruction bytes (Mach-O has no explicit addend).

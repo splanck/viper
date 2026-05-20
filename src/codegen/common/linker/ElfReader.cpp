@@ -17,6 +17,7 @@
 
 #include "codegen/common/linker/ObjFileReader.hpp"
 #include "codegen/common/linker/RelocConstants.hpp"
+#include "codegen/common/objfile/ObjFileWriterUtil.hpp"
 
 #include <cstring>
 #include <limits>
@@ -25,6 +26,10 @@
 #include <vector>
 
 namespace viper::codegen::linker {
+
+using viper::codegen::objfile::checkedRange;
+using viper::codegen::objfile::readLE32;
+using viper::codegen::objfile::readLE64;
 
 // ELF64 structures — defined inline to avoid system header dependencies.
 namespace elf {
@@ -118,27 +123,8 @@ template <typename T> static std::optional<T> readStruct(const uint8_t *data, si
     return value;
 }
 
-/// @brief Verify that the byte range [@p off, @p off+@p len) fits within @p size.
-static bool checkedRange(size_t off, size_t len, size_t size) {
-    return off <= size && len <= size - off;
-}
-
 static bool isPowerOfTwoOrZero(uint64_t value) {
     return value == 0 || (value & (value - 1)) == 0;
-}
-
-/// @brief Decode an unaligned little-endian uint32 from @p p.
-static uint32_t readLE32(const uint8_t *p) {
-    return static_cast<uint32_t>(p[0]) | (static_cast<uint32_t>(p[1]) << 8) |
-           (static_cast<uint32_t>(p[2]) << 16) | (static_cast<uint32_t>(p[3]) << 24);
-}
-
-/// @brief Decode an unaligned little-endian uint64 from @p p.
-static uint64_t readLE64(const uint8_t *p) {
-    uint64_t v = 0;
-    for (unsigned i = 0; i < 8; ++i)
-        v |= static_cast<uint64_t>(p[i]) << (i * 8);
-    return v;
 }
 
 /// @brief Sign-extend the low @p bits of @p value to a 64-bit signed integer.

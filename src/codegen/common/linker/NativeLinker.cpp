@@ -324,6 +324,47 @@ void appendArm64Insn(std::vector<uint8_t> &data, uint32_t insn) {
     data.push_back(static_cast<uint8_t>((insn >> 24) & 0xFF));
 }
 
+/// @brief Initialize a Windows COFF "helpers" ObjFile scaffold with the given
+///        synthetic name and machine code; shared by the x64 and arm64 builders.
+/// @details Both Windows-helpers generators want the same ObjFile flags
+///          (synthetic, 64-bit COFF, little-endian) with a placeholder section[0]
+///          / symbol[0] slot already pushed. Centralising the boilerplate here
+///          means a future third architecture only changes one place.
+static ObjFile makeWindowsHelpersObj(const char *name, uint16_t machine) {
+    ObjFile obj;
+    obj.name = name;
+    obj.synthetic = true;
+    obj.format = ObjFileFormat::COFF;
+    obj.is64bit = true;
+    obj.isLittleEndian = true;
+    obj.machine = machine;
+    obj.sections.push_back(ObjSection{});
+    obj.symbols.push_back(ObjSymbol{});
+    return obj;
+}
+
+/// @brief Construct the canonical executable `.text` ObjSection used by the
+///        Windows-helpers builders (16-byte aligned, allocated, executable).
+static ObjSection makeWindowsHelpersTextSec() {
+    ObjSection s;
+    s.name = ".text";
+    s.executable = true;
+    s.alloc = true;
+    s.alignment = 16;
+    return s;
+}
+
+/// @brief Construct the canonical writable `.data` ObjSection used by the
+///        Windows-helpers builders (8-byte aligned, allocated, writable).
+static ObjSection makeWindowsHelpersDataSec() {
+    ObjSection s;
+    s.name = ".data";
+    s.writable = true;
+    s.alloc = true;
+    s.alignment = 8;
+    return s;
+}
+
 /// @brief Synthesise a COFF object that supplies common Windows runtime stubs.
 /// @details Windows binaries normally pick up many tiny support routines (the
 ///          security cookie, TLS index, vm_trap, integer-divide helpers, etc.)
@@ -336,27 +377,9 @@ void appendArm64Insn(std::vector<uint8_t> &data, uint32_t insn) {
 ObjFile generateWindowsX64Helpers(const std::unordered_set<std::string> &dynamicSyms,
                                   bool haveVmTrapDefault,
                                   bool needTlsIndex) {
-    ObjFile obj;
-    obj.name = "<win64-helpers>";
-    obj.synthetic = true;
-    obj.format = ObjFileFormat::COFF;
-    obj.is64bit = true;
-    obj.isLittleEndian = true;
-    obj.machine = 0x8664;
-    obj.sections.push_back(ObjSection{});
-    obj.symbols.push_back(ObjSymbol{});
-
-    ObjSection textSec;
-    textSec.name = ".text";
-    textSec.executable = true;
-    textSec.alloc = true;
-    textSec.alignment = 16;
-
-    ObjSection dataSec;
-    dataSec.name = ".data";
-    dataSec.writable = true;
-    dataSec.alloc = true;
-    dataSec.alignment = 8;
+    ObjFile obj = makeWindowsHelpersObj("<win64-helpers>", 0x8664);
+    ObjSection textSec = makeWindowsHelpersTextSec();
+    ObjSection dataSec = makeWindowsHelpersDataSec();
 
     auto needsHelper = [&](const std::string &name) {
         return dynamicSyms.count(name) || dynamicSyms.count("__imp_" + name);
@@ -662,27 +685,9 @@ ObjFile generateWindowsX64Helpers(const std::unordered_set<std::string> &dynamic
 ObjFile generateWindowsArm64Helpers(const std::unordered_set<std::string> &dynamicSyms,
                                     bool haveVmTrapDefault,
                                     bool needTlsIndex) {
-    ObjFile obj;
-    obj.name = "<winarm64-helpers>";
-    obj.synthetic = true;
-    obj.format = ObjFileFormat::COFF;
-    obj.is64bit = true;
-    obj.isLittleEndian = true;
-    obj.machine = 0xAA64;
-    obj.sections.push_back(ObjSection{});
-    obj.symbols.push_back(ObjSymbol{});
-
-    ObjSection textSec;
-    textSec.name = ".text";
-    textSec.executable = true;
-    textSec.alloc = true;
-    textSec.alignment = 16;
-
-    ObjSection dataSec;
-    dataSec.name = ".data";
-    dataSec.writable = true;
-    dataSec.alloc = true;
-    dataSec.alignment = 8;
+    ObjFile obj = makeWindowsHelpersObj("<winarm64-helpers>", 0xAA64);
+    ObjSection textSec = makeWindowsHelpersTextSec();
+    ObjSection dataSec = makeWindowsHelpersDataSec();
 
     auto needsHelper = [&](const std::string &name) {
         return dynamicSyms.count(name) || dynamicSyms.count("__imp_" + name);
@@ -1018,6 +1023,58 @@ ObjFile generateWindowsArm64Helpers(const std::unordered_set<std::string> &dynam
     return obj;
 }
 
+/// @brief Read every static archive at @p paths into @p outArchives.
+/// @details A discrete "read archives" pipeline stage extracted from
+///          @ref nativeLink so the driver can read as a sequence of named
+///          stages rather than inlining 10+ LOC of archive iteration. Writes
+///          an error to @p err and returns false on any per-archive failure.
+static bool readArchiveFiles(const std::vector<std::string> &paths,
+                             std::vector<Archive> &outArchives,
+                             std::ostream &err) {
+    for (const auto &arPath : paths) {
+        Archive ar;
+        if (!readArchive(arPath, ar, err)) {
+            err << "error: failed to read archive '" << arPath << "'\n";
+            return false;
+        }
+        outArchives.push_back(std::move(ar));
+    }
+    return true;
+}
+
+/// @brief Force-load every member of every archive at @p paths as an
+///        @ref ObjFile, appending the parsed members to @p extraObjects.
+/// @details Extracted from @ref nativeLink as a discrete pipeline stage so
+///          the strong-override-weak resolution rationale for force-loading
+///          archives has a single named entry point. Empty members are
+///          skipped silently; any read or parse failure returns false with
+///          an error message written to @p err.
+static bool loadForceLoadArchiveMembers(const std::vector<std::string> &paths,
+                                        std::vector<ObjFile> &extraObjects,
+                                        std::ostream &err) {
+    for (const auto &arPath : paths) {
+        Archive forceAr;
+        if (!readArchive(arPath, forceAr, err)) {
+            err << "error: failed to read force-load archive '" << arPath << "'\n";
+            return false;
+        }
+        for (const auto &member : forceAr.members) {
+            const ArchiveMemberView view = memberDataView(forceAr, member);
+            if (view.data == nullptr || view.size == 0)
+                continue;
+            ObjFile memberObj;
+            if (!readObjFile(
+                    view.data, view.size, arPath + "(" + member.name + ")", memberObj, err)) {
+                err << "error: failed to parse force-load member '" << member.name << "' in '"
+                    << arPath << "'\n";
+                return false;
+            }
+            extraObjects.push_back(std::move(memberObj));
+        }
+    }
+    return true;
+}
+
 } // namespace
 
 /// @brief Run the full native link pipeline: parse objects → resolve symbols →
@@ -1054,37 +1111,13 @@ int nativeLink(const NativeLinkerOptions &opts, std::ostream & /*out*/, std::ost
     // initial objects lets SymbolResolver's "Strong overrides Weak" rule make
     // them win. Special members (symbol/string tables) are already excluded
     // from Archive::members by the archive reader.
-    for (const auto &arPath : opts.forceLoadArchivePaths) {
-        Archive forceAr;
-        if (!readArchive(arPath, forceAr, err)) {
-            err << "error: failed to read force-load archive '" << arPath << "'\n";
-            return 1;
-        }
-        for (const auto &member : forceAr.members) {
-            const ArchiveMemberView view = memberDataView(forceAr, member);
-            if (view.data == nullptr || view.size == 0)
-                continue;
-            ObjFile memberObj;
-            if (!readObjFile(
-                    view.data, view.size, arPath + "(" + member.name + ")", memberObj, err)) {
-                err << "error: failed to parse force-load member '" << member.name << "' in '"
-                    << arPath << "'\n";
-                return 1;
-            }
-            extraObjects.push_back(std::move(memberObj));
-        }
-    }
+    if (!loadForceLoadArchiveMembers(opts.forceLoadArchivePaths, extraObjects, err))
+        return 1;
 
     // Step 2: Read all archive files.
     std::vector<Archive> archives;
-    for (const auto &arPath : opts.archivePaths) {
-        Archive ar;
-        if (!readArchive(arPath, ar, err)) {
-            err << "error: failed to read archive '" << arPath << "'\n";
-            return 1;
-        }
-        archives.push_back(std::move(ar));
-    }
+    if (!readArchiveFiles(opts.archivePaths, archives, err))
+        return 1;
 
     // Step 3: Symbol resolution (iterative archive extraction).
     std::vector<ObjFile> initialObjects = {userObj};

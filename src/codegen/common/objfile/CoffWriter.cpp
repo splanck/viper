@@ -765,6 +765,47 @@ static bool buildWinArm64UnwindSections(const CodeSection &text,
     return true;
 }
 
+/// @brief Collect xdata/pdata for one text section, advancing @p xdataNameBase
+///        by the count of unwind entries emitted. No-op for sections with no
+///        unwind entries or for unsupported architectures.
+/// @details Shared between the single- and multi-section write() overloads so
+///          the per-section unwind iteration lives in one place. The arch is
+///          carried in rather than inferred so each overload can pass the same
+///          `arch_` value verbatim.
+static bool collectCoffUnwindForSection(const CodeSection &text,
+                                        ObjArch arch,
+                                        uint32_t &xdataNameBase,
+                                        std::vector<uint8_t> &xdataBytes,
+                                        std::vector<PendingCoffSymbol> &xdataSymbols,
+                                        std::vector<uint8_t> &pdataBytes,
+                                        std::vector<PendingCoffReloc> &pdataRelocs,
+                                        std::ostream &err) {
+    if (arch == ObjArch::X86_64 && !text.win64UnwindEntries().empty()) {
+        if (!buildWin64UnwindSections(
+                text, xdataNameBase, xdataBytes, xdataSymbols, pdataBytes, pdataRelocs, err))
+            return false;
+        uint32_t entryCount = 0;
+        if (!checkedU32(text.win64UnwindEntries().size(),
+                        ".xdata symbol count",
+                        err,
+                        entryCount) ||
+            !addU32Checked(xdataNameBase, entryCount, ".xdata symbol count", err, xdataNameBase))
+            return false;
+    } else if (arch == ObjArch::AArch64 && !text.winArm64UnwindEntries().empty()) {
+        if (!buildWinArm64UnwindSections(
+                text, xdataNameBase, xdataBytes, xdataSymbols, pdataBytes, pdataRelocs, err))
+            return false;
+        uint32_t entryCount = 0;
+        if (!checkedU32(text.winArm64UnwindEntries().size(),
+                        ".xdata symbol count",
+                        err,
+                        entryCount) ||
+            !addU32Checked(xdataNameBase, entryCount, ".xdata symbol count", err, xdataNameBase))
+            return false;
+    }
+    return true;
+}
+
 bool CoffWriter::write(const std::string &path,
                        const CodeSection &text,
                        const CodeSection &rodata,
@@ -774,15 +815,10 @@ bool CoffWriter::write(const std::string &path,
     std::vector<PendingCoffSymbol> xdataSymbols;
     std::vector<uint8_t> pdataBytes;
     std::vector<PendingCoffReloc> pdataRelocs;
-    if (arch_ == ObjArch::X86_64 && !text.win64UnwindEntries().empty()) {
-        if (!buildWin64UnwindSections(
-                text, 0, xdataBytes, xdataSymbols, pdataBytes, pdataRelocs, err))
-            return false;
-    } else if (arch_ == ObjArch::AArch64 && !text.winArm64UnwindEntries().empty()) {
-        if (!buildWinArm64UnwindSections(
-                text, 0, xdataBytes, xdataSymbols, pdataBytes, pdataRelocs, err))
-            return false;
-    }
+    uint32_t xdataNameBase = 0;
+    if (!collectCoffUnwindForSection(
+            text, arch_, xdataNameBase, xdataBytes, xdataSymbols, pdataBytes, pdataRelocs, err))
+        return false;
 
     const bool hasRodata = !rodata.empty();
     const bool hasXdata = !xdataBytes.empty();
@@ -1433,39 +1469,18 @@ bool CoffWriter::write(const std::string &path,
     std::vector<PendingCoffSymbol> xdataSymbols;
     std::vector<uint8_t> pdataBytes;
     std::vector<PendingCoffReloc> pdataRelocs;
-    if (arch_ == ObjArch::X86_64) {
+    {
         uint32_t xdataNameBase = 0;
         for (const auto &text : textSections) {
-            if (!text.win64UnwindEntries().empty()) {
-                if (!buildWin64UnwindSections(
-                        text, xdataNameBase, xdataBytes, xdataSymbols, pdataBytes, pdataRelocs, err))
-                    return false;
-                uint32_t entryCount = 0;
-                if (!checkedU32(text.win64UnwindEntries().size(),
-                                ".xdata symbol count",
-                                err,
-                                entryCount) ||
-                    !addU32Checked(
-                        xdataNameBase, entryCount, ".xdata symbol count", err, xdataNameBase))
-                    return false;
-            }
-        }
-    } else if (arch_ == ObjArch::AArch64) {
-        uint32_t xdataNameBase = 0;
-        for (const auto &text : textSections) {
-            if (!text.winArm64UnwindEntries().empty()) {
-                if (!buildWinArm64UnwindSections(
-                        text, xdataNameBase, xdataBytes, xdataSymbols, pdataBytes, pdataRelocs, err))
-                    return false;
-                uint32_t entryCount = 0;
-                if (!checkedU32(text.winArm64UnwindEntries().size(),
-                                ".xdata symbol count",
-                                err,
-                                entryCount) ||
-                    !addU32Checked(
-                        xdataNameBase, entryCount, ".xdata symbol count", err, xdataNameBase))
-                    return false;
-            }
+            if (!collectCoffUnwindForSection(text,
+                                             arch_,
+                                             xdataNameBase,
+                                             xdataBytes,
+                                             xdataSymbols,
+                                             pdataBytes,
+                                             pdataRelocs,
+                                             err))
+                return false;
         }
     }
 
