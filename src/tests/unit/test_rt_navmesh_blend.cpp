@@ -112,6 +112,20 @@ static void test_navmesh_find_path() {
     }
 }
 
+static void test_navmesh_find_path_from_shared_edge() {
+    void *plane = rt_mesh3d_new_plane(20.0, 20.0);
+    void *nm = rt_navmesh3d_build(plane, 0.4, 1.8);
+    void *from = rt_vec3_new(1.909190416, 0.0, 1.909190416);
+    void *to = rt_vec3_new(4.0, 0.0, 4.0);
+    void *path = rt_navmesh3d_find_path(nm, from, to);
+
+    EXPECT_TRUE(rt_navmesh3d_is_walkable(nm, from) != 0,
+                "NavMesh treats points on shared triangle edges as walkable");
+    EXPECT_TRUE(path != nullptr, "NavMesh finds a path from a shared triangle edge");
+    if (path)
+        EXPECT_TRUE(rt_path3d_get_point_count(path) >= 2, "Shared-edge path includes endpoints");
+}
+
 static void test_navmesh_box_slope_filter() {
     /* A box has vertical walls which should be excluded by slope filter */
     void *box = rt_mesh3d_new_box(5.0, 5.0, 5.0);
@@ -211,6 +225,7 @@ int main() {
     test_navmesh_not_walkable();
     test_navmesh_sample_position();
     test_navmesh_find_path();
+    test_navmesh_find_path_from_shared_edge();
     test_navmesh_box_slope_filter();
     test_navmesh_adjacency_edge_hash();
     test_navmesh_large_mesh();

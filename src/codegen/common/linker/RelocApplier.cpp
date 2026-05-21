@@ -498,22 +498,11 @@ static bool hasResolvedGotSymbol(std::unordered_map<std::string, GlobalSymEntry>
 
 // Relocation classification (RelocAction, classifyReloc) is in RelocClassify.hpp.
 
-bool applyRelocations(const std::vector<ObjFile> &objects,
-                      LinkLayout &layout,
-                      const std::unordered_set<std::string> &dynamicSyms,
-                      LinkPlatform platform,
-                      LinkArch arch,
-                      std::ostream &err) {
-    // Build reverse-index map once: (objIdx, secIdx) → (outSecIdx, outputOffset).
-    // This replaces the previous O(S×C) linear scan per lookup with O(1) amortized.
-    LocationMap locMap;
-    if (!buildLocationMap(layout, locMap, err))
-        return false;
-    TlsImageInfo tlsImage;
-    if (!computeTlsImageInfo(layout, tlsImage, err))
-        return false;
-
-    // First pass: resolve all symbol addresses.
+// First pass of applyRelocations: resolve every defined global symbol's final
+// virtual address from its output-section placement. Returns false (with a
+// diagnostic) on address overflow.
+static bool resolveGlobalSymbolAddresses(LinkLayout &layout, const LocationMap &locMap,
+                                         std::ostream &err) {
     for (auto &[name, entry] : layout.globalSyms) {
         if (entry.binding == GlobalSymEntry::Undefined || entry.binding == GlobalSymEntry::Dynamic)
             continue;
@@ -540,6 +529,27 @@ bool applyRelocations(const std::vector<ObjFile> &objects,
             }
         }
     }
+    return true;
+}
+
+bool applyRelocations(const std::vector<ObjFile> &objects,
+                      LinkLayout &layout,
+                      const std::unordered_set<std::string> &dynamicSyms,
+                      LinkPlatform platform,
+                      LinkArch arch,
+                      std::ostream &err) {
+    // Build reverse-index map once: (objIdx, secIdx) → (outSecIdx, outputOffset).
+    // This replaces the previous O(S×C) linear scan per lookup with O(1) amortized.
+    LocationMap locMap;
+    if (!buildLocationMap(layout, locMap, err))
+        return false;
+    TlsImageInfo tlsImage;
+    if (!computeTlsImageInfo(layout, tlsImage, err))
+        return false;
+
+    // First pass: resolve all symbol addresses.
+    if (!resolveGlobalSymbolAddresses(layout, locMap, err))
+        return false;
 
     // Second pass: apply relocations.
     for (size_t oi = 0; oi < objects.size(); ++oi) {

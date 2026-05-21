@@ -188,39 +188,7 @@ TypeRef Sema::analyzeBinary(BinaryExpr *expr) {
         case BinaryOp::Mul:
         case BinaryOp::Div:
         case BinaryOp::Mod:
-            // Numeric operations
-            if (leftType->kind == TypeKindSem::String && expr->op == BinaryOp::Add) {
-                // String concatenation: "text" + value
-                return types::string();
-            }
-
-            if (rightType->kind == TypeKindSem::String && expr->op == BinaryOp::Add) {
-                // String concatenation: value + "text"
-                return types::string();
-            }
-
-            // W010: Division by zero — check for literal zero divisor
-            if ((expr->op == BinaryOp::Div || expr->op == BinaryOp::Mod) && leftType->isNumeric() &&
-                rightType->isNumeric()) {
-                if (expr->right->kind == ExprKind::IntLiteral) {
-                    auto *lit = static_cast<IntLiteralExpr *>(expr->right.get());
-                    if (lit->value == 0)
-                        warn(WarningCode::W010_DivisionByZero, expr->loc, "Division by zero");
-                } else if (expr->right->kind == ExprKind::NumberLiteral) {
-                    auto *lit = static_cast<NumberLiteralExpr *>(expr->right.get());
-                    if (lit->value == 0.0)
-                        warn(WarningCode::W010_DivisionByZero, expr->loc, "Division by zero");
-                }
-            }
-
-            if (leftType->isNumeric() && rightType->isNumeric()) {
-                // Return wider type
-                if (leftType->kind == TypeKindSem::Number || rightType->kind == TypeKindSem::Number)
-                    return types::number();
-                return types::integer();
-            }
-            error(expr->loc, "Invalid operands for arithmetic operation");
-            return types::unknown();
+            return checkArithmeticBinary(expr, leftType, rightType);
 
         case BinaryOp::Eq:
         case BinaryOp::Ne:
@@ -228,239 +196,270 @@ TypeRef Sema::analyzeBinary(BinaryExpr *expr) {
         case BinaryOp::Le:
         case BinaryOp::Gt:
         case BinaryOp::Ge:
-            // W005: Float equality — comparing floats with == or != is unreliable
-            if ((expr->op == BinaryOp::Eq || expr->op == BinaryOp::Ne) &&
-                leftType->kind == TypeKindSem::Number && rightType->kind == TypeKindSem::Number) {
-                warn(WarningCode::W005_FloatEquality,
-                     expr->loc,
-                     "Comparing floating-point values with " +
-                         std::string(expr->op == BinaryOp::Eq ? "==" : "!=") +
-                         " is unreliable; consider using an epsilon threshold");
-            }
-
-            // W011: Redundant bool comparison (e.g., `flag == true`, `b != false`)
-            if ((expr->op == BinaryOp::Eq || expr->op == BinaryOp::Ne) &&
-                (leftType->kind == TypeKindSem::Boolean ||
-                 rightType->kind == TypeKindSem::Boolean)) {
-                bool leftIsBoolLit = (expr->left->kind == ExprKind::BoolLiteral);
-                bool rightIsBoolLit = (expr->right->kind == ExprKind::BoolLiteral);
-                if (leftIsBoolLit || rightIsBoolLit) {
-                    warn(WarningCode::W011_RedundantBoolComparison,
-                         expr->loc,
-                         "Redundant comparison with Boolean literal; use the expression directly");
-                }
-            }
-
-            if (leftType->kind != TypeKindSem::Unknown && rightType->kind != TypeKindSem::Unknown &&
-                leftType->kind != TypeKindSem::Error && rightType->kind != TypeKindSem::Error) {
-                const bool equality = expr->op == BinaryOp::Eq || expr->op == BinaryOp::Ne;
-                if (equality) {
-                    TypeRef compareLeft = declaredOptionalSurfaceType(expr->left.get(), leftType);
-                    TypeRef compareRight =
-                        declaredOptionalSurfaceType(expr->right.get(), rightType);
-                    bool compatible = compareLeft->kind == TypeKindSem::Any ||
-                                      compareRight->kind == TypeKindSem::Any ||
-                                      compareLeft->isAssignableFrom(*compareRight) ||
-                                      compareRight->isAssignableFrom(*compareLeft);
-                    if (!compatible) {
-                        error(expr->loc,
-                              "Cannot compare " + compareLeft->toDisplayString() + " with " +
-                                  compareRight->toDisplayString());
-                    }
-                } else {
-                    bool compatible = (leftType->isNumeric() && rightType->isNumeric()) ||
-                                      (leftType->kind == TypeKindSem::String &&
-                                       rightType->kind == TypeKindSem::String);
-                    if (!compatible) {
-                        error(expr->loc,
-                              "Relational comparison requires numeric operands or two Strings");
-                    }
-                }
-            }
-
-            return types::boolean();
+            return checkComparisonBinary(expr, leftType, rightType);
 
         case BinaryOp::And:
         case BinaryOp::Or:
-            // Logical operations
-            if (leftType->kind != TypeKindSem::Boolean || rightType->kind != TypeKindSem::Boolean) {
-                error(expr->loc, "Logical operators require Boolean operands");
-            }
-            return types::boolean();
+            return checkLogicalBinary(expr, leftType, rightType);
 
         case BinaryOp::Shl:
         case BinaryOp::Shr:
         case BinaryOp::BitAnd:
         case BinaryOp::BitOr:
         case BinaryOp::BitXor:
-            // W017: ^ is bitwise XOR, not exponentiation
-            if (expr->op == BinaryOp::BitXor) {
-                warn(WarningCode::W017_XorConfusion,
-                     expr->loc,
-                     "'^' is bitwise XOR in Zia; use Math.Pow() for exponentiation");
-            }
-            // W018: & is bitwise AND, not string concatenation
-            if (expr->op == BinaryOp::BitAnd) {
-                warn(WarningCode::W018_BitwiseAndConfusion,
-                     expr->loc,
-                     "'&' is bitwise AND in Zia; use '+' for string concatenation");
-            }
-            // Bitwise operations
-            if (!leftType->isIntegral() || !rightType->isIntegral()) {
-                error(expr->loc, "Bitwise operators require integral operands");
-            }
-            return types::integer();
+            return checkBitwiseBinary(expr, leftType, rightType);
 
         case BinaryOp::Assign:
-            // W009: Self-assignment (e.g., `x = x`)
-            if (expr->left->kind == ExprKind::Ident && expr->right->kind == ExprKind::Ident) {
-                auto *lhs = static_cast<IdentExpr *>(expr->left.get());
-                auto *rhs = static_cast<IdentExpr *>(expr->right.get());
-                if (lhs->name == rhs->name) {
-                    warn(WarningCode::W009_SelfAssignment,
-                         expr->loc,
-                         "Self-assignment of '" + lhs->name + "' has no effect");
-                }
-            }
-
-            // Assignment - LHS must be assignable, types must be compatible.
-            // Use the original (non-narrowed) declared type for the check, since
-            // guard-clause narrowing may have refined the variable's effective type
-            // (e.g., Page? narrowed to Page), but reassignment should still accept
-            // the original type.
-            {
-                if (auto *fieldExpr = dynamic_cast<FieldExpr *>(expr->left.get())) {
-                    TypeRef baseType = typeOf(fieldExpr->base.get());
-                    if (baseType && baseType->kind == TypeKindSem::Optional &&
-                        baseType->innerType())
-                        baseType = baseType->innerType();
-
-                    if (baseType && (baseType->kind == TypeKindSem::Class ||
-                                     baseType->kind == TypeKindSem::Struct ||
-                                     baseType->kind == TypeKindSem::Module)) {
-                        std::string memberKey = baseType->name + "." + fieldExpr->field;
-                        bool assigningDuringInit =
-                            currentSelfType_ && currentSelfType_->name == baseType->name &&
-                            currentMethod_ && currentMethod_->name == "init";
-                        if (finalFields_.contains(memberKey) && !assigningDuringInit) {
-                            error(expr->loc,
-                                  "Cannot assign to final field '" + fieldExpr->field + "'");
-                        }
-                    }
-
-                    if (baseType && (baseType->kind == TypeKindSem::Class ||
-                                     baseType->kind == TypeKindSem::Struct)) {
-                        std::string declaringOwner;
-                        if (const PropertyDecl *prop = propertyDeclForLowering(
-                                baseType->name, fieldExpr->field, &declaringOwner)) {
-                            if (!prop->setterBody) {
-                                error(expr->loc,
-                                      "Property '" + fieldExpr->field + "' of type '" +
-                                          declaringOwner + "' is read-only");
-                            } else {
-                                resolvedFieldSetters_[fieldExpr] =
-                                    declaringOwner + ".set_" + prop->name;
-                            }
-                        }
-                    }
-
-                    // Resolve runtime class property setters (e.g., ctrl.VY = value).
-                    // Getters are resolved in Sema_Expr_Advanced; setters need the same
-                    // symbol-table lookup here on the assignment path.
-                    if (baseType &&
-                        resolvedFieldSetters_.find(fieldExpr) == resolvedFieldSetters_.end()) {
-                        std::string setterName = baseType->name + ".set_" + fieldExpr->field;
-                        Symbol *setter = lookupSymbol(setterName);
-                        if (setter && setter->kind == Symbol::Kind::Function) {
-                            resolvedFieldSetters_[fieldExpr] = setterName;
-                            // For write-only properties (no getter), register the
-                            // property type from the setter's value parameter so
-                            // the lowerer can insert Number↔Integer conversions.
-                            if (setter->type && setter->type->kind == TypeKindSem::Function) {
-                                auto params = setter->type->paramTypes();
-                                // Setter signature: (self, value) — struct type is params[1]
-                                if (params.size() >= 2 && params[1]) {
-                                    exprTypes_[fieldExpr] = params[1];
-                                } else if (params.size() == 1 && params[0]) {
-                                    // Static setter: (value) — no self
-                                    exprTypes_[fieldExpr] = params[0];
-                                }
-                            }
-                        }
-                    }
-                }
-
-                TypeRef assignTarget = leftType;
-                if (expr->left->kind == ExprKind::Ident) {
-                    auto *lhsIdent = static_cast<IdentExpr *>(expr->left.get());
-                    Symbol *sym = currentScope_->lookup(lhsIdent->name);
-                    bool assigningFinalFieldDuringInit =
-                        sym && sym->kind == Symbol::Kind::Field && currentSelfType_ &&
-                        currentMethod_ && currentMethod_->name == "init";
-                    if (sym && sym->isFinal && !assigningFinalFieldDuringInit) {
-                        if (sym->kind == Symbol::Kind::Field) {
-                            error(expr->loc,
-                                  "Cannot assign to final field '" + lhsIdent->name + "'");
-                        } else {
-                            error(expr->loc,
-                                  "Cannot reassign final variable '" + lhsIdent->name + "'");
-                        }
-                    }
-                    if (sym && sym->type)
-                        assignTarget = sym->type;
-                } else if (auto *fieldExpr = dynamic_cast<FieldExpr *>(expr->left.get())) {
-                    auto resolvedIt = exprTypes_.find(fieldExpr);
-                    if (resolvedIt != exprTypes_.end() && resolvedIt->second) {
-                        assignTarget = resolvedIt->second;
-                    }
-                } else if (auto *indexExpr = dynamic_cast<IndexExpr *>(expr->left.get())) {
-                    TypeRef baseType = typeOf(indexExpr->base.get());
-                    if (baseType && baseType->kind == TypeKindSem::String) {
-                        error(expr->loc, "Cannot assign through a String index");
-                    } else if (baseType && baseType->kind != TypeKindSem::Unknown &&
-                               baseType->kind != TypeKindSem::List &&
-                               baseType->kind != TypeKindSem::Map &&
-                               baseType->kind != TypeKindSem::FixedArray) {
-                        error(expr->loc,
-                              "Indexed assignment requires a List, Map, or fixed-size array");
-                    }
-                }
-                if (assignTarget && rightType && assignTarget->kind != TypeKindSem::Unknown &&
-                    rightType->kind != TypeKindSem::Unknown &&
-                    assignTarget->kind != TypeKindSem::Error &&
-                    rightType->kind != TypeKindSem::Error &&
-                    !assignTarget->isAssignableFrom(*rightType)) {
-                    errorTypeMismatch(expr->loc, assignTarget, rightType);
-                }
-            }
-            // Track initialization for definite-assignment analysis.
-            // Also clear any narrowing on the variable since the new value
-            // may have a different type (e.g., re-assigning Page? to a narrowed Page var).
-            if (expr->left->kind == ExprKind::Ident) {
-                auto *ident = static_cast<IdentExpr *>(expr->left.get());
-                markInitialized(ident->name);
-                // Clear narrowing — the variable now has the RHS type
-                if (!narrowedTypes_.empty()) {
-                    for (auto &scope : narrowedTypes_)
-                        scope.erase(ident->name);
-                }
-
-                // Re-establish narrowing when assigning a definite non-null value to
-                // an Optional[T] variable.
-                Symbol *sym = currentScope_->lookup(ident->name);
-                if (sym && sym->type && sym->type->kind == TypeKindSem::Optional && rightType &&
-                    rightType->kind != TypeKindSem::Optional) {
-                    if (TypeRef inner = sym->type->innerType();
-                        inner && inner->isAssignableFrom(*rightType)) {
-                        narrowType(ident->name, inner);
-                    }
-                }
-            }
-            // Assignment expression returns the assigned value
-            return leftType;
+            return recordBinaryAssignment(expr, leftType, rightType);
     }
 
     return types::unknown();
+}
+
+TypeRef Sema::checkArithmeticBinary(BinaryExpr *expr, TypeRef leftType, TypeRef rightType) {
+    if (leftType->kind == TypeKindSem::String && expr->op == BinaryOp::Add)
+        return types::string();
+    if (rightType->kind == TypeKindSem::String && expr->op == BinaryOp::Add)
+        return types::string();
+
+    // W010: Division by zero — check for literal zero divisor.
+    if ((expr->op == BinaryOp::Div || expr->op == BinaryOp::Mod) && leftType->isNumeric() &&
+        rightType->isNumeric()) {
+        if (expr->right->kind == ExprKind::IntLiteral) {
+            auto *lit = static_cast<IntLiteralExpr *>(expr->right.get());
+            if (lit->value == 0)
+                warn(WarningCode::W010_DivisionByZero, expr->loc, "Division by zero");
+        } else if (expr->right->kind == ExprKind::NumberLiteral) {
+            auto *lit = static_cast<NumberLiteralExpr *>(expr->right.get());
+            if (lit->value == 0.0)
+                warn(WarningCode::W010_DivisionByZero, expr->loc, "Division by zero");
+        }
+    }
+
+    if (leftType->isNumeric() && rightType->isNumeric()) {
+        if (leftType->kind == TypeKindSem::Number || rightType->kind == TypeKindSem::Number)
+            return types::number();
+        return types::integer();
+    }
+    error(expr->loc, "Invalid operands for arithmetic operation");
+    return types::unknown();
+}
+
+TypeRef Sema::checkComparisonBinary(BinaryExpr *expr, TypeRef leftType, TypeRef rightType) {
+    // W005: Float equality — comparing floats with == or != is unreliable.
+    if ((expr->op == BinaryOp::Eq || expr->op == BinaryOp::Ne) &&
+        leftType->kind == TypeKindSem::Number && rightType->kind == TypeKindSem::Number) {
+        warn(WarningCode::W005_FloatEquality,
+             expr->loc,
+             "Comparing floating-point values with " +
+                 std::string(expr->op == BinaryOp::Eq ? "==" : "!=") +
+                 " is unreliable; consider using an epsilon threshold");
+    }
+
+    // W011: Redundant bool comparison (e.g., `flag == true`, `b != false`).
+    if ((expr->op == BinaryOp::Eq || expr->op == BinaryOp::Ne) &&
+        (leftType->kind == TypeKindSem::Boolean || rightType->kind == TypeKindSem::Boolean)) {
+        bool leftIsBoolLit = (expr->left->kind == ExprKind::BoolLiteral);
+        bool rightIsBoolLit = (expr->right->kind == ExprKind::BoolLiteral);
+        if (leftIsBoolLit || rightIsBoolLit) {
+            warn(WarningCode::W011_RedundantBoolComparison,
+                 expr->loc,
+                 "Redundant comparison with Boolean literal; use the expression directly");
+        }
+    }
+
+    if (leftType->kind != TypeKindSem::Unknown && rightType->kind != TypeKindSem::Unknown &&
+        leftType->kind != TypeKindSem::Error && rightType->kind != TypeKindSem::Error) {
+        const bool equality = expr->op == BinaryOp::Eq || expr->op == BinaryOp::Ne;
+        if (equality) {
+            TypeRef compareLeft = declaredOptionalSurfaceType(expr->left.get(), leftType);
+            TypeRef compareRight = declaredOptionalSurfaceType(expr->right.get(), rightType);
+            bool compatible = compareLeft->kind == TypeKindSem::Any ||
+                              compareRight->kind == TypeKindSem::Any ||
+                              compareLeft->isAssignableFrom(*compareRight) ||
+                              compareRight->isAssignableFrom(*compareLeft);
+            if (!compatible) {
+                error(expr->loc,
+                      "Cannot compare " + compareLeft->toDisplayString() + " with " +
+                          compareRight->toDisplayString());
+            }
+        } else {
+            bool compatible = (leftType->isNumeric() && rightType->isNumeric()) ||
+                              (leftType->kind == TypeKindSem::String &&
+                               rightType->kind == TypeKindSem::String);
+            if (!compatible) {
+                error(expr->loc,
+                      "Relational comparison requires numeric operands or two Strings");
+            }
+        }
+    }
+    return types::boolean();
+}
+
+TypeRef Sema::checkLogicalBinary(BinaryExpr *expr, TypeRef leftType, TypeRef rightType) {
+    if (leftType->kind != TypeKindSem::Boolean || rightType->kind != TypeKindSem::Boolean)
+        error(expr->loc, "Logical operators require Boolean operands");
+    return types::boolean();
+}
+
+TypeRef Sema::checkBitwiseBinary(BinaryExpr *expr, TypeRef leftType, TypeRef rightType) {
+    if (expr->op == BinaryOp::BitXor) {
+        warn(WarningCode::W017_XorConfusion,
+             expr->loc,
+             "'^' is bitwise XOR in Zia; use Math.Pow() for exponentiation");
+    }
+    if (expr->op == BinaryOp::BitAnd) {
+        warn(WarningCode::W018_BitwiseAndConfusion,
+             expr->loc,
+             "'&' is bitwise AND in Zia; use '+' for string concatenation");
+    }
+    if (!leftType->isIntegral() || !rightType->isIntegral())
+        error(expr->loc, "Bitwise operators require integral operands");
+    return types::integer();
+}
+
+TypeRef Sema::recordBinaryAssignment(BinaryExpr *expr, TypeRef leftType, TypeRef rightType) {
+    // W009: Self-assignment (e.g., `x = x`).
+    if (expr->left->kind == ExprKind::Ident && expr->right->kind == ExprKind::Ident) {
+        auto *lhs = static_cast<IdentExpr *>(expr->left.get());
+        auto *rhs = static_cast<IdentExpr *>(expr->right.get());
+        if (lhs->name == rhs->name) {
+            warn(WarningCode::W009_SelfAssignment,
+                 expr->loc,
+                 "Self-assignment of '" + lhs->name + "' has no effect");
+        }
+    }
+
+    // Assignment - LHS must be assignable, types must be compatible.
+    // Use the original (non-narrowed) declared type for the check, since
+    // guard-clause narrowing may have refined the variable's effective type
+    // (e.g., Page? narrowed to Page), but reassignment should still accept
+    // the original type.
+    {
+        if (auto *fieldExpr = dynamic_cast<FieldExpr *>(expr->left.get())) {
+            TypeRef baseType = typeOf(fieldExpr->base.get());
+            if (baseType && baseType->kind == TypeKindSem::Optional &&
+                baseType->innerType())
+                baseType = baseType->innerType();
+
+            if (baseType && (baseType->kind == TypeKindSem::Class ||
+                             baseType->kind == TypeKindSem::Struct ||
+                             baseType->kind == TypeKindSem::Module)) {
+                std::string memberKey = baseType->name + "." + fieldExpr->field;
+                bool assigningDuringInit =
+                    currentSelfType_ && currentSelfType_->name == baseType->name &&
+                    currentMethod_ && currentMethod_->name == "init";
+                if (finalFields_.contains(memberKey) && !assigningDuringInit) {
+                    error(expr->loc,
+                          "Cannot assign to final field '" + fieldExpr->field + "'");
+                }
+            }
+
+            if (baseType && (baseType->kind == TypeKindSem::Class ||
+                             baseType->kind == TypeKindSem::Struct)) {
+                std::string declaringOwner;
+                if (const PropertyDecl *prop = propertyDeclForLowering(
+                        baseType->name, fieldExpr->field, &declaringOwner)) {
+                    if (!prop->setterBody) {
+                        error(expr->loc,
+                              "Property '" + fieldExpr->field + "' of type '" +
+                                  declaringOwner + "' is read-only");
+                    } else {
+                        resolvedFieldSetters_[fieldExpr] =
+                            declaringOwner + ".set_" + prop->name;
+                    }
+                }
+            }
+
+            // Resolve runtime class property setters (e.g., ctrl.VY = value).
+            // Getters are resolved in Sema_Expr_Advanced; setters need the same
+            // symbol-table lookup here on the assignment path.
+            if (baseType &&
+                resolvedFieldSetters_.find(fieldExpr) == resolvedFieldSetters_.end()) {
+                std::string setterName = baseType->name + ".set_" + fieldExpr->field;
+                Symbol *setter = lookupSymbol(setterName);
+                if (setter && setter->kind == Symbol::Kind::Function) {
+                    resolvedFieldSetters_[fieldExpr] = setterName;
+                    if (setter->type && setter->type->kind == TypeKindSem::Function) {
+                        auto params = setter->type->paramTypes();
+                        // Setter signature: (self, value) — struct type is params[1].
+                        if (params.size() >= 2 && params[1]) {
+                            exprTypes_[fieldExpr] = params[1];
+                        } else if (params.size() == 1 && params[0]) {
+                            // Static setter: (value) — no self.
+                            exprTypes_[fieldExpr] = params[0];
+                        }
+                    }
+                }
+            }
+        }
+
+        TypeRef assignTarget = leftType;
+        if (expr->left->kind == ExprKind::Ident) {
+            auto *lhsIdent = static_cast<IdentExpr *>(expr->left.get());
+            Symbol *sym = currentScope_->lookup(lhsIdent->name);
+            bool assigningFinalFieldDuringInit =
+                sym && sym->kind == Symbol::Kind::Field && currentSelfType_ &&
+                currentMethod_ && currentMethod_->name == "init";
+            if (sym && sym->isFinal && !assigningFinalFieldDuringInit) {
+                if (sym->kind == Symbol::Kind::Field) {
+                    error(expr->loc,
+                          "Cannot assign to final field '" + lhsIdent->name + "'");
+                } else {
+                    error(expr->loc,
+                          "Cannot reassign final variable '" + lhsIdent->name + "'");
+                }
+            }
+            if (sym && sym->type)
+                assignTarget = sym->type;
+        } else if (auto *fieldExpr = dynamic_cast<FieldExpr *>(expr->left.get())) {
+            auto resolvedIt = exprTypes_.find(fieldExpr);
+            if (resolvedIt != exprTypes_.end() && resolvedIt->second) {
+                assignTarget = resolvedIt->second;
+            }
+        } else if (auto *indexExpr = dynamic_cast<IndexExpr *>(expr->left.get())) {
+            TypeRef baseType = typeOf(indexExpr->base.get());
+            if (baseType && baseType->kind == TypeKindSem::String) {
+                error(expr->loc, "Cannot assign through a String index");
+            } else if (baseType && baseType->kind != TypeKindSem::Unknown &&
+                       baseType->kind != TypeKindSem::List &&
+                       baseType->kind != TypeKindSem::Map &&
+                       baseType->kind != TypeKindSem::FixedArray) {
+                error(expr->loc,
+                      "Indexed assignment requires a List, Map, or fixed-size array");
+            }
+        }
+        if (assignTarget && rightType && assignTarget->kind != TypeKindSem::Unknown &&
+            rightType->kind != TypeKindSem::Unknown &&
+            assignTarget->kind != TypeKindSem::Error &&
+            rightType->kind != TypeKindSem::Error &&
+            !assignTarget->isAssignableFrom(*rightType)) {
+            errorTypeMismatch(expr->loc, assignTarget, rightType);
+        }
+    }
+
+    // Track initialization for definite-assignment analysis. Also clear any
+    // narrowing on the variable since the new value may have a different type.
+    if (expr->left->kind == ExprKind::Ident) {
+        auto *ident = static_cast<IdentExpr *>(expr->left.get());
+        markInitialized(ident->name);
+        if (!narrowedTypes_.empty()) {
+            for (auto &scope : narrowedTypes_)
+                scope.erase(ident->name);
+        }
+
+        // Re-establish narrowing when assigning a definite non-null value to
+        // an Optional[T] variable.
+        Symbol *sym = currentScope_->lookup(ident->name);
+        if (sym && sym->type && sym->type->kind == TypeKindSem::Optional && rightType &&
+            rightType->kind != TypeKindSem::Optional) {
+            if (TypeRef inner = sym->type->innerType();
+                inner && inner->isAssignableFrom(*rightType)) {
+                narrowType(ident->name, inner);
+            }
+        }
+    }
+    return leftType;
 }
 
 /// @brief Analyze a unary expression (e.g., -x, !flag, ~bits).

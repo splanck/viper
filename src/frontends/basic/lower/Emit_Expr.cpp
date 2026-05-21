@@ -274,73 +274,19 @@ Lowerer::ArrayAccess Lowerer::lowerArrayAccess(const ArrayExpr &expr, ArrayAcces
     auto computeFlatIndex = [&](const std::vector<Value> &idxVals) -> Value {
         if (idxVals.size() == 1)
             return idxVals[0];
-        // Prefer member field extents when available
-        if (!memberFieldExtents.empty() && memberFieldExtents.size() == idxVals.size()) {
-            // Convert declared bounds to inclusive lengths
-            std::vector<long long> lengths(memberFieldExtents.size(), 0);
-            for (size_t i = 0; i < memberFieldExtents.size(); ++i)
-                lengths[i] = memberFieldExtents[i] + 1;
-            long long stride = 1;
-            for (size_t i = 1; i < lengths.size(); ++i)
-                stride *= lengths[i];
-            Value sum = emitBinary(
-                Opcode::IMulOvf, Type(Type::Kind::I64), idxVals[0], Value::constInt(stride));
-            for (size_t k = 1; k < idxVals.size(); ++k) {
-                stride = 1;
-                for (size_t i = k + 1; i < lengths.size(); ++i)
-                    stride *= lengths[i];
-                Value term = emitBinary(
-                    Opcode::IMulOvf, Type(Type::Kind::I64), idxVals[k], Value::constInt(stride));
-                sum = emitBinary(Opcode::IAddOvf, Type(Type::Kind::I64), sum, term);
-            }
-            return sum;
-        }
-        // BUG-020 fix: Use resolvedExtents from AST node instead of looking up metadata.
-        // The semantic analyzer stores extents in the ArrayExpr during analysis, ensuring
-        // they remain available even after procedure scope cleanup erases ArrayMetadata.
-        if (!expr.resolvedExtents.empty() && expr.resolvedExtents.size() == idxVals.size()) {
-            std::vector<long long> lengths(expr.resolvedExtents.size(), 0);
-            for (size_t i = 0; i < expr.resolvedExtents.size(); ++i)
-                lengths[i] = expr.resolvedExtents[i] + 1;
-            long long stride = 1;
-            for (size_t i = 1; i < lengths.size(); ++i)
-                stride *= lengths[i];
-            Value sum = emitBinary(
-                Opcode::IMulOvf, Type(Type::Kind::I64), idxVals[0], Value::constInt(stride));
-            for (size_t k = 1; k < idxVals.size(); ++k) {
-                stride = 1;
-                for (size_t i = k + 1; i < lengths.size(); ++i)
-                    stride *= lengths[i];
-                Value term = emitBinary(
-                    Opcode::IMulOvf, Type(Type::Kind::I64), idxVals[k], Value::constInt(stride));
-                sum = emitBinary(Opcode::IAddOvf, Type(Type::Kind::I64), sum, term);
-            }
-            return sum;
-        }
-        // Fallback to semantic analyzer metadata lookup for backward compatibility
-        // (e.g., arrays not yet processed through full semantic analysis path)
+        // Prefer member field extents when available.
+        if (!memberFieldExtents.empty() && memberFieldExtents.size() == idxVals.size())
+            return emitRowMajorFlatIndex(idxVals, memberFieldExtents);
+        // BUG-020 fix: Use resolvedExtents from the AST node — the semantic analyzer
+        // stores extents in the ArrayExpr so they survive procedure-scope cleanup.
+        if (!expr.resolvedExtents.empty() && expr.resolvedExtents.size() == idxVals.size())
+            return emitRowMajorFlatIndex(idxVals, expr.resolvedExtents);
+        // Fallback to semantic analyzer metadata lookup for backward compatibility.
         const SemanticAnalyzer *sema = semanticAnalyzer();
         const ArrayMetadata *metadata = sema ? sema->lookupArrayMetadata(expr.name) : nullptr;
-        if (metadata && metadata->extents.size() == idxVals.size()) {
-            std::vector<long long> lengths(metadata->extents.size(), 0);
-            for (size_t i = 0; i < metadata->extents.size(); ++i)
-                lengths[i] = metadata->extents[i] + 1;
-            long long stride = 1;
-            for (size_t i = 1; i < lengths.size(); ++i)
-                stride *= lengths[i];
-            Value sum = emitBinary(
-                Opcode::IMulOvf, Type(Type::Kind::I64), idxVals[0], Value::constInt(stride));
-            for (size_t k = 1; k < idxVals.size(); ++k) {
-                stride = 1;
-                for (size_t i = k + 1; i < lengths.size(); ++i)
-                    stride *= lengths[i];
-                Value term = emitBinary(
-                    Opcode::IMulOvf, Type(Type::Kind::I64), idxVals[k], Value::constInt(stride));
-                sum = emitBinary(Opcode::IAddOvf, Type(Type::Kind::I64), sum, term);
-            }
-            return sum;
-        }
-        // Fallback: just use first index
+        if (metadata && metadata->extents.size() == idxVals.size())
+            return emitRowMajorFlatIndex(idxVals, metadata->extents);
+        // Fallback: just use the first index.
         return idxVals[0];
     };
     index = computeFlatIndex(indices);
@@ -448,6 +394,28 @@ Lowerer::ArrayAccess Lowerer::lowerArrayAccess(const ArrayExpr &expr, ArrayAcces
     // Non-reference-counted arrays (i32/i64/f64): keep original SSA values to preserve IL golden
     // tests
     return ArrayAccess{base, index};
+}
+
+Value Lowerer::emitRowMajorFlatIndex(const std::vector<Value> &idxVals,
+                                     const std::vector<long long> &extents) {
+    // Convert declared bounds to inclusive lengths: Lk = Ek + 1.
+    std::vector<long long> lengths(extents.size(), 0);
+    for (size_t i = 0; i < extents.size(); ++i)
+        lengths[i] = extents[i] + 1;
+    long long stride = 1;
+    for (size_t i = 1; i < lengths.size(); ++i)
+        stride *= lengths[i];
+    Value sum =
+        emitBinary(Opcode::IMulOvf, Type(Type::Kind::I64), idxVals[0], Value::constInt(stride));
+    for (size_t k = 1; k < idxVals.size(); ++k) {
+        stride = 1;
+        for (size_t i = k + 1; i < lengths.size(); ++i)
+            stride *= lengths[i];
+        Value term =
+            emitBinary(Opcode::IMulOvf, Type(Type::Kind::I64), idxVals[k], Value::constInt(stride));
+        sum = emitBinary(Opcode::IAddOvf, Type(Type::Kind::I64), sum, term);
+    }
+    return sum;
 }
 
 Value Lowerer::emitAlloca(int bytes) {

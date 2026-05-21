@@ -82,6 +82,12 @@ class RuntimeStatementLowerer {
                             Lowerer::RVal value,
                             il::support::SourceLoc loc);
     void lowerLet(const LetStmt &stmt);
+    // Per-target-kind helpers for lowerLet; @p value is the already-lowered RHS.
+    void lowerLetToVar(const LetStmt &stmt, const VarExpr &var, Lowerer::RVal value);
+    void lowerLetToMethodCall(const LetStmt &stmt, const MethodCallExpr &mc, Lowerer::RVal value);
+    void lowerLetToCall(const LetStmt &stmt, const CallExpr &call, Lowerer::RVal value);
+    void lowerLetToArray(const LetStmt &stmt, const ArrayExpr &arr, Lowerer::RVal value);
+    void lowerLetToMember(const LetStmt &stmt, const MemberAccessExpr &member, Lowerer::RVal value);
 
     // Variable declarations
     void lowerConst(const ConstStmt &stmt);

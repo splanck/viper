@@ -733,6 +733,17 @@ Expected<void> FunctionVerifier::verifyFunction(const Function &fn, DiagSink &si
         }
     }
 
+    if (auto result = verifyDominanceAndEscapes(fn, blockMap, temps, definingBlock); !result)
+        return result;
+
+    return {};
+}
+
+Expected<void> FunctionVerifier::verifyDominanceAndEscapes(
+    const Function &fn,
+    const BlockMap &blockMap,
+    const std::unordered_map<unsigned, Type> &temps,
+    const std::unordered_map<unsigned, const BasicBlock *> &definingBlock) {
     // ===== PASS 3: Dominance verification =====
     // Compute dominators using iterative dataflow (Cooper-Harvey-Kennedy) and
     // verify that every use of a temp is dominated by its definition.

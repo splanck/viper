@@ -404,6 +404,41 @@ void replaceUsesInBlock(BasicBlock &block, unsigned from, const Value &replaceme
     }
 }
 
+/// @brief Map each callee entry-block param to the index of the call operand
+///        that supplies it. Prefers exact param-id matches, then falls back to
+///        positional type-compatible mapping for canonical entry params.
+/// @return The per-entry-param call-arg indices, or std::nullopt if any entry
+///         param cannot be mapped (the call site must then be left un-inlined).
+std::optional<std::vector<size_t>> mapEntryParamsToCallArgs(const Function &callee) {
+    std::vector<size_t> entryParamToCallArg;
+    if (callee.blocks.empty())
+        return entryParamToCallArg;
+    const auto &entryParams = callee.blocks.front().params;
+    entryParamToCallArg.reserve(entryParams.size());
+    for (size_t epIdx = 0; epIdx < entryParams.size(); ++epIdx) {
+        const auto &ep = entryParams[epIdx];
+        std::optional<size_t> mappedIndex;
+        for (size_t fpIdx = 0; fpIdx < callee.params.size(); ++fpIdx) {
+            const auto &fp = callee.params[fpIdx];
+            if (fp.id == ep.id && fp.type.kind == ep.type.kind) {
+                mappedIndex = fpIdx;
+                break;
+            }
+        }
+
+        if (!mappedIndex && entryParams.size() == callee.params.size() &&
+            epIdx < callee.params.size() &&
+            callee.params[epIdx].type.kind == ep.type.kind) {
+            mappedIndex = epIdx;
+        }
+
+        if (!mappedIndex)
+            return std::nullopt;
+        entryParamToCallArg.push_back(*mappedIndex);
+    }
+    return entryParamToCallArg;
+}
+
 bool inlineCallSite(Function &caller,
                     size_t callBlockIdx,
                     size_t callIndex,
@@ -439,32 +474,10 @@ bool inlineCallSite(Function &caller,
     // Older inliner logic required the ids to match, causing otherwise-valid
     // tiny callees to be skipped. Prefer exact id matches, then fall back to
     // positional type-compatible mapping for canonical entry params.
-    std::vector<size_t> entryParamToCallArg;
-    if (!callee.blocks.empty()) {
-        const auto &entryParams = callee.blocks.front().params;
-        entryParamToCallArg.reserve(entryParams.size());
-        for (size_t epIdx = 0; epIdx < entryParams.size(); ++epIdx) {
-            const auto &ep = entryParams[epIdx];
-            std::optional<size_t> mappedIndex;
-            for (size_t fpIdx = 0; fpIdx < callee.params.size(); ++fpIdx) {
-                const auto &fp = callee.params[fpIdx];
-                if (fp.id == ep.id && fp.type.kind == ep.type.kind) {
-                    mappedIndex = fpIdx;
-                    break;
-                }
-            }
-
-            if (!mappedIndex && entryParams.size() == callee.params.size() &&
-                epIdx < callee.params.size() &&
-                callee.params[epIdx].type.kind == ep.type.kind) {
-                mappedIndex = epIdx;
-            }
-
-            if (!mappedIndex)
-                return false;
-            entryParamToCallArg.push_back(*mappedIndex);
-        }
-    }
+    auto mappedEntryParams = mapEntryParamsToCallArgs(callee);
+    if (!mappedEntryParams)
+        return false;
+    std::vector<size_t> entryParamToCallArg = std::move(*mappedEntryParams);
 
     // The parser leaves call instruction type as Void for non-f64 returns
     // (only f64 is recorded for register-class selection).  Use the callee's

@@ -264,7 +264,8 @@ class LowererExprVisitor final : public lower::AstVisitor, public ExprVisitor {
                 lowerer_.oopIndex_.findMethodInHierarchy(lowerer_.currentClass(), expr.callee);
             if (!methodInfo) {
                 // Not a method of this class - fall through to global resolution
-                goto global_resolution;
+                lowerGlobalCall(expr);
+                return;
             }
 
             // Load ME pointer as implicit receiver
@@ -376,7 +377,12 @@ class LowererExprVisitor final : public lower::AstVisitor, public ExprVisitor {
             }
         }
 
-    global_resolution:
+        lowerGlobalCall(expr);
+    }
+
+    /// @brief Resolve and lower a global / qualified procedure call (the path
+    ///        taken when a call is not a field array or current-class method).
+    void lowerGlobalCall(const CallExpr &expr) {
         // Resolve callee (supports qualified call syntax). Canonicalize to
         // maintain case-insensitive semantics for lookups.
         std::string calleeResolved;

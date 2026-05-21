@@ -25,6 +25,7 @@
 #include "rt_internal.h"
 #include "rt_mat4.h"
 #include "rt_morphtarget3d.h"
+#include "rt_physics3d.h"
 #include "rt_skeleton3d.h"
 #include "rt_pixels.h"
 #include "rt_scene3d.h"
@@ -448,6 +449,12 @@ static void test_node_sanitizes_nonfinite_transform_and_lod() {
     EXPECT_NEAR(rt_vec3_y(scale), -2.0, 0.001, "SceneNode finite negative scale is preserved");
     EXPECT_NEAR(rt_vec3_z(scale), 1.0, 0.001, "SceneNode non-finite scale Z falls back to 1");
 
+    rt_scene_node3d_set_scale(node, 0.0, -0.0, 1e-16);
+    scale = rt_scene_node3d_get_scale(node);
+    EXPECT_NEAR(rt_vec3_x(scale), 1.0, 0.001, "SceneNode zero scale X falls back to 1");
+    EXPECT_NEAR(rt_vec3_y(scale), 1.0, 0.001, "SceneNode negative-zero scale Y falls back to 1");
+    EXPECT_NEAR(rt_vec3_z(scale), 1.0, 0.001, "SceneNode near-zero scale Z falls back to 1");
+
     rt_scene_node3d_set_rotation(node, rt_quat_new(NAN, 0.0, 0.0, 0.0));
     void *rot = rt_scene_node3d_get_rotation(node);
     EXPECT_NEAR(rt_quat_x(rot), 0.0, 0.001, "SceneNode invalid quaternion resets X");
@@ -468,6 +475,24 @@ static void test_node_sanitizes_nonfinite_transform_and_lod() {
                 0.0,
                 0.001,
                 "SceneNode non-finite LOD distance clamps to zero");
+}
+
+static void test_node_body_sync_preserves_negative_scale_handedness() {
+    void *scene = rt_scene3d_new();
+    void *node = rt_scene_node3d_new();
+    void *body = rt_body3d_new_sphere(0.5, 1.0);
+
+    rt_scene_node3d_set_scale(node, -5.0, 3.0, 4.0);
+    rt_scene_node3d_bind_body(node, body);
+    rt_scene3d_add(scene, node);
+    rt_body3d_set_position(body, 2.0, 3.0, 4.0);
+
+    rt_scene3d_sync_bindings(scene, 0.016);
+
+    void *scale = rt_scene_node3d_get_scale(node);
+    EXPECT_NEAR(rt_vec3_x(scale), -5.0, 0.001, "SceneNode body sync preserves mirrored X scale");
+    EXPECT_NEAR(rt_vec3_y(scale), 3.0, 0.001, "SceneNode body sync preserves Y scale");
+    EXPECT_NEAR(rt_vec3_z(scale), 4.0, 0.001, "SceneNode body sync preserves Z scale");
 }
 
 /*==========================================================================
@@ -1395,6 +1420,7 @@ int main() {
     test_get_child();
     test_default_transform();
     test_node_sanitizes_nonfinite_transform_and_lod();
+    test_node_body_sync_preserves_negative_scale_handedness();
 
     /* Frustum culling */
     test_frustum_aabb_inside();

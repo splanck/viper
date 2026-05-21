@@ -81,8 +81,23 @@ LowerResult Lowerer::lowerAssignment(BinaryExpr *expr) {
     auto right = lowerExpr(expr->right.get());
     TypeRef rightType = sema_.typeOf(expr->right.get());
 
-    // LHS must be an identifier, index, or field expression
-    if (auto *ident = dynamic_cast<IdentExpr *>(expr->left.get())) {
+    if (auto *ident = dynamic_cast<IdentExpr *>(expr->left.get()))
+        return lowerIdentAssignment(expr, ident, right, rightType);
+    if (auto *indexExpr = dynamic_cast<IndexExpr *>(expr->left.get()))
+        return lowerIndexAssignment(expr, indexExpr, right, rightType);
+    if (auto *fieldExpr = dynamic_cast<FieldExpr *>(expr->left.get()))
+        return lowerFieldAssignment(expr, fieldExpr, right, rightType);
+
+    diag_.report({il::support::Severity::Error,
+                  "Unsupported assignment target reached lowering",
+                  expr->loc,
+                  "V3000"});
+    return {Value::constInt(0), Type(Type::Kind::I64)};
+}
+
+LowerResult Lowerer::lowerIdentAssignment(BinaryExpr *expr, IdentExpr *ident,
+                                          LowerResult right, TypeRef rightType) {
+    {
         TypeRef targetType = nullptr;
         auto typeIt = localTypes_.find(ident->name);
         if (typeIt != localTypes_.end())
@@ -290,9 +305,12 @@ LowerResult Lowerer::lowerAssignment(BinaryExpr *expr) {
             localTypes_[ident->name] = targetType;
         return {assignValue, assignType};
     }
+}
 
-    // Handle index assignment (arr[i] = value, list[i] = value, map[key] = value)
-    if (auto *indexExpr = dynamic_cast<IndexExpr *>(expr->left.get())) {
+LowerResult Lowerer::lowerIndexAssignment(BinaryExpr *expr, IndexExpr *indexExpr,
+                                          LowerResult right, TypeRef rightType) {
+    (void)rightType;
+    {
         auto base = lowerExpr(indexExpr->base.get());
         auto index = lowerExpr(indexExpr->index.get());
         TypeRef baseType = sema_.typeOf(indexExpr->base.get());
@@ -345,9 +363,12 @@ LowerResult Lowerer::lowerAssignment(BinaryExpr *expr) {
             emitCall(kListSet, {base.value, indexValue, boxedValue});
         return right;
     }
+}
 
-    // Handle field assignment (obj.field = value)
-    if (auto *fieldExpr = dynamic_cast<FieldExpr *>(expr->left.get())) {
+LowerResult Lowerer::lowerFieldAssignment(BinaryExpr *expr, FieldExpr *fieldExpr,
+                                          LowerResult right, TypeRef rightType) {
+    (void)rightType;
+    {
         TypeRef baseType = sema_.typeOf(fieldExpr->base.get());
         TypeRef targetType = sema_.typeOf(fieldExpr);
 

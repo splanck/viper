@@ -783,6 +783,9 @@ if (VIPER_ENABLE_GRAPHICS AND TARGET vipergfx)
     message(STATUS "viper_runtime: Graphics support enabled")
     target_sources(viper_rt_graphics_obj PRIVATE ${RT_GRAPHICS_PLATFORM_SOURCES})
     target_compile_definitions(viper_rt_graphics_obj PRIVATE VIPER_ENABLE_GRAPHICS)
+    if (VIPER_BUILD_TESTING)
+        target_compile_definitions(viper_rt_graphics_obj PRIVATE RT_G3D_ALLOW_STACK_FIXTURES=1)
+    endif ()
     target_include_directories(viper_rt_graphics_obj PRIVATE
             ${PROJECT_SOURCE_DIR}/src/lib/graphics/include
             ${PROJECT_SOURCE_DIR}/src/lib/gui/include

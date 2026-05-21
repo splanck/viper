@@ -85,9 +85,10 @@ allocation sizes. `Physics3D` keeps world gravity, time steps, body motion state
 and character-controller settings finite before they feed integration and broadphase code; capsule
 primitive narrow-phase uses the body's quaternion orientation when deriving its world-space axis, and
 ray queries use analytic sphere/capsule/box tests with AABB fallback for complex colliders.
-`Mesh3D` rejects invalid procedural dimensions, non-finite OBJ attributes, and overflowing OBJ face
-indices; generated UV spheres avoid zero-area pole triangles, bone weights are filtered and
-renormalized, and failed mesh builds are not cloned as drawable meshes. `Particles3D` bounds emitter ranges,
+`Mesh3D` rejects invalid procedural dimensions, non-finite OBJ/STL attributes, and overflowing OBJ face
+indices; generated UV spheres avoid zero-area pole triangles, importers skip isolated degenerate faces,
+bone weights are filtered and renormalized, and failed mesh builds are not cloned as drawable meshes.
+`Particles3D` bounds emitter ranges,
 rates, alpha, spread, shape, and update time. `InstanceBatch3D` stores only finite matrix elements
 for culling and backend submission. `Light3D` clamps colors, intensities, attenuations, spot angles,
 and fallback directions before the light list is copied into backend parameters. `PostFX3D` bounds
@@ -108,6 +109,9 @@ any retained reference or struct dereference happens. Resource setters such as `
 and `Water3D.Texture`/`NormalMap`/`EnvMap` keep the previous valid binding when given a foreign
 object. Physics triggers also treat tracked bodies as weak world membership: a body removed from the
 world emits one exit transition and is then forgotten.
+Renderer-internal stack fixtures are available only when the graphics runtime is built with
+`RT_G3D_ALLOW_STACK_FIXTURES=1` for tests. Production builds validate `Canvas3D` and `Camera3D`
+handles by class id and reject arbitrary non-heap pointers before reading object fields.
 
 The advanced helpers follow the same numeric guard policy. `TextureAtlas3D` validates atlas and
 Pixels handles before copying image data, duplicates tile edge padding for bilinear correctness, and

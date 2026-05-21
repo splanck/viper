@@ -33,6 +33,20 @@
 namespace viper::codegen::aarch64::peephole {
 namespace {
 
+/// @brief Return the branch-target label of a terminator instruction, or "" if
+///        @p mi is not a (conditional or unconditional) branch.
+[[nodiscard]] std::string getBranchTarget(const MInstr &mi) {
+    if (mi.opc == MOpcode::Br && !mi.ops.empty() && mi.ops[0].kind == MOperand::Kind::Label)
+        return mi.ops[0].label;
+    if (mi.opc == MOpcode::BCond && mi.ops.size() >= 2 &&
+        mi.ops[1].kind == MOperand::Kind::Label)
+        return mi.ops[1].label;
+    if ((mi.opc == MOpcode::Cbz || mi.opc == MOpcode::Cbnz) && mi.ops.size() >= 2 &&
+        mi.ops[1].kind == MOperand::Kind::Label)
+        return mi.ops[1].label;
+    return {};
+}
+
 /// @brief Check whether a physical register is callee-saved (x19-x28).
 [[nodiscard]] bool isCalleeSavedGPR(uint32_t phys) noexcept {
     return phys >= static_cast<uint32_t>(PhysReg::X19) &&
@@ -106,18 +120,6 @@ std::size_t hoistLoopConstants(MFunction &fn) {
     std::unordered_map<std::string, std::size_t> nameToIdx;
     for (std::size_t i = 0; i < fn.blocks.size(); ++i)
         nameToIdx[fn.blocks[i].name] = i;
-
-    auto getBranchTarget = [](const MInstr &mi) -> std::string {
-        if (mi.opc == MOpcode::Br && !mi.ops.empty() && mi.ops[0].kind == MOperand::Kind::Label)
-            return mi.ops[0].label;
-        if (mi.opc == MOpcode::BCond && mi.ops.size() >= 2 &&
-            mi.ops[1].kind == MOperand::Kind::Label)
-            return mi.ops[1].label;
-        if ((mi.opc == MOpcode::Cbz || mi.opc == MOpcode::Cbnz) && mi.ops.size() >= 2 &&
-            mi.ops[1].kind == MOperand::Kind::Label)
-            return mi.ops[1].label;
-        return {};
-    };
 
     auto isNonDefOpc = [](MOpcode opc) -> bool {
         return opc == MOpcode::StrRegFpImm || opc == MOpcode::StrRegBaseImm ||
@@ -511,18 +513,6 @@ std::size_t eliminateLoopPhiSpills(MFunction &fn) {
         nameToIdx[fn.blocks[i].name] = i;
 
     // Helper: get branch target label from an instruction.
-    auto getBranchTarget = [](const MInstr &mi) -> std::string {
-        if (mi.opc == MOpcode::Br && !mi.ops.empty() && mi.ops[0].kind == MOperand::Kind::Label)
-            return mi.ops[0].label;
-        if (mi.opc == MOpcode::BCond && mi.ops.size() >= 2 &&
-            mi.ops[1].kind == MOperand::Kind::Label)
-            return mi.ops[1].label;
-        if ((mi.opc == MOpcode::Cbz || mi.opc == MOpcode::Cbnz) && mi.ops.size() >= 2 &&
-            mi.ops[1].kind == MOperand::Kind::Label)
-            return mi.ops[1].label;
-        return {};
-    };
-
     // Helper: check if instruction is a branch or terminator.
     auto isTerminator = [](MOpcode opc) -> bool {
         return opc == MOpcode::Br || opc == MOpcode::BCond || opc == MOpcode::Cbz ||

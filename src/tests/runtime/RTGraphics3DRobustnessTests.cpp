@@ -579,6 +579,61 @@ static void test_navmesh_slope_refilter_and_sloped_height_projection() {
     assert(std::fabs(rt_vec3_z(sampled) - 0.25) < 1e-6);
 }
 
+static void test_navmesh_sample_position_uses_closest_triangle_point() {
+    void *mesh = rt_mesh3d_new();
+    rt_mesh3d_add_vertex(mesh, 0.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0);
+    rt_mesh3d_add_vertex(mesh, 0.0, 0.0, 2.0, 0.0, 1.0, 0.0, 0.0, 1.0);
+    rt_mesh3d_add_vertex(mesh, 2.0, 0.0, 0.0, 0.0, 1.0, 0.0, 1.0, 0.0);
+    rt_mesh3d_add_triangle(mesh, 0, 1, 2);
+
+    void *navmesh = rt_navmesh3d_build(mesh, 0.4, 1.8);
+    assert(navmesh != nullptr);
+    assert(rt_navmesh3d_get_triangle_count(navmesh) == 1);
+
+    void *query = rt_vec3_new(2.0, 5.0, 2.0);
+    void *sampled = rt_navmesh3d_sample_position(navmesh, query);
+    assert(std::fabs(rt_vec3_x(sampled) - 1.0) < 1e-6);
+    assert(std::fabs(rt_vec3_y(sampled)) < 1e-6);
+    assert(std::fabs(rt_vec3_z(sampled) - 1.0) < 1e-6);
+}
+
+static void test_navmesh_walkable_uses_vertical_tolerance() {
+    void *mesh = rt_mesh3d_new();
+    rt_mesh3d_add_vertex(mesh, 0.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0);
+    rt_mesh3d_add_vertex(mesh, 0.0, 0.0, 2.0, 0.0, 1.0, 0.0, 0.0, 1.0);
+    rt_mesh3d_add_vertex(mesh, 2.0, 0.0, 0.0, 0.0, 1.0, 0.0, 1.0, 0.0);
+    rt_mesh3d_add_triangle(mesh, 0, 1, 2);
+
+    void *navmesh = rt_navmesh3d_build(mesh, 0.4, 1.8);
+    assert(navmesh != nullptr);
+
+    void *near_point = rt_vec3_new(0.25, 0.5, 0.25);
+    void *high_point = rt_vec3_new(0.25, 10.0, 0.25);
+    void *near_goal = rt_vec3_new(0.5, 0.0, 0.5);
+    assert(rt_navmesh3d_is_walkable(navmesh, near_point) == 1);
+    assert(rt_navmesh3d_is_walkable(navmesh, high_point) == 0);
+    assert(rt_navmesh3d_find_path(navmesh, near_point, near_goal) != nullptr);
+    assert(rt_navmesh3d_find_path(navmesh, high_point, near_goal) == nullptr);
+
+    void *sampled = rt_navmesh3d_sample_position(navmesh, high_point);
+    assert(std::fabs(rt_vec3_x(sampled) - 0.25) < 1e-6);
+    assert(std::fabs(rt_vec3_y(sampled)) < 1e-6);
+    assert(std::fabs(rt_vec3_z(sampled) - 0.25) < 1e-6);
+}
+
+static void test_capsule_collider_clamps_total_height_to_diameter() {
+    void *capsule = rt_collider3d_new_capsule(2.0, 1.0);
+    double min_v[3];
+    double max_v[3];
+    rt_collider3d_get_local_bounds_raw(capsule, min_v, max_v);
+    assert(std::fabs(rt_collider3d_get_radius_raw(capsule) - 2.0) < 1e-9);
+    assert(std::fabs(rt_collider3d_get_height_raw(capsule) - 4.0) < 1e-9);
+    assert(std::fabs(min_v[0] + 2.0) < 1e-9);
+    assert(std::fabs(min_v[1] + 2.0) < 1e-9);
+    assert(std::fabs(max_v[1] - 2.0) < 1e-9);
+    assert(std::fabs(max_v[2] - 2.0) < 1e-9);
+}
+
 static void test_morphtarget_sanitizes_nonfinite_weights_and_deltas() {
     void *mt = rt_morphtarget3d_new(1);
     assert(mt != nullptr);
@@ -797,6 +852,9 @@ int main() {
     test_path3d_growth_preserves_points();
     test_navmesh_sample_position_handles_empty_mesh();
     test_navmesh_slope_refilter_and_sloped_height_projection();
+    test_navmesh_sample_position_uses_closest_triangle_point();
+    test_navmesh_walkable_uses_vertical_tolerance();
+    test_capsule_collider_clamps_total_height_to_diameter();
     test_morphtarget_sanitizes_nonfinite_weights_and_deltas();
     test_scene_reparent_preserves_child_and_counts();
     test_mesh_bone_weights_are_validated_and_dirty_geometry();

@@ -57,6 +57,13 @@ static void printStmt(const Stmt &stmt, Printer &p);
 static void printExpr(const Expr &expr, Printer &p);
 static void printType(const TypeNode &type, Printer &p);
 
+// printExpr is split into per-category group helpers; each returns true when it
+// handled @p expr.kind, false to let the next group try.
+static bool printLeafExpr(const Expr &expr, Printer &p);
+static bool printOperatorExpr(const Expr &expr, Printer &p);
+static bool printConstructionExpr(const Expr &expr, Printer &p);
+static bool printControlFlowExpr(const Expr &expr, Printer &p);
+
 // ---------------------------------------------------------------------------
 // Location formatting
 // ---------------------------------------------------------------------------
@@ -320,6 +327,17 @@ static void printMatchArms(const std::vector<MatchArm> &arms, Printer &p) {
 
 /// @brief Recursively print an expression subtree to the AST dump.
 static void printExpr(const Expr &expr, Printer &p) {
+    if (printLeafExpr(expr, p))
+        return;
+    if (printOperatorExpr(expr, p))
+        return;
+    if (printConstructionExpr(expr, p))
+        return;
+    printControlFlowExpr(expr, p);
+}
+
+/// @brief Print literal and name expressions (leaves with no child exprs).
+static bool printLeafExpr(const Expr &expr, Printer &p) {
     switch (expr.kind) {
         // -- Literals -------------------------------------------------------
         case ExprKind::IntLiteral: {
@@ -368,7 +386,15 @@ static void printExpr(const Expr &expr, Printer &p) {
             p.line("SuperExpr " + locStr(expr.loc));
             break;
         }
+        default:
+            return false;
+    }
+    return true;
+}
 
+/// @brief Print operator / access / cast expressions.
+static bool printOperatorExpr(const Expr &expr, Printer &p) {
+    switch (expr.kind) {
         // -- Operators ------------------------------------------------------
         case ExprKind::Binary: {
             const auto &e = static_cast<const BinaryExpr &>(expr);
@@ -609,7 +635,15 @@ static void printExpr(const Expr &expr, Printer &p) {
             p.pop();
             break;
         }
+        default:
+            return false;
+    }
+    return true;
+}
 
+/// @brief Print object/collection construction expressions.
+static bool printConstructionExpr(const Expr &expr, Printer &p) {
+    switch (expr.kind) {
         // -- Construction ---------------------------------------------------
         case ExprKind::New: {
             const auto &e = static_cast<const NewExpr &>(expr);
@@ -781,7 +815,15 @@ static void printExpr(const Expr &expr, Printer &p) {
             p.pop();
             break;
         }
+        default:
+            return false;
+    }
+    return true;
+}
 
+/// @brief Print control-flow expressions (if/match/block).
+static bool printControlFlowExpr(const Expr &expr, Printer &p) {
+    switch (expr.kind) {
         // -- Control flow expressions ---------------------------------------
         case ExprKind::If: {
             const auto &e = static_cast<const IfExpr &>(expr);
@@ -851,7 +893,10 @@ static void printExpr(const Expr &expr, Printer &p) {
             p.pop();
             break;
         }
+        default:
+            return false;
     }
+    return true;
 }
 
 // ---------------------------------------------------------------------------

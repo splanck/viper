@@ -354,12 +354,21 @@ LowerResult Lowerer::lowerNew(NewExpr *expr) {
         return {map, Type(Type::Kind::Ptr)};
     }
 
-    // Handle runtime class types (Ptr) -- look up ctor from RuntimeRegistry catalog.
-    // The ctor field is already a fully-qualified extern target, e.g.,
-    // "Viper.Collections.FrozenSet.FromSeq"
-    // Skip Entity and Struct types -- they have their own lowering below.
+    // Runtime class types (Ptr): resolve ctor from the RuntimeRegistry catalog.
+    // Class and Struct types have their own lowering below.
     if (type && !type->name.empty() && type->kind != TypeKindSem::Class &&
         type->kind != TypeKindSem::Struct) {
+        return lowerNewRuntimeClass(expr, type);
+    }
+
+    if (auto structResult = lowerNewStruct(expr, type))
+        return *structResult;
+
+    return lowerNewClass(expr, type);
+}
+
+LowerResult Lowerer::lowerNewRuntimeClass(NewExpr *expr, TypeRef type) {
+    {
         std::string ctorName;
         if (expr->args.empty()) {
             std::string defaultCtorName = type->name + ".NewDefault";
@@ -432,12 +441,15 @@ LowerResult Lowerer::lowerNew(NewExpr *expr) {
         Value result = emitCallRet(Type(Type::Kind::Ptr), ctorName, argValues);
         return {result, Type(Type::Kind::Ptr)};
     }
+}
 
-    // BUG-010 fix: Check for struct type construction via 'new' keyword
-    // Struct types can be instantiated with 'new' just like class types
+std::optional<LowerResult> Lowerer::lowerNewStruct(NewExpr *expr, TypeRef type) {
+    // Struct types can be instantiated with 'new' just like class types.
     std::string typeName = type->name;
     const StructTypeInfo *valueInfo = getOrCreateStructTypeInfo(typeName);
-    if (valueInfo) {
+    if (!valueInfo)
+        return std::nullopt;
+    {
         const StructTypeInfo &valInfo = *valueInfo;
 
         // Allocate stack space for the value
@@ -548,11 +560,13 @@ LowerResult Lowerer::lowerNew(NewExpr *expr) {
 
         return LowerResult{ptr, Type(Type::Kind::Ptr)};
     }
+}
 
-    // Find the class type info
+LowerResult Lowerer::lowerNewClass(NewExpr *expr, TypeRef type) {
+    std::string typeName = type->name;
     const ClassTypeInfo *infoPtr = getOrCreateClassTypeInfo(typeName);
     if (!infoPtr) {
-        // Not an class type
+        // Not a class type.
         return {Value::null(), Type(Type::Kind::Ptr)};
     }
 

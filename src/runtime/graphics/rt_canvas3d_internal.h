@@ -489,6 +489,7 @@ typedef struct {
     /* Timing */
     int64_t frame_serial;
     int64_t last_flip_us;
+    int64_t delta_time_us;
     int64_t delta_time_ms;
     int64_t dt_max_ms;
     int8_t should_close;
@@ -499,27 +500,31 @@ typedef struct {
     int32_t motion_history_capacity;
 } rt_canvas3d;
 
-/// @brief Validate a Canvas3D handle while preserving internal stack fixtures.
-/// @details Public/runtime handles must carry the Canvas3D class id. A handful
-///   of backend and unit-test paths construct plain stack rt_canvas3d structs to
-///   exercise renderer internals without opening a window; those are accepted
-///   only when the pointer is not a live runtime heap payload.
+/// @brief Validate a Canvas3D handle while optionally preserving internal stack fixtures.
+/// @details Production handles must carry the Canvas3D class id. Backend/unit tests
+///   may opt into plain stack rt_canvas3d fixtures by compiling graphics runtime code
+///   with `RT_G3D_ALLOW_STACK_FIXTURES=1`; production builds should leave it unset so
+///   arbitrary non-heap pointers are rejected before any Canvas3D fields are read.
 static inline rt_canvas3d *rt_canvas3d_checked_or_stack(void *obj) {
     rt_canvas3d *c = (rt_canvas3d *)rt_g3d_checked_or_null(obj, RT_G3D_CANVAS3D_CLASS_ID);
     if (c)
         return c;
+#if defined(RT_G3D_ALLOW_STACK_FIXTURES) && RT_G3D_ALLOW_STACK_FIXTURES
     if (obj && !rt_heap_is_payload(obj))
         return (rt_canvas3d *)obj;
+#endif
     return NULL;
 }
 
-/// @brief Validate a Camera3D handle while preserving internal stack fixtures.
+/// @brief Validate a Camera3D handle while optionally preserving internal stack fixtures.
 static inline rt_camera3d *rt_camera3d_checked_or_stack(void *obj) {
     rt_camera3d *cam = (rt_camera3d *)rt_g3d_checked_or_null(obj, RT_G3D_CAMERA3D_CLASS_ID);
     if (cam)
         return cam;
+#if defined(RT_G3D_ALLOW_STACK_FIXTURES) && RT_G3D_ALLOW_STACK_FIXTURES
     if (obj && !rt_heap_is_payload(obj))
         return (rt_camera3d *)obj;
+#endif
     return NULL;
 }
 

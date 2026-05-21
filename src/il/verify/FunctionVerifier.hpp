@@ -243,6 +243,15 @@ class FunctionVerifier {
     /// @return Success if the function passes all checks, error on first failure.
     il::support::Expected<void> verifyFunction(const il::core::Function &fn, DiagSink &sink);
 
+    /// @brief Verify SSA dominance (every temp use dominated by its def) and
+    ///        alloca-escape rules — PASS 3 and PASS 4 of verifyFunction.
+    /// @param temps Pre-collected temp id → type map from PASS 1.
+    il::support::Expected<void> verifyDominanceAndEscapes(
+        const il::core::Function &fn,
+        const BlockMap &blockMap,
+        const std::unordered_map<unsigned, il::core::Type> &temps,
+        const std::unordered_map<unsigned, const il::core::BasicBlock *> &definingBlock);
+
     /// @brief Verifies a single basic block for correctness.
     ///
     /// Validates block structure (parameters, terminator) and iterates over all

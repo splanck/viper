@@ -278,6 +278,26 @@ static double mesh_triangle_area_sq(const rt_mesh3d *mesh, uint32_t tri) {
     return cx * cx + cy * cy + cz * cz;
 }
 
+static double mesh_triangle_normal_dot_centroid(const rt_mesh3d *mesh, uint32_t tri) {
+    const uint32_t *idx = &mesh->indices[(size_t)tri * 3u];
+    const float *a = mesh->vertices[idx[0]].pos;
+    const float *b = mesh->vertices[idx[1]].pos;
+    const float *c = mesh->vertices[idx[2]].pos;
+    double abx = (double)b[0] - (double)a[0];
+    double aby = (double)b[1] - (double)a[1];
+    double abz = (double)b[2] - (double)a[2];
+    double acx = (double)c[0] - (double)a[0];
+    double acy = (double)c[1] - (double)a[1];
+    double acz = (double)c[2] - (double)a[2];
+    double nx = aby * acz - abz * acy;
+    double ny = abz * acx - abx * acz;
+    double nz = abx * acy - aby * acx;
+    double cx = ((double)a[0] + (double)b[0] + (double)c[0]) / 3.0;
+    double cy = ((double)a[1] + (double)b[1] + (double)c[1]) / 3.0;
+    double cz = ((double)a[2] + (double)b[2] + (double)c[2]) / 3.0;
+    return nx * cx + ny * cy + nz * cz;
+}
+
 static void test_mesh_sphere() {
     TEST("Mesh3D.NewSphere — correct non-degenerate geometry");
     const int64_t segments = 8;
@@ -290,8 +310,11 @@ static void test_mesh_sphere() {
     // Top and bottom caps use one triangle per slice to avoid zero-area pole faces.
     EXPECT_EQ(rt_mesh3d_get_triangle_count(m), 224);
     rt_mesh3d *mesh = (rt_mesh3d *)m;
-    for (uint32_t tri = 0; tri < mesh->index_count / 3u; ++tri)
+    for (uint32_t tri = 0; tri < mesh->index_count / 3u; ++tri) {
         EXPECT_TRUE(mesh_triangle_area_sq(mesh, tri) > 1e-12, "Sphere triangles are non-degenerate");
+        EXPECT_TRUE(mesh_triangle_normal_dot_centroid(mesh, tri) > 0.0,
+                    "Sphere triangles are wound outward");
+    }
     PASS();
 }
 
@@ -312,6 +335,10 @@ static void test_mesh_cylinder() {
     EXPECT_EQ(rt_mesh3d_get_vertex_count(m), 36);
     // Side: 8*2=16, top: 8, bottom: 8 → 32
     EXPECT_EQ(rt_mesh3d_get_triangle_count(m), 32);
+    rt_mesh3d *mesh = (rt_mesh3d *)m;
+    for (uint32_t tri = 0; tri < mesh->index_count / 3u; ++tri)
+        EXPECT_TRUE(mesh_triangle_normal_dot_centroid(mesh, tri) > 0.0,
+                    "Cylinder triangles are wound outward");
     PASS();
 }
 
@@ -2316,6 +2343,33 @@ static void test_canvas_delta_time_cap_and_disable() {
     PASS();
 }
 
+static void test_canvas_fps_uses_microsecond_delta() {
+    TEST("Canvas3D.GetFPS uses microsecond frame timing");
+    rt_canvas3d canvas;
+    memset(&canvas, 0, sizeof(canvas));
+    canvas.delta_time_ms = 0;
+    canvas.delta_time_us = 500;
+    EXPECT_EQ(rt_canvas3d_get_fps(&canvas), 2000);
+    canvas.delta_time_us = 16667;
+    EXPECT_EQ(rt_canvas3d_get_fps(&canvas), 60);
+    PASS();
+}
+
+static void test_canvas_boolean_setters_normalize() {
+    TEST("Canvas3D boolean render options normalize inputs");
+    rt_canvas3d canvas;
+    memset(&canvas, 0, sizeof(canvas));
+    rt_canvas3d_set_wireframe(&canvas, -5);
+    rt_canvas3d_set_backface_cull(&canvas, 42);
+    EXPECT_EQ(canvas.wireframe, 1);
+    EXPECT_EQ(canvas.backface_cull, 1);
+    rt_canvas3d_set_wireframe(&canvas, 0);
+    rt_canvas3d_set_backface_cull(&canvas, 0);
+    EXPECT_EQ(canvas.wireframe, 0);
+    EXPECT_EQ(canvas.backface_cull, 0);
+    PASS();
+}
+
 static void test_canvas_draw_mesh_clears_pending_splat_on_failed_draw() {
     TEST("Canvas3D.DrawMesh clears pending terrain splat state on failed draw");
     rt_canvas3d canvas;
@@ -2875,6 +2929,30 @@ static void test_canvas_instanced_fallback_caps_instance_count() {
     PASS();
 }
 
+static void test_canvas_instanced_previous_matrices_require_pointer() {
+    TEST("Canvas3D rejects previous-instance flag without matrix data");
+    vgfx3d_backend_t backend = {};
+    rt_canvas3d canvas;
+    void *mesh = rt_mesh3d_new_box(1.0, 1.0, 1.0);
+    void *mat = rt_material3d_new();
+    float instance[16] = {0.0f};
+
+    backend.name = "opengl";
+    backend.submit_draw_instanced = tracked_submit_draw_instanced;
+    memset(&canvas, 0, sizeof(canvas));
+    canvas.backend = &backend;
+    canvas.in_frame = 1;
+    instance[0] = instance[5] = instance[10] = instance[15] = 1.0f;
+
+    EXPECT_TRUE(expect_trap_contains(
+                    [&]() {
+                        rt_canvas3d_queue_instanced_batch(&canvas, mesh, mat, instance, 1, NULL, 1);
+                    },
+                    "previous instance matrices pointer is required"),
+                "Previous-instance flag without data traps instead of silently disabling motion history");
+    PASS();
+}
+
 static void test_metal_terrain_splat_for_gpu() {
     TEST("MTL-14: Terrain3D splat maps + 4 layers for GPU path");
     void *t = rt_terrain3d_new(8, 8);
@@ -3099,6 +3177,8 @@ int main() {
     test_canvas_light_supports_last_slot();
     test_canvas_delta_time_preserves_first_zero();
     test_canvas_delta_time_cap_and_disable();
+    test_canvas_fps_uses_microsecond_delta();
+    test_canvas_boolean_setters_normalize();
     test_canvas_draw_mesh_clears_pending_splat_on_failed_draw();
     test_canvas_draw_terrain_rejects_2d_frame();
 
@@ -3137,6 +3217,7 @@ int main() {
     test_canvas_opaque_alpha_mode_keeps_instanced_path();
     test_canvas_legacy_translucent_batch_falls_back_from_instancing();
     test_canvas_instanced_fallback_caps_instance_count();
+    test_canvas_instanced_previous_matrices_require_pointer();
     test_metal_terrain_splat_for_gpu();
     test_metal_postfx_new();
     test_metal_postfx_grows_past_legacy_cap();

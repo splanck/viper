@@ -74,7 +74,7 @@ int8_t rt_collider3d_is_static_only_raw(void *collider);
 void rt_collider3d_get_box_half_extents_raw(void *collider, double *half_extents_out);
 /// @brief Sphere/capsule collider: its radius.
 double rt_collider3d_get_radius_raw(void *collider);
-/// @brief Capsule/cylinder collider: its height.
+/// @brief Capsule collider: total height including caps.
 double rt_collider3d_get_height_raw(void *collider);
 /// @brief Mesh collider: the backing triangle-mesh handle (NULL if not a mesh).
 void *rt_collider3d_get_mesh_raw(void *collider);

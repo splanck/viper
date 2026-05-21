@@ -203,10 +203,33 @@ ExprPtr Parser::parsePrimary() {
     }
 
     // Identifier or struct-literal: `TypeName { field = expr, ... }` or `TypeName { field: expr, ... }`
-    // Struct literals are only attempted when explicitly enabled (initializer/return context)
-    // to avoid ambiguity with for/if/while block bodies.
-    if (checkIdentifierLike()) {
-        // Struct-literal detection: only when allowStructLiterals_ is set.
+    if (checkIdentifierLike())
+        return parseIdentifierOrStructLiteral(loc);
+
+    // Parenthesized expression, unit literal, tuple, or lambda
+    if (match(TokenKind::LParen))
+        return parseParenthesizedExpr(loc);
+
+    // List literal
+    if (check(TokenKind::LBracket)) {
+        return parseListLiteral();
+    }
+
+    // Map or Set literal
+    if (check(TokenKind::LBrace)) {
+        if (looksLikeBlockExpression())
+            return parseBlockExpression();
+        return parseMapOrSetLiteral();
+    }
+
+    error("expected expression");
+    return nullptr;
+}
+
+ExprPtr Parser::parseIdentifierOrStructLiteral(SourceLoc loc) {
+    {
+        // Struct literals are only attempted when explicitly enabled
+        // (initializer/return context) to avoid ambiguity with block bodies.
         // Disambiguate: TypeName or Module.TypeName followed by a field-list body.
         if (allowStructLiterals_) {
             size_t bodyOffset = 1;
@@ -274,9 +297,10 @@ ExprPtr Parser::parsePrimary() {
         advance();
         return std::make_unique<IdentExpr>(loc, std::move(name));
     }
+}
 
-    // Parenthesized expression, unit literal, tuple, or lambda
-    if (match(TokenKind::LParen)) {
+ExprPtr Parser::parseParenthesizedExpr(SourceLoc loc) {
+    {
         // Check for unit literal () or lambda () => ...
         if (check(TokenKind::RParen)) {
             advance(); // consume )
@@ -382,21 +406,6 @@ ExprPtr Parser::parsePrimary() {
 
         return first;
     }
-
-    // List literal
-    if (check(TokenKind::LBracket)) {
-        return parseListLiteral();
-    }
-
-    // Map or Set literal
-    if (check(TokenKind::LBrace)) {
-        if (looksLikeBlockExpression())
-            return parseBlockExpression();
-        return parseMapOrSetLiteral();
-    }
-
-    error("expected expression");
-    return nullptr;
 }
 
 ExprPtr Parser::parseMatchExpression(SourceLoc loc) {

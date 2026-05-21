@@ -49,6 +49,7 @@ extern void *rt_mat4_new(double m0,
 extern void *rt_mat4_ortho(double left, double right, double bottom, double top, double near, double far);
 extern double rt_mat4_get(void *m, int64_t r, int64_t c);
 extern void *rt_mat4_transform_point(void *m, void *v);
+extern void *rt_mat4_inverse(void *m);
 }
 
 static int tests_passed = 0;
@@ -182,6 +183,30 @@ static void test_mat4_ortho_translation_layout() {
     EXPECT_NEAR(rt_vec3_x(center), 0.0, 0.01, "Mat4.Ortho maps center X to NDC 0");
     EXPECT_NEAR(rt_vec3_y(center), 0.0, 0.01, "Mat4.Ortho maps center Y to NDC 0");
     EXPECT_NEAR(rt_vec3_z(center), 0.0, 0.01, "Mat4.Ortho maps center Z to NDC 0");
+}
+
+static void test_mat4_inverse_translation_layout() {
+    void *translate = rt_mat4_new(1.0,
+                                  0.0,
+                                  0.0,
+                                  2.0,
+                                  0.0,
+                                  1.0,
+                                  0.0,
+                                  -3.0,
+                                  0.0,
+                                  0.0,
+                                  1.0,
+                                  5.0,
+                                  0.0,
+                                  0.0,
+                                  0.0,
+                                  1.0);
+    void *inverse = rt_mat4_inverse(translate);
+    void *local = rt_mat4_transform_point(inverse, rt_vec3_new(7.0, 8.0, 9.0));
+    EXPECT_NEAR(rt_vec3_x(local), 5.0, 0.01, "Mat4.Inverse subtracts row-major translation X");
+    EXPECT_NEAR(rt_vec3_y(local), 11.0, 0.01, "Mat4.Inverse subtracts row-major translation Y");
+    EXPECT_NEAR(rt_vec3_z(local), 4.0, 0.01, "Mat4.Inverse subtracts row-major translation Z");
 }
 
 static void test_transform_dirty_flag() {
@@ -325,6 +350,7 @@ int main() {
     test_transform_look_at_uses_negative_z_forward();
     test_transform_rejects_wrong_value_handles();
     test_mat4_ortho_translation_layout();
+    test_mat4_inverse_translation_layout();
     test_transform_dirty_flag();
     test_transform_sanitizes_nonfinite_inputs();
 

@@ -2520,7 +2520,7 @@ Navigation mesh with A* pathfinding for AI characters.
 | `SetMaxSlope(degrees)` | `void(f64)` | Update walkability slope threshold |
 | `DebugDraw(canvas)` | `void(obj)` | Visualize navmesh wireframe on Canvas3D |
 
-`Build()` stores the source walkable geometry separately from the filtered navigation triangles. `SetMaxSlope()` therefore immediately refilters the existing mesh and rebuilds adjacency instead of requiring a full rebuild. Slope tests use upward-facing triangle planes, `SamplePosition()` snaps to the triangle plane height, and `FindPath()` works from the containing triangle rather than centroid height.
+`Build()` stores the source walkable geometry separately from the filtered navigation triangles. `SetMaxSlope()` therefore immediately refilters the existing mesh and rebuilds adjacency instead of requiring a full rebuild. Slope tests use upward-facing triangle planes. `SamplePosition()` projects to the closest point on the nearest walkable triangle instead of snapping to a centroid, while `FindPath()` and `IsWalkable()` require the query height to be near the triangle plane so stacked floors or points far above the mesh do not alias to the wrong layer.
 
 ### Zia Example
 

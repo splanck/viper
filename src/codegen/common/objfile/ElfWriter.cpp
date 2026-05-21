@@ -775,6 +775,26 @@ bool ElfWriter::write(const std::string &path,
 // single-section write() to avoid unnecessary complexity.
 // =============================================================================
 
+namespace {
+/// @brief Derive a section base-name for each text section: the first global
+///        Text-bound symbol, or a synthetic `func_<i>` fallback.
+std::vector<std::string> collectElfTextFuncNames(const std::vector<CodeSection> &textSections) {
+    const size_t n = textSections.size();
+    std::vector<std::string> funcNames(n);
+    for (size_t i = 0; i < n; ++i) {
+        funcNames[i] = "func_" + std::to_string(i);
+        for (uint32_t j = 1; j < textSections[i].symbols().count(); ++j) {
+            const auto &s = textSections[i].symbols().at(j);
+            if (s.binding == SymbolBinding::Global && s.section == SymbolSection::Text) {
+                funcNames[i] = s.name;
+                break;
+            }
+        }
+    }
+    return funcNames;
+}
+} // namespace
+
 bool ElfWriter::write(const std::string &path,
                       const std::vector<CodeSection> &textSections,
                       const CodeSection &rodata,
@@ -798,17 +818,7 @@ bool ElfWriter::write(const std::string &path,
     const size_t sectionCount = 2 * N + baseSectionCount;
 
     // --- 1. Extract function names from each text section ---
-    std::vector<std::string> funcNames(N);
-    for (size_t i = 0; i < N; ++i) {
-        funcNames[i] = "func_" + std::to_string(i);
-        for (uint32_t j = 1; j < textSections[i].symbols().count(); ++j) {
-            const auto &s = textSections[i].symbols().at(j);
-            if (s.binding == SymbolBinding::Global && s.section == SymbolSection::Text) {
-                funcNames[i] = s.name;
-                break;
-            }
-        }
-    }
+    const std::vector<std::string> funcNames = collectElfTextFuncNames(textSections);
 
     // --- 2. Section index layout ---
     // [0] null

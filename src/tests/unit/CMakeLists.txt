@@ -1182,6 +1182,7 @@ function(viper_add_runtime_tests)
     target_link_libraries(test_rt_network_highlevel PRIVATE ${VIPER_RUNTIME_TEST_LIBS})
     viper_add_ctest(test_rt_network_highlevel test_rt_network_highlevel)
     viper_add_test_labels(test_rt_network_highlevel requires_local_bind)
+    set_tests_properties(test_rt_network_highlevel PROPERTIES TIMEOUT 240)
     foreach (_local_bind_test
             test_rt_network
             test_rt_network_timeout
@@ -1258,12 +1259,16 @@ function(viper_add_runtime_tests)
     viper_add_isolated_runtime_test(test_rt_particles3d_contract
             ${VIPER_TESTS_DIR}/runtime/RTParticles3DContractTests.cpp
             ${CMAKE_SOURCE_DIR}/src/runtime/graphics/rt_particles3d.c)
-    target_compile_definitions(test_rt_particles3d_contract PRIVATE VIPER_ENABLE_GRAPHICS=1)
+    target_compile_definitions(test_rt_particles3d_contract PRIVATE
+            VIPER_ENABLE_GRAPHICS=1
+            RT_G3D_ALLOW_STACK_FIXTURES=1)
 
     viper_add_isolated_runtime_test(test_rt_water3d_contract
             ${VIPER_TESTS_DIR}/runtime/RTWater3DContractTests.cpp
             ${CMAKE_SOURCE_DIR}/src/runtime/graphics/rt_water3d.c)
-    target_compile_definitions(test_rt_water3d_contract PRIVATE VIPER_ENABLE_GRAPHICS=1)
+    target_compile_definitions(test_rt_water3d_contract PRIVATE
+            VIPER_ENABLE_GRAPHICS=1
+            RT_G3D_ALLOW_STACK_FIXTURES=1)
 
     viper_add_test(test_rt_graphics3d_robustness
             ${VIPER_TESTS_DIR}/runtime/RTGraphics3DRobustnessTests.cpp)

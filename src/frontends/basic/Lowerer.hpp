@@ -737,6 +737,14 @@ class Lowerer {
     RVal lowerMethodCallExpr(const MethodCallExpr &expr);
     RVal lowerMethodCallExpr(const MethodCallExpr &expr, OopLoweringContext &ctx);
 
+    /// @brief Scan a method call's argument expressions into runtime BasicTypes.
+    std::vector<BasicType> methodCallRuntimeArgTypes(const MethodCallExpr &expr);
+    /// @brief Scan a method call's argument expressions into AST Types.
+    std::vector<::il::frontends::basic::Type> methodCallAstArgTypes(const MethodCallExpr &expr);
+    /// @brief Try to lower a static `Class.Method(...)` call (no receiver).
+    /// @return The lowered result, or std::nullopt if @p expr is an instance call.
+    std::optional<RVal> tryLowerStaticMethodCall(const MethodCallExpr &expr);
+
     /// @brief Lower a DELETE statement releasing an object reference.
     void lowerDelete(const DeleteStmt &stmt);
     void lowerDelete(const DeleteStmt &stmt, OopLoweringContext &ctx);
@@ -965,6 +973,13 @@ class Lowerer {
 
     ArrayAccess lowerArrayAccess(const ArrayExpr &expr, ArrayAccessKind kind);
 
+    /// @brief Emit the row-major flattened index for a multi-dimensional array
+    ///        access from per-index values and declared (inclusive) extents.
+    /// @param idxVals One lowered i64 value per dimension.
+    /// @param extents Declared per-dimension upper bounds (length = extent + 1).
+    Value emitRowMajorFlatIndex(const std::vector<Value> &idxVals,
+                                const std::vector<long long> &extents);
+
     void emitProgram(const Program &prog);
 
     /// @brief Current expression lowering depth for recursion guard.
@@ -1088,6 +1103,14 @@ class Lowerer {
 
     /// @brief Emit constructor, destructor, and method bodies for CLASS declarations.
     void emitOopDeclsAndBodies(const Program &prog);
+
+    /// @brief Emit one interface-registration thunk per declared interface.
+    /// @return The mangled names of the emitted thunks (for the module init).
+    std::vector<std::string> emitInterfaceRegThunks();
+
+    /// @brief Emit class→interface itable binding thunks (allocate + populate).
+    /// @return The mangled names of the emitted thunks (for the module init).
+    std::vector<std::string> emitInterfaceBindThunks();
 
     void emitClassConstructor(const ClassDecl &klass, const ConstructorDecl &ctor);
 

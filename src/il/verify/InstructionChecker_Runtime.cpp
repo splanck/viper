@@ -263,29 +263,27 @@ bool runtimeReturnMustBeBound(std::string_view callee, Type retType) {
 ///          otherwise the function returns success without modifying state.
 /// @param ctx Verification context describing the current instruction.
 /// @return Empty result on success; structured diagnostic on error.
-Expected<void> checkRuntimeArrayCall(const VerifyCtx &ctx) {
-    const RuntimeArrayCallee calleeKind = classifyRuntimeArrayCallee(ctx.instr.callee);
-    if (calleeKind == RuntimeArrayCallee::None)
-        return {};
+/// @brief Bundles the operand/result validation primitives used by
+///        checkRuntimeArrayCall so the per-callee switch reads as a table of
+///        intent rather than inline diagnostic boilerplate.
+struct RuntimeArrayCallChecker {
+    const VerifyCtx &ctx;
 
-    // Helper that enforces an exact operand count and emits a descriptive error
-    // when the instruction does not provide the required number of arguments.
-    const auto requireArgCount = [&](size_t expected) -> Expected<void> {
+    /// @brief Require an exact operand count, else emit a descriptive error.
+    Expected<void> requireArgCount(size_t expected) const {
         if (ctx.instr.operands.size() == expected)
             return {};
-
         std::ostringstream ss;
         ss << "expected " << expected << " argument";
         if (expected != 1)
             ss << 's';
         ss << " to @" << ctx.instr.callee;
         return fail(ctx, ss.str());
-    };
+    }
 
-    // Helper used to check operand types against the expected runtime
-    // signature, emitting contextual diagnostics when values are missing or of
-    // the wrong type.
-    const auto requireOperandType = [&](size_t index, Type::Kind expected, std::string_view role) {
+    /// @brief Require operand @p index to have type @p expected.
+    Expected<void> requireOperandType(size_t index, Type::Kind expected,
+                                      std::string_view role) const {
         bool missing = false;
         const Type actual = ctx.types.valueType(ctx.instr.operands[index], &missing);
         if (missing) {
@@ -300,11 +298,10 @@ Expected<void> checkRuntimeArrayCall(const VerifyCtx &ctx) {
             return fail(ctx, ss.str());
         }
         return Expected<void>{};
-    };
+    }
 
-    // Helper that verifies the presence and type of the instruction result for
-    // helpers expected to return a value.
-    const auto requireResultType = [&](Type::Kind expected) -> Expected<void> {
+    /// @brief Require the instruction to produce a result of type @p expected.
+    Expected<void> requireResultType(Type::Kind expected) const {
         if (!ctx.instr.result) {
             std::ostringstream ss;
             ss << "@" << ctx.instr.callee << " must produce " << kindToString(expected)
@@ -319,11 +316,10 @@ Expected<void> checkRuntimeArrayCall(const VerifyCtx &ctx) {
             return fail(ctx, ss.str());
         }
         return Expected<void>{};
-    };
+    }
 
-    // Helper ensuring helpers that should not produce a value remain
-    // side-effect only.
-    const auto requireNoResult = [&]() -> Expected<void> {
+    /// @brief Require the instruction to be side-effect only (no result).
+    Expected<void> requireNoResult() const {
         if (ctx.instr.result) {
             std::ostringstream ss;
             ss << "@" << ctx.instr.callee << " must not produce a result";
@@ -335,7 +331,23 @@ Expected<void> checkRuntimeArrayCall(const VerifyCtx &ctx) {
             return fail(ctx, ss.str());
         }
         return Expected<void>{};
+    }
+};
+
+Expected<void> checkRuntimeArrayCall(const VerifyCtx &ctx) {
+    const RuntimeArrayCallee calleeKind = classifyRuntimeArrayCallee(ctx.instr.callee);
+    if (calleeKind == RuntimeArrayCallee::None)
+        return {};
+
+    RuntimeArrayCallChecker checker{ctx};
+    const auto requireArgCount = [&](size_t expected) { return checker.requireArgCount(expected); };
+    const auto requireOperandType = [&](size_t index, Type::Kind expected, std::string_view role) {
+        return checker.requireOperandType(index, expected, role);
     };
+    const auto requireResultType = [&](Type::Kind expected) {
+        return checker.requireResultType(expected);
+    };
+    const auto requireNoResult = [&]() { return checker.requireNoResult(); };
 
     switch (calleeKind) {
         case RuntimeArrayCallee::NewI32: {

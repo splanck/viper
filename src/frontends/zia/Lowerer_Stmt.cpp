@@ -425,508 +425,458 @@ void Lowerer::lowerForInStmt(ForInStmt *stmt) {
     RangeModifierInfo rangeInfo;
     Expr *iterable = stmt->iterable.get();
     bool hasRange = collectRangeModifierChain(iterable, rangeInfo);
-    auto *rangeExpr = hasRange ? rangeInfo.range : dynamic_cast<RangeExpr *>(iterable);
-    if (rangeExpr) {
-        size_t condIdx = createBlock("forin_cond");
-        size_t bodyIdx = createBlock("forin_body");
-        size_t updateIdx = createBlock("forin_update");
-        size_t updateDoIdx = createBlock("forin_update_do");
-        size_t endIdx = createBlock("forin_end");
-
-        loopStack_.push(endIdx, updateIdx);
-
-        // Lower range bounds
-        auto startResult = lowerExpr(rangeExpr->start.get());
-        auto endResult = lowerExpr(rangeExpr->end.get());
-        Value startVal = widenIntegralToI64(startResult.value, startResult.type);
-        Value rangeEndVal = widenIntegralToI64(endResult.value, endResult.type);
-
-        // Lower step value (default 1)
-        Value stepVal = Value::constInt(1);
-        if (rangeInfo.stepArg) {
-            auto stepResult = lowerExpr(rangeInfo.stepArg);
-            stepVal = widenIntegralToI64(stepResult.value, stepResult.type);
-            stepVal = emitPositiveStepCheck(stepVal);
+    if (auto *rangeExpr = hasRange ? rangeInfo.range : dynamic_cast<RangeExpr *>(iterable)) {
+        lowerForInRange(stmt, rangeExpr, rangeInfo);
+    } else if (TypeRef iterableType = sema_.typeOf(stmt->iterable.get())) {
+        if (stmt->isTuple && iterableType->kind == TypeKindSem::Tuple) {
+            lowerForInTuple(stmt, iterableType);
+        } else if (iterableType->kind == TypeKindSem::List) {
+            lowerForInList(stmt, iterableType);
+        } else if (iterableType->kind == TypeKindSem::Map) {
+            lowerForInMap(stmt, iterableType);
+        } else if (iterableType->kind == TypeKindSem::Ptr &&
+                   iterableType->name == "Viper.Collections.Seq" &&
+                   !iterableType->typeArgs.empty()) {
+            lowerForInSeq(lowerExpr(stmt->iterable.get()),
+                          stmt,
+                          iterableType->typeArgs[0],
+                          true,
+                          "forin_seq");
+        } else if (const char *toSeqCallee = runtimeCollectionToSeqCallee(iterableType)) {
+            auto collectionValue = lowerExpr(stmt->iterable.get());
+            Value seqValue =
+                emitCallRet(Type(Type::Kind::Ptr), toSeqCallee, {collectionValue.value});
+            lowerForInSeq({seqValue, Type(Type::Kind::Ptr)},
+                          stmt,
+                          iterableType->elementType(),
+                          false,
+                          "forin_runtime_seq");
         }
-
-        // Create slot-based loop variable (alloca + initial store)
-        createSlot(stmt->variable, Type(Type::Kind::I64));
-        localTypes_[stmt->variable] = types::integer();
-
-        std::string cursorVar = stmt->variable + "_cursor";
-        createSlot(cursorVar, Type(Type::Kind::I64));
-
-        std::string endVar = stmt->variable + "_end";
-        createSlot(endVar, Type(Type::Kind::I64));
-
-        std::string stepVar = stmt->variable + "_step";
-        createSlot(stepVar, Type(Type::Kind::I64));
-        storeToSlot(stepVar, stepVal, Type(Type::Kind::I64));
-
-        if (rangeInfo.reversed) {
-            storeToSlot(cursorVar, rangeEndVal, Type(Type::Kind::I64));
-            storeToSlot(endVar, startVal, Type(Type::Kind::I64));
-        } else {
-            storeToSlot(cursorVar, startVal, Type(Type::Kind::I64));
-            storeToSlot(endVar, rangeEndVal, Type(Type::Kind::I64));
-        }
-
-        // Branch to condition
-        emitBr(condIdx);
-
-        // Condition block
-        setBlock(condIdx);
-        Value loopVar = loadFromSlot(cursorVar, Type(Type::Kind::I64));
-        Value endVal = loadFromSlot(endVar, Type(Type::Kind::I64));
-        Value cond;
-        if (rangeInfo.reversed) {
-            cond = emitBinary(rangeExpr->inclusive ? Opcode::SCmpGE : Opcode::SCmpGT,
-                              Type(Type::Kind::I1),
-                              loopVar,
-                              endVal);
-        } else if (rangeExpr->inclusive) {
-            cond = emitBinary(Opcode::SCmpLE, Type(Type::Kind::I1), loopVar, endVal);
-        } else {
-            cond = emitBinary(Opcode::SCmpLT, Type(Type::Kind::I1), loopVar, endVal);
-        }
-        emitCBr(cond, bodyIdx, endIdx);
-
-        // Body
-        setBlock(bodyIdx);
-        Value elemVal = loadFromSlot(cursorVar, Type(Type::Kind::I64));
-        if (rangeInfo.reversed && !rangeExpr->inclusive)
-            elemVal = emitBinary(Opcode::ISubOvf, Type(Type::Kind::I64), elemVal, Value::constInt(1));
-        storeToSlot(stmt->variable, elemVal, Type(Type::Kind::I64));
-        lowerStmt(stmt->body.get());
-        if (!isTerminated()) {
-            emitBr(updateIdx);
-        }
-
-        // Update: cursor = cursor +/- step, unless this was the terminal value or would overflow.
-        setBlock(updateIdx);
-        Value currentVal = loadFromSlot(cursorVar, Type(Type::Kind::I64));
-        Value currentBound = loadFromSlot(endVar, Type(Type::Kind::I64));
-        Value currentStep = loadFromSlot(stepVar, Type(Type::Kind::I64));
-        Value terminal = rangeExpr->inclusive
-                             ? emitBinary(
-                                   Opcode::ICmpEq, Type(Type::Kind::I1), currentVal, currentBound)
-                             : Value::constBool(false);
-        Value overflowRisk;
-        if (rangeInfo.reversed) {
-            Value minPlusStep = emitBinary(Opcode::IAddOvf,
-                                           Type(Type::Kind::I64),
-                                           Value::constInt(std::numeric_limits<int64_t>::min()),
-                                           currentStep);
-            overflowRisk =
-                emitBinary(Opcode::SCmpLT, Type(Type::Kind::I1), currentVal, minPlusStep);
-        } else {
-            Value maxMinusStep = emitBinary(Opcode::ISubOvf,
-                                            Type(Type::Kind::I64),
-                                            Value::constInt(std::numeric_limits<int64_t>::max()),
-                                            currentStep);
-            overflowRisk =
-                emitBinary(Opcode::SCmpGT, Type(Type::Kind::I1), currentVal, maxMinusStep);
-        }
-        Value terminalWide = emitUnary(Opcode::Zext1, Type(Type::Kind::I64), terminal);
-        Value overflowWide = emitUnary(Opcode::Zext1, Type(Type::Kind::I64), overflowRisk);
-        Value exitWide = emitBinary(Opcode::Or, Type(Type::Kind::I64), terminalWide, overflowWide);
-        Value exitNow = emitUnary(Opcode::Trunc1, Type(Type::Kind::I1), exitWide);
-        emitCBr(exitNow, endIdx, updateDoIdx);
-
-        setBlock(updateDoIdx);
-        Value nextCur = loadFromSlot(cursorVar, Type(Type::Kind::I64));
-        Value nextStep = loadFromSlot(stepVar, Type(Type::Kind::I64));
-        Opcode updateOp = rangeInfo.reversed ? Opcode::ISubOvf : Opcode::IAddOvf;
-        Value nextVal = emitBinary(updateOp, Type(Type::Kind::I64), nextCur, nextStep);
-        storeToSlot(cursorVar, nextVal, Type(Type::Kind::I64));
-        emitBr(condIdx);
-
-        loopStack_.pop();
-        setBlock(endIdx);
-
-        // Clean up slots
-        removeSlot(stmt->variable);
-        removeSlot(cursorVar);
-        removeSlot(endVar);
-        removeSlot(stepVar);
-        locals_ = std::move(localsBackup);
-        slots_ = std::move(slotsBackup);
-        localTypes_ = std::move(localTypesBackup);
-        return;
-    }
-
-    TypeRef iterableType = sema_.typeOf(stmt->iterable.get());
-    if (!iterableType) {
-        locals_ = std::move(localsBackup);
-        slots_ = std::move(slotsBackup);
-        localTypes_ = std::move(localTypesBackup);
-        return;
-    }
-
-    // Tuple destructuring over a tuple value (single iteration)
-    if (stmt->isTuple && iterableType->kind == TypeKindSem::Tuple) {
-        const auto &elements = iterableType->tupleElementTypes();
-        if (elements.size() == 2) {
-            TypeRef firstType = elements[0];
-            TypeRef secondType = elements[1];
-            if (stmt->variableType)
-                firstType = sema_.resolveType(stmt->variableType.get());
-            if (stmt->secondVariableType)
-                secondType = sema_.resolveType(stmt->secondVariableType.get());
-
-            Type firstIl = mapType(firstType);
-            Type secondIl = mapType(secondType);
-
-            createSlot(stmt->variable, firstIl);
-            createSlot(stmt->secondVariable, secondIl);
-            localTypes_[stmt->variable] = firstType;
-            localTypes_[stmt->secondVariable] = secondType;
-
-            size_t bodyIdx = createBlock("forin_tuple_body");
-            size_t endIdx = createBlock("forin_tuple_end");
-
-            loopStack_.push(endIdx, endIdx);
-            emitBr(bodyIdx);
-            setBlock(bodyIdx);
-
-            PatternValue tupleValue{lowerExpr(stmt->iterable.get()).value, iterableType};
-            PatternValue firstVal = emitTupleElement(tupleValue, 0, firstType);
-            PatternValue secondVal = emitTupleElement(tupleValue, 1, secondType);
-
-            storeToSlot(stmt->variable, firstVal.value, firstIl);
-            storeToSlot(stmt->secondVariable, secondVal.value, secondIl);
-
-            lowerStmt(stmt->body.get());
-            if (!isTerminated()) {
-                emitBr(endIdx);
-            }
-
-            loopStack_.pop();
-            setBlock(endIdx);
-        }
-
-        locals_ = std::move(localsBackup);
-        slots_ = std::move(slotsBackup);
-        localTypes_ = std::move(localTypesBackup);
-        return;
-    }
-
-    // Collection iteration (List/Map)
-    if (iterableType->kind == TypeKindSem::List) {
-        TypeRef elemType = iterableType->elementType();
-        if (stmt->variableType)
-            elemType = sema_.resolveType(stmt->variableType.get());
-
-        Type elemIlType = mapType(elemType);
-
-        // For tuple binding (for idx, val in list), first var is index, second is element
-        // For single binding (for val in list), the variable is the element
-        bool hasTupleBinding = stmt->isTuple && !stmt->secondVariable.empty();
-
-        if (hasTupleBinding) {
-            // First variable is the index
-            createSlot(stmt->variable, Type(Type::Kind::I64));
-            localTypes_[stmt->variable] = types::integer();
-            // Second variable is the element
-            createSlot(stmt->secondVariable, elemIlType);
-            localTypes_[stmt->secondVariable] = elemType;
-        } else {
-            createSlot(stmt->variable, elemIlType);
-            localTypes_[stmt->variable] = elemType;
-        }
-
-        auto listValue = lowerExpr(stmt->iterable.get());
-
-        std::string indexVar = "__forin_idx_" + std::to_string(nextTempId());
-        std::string lenVar = "__forin_len_" + std::to_string(nextTempId());
-        std::string listVar = "__forin_list_" + std::to_string(nextTempId());
-
-        createSlot(indexVar, Type(Type::Kind::I64));
-        createSlot(lenVar, Type(Type::Kind::I64));
-        createSlot(listVar, Type(Type::Kind::Ptr));
-        storeToSlot(indexVar, Value::constInt(0), Type(Type::Kind::I64));
-        storeToSlot(listVar, listValue.value, Type(Type::Kind::Ptr));
-        Value lenVal = emitCallRet(Type(Type::Kind::I64), kListCount, {listValue.value});
-        storeToSlot(lenVar, lenVal, Type(Type::Kind::I64));
-
-        size_t condIdx = createBlock("forin_list_cond");
-        size_t bodyIdx = createBlock("forin_list_body");
-        size_t updateIdx = createBlock("forin_list_update");
-        size_t endIdx = createBlock("forin_list_end");
-
-        loopStack_.push(endIdx, updateIdx);
-        emitBr(condIdx);
-
-        setBlock(condIdx);
-        Value idxVal = loadFromSlot(indexVar, Type(Type::Kind::I64));
-        Value lenLoaded = loadFromSlot(lenVar, Type(Type::Kind::I64));
-        Value cond = emitBinary(Opcode::SCmpLT, Type(Type::Kind::I1), idxVal, lenLoaded);
-        emitCBr(cond, bodyIdx, endIdx);
-
-        setBlock(bodyIdx);
-        Value listLoaded = loadFromSlot(listVar, Type(Type::Kind::Ptr));
-        Value idxInBody = loadFromSlot(indexVar, Type(Type::Kind::I64));
-
-        if (hasTupleBinding) {
-            // Store index in first variable
-            storeToSlot(stmt->variable, idxInBody, Type(Type::Kind::I64));
-            // Get and store element in second variable
-            Value boxed = emitCallRet(Type(Type::Kind::Ptr), kListGet, {listLoaded, idxInBody});
-            auto elemValue = emitUnboxValue(boxed, elemIlType, elemType);
-            storeToSlot(stmt->secondVariable, elemValue.value, elemIlType);
-        } else {
-            Value boxed = emitCallRet(Type(Type::Kind::Ptr), kListGet, {listLoaded, idxInBody});
-            auto elemValue = emitUnboxValue(boxed, elemIlType, elemType);
-            storeToSlot(stmt->variable, elemValue.value, elemIlType);
-        }
-
-        lowerStmt(stmt->body.get());
-        if (!isTerminated()) {
-            emitBr(updateIdx);
-        }
-
-        setBlock(updateIdx);
-        Value idxCurrent = loadFromSlot(indexVar, Type(Type::Kind::I64));
-        Value idxNext =
-            emitBinary(Opcode::IAddOvf, Type(Type::Kind::I64), idxCurrent, Value::constInt(1));
-        storeToSlot(indexVar, idxNext, Type(Type::Kind::I64));
-        emitBr(condIdx);
-
-        loopStack_.pop();
-        setBlock(endIdx);
-
-        removeSlot(stmt->variable);
-        if (hasTupleBinding)
-            removeSlot(stmt->secondVariable);
-        removeSlot(indexVar);
-        removeSlot(lenVar);
-        removeSlot(listVar);
-
-        locals_ = std::move(localsBackup);
-        slots_ = std::move(slotsBackup);
-        localTypes_ = std::move(localTypesBackup);
-        return;
-    }
-
-    if (iterableType->kind == TypeKindSem::Map) {
-        TypeRef keyType = iterableType->keyType() ? iterableType->keyType() : types::string();
-        TypeRef valueType =
-            iterableType->valueType() ? iterableType->valueType() : types::unknown();
-        if (stmt->variableType)
-            keyType = sema_.resolveType(stmt->variableType.get());
-        if (stmt->isTuple && stmt->secondVariableType)
-            valueType = sema_.resolveType(stmt->secondVariableType.get());
-
-        Type keyIlType = mapType(keyType);
-        Type valueIlType = mapType(valueType);
-
-        createSlot(stmt->variable, keyIlType);
-        localTypes_[stmt->variable] = keyType;
-
-        if (stmt->isTuple) {
-            createSlot(stmt->secondVariable, valueIlType);
-            localTypes_[stmt->secondVariable] = valueType;
-        }
-
-        auto mapValue = lowerExpr(stmt->iterable.get());
-        Value keysSeq = emitCallRet(Type(Type::Kind::Ptr), kMapKeys, {mapValue.value});
-
-        std::string indexVar = "__forin_idx_" + std::to_string(nextTempId());
-        std::string lenVar = "__forin_len_" + std::to_string(nextTempId());
-        std::string keysVar = "__forin_keys_" + std::to_string(nextTempId());
-        std::string mapVar = "__forin_map_" + std::to_string(nextTempId());
-
-        createSlot(indexVar, Type(Type::Kind::I64));
-        createSlot(lenVar, Type(Type::Kind::I64));
-        createSlot(keysVar, Type(Type::Kind::Ptr));
-        createSlot(mapVar, Type(Type::Kind::Ptr));
-        storeToSlot(indexVar, Value::constInt(0), Type(Type::Kind::I64));
-        storeToSlot(keysVar, keysSeq, Type(Type::Kind::Ptr));
-        storeToSlot(mapVar, mapValue.value, Type(Type::Kind::Ptr));
-        Value lenVal = emitCallRet(Type(Type::Kind::I64), kSeqLen, {keysSeq});
-        storeToSlot(lenVar, lenVal, Type(Type::Kind::I64));
-
-        size_t condIdx = createBlock("forin_map_cond");
-        size_t bodyIdx = createBlock("forin_map_body");
-        size_t updateIdx = createBlock("forin_map_update");
-        size_t endIdx = createBlock("forin_map_end");
-
-        loopStack_.push(endIdx, updateIdx);
-        emitBr(condIdx);
-
-        setBlock(condIdx);
-        Value idxVal = loadFromSlot(indexVar, Type(Type::Kind::I64));
-        Value lenLoaded = loadFromSlot(lenVar, Type(Type::Kind::I64));
-        Value cond = emitBinary(Opcode::SCmpLT, Type(Type::Kind::I1), idxVal, lenLoaded);
-        emitCBr(cond, bodyIdx, endIdx);
-
-        setBlock(bodyIdx);
-        // Load keys sequence and index from slot for cross-block SSA
-        Value keysLoaded = loadFromSlot(keysVar, Type(Type::Kind::Ptr));
-        Value idxInBody = loadFromSlot(indexVar, Type(Type::Kind::I64));
-        // Map keys are always strings stored as raw rt_string pointers in the seq
-        // (rt_map_keys pushes raw rt_string, not boxed rt_box_t). Use kSeqGetStr.
-        Value keyStrVal = emitCallRet(Type(Type::Kind::Str), kSeqGetStr, {keysLoaded, idxInBody});
-        LowerResult keyVal = {keyStrVal, Type(Type::Kind::Str)};
-        storeToSlot(stmt->variable, keyVal.value, keyIlType);
-
-        if (stmt->isTuple) {
-            // Load map from slot for cross-block SSA
-            Value mapLoaded = loadFromSlot(mapVar, Type(Type::Kind::Ptr));
-            Value boxed = emitCallRet(Type(Type::Kind::Ptr), kMapGet, {mapLoaded, keyVal.value});
-            auto unboxed = emitUnboxValue(boxed, valueIlType, valueType);
-            storeToSlot(stmt->secondVariable, unboxed.value, valueIlType);
-        }
-
-        lowerStmt(stmt->body.get());
-        if (!isTerminated()) {
-            emitBr(updateIdx);
-        }
-
-        setBlock(updateIdx);
-        Value idxCurrent = loadFromSlot(indexVar, Type(Type::Kind::I64));
-        Value idxNext =
-            emitBinary(Opcode::IAddOvf, Type(Type::Kind::I64), idxCurrent, Value::constInt(1));
-        storeToSlot(indexVar, idxNext, Type(Type::Kind::I64));
-        emitBr(condIdx);
-
-        loopStack_.pop();
-        setBlock(endIdx);
-
-        removeSlot(stmt->variable);
-        if (stmt->isTuple)
-            removeSlot(stmt->secondVariable);
-        removeSlot(indexVar);
-        removeSlot(lenVar);
-        removeSlot(keysVar);
-        removeSlot(mapVar);
-
-        locals_ = std::move(localsBackup);
-        slots_ = std::move(slotsBackup);
-        localTypes_ = std::move(localTypesBackup);
-        return;
-    }
-
-    auto lowerSeqForIn = [&](LowerResult seqValue,
-                             TypeRef elemType,
-                             bool rawStringElements,
-                             const std::string &labelPrefix) {
-        if (stmt->variableType)
-            elemType = sema_.resolveType(stmt->variableType.get());
-
-        Type elemIlType = mapType(elemType);
-        bool hasTupleBinding = stmt->isTuple && !stmt->secondVariable.empty();
-
-        if (hasTupleBinding) {
-            createSlot(stmt->variable, Type(Type::Kind::I64));
-            localTypes_[stmt->variable] = types::integer();
-            createSlot(stmt->secondVariable, elemIlType);
-            localTypes_[stmt->secondVariable] = elemType;
-        } else {
-            createSlot(stmt->variable, elemIlType);
-            localTypes_[stmt->variable] = elemType;
-        }
-
-        std::string indexVar = "__forin_idx_" + std::to_string(nextTempId());
-        std::string lenVar = "__forin_len_" + std::to_string(nextTempId());
-        std::string seqVar = "__forin_seq_" + std::to_string(nextTempId());
-
-        createSlot(indexVar, Type(Type::Kind::I64));
-        createSlot(lenVar, Type(Type::Kind::I64));
-        createSlot(seqVar, Type(Type::Kind::Ptr));
-        storeToSlot(indexVar, Value::constInt(0), Type(Type::Kind::I64));
-        storeToSlot(seqVar, seqValue.value, Type(Type::Kind::Ptr));
-        Value lenVal = emitCallRet(Type(Type::Kind::I64), kSeqLen, {seqValue.value});
-        storeToSlot(lenVar, lenVal, Type(Type::Kind::I64));
-
-        size_t condIdx = createBlock(labelPrefix + "_cond");
-        size_t bodyIdx = createBlock(labelPrefix + "_body");
-        size_t updateIdx = createBlock(labelPrefix + "_update");
-        size_t endIdx = createBlock(labelPrefix + "_end");
-
-        loopStack_.push(endIdx, updateIdx);
-        emitBr(condIdx);
-
-        setBlock(condIdx);
-        Value idxVal = loadFromSlot(indexVar, Type(Type::Kind::I64));
-        Value lenLoaded = loadFromSlot(lenVar, Type(Type::Kind::I64));
-        Value cond = emitBinary(Opcode::SCmpLT, Type(Type::Kind::I1), idxVal, lenLoaded);
-        emitCBr(cond, bodyIdx, endIdx);
-
-        setBlock(bodyIdx);
-        Value seqLoaded = loadFromSlot(seqVar, Type(Type::Kind::Ptr));
-        Value idxInBody = loadFromSlot(indexVar, Type(Type::Kind::I64));
-
-        if (hasTupleBinding)
-            storeToSlot(stmt->variable, idxInBody, Type(Type::Kind::I64));
-
-        if (rawStringElements && elemIlType.kind == Type::Kind::Str) {
-            Value elem = emitCallRet(Type(Type::Kind::Str), kSeqGetStr, {seqLoaded, idxInBody});
-            storeToSlot(hasTupleBinding ? stmt->secondVariable : stmt->variable,
-                        elem,
-                        Type(Type::Kind::Str));
-        } else {
-            Value boxed = emitCallRet(Type(Type::Kind::Ptr), kSeqGet, {seqLoaded, idxInBody});
-            auto elemValue = emitUnboxValue(boxed, elemIlType, elemType);
-            storeToSlot(hasTupleBinding ? stmt->secondVariable : stmt->variable,
-                        elemValue.value,
-                        elemIlType);
-        }
-
-        lowerStmt(stmt->body.get());
-        if (!isTerminated()) {
-            emitBr(updateIdx);
-        }
-
-        setBlock(updateIdx);
-        Value idxCurrent = loadFromSlot(indexVar, Type(Type::Kind::I64));
-        Value idxNext =
-            emitBinary(Opcode::IAddOvf, Type(Type::Kind::I64), idxCurrent, Value::constInt(1));
-        storeToSlot(indexVar, idxNext, Type(Type::Kind::I64));
-        emitBr(condIdx);
-
-        loopStack_.pop();
-        setBlock(endIdx);
-
-        removeSlot(stmt->variable);
-        if (hasTupleBinding)
-            removeSlot(stmt->secondVariable);
-        removeSlot(indexVar);
-        removeSlot(lenVar);
-        removeSlot(seqVar);
-    };
-
-    // Seq iteration: typed rt_seq result from seq<T>-annotated runtime functions.
-    // Uses kSeqLen / kSeqGet (not kListCount / kListGet) since rt_seq and rt_list
-    // have incompatible internal layouts.
-    if (iterableType->kind == TypeKindSem::Ptr && iterableType->name == "Viper.Collections.Seq" &&
-        !iterableType->typeArgs.empty()) {
-        lowerSeqForIn(lowerExpr(stmt->iterable.get()),
-                      iterableType->typeArgs[0],
-                      true,
-                      "forin_seq");
-        locals_ = std::move(localsBackup);
-        slots_ = std::move(slotsBackup);
-        localTypes_ = std::move(localTypesBackup);
-        return;
-    }
-
-    if (const char *toSeqCallee = runtimeCollectionToSeqCallee(iterableType)) {
-        auto collectionValue = lowerExpr(stmt->iterable.get());
-        Value seqValue = emitCallRet(Type(Type::Kind::Ptr), toSeqCallee, {collectionValue.value});
-        lowerSeqForIn({seqValue, Type(Type::Kind::Ptr)},
-                      iterableType->elementType(),
-                      false,
-                      "forin_runtime_seq");
-        locals_ = std::move(localsBackup);
-        slots_ = std::move(slotsBackup);
-        localTypes_ = std::move(localTypesBackup);
-        return;
     }
 
     locals_ = std::move(localsBackup);
     slots_ = std::move(slotsBackup);
     localTypes_ = std::move(localTypesBackup);
+}
+
+void Lowerer::lowerForInRange(ForInStmt *stmt, RangeExpr *rangeExpr,
+                              const RangeModifierInfo &rangeInfo) {
+    size_t condIdx = createBlock("forin_cond");
+    size_t bodyIdx = createBlock("forin_body");
+    size_t updateIdx = createBlock("forin_update");
+    size_t updateDoIdx = createBlock("forin_update_do");
+    size_t endIdx = createBlock("forin_end");
+
+    loopStack_.push(endIdx, updateIdx);
+
+    auto startResult = lowerExpr(rangeExpr->start.get());
+    auto endResult = lowerExpr(rangeExpr->end.get());
+    Value startVal = widenIntegralToI64(startResult.value, startResult.type);
+    Value rangeEndVal = widenIntegralToI64(endResult.value, endResult.type);
+
+    Value stepVal = Value::constInt(1);
+    if (rangeInfo.stepArg) {
+        auto stepResult = lowerExpr(rangeInfo.stepArg);
+        stepVal = widenIntegralToI64(stepResult.value, stepResult.type);
+        stepVal = emitPositiveStepCheck(stepVal);
+    }
+
+    createSlot(stmt->variable, Type(Type::Kind::I64));
+    localTypes_[stmt->variable] = types::integer();
+
+    std::string cursorVar = stmt->variable + "_cursor";
+    createSlot(cursorVar, Type(Type::Kind::I64));
+
+    std::string endVar = stmt->variable + "_end";
+    createSlot(endVar, Type(Type::Kind::I64));
+
+    std::string stepVar = stmt->variable + "_step";
+    createSlot(stepVar, Type(Type::Kind::I64));
+    storeToSlot(stepVar, stepVal, Type(Type::Kind::I64));
+
+    if (rangeInfo.reversed) {
+        storeToSlot(cursorVar, rangeEndVal, Type(Type::Kind::I64));
+        storeToSlot(endVar, startVal, Type(Type::Kind::I64));
+    } else {
+        storeToSlot(cursorVar, startVal, Type(Type::Kind::I64));
+        storeToSlot(endVar, rangeEndVal, Type(Type::Kind::I64));
+    }
+
+    emitBr(condIdx);
+
+    // Condition block.
+    setBlock(condIdx);
+    Value loopVar = loadFromSlot(cursorVar, Type(Type::Kind::I64));
+    Value endVal = loadFromSlot(endVar, Type(Type::Kind::I64));
+    Value cond;
+    if (rangeInfo.reversed) {
+        cond = emitBinary(rangeExpr->inclusive ? Opcode::SCmpGE : Opcode::SCmpGT,
+                          Type(Type::Kind::I1),
+                          loopVar,
+                          endVal);
+    } else if (rangeExpr->inclusive) {
+        cond = emitBinary(Opcode::SCmpLE, Type(Type::Kind::I1), loopVar, endVal);
+    } else {
+        cond = emitBinary(Opcode::SCmpLT, Type(Type::Kind::I1), loopVar, endVal);
+    }
+    emitCBr(cond, bodyIdx, endIdx);
+
+    // Body.
+    setBlock(bodyIdx);
+    Value elemVal = loadFromSlot(cursorVar, Type(Type::Kind::I64));
+    if (rangeInfo.reversed && !rangeExpr->inclusive)
+        elemVal = emitBinary(Opcode::ISubOvf, Type(Type::Kind::I64), elemVal, Value::constInt(1));
+    storeToSlot(stmt->variable, elemVal, Type(Type::Kind::I64));
+    lowerStmt(stmt->body.get());
+    if (!isTerminated())
+        emitBr(updateIdx);
+
+    // Update: cursor += step, gated on (terminal-value || overflow-risk).
+    setBlock(updateIdx);
+    Value currentVal = loadFromSlot(cursorVar, Type(Type::Kind::I64));
+    Value currentBound = loadFromSlot(endVar, Type(Type::Kind::I64));
+    Value currentStep = loadFromSlot(stepVar, Type(Type::Kind::I64));
+    Value terminal = rangeExpr->inclusive
+                         ? emitBinary(Opcode::ICmpEq, Type(Type::Kind::I1), currentVal, currentBound)
+                         : Value::constBool(false);
+    Value overflowRisk;
+    if (rangeInfo.reversed) {
+        Value minPlusStep = emitBinary(Opcode::IAddOvf,
+                                       Type(Type::Kind::I64),
+                                       Value::constInt(std::numeric_limits<int64_t>::min()),
+                                       currentStep);
+        overflowRisk = emitBinary(Opcode::SCmpLT, Type(Type::Kind::I1), currentVal, minPlusStep);
+    } else {
+        Value maxMinusStep = emitBinary(Opcode::ISubOvf,
+                                        Type(Type::Kind::I64),
+                                        Value::constInt(std::numeric_limits<int64_t>::max()),
+                                        currentStep);
+        overflowRisk = emitBinary(Opcode::SCmpGT, Type(Type::Kind::I1), currentVal, maxMinusStep);
+    }
+    Value terminalWide = emitUnary(Opcode::Zext1, Type(Type::Kind::I64), terminal);
+    Value overflowWide = emitUnary(Opcode::Zext1, Type(Type::Kind::I64), overflowRisk);
+    Value exitWide = emitBinary(Opcode::Or, Type(Type::Kind::I64), terminalWide, overflowWide);
+    Value exitNow = emitUnary(Opcode::Trunc1, Type(Type::Kind::I1), exitWide);
+    emitCBr(exitNow, endIdx, updateDoIdx);
+
+    setBlock(updateDoIdx);
+    Value nextCur = loadFromSlot(cursorVar, Type(Type::Kind::I64));
+    Value nextStep = loadFromSlot(stepVar, Type(Type::Kind::I64));
+    Opcode updateOp = rangeInfo.reversed ? Opcode::ISubOvf : Opcode::IAddOvf;
+    Value nextVal = emitBinary(updateOp, Type(Type::Kind::I64), nextCur, nextStep);
+    storeToSlot(cursorVar, nextVal, Type(Type::Kind::I64));
+    emitBr(condIdx);
+
+    loopStack_.pop();
+    setBlock(endIdx);
+
+    removeSlot(stmt->variable);
+    removeSlot(cursorVar);
+    removeSlot(endVar);
+    removeSlot(stepVar);
+}
+
+void Lowerer::lowerForInTuple(ForInStmt *stmt, TypeRef iterableType) {
+    const auto &elements = iterableType->tupleElementTypes();
+    if (elements.size() != 2)
+        return;
+
+    TypeRef firstType = elements[0];
+    TypeRef secondType = elements[1];
+    if (stmt->variableType)
+        firstType = sema_.resolveType(stmt->variableType.get());
+    if (stmt->secondVariableType)
+        secondType = sema_.resolveType(stmt->secondVariableType.get());
+
+    Type firstIl = mapType(firstType);
+    Type secondIl = mapType(secondType);
+
+    createSlot(stmt->variable, firstIl);
+    createSlot(stmt->secondVariable, secondIl);
+    localTypes_[stmt->variable] = firstType;
+    localTypes_[stmt->secondVariable] = secondType;
+
+    size_t bodyIdx = createBlock("forin_tuple_body");
+    size_t endIdx = createBlock("forin_tuple_end");
+
+    loopStack_.push(endIdx, endIdx);
+    emitBr(bodyIdx);
+    setBlock(bodyIdx);
+
+    PatternValue tupleValue{lowerExpr(stmt->iterable.get()).value, iterableType};
+    PatternValue firstVal = emitTupleElement(tupleValue, 0, firstType);
+    PatternValue secondVal = emitTupleElement(tupleValue, 1, secondType);
+
+    storeToSlot(stmt->variable, firstVal.value, firstIl);
+    storeToSlot(stmt->secondVariable, secondVal.value, secondIl);
+
+    lowerStmt(stmt->body.get());
+    if (!isTerminated())
+        emitBr(endIdx);
+
+    loopStack_.pop();
+    setBlock(endIdx);
+}
+
+void Lowerer::lowerForInList(ForInStmt *stmt, TypeRef iterableType) {
+    TypeRef elemType = iterableType->elementType();
+    if (stmt->variableType)
+        elemType = sema_.resolveType(stmt->variableType.get());
+
+    Type elemIlType = mapType(elemType);
+
+    // For tuple binding (for idx, val in list), first var is index, second is element;
+    // for single binding (for val in list), the variable is the element.
+    bool hasTupleBinding = stmt->isTuple && !stmt->secondVariable.empty();
+
+    if (hasTupleBinding) {
+        createSlot(stmt->variable, Type(Type::Kind::I64));
+        localTypes_[stmt->variable] = types::integer();
+        createSlot(stmt->secondVariable, elemIlType);
+        localTypes_[stmt->secondVariable] = elemType;
+    } else {
+        createSlot(stmt->variable, elemIlType);
+        localTypes_[stmt->variable] = elemType;
+    }
+
+    auto listValue = lowerExpr(stmt->iterable.get());
+
+    std::string indexVar = "__forin_idx_" + std::to_string(nextTempId());
+    std::string lenVar = "__forin_len_" + std::to_string(nextTempId());
+    std::string listVar = "__forin_list_" + std::to_string(nextTempId());
+
+    createSlot(indexVar, Type(Type::Kind::I64));
+    createSlot(lenVar, Type(Type::Kind::I64));
+    createSlot(listVar, Type(Type::Kind::Ptr));
+    storeToSlot(indexVar, Value::constInt(0), Type(Type::Kind::I64));
+    storeToSlot(listVar, listValue.value, Type(Type::Kind::Ptr));
+    Value lenVal = emitCallRet(Type(Type::Kind::I64), kListCount, {listValue.value});
+    storeToSlot(lenVar, lenVal, Type(Type::Kind::I64));
+
+    size_t condIdx = createBlock("forin_list_cond");
+    size_t bodyIdx = createBlock("forin_list_body");
+    size_t updateIdx = createBlock("forin_list_update");
+    size_t endIdx = createBlock("forin_list_end");
+
+    loopStack_.push(endIdx, updateIdx);
+    emitBr(condIdx);
+
+    setBlock(condIdx);
+    Value idxVal = loadFromSlot(indexVar, Type(Type::Kind::I64));
+    Value lenLoaded = loadFromSlot(lenVar, Type(Type::Kind::I64));
+    Value cond = emitBinary(Opcode::SCmpLT, Type(Type::Kind::I1), idxVal, lenLoaded);
+    emitCBr(cond, bodyIdx, endIdx);
+
+    setBlock(bodyIdx);
+    Value listLoaded = loadFromSlot(listVar, Type(Type::Kind::Ptr));
+    Value idxInBody = loadFromSlot(indexVar, Type(Type::Kind::I64));
+
+    if (hasTupleBinding) {
+        storeToSlot(stmt->variable, idxInBody, Type(Type::Kind::I64));
+        Value boxed = emitCallRet(Type(Type::Kind::Ptr), kListGet, {listLoaded, idxInBody});
+        auto elemValue = emitUnboxValue(boxed, elemIlType, elemType);
+        storeToSlot(stmt->secondVariable, elemValue.value, elemIlType);
+    } else {
+        Value boxed = emitCallRet(Type(Type::Kind::Ptr), kListGet, {listLoaded, idxInBody});
+        auto elemValue = emitUnboxValue(boxed, elemIlType, elemType);
+        storeToSlot(stmt->variable, elemValue.value, elemIlType);
+    }
+
+    lowerStmt(stmt->body.get());
+    if (!isTerminated())
+        emitBr(updateIdx);
+
+    setBlock(updateIdx);
+    Value idxCurrent = loadFromSlot(indexVar, Type(Type::Kind::I64));
+    Value idxNext =
+        emitBinary(Opcode::IAddOvf, Type(Type::Kind::I64), idxCurrent, Value::constInt(1));
+    storeToSlot(indexVar, idxNext, Type(Type::Kind::I64));
+    emitBr(condIdx);
+
+    loopStack_.pop();
+    setBlock(endIdx);
+
+    removeSlot(stmt->variable);
+    if (hasTupleBinding)
+        removeSlot(stmt->secondVariable);
+    removeSlot(indexVar);
+    removeSlot(lenVar);
+    removeSlot(listVar);
+}
+
+void Lowerer::lowerForInMap(ForInStmt *stmt, TypeRef iterableType) {
+    TypeRef keyType = iterableType->keyType() ? iterableType->keyType() : types::string();
+    TypeRef valueType = iterableType->valueType() ? iterableType->valueType() : types::unknown();
+    if (stmt->variableType)
+        keyType = sema_.resolveType(stmt->variableType.get());
+    if (stmt->isTuple && stmt->secondVariableType)
+        valueType = sema_.resolveType(stmt->secondVariableType.get());
+
+    Type keyIlType = mapType(keyType);
+    Type valueIlType = mapType(valueType);
+
+    createSlot(stmt->variable, keyIlType);
+    localTypes_[stmt->variable] = keyType;
+
+    if (stmt->isTuple) {
+        createSlot(stmt->secondVariable, valueIlType);
+        localTypes_[stmt->secondVariable] = valueType;
+    }
+
+    auto mapValue = lowerExpr(stmt->iterable.get());
+    Value keysSeq = emitCallRet(Type(Type::Kind::Ptr), kMapKeys, {mapValue.value});
+
+    std::string indexVar = "__forin_idx_" + std::to_string(nextTempId());
+    std::string lenVar = "__forin_len_" + std::to_string(nextTempId());
+    std::string keysVar = "__forin_keys_" + std::to_string(nextTempId());
+    std::string mapVar = "__forin_map_" + std::to_string(nextTempId());
+
+    createSlot(indexVar, Type(Type::Kind::I64));
+    createSlot(lenVar, Type(Type::Kind::I64));
+    createSlot(keysVar, Type(Type::Kind::Ptr));
+    createSlot(mapVar, Type(Type::Kind::Ptr));
+    storeToSlot(indexVar, Value::constInt(0), Type(Type::Kind::I64));
+    storeToSlot(keysVar, keysSeq, Type(Type::Kind::Ptr));
+    storeToSlot(mapVar, mapValue.value, Type(Type::Kind::Ptr));
+    Value lenVal = emitCallRet(Type(Type::Kind::I64), kSeqLen, {keysSeq});
+    storeToSlot(lenVar, lenVal, Type(Type::Kind::I64));
+
+    size_t condIdx = createBlock("forin_map_cond");
+    size_t bodyIdx = createBlock("forin_map_body");
+    size_t updateIdx = createBlock("forin_map_update");
+    size_t endIdx = createBlock("forin_map_end");
+
+    loopStack_.push(endIdx, updateIdx);
+    emitBr(condIdx);
+
+    setBlock(condIdx);
+    Value idxVal = loadFromSlot(indexVar, Type(Type::Kind::I64));
+    Value lenLoaded = loadFromSlot(lenVar, Type(Type::Kind::I64));
+    Value cond = emitBinary(Opcode::SCmpLT, Type(Type::Kind::I1), idxVal, lenLoaded);
+    emitCBr(cond, bodyIdx, endIdx);
+
+    setBlock(bodyIdx);
+    Value keysLoaded = loadFromSlot(keysVar, Type(Type::Kind::Ptr));
+    Value idxInBody = loadFromSlot(indexVar, Type(Type::Kind::I64));
+    // Map keys are stored as raw rt_string pointers in the seq, so use kSeqGetStr.
+    Value keyStrVal = emitCallRet(Type(Type::Kind::Str), kSeqGetStr, {keysLoaded, idxInBody});
+    LowerResult keyVal = {keyStrVal, Type(Type::Kind::Str)};
+    storeToSlot(stmt->variable, keyVal.value, keyIlType);
+
+    if (stmt->isTuple) {
+        Value mapLoaded = loadFromSlot(mapVar, Type(Type::Kind::Ptr));
+        Value boxed = emitCallRet(Type(Type::Kind::Ptr), kMapGet, {mapLoaded, keyVal.value});
+        auto unboxed = emitUnboxValue(boxed, valueIlType, valueType);
+        storeToSlot(stmt->secondVariable, unboxed.value, valueIlType);
+    }
+
+    lowerStmt(stmt->body.get());
+    if (!isTerminated())
+        emitBr(updateIdx);
+
+    setBlock(updateIdx);
+    Value idxCurrent = loadFromSlot(indexVar, Type(Type::Kind::I64));
+    Value idxNext =
+        emitBinary(Opcode::IAddOvf, Type(Type::Kind::I64), idxCurrent, Value::constInt(1));
+    storeToSlot(indexVar, idxNext, Type(Type::Kind::I64));
+    emitBr(condIdx);
+
+    loopStack_.pop();
+    setBlock(endIdx);
+
+    removeSlot(stmt->variable);
+    if (stmt->isTuple)
+        removeSlot(stmt->secondVariable);
+    removeSlot(indexVar);
+    removeSlot(lenVar);
+    removeSlot(keysVar);
+    removeSlot(mapVar);
+}
+
+void Lowerer::lowerForInSeq(LowerResult seqValue, ForInStmt *stmt, TypeRef elemType,
+                            bool rawStringElements, const std::string &labelPrefix) {
+    if (stmt->variableType)
+        elemType = sema_.resolveType(stmt->variableType.get());
+
+    Type elemIlType = mapType(elemType);
+    bool hasTupleBinding = stmt->isTuple && !stmt->secondVariable.empty();
+
+    if (hasTupleBinding) {
+        createSlot(stmt->variable, Type(Type::Kind::I64));
+        localTypes_[stmt->variable] = types::integer();
+        createSlot(stmt->secondVariable, elemIlType);
+        localTypes_[stmt->secondVariable] = elemType;
+    } else {
+        createSlot(stmt->variable, elemIlType);
+        localTypes_[stmt->variable] = elemType;
+    }
+
+    std::string indexVar = "__forin_idx_" + std::to_string(nextTempId());
+    std::string lenVar = "__forin_len_" + std::to_string(nextTempId());
+    std::string seqVar = "__forin_seq_" + std::to_string(nextTempId());
+
+    createSlot(indexVar, Type(Type::Kind::I64));
+    createSlot(lenVar, Type(Type::Kind::I64));
+    createSlot(seqVar, Type(Type::Kind::Ptr));
+    storeToSlot(indexVar, Value::constInt(0), Type(Type::Kind::I64));
+    storeToSlot(seqVar, seqValue.value, Type(Type::Kind::Ptr));
+    Value lenVal = emitCallRet(Type(Type::Kind::I64), kSeqLen, {seqValue.value});
+    storeToSlot(lenVar, lenVal, Type(Type::Kind::I64));
+
+    size_t condIdx = createBlock(labelPrefix + "_cond");
+    size_t bodyIdx = createBlock(labelPrefix + "_body");
+    size_t updateIdx = createBlock(labelPrefix + "_update");
+    size_t endIdx = createBlock(labelPrefix + "_end");
+
+    loopStack_.push(endIdx, updateIdx);
+    emitBr(condIdx);
+
+    setBlock(condIdx);
+    Value idxVal = loadFromSlot(indexVar, Type(Type::Kind::I64));
+    Value lenLoaded = loadFromSlot(lenVar, Type(Type::Kind::I64));
+    Value cond = emitBinary(Opcode::SCmpLT, Type(Type::Kind::I1), idxVal, lenLoaded);
+    emitCBr(cond, bodyIdx, endIdx);
+
+    setBlock(bodyIdx);
+    Value seqLoaded = loadFromSlot(seqVar, Type(Type::Kind::Ptr));
+    Value idxInBody = loadFromSlot(indexVar, Type(Type::Kind::I64));
+
+    if (hasTupleBinding)
+        storeToSlot(stmt->variable, idxInBody, Type(Type::Kind::I64));
+
+    if (rawStringElements && elemIlType.kind == Type::Kind::Str) {
+        Value elem = emitCallRet(Type(Type::Kind::Str), kSeqGetStr, {seqLoaded, idxInBody});
+        storeToSlot(hasTupleBinding ? stmt->secondVariable : stmt->variable,
+                    elem,
+                    Type(Type::Kind::Str));
+    } else {
+        Value boxed = emitCallRet(Type(Type::Kind::Ptr), kSeqGet, {seqLoaded, idxInBody});
+        auto elemValue = emitUnboxValue(boxed, elemIlType, elemType);
+        storeToSlot(hasTupleBinding ? stmt->secondVariable : stmt->variable,
+                    elemValue.value,
+                    elemIlType);
+    }
+
+    lowerStmt(stmt->body.get());
+    if (!isTerminated())
+        emitBr(updateIdx);
+
+    setBlock(updateIdx);
+    Value idxCurrent = loadFromSlot(indexVar, Type(Type::Kind::I64));
+    Value idxNext =
+        emitBinary(Opcode::IAddOvf, Type(Type::Kind::I64), idxCurrent, Value::constInt(1));
+    storeToSlot(indexVar, idxNext, Type(Type::Kind::I64));
+    emitBr(condIdx);
+
+    loopStack_.pop();
+    setBlock(endIdx);
+
+    removeSlot(stmt->variable);
+    if (hasTupleBinding)
+        removeSlot(stmt->secondVariable);
+    removeSlot(indexVar);
+    removeSlot(lenVar);
+    removeSlot(seqVar);
 }
 
 void Lowerer::lowerReturnStmt(ReturnStmt *stmt) {

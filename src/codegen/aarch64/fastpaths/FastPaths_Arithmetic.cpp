@@ -40,18 +40,12 @@ static bool isSubWidthCheckedOverflow(const il::core::Instr &instr) {
     return isCheckedOverflowOp(instr.op) && instr.type.kind != il::core::Type::Kind::I64;
 }
 
-std::optional<MFunction> tryIntArithmeticFastPaths(FastPathContext &ctx) {
-    if (ctx.fn.blocks.empty())
-        return std::nullopt;
-
+// Fast-path: `binop %p0, %p1 -> %r; ret %r` on two entry params (add/sub/mul/
+// bitwise/comparison). Returns the lowered MFunction on a match, else nullopt.
+static std::optional<MFunction> tryRegRegRetFastPath(FastPathContext &ctx) {
     const auto &bb = ctx.fn.blocks.front();
     auto &bbMir = ctx.bbOut(0);
 
-    // =========================================================================
-    // RR ops on entry params feeding ret
-    // =========================================================================
-    // Pattern: binop %p0, %p1 -> %r; ret %r
-    // Handles: add, sub, mul, and, or, xor, comparisons
     if (ctx.fn.blocks.size() == 1 && bb.instructions.size() >= 2 && bb.params.size() >= 2) {
         const auto &opI = bb.instructions[bb.instructions.size() - 2];
         const auto &retI = bb.instructions.back();
@@ -166,6 +160,18 @@ std::optional<MFunction> tryIntArithmeticFastPaths(FastPathContext &ctx) {
             }
         }
     }
+    return std::nullopt;
+}
+
+std::optional<MFunction> tryIntArithmeticFastPaths(FastPathContext &ctx) {
+    if (ctx.fn.blocks.empty())
+        return std::nullopt;
+
+    if (auto result = tryRegRegRetFastPath(ctx))
+        return result;
+
+    const auto &bb = ctx.fn.blocks.front();
+    auto &bbMir = ctx.bbOut(0);
 
     // =========================================================================
     // RI ops: add/sub/shl/lshr/ashr with immediate

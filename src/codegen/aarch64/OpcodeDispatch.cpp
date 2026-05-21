@@ -176,12 +176,12 @@ static void emitTrapRaiseErrorBlock(MFunction &mf, std::string label, int code) 
     trapBlock.instrs.push_back(MInstr{MOpcode::Bl, {MOperand::labelOp("rt_trap_raise_error")}});
 }
 
-bool lowerInstruction(const il::core::Instr &ins,
-                      const il::core::BasicBlock &bbIn,
-                      LoweringContext &ctx,
-                      std::size_t bbOutIdx) {
-    // Helper lambda to access the output block by index.
-    // This ensures we always get a valid reference even after emplace_back().
+// Handles integer/float conversion and narrowing opcodes. Returns false (so the
+// main dispatch can continue) for any opcode it does not own.
+static bool lowerCastOpcodes(const il::core::Instr &ins,
+                             const il::core::BasicBlock &bbIn,
+                             LoweringContext &ctx,
+                             std::size_t bbOutIdx) {
     auto bbOut = [&]() -> MBasicBlock & { return ctx.mf.blocks[bbOutIdx]; };
 
     switch (ins.op) {
@@ -401,6 +401,24 @@ bool lowerInstruction(const il::core::Instr &ins,
                     {MOperand::vregOp(RegClass::FPR, dst), MOperand::vregOp(RegClass::GPR, sv)}});
             return true;
         }
+        default:
+            return false;
+    }
+}
+
+bool lowerInstruction(const il::core::Instr &ins,
+                      const il::core::BasicBlock &bbIn,
+                      LoweringContext &ctx,
+                      std::size_t bbOutIdx) {
+    // Helper lambda to access the output block by index.
+    // This ensures we always get a valid reference even after emplace_back().
+    auto bbOut = [&]() -> MBasicBlock & { return ctx.mf.blocks[bbOutIdx]; };
+
+    // Integer/float conversion opcodes are handled by a dedicated helper.
+    if (lowerCastOpcodes(ins, bbIn, ctx, bbOutIdx))
+        return true;
+
+    switch (ins.op) {
         case Opcode::SRemChk0:
             return lowerSRemChk0(ins, bbIn, ctx, bbOut());
         case Opcode::SDivChk0:

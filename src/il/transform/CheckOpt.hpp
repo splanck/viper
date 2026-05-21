@@ -24,6 +24,9 @@
 
 #include "il/transform/PassRegistry.hpp"
 
+#include <string>
+#include <unordered_map>
+
 namespace il::transform {
 
 /// @brief Optimize check opcodes via redundancy elimination and loop hoisting.
@@ -41,6 +44,16 @@ class CheckOpt : public FunctionPass {
     /// @param analysis Analysis manager for querying dominators and loop info.
     /// @return PreservedAnalyses indicating which analyses remain valid.
     PreservedAnalyses run(core::Function &function, AnalysisManager &analysis) override;
+
+  private:
+    /// @brief Phase 0.5 of run(): demote overflow-checked ops to plain ops when
+    ///        a guarding signed comparison (CBr) proves the operation cannot
+    ///        overflow on the taken edge.
+    /// @return True if any instruction was rewritten.
+    bool runGuardOverflowElim(
+        core::Function &function,
+        const std::unordered_map<std::string, core::BasicBlock *> &blockMap,
+        const std::unordered_map<std::string, unsigned> &predecessorCounts);
 };
 
 /// @brief Register the CheckOpt pass with the provided registry.
