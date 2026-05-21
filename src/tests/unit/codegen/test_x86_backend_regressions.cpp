@@ -19,6 +19,7 @@
 #include "codegen/x86_64/LowerILToMIR.hpp"
 #include "codegen/x86_64/Lowering.EmitCommon.hpp"
 #include "codegen/x86_64/OperandRoles.hpp"
+#include "codegen/x86_64/PreRegAllocOpt.hpp"
 #include "codegen/x86_64/RegAllocLinear.hpp"
 #include "codegen/x86_64/TargetX64.hpp"
 #include "codegen/x86_64/peephole/BranchOpt.hpp"
@@ -31,6 +32,7 @@
 #include <cstdint>
 #include <cstdio>
 #include <iostream>
+#include <iterator>
 #include <limits>
 #include <optional>
 #include <regex>
@@ -38,6 +40,7 @@
 #include <stdexcept>
 #include <string>
 #include <utility>
+#include <vector>
 
 #if defined(_WIN32)
 #include <io.h>
@@ -662,7 +665,7 @@ TEST(X86BackendRegressions, CompareBranchFoldAcceptsExistingMovzx32) {
     EXPECT_FALSE(blockContainsOpcode(block, MOpcode::TESTrr));
 }
 
-TEST(X86BackendRegressions, SetccWithExistingMovzx32DoesNotInsertMovzx8) {
+TEST(X86BackendRegressions, SetccWithExistingMovzx32StillInsertsMovzx8) {
     MFunction fn{};
     fn.name = "setcc_existing_movzx32";
 
@@ -677,9 +680,87 @@ TEST(X86BackendRegressions, SetccWithExistingMovzx32DoesNotInsertMovzx8) {
     isel.lowerCompareAndBranch(fn);
 
     const auto &block = fn.blocks.front();
-    ASSERT_EQ(block.instructions.size(), 2u);
-    EXPECT_EQ(countOpcode(block, MOpcode::MOVZXrr8), 0u);
+    ASSERT_EQ(block.instructions.size(), 3u);
+    EXPECT_EQ(countOpcode(block, MOpcode::MOVZXrr8), 1u);
     EXPECT_EQ(countOpcode(block, MOpcode::MOVZXrr32), 1u);
+}
+
+TEST(X86BackendRegressions, CompareLoweringEmitsByteZeroExtendAfterSetcc) {
+    AsmEmitter::RoDataPool roData;
+    LowerILToMIR lowering(sysvTarget(), roData);
+
+    ILBlock entry{};
+    entry.name = "entry";
+    entry.paramIds = {0};
+    entry.paramKinds = {ILValue::Kind::I64};
+    entry.instrs = {op("icmp_ne", {val(ILValue::Kind::I64, 0), imm(0)}, 1, ILValue::Kind::I1),
+                    op("ret", {imm(0)})};
+
+    ILFunction fn{};
+    fn.name = "icmp_byte_zext";
+    fn.blocks = {entry};
+
+    const MFunction mir = lowering.lower(fn);
+    ASSERT_FALSE(mir.blocks.empty());
+    const auto &instrs = mir.blocks.front().instructions;
+    auto setccIt = std::find_if(instrs.begin(), instrs.end(), [](const MInstr &instr) {
+        return instr.opcode == MOpcode::SETcc;
+    });
+    ASSERT_TRUE(setccIt != instrs.end());
+    const auto setccIndex = static_cast<std::size_t>(std::distance(instrs.begin(), setccIt));
+    ASSERT_LT(setccIndex + 1, instrs.size());
+    EXPECT_EQ(instrs[setccIndex + 1].opcode, MOpcode::MOVZXrr8);
+}
+
+TEST(X86BackendRegressions, NanSafeFcmpNormalizesSetccBytesBeforeBooleanCombine) {
+    AsmEmitter::RoDataPool roData;
+    LowerILToMIR lowering(sysvTarget(), roData);
+
+    ILBlock entry{};
+    entry.name = "entry";
+    entry.paramIds = {0, 1};
+    entry.paramKinds = {ILValue::Kind::F64, ILValue::Kind::F64};
+    entry.instrs = {
+        op("fcmp_eq", {val(ILValue::Kind::F64, 0), val(ILValue::Kind::F64, 1)}, 2,
+           ILValue::Kind::I1),
+        op("fcmp_ne", {val(ILValue::Kind::F64, 0), val(ILValue::Kind::F64, 1)}, 3,
+           ILValue::Kind::I1),
+        op("ret", {imm(0)})};
+
+    ILFunction fn{};
+    fn.name = "fcmp_byte_zext";
+    fn.blocks = {entry};
+
+    const MFunction mir = lowering.lower(fn);
+    ASSERT_FALSE(mir.blocks.empty());
+    const auto &block = mir.blocks.front();
+    EXPECT_EQ(countOpcode(block, MOpcode::SETcc), 4u);
+    EXPECT_GE(countOpcode(block, MOpcode::MOVZXrr8), 4u);
+
+    for (std::size_t idx = 0; idx + 1 < block.instructions.size(); ++idx) {
+        if (block.instructions[idx].opcode == MOpcode::SETcc) {
+            EXPECT_EQ(block.instructions[idx + 1].opcode, MOpcode::MOVZXrr8);
+        }
+    }
+}
+
+TEST(X86BackendRegressions, PreRegAllocCopyForwardingStopsAtTrapBoundary) {
+    MFunction fn{};
+    fn.name = "pre_ra_ud2_boundary";
+
+    MBasicBlock entry{};
+    entry.label = ".L_pre_ra_ud2_boundary";
+    const Operand src = makeVRegOperand(RegClass::GPR, 1);
+    const Operand copy = makeVRegOperand(RegClass::GPR, 2);
+    const Operand dst = makeVRegOperand(RegClass::GPR, 3);
+    entry.instructions = {MInstr::make(MOpcode::MOVrr, {copy, src}),
+                          MInstr::make(MOpcode::UD2),
+                          MInstr::make(MOpcode::ADDrr, {dst, copy})};
+    fn.blocks.push_back(std::move(entry));
+
+    EXPECT_EQ(runPreRegAllocOpt(fn), 0u);
+    ASSERT_EQ(fn.blocks.front().instructions.size(), 3u);
+    EXPECT_EQ(fn.blocks.front().instructions.front().opcode, MOpcode::MOVrr);
 }
 
 TEST(X86BackendRegressions, ConditionalBlockArgsUseDedicatedEdgeBlocks) {
@@ -1380,6 +1461,61 @@ TEST(X86BackendRegressions, RegAllocDoesNotAllocateFixedScratchRegisters) {
             }
         }
     }
+}
+
+TEST(X86BackendRegressions, CoalescerPreservesSpilledMemorySourceCycles) {
+    MFunction fn{};
+    fn.name = "px_copy_spilled_swap";
+
+    const Operand v1 = makeVRegOperand(RegClass::GPR, 1);
+    const Operand v2 = makeVRegOperand(RegClass::GPR, 2);
+
+    MBasicBlock entry{};
+    entry.label = ".L_px_entry";
+    entry.instructions = {MInstr::make(MOpcode::MOVri, {v1, makeImmOperand(1)}),
+                          MInstr::make(MOpcode::MOVri, {v2, makeImmOperand(2)}),
+                          MInstr::make(MOpcode::JMP, {makeLabelOperand(".L_px_swap")})};
+
+    MBasicBlock filler{};
+    filler.label = ".L_px_filler";
+    filler.instructions = {MInstr::make(MOpcode::RET)};
+
+    MBasicBlock swap{};
+    swap.label = ".L_px_swap";
+    swap.instructions = {MInstr::make(MOpcode::PX_COPY, {v1, v2, v2, v1}),
+                         MInstr::make(MOpcode::ADDrr, {v1, v2}),
+                         MInstr::make(MOpcode::RET)};
+
+    fn.blocks = {entry, filler, swap};
+
+    (void)allocate(fn, sysvTarget());
+
+    const auto &instructions = fn.blocks[2].instructions;
+    std::vector<int64_t> loadDispsBeforeFirstStore;
+    std::optional<int64_t> firstStoreDisp;
+    for (const auto &instr : instructions) {
+        if (instr.opcode == MOpcode::MOVrm) {
+            const auto *mem = std::get_if<OpMem>(&instr.operands[0]);
+            if (mem && mem->base.isPhys &&
+                static_cast<PhysReg>(mem->base.idOrPhys) == PhysReg::RBP && mem->disp < 0) {
+                firstStoreDisp = mem->disp;
+            }
+            break;
+        }
+        if (instr.opcode != MOpcode::MOVmr || instr.operands.size() < 2) {
+            continue;
+        }
+        const auto *mem = std::get_if<OpMem>(&instr.operands[1]);
+        if (mem && mem->base.isPhys && static_cast<PhysReg>(mem->base.idOrPhys) == PhysReg::RBP &&
+            mem->disp < 0) {
+            loadDispsBeforeFirstStore.push_back(mem->disp);
+        }
+    }
+    ASSERT_TRUE(firstStoreDisp.has_value());
+    EXPECT_NE(std::find(loadDispsBeforeFirstStore.begin(),
+                        loadDispsBeforeFirstStore.end(),
+                        *firstStoreDisp),
+              loadDispsBeforeFirstStore.end());
 }
 
 TEST(X86BackendRegressions, RegAllocPreservesCallerSavedLiveOutAcrossCall) {

@@ -914,7 +914,50 @@ int main() {
     }
 
     // ================================================================
-    // 32. Darwin symbols stay canonical until Mach-O writing
+    // 32. Indirect CALL/JMP via RIP-relative memory
+    // ================================================================
+    {
+        MFunction fn;
+        fn.name = "rip_indirect_call";
+        MBasicBlock bb;
+        bb.label = ".Lentry";
+        bb.append(MInstr::make(MOpcode::CALL, {ripLabel("fnptr")}));
+        fn.addBlock(std::move(bb));
+
+        X64BinaryEncoder enc;
+        CodeSection text, rodata;
+        enc.encodeFunction(fn, text, rodata, false);
+
+        CHECK(text.bytes().size() == 6);
+        CHECK(bytesMatch(text.bytes(), {0xFF, 0x15, 0x00, 0x00, 0x00, 0x00}));
+        CHECK(text.relocations().size() == 1);
+        CHECK(text.relocations()[0].kind == RelocKind::PCRel32);
+        CHECK(text.relocations()[0].addend == -4);
+        CHECK(text.relocations()[0].offset == 2);
+    }
+
+    {
+        MFunction fn;
+        fn.name = "rip_indirect_jmp";
+        MBasicBlock bb;
+        bb.label = ".Lentry";
+        bb.append(MInstr::make(MOpcode::JMP, {ripLabel("jmpptr")}));
+        fn.addBlock(std::move(bb));
+
+        X64BinaryEncoder enc;
+        CodeSection text, rodata;
+        enc.encodeFunction(fn, text, rodata, false);
+
+        CHECK(text.bytes().size() == 6);
+        CHECK(bytesMatch(text.bytes(), {0xFF, 0x25, 0x00, 0x00, 0x00, 0x00}));
+        CHECK(text.relocations().size() == 1);
+        CHECK(text.relocations()[0].kind == RelocKind::PCRel32);
+        CHECK(text.relocations()[0].addend == -4);
+        CHECK(text.relocations()[0].offset == 2);
+    }
+
+    // ================================================================
+    // 33. Darwin symbols stay canonical until Mach-O writing
     // ================================================================
     {
         MFunction fn;

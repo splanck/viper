@@ -57,6 +57,46 @@ struct ScratchRelease {
     return makePhysRegOperand(cls, static_cast<uint16_t>(reg));
 }
 
+struct CopyLocation {
+    enum class Kind { Reg, Mem };
+
+    Kind kind{Kind::Reg};
+    RegClass cls{RegClass::GPR};
+    PhysReg reg{PhysReg::RAX};
+    int slot{-1};
+};
+
+[[nodiscard]] CopyLocation sourceLocation(const CopyTask &task) {
+    if (task.src.kind == CopySource::Kind::Reg) {
+        return CopyLocation{CopyLocation::Kind::Reg, task.cls, task.src.reg, -1};
+    }
+    return CopyLocation{CopyLocation::Kind::Mem, task.cls, PhysReg::RAX, task.src.slot};
+}
+
+[[nodiscard]] CopyLocation destLocation(const CopyTask &task) {
+    if (task.destKind == CopyTask::DestKind::Reg) {
+        return CopyLocation{CopyLocation::Kind::Reg, task.cls, task.destReg, -1};
+    }
+    return CopyLocation{CopyLocation::Kind::Mem, task.cls, PhysReg::RAX, task.destSlot};
+}
+
+[[nodiscard]] bool sameLocation(const CopyLocation &lhs, const CopyLocation &rhs) noexcept {
+    if (lhs.kind != rhs.kind || lhs.cls != rhs.cls) {
+        return false;
+    }
+    return lhs.kind == CopyLocation::Kind::Reg ? lhs.reg == rhs.reg : lhs.slot == rhs.slot;
+}
+
+[[nodiscard]] bool sourceMatchesLocation(const CopyTask &task,
+                                         const CopyLocation &location) noexcept {
+    if (location.kind == CopyLocation::Kind::Reg) {
+        return task.src.kind == CopySource::Kind::Reg && task.cls == location.cls &&
+               task.src.reg == location.reg;
+    }
+    return task.src.kind == CopySource::Kind::Mem && task.cls == location.cls &&
+           task.src.slot == location.slot;
+}
+
 } // namespace
 
 /// @brief Construct a coalescer tied to a specific allocator and spiller.
@@ -163,24 +203,20 @@ void Coalescer::lower(const MInstr &instr, std::vector<MInstr> &out) {
         bool progress = false;
         for (std::size_t i = 0; i < tasks.size(); ++i) {
             const auto task = tasks[i];
-            bool canEmit = false;
-            if (task.destKind == CopyTask::DestKind::Mem) {
-                canEmit = true;
-            } else if (task.src.kind == CopySource::Kind::Mem) {
-                canEmit = true;
-            } else if (task.src.kind == CopySource::Kind::Reg) {
-                // A move (dest←src) can be emitted when dest is NOT used as
-                // a source by any other pending move.  Writing to dest first
-                // would clobber the value another move still needs to read.
-                bool destIsSource = false;
-                for (const auto &other : tasks) {
-                    if (other.src.kind == CopySource::Kind::Reg && other.src.reg == task.destReg) {
-                        destIsSource = true;
-                        break;
-                    }
+            const CopyLocation dst = destLocation(task);
+            const CopyLocation src = sourceLocation(task);
+            bool locDestIsSource = false;
+            for (std::size_t j = 0; j < tasks.size(); ++j) {
+                if (i == j) {
+                    continue;
                 }
-                canEmit = !destIsSource || task.destReg == task.src.reg;
+                if (sourceMatchesLocation(tasks[j], dst)) {
+                    locDestIsSource = true;
+                    break;
+                }
             }
+
+            const bool canEmit = !locDestIsSource || sameLocation(dst, src);
 
             if (!canEmit) {
                 continue;
@@ -200,24 +236,33 @@ void Coalescer::lower(const MInstr &instr, std::vector<MInstr> &out) {
             return t.destKind == CopyTask::DestKind::Reg && t.src.kind == CopySource::Kind::Reg;
         });
         if (it == tasks.end()) {
-            break;
+            it = tasks.begin();
         }
 
         CopyTask cycleTask = *it;
-        const PhysReg srcReg = cycleTask.src.reg;
+        const CopyLocation savedSource = sourceLocation(cycleTask);
 
         std::vector<MInstr> tmpPrefix{};
-        const PhysReg temp = allocator_.takeRegister(cycleTask.cls, tmpPrefix);
+        PhysReg temp = PhysReg::R10;
+        if (cycleTask.cls == RegClass::XMM) {
+            temp = allocator_.takeRegister(cycleTask.cls, tmpPrefix);
+            scratch.push_back(ScratchRelease{temp, cycleTask.cls});
+        }
         for (auto &pre : tmpPrefix) {
             generated.push_back(std::move(pre));
         }
-        generated.push_back(allocator_.makeMove(cycleTask.cls, temp, srcReg));
+        if (savedSource.kind == CopyLocation::Kind::Reg) {
+            generated.push_back(allocator_.makeMove(cycleTask.cls, temp, savedSource.reg));
+        } else {
+            generated.push_back(
+                spiller_.makeLoad(cycleTask.cls, temp, SpillPlan{true, savedSource.slot}));
+        }
         for (auto &pending : tasks) {
-            if (pending.src.kind == CopySource::Kind::Reg && pending.src.reg == srcReg) {
+            if (sourceMatchesLocation(pending, savedSource)) {
+                pending.src.kind = CopySource::Kind::Reg;
                 pending.src.reg = temp;
             }
         }
-        scratch.push_back(ScratchRelease{temp, cycleTask.cls});
     }
 
     for (auto &instrOut : generated) {
@@ -246,13 +291,19 @@ void Coalescer::emitCopyTask(const CopyTask &task, std::vector<MInstr> &generate
                 spiller_.makeStore(task.cls, SpillPlan{true, task.destSlot}, task.src.reg));
         } else {
             std::vector<MInstr> tmpPrefix{};
-            const PhysReg tmp = allocator_.takeRegister(task.cls, tmpPrefix);
+            PhysReg tmp = PhysReg::R11;
+            const bool borrowed = task.cls == RegClass::XMM;
+            if (borrowed) {
+                tmp = allocator_.takeRegister(task.cls, tmpPrefix);
+            }
             for (auto &pre : tmpPrefix) {
                 generated.push_back(std::move(pre));
             }
             generated.push_back(spiller_.makeLoad(task.cls, tmp, SpillPlan{true, task.src.slot}));
             generated.push_back(spiller_.makeStore(task.cls, SpillPlan{true, task.destSlot}, tmp));
-            allocator_.releaseRegister(tmp, task.cls);
+            if (borrowed) {
+                allocator_.releaseRegister(tmp, task.cls);
+            }
         }
         return;
     }

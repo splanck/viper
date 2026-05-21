@@ -34,6 +34,9 @@ static bool isPreferredArchiveDefinitionObject(const ObjFile &obj, LinkPlatform 
 static bool allowDuplicateStrongDefinition(const std::string &name,
                                            LinkPlatform platform,
                                            bool allowArchiveDefinitionPreference);
+static void synthesizeWindowsThreadSafeStaticGuards(
+    std::unordered_map<std::string, GlobalSymEntry> &globalSyms,
+    std::unordered_set<std::string> &undefined);
 static bool materializeCommonSymbols(std::vector<ObjFile> &allObjects,
                                      std::unordered_map<std::string, GlobalSymEntry> &globalSyms,
                                      std::ostream &err);
@@ -175,6 +178,43 @@ static bool weakExternalSearchesFallbackLibrary(const ObjSymbol &sym) {
            sym.weakExternalCharacteristics == 3;
 }
 
+static bool isMsvcStdComparisonCategoryInlineSymbol(const std::string &name) {
+    const bool isComparisonConstant =
+        name.rfind("?less@", 0) == 0 || name.rfind("?equal@", 0) == 0 ||
+        name.rfind("?equivalent@", 0) == 0 || name.rfind("?greater@", 0) == 0 ||
+        name.rfind("?unordered@", 0) == 0;
+    if (!isComparisonConstant)
+        return false;
+
+    return name.find("@strong_ordering@std@@2U") != std::string::npos ||
+           name.find("@weak_ordering@std@@2U") != std::string::npos ||
+           name.find("@partial_ordering@std@@2U") != std::string::npos;
+}
+
+static bool isMsvcStdTypeInfoOrVftableSymbol(const std::string &name) {
+    const bool isTypeInfoOrVftable = name.rfind("??_7", 0) == 0 || name.rfind("??_R", 0) == 0;
+    return isTypeInfoOrVftable && name.find("@std@@") != std::string::npos;
+}
+
+static bool isMsvcDecoratedStringLiteral(const std::string &name) {
+    return name.rfind("??_C@", 0) == 0;
+}
+
+static bool isMsvcStdExceptionMetadataSymbol(const std::string &name) {
+    const bool isExceptionMetadata = name.rfind("_CT", 0) == 0 || name.rfind("_TI", 0) == 0;
+    return isExceptionMetadata && name.find("@std@@") != std::string::npos;
+}
+
+static bool isMsvcStdInlineConstDataSymbol(const std::string &name) {
+    return name.rfind("?", 0) == 0 && name.find("@std@@3") != std::string::npos &&
+           name.size() >= 2 && name.compare(name.size() - 2, 2, "@B") == 0;
+}
+
+static bool isMsvcGeneratedConstantSymbol(const std::string &name) {
+    return name.rfind("__real@", 0) == 0 || name.rfind("__xmm@", 0) == 0 ||
+           name.rfind("__ymm@", 0) == 0;
+}
+
 static bool getComdatDefinition(const ObjFile &obj,
                                 size_t objIdx,
                                 const ObjSymbol &sym,
@@ -200,9 +240,11 @@ static bool selectComdatDuplicate(const ObjFile &obj,
                                   size_t objIdx,
                                   const ComdatDefinition &existing,
                                   const ComdatDefinition &candidate,
-                                  GlobalSymEntry &entry,
-                                  std::ostream &err) {
+    GlobalSymEntry &entry,
+    std::ostream &err) {
     if (existing.key != candidate.key) {
+        if (existing.selection == ComdatSelection::Any && candidate.selection == ComdatSelection::Any)
+            return true;
         err << "error: multiply defined symbol '" << sym.name
             << "' has mismatched COMDAT keys\n";
         return false;
@@ -463,8 +505,22 @@ static bool isPreferredArchiveDefinitionObject(const ObjFile &obj, LinkPlatform 
 static bool allowDuplicateStrongDefinition(const std::string &name,
                                            LinkPlatform platform,
                                            bool allowArchiveDefinitionPreference) {
-    if (platform == LinkPlatform::Windows && isWindowsStdioOptionsStorageSymbol(name))
-        return true;
+    if (platform == LinkPlatform::Windows) {
+        if (isWindowsStdioOptionsStorageSymbol(name))
+            return true;
+        if (isMsvcStdComparisonCategoryInlineSymbol(name))
+            return true;
+        if (isMsvcStdTypeInfoOrVftableSymbol(name))
+            return true;
+        if (isMsvcDecoratedStringLiteral(name))
+            return true;
+        if (isMsvcStdExceptionMetadataSymbol(name))
+            return true;
+        if (isMsvcStdInlineConstDataSymbol(name))
+            return true;
+        if (isMsvcGeneratedConstantSymbol(name))
+            return true;
+    }
     return allowArchiveDefinitionPreference && preferArchiveDefinition(name, platform);
 }
 
@@ -584,6 +640,9 @@ bool resolveSymbols(const std::vector<ObjFile> &initialObjects,
         }
     }
 
+    if (platform == LinkPlatform::Windows)
+        synthesizeWindowsThreadSafeStaticGuards(globalSyms, undefined);
+
     if (!materializeCommonSymbols(allObjects, globalSyms, err))
         return false;
 
@@ -628,6 +687,39 @@ bool resolveSymbols(const std::vector<ObjFile> &initialObjects,
     }
 
     return true;
+}
+
+static void synthesizeWindowsThreadSafeStaticGuards(
+    std::unordered_map<std::string, GlobalSymEntry> &globalSyms,
+    std::unordered_set<std::string> &undefined) {
+    std::vector<std::string> guardNames;
+    guardNames.reserve(undefined.size());
+    for (const auto &name : undefined) {
+        if (isMsvcThreadSafeStaticGuardSymbol(name))
+            guardNames.push_back(name);
+    }
+
+    for (const auto &name : guardNames) {
+        auto existing = globalSyms.find(name);
+        if (existing != globalSyms.end() && existing->second.binding != GlobalSymEntry::Undefined) {
+            undefined.erase(name);
+            continue;
+        }
+
+        auto &entry = globalSyms[name];
+        entry.name = name;
+        entry.binding = GlobalSymEntry::Global;
+        entry.objIndex = 0;
+        entry.secIndex = 0;
+        entry.offset = 0;
+        entry.resolvedAddr = 0;
+        entry.resolvedAddrValid = false;
+        entry.absolute = false;
+        entry.common = true;
+        entry.commonSize = std::max<size_t>(entry.commonSize, 4);
+        entry.commonAlignment = std::max<size_t>(entry.commonAlignment, 4);
+        undefined.erase(name);
+    }
 }
 
 static bool materializeCommonSymbols(std::vector<ObjFile> &allObjects,

@@ -95,6 +95,32 @@ std::vector<std::string> sectionNames(const std::vector<uint8_t> &data) {
     return names;
 }
 
+bool findSectionInfo(const std::vector<uint8_t> &data,
+                     const std::string &needle,
+                     uint32_t &virtualSize,
+                     uint32_t &rawSize,
+                     uint32_t &rawPtr,
+                     uint32_t &characteristics) {
+    uint32_t peOffset = readU32(data, 0x3C);
+    uint16_t numSections = readU16(data, peOffset + 6);
+    uint16_t optSize = readU16(data, peOffset + 20);
+    size_t secOff = peOffset + 24 + optSize;
+
+    for (uint16_t i = 0; i < numSections; ++i) {
+        size_t sh = secOff + static_cast<size_t>(i) * 40;
+        std::string name(reinterpret_cast<const char *>(data.data() + sh), 8);
+        name.resize(std::strlen(name.c_str()));
+        if (name != needle)
+            continue;
+        virtualSize = readU32(data, sh + 8);
+        rawSize = readU32(data, sh + 16);
+        rawPtr = readU32(data, sh + 20);
+        characteristics = readU32(data, sh + 36);
+        return true;
+    }
+    return false;
+}
+
 /// Create a minimal link layout with one text section.
 LinkLayout makeMinimalLayout() {
     LinkLayout layout;
@@ -399,6 +425,45 @@ TEST(PeWriter, SkipsNonAllocDebugSections) {
         EXPECT_NE(name, ".debug");
         EXPECT_NE(name, ".debug_line");
     }
+}
+
+TEST(PeWriter, EmitsEmptyZeroFillSectionsIntoImage) {
+    constexpr uint64_t kImageBase = 0x140000000ULL;
+
+    auto layout = makeMinimalLayout();
+
+    OutputSection bss;
+    bss.name = ".bss";
+    bss.alloc = true;
+    bss.writable = true;
+    bss.zeroFill = true;
+    bss.memSize = 48;
+    bss.virtualAddr = kImageBase + 0x5000;
+    layout.sections.push_back(std::move(bss));
+
+    std::ostringstream err;
+    std::string path = "build/test-out/pe_test_empty_bss.exe";
+    std::filesystem::create_directories("build/test-out");
+
+    bool ok = writePeExe(path, layout, LinkArch::X86_64, {}, err);
+    ASSERT_TRUE(ok);
+    EXPECT_TRUE(err.str().empty());
+
+    auto data = readBinaryFile(path);
+    uint32_t peOffset = readU32(data, 0x3C);
+    size_t optOffset = peOffset + 24;
+    EXPECT_GE(readU32(data, optOffset + 56), 0x6000U); // SizeOfImage covers the BSS page.
+
+    uint32_t virtualSize = 0;
+    uint32_t rawSize = 0;
+    uint32_t rawPtr = 0;
+    uint32_t characteristics = 0;
+    ASSERT_TRUE(findSectionInfo(data, ".bss", virtualSize, rawSize, rawPtr, characteristics));
+    EXPECT_EQ(virtualSize, 48U);
+    EXPECT_EQ(rawSize, 0U);
+    EXPECT_EQ(rawPtr, 0U);
+    EXPECT_TRUE((characteristics & 0x00000080U) != 0); // IMAGE_SCN_CNT_UNINITIALIZED_DATA
+    EXPECT_TRUE((characteristics & 0x80000000U) != 0); // IMAGE_SCN_MEM_WRITE
 }
 
 TEST(PeWriter, ImportDirectoryIsWritten) {

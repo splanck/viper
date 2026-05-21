@@ -979,8 +979,12 @@ void X64BinaryEncoder::encodeInstructionImpl(const MInstr &instr,
         // --- Branches and calls ---
         case MOpcode::JMP: {
             requireOps(1);
-            encodeBranchOperand(op, ops[0], /*cc=*/0, text,
-                                "JMP requires a label, register, or memory target");
+            if (std::holds_alternative<OpRipLabel>(ops[0])) {
+                encodeBranchRip(op, ripFromOperand(ops[0]), text, rodata, isDarwin);
+            } else {
+                encodeBranchOperand(op, ops[0], /*cc=*/0, text,
+                                    "JMP requires a label, register, or memory target");
+            }
             return;
         }
 
@@ -1005,8 +1009,7 @@ void X64BinaryEncoder::encodeInstructionImpl(const MInstr &instr,
                     encodeCallExternal(label.name, text, isDarwin);
                 }
             } else if (std::holds_alternative<OpRipLabel>(ops[0])) {
-                // call.indirect through a global label → same relocation as external.
-                encodeCallExternal(ripFromOperand(ops[0]).name, text, isDarwin);
+                encodeBranchRip(op, ripFromOperand(ops[0]), text, rodata, isDarwin);
             } else {
                 encodeBranchOperand(op, ops[0], /*cc=*/0, text,
                                     "CALL has unsupported operand shape");
@@ -1599,6 +1602,41 @@ void X64BinaryEncoder::encodeBranchMem(MOpcode op, const OpMem &mem, objfile::Co
                        /*mandatoryPrefix=*/0,
                        0xFF,
                        0);
+}
+
+// === Branch/Call indirect via RIP-relative memory ===
+
+void X64BinaryEncoder::encodeBranchRip(MOpcode op,
+                                       const OpRipLabel &rip,
+                                       objfile::CodeSection &text,
+                                       objfile::CodeSection &rodata,
+                                       bool isDarwin) {
+    if (op != MOpcode::CALL && op != MOpcode::JMP) {
+        throw std::runtime_error("x86-64 binary encoder: RIP branch target requires CALL or JMP");
+    }
+
+    const uint8_t ext = (op == MOpcode::CALL) ? 2 : 4; // /2 for CALL, /4 for JMP
+    text.emit8(0xFF);
+    text.emit8(makeModRM(0b00, ext, 0b101));
+
+    (void)isDarwin;
+    const std::string symName = rip.name;
+    const uint32_t rodataSymIdx = rodata.symbols().find(symName);
+    const size_t dispOffset = text.currentOffset();
+    text.emit32LE(0);
+    if (rodataSymIdx != 0) {
+        const auto &rodataSym = rodata.symbols().at(rodataSymIdx);
+        text.addSectionOffsetRelocationAt(dispOffset,
+                                          objfile::RelocKind::PCRel32,
+                                          rodata,
+                                          objfile::SymbolSection::Rodata,
+                                          rodataSym.offset,
+                                          -4);
+        return;
+    }
+
+    const uint32_t symIdx = text.findOrDeclareSymbol(symName);
+    text.addRelocationAt(dispOffset, objfile::RelocKind::PCRel32, symIdx, -4);
 }
 
 // === Branch / call operand-kind dispatcher ===

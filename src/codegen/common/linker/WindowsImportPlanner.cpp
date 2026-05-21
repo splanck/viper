@@ -155,22 +155,24 @@ bool dllForImport(const std::string &name, bool debugRuntime, std::string &dllNa
         "__local_stdio_scanf_options","__stdio_common_vfprintf","stdio_common_vfprintf",
         "__stdio_common_vsprintf","stdio_common_vsprintf","__stdio_common_vsscanf","stdio_common_vsscanf",
         "_vfprintf_l","_vsscanf_l","abort","access","abs","aligned_free","aligned_malloc",
-        "aligned_alloc","atexit","atof","atoi","atol","atoll","bsearch","calloc_dbg","calloc","cbrt","cbrtf",
+        "aligned_alloc","atexit","atof","atoi","atol","atoll","beginthreadex","_beginthreadex",
+        "bsearch","calloc_dbg","calloc","cbrt","cbrtf",
         "ceil","ceilf",
         "clearerr","clock","close","commit","_commit","cos","cosf","create_locale","dclass","difftime64",
-        "_difftime64","dsign","fdsign","ldsign","dup","dup2","errno","exit",
+        "_difftime64","dsign","dtest","_dtest","fdsign","ldsign","dup","dup2","errno","exit",
         "fabs","fabsf","fdclass","fclose","fcntl","ferror","feof","fflush","fgetc","fgets","fileno","fmax",
-        "fdopen","_fdopen","fmaxf","fmaxl","fmin","fminf","fminl","floor","floorf","fmod","fmodf","fopen","fprintf","fputc","fputs","fread",
-        "free","free_locale","freopen","fseek","fstat64i32","ftell","fwrite","getc","getcwd","getenv","getch",
+        "fdopen","_fdopen","fgetpos","fmaxf","fmaxl","fmin","fminf","fminl","floor","floorf","fmod","fmodf","fopen","fprintf","fputc","fputs","fread",
+        "free","free_locale","freopen","fseek","fsetpos","fstat64i32","ftell","fwrite","getc","getcwd","getenv","getch",
+        "get_stream_buffer_pointers","_get_stream_buffer_pointers",
         "getpid","hypot","isalnum","isalpha","isdigit","islower","isspace","isupper","isxdigit","isatty","kbhit",
-        "llround","localeconv","log","log10","log2","logf","longjmp","lseek","malloc","memchr","memcmp","memcpy",
-        "memmove","memset","nan","nearbyint","open","perror","pclose","posix_memalign","popen","pow","powf",
+        "llround","localeconv","lock_file","_lock_file","log","log10","log2","logf","longjmp","lseek","malloc","memchr","memcmp","memcpy",
+        "memmove","memset","modf","nan","nearbyint","open","perror","pclose","posix_memalign","popen","pow","powf",
         "printf","putc","puts","qsort","raise","read","realloc","remove","rename","rewind","rint","round","roundf",
         "setbuf","setenv","setjmp","setvbuf","sin","sinf","snprintf","sprintf","sqrt","sqrtf","sscanf","strcat",
         "strcat_s","strchr","strcmp","strcpy","strcpy_s","strdup","strerror","stricmp","strlen","strnlen","strncat",
         "strnicmp","strncmp","strncpy","strstr","strtod","strtod_l","strtol","strtoll","strtok_s","strtoul",
         "strrchr","strftime","system","tan","tanf","time","time64","tmpfile","tmpnam","tolower","toupper","trunc",
-        "truncf","ungetc","unlink","utime64","_wutime64","vfprintf","wcscmp","wcscpy","wcslen","wcsncmp","wcscpy_s","write",
+        "truncf","ungetc","unlink","unlock_file","_unlock_file","utime64","_wutime64","vfprintf","wcscmp","wcscpy","wcslen","wcsncmp","wcscpy_s","write",
         "_wfopen","wfopen","_wmakepath_s","_wmkdir","wmkdir","_open_osfhandle","open_osfhandle","_wopen","wopen","_wremove","wremove",
         "_wsplitpath_s","_wunlink","wunlink","fseeki64","ftelli64","gmtime64_s","localtime64_s","lseeki64","mktime64",
         "rand_s","set_abort_behavior","stat64i32","_stat64i32","wstat64i32","_wstat64i32",
@@ -196,27 +198,42 @@ bool dllForImport(const std::string &name, bool debugRuntime, std::string &dllNa
 
     if (name == "__C_specific_handler" || name == "__C_specific_handler_noexcept" ||
         name == "__current_exception" || name == "__current_exception_context" ||
+        name == "__RTDynamicCast" ||
         name == "_CxxThrowException" || name == "__CxxFrameHandler3" ||
         name == "__CxxFrameHandler4" ||
         name == "__std_exception_copy" || name == "__std_exception_destroy" ||
+        name == "__std_type_info_compare" ||
+        name == "_purecall" ||
+        name == "terminate" ||
         stripped == "__C_specific_handler" || stripped == "__C_specific_handler_noexcept" ||
         stripped == "__current_exception" || stripped == "__current_exception_context" ||
+        stripped == "RTDynamicCast" ||
         stripped == "CxxThrowException" || stripped == "CxxFrameHandler3" ||
         stripped == "CxxFrameHandler4" ||
         stripped == "std_exception_copy" || stripped == "std_exception_destroy" ||
+        stripped == "std_type_info_compare" ||
+        stripped == "purecall" ||
+        stripped == "terminate" ||
+        hasPrefixEither(name, stripped, "_Init_thread_") ||
+        hasPrefixEither(name, stripped, "Init_thread_") ||
         name.rfind("__vcrt_", 0) == 0 || stripped.rfind("__vcrt_", 0) == 0) {
         dllName = debugRuntime ? "VCRUNTIME140D.dll" : "VCRUNTIME140.dll";
         return true;
     }
 
-    if (hasPrefixEither(name, stripped, "_Cnd_") ||
+    if (name == "_Avx2WmemEnabled" || stripped == "Avx2WmemEnabled" ||
+        hasPrefixEither(name, stripped, "_Cnd_") ||
         hasPrefixEither(name, stripped, "Cnd_") ||
         hasPrefixEither(name, stripped, "_Mtx_") ||
         hasPrefixEither(name, stripped, "Mtx_") ||
         hasPrefixEither(name, stripped, "_Query_perf_") ||
         hasPrefixEither(name, stripped, "Query_perf_") ||
+        hasPrefixEither(name, stripped, "_Smtx_") ||
+        hasPrefixEither(name, stripped, "Smtx_") ||
         hasPrefixEither(name, stripped, "_Thrd_") ||
-        hasPrefixEither(name, stripped, "Thrd_")) {
+        hasPrefixEither(name, stripped, "Thrd_") ||
+        hasPrefixEither(name, stripped, "__std_") ||
+        hasPrefixEither(name, stripped, "std_")) {
         dllName = debugRuntime ? "MSVCP140D.dll" : "MSVCP140.dll";
         return true;
     }

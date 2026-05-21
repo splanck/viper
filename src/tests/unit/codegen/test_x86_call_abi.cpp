@@ -225,6 +225,38 @@ TEST(X64CallABI, IndirectLabelCallsPreserveKnownVarArgMetadata) {
     EXPECT_EQ(plan.args.size(), 4u);
 }
 
+TEST(X64CallABI, IndirectLabelCallMaterializesAddressBeforeCall) {
+    AsmEmitter::RoDataPool roData;
+    LowerILToMIR lowering(sysvTarget(), roData);
+
+    ILInstr call{};
+    call.opcode = "call.indirect";
+    call.ops = {makeLabel("callee")};
+
+    ILBlock entry{};
+    entry.name = "entry";
+    entry.instrs = {call, makeRet(makeConstI64(0))};
+
+    ILFunction fn{};
+    fn.name = "call_indirect_label";
+    fn.blocks = {entry};
+
+    const MFunction mir = lowering.lower(fn);
+    ASSERT_FALSE(mir.blocks.empty());
+    const auto &block = mir.blocks.front();
+    const auto callIndex = findInstruction(block, MOpcode::CALL);
+    ASSERT_TRUE(callIndex.has_value());
+    ASSERT_GT(*callIndex, 0u);
+
+    const MInstr &lea = block.instructions[*callIndex - 1];
+    ASSERT_EQ(lea.opcode, MOpcode::LEA);
+    ASSERT_EQ(lea.operands.size(), 2u);
+    EXPECT_TRUE(std::holds_alternative<OpRipLabel>(lea.operands[1]));
+    const MInstr &callInstr = block.instructions[*callIndex];
+    ASSERT_EQ(callInstr.operands.size(), 1u);
+    EXPECT_TRUE(std::holds_alternative<OpReg>(callInstr.operands[0]));
+}
+
 TEST(X64CallABI, StringCallResultsScheduleRetainHelper) {
     AsmEmitter::RoDataPool roData;
     LowerILToMIR lowering(sysvTarget(), roData);
@@ -476,7 +508,7 @@ TEST(X64CallABI, DirectStringLiteralCallArgsMaterializeRuntimeStrings) {
     EXPECT_NE(lowering.callPlans()[1].args[0].vreg, 0u);
 }
 
-TEST(X64CallABI, SetccCallArgIsZeroExtendedBeforeArgumentMove) {
+TEST(X64CallABI, SetccCallArgIsByteZeroExtendedBeforeArgumentMove) {
     MBasicBlock block{};
     block.label = "entry";
     const Operand flag = makeVRegOperand(RegClass::GPR, 1);
@@ -493,7 +525,7 @@ TEST(X64CallABI, SetccCallArgIsZeroExtendedBeforeArgumentMove) {
 
     const auto movzxIt = std::find_if(block.instructions.begin(), block.instructions.end(),
                                       [](const MInstr &instr) {
-                                          if (instr.opcode != MOpcode::MOVZXrr32 ||
+                                          if (instr.opcode != MOpcode::MOVZXrr8 ||
                                               instr.operands.size() < 2) {
                                               return false;
                                           }

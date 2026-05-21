@@ -127,6 +127,14 @@ void deadStrip(std::vector<ObjFile> &allObjects,
                 isAlwaysLiveSection(sec.name))
                 markLive(oi, si);
         }
+        if (platform == LinkPlatform::Windows && obj.format == ObjFileFormat::COFF) {
+            for (const auto &sym : obj.symbols) {
+                if (sym.sectionIndex > 0 && sym.sectionIndex < obj.sections.size() &&
+                    isMsvcThreadSafeStaticGuardSymbol(sym.name)) {
+                    markLive(oi, sym.sectionIndex);
+                }
+            }
+        }
     }
 
     // Phase 2: Mark — follow relocations transitively.

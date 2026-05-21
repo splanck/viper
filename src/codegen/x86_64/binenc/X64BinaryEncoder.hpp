@@ -153,6 +153,13 @@ class X64BinaryEncoder {
     /// Encode JMP/CALL with memory target (indirect via memory).
     void encodeBranchMem(MOpcode op, const OpMem &mem, objfile::CodeSection &cs);
 
+    /// Encode JMP/CALL with RIP-relative memory target.
+    void encodeBranchRip(MOpcode op,
+                         const OpRipLabel &rip,
+                         objfile::CodeSection &text,
+                         objfile::CodeSection &rodata,
+                         bool isDarwin);
+
     /// @brief Dispatch a branch/call target by operand kind.
     /// @details Selects between @ref encodeBranchLabel, @ref encodeBranchReg,
     ///          and @ref encodeBranchMem based on @p target. Throws with the
