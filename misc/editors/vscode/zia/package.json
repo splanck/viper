@@ -5,6 +5,21 @@
   "version": "0.1.0",
   "publisher": "viper",
   "license": "GPL-3.0",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/splanck/viper.git",
+    "directory": "misc/editors/vscode/zia"
+  },
+  "scripts": {
+    "package:vsix": "vsce package"
+  },
+  "files": [
+    "extension.js",
+    "language-configuration.json",
+    "node_modules/**",
+    "syntaxes/**",
+    "package.json"
+  ],
   "engines": {
     "vscode": "^1.75.0"
   },
@@ -56,5 +71,8 @@
   },
   "dependencies": {
     "vscode-languageclient": "^9.0.1"
+  },
+  "devDependencies": {
+    "@vscode/vsce": "^3.9.1"
   }
 }

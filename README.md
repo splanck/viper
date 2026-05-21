@@ -25,7 +25,7 @@
 - [Source (zip)](https://github.com/splanck/viper/archive/refs/tags/v0.2.5-dev.zip)
 - [Release Notes](https://github.com/splanck/viper/releases/tag/v0.2.5-dev)
 
-**In development:** v0.2.6 (unreleased) — an alpha-quality hardening cycle on the v0.2.5 surface: the Zia frontend reaching alpha quality, raw pointers removed from both source languages, memory/GC and threads lifetime correctness, crypto/TLS and network protocol hardening, 2D-graphics and bytecode-VM robustness, codegen and native-toolchain fixes, and VAPS packaging. See the [draft release notes](docs/release_notes/Viper_Release_Notes_0_2_6.md) for the full changelog.
+**In development:** v0.2.6 (unreleased) — a hardening cycle on the v0.2.5 surface: the Zia frontend reaching alpha quality, raw pointers removed from both source languages, memory/GC and threads lifetime correctness, crypto/TLS and network protocol hardening, 2D-graphics and bytecode-VM robustness, codegen and native-toolchain fixes, and VAPS packaging. See the [draft release notes](docs/release_notes/Viper_Release_Notes_0_2_6.md) for the full changelog.
 
 > **Working with the latest code:** The `master` branch is a live snapshot of current
 > development and is ahead of v0.2.5. To work with the most recent code:

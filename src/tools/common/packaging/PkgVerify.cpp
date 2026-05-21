@@ -1664,4 +1664,48 @@ bool verifyPEZipOverlayPayload(const std::vector<uint8_t> &data,
     return true;
 }
 
+bool verifyPEZipOverlayNestedPayload(const std::vector<uint8_t> &data,
+                                     const std::vector<std::string> &requiredOuterEntries,
+                                     const std::string &innerZipEntry,
+                                     const std::vector<std::string> &requiredInnerEntries,
+                                     std::ostream &err) {
+    if (!verifyPE(data, err))
+        return false;
+
+    size_t overlayOff = 0;
+    size_t overlayEnd = 0;
+    if (!parsePeOverlayRange(data, overlayOff, overlayEnd, err))
+        return false;
+
+    if (overlayOff >= overlayEnd) {
+        err << "PE: expected ZIP overlay after sections, but no overlay bytes were found\n";
+        return false;
+    }
+
+    std::vector<uint8_t> overlay(data.begin() + overlayOff, data.begin() + overlayEnd);
+    if (!verifyZipPayload(overlay, requiredOuterEntries, "PE ZIP overlay", err)) {
+        err << "PE: ZIP overlay verification failed\n";
+        return false;
+    }
+
+    try {
+        ZipReader outer(overlay.data(), overlay.size());
+        const ZipEntry *innerEntry = outer.find(innerZipEntry);
+        if (innerEntry == nullptr) {
+            err << "PE ZIP overlay: missing nested ZIP entry '" << innerZipEntry << "'\n";
+            return false;
+        }
+        const auto inner = outer.extract(*innerEntry);
+        if (!verifyZipPayload(inner, requiredInnerEntries, "PE ZIP inner payload", err)) {
+            err << "PE: nested ZIP payload verification failed\n";
+            return false;
+        }
+    } catch (const std::exception &ex) {
+        err << "PE ZIP overlay: " << ex.what() << "\n";
+        return false;
+    }
+
+    return true;
+}
+
 } // namespace viper::pkg

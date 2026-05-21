@@ -63,7 +63,8 @@ typedef struct rt_pool_block {
 /// @brief Atomically load a block's next pointer (acquire).
 static inline rt_pool_block_t *atomic_load_next(rt_pool_block_t *block) {
 #if RT_COMPILER_MSVC
-    rt_pool_block_t *val = *(volatile rt_pool_block_t **)&block->next;
+    rt_pool_block_t *volatile *slot = (rt_pool_block_t *volatile *)&block->next;
+    rt_pool_block_t *val = *slot;
 #if defined(_M_ARM64)
     __dmb(_ARM64_BARRIER_ISH);
 #else
@@ -83,7 +84,7 @@ static inline void atomic_store_next(rt_pool_block_t *block, rt_pool_block_t *ne
 #else
     _ReadWriteBarrier();
 #endif
-    *(volatile rt_pool_block_t **)&block->next = next;
+    *(rt_pool_block_t *volatile *)&block->next = next;
 #else
     __atomic_store_n(&block->next, next, __ATOMIC_RELEASE);
 #endif

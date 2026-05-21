@@ -56,6 +56,7 @@
 #include <ws2tcpip.h>
 typedef SOCKET socket_t;
 #define CLOSE_SOCKET(s) closesocket(s)
+#define RT_TLS_INVALID_SOCKET INVALID_SOCKET
 #define SOCKET_ERRNO WSAGetLastError()
 #define EINTR_CHECK (SOCKET_ERRNO == WSAEINTR)
 #define EAGAIN_CHECK (SOCKET_ERRNO == WSAEWOULDBLOCK)
@@ -71,6 +72,7 @@ typedef SOCKET socket_t;
 #include <unistd.h>
 typedef int socket_t;
 #define CLOSE_SOCKET(s) close(s)
+#define RT_TLS_INVALID_SOCKET (-1)
 #define SOCKET_ERRNO errno
 #define EINTR_CHECK (errno == EINTR)
 #define EAGAIN_CHECK (errno == EAGAIN || errno == EWOULDBLOCK)
@@ -3551,9 +3553,9 @@ void rt_tls_close(rt_tls_session_t *session) {
     }
 
     tls_release_dynamic_state(session);
-    if (session->socket_fd >= 0) {
+    if ((socket_t)session->socket_fd != (socket_t)RT_TLS_INVALID_SOCKET) {
         CLOSE_SOCKET((socket_t)session->socket_fd);
-        session->socket_fd = -1;
+        session->socket_fd = (socket_t)RT_TLS_INVALID_SOCKET;
     }
     session->state = TLS_STATE_CLOSED;
 

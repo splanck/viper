@@ -27,6 +27,10 @@
 #include "rt_crypto.h"
 #include <string.h>
 
+#if defined(_MSC_VER)
+#include <intrin.h>
+#endif
+
 #if defined(__GNUC__) || defined(__clang__)
 #define ECDSA_P256_MAYBE_UNUSED __attribute__((unused))
 #else
@@ -46,6 +50,35 @@ static void ecdsa_secure_zero(void *ptr, size_t len) {
     volatile uint8_t *p = (volatile uint8_t *)ptr;
     while (len-- > 0)
         *p++ = 0;
+}
+
+static int ecdsa_clz64(uint64_t value) {
+    if (value == 0)
+        return 64;
+#if defined(_MSC_VER) && (defined(_M_X64) || defined(_M_ARM64))
+    unsigned long index = 0;
+    _BitScanReverse64(&index, value);
+    return 63 - (int)index;
+#elif defined(_MSC_VER)
+    unsigned long index = 0;
+    uint32_t high = (uint32_t)(value >> 32);
+    if (high != 0) {
+        _BitScanReverse(&index, high);
+        return 31 - (int)index;
+    }
+    _BitScanReverse(&index, (uint32_t)value);
+    return 63 - (int)index;
+#elif defined(__GNUC__) || defined(__clang__)
+    return __builtin_clzll((unsigned long long)value);
+#else
+    int count = 0;
+    uint64_t bit = UINT64_C(1) << 63;
+    while ((value & bit) == 0) {
+        count++;
+        bit >>= 1;
+    }
+    return count;
+#endif
 }
 
 //=============================================================================
@@ -252,7 +285,7 @@ static ECDSA_P256_MAYBE_UNUSED void u256_mul_wide(u512 r, const u256 a, const u2
 static ECDSA_P256_MAYBE_UNUSED int u512_bit_length_le(const uint64_t limbs[8]) {
     for (int i = 7; i >= 0; i--) {
         if (limbs[i] != 0)
-            return i * 64 + (64 - __builtin_clzll(limbs[i]));
+            return i * 64 + (64 - ecdsa_clz64(limbs[i]));
     }
     return 0;
 }

@@ -3798,7 +3798,7 @@ static int sweep_capsule_against_body(const double *a,
     double axis_len;
     int samples;
     int hit = 0;
-    rt_query_hit3d best;
+    rt_query_hit3d best = {0};
     void *sphere_collider;
     if (!a || !b || !delta || !other || !other->collider)
         return 0;
@@ -3927,7 +3927,7 @@ void *rt_world3d_overlap_aabb(void *obj, void *min_obj, void *max_obj, int64_t m
 /// and projectile collision.
 void *rt_world3d_sweep_sphere(void *obj, void *center_obj, double radius, void *delta_obj, int64_t mask) {
     rt_world3d *w = world3d_checked(obj);
-    rt_query_hit3d best_hit;
+    rt_query_hit3d best_hit = {0};
     int found = 0;
     double center[3], delta[3];
     double max_distance;
@@ -3977,7 +3977,7 @@ void *rt_world3d_sweep_capsule(void *obj,
                                void *delta_obj,
                                int64_t mask) {
     rt_world3d *w = world3d_checked(obj);
-    rt_query_hit3d best_hit;
+    rt_query_hit3d best_hit = {0};
     int found = 0;
     double a[3], b[3], delta[3];
     double max_distance;
@@ -4273,7 +4273,7 @@ static int raycast_body(rt_body3d *body,
 /// the direction is zero or `maxDistance <= 0`.
 void *rt_world3d_raycast(void *obj, void *origin_obj, void *direction_obj, double max_distance, int64_t mask) {
     rt_world3d *w = world3d_checked(obj);
-    rt_query_hit3d best_hit;
+    rt_query_hit3d best_hit = {0};
     int found = 0;
     double origin[3];
     double dir[3];

@@ -473,12 +473,12 @@ void *rt_watcher_new(rt_string path) {
     free(wide_path);
     if (attrs == INVALID_FILE_ATTRIBUTES)
         rt_trap("Watcher.New: path does not exist");
-    int is_directory = (attrs & FILE_ATTRIBUTE_DIRECTORY) != 0 ? 1 : 0;
+    int8_t is_directory = (attrs & FILE_ATTRIBUTE_DIRECTORY) != 0 ? 1 : 0;
 #else
     struct stat st;
     if (stat(cpath, &st) != 0)
         rt_trap("Watcher.New: path does not exist");
-    int is_directory = S_ISDIR(st.st_mode) ? 1 : 0;
+    int8_t is_directory = S_ISDIR(st.st_mode) ? 1 : 0;
 #endif
 
     rt_watcher_impl *w =

@@ -12,9 +12,11 @@
 // Key invariants:
 //   - Windows x64 ABI: 32-byte shadow space, RCX/RDX/R8/R9 for args.
 //   - Stack aligned to 16 bytes before every call instruction.
-//   - Windows package overlays use stored ZIP entries only; file contents are
-//     copied directly from precomputed local-data offsets.
-//   - All Win32 API calls go through the IAT; no external tools are invoked.
+//   - Windows package overlays use stored bootstrap entries. The main install
+//     payload may be a DEFLATE-compressed inner ZIP expanded through Windows'
+//     built-in PowerShell archive support.
+//   - All direct Win32 API calls go through the IAT. Compressed payload
+//     expansion invokes Windows' System32 PowerShell explicitly.
 //
 // Ownership/Lifetime:
 //   - Pure functions. No state.
@@ -52,6 +54,8 @@ constexpr uint32_t kFileAttributeNormal = 0x80u;
 constexpr uint32_t kMoveFileDelayUntilReboot = 0x00000004u;
 constexpr uint32_t kFileOperationDelete = 0x0003u;
 constexpr uint32_t kFileOperationSilentFlags = 0x0414u;
+constexpr uint32_t kCreateNoWindow = 0x08000000u;
+constexpr uint32_t kWaitInfinite = 0xFFFFFFFFu;
 constexpr uint32_t kRegNone = 0u;
 constexpr uint32_t kRegSz = 1u;
 constexpr uint32_t kRegExpandSz = 2u;
@@ -91,7 +95,10 @@ constexpr int32_t kNoRestartModeOff = -0x80068;
 constexpr int32_t kFileOpStructOff = -0x800A0;
 constexpr int32_t kCommandLineOff = -0x800B0;
 constexpr int32_t kKnownFolderPtrOff = -0x800B8;
-constexpr uint32_t kFrameSize = 0x80100;
+constexpr int32_t kCommandBufferOff = -0x90000;
+constexpr int32_t kStartupInfoOff = -0x90200;
+constexpr int32_t kProcessInfoOff = -0x90280;
+constexpr uint32_t kFrameSize = 0x90400;
 
 enum InstallerIAT : uint32_t {
     kI_ExitProcess = 0,
@@ -128,6 +135,10 @@ enum InstallerIAT : uint32_t {
     kI_StrStrIW = 31,
     kI_CoTaskMemFree = 32,
     kI_GetDateFormatW = 33,
+    kI_GetSystemDirectoryW = 34,
+    kI_CreateProcessW = 35,
+    kI_WaitForSingleObject = 36,
+    kI_GetExitCodeProcess = 37,
 };
 
 enum UninstallerIAT : uint32_t {
@@ -195,7 +206,12 @@ std::vector<PEImport> installerImports() {
         {"ntdll.dll", {"RtlComputeCrc32"}},
         {"shlwapi.dll", {"StrStrIW"}},
         {"ole32.dll", {"CoTaskMemFree"}},
-        {"kernel32.dll", {"GetDateFormatW"}},
+        {"kernel32.dll",
+         {"GetDateFormatW",
+          "GetSystemDirectoryW",
+          "CreateProcessW",
+          "WaitForSingleObject",
+          "GetExitCodeProcess"}},
     };
 }
 
@@ -300,6 +316,12 @@ void finalizeStubRVAs(StubResult &stub, InstallerStubGen &gen) {
 void zeroLocalQword(InstallerStubGen &gen, int32_t off) {
     gen.xorRegReg(X64Reg::RAX, X64Reg::RAX);
     gen.movMemReg(X64Reg::RBP, off, X64Reg::RAX);
+}
+
+/// @brief Zero a small fixed local range using 8-byte stores.
+void zeroLocalRange(InstallerStubGen &gen, int32_t off, uint32_t bytes) {
+    for (uint32_t i = 0; i < bytes; i += 8)
+        zeroLocalQword(gen, off + static_cast<int32_t>(i));
 }
 
 /// @brief Emit code to store a 64-bit immediate into [RSP+off].
@@ -2101,8 +2123,8 @@ void emitDeleteFile(InstallerStubGen &gen,
 }
 
 /// @brief Emit code to remove a directory at entry.root\entry.relativePath.
-/// Treats ERROR_FILE_NOT_FOUND and ERROR_PATH_NOT_FOUND as non-fatal (directory already absent);
-/// jumps to errorLabel on any other failure.
+/// Treats missing and non-empty directories as non-fatal so uninstall can leave
+/// unrelated user content in place.
 void emitRemoveDirectory(InstallerStubGen &gen,
                          const WindowsPackageDirEntry &entry,
                          uint32_t slashOff,
@@ -2125,8 +2147,202 @@ void emitRemoveDirectory(InstallerStubGen &gen,
     gen.jz(lblOk);
     gen.cmpRegImm32(X64Reg::RAX, kErrorPathNotFound);
     gen.jz(lblOk);
+    gen.cmpRegImm32(X64Reg::RAX, kErrorDirNotEmpty);
+    gen.jz(lblOk);
     gen.jmp(errorLabel);
     gen.bindLabel(lblOk);
+}
+
+/// @brief Expand a stored compressed inner payload ZIP into the install root.
+///
+/// The bootstrap still extracts this ZIP from the PE overlay with direct byte
+/// copies. The command then invokes the PowerShell that ships with Windows from
+/// System32, expands the inner ZIP, compares the previous installed manifest
+/// with the next manifest, and deletes only Viper-owned stale files after the
+/// new payload has expanded successfully.
+void emitExpandCompressedPayload(InstallerStubGen &gen,
+                                 const WindowsPackageLayout &layout,
+                                 uint32_t slashOff,
+                                 uint32_t copySlot,
+                                 uint32_t catSlot,
+                                 uint32_t strlenSlot,
+                                 uint32_t deleteSlot,
+                                 uint32_t getLastErrorSlot,
+                                 uint32_t closeSlot,
+                                 uint32_t errorLabel) {
+    if (layout.compressedPayloadRelativePath.empty())
+        return;
+    if (layout.compressedPayloadManifestRelativePath.empty() ||
+        layout.installedManifestRelativePath.empty()) {
+        throw std::runtime_error("compressed Windows payload requires install manifests");
+    }
+
+    const uint32_t payloadRelOff = gen.embedStringW(layout.compressedPayloadRelativePath);
+    const uint32_t installedManifestRelOff = gen.embedStringW(layout.installedManifestRelativePath);
+    const uint32_t nextManifestRelOff =
+        gen.embedStringW(layout.compressedPayloadManifestRelativePath);
+    const uint32_t commandQuoteOff = gen.embedStringW("\"");
+    const uint32_t commandArgSepOff = gen.embedStringW("\" \"");
+    const uint32_t powershellTailOff = gen.embedStringW(
+        "\\WindowsPowerShell\\v1.0\\powershell.exe\" -NoProfile -NonInteractive "
+        "-ExecutionPolicy Bypass -Command \"& { param([string]$p,[string]$d,[string]$old,"
+        "[string]$new) $ErrorActionPreference='Stop'; "
+        "$base=[IO.Path]::GetFullPath($d); "
+        "function Test-Rel([string]$s){ "
+        "if([string]::IsNullOrWhiteSpace($s)){ return $false; } "
+        "if([IO.Path]::IsPathRooted($s) -or $s.Contains(':')){ return $false; } "
+        "foreach($part in ($s -split '[\\\\/]+')){ "
+        "if($part -eq '' -or $part -eq '.' -or $part -eq '..'){ return $false; } } "
+        "return $true; } "
+        "function Join-Owned([string]$s){ $f=[IO.Path]::GetFullPath((Join-Path $d $s)); "
+        "$prefix=$base + [IO.Path]::DirectorySeparatorChar; "
+        "if(-not $f.StartsWith($prefix,[StringComparison]::OrdinalIgnoreCase)){ return $null; } "
+        "return $f; } $oldLines=@(); "
+        "if(Test-Path -LiteralPath $old -PathType Leaf){ $oldLines=Get-Content "
+        "-LiteralPath $old | Where-Object { Test-Rel $_ }; } "
+        "$newLines=Get-Content -LiteralPath $new | Where-Object { Test-Rel $_ }; "
+        "Expand-Archive -LiteralPath $p -DestinationPath $d -Force; $owned=@{}; "
+        "foreach($n in $newLines){ $owned[$n.ToLowerInvariant()]=$true; } "
+        "foreach($o in $oldLines){ if(-not $owned.ContainsKey($o.ToLowerInvariant())){ "
+        "$f=Join-Owned $o; if($f -and (Test-Path -LiteralPath $f -PathType Leaf)){ "
+        "try { Remove-Item -LiteralPath $f -Force -ErrorAction Stop } catch {} } } } "
+        "$dirs=$oldLines | ForEach-Object { Split-Path -Parent $_ } | Where-Object { "
+        "$_ -and (Test-Rel $_) } | Sort-Object Length -Descending -Unique; "
+        "foreach($dir in $dirs){ $full=Join-Owned $dir; "
+        "if($full -and (Test-Path -LiteralPath $full -PathType Container)){ try { Remove-Item "
+        "-LiteralPath $full -Force -ErrorAction Stop } catch {} } } }\" \"");
+
+    emitComposePath(gen,
+                    WindowsInstallRoot::InstallDir,
+                    kTempPathOff,
+                    slashOff,
+                    payloadRelOff,
+                    copySlot,
+                    catSlot,
+                    strlenSlot,
+                    errorLabel);
+    emitComposePath(gen,
+                    WindowsInstallRoot::InstallDir,
+                    kPathOriginalOff,
+                    slashOff,
+                    installedManifestRelOff,
+                    copySlot,
+                    catSlot,
+                    strlenSlot,
+                    errorLabel);
+    emitComposePath(gen,
+                    WindowsInstallRoot::InstallDir,
+                    kPathExpectedOff,
+                    slashOff,
+                    nextManifestRelOff,
+                    copySlot,
+                    catSlot,
+                    strlenSlot,
+                    errorLabel);
+
+    gen.leaRegMem(X64Reg::RCX, X64Reg::RBP, kUninstallPathOff);
+    gen.movRegImm32(X64Reg::RDX, kMaxPathChars);
+    gen.callIATSlot(kI_GetSystemDirectoryW);
+    gen.testRegReg(X64Reg::RAX, X64Reg::RAX);
+    gen.jz(errorLabel);
+    gen.cmpRegImm32(X64Reg::RAX, kMaxPathChars - 1);
+    gen.ja(errorLabel);
+
+    gen.leaRegMem(X64Reg::RCX, X64Reg::RBP, kCommandBufferOff);
+    gen.leaRipData(X64Reg::RDX, commandQuoteOff);
+    gen.callIATSlot(copySlot);
+    emitCheckedCatStack(
+        gen, kCommandBufferOff, kUninstallPathOff, catSlot, strlenSlot, errorLabel);
+    emitCheckedCatEmbedded(
+        gen, kCommandBufferOff, powershellTailOff, catSlot, strlenSlot, errorLabel);
+    emitCheckedCatStack(gen, kCommandBufferOff, kTempPathOff, catSlot, strlenSlot, errorLabel);
+    emitCheckedCatEmbedded(
+        gen, kCommandBufferOff, commandArgSepOff, catSlot, strlenSlot, errorLabel);
+    emitCheckedCatStack(gen, kCommandBufferOff, kInstallPathOff, catSlot, strlenSlot, errorLabel);
+    emitCheckedCatEmbedded(
+        gen, kCommandBufferOff, commandArgSepOff, catSlot, strlenSlot, errorLabel);
+    emitCheckedCatStack(
+        gen, kCommandBufferOff, kPathOriginalOff, catSlot, strlenSlot, errorLabel);
+    emitCheckedCatEmbedded(
+        gen, kCommandBufferOff, commandArgSepOff, catSlot, strlenSlot, errorLabel);
+    emitCheckedCatStack(
+        gen, kCommandBufferOff, kPathExpectedOff, catSlot, strlenSlot, errorLabel);
+    emitCheckedCatEmbedded(
+        gen, kCommandBufferOff, commandQuoteOff, catSlot, strlenSlot, errorLabel);
+
+    zeroLocalRange(gen, kStartupInfoOff, 0x68);
+    zeroLocalRange(gen, kProcessInfoOff, 0x18);
+    zeroLocalQword(gen, kBytesReadOff);
+    gen.movMemImm32(X64Reg::RBP, kStartupInfoOff, 0x68);
+
+    gen.xorRegReg(X64Reg::RCX, X64Reg::RCX);
+    gen.leaRegMem(X64Reg::RDX, X64Reg::RBP, kCommandBufferOff);
+    gen.xorRegReg(X64Reg::R8, X64Reg::R8);
+    gen.xorRegReg(X64Reg::R9, X64Reg::R9);
+    storeStackImm64(gen, 0x20, 0);
+    storeStackImm64(gen, 0x28, kCreateNoWindow);
+    storeStackImm64(gen, 0x30, 0);
+    storeStackImm64(gen, 0x38, 0);
+    storeStackPtrToLocal(gen, 0x40, kStartupInfoOff);
+    storeStackPtrToLocal(gen, 0x48, kProcessInfoOff);
+    gen.callIATSlot(kI_CreateProcessW);
+    gen.testRegReg(X64Reg::RAX, X64Reg::RAX);
+    gen.jz(errorLabel);
+
+    const auto lblProcessError = gen.newLabel();
+    const auto lblProcessDone = gen.newLabel();
+
+    gen.movRegMem(X64Reg::RCX, X64Reg::RBP, kProcessInfoOff);
+    gen.movRegImm32(X64Reg::RDX, kWaitInfinite);
+    gen.callIATSlot(kI_WaitForSingleObject);
+    emitCmpRegU32(gen, X64Reg::RAX, kWaitInfinite);
+    gen.jz(lblProcessError);
+
+    gen.movRegMem(X64Reg::RCX, X64Reg::RBP, kProcessInfoOff);
+    gen.leaRegMem(X64Reg::RDX, X64Reg::RBP, kBytesReadOff);
+    gen.callIATSlot(kI_GetExitCodeProcess);
+    gen.testRegReg(X64Reg::RAX, X64Reg::RAX);
+    gen.jz(lblProcessError);
+    gen.movRegMem(X64Reg::RAX, X64Reg::RBP, kBytesReadOff);
+    gen.testRegReg(X64Reg::RAX, X64Reg::RAX);
+    gen.jnz(lblProcessError);
+
+    emitCloseLocalHandleIfSet(gen, kProcessInfoOff + 8, closeSlot);
+    emitCloseLocalHandleIfSet(gen, kProcessInfoOff, closeSlot);
+    gen.jmp(lblProcessDone);
+
+    gen.bindLabel(lblProcessError);
+    emitCloseLocalHandleIfSet(gen, kProcessInfoOff + 8, closeSlot);
+    emitCloseLocalHandleIfSet(gen, kProcessInfoOff, closeSlot);
+    gen.jmp(errorLabel);
+
+    gen.bindLabel(lblProcessDone);
+    emitDeleteFile(gen,
+                   WindowsPackageFileEntry{WindowsInstallRoot::InstallDir,
+                                           layout.compressedPayloadRelativePath,
+                                           0,
+                                           0,
+                                           0},
+                   slashOff,
+                   copySlot,
+                   catSlot,
+                   strlenSlot,
+                   deleteSlot,
+                   getLastErrorSlot,
+                   errorLabel);
+    emitDeleteFile(gen,
+                   WindowsPackageFileEntry{WindowsInstallRoot::InstallDir,
+                                           layout.compressedPayloadManifestRelativePath,
+                                           0,
+                                           0,
+                                           0},
+                   slashOff,
+                   copySlot,
+                   catSlot,
+                   strlenSlot,
+                   deleteSlot,
+                   getLastErrorSlot,
+                   errorLabel);
 }
 
 } // namespace
@@ -2324,6 +2540,17 @@ StubResult buildInstallerStub(const WindowsPackageLayout &layout, const std::str
                         kI_RtlComputeCrc32,
                         lblRollbackError);
     }
+
+    emitExpandCompressedPayload(gen,
+                                layout,
+                                slashOff,
+                                kI_lstrcpyW,
+                                kI_lstrcatW,
+                                kI_lstrlenW,
+                                kI_DeleteFileW,
+                                kI_GetLastError,
+                                kI_CloseHandle,
+                                lblRollbackError);
 
     emitInstallPathUpdate(gen,
                           layout,

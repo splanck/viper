@@ -123,7 +123,7 @@ static int64_t find_or_create_debounce_slot(rt_inputmgr mgr, int64_t key) {
 
     // No space - evict the slot with the oldest (largest) timer
     int64_t oldest_slot = 0;
-    double oldest_time = mgr->debounce_timers[0];
+    int64_t oldest_time = mgr->debounce_timers[0];
     for (int64_t i = 1; i < mgr->debounce_count; i++) {
         if (mgr->debounce_timers[i] > oldest_time) {
             oldest_time = mgr->debounce_timers[i];

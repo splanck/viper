@@ -28,6 +28,7 @@
 
 #include "rt_dateformat.h"
 
+#include "rt_datetime.h"
 #include "rt_internal.h"
 #include "rt_heap.h"
 #include "rt_locale.h"
@@ -273,11 +274,7 @@ rt_string rt_dateformat_date_only(void *self, void *dateonly, rt_string style) {
     }
 
     // Synthesize a Unix timestamp from DateOnly components at 00:00:00 UTC.
-    // rt_datetime_create exists but requires linking rt_datetime.h; avoid the
-    // coupling by computing via standard timegm-style logic. For Phase 3 we
-    // reuse a simple computation: date components at midnight.
-    extern int64_t rt_datetime_create(int64_t year, int64_t month, int64_t day,
-                                      int64_t hour, int64_t minute, int64_t second);
+    // Convert date components to a midnight timestamp for pattern emission.
     int64_t y = rt_dateonly_year(dateonly);
     int64_t m = rt_dateonly_month(dateonly);
     int64_t d = rt_dateonly_day(dateonly);

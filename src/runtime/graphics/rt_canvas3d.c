@@ -456,10 +456,10 @@ static int cmp_front_to_back(const void *a, const void *b) {
 ///   2. PBR workflow with explicit `BLEND` alpha mode.
 /// Used to route the command into the deferred transparency-sorted
 /// pass instead of the immediate opaque pass.
-static int canvas3d_cmd_requires_blend(const vgfx3d_draw_cmd_t *cmd) {
+static int8_t canvas3d_cmd_requires_blend(const vgfx3d_draw_cmd_t *cmd) {
     if (!cmd)
         return 0;
-    return vgfx3d_draw_cmd_uses_transparent_blend(cmd);
+    return (int8_t)(vgfx3d_draw_cmd_uses_transparent_blend(cmd) ? 1 : 0);
 }
 
 /// @brief Resolve the effective backface-cull flag for a material draw.
@@ -2836,7 +2836,7 @@ void rt_canvas3d_draw_mesh_matrix_keyed(void *obj,
         (rt_mesh3d *)rt_g3d_checked_or_null(mesh_obj, RT_G3D_MESH3D_CLASS_ID);
     rt_material3d *mat =
         (rt_material3d *)rt_g3d_checked_or_null(material_obj, RT_G3D_MATERIAL3D_CLASS_ID);
-    int pending_has_splat = 0;
+    int8_t pending_has_splat = 0;
     const void *pending_splat_map = NULL;
     const void *pending_splat_layers[4] = {NULL, NULL, NULL, NULL};
     float pending_splat_layer_scales[4] = {0.0f, 0.0f, 0.0f, 0.0f};

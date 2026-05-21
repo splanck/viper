@@ -1,0 +1,86 @@
+name: Windows Release Installer
+
+on:
+  workflow_dispatch:
+
+jobs:
+  build-sign-validate:
+    name: Build, sign, and validate Windows toolchain installer
+    runs-on: windows-latest
+    env:
+      VIPER_WINDOWS_SIGN_PFX_BASE64: ${{ secrets.VIPER_WINDOWS_SIGN_PFX_BASE64 }}
+      VIPER_WINDOWS_SIGN_PASSWORD: ${{ secrets.VIPER_WINDOWS_SIGN_PASSWORD }}
+      VIPER_WINDOWS_TIMESTAMP_URL: ${{ vars.VIPER_WINDOWS_TIMESTAMP_URL }}
+    steps:
+      - uses: actions/checkout@v3
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: misc/editors/vscode/zia/package-lock.json
+
+      - name: Configure Release build
+        run: >
+          cmake -S . -B build
+          -DIL_WARN_AS_ERROR=ON
+          -DVIPER_BUILD_VSCODE_VSIX=ON
+          -DVIPER_ENABLE_WINDOWS_INSTALLER_E2E=ON
+          -DCMAKE_BUILD_TYPE=Release
+
+      - name: Build Release toolchain
+        run: >
+          cmake --build build --config Release --target
+          viper vbasic zia zia-server vbasic-server
+          ilrun il-verify il-dis basic-ast-dump basic-lex-dump
+          test_packaging vscode_zia_vsix
+
+      - name: Run installer tests
+        run: |
+          ctest --test-dir build -C Release --output-on-failure -R "test_packaging"
+          ctest --test-dir build -C Release --output-on-failure -R "^installer_windows_toolchain_e2e$"
+
+      - name: Generate unsigned installer
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory -Force -Path build/artifacts | Out-Null
+          build/src/tools/viper/Release/viper.exe install-package `
+            --build-dir build `
+            --config Release `
+            --target windows `
+            --windows-install-scope user `
+            -o build/artifacts/viper-toolchain-windows-x64.exe
+
+      - name: Sign installer
+        if: env.VIPER_WINDOWS_SIGN_PFX_BASE64 != ''
+        shell: pwsh
+        run: |
+          $pfx = Join-Path $env:RUNNER_TEMP "viper-signing.pfx"
+          [IO.File]::WriteAllBytes($pfx, [Convert]::FromBase64String($env:VIPER_WINDOWS_SIGN_PFX_BASE64))
+          $env:VIPER_WINDOWS_SIGN_PFX = $pfx
+          if (-not $env:VIPER_WINDOWS_TIMESTAMP_URL) {
+            $env:VIPER_WINDOWS_TIMESTAMP_URL = "https://timestamp.digicert.com"
+          }
+          scripts/sign-windows-installer.ps1 `
+            -InputPath build/artifacts/viper-toolchain-windows-x64.exe `
+            -PfxPath $pfx `
+            -PfxPassword $env:VIPER_WINDOWS_SIGN_PASSWORD `
+            -TimestampUrl $env:VIPER_WINDOWS_TIMESTAMP_URL
+
+      - name: Upload installer artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: viper-toolchain-windows-x64
+          path: |
+            build/artifacts/viper-toolchain-windows-x64.exe
+            build/artifacts/viper-toolchain-windows-x64.exe.sha256.txt
+
+      - name: Upload failure logs
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: windows-release-installer-logs
+          path: |
+            build/Testing/Temporary/LastTest.log
+            build/CMakeCache.txt
+            build/tests/windows-toolchain-installer-e2e
