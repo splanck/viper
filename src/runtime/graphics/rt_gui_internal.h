@@ -474,9 +474,8 @@ static inline char *rt_string_to_gui_cstr(rt_string str) {
     char *out = result;
     for (size_t i = 0; i < len; i++) {
         if (bytes[i] == '\0') {
-            *out++ = (char)0xEF;
-            *out++ = (char)0xBF;
-            *out++ = (char)0xBD;
+            memcpy(out, "\xEF\xBF\xBD", 3);
+            out += 3;
         } else {
             *out++ = bytes[i];
         }

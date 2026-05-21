@@ -198,7 +198,7 @@ int8_t rt_lazy_is_evaluated(void *obj) {
     if (!obj)
         return 1;
     Lazy *l = (Lazy *)obj;
-    return l->evaluated;
+    return (int8_t)(l->evaluated ? 1 : 0);
 }
 
 /// @brief Force evaluation of the lazy value, even if already evaluated.

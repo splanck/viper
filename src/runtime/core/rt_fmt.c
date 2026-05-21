@@ -115,10 +115,14 @@ static int rt_fmt_vsnprintf_c_locale(char *buffer, size_t size, const char *fmt,
     _locale_t c_locale = _create_locale(LC_NUMERIC, "C");
     if (!c_locale)
         return -1;
+#if defined(__GNUC__) || defined(__clang__)
 #pragma GCC diagnostic push
 #pragma GCC diagnostic ignored "-Wformat-nonliteral"
+#endif
     int written = _vsnprintf_l(buffer, size, fmt, c_locale, args);
+#if defined(__GNUC__) || defined(__clang__)
 #pragma GCC diagnostic pop
+#endif
     _free_locale(c_locale);
     return written;
 #else

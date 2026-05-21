@@ -39,6 +39,7 @@
 #include "rt_locale.h"
 #include "rt_locale_data.h"
 #include "rt_locale_manager.h"
+#include "rt_numfmt.h"
 #include "rt_numfmt_internal.h"
 #include "rt_object.h"
 #include "rt_option.h"
@@ -835,7 +836,6 @@ rt_string rt_numformat_ordinal(void *self, int64_t value) {
     // implements English suffixes (st/nd/rd/th). Locale-specific ordinal
     // rendering uses plural category lookup and is deferred to a later
     // phase alongside JSON-loaded ordinal suffix tables.
-    extern rt_string rt_numfmt_ordinal(int64_t);
     return rt_numfmt_ordinal(value);
 }
 

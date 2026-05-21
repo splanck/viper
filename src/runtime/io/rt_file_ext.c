@@ -70,6 +70,14 @@
 #include <utime.h>
 #endif
 
+#if RT_PLATFORM_WINDOWS
+typedef struct _stat64i32 rt_fileext_stat_t;
+#define rt_fileext_fstat _fstat64i32
+#else
+typedef struct stat rt_fileext_stat_t;
+#define rt_fileext_fstat fstat
+#endif
+
 #if defined(O_BINARY)
 #define RT_FILE_O_BINARY O_BINARY
 #elif defined(_O_BINARY)
@@ -211,11 +219,11 @@ static int rt_fileext_open(const char *path, int flags, int pmode) {
 }
 
 /// @brief Stat a file at a UTF-8 path via `_wstat` (Windows), converting through wide-char.
-static int rt_fileext_stat_path(const char *path, struct stat *st) {
+static int rt_fileext_stat_path(const char *path, rt_fileext_stat_t *st) {
     wchar_t *wide = rt_file_path_utf8_to_wide(path);
     if (!wide)
         return -1;
-    int rc = _wstat(wide, st);
+    int rc = _wstat64i32(wide, st);
     free(wide);
     return rc;
 }
@@ -469,7 +477,7 @@ static void rt_fileext_close_or_trap(int fd, const char *context) {
         rt_trap(context);
 }
 
-static int rt_fileext_apply_timestamps(const char *path, const struct stat *src_st) {
+static int rt_fileext_apply_timestamps(const char *path, const rt_fileext_stat_t *src_st) {
     if (!path || !src_st)
         return 0;
 #if RT_PLATFORM_WINDOWS
@@ -482,7 +490,7 @@ static int rt_fileext_apply_timestamps(const char *path, const struct stat *src_
     return rt_fileext_utime(path, &times) == 0 ? 1 : 0;
 }
 
-static int rt_fileext_apply_mode_to_open_file(int fd, const struct stat *src_st) {
+static int rt_fileext_apply_mode_to_open_file(int fd, const rt_fileext_stat_t *src_st) {
     if (!src_st)
         return 0;
 #if RT_PLATFORM_WINDOWS
@@ -493,7 +501,7 @@ static int rt_fileext_apply_mode_to_open_file(int fd, const struct stat *src_st)
 #endif
 }
 
-static int rt_fileext_apply_mode_to_path(const char *path, const struct stat *src_st) {
+static int rt_fileext_apply_mode_to_path(const char *path, const rt_fileext_stat_t *src_st) {
     if (!path || !src_st)
         return 0;
 #if RT_PLATFORM_WINDOWS
@@ -563,8 +571,8 @@ static int rt_fileext_same_existing_file(const char *src_path, const char *dst_p
     CloseHandle(dst);
     return same;
 #else
-    struct stat src_st;
-    struct stat dst_st;
+    rt_fileext_stat_t src_st;
+    rt_fileext_stat_t dst_st;
     if (stat(src_path, &src_st) != 0)
         return 0;
     if (stat(dst_path, &dst_st) != 0)
@@ -631,7 +639,7 @@ int64_t rt_io_file_exists(rt_string path) {
     const char *cpath = NULL;
     if (!rt_file_path_from_vstr(path, &cpath) || !cpath)
         return 0;
-    struct stat st;
+    rt_fileext_stat_t st;
     if (rt_fileext_stat_path(cpath, &st) == 0) {
 #ifdef _WIN32
         return (st.st_mode & _S_IFREG) != 0;
@@ -655,8 +663,8 @@ rt_string rt_io_file_read_all_text(rt_string path) {
     if (fd < 0)
         rt_trap("Viper.IO.File.ReadAllText: failed to open file");
 
-    struct stat st;
-    if (fstat(fd, &st) != 0) {
+    rt_fileext_stat_t st;
+    if (rt_fileext_fstat(fd, &st) != 0) {
         close(fd);
         rt_trap("Viper.IO.File.ReadAllText: failed to stat file");
     }
@@ -785,8 +793,8 @@ void *rt_io_file_read_all_bytes(rt_string path) {
     if (fd < 0)
         rt_trap("Viper.IO.File.ReadAllBytes: failed to open file");
 
-    struct stat st;
-    if (fstat(fd, &st) != 0) {
+    rt_fileext_stat_t st;
+    if (rt_fileext_fstat(fd, &st) != 0) {
         (void)close(fd);
         rt_trap("Viper.IO.File.ReadAllBytes: failed to stat file");
     }
@@ -886,8 +894,8 @@ void *rt_io_file_read_all_lines(rt_string path) {
     if (fd < 0)
         rt_trap("Viper.IO.File.ReadAllLines: failed to open file");
 
-    struct stat st;
-    if (fstat(fd, &st) != 0) {
+    rt_fileext_stat_t st;
+    if (rt_fileext_fstat(fd, &st) != 0) {
         (void)close(fd);
         rt_trap("Viper.IO.File.ReadAllLines: failed to stat file");
     }
@@ -1010,15 +1018,15 @@ static void rt_file_copy_impl(rt_string src, rt_string dst, int replace) {
         return;
     }
 
-    struct stat src_st;
-    if (fstat(src_fd, &src_st) != 0 || !rt_fileext_is_regular_mode(src_st.st_mode)) {
+    rt_fileext_stat_t src_st;
+    if (rt_fileext_fstat(src_fd, &src_st) != 0 || !rt_fileext_is_regular_mode(src_st.st_mode)) {
         close(src_fd);
         rt_trap("File.Copy: source is not a regular file");
         return;
     }
 
     if (!replace) {
-        struct stat dst_st;
+        rt_fileext_stat_t dst_st;
 #if RT_PLATFORM_WINDOWS
         if (rt_fileext_stat_path(dst_path, &dst_st) == 0) {
 #else
@@ -1180,7 +1188,7 @@ int64_t rt_file_size(rt_string path) {
     if (!rt_file_path_from_vstr(path, &cpath) || !cpath)
         return -1;
 
-    struct stat st;
+    rt_fileext_stat_t st;
     if (rt_fileext_stat_path(cpath, &st) != 0)
         return -1;
     if (!rt_fileext_is_regular_mode(st.st_mode))
@@ -1319,7 +1327,7 @@ int64_t rt_file_modified(rt_string path) {
     if (!rt_file_path_from_vstr(path, &cpath) || !cpath)
         return -1;
 
-    struct stat st;
+    rt_fileext_stat_t st;
     if (rt_fileext_stat_path(cpath, &st) != 0)
         return -1;
     if (!rt_fileext_is_regular_mode(st.st_mode))
