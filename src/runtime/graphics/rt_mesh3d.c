@@ -10,7 +10,7 @@
 //   with programmatic construction and procedural generators.
 //
 // Key invariants:
-//   - Vertices stored as vgfx3d_vertex_t (84 bytes, float internally)
+//   - Vertices stored as vgfx3d_vertex_t (92 bytes, float internally)
 //   - Indices are uint32_t (max 16M vertices per mesh)
 //   - CCW winding is front-facing
 //   - GC finalizer frees vertex/index arrays
@@ -85,6 +85,16 @@ static mat4_impl *mesh3d_mat4_checked(void *obj) {
 /// @brief Test whether @p value is finite and within ±FLT_MAX for safe `double → float` narrowing.
 static int mesh_value_fits_float(double value) {
     return isfinite(value) && value >= -MESH3D_FLOAT_ABS_MAX && value <= MESH3D_FLOAT_ABS_MAX;
+}
+
+static int mesh_matrix4f_is_finite(const float *m) {
+    if (!m)
+        return 0;
+    for (int i = 0; i < 16; i++) {
+        if (!isfinite(m[i]))
+            return 0;
+    }
+    return 1;
 }
 
 /// @brief Squared face-normal length for three float positions.
@@ -226,7 +236,7 @@ static void rt_mesh3d_finalize(void *obj) {
 
 /// @brief Create a new empty 3D mesh for programmatic construction.
 /// @details Allocates vertex and index arrays with initial capacity. Vertices are
-///          stored as vgfx3d_vertex_t (84 bytes each, float internally) and indices
+///          stored as vgfx3d_vertex_t (92 bytes each, float internally) and indices
 ///          as uint32_t. The mesh supports up to 16M vertices. Geometry is built
 ///          by calling add_vertex/add_triangle, or by using the procedural generators
 ///          (new_box, new_sphere, new_plane, new_cylinder). GC finalizer frees arrays.
@@ -576,6 +586,10 @@ void rt_mesh3d_transform(void *obj, void *mat4_obj) {
         model_matrix[i] = (float)xform->m[i];
     }
     vgfx3d_compute_normal_matrix4(model_matrix, normal_matrix);
+    if (!mesh_matrix4f_is_finite(normal_matrix)) {
+        rt_trap("Mesh3D.Transform: normal matrix must be finite");
+        return;
+    }
     {
         float det = model_matrix[0] * (model_matrix[5] * model_matrix[10] -
                                        model_matrix[6] * model_matrix[9]) -
@@ -597,6 +611,28 @@ void rt_mesh3d_transform(void *obj, void *mat4_obj) {
             !mesh_value_fits_float(tz)) {
             rt_trap("Mesh3D.Transform: transformed vertex position must be finite and fit float range");
             return;
+        }
+        {
+            const float *n = m->vertices[i].normal;
+            const float *t = m->vertices[i].tangent;
+            double nx = normal_matrix[0] * (double)n[0] + normal_matrix[1] * (double)n[1] +
+                        normal_matrix[2] * (double)n[2];
+            double ny = normal_matrix[4] * (double)n[0] + normal_matrix[5] * (double)n[1] +
+                        normal_matrix[6] * (double)n[2];
+            double nz = normal_matrix[8] * (double)n[0] + normal_matrix[9] * (double)n[1] +
+                        normal_matrix[10] * (double)n[2];
+            double txv = normal_matrix[0] * (double)t[0] + normal_matrix[1] * (double)t[1] +
+                         normal_matrix[2] * (double)t[2];
+            double tyv = normal_matrix[4] * (double)t[0] + normal_matrix[5] * (double)t[1] +
+                         normal_matrix[6] * (double)t[2];
+            double tzv = normal_matrix[8] * (double)t[0] + normal_matrix[9] * (double)t[1] +
+                         normal_matrix[10] * (double)t[2];
+            if (!mesh_value_fits_float(nx) || !mesh_value_fits_float(ny) ||
+                !mesh_value_fits_float(nz) || !mesh_value_fits_float(txv) ||
+                !mesh_value_fits_float(tyv) || !mesh_value_fits_float(tzv)) {
+                rt_trap("Mesh3D.Transform: transformed normal/tangent must be finite and fit float range");
+                return;
+            }
         }
     }
 

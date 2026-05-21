@@ -3011,6 +3011,7 @@ static void test_metal_postfx_null_safety() {
     rt_postfx3d_set_enabled(NULL, 0);
     rt_canvas3d_set_post_fx(NULL, NULL);
     rt_postfx3d_add_fxaa(wrong);
+    rt_postfx3d_apply_to_canvas(wrong);
     EXPECT_EQ(rt_postfx3d_get_effect_count(wrong), 0);
     PASS();
 }

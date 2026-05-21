@@ -14,10 +14,12 @@
 //   - Distance joint: positional correction pushes bodies to target distance.
 //   - Spring joint: force = -stiffness * (dist - rest) - damping * rel_vel.
 //   - Both handle zero-distance edge case (coincident centers).
-//   - Joints with NULL body references are no-ops (safe after GC collection).
+//   - Joints with NULL or non-finite body references are no-ops.
 //
 // Ownership/Lifetime:
 //   - GC-managed via rt_obj_new_i64.
+//   - Body references are retained while the joint exists and released by the
+//     joint finalizer, so worlds can keep solving after caller locals release.
 //
 // Links: rt_joints3d.h, rt_physics3d.h
 //
@@ -35,7 +37,13 @@
 
 extern void *rt_obj_new_i64(int64_t class_id, int64_t byte_size);
 extern void rt_obj_set_finalizer(void *obj, void (*fn)(void *));
+extern void rt_obj_retain_maybe(void *obj);
+extern int rt_obj_release_check0(void *obj);
+extern void rt_obj_free(void *obj);
 #include "rt_trap.h"
+
+#define RT_JOINT3D_MAX_PARAM 1.0e9
+#define RT_JOINT3D_MAX_FORCE 1.0e9
 
 /* Access body internals — this prefix must stay aligned with rt_body3d in rt_physics3d.c. */
 typedef struct {
@@ -50,6 +58,40 @@ typedef struct {
     double inv_mass;
 } rt_body3d_view;
 
+static double joint3d_sanitize_nonnegative(double value) {
+    if (!isfinite(value) || value < 0.0)
+        return 0.0;
+    return value > RT_JOINT3D_MAX_PARAM ? RT_JOINT3D_MAX_PARAM : value;
+}
+
+static double joint3d_clamp_force(double value) {
+    if (!isfinite(value))
+        return 0.0;
+    if (value > RT_JOINT3D_MAX_FORCE)
+        return RT_JOINT3D_MAX_FORCE;
+    if (value < -RT_JOINT3D_MAX_FORCE)
+        return -RT_JOINT3D_MAX_FORCE;
+    return value;
+}
+
+static int joint3d_body_is_finite(const rt_body3d_view *body) {
+    if (!body || !isfinite(body->inv_mass) || body->inv_mass < 0.0)
+        return 0;
+    for (int i = 0; i < 3; i++) {
+        if (!isfinite(body->position[i]) || !isfinite(body->velocity[i]))
+            return 0;
+    }
+    return 1;
+}
+
+static void joint3d_release_body_ref(rt_body3d_view **slot) {
+    if (!slot || !*slot)
+        return;
+    if (rt_obj_release_check0(*slot))
+        rt_obj_free(*slot);
+    *slot = NULL;
+}
+
 /*==========================================================================
  * Distance Joint
  *=========================================================================*/
@@ -61,13 +103,13 @@ typedef struct {
     double target_distance;
 } rt_distance_joint3d;
 
-/// @brief GC finalizer — distance joints own no heap allocations.
-/// @details `body_a` / `body_b` are weak views into bodies owned by the
-///   physics world — the joint never retains them. No cleanup needed, but
-///   the finalizer exists so the GC treats this type as finalizable for
-///   uniform lifecycle tracing.
+/// @brief GC finalizer — release the bodies retained by this distance joint.
 static void distance_joint_finalizer(void *obj) {
-    (void)obj;
+    rt_distance_joint3d *j = (rt_distance_joint3d *)obj;
+    if (!j)
+        return;
+    joint3d_release_body_ref(&j->body_a);
+    joint3d_release_body_ref(&j->body_b);
 }
 
 /// @brief Create a distance joint that constrains two bodies to a fixed separation.
@@ -93,7 +135,9 @@ void *rt_distance_joint3d_new(void *body_a, void *body_b, double distance) {
     j->vptr = NULL;
     j->body_a = (rt_body3d_view *)body_a;
     j->body_b = (rt_body3d_view *)body_b;
-    j->target_distance = (isfinite(distance) && distance >= 0.0) ? distance : 0.0;
+    rt_obj_retain_maybe(body_a);
+    rt_obj_retain_maybe(body_b);
+    j->target_distance = joint3d_sanitize_nonnegative(distance);
     rt_obj_set_finalizer(j, distance_joint_finalizer);
     return j;
 }
@@ -110,7 +154,7 @@ void rt_distance_joint3d_set_distance(void *joint, double distance) {
     rt_distance_joint3d *j =
         (rt_distance_joint3d *)rt_g3d_checked_or_null(joint, RT_G3D_DISTANCEJOINT3D_CLASS_ID);
     if (j)
-        j->target_distance = (isfinite(distance) && distance >= 0.0) ? distance : 0.0;
+        j->target_distance = joint3d_sanitize_nonnegative(distance);
 }
 
 /// @brief Enforce a rigid distance constraint between two bodies for one step.
@@ -127,7 +171,7 @@ void rt_distance_joint3d_set_distance(void *joint, double distance) {
 ///   Early-outs: coincident bodies (no defined direction) and two static
 ///   bodies (both inv_mass = 0) both skip the step cleanly.
 static void solve_distance(rt_distance_joint3d *j, double dt) {
-    if (!j || !j->body_a || !j->body_b)
+    if (!j || !joint3d_body_is_finite(j->body_a) || !joint3d_body_is_finite(j->body_b))
         return;
     (void)dt;
 
@@ -136,7 +180,7 @@ static void solve_distance(rt_distance_joint3d *j, double dt) {
     double dz = j->body_b->position[2] - j->body_a->position[2];
     double dist = sqrt(dx * dx + dy * dy + dz * dz);
 
-    if (dist < 1e-12)
+    if (!isfinite(dist) || dist < 1e-12)
         return; /* coincident — can't determine direction */
 
     double error = dist - j->target_distance;
@@ -146,11 +190,13 @@ static void solve_distance(rt_distance_joint3d *j, double dt) {
     double nz = dz * inv_dist;
 
     double inv_sum = j->body_a->inv_mass + j->body_b->inv_mass;
-    if (inv_sum < 1e-12)
+    if (!isfinite(inv_sum) || inv_sum < 1e-12)
         return; /* both static */
 
     /* Positional correction: move each body proportional to inverse mass */
     double correction = error / inv_sum;
+    if (!isfinite(correction))
+        return;
 
     j->body_a->position[0] += correction * j->body_a->inv_mass * nx;
     j->body_a->position[1] += correction * j->body_a->inv_mass * ny;
@@ -164,8 +210,12 @@ static void solve_distance(rt_distance_joint3d *j, double dt) {
     double rvy = j->body_b->velocity[1] - j->body_a->velocity[1];
     double rvz = j->body_b->velocity[2] - j->body_a->velocity[2];
     double rv_along = rvx * nx + rvy * ny + rvz * nz;
+    if (!isfinite(rv_along))
+        return;
 
     double jn = rv_along / inv_sum;
+    if (!isfinite(jn))
+        return;
     j->body_a->velocity[0] += jn * j->body_a->inv_mass * nx;
     j->body_a->velocity[1] += jn * j->body_a->inv_mass * ny;
     j->body_a->velocity[2] += jn * j->body_a->inv_mass * nz;
@@ -187,12 +237,13 @@ typedef struct {
     double damping;
 } rt_spring_joint3d;
 
-/// @brief GC finalizer — spring joints own no heap allocations.
-/// @details Same ownership model as the distance joint: body refs are
-///   non-retained weak views, so there's nothing to release. Exists to
-///   register the type as finalizable.
+/// @brief GC finalizer — release the bodies retained by this spring joint.
 static void spring_joint_finalizer(void *obj) {
-    (void)obj;
+    rt_spring_joint3d *j = (rt_spring_joint3d *)obj;
+    if (!j)
+        return;
+    joint3d_release_body_ref(&j->body_a);
+    joint3d_release_body_ref(&j->body_b);
 }
 
 /// @brief Create a spring joint that applies Hooke's law forces between two bodies.
@@ -221,9 +272,11 @@ void *rt_spring_joint3d_new(
     j->vptr = NULL;
     j->body_a = (rt_body3d_view *)body_a;
     j->body_b = (rt_body3d_view *)body_b;
-    j->rest_length = (isfinite(rest_length) && rest_length >= 0.0) ? rest_length : 0.0;
-    j->stiffness = (isfinite(stiffness) && stiffness >= 0.0) ? stiffness : 0.0;
-    j->damping = (isfinite(damping) && damping >= 0.0) ? damping : 0.0;
+    rt_obj_retain_maybe(body_a);
+    rt_obj_retain_maybe(body_b);
+    j->rest_length = joint3d_sanitize_nonnegative(rest_length);
+    j->stiffness = joint3d_sanitize_nonnegative(stiffness);
+    j->damping = joint3d_sanitize_nonnegative(damping);
     rt_obj_set_finalizer(j, spring_joint_finalizer);
     return j;
 }
@@ -240,7 +293,7 @@ void rt_spring_joint3d_set_stiffness(void *joint, double stiffness) {
     rt_spring_joint3d *j =
         (rt_spring_joint3d *)rt_g3d_checked_or_null(joint, RT_G3D_SPRINGJOINT3D_CLASS_ID);
     if (j)
-        j->stiffness = (isfinite(stiffness) && stiffness >= 0.0) ? stiffness : 0.0;
+        j->stiffness = joint3d_sanitize_nonnegative(stiffness);
 }
 
 /// @brief Get the velocity damping coefficient.
@@ -255,7 +308,7 @@ void rt_spring_joint3d_set_damping(void *joint, double damping) {
     rt_spring_joint3d *j =
         (rt_spring_joint3d *)rt_g3d_checked_or_null(joint, RT_G3D_SPRINGJOINT3D_CLASS_ID);
     if (j)
-        j->damping = (isfinite(damping) && damping >= 0.0) ? damping : 0.0;
+        j->damping = joint3d_sanitize_nonnegative(damping);
 }
 
 /// @brief Get the spring's natural (zero-force) length.
@@ -275,7 +328,8 @@ double rt_spring_joint3d_get_rest_length(void *joint) {
 ///   can oscillate or explode at the current fixed step — tune `stiffness`
 ///   below the stability ceiling for the caller's step frequency.
 static void solve_spring(rt_spring_joint3d *j, double dt) {
-    if (!j || !j->body_a || !j->body_b || dt <= 0)
+    if (!j || !joint3d_body_is_finite(j->body_a) || !joint3d_body_is_finite(j->body_b) ||
+        !isfinite(dt) || dt <= 0.0)
         return;
 
     double dx = j->body_b->position[0] - j->body_a->position[0];
@@ -283,7 +337,7 @@ static void solve_spring(rt_spring_joint3d *j, double dt) {
     double dz = j->body_b->position[2] - j->body_a->position[2];
     double dist = sqrt(dx * dx + dy * dy + dz * dz);
 
-    if (dist < 1e-12)
+    if (!isfinite(dist) || dist < 1e-12)
         return;
 
     double inv_dist = 1.0 / dist;
@@ -300,14 +354,16 @@ static void solve_spring(rt_spring_joint3d *j, double dt) {
     double rvy = j->body_b->velocity[1] - j->body_a->velocity[1];
     double rvz = j->body_b->velocity[2] - j->body_a->velocity[2];
     double rv_along = rvx * nx + rvy * ny + rvz * nz;
+    if (!isfinite(rv_along))
+        return;
     double damp_force = -j->damping * rv_along;
 
-    double total_force = spring_force + damp_force;
+    double total_force = joint3d_clamp_force(spring_force + damp_force);
 
     /* Apply force to both bodies (equal and opposite) */
-    double fx = total_force * nx;
-    double fy = total_force * ny;
-    double fz = total_force * nz;
+    double fx = joint3d_clamp_force(total_force * nx);
+    double fy = joint3d_clamp_force(total_force * ny);
+    double fz = joint3d_clamp_force(total_force * nz);
 
     /* F = ma → a = F * inv_mass, v += a * dt */
     j->body_a->velocity[0] -= fx * j->body_a->inv_mass * dt;

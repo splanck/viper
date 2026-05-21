@@ -1,0 +1,213 @@
+//===----------------------------------------------------------------------===//
+//
+// Part of the Viper project, under the GNU GPL v3.
+// See LICENSE for license information.
+//
+//===----------------------------------------------------------------------===//
+//
+// File: bytecode/Bytecode.def
+// Purpose: Single source of truth for the bytecode opcode set. This X-macro
+//          list drives BOTH the `BCOpcode` enum (Bytecode.hpp) and the
+//          `opcodeName()` disassembly table (Bytecode.cpp), eliminating the
+//          previous hazard where the two could silently diverge when an opcode
+//          was added to one but not the other.
+// Key invariants:
+//   - Each opcode appears exactly once with its canonical name and numeric
+//     value; the name is also its disassembly string (via #NAME).
+//   - The trailing `//` comment on each line is the authoritative human-readable
+//     description (formerly the enum's `///<` doc comment).
+// Usage:
+//   #define BC_OPCODE(name, value) <expansion>
+//   #include "bytecode/Bytecode.def"
+//   #undef BC_OPCODE
+// This list ALSO drives the threaded interpreter's computed-goto dispatch table
+//   (BytecodeVM_threaded.cpp): every slot defaults to L_DEFAULT and BC_OPCODE
+//   entries override it with &&L_<NAME>. Opcodes with no handler label use
+//   BC_OPCODE_TRAP (below) and stay routed to L_DEFAULT — TAIL_CALL (TCO gated
+//   by VIPER_VM_TAILCALL), MAKE_ERROR / LINE / BREAKPOINT / WATCH_VAR, and the
+//   OPCODE_COUNT sentinel. The classification is compiler-enforced: a missing
+//   handler label or an over-marked trap fails the build.
+// The handler BODIES (the `L_<NAME>:` code in BytecodeVM_threaded.cpp and the
+//   switch cases in BytecodeVM.cpp run()) are real per-opcode logic and remain
+//   hand-written; only the dispatch *mapping* is generated here.
+//
+//===----------------------------------------------------------------------===//
+
+// Opcodes that have NO threaded-interpreter handler label — they route to the
+// default/trap path — are listed with BC_OPCODE_TRAP instead of BC_OPCODE.
+// Consumers that only need the full opcode set (the BCOpcode enum, opcodeName)
+// leave BC_OPCODE_TRAP undefined, so it falls back to BC_OPCODE here and the
+// distinction is transparent. The threaded dispatch-table builder defines
+// BC_OPCODE_TRAP to expand to nothing, leaving those slots at L_DEFAULT.
+#ifndef BC_OPCODE_TRAP
+#define BC_OPCODE_TRAP(name, value) BC_OPCODE(name, value)
+#define VIPER_BC_OPCODE_TRAP_IS_FALLBACK
+#endif
+
+// Stack Operations (0x00-0x0F)
+BC_OPCODE(NOP, 0x00)   // No operation.
+BC_OPCODE(DUP, 0x01)   // Duplicate top-of-stack (TOS).
+BC_OPCODE(DUP2, 0x02)  // Duplicate the top two stack entries.
+BC_OPCODE(POP, 0x03)   // Discard TOS.
+BC_OPCODE(POP2, 0x04)  // Discard the top two stack entries.
+BC_OPCODE(SWAP, 0x05)  // Swap the top two stack entries.
+BC_OPCODE(ROT3, 0x06)  // Rotate the top three stack entries (a b c -> c a b).
+
+// Local Variable Operations (0x10-0x1F)
+BC_OPCODE(LOAD_LOCAL, 0x10)    // Push locals[arg0] onto the operand stack.
+BC_OPCODE(STORE_LOCAL, 0x11)   // Pop TOS and store to locals[arg0].
+BC_OPCODE(LOAD_LOCAL_W, 0x12)  // Wide local load using a 16-bit index.
+BC_OPCODE(STORE_LOCAL_W, 0x13) // Wide local store using a 16-bit index.
+BC_OPCODE(INC_LOCAL, 0x14)     // Increment locals[arg0] in-place (locals[arg0]++).
+BC_OPCODE(DEC_LOCAL, 0x15)     // Decrement locals[arg0] in-place (locals[arg0]--).
+
+// Constant Loading (0x20-0x2F)
+BC_OPCODE(LOAD_I8, 0x20)           // Push a signed 8-bit immediate value.
+BC_OPCODE(LOAD_I16, 0x21)          // Push a signed 16-bit immediate value.
+BC_OPCODE(LOAD_I32, 0x22)          // Push a signed 32-bit value (extended format).
+BC_OPCODE(LOAD_I64, 0x23)          // Push an i64 from the constant pool at index [arg0:arg1].
+BC_OPCODE(LOAD_F64, 0x24)          // Push an f64 from the constant pool at index [arg0:arg1].
+BC_OPCODE(LOAD_STR, 0x25)          // Push a string from the constant pool at index [arg0:arg1].
+BC_OPCODE(LOAD_NULL, 0x26)         // Push a null pointer value.
+BC_OPCODE(LOAD_ZERO, 0x27)         // Push i64 zero (fast-path constant).
+BC_OPCODE(LOAD_ONE, 0x28)          // Push i64 one (fast-path constant).
+BC_OPCODE(LOAD_GLOBAL, 0x29)       // Push the value of global[arg0:arg1].
+BC_OPCODE(STORE_GLOBAL, 0x2A)      // Pop TOS and store to global[arg0:arg1].
+BC_OPCODE(LOAD_GLOBAL_ADDR, 0x2B)  // Push a pointer to global[arg0:arg1] storage.
+
+// Integer Arithmetic (0x30-0x4F)
+BC_OPCODE(ADD_I64, 0x30)      // Integer addition: a + b.
+BC_OPCODE(SUB_I64, 0x31)      // Integer subtraction: a - b.
+BC_OPCODE(MUL_I64, 0x32)      // Integer multiplication: a * b.
+BC_OPCODE(SDIV_I64, 0x33)     // Signed integer division: a / b.
+BC_OPCODE(UDIV_I64, 0x34)     // Unsigned integer division: a / b.
+BC_OPCODE(SREM_I64, 0x35)     // Signed integer remainder: a % b.
+BC_OPCODE(UREM_I64, 0x36)     // Unsigned integer remainder: a % b.
+BC_OPCODE(NEG_I64, 0x37)      // Integer negation: -a.
+BC_OPCODE(ADD_I64_OVF, 0x38)  // Integer addition with overflow trap.
+BC_OPCODE(SUB_I64_OVF, 0x39)  // Integer subtraction with overflow trap.
+BC_OPCODE(MUL_I64_OVF, 0x3A)  // Integer multiplication with overflow trap.
+BC_OPCODE(SDIV_I64_CHK, 0x3B) // Signed division with zero-divisor trap.
+BC_OPCODE(UDIV_I64_CHK, 0x3C) // Unsigned division with zero-divisor trap.
+BC_OPCODE(SREM_I64_CHK, 0x3D) // Signed remainder with zero-divisor trap.
+BC_OPCODE(UREM_I64_CHK, 0x3E) // Unsigned remainder with zero-divisor trap.
+BC_OPCODE(IDX_CHK, 0x3F)      // Bounds check: traps unless lo <= idx < hi.
+
+// Float Arithmetic (0x50-0x5F)
+BC_OPCODE(ADD_F64, 0x50) // Float addition: a + b.
+BC_OPCODE(SUB_F64, 0x51) // Float subtraction: a - b.
+BC_OPCODE(MUL_F64, 0x52) // Float multiplication: a * b.
+BC_OPCODE(DIV_F64, 0x53) // Float division: a / b.
+BC_OPCODE(NEG_F64, 0x54) // Float negation: -a.
+
+// Bitwise Operations (0x60-0x6F)
+BC_OPCODE(AND_I64, 0x60)  // Bitwise AND: a & b.
+BC_OPCODE(OR_I64, 0x61)   // Bitwise OR: a | b.
+BC_OPCODE(XOR_I64, 0x62)  // Bitwise XOR: a ^ b.
+BC_OPCODE(NOT_I64, 0x63)  // Bitwise NOT: ~a.
+BC_OPCODE(SHL_I64, 0x64)  // Left shift: a << b.
+BC_OPCODE(LSHR_I64, 0x65) // Logical right shift: a >>> b.
+BC_OPCODE(ASHR_I64, 0x66) // Arithmetic right shift: a >> b.
+
+// Integer Comparisons (0x70-0x7F)
+BC_OPCODE(CMP_EQ_I64, 0x70)  // Integer equality: a == b.
+BC_OPCODE(CMP_NE_I64, 0x71)  // Integer inequality: a != b.
+BC_OPCODE(CMP_SLT_I64, 0x72) // Signed less-than: a < b.
+BC_OPCODE(CMP_SLE_I64, 0x73) // Signed less-or-equal: a <= b.
+BC_OPCODE(CMP_SGT_I64, 0x74) // Signed greater-than: a > b.
+BC_OPCODE(CMP_SGE_I64, 0x75) // Signed greater-or-equal: a >= b.
+BC_OPCODE(CMP_ULT_I64, 0x76) // Unsigned less-than: a < b.
+BC_OPCODE(CMP_ULE_I64, 0x77) // Unsigned less-or-equal: a <= b.
+BC_OPCODE(CMP_UGT_I64, 0x78) // Unsigned greater-than: a > b.
+BC_OPCODE(CMP_UGE_I64, 0x79) // Unsigned greater-or-equal: a >= b.
+
+// Float Comparisons (0x80-0x8F)
+BC_OPCODE(CMP_EQ_F64, 0x80) // Float equality: a == b.
+BC_OPCODE(CMP_NE_F64, 0x81) // Float inequality: a != b.
+BC_OPCODE(CMP_LT_F64, 0x82) // Float less-than: a < b.
+BC_OPCODE(CMP_LE_F64, 0x83) // Float less-or-equal: a <= b.
+BC_OPCODE(CMP_GT_F64, 0x84) // Float greater-than: a > b.
+BC_OPCODE(CMP_GE_F64, 0x85) // Float greater-or-equal: a >= b.
+
+// Type Conversions (0x90-0x9F)
+BC_OPCODE(I64_TO_F64, 0x90)     // Convert signed i64 to f64.
+BC_OPCODE(U64_TO_F64, 0x91)     // Convert unsigned i64 to f64.
+BC_OPCODE(F64_TO_I64, 0x92)     // Convert f64 to signed i64 (truncation).
+BC_OPCODE(F64_TO_I64_CHK, 0x93) // Convert f64 to i64 with range-check trap.
+BC_OPCODE(F64_TO_U64_CHK, 0x94) // Convert f64 to u64 with range-check trap.
+BC_OPCODE(I64_NARROW_CHK, 0x95) // Signed narrow with overflow-check trap.
+BC_OPCODE(U64_NARROW_CHK, 0x96) // Unsigned narrow with overflow-check trap.
+BC_OPCODE(BOOL_TO_I64, 0x97)    // Convert boolean (0/1) to i64.
+BC_OPCODE(I64_TO_BOOL, 0x98)    // Convert i64 to boolean (nonzero -> 1, zero -> 0).
+
+// Memory Operations (0xA0-0xAF)
+BC_OPCODE(ALLOCA, 0xA0)        // Allocate n bytes on the alloca stack.
+BC_OPCODE(GEP, 0xA1)           // Get element pointer: ptr + offset.
+BC_OPCODE(LOAD_I8_MEM, 0xA2)   // Load 8-bit signed value from memory.
+BC_OPCODE(LOAD_I16_MEM, 0xA3)  // Load 16-bit signed value from memory.
+BC_OPCODE(LOAD_I32_MEM, 0xA4)  // Load 32-bit signed value from memory.
+BC_OPCODE(LOAD_I64_MEM, 0xA5)  // Load 64-bit value from memory.
+BC_OPCODE(LOAD_F64_MEM, 0xA6)  // Load f64 value from memory.
+BC_OPCODE(LOAD_PTR_MEM, 0xA7)  // Load pointer value from memory.
+BC_OPCODE(LOAD_STR_MEM, 0xA8)  // Load string handle from memory.
+BC_OPCODE(STORE_I8_MEM, 0xA9)  // Store 8-bit value to memory.
+BC_OPCODE(STORE_I16_MEM, 0xAA) // Store 16-bit value to memory.
+BC_OPCODE(STORE_I32_MEM, 0xAB) // Store 32-bit value to memory.
+BC_OPCODE(STORE_I64_MEM, 0xAC) // Store 64-bit value to memory.
+BC_OPCODE(STORE_F64_MEM, 0xAD) // Store f64 value to memory.
+BC_OPCODE(STORE_PTR_MEM, 0xAE) // Store pointer value to memory.
+BC_OPCODE(STORE_STR_MEM, 0xAF) // Store string handle to memory.
+
+// Control Flow (0xB0-0xBF)
+BC_OPCODE(JUMP, 0xB0)          // Unconditional jump (16-bit signed offset).
+BC_OPCODE(JUMP_IF_TRUE, 0xB1)  // Conditional jump if TOS != 0 (16-bit offset).
+BC_OPCODE(JUMP_IF_FALSE, 0xB2) // Conditional jump if TOS == 0 (16-bit offset).
+BC_OPCODE(JUMP_LONG, 0xB3)     // Extended unconditional jump (24-bit offset).
+BC_OPCODE(SWITCH, 0xB4)        // Table-driven switch dispatch.
+BC_OPCODE(CALL, 0xB5)          // Call bytecode function by index [arg0:arg1].
+BC_OPCODE(CALL_NATIVE, 0xB6)   // Call a native/runtime function [argCount:8][nativeIdx:16].
+BC_OPCODE(CALL_INDIRECT, 0xB7) // Indirect call through a function pointer.
+BC_OPCODE(RETURN, 0xB8)        // Return TOS from the current function.
+BC_OPCODE(RETURN_VOID, 0xB9)   // Return void from the current function.
+BC_OPCODE_TRAP(TAIL_CALL, 0xBA) // Tail-call optimization: reuse current frame (routed to default; TCO gated by VIPER_VM_TAILCALL).
+
+// Exception Handling (0xC0-0xCF)
+BC_OPCODE(EH_PUSH, 0xC0)       // Register an exception handler at a given offset.
+BC_OPCODE(EH_POP, 0xC1)        // Unregister the most recently pushed handler.
+BC_OPCODE(EH_ENTRY, 0xC2)      // Marker for handler entry point.
+BC_OPCODE(TRAP, 0xC3)          // Raise a trap with a specified kind.
+BC_OPCODE(TRAP_FROM_ERR, 0xC4) // Raise a trap from an error value.
+BC_OPCODE_TRAP(MAKE_ERROR, 0xC5) // Create an error value on the stack (no threaded handler label).
+BC_OPCODE(ERR_GET_KIND, 0xC6)  // Extract the trap kind from an error value.
+BC_OPCODE(ERR_GET_CODE, 0xC7)  // Extract the error code from an error value.
+BC_OPCODE(ERR_GET_IP, 0xC8)    // Extract the faulting instruction pointer.
+BC_OPCODE(ERR_GET_LINE, 0xC9)  // Extract the source line number from an error.
+BC_OPCODE(RESUME_SAME, 0xCA)   // Resume execution at the faulting instruction.
+BC_OPCODE(RESUME_NEXT, 0xCB)   // Resume execution at the instruction after the fault.
+BC_OPCODE(RESUME_LABEL, 0xCC)  // Resume execution at a labelled target.
+BC_OPCODE(TRAP_KIND, 0xCD)     // Push the current trap kind (no operands).
+
+// Debug Operations (0xD0-0xDF) — no threaded handler labels (route to default).
+BC_OPCODE_TRAP(LINE, 0xD0)       // Source line marker for debug info.
+BC_OPCODE_TRAP(BREAKPOINT, 0xD1) // Debug breakpoint trap.
+BC_OPCODE_TRAP(WATCH_VAR, 0xD2)  // Variable watch trigger for the debugger.
+
+// Runtime Fast-Path Operations (0xD8-0xDF)
+BC_OPCODE(ARR_I32_GET_FAST, 0xD8) // Direct unchecked i32 array load: arr, idx -> value.
+BC_OPCODE(ARR_I32_SET_FAST, 0xD9) // Direct unchecked i32 array store: arr, idx, value -> void.
+BC_OPCODE(ARR_I64_GET_FAST, 0xDA) // Direct unchecked i64 array load: arr, idx -> value.
+BC_OPCODE(ARR_I64_SET_FAST, 0xDB) // Direct unchecked i64 array store: arr, idx, value -> void.
+BC_OPCODE(ARR_F64_GET_FAST, 0xDC) // Direct unchecked f64 array load: arr, idx -> value.
+BC_OPCODE(ARR_F64_SET_FAST, 0xDD) // Direct unchecked f64 array store: arr, idx, value -> void.
+
+// String Operations (0xE0-0xEF)
+BC_OPCODE(STR_RETAIN, 0xE0)  // Increment the reference count of a string handle.
+BC_OPCODE(STR_RELEASE, 0xE1) // Decrement the reference count of a string handle.
+
+// Sentinel value — not a real opcode, no dispatch handler.
+BC_OPCODE_TRAP(OPCODE_COUNT, 0xFF) // Sentinel / total opcode count marker.
+
+#ifdef VIPER_BC_OPCODE_TRAP_IS_FALLBACK
+#undef BC_OPCODE_TRAP
+#undef VIPER_BC_OPCODE_TRAP_IS_FALLBACK
+#endif

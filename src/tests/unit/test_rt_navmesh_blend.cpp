@@ -34,6 +34,7 @@ extern void *rt_skeleton3d_new(void);
 extern int64_t rt_skeleton3d_add_bone(void *s, rt_string n, int64_t p, void *m);
 extern void rt_skeleton3d_compute_inverse_bind(void *s);
 extern void *rt_animation3d_new(rt_string name, double duration);
+extern rt_string rt_const_cstr(const char *s);
 }
 
 static int tests_passed = 0;
@@ -202,6 +203,31 @@ static void test_blend_weight() {
     EXPECT_NEAR(rt_anim_blend3d_get_weight(blend, 0), 0.75, 0.01, "Weight set to 0.75");
 }
 
+static void test_blend_weight_sanitizes_inputs() {
+    void *skel = rt_skeleton3d_new();
+    rt_skeleton3d_add_bone(skel, rt_const_cstr("root"), -1, rt_mat4_identity());
+    rt_skeleton3d_compute_inverse_bind(skel);
+
+    void *blend = rt_anim_blend3d_new(skel);
+    void *anim = rt_animation3d_new(rt_const_cstr("walk"), 1.0);
+    rt_anim_blend3d_add_state(blend, rt_const_cstr("walk"), anim);
+
+    rt_anim_blend3d_set_weight(blend, 0, -2.0);
+    EXPECT_NEAR(rt_anim_blend3d_get_weight(blend, 0), 0.0, 0.01,
+                "AnimBlend3D clamps negative weights to zero");
+    rt_anim_blend3d_set_weight(blend, 0, 2.0);
+    EXPECT_NEAR(rt_anim_blend3d_get_weight(blend, 0), 1.0, 0.01,
+                "AnimBlend3D clamps high weights to one");
+    rt_anim_blend3d_set_weight(blend, 0, NAN);
+    EXPECT_NEAR(rt_anim_blend3d_get_weight(blend, 0), 0.0, 0.01,
+                "AnimBlend3D converts NaN weights to zero");
+    rt_anim_blend3d_set_weight_by_name(blend, rt_const_cstr("walk"), 0.25);
+    EXPECT_NEAR(rt_anim_blend3d_get_weight(blend, 0), 0.25, 0.01,
+                "AnimBlend3D clamps named weights through the same path");
+    EXPECT_TRUE(rt_anim_blend3d_state_count(skel) == 0,
+                "AnimBlend3D accessors reject non-blender handles");
+}
+
 static void test_blend_update_no_crash() {
     void *skel = rt_skeleton3d_new();
     rt_skeleton3d_add_bone(skel, nullptr, -1, rt_mat4_identity());
@@ -234,6 +260,7 @@ int main() {
     test_blend_create();
     test_blend_add_state();
     test_blend_weight();
+    test_blend_weight_sanitizes_inputs();
     test_blend_update_no_crash();
 
     printf("NavMesh3D+AnimBlend3D tests: %d/%d passed\n", tests_passed, tests_run);

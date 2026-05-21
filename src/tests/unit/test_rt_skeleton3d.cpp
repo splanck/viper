@@ -224,6 +224,47 @@ static void test_player_loop() {
     EXPECT_NEAR(rt_anim_player3d_get_time(player), 0.5, 0.01, "Time wraps to 0.5");
 }
 
+static void test_player_reverse_timing_and_bad_handles() {
+    void *skel = rt_skeleton3d_new();
+    rt_skeleton3d_add_bone(skel, rt_const_cstr("root"), -1, rt_mat4_identity());
+    rt_skeleton3d_compute_inverse_bind(skel);
+
+    void *anim = rt_animation3d_new(rt_const_cstr("reverse"), 1.0);
+    void *rot = rt_quat_new(0.0, 0.0, 0.0, 1.0);
+    void *scl = rt_vec3_new(1.0, 1.0, 1.0);
+    rt_animation3d_add_keyframe(anim, 0, 0.0, rt_vec3_new(0.0, 0.0, 0.0), rot, scl);
+    rt_animation3d_add_keyframe(anim, 0, 1.0, rt_vec3_new(1.0, 0.0, 0.0), rot, scl);
+
+    void *player = rt_anim_player3d_new(skel);
+    rt_animation3d_set_looping(anim, 1);
+    rt_anim_player3d_play(player, anim);
+    rt_anim_player3d_set_time(player, 0.25);
+    rt_anim_player3d_set_speed(player, -1.0);
+    rt_anim_player3d_update(player, 0.5);
+    EXPECT_TRUE(rt_anim_player3d_is_playing(player) == 1,
+                "Reverse looping playback keeps playing after wrapping below zero");
+    EXPECT_NEAR(rt_anim_player3d_get_time(player), 0.75, 0.01,
+                "Reverse looping playback wraps negative time");
+
+    rt_animation3d_set_looping(anim, 0);
+    rt_anim_player3d_play(player, anim);
+    rt_anim_player3d_set_time(player, 0.25);
+    rt_anim_player3d_set_speed(player, -1.0);
+    rt_anim_player3d_update(player, 0.5);
+    EXPECT_TRUE(rt_anim_player3d_is_playing(player) == 0,
+                "Reverse non-looping playback stops at the start");
+    EXPECT_NEAR(rt_anim_player3d_get_time(player), 0.0, 0.01,
+                "Reverse non-looping playback clamps to zero");
+
+    void *fresh_player = rt_anim_player3d_new(skel);
+    rt_anim_player3d_play(fresh_player, skel);
+    EXPECT_TRUE(rt_anim_player3d_is_playing(fresh_player) == 0,
+                "AnimPlayer3D.Play rejects non-Animation3D handles");
+    rt_anim_player3d_set_time(skel, 0.5);
+    EXPECT_NEAR(rt_anim_player3d_get_time(skel), 0.0, 0.01,
+                "AnimPlayer3D accessors reject non-player handles");
+}
+
 static void test_player_stop_at_end() {
     void *skel = rt_skeleton3d_new();
     rt_skeleton3d_add_bone(skel, rt_const_cstr("root"), -1, rt_mat4_identity());
@@ -432,6 +473,7 @@ int main() {
     test_player_create();
     test_player_playback();
     test_player_loop();
+    test_player_reverse_timing_and_bad_handles();
     test_player_stop_at_end();
     test_player_speed();
     test_two_bone_chain();
