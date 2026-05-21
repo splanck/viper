@@ -31,6 +31,12 @@
 #include <stdint.h>
 #include <string.h>
 
+#define CAMERA3D_WORLD_ABS_MAX 1000000000000.0
+#define CAMERA3D_CLIP_MAX 1000000000000.0
+#define CAMERA3D_ASPECT_MAX 1000000.0
+#define CAMERA3D_ORTHO_SIZE_MAX 1000000000.0
+#define CAMERA3D_FLOAT_ABS_MAX 3.40282346638528859812e38
+
 extern void *rt_obj_new_i64(int64_t class_id, int64_t byte_size);
 #include "rt_trap.h"
 
@@ -53,12 +59,27 @@ static double finite_or(double value, double fallback) {
     return isfinite(value) ? value : fallback;
 }
 
+static double clamp_abs_or(double value, double fallback, double max_abs) {
+    value = finite_or(value, fallback);
+    if (value > max_abs)
+        return max_abs;
+    if (value < -max_abs)
+        return -max_abs;
+    return value;
+}
+
+static int camera_value_fits_float(double value) {
+    return isfinite(value) && value >= -CAMERA3D_FLOAT_ABS_MAX && value <= CAMERA3D_FLOAT_ABS_MAX;
+}
+
 /// @brief Clamp `value` to `[0, +∞)`, substituting `fallback` when not finite.
 /// @details Used for camera knobs (FOV, clip distances, exposure) where negatives would
 ///   invert the geometry or exponent and NaN would propagate into the view matrix.
 static double sanitize_nonnegative(double value, double fallback) {
     value = finite_or(value, fallback);
-    return value < 0.0 ? 0.0 : value;
+    if (value < 0.0)
+        return 0.0;
+    return value > CAMERA3D_WORLD_ABS_MAX ? CAMERA3D_WORLD_ABS_MAX : value;
 }
 
 /// @brief Component-wise fallback for a 3-vector — each non-finite lane uses `fallback[i]`.
@@ -69,14 +90,16 @@ static void sanitize_vec3(double v[3], const double fallback[3]) {
     if (!v || !fallback)
         return;
     for (int i = 0; i < 3; i++)
-        v[i] = finite_or(v[i], fallback[i]);
+        v[i] = clamp_abs_or(v[i], fallback[i], CAMERA3D_WORLD_ABS_MAX);
 }
 
 /// @brief Clamp aspect ratio away from zero. Values ≤ 1e-6 (including negatives and
 /// zero) fall back to 1.0 so `build_perspective`'s `f / aspect` divide never produces
 /// infinity or a negative scale. Used at every projection-building site.
 static double sanitize_aspect(double aspect) {
-    return isfinite(aspect) && aspect > 1e-6 ? aspect : 1.0;
+    if (!isfinite(aspect) || aspect <= 1e-6)
+        return 1.0;
+    return aspect > CAMERA3D_ASPECT_MAX ? CAMERA3D_ASPECT_MAX : aspect;
 }
 
 /// @brief Guard the near/far clip planes against degenerate configurations. Forces near
@@ -88,8 +111,16 @@ static void sanitize_clip_planes(double *near_val, double *far_val) {
         return;
     if (!isfinite(*near_val) || *near_val <= 1e-4)
         *near_val = 0.1;
+    if (*near_val > CAMERA3D_CLIP_MAX)
+        *near_val = 0.1;
     if (!isfinite(*far_val) || *far_val <= *near_val + 1e-4)
         *far_val = *near_val + 1000.0;
+    if (*far_val > CAMERA3D_CLIP_MAX)
+        *far_val = CAMERA3D_CLIP_MAX;
+    if (*far_val <= *near_val + 1e-4) {
+        *near_val = 0.1;
+        *far_val = 1000.1;
+    }
 }
 
 /// @brief Clamp vertical FOV to the usable `[1°, 179°]` range. Below 1° the perspective
@@ -110,7 +141,36 @@ static double sanitize_fov(double fov_deg) {
 /// `sanitize_aspect` but for the ortho height parameter. Prevents a zero-size ortho
 /// projection from collapsing into a divide-by-zero during matrix construction.
 static double sanitize_ortho_size(double size) {
-    return isfinite(size) && size > 1e-6 ? size : 1.0;
+    if (!isfinite(size) || size <= 1e-6)
+        return 1.0;
+    return size > CAMERA3D_ORTHO_SIZE_MAX ? CAMERA3D_ORTHO_SIZE_MAX : size;
+}
+
+static void camera_normalize_vec3_or(double *x,
+                                     double *y,
+                                     double *z,
+                                     double fallback_x,
+                                     double fallback_y,
+                                     double fallback_z) {
+    double vx = finite_or(x ? *x : fallback_x, fallback_x);
+    double vy = finite_or(y ? *y : fallback_y, fallback_y);
+    double vz = finite_or(z ? *z : fallback_z, fallback_z);
+    double len = sqrt(vx * vx + vy * vy + vz * vz);
+    if (!isfinite(len) || len <= 1e-12) {
+        vx = fallback_x;
+        vy = fallback_y;
+        vz = fallback_z;
+    } else {
+        vx /= len;
+        vy /= len;
+        vz /= len;
+    }
+    if (x)
+        *x = vx;
+    if (y)
+        *y = vy;
+    if (z)
+        *z = vz;
 }
 
 /// @brief Build an OpenGL-style perspective projection matrix into `m` (row-major).
@@ -293,8 +353,10 @@ void rt_camera3d_get_render_projection(void *obj, double aspect_override, float 
         build_perspective(projection, sanitize_fov(cam->fov), aspect, near_plane, far_plane);
     }
 
-    for (int i = 0; i < 16; i++)
-        out_projection[i] = (float)projection[i];
+    for (int i = 0; i < 16; i++) {
+        double identity = (i == 0 || i == 5 || i == 10 || i == 15) ? 1.0 : 0.0;
+        out_projection[i] = (float)(camera_value_fits_float(projection[i]) ? projection[i] : identity);
+    }
 }
 
 /// @brief Recover the FPS yaw/pitch state from the current view matrix.
@@ -538,9 +600,9 @@ void rt_camera3d_orbit(void *obj, void *target_v, double distance, double yaw, d
     if (!cam || !rt_g3d_is_vec3(target_v))
         return;
 
-    double tx = finite_or(rt_vec3_x(target_v), 0.0);
-    double ty = finite_or(rt_vec3_y(target_v), 0.0);
-    double tz = finite_or(rt_vec3_z(target_v), 0.0);
+    double tx = clamp_abs_or(rt_vec3_x(target_v), 0.0, CAMERA3D_WORLD_ABS_MAX);
+    double ty = clamp_abs_or(rt_vec3_y(target_v), 0.0, CAMERA3D_WORLD_ABS_MAX);
+    double tz = clamp_abs_or(rt_vec3_z(target_v), 0.0, CAMERA3D_WORLD_ABS_MAX);
 
     distance = sanitize_nonnegative(distance, 0.0);
     yaw = finite_or(yaw, 0.0);
@@ -565,9 +627,12 @@ void rt_camera3d_orbit(void *obj, void *target_v, double distance, double yaw, d
     double up[3] = {0.0, 1.0, 0.0};
     double target[3] = {tx, ty, tz};
 
-    cam->eye[0] = eye[0];
-    cam->eye[1] = eye[1];
-    cam->eye[2] = eye[2];
+    cam->eye[0] = clamp_abs_or(eye[0], 0.0, CAMERA3D_WORLD_ABS_MAX);
+    cam->eye[1] = clamp_abs_or(eye[1], 0.0, CAMERA3D_WORLD_ABS_MAX);
+    cam->eye[2] = clamp_abs_or(eye[2], 0.0, CAMERA3D_WORLD_ABS_MAX);
+    eye[0] = cam->eye[0];
+    eye[1] = cam->eye[1];
+    eye[2] = cam->eye[2];
 
     build_look_at(cam->view, eye, target, up);
     camera_sync_fps_angles_from_view(cam);
@@ -639,10 +704,11 @@ void *rt_camera3d_get_forward(void *obj) {
     rt_camera3d *cam = rt_camera3d_checked_or_stack(obj);
     if (!cam)
         return NULL;
-    /* Forward = -row2 of view matrix (negated because view looks along -Z) */
-    return rt_vec3_new(finite_or(-cam->view[8], 0.0),
-                       finite_or(-cam->view[9], 0.0),
-                       finite_or(-cam->view[10], -1.0));
+    double x = finite_or(-cam->view[8], 0.0);
+    double y = finite_or(-cam->view[9], 0.0);
+    double z = finite_or(-cam->view[10], -1.0);
+    camera_normalize_vec3_or(&x, &y, &z, 0.0, 0.0, -1.0);
+    return rt_vec3_new(x, y, z);
 }
 
 /// @brief Extract the world-space right unit vector (the camera's screen-right axis).
@@ -653,10 +719,11 @@ void *rt_camera3d_get_right(void *obj) {
     rt_camera3d *cam = rt_camera3d_checked_or_stack(obj);
     if (!cam)
         return NULL;
-    /* Right = row0 of view matrix */
-    return rt_vec3_new(finite_or(cam->view[0], 1.0),
-                       finite_or(cam->view[1], 0.0),
-                       finite_or(cam->view[2], 0.0));
+    double x = finite_or(cam->view[0], 1.0);
+    double y = finite_or(cam->view[1], 0.0);
+    double z = finite_or(cam->view[2], 0.0);
+    camera_normalize_vec3_or(&x, &y, &z, 1.0, 0.0, 0.0);
+    return rt_vec3_new(x, y, z);
 }
 
 /* Invert a 4x4 row-major matrix. Returns 0 on success, -1 if singular. */
@@ -1011,10 +1078,10 @@ void rt_camera3d_smooth_follow(
     if (!cam || !rt_g3d_is_vec3(target_pos))
         return;
 
-    height = finite_or(height, 0.0);
-    double tx = finite_or(rt_vec3_x(target_pos), 0.0);
-    double ty = finite_or(rt_vec3_y(target_pos), 0.0) + height;
-    double tz = finite_or(rt_vec3_z(target_pos), 0.0);
+    height = clamp_abs_or(height, 0.0, CAMERA3D_WORLD_ABS_MAX);
+    double tx = clamp_abs_or(rt_vec3_x(target_pos), 0.0, CAMERA3D_WORLD_ABS_MAX);
+    double ty = clamp_abs_or(rt_vec3_y(target_pos), 0.0, CAMERA3D_WORLD_ABS_MAX) + height;
+    double tz = clamp_abs_or(rt_vec3_z(target_pos), 0.0, CAMERA3D_WORLD_ABS_MAX);
 
     distance = sanitize_nonnegative(distance, 0.0);
     speed = sanitize_nonnegative(speed, 0.0);
@@ -1030,9 +1097,15 @@ void rt_camera3d_smooth_follow(
     double base_eye[3] = {finite_or(cam->eye[0], 0.0),
                           finite_or(cam->eye[1], 0.0),
                           finite_or(cam->eye[2], 0.0)};
-    cam->eye[0] = base_eye[0] + (desired[0] - base_eye[0]) * t;
-    cam->eye[1] = base_eye[1] + (desired[1] - base_eye[1]) * t;
-    cam->eye[2] = base_eye[2] + (desired[2] - base_eye[2]) * t;
+    cam->eye[0] = clamp_abs_or(base_eye[0] + (desired[0] - base_eye[0]) * t,
+                               0.0,
+                               CAMERA3D_WORLD_ABS_MAX);
+    cam->eye[1] = clamp_abs_or(base_eye[1] + (desired[1] - base_eye[1]) * t,
+                               0.0,
+                               CAMERA3D_WORLD_ABS_MAX);
+    cam->eye[2] = clamp_abs_or(base_eye[2] + (desired[2] - base_eye[2]) * t,
+                               0.0,
+                               CAMERA3D_WORLD_ABS_MAX);
 
     double look_at[3] = {tx, ty - height * 0.3, tz};
     double up[3] = {0, 1, 0};

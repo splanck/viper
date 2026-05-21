@@ -58,6 +58,7 @@ extern void rt_canvas3d_draw_mesh_matrix(
 extern void rt_material3d_set_texture(void *material, void *pixels);
 
 #define TERRAIN_CHUNK_SIZE 16
+#define TERRAIN3D_ABS_MAX 1000000.0
 
 #define TERRAIN_MAX_SPLAT_LAYERS 4
 #define TERRAIN_LOD_LEVELS 3
@@ -95,6 +96,26 @@ static void terrain_release_ref(void **slot) {
     if (rt_obj_release_check0(*slot))
         rt_obj_free(*slot);
     *slot = NULL;
+}
+
+static double terrain_clamp_abs_or(double value, double fallback) {
+    if (!isfinite(value))
+        return fallback;
+    if (value > TERRAIN3D_ABS_MAX)
+        return TERRAIN3D_ABS_MAX;
+    if (value < -TERRAIN3D_ABS_MAX)
+        return -TERRAIN3D_ABS_MAX;
+    return value;
+}
+
+static int32_t terrain_coord_to_index(double coord, int32_t max_index) {
+    if (!isfinite(coord))
+        return 0;
+    if (coord <= 0.0)
+        return 0;
+    if (coord >= (double)max_index)
+        return max_index;
+    return (int32_t)floor(coord);
 }
 
 /// @brief Swap a GC reference into a slot with retain-then-release ordering.
@@ -357,6 +378,9 @@ void rt_terrain3d_set_scale(void *obj, double sx, double sy, double sz) {
         sy = 1.0;
     if (!isfinite(sz) || sz <= 0.0)
         sz = 1.0;
+    sx = terrain_clamp_abs_or(sx, 1.0);
+    sy = terrain_clamp_abs_or(sy, 1.0);
+    sz = terrain_clamp_abs_or(sz, 1.0);
     t->scale[0] = sx;
     t->scale[1] = sy;
     t->scale[2] = sz;
@@ -427,6 +451,8 @@ void rt_terrain3d_set_layer_scale(void *obj, int64_t layer, double scale) {
         return;
     if (!isfinite(scale) || scale <= 0.0)
         scale = 1.0;
+    if (scale > TERRAIN3D_ABS_MAX)
+        scale = TERRAIN3D_ABS_MAX;
     t->layer_scales[layer] = scale;
     t->splat_dirty = 1;
     invalidate_all_chunks(t);
@@ -477,24 +503,29 @@ double rt_terrain3d_get_height_at(void *obj, double wx, double wz) {
 
     double hx = wx / t->scale[0];
     double hz = wz / t->scale[2];
-    int ix = (int)floor(hx), iz = (int)floor(hz);
-    float fx = (float)(hx - ix), fz = (float)(hz - iz);
-
-    if (ix < 0) {
+    int ix, iz;
+    float fx, fz;
+    if (hx <= 0.0) {
         ix = 0;
         fx = 0;
-    }
-    if (iz < 0) {
-        iz = 0;
-        fz = 0;
-    }
-    if (ix >= t->width - 1) {
+    } else if (hx >= (double)(t->width - 1)) {
         ix = t->width - 2;
         fx = 1;
+    } else {
+        double floor_hx = floor(hx);
+        ix = (int)floor_hx;
+        fx = (float)(hx - floor_hx);
     }
-    if (iz >= t->depth - 1) {
+    if (hz <= 0.0) {
+        iz = 0;
+        fz = 0;
+    } else if (hz >= (double)(t->depth - 1)) {
         iz = t->depth - 2;
         fz = 1;
+    } else {
+        double floor_hz = floor(hz);
+        iz = (int)floor_hz;
+        fz = (float)(hz - floor_hz);
     }
 
     float h00 = sample_height(t, ix, iz);
@@ -517,7 +548,8 @@ void *rt_terrain3d_get_normal_at(void *obj, double wx, double wz) {
 
     double hx = wx / t->scale[0];
     double hz = wz / t->scale[2];
-    int ix = (int)floor(hx), iz = (int)floor(hz);
+    int ix = terrain_coord_to_index(hx, t->width - 1);
+    int iz = terrain_coord_to_index(hz, t->depth - 1);
 
     float hL = sample_height(t, ix - 1, iz);
     float hR = sample_height(t, ix + 1, iz);
@@ -535,10 +567,14 @@ void *rt_terrain3d_get_normal_at(void *obj, double wx, double wz) {
     double nz = (double)(hD - hU) * t->scale[1] * t->scale[0];
     double ny = 2.0 * t->scale[0] * t->scale[2];
     double len = sqrt(nx * nx + ny * ny + nz * nz);
-    if (len > 1e-8) {
+    if (isfinite(len) && len > 1e-8) {
         nx /= len;
         ny /= len;
         nz /= len;
+    } else {
+        nx = 0.0;
+        ny = 1.0;
+        nz = 0.0;
     }
 
     return rt_vec3_new(nx, ny, nz);
@@ -877,6 +913,12 @@ void rt_terrain3d_set_lod_distances(void *obj, double near_dist, double far_dist
         near_dist = 50.0;
     if (!isfinite(far_dist) || far_dist <= near_dist)
         far_dist = near_dist + 100.0;
+    if (near_dist > TERRAIN3D_ABS_MAX)
+        near_dist = TERRAIN3D_ABS_MAX;
+    if (far_dist > TERRAIN3D_ABS_MAX)
+        far_dist = TERRAIN3D_ABS_MAX;
+    if (far_dist <= near_dist)
+        far_dist = near_dist + 1.0;
     t->lod_dist1 = (float)near_dist;
     t->lod_dist2 = (float)far_dist;
 }

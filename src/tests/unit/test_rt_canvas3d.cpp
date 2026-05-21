@@ -810,10 +810,14 @@ static void test_mesh_many_vertices() {
 static void test_mesh_many_triangles() {
     TEST("Mesh3D — many triangles (500 tris)");
     void *m = rt_mesh3d_new();
-    for (int i = 0; i < 1500; i++)
-        rt_mesh3d_add_vertex(m, (double)(i % 100), (double)(i / 100), 0, 0, 0, 1, 0, 0);
-    for (int i = 0; i < 500; i++)
+    for (int i = 0; i < 500; i++) {
+        double x = (double)((i % 25) * 2);
+        double y = (double)((i / 25) * 2);
+        rt_mesh3d_add_vertex(m, x, y, 0, 0, 0, 1, 0, 0);
+        rt_mesh3d_add_vertex(m, x + 1.0, y, 0, 0, 0, 1, 1, 0);
+        rt_mesh3d_add_vertex(m, x, y + 1.0, 0, 0, 0, 1, 0, 1);
         rt_mesh3d_add_triangle(m, i * 3, i * 3 + 1, i * 3 + 2);
+    }
     EXPECT_EQ(rt_mesh3d_get_triangle_count(m), 500);
     PASS();
 }

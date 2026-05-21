@@ -46,6 +46,8 @@
 #include <stdlib.h>
 #include <string.h>
 
+#define MORPHTARGET3D_FLOAT_ABS_MAX 3.40282346638528859812e38
+
 typedef struct {
     char name[64];
     float *pos_deltas; /* 3 * vertex_count floats (dx, dy, dz per vertex) */
@@ -131,7 +133,10 @@ static int morphtarget_vertex_delta_bytes(int32_t vertex_count, size_t *out_byte
 
 /// @brief Coerce a delta sample to float; non-finite inputs collapse to 0.
 static float morphtarget_sanitize_delta(double value) {
-    return isfinite(value) ? (float)value : 0.0f;
+    return (isfinite(value) && value >= -MORPHTARGET3D_FLOAT_ABS_MAX &&
+            value <= MORPHTARGET3D_FLOAT_ABS_MAX)
+               ? (float)value
+               : 0.0f;
 }
 
 /// @brief Re-linearize the per-shape delta arrays into a single GPU-friendly buffer.

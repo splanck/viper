@@ -383,7 +383,7 @@ func start() {
 
 All mesh generators and the OBJ loader produce **counter-clockwise (CCW)** winding for front faces. When constructing meshes programmatically, vertices must be ordered CCW when viewed from the front.
 
-**Mesh validation:** Procedural generators reject non-finite and non-positive dimensions. Sphere and cylinder segment counts are clamped to production-safe maxima to avoid accidental unbounded allocation. `AddVertex` traps on non-finite vertex data. `AddTriangle` traps on negative, out-of-range, or degenerate indices and marks the mesh build failed until `Clear()` resets it.
+**Mesh validation:** Procedural generators reject non-finite and non-positive dimensions. `NewPlane` emits +Y-facing triangles, matching its vertex normals and backface-culling expectations. Sphere and cylinder segment counts are clamped to production-safe maxima to avoid accidental unbounded allocation. `AddVertex` traps on non-finite or out-of-float-range vertex data. `AddTriangle` traps on negative, out-of-range, duplicate-index, collinear, or otherwise degenerate triangles and marks the mesh build failed until `Clear()` resets it. `RecalcNormals` and `CalcTangents` skip degenerate or overflowing face contributions instead of narrowing invalid double intermediates into renderer floats.
 
 **Tangents:** `CalcTangents()` uses position/UV derivatives with Gram-Schmidt orthogonalization and `tangent.w` handedness for mirrored UVs. Degenerate UV islands get a normalized fallback tangent orthogonal to the vertex normal so normal maps never receive a tangent parallel to the normal.
 
@@ -2349,6 +2349,8 @@ func start() {
 
 **Gerstner waves:** When waves are added via `AddWave`, the water uses a sum of directional Gerstner waves instead of the legacy single sine wave. Each wave has a direction, speed, amplitude, and wavelength. Up to 8 waves can be combined for realistic ocean effects. Normals are computed from wave derivatives for correct lighting.
 
+`Water3D` clamps extreme sizes, heights, wave speeds, amplitudes, frequencies, and wavelengths before mesh generation so renderer-facing vertices and normals stay finite. If a generated mesh fails validation, the water surface clears the partial mesh and remains dirty so the next valid update can rebuild it.
+
 `Update(0.0)` is valid: it rebuilds the mesh when resolution or wave settings are dirty without advancing animation time. `DrawWater` also performs that zero-delta rebuild if a surface has not been built yet or was invalidated by `SetResolution`.
 
 Draw via `Canvas3D.DrawWater(water, camera)`.
@@ -2673,6 +2675,8 @@ Spline path for camera rails, patrol routes, and scripted movement.
 | `GetPositionAt(t)` | `obj(f64)` | Sample position at parameter t (0.0-1.0) |
 | `GetDirectionAt(t)` | `obj(f64)` | Sample tangent direction at t |
 | `Clear()` | `void()` | Remove all points |
+
+Looping paths include the closing segment from the final control point back to the first point in both `Length` and `GetPositionAt`/`GetDirectionAt` sampling. Non-looping paths continue to clamp at the endpoints.
 
 ### Zia Example
 

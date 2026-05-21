@@ -146,7 +146,13 @@ static float canvas3d_sanitize_nonnegative_f64(double value, float fallback) {
         return fallback;
     if (value < 0.0)
         return 0.0f;
+    if (value > CANVAS3D_FLOAT_ABS_MAX)
+        return FLT_MAX;
     return (float)value;
+}
+
+static float canvas3d_sanitize_f64_to_float(double value, float fallback) {
+    return canvas3d_double_fits_float(value) ? (float)value : fallback;
 }
 
 /// @brief Clear the per-draw splat-map staging slot on the canvas.
@@ -321,7 +327,7 @@ typedef struct {
 } deferred_draw_t;
 
 typedef struct {
-    const void *key;
+    uintptr_t key;
     float current_model[16];
     float prev_model[16];
     int64_t last_frame_seen;
@@ -443,11 +449,6 @@ static int cmp_front_to_back(const void *a, const void *b) {
 ///
 /// Zia stores matrices as `Mat4` with double components; the GPU
 /// uniform path takes float — straightforward narrowing conversion.
-static void mat4_d2f(const double *src, float *dst) {
-    for (int i = 0; i < 16; i++)
-        dst[i] = (float)src[i];
-}
-
 /// @brief Whether a draw command needs alpha blending (transparency).
 ///
 /// Two cases trigger blending:
@@ -519,7 +520,7 @@ static void canvas3d_fill_material_cmd(const rt_material3d *mat, vgfx3d_draw_cmd
     cmd->specular[0] = (float)mat->specular[0];
     cmd->specular[1] = (float)mat->specular[1];
     cmd->specular[2] = (float)mat->specular[2];
-    cmd->shininess = (float)mat->shininess;
+    cmd->shininess = canvas3d_sanitize_nonnegative_f64(mat->shininess, 32.0f);
     cmd->alpha = (float)mat->alpha;
     cmd->unlit = (int8_t)(mat->unlit || mat->shading_model == 3);
     cmd->texture = mat->texture;
@@ -534,8 +535,9 @@ static void canvas3d_fill_material_cmd(const rt_material3d *mat, vgfx3d_draw_cmd
     cmd->metallic = (float)mat->metallic;
     cmd->roughness = (float)mat->roughness;
     cmd->ao = (float)mat->ao;
-    cmd->emissive_intensity = (float)mat->emissive_intensity;
-    cmd->normal_scale = (float)mat->normal_scale;
+    cmd->emissive_intensity =
+        canvas3d_sanitize_nonnegative_f64(mat->emissive_intensity, 1.0f);
+    cmd->normal_scale = canvas3d_sanitize_nonnegative_f64(mat->normal_scale, 1.0f);
     cmd->additive_blend = mat->additive_blend ? 1 : 0;
     cmd->workflow = mat->workflow;
     cmd->alpha_mode = mat->alpha_mode;
@@ -559,13 +561,13 @@ static void canvas3d_fill_material_cmd(const rt_material3d *mat, vgfx3d_draw_cmd
     for (int slot = 0; slot < RT_MATERIAL3D_TEXTURE_SLOT_COUNT; slot++) {
         for (int i = 0; i < 6; i++)
             cmd->texture_slot_uv_transform[slot][i] =
-                (float)mat->texture_slot_uv_transform[slot][i];
+                canvas3d_sanitize_f64_to_float(mat->texture_slot_uv_transform[slot][i], 0.0f);
     }
     cmd->env_map = mat->env_map;
     cmd->reflectivity = (float)mat->reflectivity;
     cmd->shading_model = (mat->shading_model == 3) ? 0 : mat->shading_model;
     for (int pi = 0; pi < 8; pi++)
-        cmd->custom_params[pi] = (float)mat->custom_params[pi];
+        cmd->custom_params[pi] = canvas3d_sanitize_f64_to_float(mat->custom_params[pi], 0.0f);
 }
 
 /// @brief Grow the motion-history table to hold `needed` entries.
@@ -629,7 +631,7 @@ static void canvas3d_prune_motion_history(rt_canvas3d *c) {
 /// Returns through `out_has_prev` whether the previous frame was
 /// available — first-frame draws fall back to current=previous.
 static void canvas3d_resolve_previous_model(rt_canvas3d *c,
-                                            const void *motion_key,
+                                            uintptr_t motion_key,
                                             const float *current_model,
                                             float *out_prev_model,
                                             int8_t *out_has_prev) {
@@ -637,7 +639,7 @@ static void canvas3d_resolve_previous_model(rt_canvas3d *c,
         *out_has_prev = 0;
     if (out_prev_model)
         memset(out_prev_model, 0, sizeof(float) * 16);
-    if (!c || !motion_key || !current_model || !out_prev_model || !out_has_prev)
+    if (!c || motion_key == 0 || !current_model || !out_prev_model || !out_has_prev)
         return;
 
     canvas_motion_history_t *hist = (canvas_motion_history_t *)c->motion_history;
@@ -672,6 +674,20 @@ static void canvas3d_resolve_previous_model(rt_canvas3d *c,
     memcpy(entry->current_model, current_model, sizeof(entry->current_model));
     entry->has_current = 1;
     entry->last_frame_seen = c->frame_serial;
+}
+
+static uintptr_t canvas3d_instance_motion_key(const void *mesh_obj,
+                                              const void *material_obj,
+                                              const float *instance_matrices,
+                                              int32_t index) {
+    uintptr_t key = (uintptr_t)mesh_obj;
+    uintptr_t material_key = (uintptr_t)material_obj;
+    uintptr_t matrices_key = (uintptr_t)instance_matrices;
+    uintptr_t instance_key = (uintptr_t)((uint32_t)index + 1u);
+    key ^= material_key + (uintptr_t)0x9e3779b9u + (key << 6) + (key >> 2);
+    key ^= matrices_key + (uintptr_t)0x85ebca6bu + (key << 6) + (key >> 2);
+    key ^= instance_key * (uintptr_t)0xc2b2ae35u;
+    return key ? key : instance_key;
 }
 
 /// @brief Compact the canvas's slotted light array into a dense param array.
@@ -2728,11 +2744,26 @@ void rt_canvas3d_begin(void *obj, void *camera) {
             rt_camera3d_update_shake_for_frame(cam, (double)frame_dt_ms / 1000.0);
     }
 
-    mat4_d2f(cam->view, params.view);
+    if (!canvas3d_mat4_d2f_checked(cam->view, params.view)) {
+        rt_trap("Canvas3D.Begin: camera view matrix must contain finite float-range values");
+        return;
+    }
     rt_camera3d_get_render_projection(cam, render_aspect, params.projection);
-    params.position[0] = (float)(cam->eye[0] + cam->shake_offset[0]);
-    params.position[1] = (float)(cam->eye[1] + cam->shake_offset[1]);
-    params.position[2] = (float)(cam->eye[2] + cam->shake_offset[2]);
+    if (!canvas3d_matrices_f32_are_finite(params.projection, 1)) {
+        rt_trap("Canvas3D.Begin: camera projection matrix must contain finite values");
+        return;
+    }
+    double cam_x = cam->eye[0] + cam->shake_offset[0];
+    double cam_y = cam->eye[1] + cam->shake_offset[1];
+    double cam_z = cam->eye[2] + cam->shake_offset[2];
+    if (!canvas3d_double_fits_float(cam_x) || !canvas3d_double_fits_float(cam_y) ||
+        !canvas3d_double_fits_float(cam_z)) {
+        rt_trap("Canvas3D.Begin: camera position must contain finite float-range values");
+        return;
+    }
+    params.position[0] = (float)cam_x;
+    params.position[1] = (float)cam_y;
+    params.position[2] = (float)cam_z;
     canvas3d_extract_view_forward(cam->view, params.forward);
     params.is_ortho = cam->is_ortho;
     params.fog_enabled = c->fog_enabled;
@@ -2874,7 +2905,7 @@ void rt_canvas3d_draw_mesh_matrix_keyed(void *obj,
     dd->cmd.geometry_revision = dd->cmd.geometry_key ? mesh->geometry_revision : 0;
     memcpy(dd->cmd.model_matrix, validated_model_matrix, sizeof(dd->cmd.model_matrix));
     canvas3d_resolve_previous_model(c,
-                                    motion_key,
+                                    (uintptr_t)motion_key,
                                     dd->cmd.model_matrix,
                                     dd->cmd.prev_model_matrix,
                                     &dd->cmd.has_prev_model_matrix);
@@ -3045,6 +3076,13 @@ void rt_canvas3d_queue_instanced_batch(void *canvas_obj,
                        &prev_instance_matrices[(size_t)i * 16u],
                        sizeof(per_instance.prev_model_matrix));
                 per_instance.has_prev_model_matrix = 1;
+            } else {
+                canvas3d_resolve_previous_model(
+                    c,
+                    canvas3d_instance_motion_key(mesh_obj, material_obj, instance_matrices, i),
+                    per_instance.model_matrix,
+                    per_instance.prev_model_matrix,
+                    &per_instance.has_prev_model_matrix);
             }
             per_instance.prev_instance_matrices = NULL;
             per_instance.has_prev_instance_matrices = 0;
@@ -3486,8 +3524,11 @@ int64_t rt_canvas3d_poll(void *obj) {
         int32_t cw, ch;
         vgfx_get_size(c->gfx_win, &cw, &ch);
         int32_t cx = cw / 2, cy = ch / 2;
-        int64_t dx = (int64_t)mx - (int64_t)cx;
-        int64_t dy = (int64_t)my - (int64_t)cy;
+        float scale = vgfx_window_get_scale(c->gfx_win);
+        if (scale < 0.001f)
+            scale = 1.0f;
+        int64_t dx = (int64_t)(((double)mx - (double)cx) / (double)scale);
+        int64_t dy = (int64_t)(((double)my - (double)cy) / (double)scale);
         rt_mouse_force_delta(dx, dy);
     } else {
         rt_canvas3d_update_mouse_from_physical(c->gfx_win, mx, my);

@@ -50,6 +50,7 @@ extern double rt_mat4_get(void *m, int64_t r, int64_t c);
 extern int rt_canvas3d_add_temp_buffer(void *canvas, void *buffer);
 
 #define INST_INIT_CAP 64
+#define INSTBATCH3D_FLOAT_ABS_MAX 3.40282346638528859812e38
 
 typedef struct {
     void *vptr;
@@ -96,6 +97,11 @@ static float instbatch_identity_at(int row, int col) {
     return row == col ? 1.0f : 0.0f;
 }
 
+static int instbatch_value_fits_float(double value) {
+    return isfinite(value) && value >= -INSTBATCH3D_FLOAT_ABS_MAX &&
+           value <= INSTBATCH3D_FLOAT_ABS_MAX;
+}
+
 /// @brief Copy a Mat4 object into a float[16] slot, replacing any NaN/Inf with
 ///   the corresponding identity-matrix element.
 /// @details rt_mat4_get returns double, so the per-element isfinite check and
@@ -106,7 +112,8 @@ static void instbatch_copy_mat4_sanitized(float *dst, void *transform) {
     for (int i = 0; i < 4; i++) {
         for (int j = 0; j < 4; j++) {
             double value = rt_mat4_get(transform, i, j);
-            dst[i * 4 + j] = isfinite(value) ? (float)value : instbatch_identity_at(i, j);
+            dst[i * 4 + j] =
+                instbatch_value_fits_float(value) ? (float)value : instbatch_identity_at(i, j);
         }
     }
 }

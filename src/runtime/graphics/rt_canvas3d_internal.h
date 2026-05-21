@@ -323,9 +323,9 @@ static inline int vgfx3d_rendertarget_ensure_hdr_color(vgfx3d_rendertarget_t *ta
         return 1;
     if (target->width <= 0 || target->height <= 0)
         return 0;
-    pixel_count = (size_t)target->width * (size_t)target->height;
-    if (target->width > 0 && pixel_count / (size_t)target->width != (size_t)target->height)
+    if ((size_t)target->width > SIZE_MAX / (size_t)target->height)
         return 0;
+    pixel_count = (size_t)target->width * (size_t)target->height;
     if (pixel_count > SIZE_MAX / (sizeof(float) * 4u))
         return 0;
     float_count = pixel_count * 4u;
@@ -343,9 +343,9 @@ static inline int vgfx3d_rendertarget_ensure_depth(vgfx3d_rendertarget_t *target
         return 1;
     if (target->width <= 0 || target->height <= 0)
         return 0;
-    pixel_count = (size_t)target->width * (size_t)target->height;
-    if (target->width > 0 && pixel_count / (size_t)target->width != (size_t)target->height)
+    if ((size_t)target->width > SIZE_MAX / (size_t)target->height)
         return 0;
+    pixel_count = (size_t)target->width * (size_t)target->height;
     if (pixel_count > SIZE_MAX / sizeof(float))
         return 0;
     target->depth_buf = (float *)malloc(pixel_count * sizeof(float));

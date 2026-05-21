@@ -1036,11 +1036,11 @@ static void test_gltf_applies_sparse_accessors() {
         return offset;
     };
 
-    static const uint16_t sparse_indices[1] = {1};
-    static const float sparse_values[3] = {1.0f, 2.0f, 3.0f};
+    static const uint16_t sparse_indices[2] = {1, 2};
+    static const float sparse_values[6] = {1.0f, 2.0f, 3.0f, 0.0f, 1.0f, 0.0f};
     static const uint16_t triangle_indices[3] = {0, 1, 2};
-    size_t sparse_idx_off = append_u16_array(sparse_indices, 1);
-    size_t sparse_value_off = append_float_array(sparse_values, 3);
+    size_t sparse_idx_off = append_u16_array(sparse_indices, 2);
+    size_t sparse_value_off = append_float_array(sparse_values, 6);
     size_t index_off = append_u16_array(triangle_indices, 3);
     std::string buffer_b64 = base64_encode(gltf_buffer.data(), gltf_buffer.size());
 
@@ -1051,15 +1051,15 @@ static void test_gltf_applies_sparse_accessors() {
         buffer_b64 + "\",\"byteLength\":" + std::to_string(gltf_buffer.size()) + "}],"
         "\"bufferViews\":["
         "{\"buffer\":0,\"byteOffset\":" +
-        std::to_string(sparse_idx_off) + ",\"byteLength\":2},"
+        std::to_string(sparse_idx_off) + ",\"byteLength\":4},"
         "{\"buffer\":0,\"byteOffset\":" +
-        std::to_string(sparse_value_off) + ",\"byteLength\":12},"
+        std::to_string(sparse_value_off) + ",\"byteLength\":24},"
         "{\"buffer\":0,\"byteOffset\":" +
         std::to_string(index_off) + ",\"byteLength\":6}"
         "],"
         "\"accessors\":["
         "{\"componentType\":5126,\"count\":3,\"type\":\"VEC3\","
-        "\"sparse\":{\"count\":1,\"indices\":{\"bufferView\":0,\"componentType\":5123},"
+        "\"sparse\":{\"count\":2,\"indices\":{\"bufferView\":0,\"componentType\":5123},"
         "\"values\":{\"bufferView\":1}}},"
         "{\"bufferView\":2,\"componentType\":5123,\"count\":3,\"type\":\"SCALAR\"}"
         "],"
@@ -1085,6 +1085,7 @@ static void test_gltf_applies_sparse_accessors() {
     EXPECT_NEAR(mesh->vertices[1].pos[0], 1.0, 0.001, "Sparse accessor overrides X");
     EXPECT_NEAR(mesh->vertices[1].pos[1], 2.0, 0.001, "Sparse accessor overrides Y");
     EXPECT_NEAR(mesh->vertices[1].pos[2], 3.0, 0.001, "Sparse accessor overrides Z");
+    EXPECT_NEAR(mesh->vertices[2].pos[1], 1.0, 0.001, "Sparse accessor can author a valid triangle");
 }
 
 static void test_gltf_imports_morph_targets() {

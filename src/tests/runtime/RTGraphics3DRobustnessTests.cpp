@@ -21,6 +21,7 @@ extern "C" {
 #include "rt_decal3d.h"
 #include "rt_collider3d.h"
 #include "rt_graphics3d_ids.h"
+#include "rt_instbatch3d.h"
 #include "rt_joints3d.h"
 #include "rt_mat4.h"
 #include "rt_morphtarget3d.h"
@@ -37,6 +38,7 @@ extern "C" {
 #include "rt_string.h"
 #include "rt_terrain3d.h"
 #include "rt_texatlas3d.h"
+#include "rt_transform3d.h"
 #include "rt_vec3.h"
 #include "rt_vegetation3d.h"
 #include "rt_water3d.h"
@@ -148,6 +150,8 @@ struct MaterialView {
     int32_t texture_slot_filter[6];
     int32_t texture_slot_uv_set[6];
     double texture_slot_uv_transform[6][6];
+    int32_t shading_model;
+    double custom_params[8];
 };
 
 struct ParticleView {
@@ -174,6 +178,8 @@ struct ParticleView {
     int8_t emitting;
     int8_t additive_blend;
     void *texture;
+    int32_t emitter_shape;
+    double emitter_size[3];
 };
 
 struct WaterView {
@@ -220,6 +226,21 @@ struct VegetationView {
     float *visible_transforms;
     int32_t visible_count;
     int32_t visible_capacity;
+};
+
+struct InstBatchView {
+    void *vptr;
+    void *mesh;
+    void *material;
+    float *transforms;
+    float *current_snapshot;
+    float *prev_transforms;
+    int32_t instance_count;
+    int32_t instance_capacity;
+    int32_t motion_snapshot_count;
+    int32_t prev_count;
+    int64_t last_motion_frame;
+    int8_t has_prev_snapshot;
 };
 
 static double triangle_area_sq(const rt_mesh3d *mesh, uint32_t i0, uint32_t i1, uint32_t i2) {
@@ -327,6 +348,28 @@ static void test_camera_center_ray_and_projection_layout() {
     assert(projection[14] == -1.0f);
 }
 
+static void test_camera_sanitizes_extreme_projection_and_basis_inputs() {
+    void *camera = rt_camera3d_new(90.0, 1.0e300, 1.0e-300, 1.0e300);
+    void *target = rt_vec3_new(0.0, 0.0, 0.0);
+    rt_camera3d_orbit(camera, target, 1.0e300, 35.0, 20.0);
+
+    float projection[16] = {};
+    rt_camera3d_get_render_projection(camera, 1.0e300, projection);
+    for (float value : projection)
+        assert(std::isfinite(value));
+
+    void *forward = rt_camera3d_get_forward(camera);
+    void *right = rt_camera3d_get_right(camera);
+    double flen = std::sqrt(rt_vec3_x(forward) * rt_vec3_x(forward) +
+                            rt_vec3_y(forward) * rt_vec3_y(forward) +
+                            rt_vec3_z(forward) * rt_vec3_z(forward));
+    double rlen = std::sqrt(rt_vec3_x(right) * rt_vec3_x(right) +
+                            rt_vec3_y(right) * rt_vec3_y(right) +
+                            rt_vec3_z(right) * rt_vec3_z(right));
+    assert(std::isfinite(flen) && std::fabs(flen - 1.0) < 1e-6);
+    assert(std::isfinite(rlen) && std::fabs(rlen - 1.0) < 1e-6);
+}
+
 static void test_generated_sphere_has_no_degenerate_triangles() {
     auto *mesh = static_cast<rt_mesh3d *>(rt_mesh3d_new_sphere(1.0, 8));
     assert(mesh != nullptr);
@@ -335,6 +378,23 @@ static void test_generated_sphere_has_no_degenerate_triangles() {
         assert(triangle_area_sq(mesh, mesh->indices[i], mesh->indices[i + 1], mesh->indices[i + 2]) >
                1e-12);
     }
+}
+
+static void test_generated_plane_faces_positive_y() {
+    auto *mesh = static_cast<rt_mesh3d *>(rt_mesh3d_new_plane(2.0, 2.0));
+    assert(mesh != nullptr);
+    assert(mesh->index_count == 6);
+
+    const uint32_t i0 = mesh->indices[0];
+    const uint32_t i1 = mesh->indices[1];
+    const uint32_t i2 = mesh->indices[2];
+    const float *a = mesh->vertices[i0].pos;
+    const float *b = mesh->vertices[i1].pos;
+    const float *c = mesh->vertices[i2].pos;
+    const double ab[3] = {b[0] - a[0], b[1] - a[1], b[2] - a[2]};
+    const double ac[3] = {c[0] - a[0], c[1] - a[1], c[2] - a[2]};
+    const double normal_y = ab[2] * ac[0] - ab[0] * ac[2];
+    assert(normal_y > 0.0);
 }
 
 static void test_obj_loader_handles_long_lines() {
@@ -472,6 +532,21 @@ static void test_material_import_texture_transform_clamps_float_uniforms() {
     }
 }
 
+static void test_material_scalar_setters_clamp_renderer_uniforms() {
+    auto *mat = static_cast<MaterialView *>(rt_material3d_new());
+    assert(mat != nullptr);
+
+    rt_material3d_set_shininess(mat, 1.0e300);
+    rt_material3d_set_emissive_intensity(mat, 1.0e300);
+    rt_material3d_set_normal_scale(mat, -1.0e300);
+    rt_material3d_set_custom_param(mat, 3, -1.0e300);
+
+    assert(std::isfinite(mat->shininess) && mat->shininess <= 8192.0);
+    assert(std::isfinite(mat->emissive_intensity) && mat->emissive_intensity <= 1000000.0);
+    assert(std::isfinite(mat->normal_scale) && mat->normal_scale >= -1000.0);
+    assert(std::isfinite(mat->custom_params[3]) && mat->custom_params[3] >= -1000000.0);
+}
+
 static void test_terrain_heightmap_and_scale_sanitize_inputs() {
     void *terrain = rt_terrain3d_new(2, 2);
     void *heightmap = rt_pixels_new(2, 2);
@@ -486,6 +561,13 @@ static void test_terrain_heightmap_and_scale_sanitize_inputs() {
                            std::numeric_limits<double>::quiet_NaN(),
                            std::numeric_limits<double>::infinity());
     assert(std::fabs(rt_terrain3d_get_height_at(terrain, 1.0, 1.0) - 1.0) < 1e-6);
+
+    assert(std::isfinite(rt_terrain3d_get_height_at(terrain, 1.0e300, -1.0e300)));
+    void *normal = rt_terrain3d_get_normal_at(terrain, 1.0e300, -1.0e300);
+    double nlen = std::sqrt(rt_vec3_x(normal) * rt_vec3_x(normal) +
+                            rt_vec3_y(normal) * rt_vec3_y(normal) +
+                            rt_vec3_z(normal) * rt_vec3_z(normal));
+    assert(std::isfinite(nlen) && nlen > 0.9 && nlen < 1.1);
 }
 
 static void test_sprite3d_clamps_frame_anchor_and_scale() {
@@ -524,6 +606,14 @@ static void test_decal3d_normal_and_lifetime_are_sanitized() {
     rt_decal3d_set_lifetime(decal, std::numeric_limits<double>::quiet_NaN());
     rt_decal3d_update(decal, 1.0);
     assert(rt_decal3d_is_expired(decal) == 0);
+
+    void *huge_normal = rt_vec3_new(1.0e300, 0.0, 0.0);
+    void *huge_decal = rt_decal3d_new(pos, huge_normal, 1.0e300, nullptr);
+    auto *hd = static_cast<DecalView *>(huge_decal);
+    assert(std::isfinite(hd->size) && hd->size <= 1000000.0);
+    assert(hd->normal[0] == 0.0);
+    assert(hd->normal[1] == 1.0);
+    assert(hd->normal[2] == 0.0);
 }
 
 static void test_path3d_growth_preserves_points() {
@@ -537,6 +627,24 @@ static void test_path3d_growth_preserves_points() {
     void *mid = rt_path3d_get_position_at(path, std::numeric_limits<double>::quiet_NaN());
     assert(rt_vec3_x(mid) == 0.0);
     assert(rt_path3d_get_length(path) > 38.0);
+}
+
+static void test_path3d_looping_includes_closing_segment() {
+    void *path = rt_path3d_new();
+    rt_path3d_add_point(path, rt_vec3_new(0.0, 0.0, 0.0));
+    rt_path3d_add_point(path, rt_vec3_new(10.0, 0.0, 0.0));
+    rt_path3d_add_point(path, rt_vec3_new(10.0, 0.0, 10.0));
+
+    double open_length = rt_path3d_get_length(path);
+    rt_path3d_set_looping(path, 1);
+    double loop_length = rt_path3d_get_length(path);
+    assert(loop_length > open_length + 5.0);
+
+    void *near_start = rt_path3d_get_position_at(path, 0.999);
+    double dist = std::sqrt(rt_vec3_x(near_start) * rt_vec3_x(near_start) +
+                            rt_vec3_y(near_start) * rt_vec3_y(near_start) +
+                            rt_vec3_z(near_start) * rt_vec3_z(near_start));
+    assert(dist < 0.5);
 }
 
 static void test_navmesh_sample_position_handles_empty_mesh() {
@@ -650,6 +758,12 @@ static void test_morphtarget_sanitizes_nonfinite_weights_and_deltas() {
     assert(packed[0] == 0.0f);
     assert(packed[1] == 2.0f);
     assert(packed[2] == -3.0f);
+
+    rt_morphtarget3d_set_delta(mt, shape, 0, 1.0e300, -1.0e300, 4.0);
+    packed = rt_morphtarget3d_get_packed_deltas(mt);
+    assert(packed[0] == 0.0f);
+    assert(packed[1] == 0.0f);
+    assert(packed[2] == 4.0f);
 }
 
 static void test_scene_reparent_preserves_child_and_counts() {
@@ -670,6 +784,35 @@ static void test_scene_reparent_preserves_child_and_counts() {
     void *scene = rt_scene3d_new();
     assert(scene != nullptr);
     assert(rt_scene3d_get_node_count(scene) == 1);
+}
+
+static void test_scene_deep_hierarchy_traversal_and_transform_clamps() {
+    void *scene = rt_scene3d_new();
+    void *parent = rt_scene3d_get_root(scene);
+    void *deepest = nullptr;
+
+    for (int i = 0; i < 3000; i++) {
+        void *node = rt_scene_node3d_new();
+        rt_scene_node3d_add_child(parent, node);
+        parent = node;
+        deepest = node;
+    }
+
+    rt_string name = rt_string_from_bytes("deepest", 7);
+    rt_scene_node3d_set_name(deepest, name);
+    assert(rt_scene3d_get_node_count(scene) == 3001);
+    assert(rt_scene_node3d_find(rt_scene3d_get_root(scene), name) == deepest);
+
+    rt_scene_node3d_set_position(deepest, 1.0e300, -1.0e300, 2.0);
+    void *pos = rt_scene_node3d_get_position(deepest);
+    assert(std::isfinite(rt_vec3_x(pos)) && std::fabs(rt_vec3_x(pos)) <= 1000000000000.0);
+    assert(std::isfinite(rt_vec3_y(pos)) && std::fabs(rt_vec3_y(pos)) <= 1000000000000.0);
+
+    void *world = rt_scene_node3d_get_world_matrix(deepest);
+    for (int row = 0; row < 4; row++) {
+        for (int col = 0; col < 4; col++)
+            assert(std::isfinite(rt_mat4_get(world, row, col)));
+    }
 }
 
 static void test_mesh_bone_weights_are_validated_and_dirty_geometry() {
@@ -705,6 +848,54 @@ static void test_mesh_bone_weights_are_validated_and_dirty_geometry() {
     rt_mesh3d_set_skeleton(mesh, skel);
     assert(mesh->skeleton_ref == skel);
     assert(mesh->bone_count == 2);
+}
+
+static void test_transform_and_instance_batch_sanitize_extreme_matrices() {
+    void *xf = rt_transform3d_new();
+    rt_transform3d_set_position(xf, 1.0e300, -1.0e300, 2.0);
+    rt_transform3d_set_scale(xf, 0.0, std::numeric_limits<double>::quiet_NaN(), 1.0e300);
+    rt_transform3d_translate(xf, rt_vec3_new(-1.0e300, 1.0e300, 1.0e300));
+
+    void *pos = rt_transform3d_get_position(xf);
+    void *scale = rt_transform3d_get_scale(xf);
+    assert(std::isfinite(rt_vec3_x(pos)) && std::fabs(rt_vec3_x(pos)) <= 1000000000000.0);
+    assert(std::isfinite(rt_vec3_y(pos)) && std::fabs(rt_vec3_y(pos)) <= 1000000000000.0);
+    assert(std::isfinite(rt_vec3_x(scale)) && std::fabs(rt_vec3_x(scale)) >= 1.0);
+    assert(std::isfinite(rt_vec3_z(scale)) && std::fabs(rt_vec3_z(scale)) <= 1000000000000.0);
+
+    void *matrix = rt_transform3d_get_matrix(xf);
+    for (int row = 0; row < 4; row++) {
+        for (int col = 0; col < 4; col++)
+            assert(std::isfinite(rt_mat4_get(matrix, row, col)));
+    }
+
+    void *mesh = rt_mesh3d_new_box(1.0, 1.0, 1.0);
+    void *mat = rt_material3d_new();
+    auto *batch = static_cast<InstBatchView *>(rt_instbatch3d_new(mesh, mat));
+    void *bad_matrix = rt_mat4_new(1.0e300,
+                                   -1.0e300,
+                                   1.0e300,
+                                   -1.0e300,
+                                   1.0e300,
+                                   -1.0e300,
+                                   1.0e300,
+                                   -1.0e300,
+                                   1.0e300,
+                                   -1.0e300,
+                                   1.0e300,
+                                   -1.0e300,
+                                   1.0e300,
+                                   -1.0e300,
+                                   1.0e300,
+                                   -1.0e300);
+    rt_instbatch3d_add(batch, bad_matrix);
+    assert(rt_instbatch3d_count(batch) == 1);
+    for (int i = 0; i < 16; i++)
+        assert(std::isfinite(batch->transforms[i]));
+    assert(batch->transforms[0] == 1.0f);
+    assert(batch->transforms[5] == 1.0f);
+    assert(batch->transforms[10] == 1.0f);
+    assert(batch->transforms[15] == 1.0f);
 }
 
 static void test_obj_loader_recalculates_mixed_missing_normals() {
@@ -832,6 +1023,47 @@ static void test_terrain_water_and_vegetation_zero_dt_paths() {
     assert(veg->visible_count > 0);
 }
 
+static void test_particles_and_water_numeric_knobs_are_bounded() {
+    auto *particles = static_cast<ParticleView *>(rt_particles3d_new(8));
+    rt_particles3d_set_position(particles, 1.0e300, -1.0e300, 2.0);
+    rt_particles3d_set_speed(particles, 1.0e300, -1.0e300);
+    rt_particles3d_set_lifetime(particles, 1.0e300, -1.0e300);
+    rt_particles3d_set_size(particles, 1.0e300, -1.0e300);
+    rt_particles3d_set_gravity(particles, 1.0e300, -1.0e300, 0.0);
+    rt_particles3d_set_rate(particles, 1.0e300);
+    rt_particles3d_set_emitter_size(particles, 1.0e300, -1.0e300, 4.0);
+    rt_particles3d_burst(particles, 16);
+    rt_particles3d_update(particles, 0.016);
+
+    assert(std::isfinite(particles->position[0]) && particles->position[0] <= 1000000000000.0);
+    assert(std::isfinite(particles->position[1]) && particles->position[1] >= -1000000000000.0);
+    assert(std::isfinite(particles->speed_min) && particles->speed_min >= 0.0);
+    assert(std::isfinite(particles->speed_max) && particles->speed_max <= 1000000.0);
+    assert(std::isfinite(particles->life_min) && particles->life_min >= 0.0);
+    assert(std::isfinite(particles->size_start) && particles->size_start <= 1000000.0);
+    assert(std::isfinite(particles->gravity[0]) && particles->gravity[0] <= 1000000.0);
+    assert(std::isfinite(particles->emitter_size[0]) && particles->emitter_size[0] <= 1000000.0);
+    assert(particles->count <= particles->max_particles);
+
+    auto *water = static_cast<WaterView *>(rt_water3d_new(1.0e300, -1.0));
+    assert(std::isfinite(water->width) && water->width <= 1000000.0);
+    assert(water->depth == 1.0);
+    rt_water3d_set_height(water, 1.0e300);
+    rt_water3d_set_wave_params(water, 1.0e300, 1.0e300, -1.0e300);
+    rt_water3d_add_wave(water, 1.0, 0.0, 1.0e300, 1.0e300, 1.0e300);
+    rt_water3d_update(water, 0.0);
+
+    assert(std::isfinite(water->height) && water->height <= 1000000000000.0);
+    assert(std::isfinite(water->wave_speed) && water->wave_speed <= 1000000.0);
+    assert(std::isfinite(water->wave_amplitude) && water->wave_amplitude <= 1000000.0);
+    assert(std::isfinite(water->wave_frequency) && water->wave_frequency >= -1000000.0);
+    assert(water->wave_count == 1);
+    assert(std::isfinite(water->waves[0][2]) && water->waves[0][2] <= 1000000.0);
+    assert(std::isfinite(water->waves[0][3]) && water->waves[0][3] <= 1000000.0);
+    assert(water->mesh != nullptr);
+    assert(static_cast<rt_mesh3d *>(water->mesh)->build_failed == 0);
+}
+
 } // namespace
 
 int main() {
@@ -840,16 +1072,20 @@ int main() {
     test_material_rejects_non_pixels_texture_handles();
     test_mesh_apis_reject_wrong_class_handles();
     test_camera_center_ray_and_projection_layout();
+    test_camera_sanitizes_extreme_projection_and_basis_inputs();
     test_generated_sphere_has_no_degenerate_triangles();
+    test_generated_plane_faces_positive_y();
     test_obj_loader_handles_long_lines();
     test_scene_particles_water_and_render_targets_reject_wrong_handles();
     test_cubemap_sampling_sanitizes_inputs();
     test_physics_checked_handles_and_trigger_removal_exit();
     test_material_import_texture_transform_clamps_float_uniforms();
+    test_material_scalar_setters_clamp_renderer_uniforms();
     test_terrain_heightmap_and_scale_sanitize_inputs();
     test_sprite3d_clamps_frame_anchor_and_scale();
     test_decal3d_normal_and_lifetime_are_sanitized();
     test_path3d_growth_preserves_points();
+    test_path3d_looping_includes_closing_segment();
     test_navmesh_sample_position_handles_empty_mesh();
     test_navmesh_slope_refilter_and_sloped_height_projection();
     test_navmesh_sample_position_uses_closest_triangle_point();
@@ -857,12 +1093,15 @@ int main() {
     test_capsule_collider_clamps_total_height_to_diameter();
     test_morphtarget_sanitizes_nonfinite_weights_and_deltas();
     test_scene_reparent_preserves_child_and_counts();
+    test_scene_deep_hierarchy_traversal_and_transform_clamps();
     test_mesh_bone_weights_are_validated_and_dirty_geometry();
+    test_transform_and_instance_batch_sanitize_extreme_matrices();
     test_obj_loader_recalculates_mixed_missing_normals();
     test_skeleton_bind_pose_and_animation_duration_sanitize();
     test_light_and_material_boolean_state_is_initialized();
     test_physics_joints_deduplicate_and_raycast_is_true_ray();
     test_terrain_water_and_vegetation_zero_dt_paths();
+    test_particles_and_water_numeric_knobs_are_bounded();
     std::printf("RTGraphics3DRobustnessTests passed.\n");
     return 0;
 }

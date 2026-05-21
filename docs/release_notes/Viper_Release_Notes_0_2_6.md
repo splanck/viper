@@ -26,13 +26,13 @@ An alpha-quality hardening cycle, not a feature release. The Zia frontend reache
 
 | Metric | v0.2.5 | v0.2.6 | Delta |
 |---|---|---|---|
-| Commits | — | 151 | +151 |
-| Source files | 2,996 | 3,037 | +41 |
-| Production SLOC | 552K | 600K | +48K |
-| Test SLOC | 228K | 255K | +27K |
+| Commits | — | 154 | +154 |
+| Source files | 2,996 | 3,036 | +40 |
+| Production SLOC | 552K | 601K | +49K |
+| Test SLOC | 228K | 256K | +28K |
 | Demo SLOC | 188K | 189K | +1K |
 
-Counts via `scripts/count_sloc.sh` (production 599,623 / test 255,396 / demo 189,273 / source files 3,037).
+Counts via `scripts/count_sloc.sh` (production 601,404 / test 256,206 / demo 189,273 / source files 3,036).
 
 ---
 
@@ -81,6 +81,7 @@ Counts via `scripts/count_sloc.sh` (production 599,623 / test 255,396 / demo 189
 - Pixels raw-vs-Color boundary: `Pixels.Get`/`Set`/`Fill` keep their raw `0xRRGGBBAA` contract but now route through `rt_pixels_rgba_or_tagged_color_to_rgba` so a tagged `Color.RGBA(...)` argument is unpacked instead of bit-reinterpreted (fixes the cyan-bevel artifact in Xenoscape's tile overlay); new `GetColor`/`SetColor`/`FillColor` are canonical accessors. `RT_PIXELS_COLOR_EXPLICIT_ALPHA_FLAG` (bit 56) distinguishes tagged `Color.RGBA(...,0)` from legacy `0x00RRGGBB`.
 - Image IO hardening: PNG chunk validation; BMP pixel-offset/size checks (no partial save on failure); JPEG table/orientation handling; GIF normalized per-frame delays; Canvas titles round-trip embedded NULs via independent byte length.
 - Graphics3D: `Canvas3D` gains `DrawMeshSkinned`/`DrawMeshMorphed`/`DrawMeshBlended` plus HUD/overlay draws; `Mesh3D.SetSkeleton` retain/release integration; `Physics3D` deduplicates joints and surfaces `started_penetrating`; `Scene3D` reparent is atomic; `Terrain3D.GeneratePerlin` clamps NaN/inf inputs; new `Viper.Graphics3D.GLTF` runtime class plus `Scene3D.Load`.
+- Graphics3D correctness round: `Skeleton3D` and `AnimController3D` interpolate via quaternion slerp plus TRS decompose/recompose with finite-matrix/vector validation; `Raycast3D` adds checked `Mat4` handles and robust segment/point-to-AABB distance math; `Mesh3D.Transform` validates a finite normal matrix; `NavMesh3D` snaps to nearest-triangle points and accepts shared-edge path starts (preserving `NavAgent3D` movement to parented targets); the row-major `Mat4` inverse fix repairs world-to-local for parented `SceneNode3D` bindings.
 
 ### Game runtime
 
@@ -101,7 +102,8 @@ Counts via `scripts/count_sloc.sh` (production 599,623 / test 255,396 / demo 189
 - x86-64: cross-block fold-liveness guards on SIB and IMUL→LEA prevent address-strength reductions from erasing virtual registers still consumed in another block; IMUL→LEA refusal under live flags; block-DCE preserves physical registers at exits; AT&T `AsmEmitter` rejects invalid `CALL`/`JMP`/`JCC`/`LEA`/`SETcc`/`MOVZX` operand classes and non-`RCX` shift counts before printing.
 - Bytecode VM: arithmetic uses explicit two's-complement wrapping helpers (add/sub/mul, shifts, local inc/dec) instead of host signed-overflow behaviour; checked float→int conversions raise consistent `InvalidCast`/`Overflow` traps; local indexes, memory pointers, and alloca sizes are validated before host state is touched.
 - Optimizer ownership-effect model gains `ownedOutArgMask` for pointer args that receive owned references, plumbed through `RuntimeOwnership.hpp`; the retain-on-return contract is captured via `returnsOwned` on every collection accessor so optimizer-side defensive retains are eliminated.
-- Structural cleanup across both backends: AArch64's largest hot functions (`encodeInstruction`, `materializeValueToVReg`, `lowerFunction`, `lowerTerminators`, `runPeephole`, `scheduleBlock`) decompose into named per-family / per-phase helpers, three duplicate dominator implementations unify into one shared bit-vector pass, and the AArch64 binary-encoder dispatch is now table-driven over the homogeneous opcode families.
+- Structural cleanup across both backends and the Zia/BASIC frontends: the largest hot functions (AArch64 `encodeInstruction` / `materializeValueToVReg` / `lowerFunction` / `lowerTerminators` / `runPeephole` / `scheduleBlock`, the x86-64 pipeline and opcode dispatch, and the heaviest frontend Sema/Lowerer/Parser routines) decompose into named per-family / per-phase helpers; three duplicate dominator implementations unify into one shared bit-vector pass; the AArch64 binary-encoder dispatch is now table-driven over the homogeneous opcode families.
+- Bytecode opcodes consolidate into one `Bytecode.def` X-macro list: the `BCOpcode` enum, `opcodeName`, the threaded computed-goto dispatch table, and `isKnownOpcode` are generated from it, and the `run()` switch dropped its `default:` so `-Wswitch` makes every opcode handler mandatory — an added opcode can no longer silently diverge across these surfaces.
 
 ### Native toolchain (linker, readers, writers)
 
@@ -162,6 +164,6 @@ Demos and docs tracked the runtime work above; stale Windows debug/O0 pins for C
 
 ### Commits
 
-See `git log v0.2.5-dev..HEAD -- .` for the full 151-commit history since v0.2.5.
+See `git log v0.2.5-dev..HEAD -- .` for the full 154-commit history since v0.2.5.
 
 <!-- END DRAFT -->

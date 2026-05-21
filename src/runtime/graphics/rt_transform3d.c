@@ -34,6 +34,8 @@
 #define M_PI 3.14159265358979323846
 #endif
 
+#define TRANSFORM3D_ABS_MAX 1000000000000.0
+
 extern void *rt_obj_new_i64(int64_t class_id, int64_t byte_size);
 extern void rt_obj_set_finalizer(void *obj, void (*fn)(void *));
 #include "rt_trap.h"
@@ -85,11 +87,28 @@ static double transform3d_finite_or(double value, double fallback) {
     return isfinite(value) ? value : fallback;
 }
 
+static double transform3d_clamp_abs_or(double value, double fallback) {
+    value = transform3d_finite_or(value, fallback);
+    if (value > TRANSFORM3D_ABS_MAX)
+        return TRANSFORM3D_ABS_MAX;
+    if (value < -TRANSFORM3D_ABS_MAX)
+        return -TRANSFORM3D_ABS_MAX;
+    return value;
+}
+
 /// @brief Return @p value if finite, or 1.0 as a safe identity scale.
 /// @details Specialisation for scale components where 0 or NaN would collapse
 ///   the node to a point or produce a non-invertible matrix.
 static double transform3d_scale_or_unit(double value) {
-    return isfinite(value) ? value : 1.0;
+    if (!isfinite(value))
+        return 1.0;
+    if (fabs(value) < 1e-12)
+        return value < 0.0 ? -1.0 : 1.0;
+    if (value > TRANSFORM3D_ABS_MAX)
+        return TRANSFORM3D_ABS_MAX;
+    if (value < -TRANSFORM3D_ABS_MAX)
+        return -TRANSFORM3D_ABS_MAX;
+    return value;
 }
 
 /// @brief Write the identity quaternion (0, 0, 0, 1) into @p q.
@@ -214,9 +233,9 @@ void rt_transform3d_set_position(void *obj, double x, double y, double z) {
     rt_transform3d *xf = transform3d_checked(obj);
     if (!xf)
         return;
-    xf->position[0] = transform3d_finite_or(x, 0.0);
-    xf->position[1] = transform3d_finite_or(y, 0.0);
-    xf->position[2] = transform3d_finite_or(z, 0.0);
+    xf->position[0] = transform3d_clamp_abs_or(x, 0.0);
+    xf->position[1] = transform3d_clamp_abs_or(y, 0.0);
+    xf->position[2] = transform3d_clamp_abs_or(z, 0.0);
     xf->dirty = 1;
 }
 
@@ -327,9 +346,9 @@ void rt_transform3d_translate(void *obj, void *delta) {
     double nx = xf->position[0] + transform3d_finite_or(rt_vec3_x(delta), 0.0);
     double ny = xf->position[1] + transform3d_finite_or(rt_vec3_y(delta), 0.0);
     double nz = xf->position[2] + transform3d_finite_or(rt_vec3_z(delta), 0.0);
-    xf->position[0] = transform3d_finite_or(nx, 0.0);
-    xf->position[1] = transform3d_finite_or(ny, 0.0);
-    xf->position[2] = transform3d_finite_or(nz, 0.0);
+    xf->position[0] = transform3d_clamp_abs_or(nx, 0.0);
+    xf->position[1] = transform3d_clamp_abs_or(ny, 0.0);
+    xf->position[2] = transform3d_clamp_abs_or(nz, 0.0);
     xf->dirty = 1;
 }
 

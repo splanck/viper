@@ -34,6 +34,7 @@
 #include "rt_canvas3d.h"
 #include "rt_canvas3d_internal.h"
 #include "vgfx3d_backend.h"
+#include <limits.h>
 #include <stdint.h>
 #include <stdlib.h>
 
@@ -60,6 +61,10 @@ static vgfx3d_rendertarget_t *rt_alloc(int32_t w,
     vgfx3d_rendertarget_t *rt = (vgfx3d_rendertarget_t *)calloc(1, sizeof(vgfx3d_rendertarget_t));
     if (!rt)
         return NULL;
+    if (w > INT32_MAX / 4) {
+        free(rt);
+        return NULL;
+    }
 
     rt->width = w;
     rt->height = h;
@@ -202,7 +207,7 @@ void *rt_rendertarget3d_as_pixels(void *obj) {
     int32_t w = rtd->target->width;
     int32_t h = rtd->target->height;
     int32_t stride = rtd->target->stride;
-    if (w <= 0 || h <= 0 || stride < w * 4 || !rtd->target->color_buf)
+    if (w <= 0 || h <= 0 || (int64_t)stride < (int64_t)w * 4 || !rtd->target->color_buf)
         return NULL;
     if ((int64_t)w != rtd->width || (int64_t)h != rtd->height)
         return NULL;
@@ -222,7 +227,8 @@ void *rt_rendertarget3d_as_pixels(void *obj) {
 
     for (int32_t y = 0; y < h; y++) {
         for (int32_t x = 0; x < w; x++) {
-            const uint8_t *src = &rtd->target->color_buf[y * stride + x * 4];
+            const uint8_t *src =
+                &rtd->target->color_buf[(size_t)y * (size_t)stride + (size_t)x * 4u];
             pv->data[y * pv->w + x] = ((uint32_t)src[0] << 24) | ((uint32_t)src[1] << 16) |
                                       ((uint32_t)src[2] << 8) | (uint32_t)src[3];
         }

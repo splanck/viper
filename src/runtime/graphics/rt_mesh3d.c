@@ -113,7 +113,8 @@ static double mesh_triangle_area_sq_f32(const float *a, const float *b, const fl
 
 /// @brief Return non-zero when three float positions define a usable triangle.
 static int mesh_positions_form_triangle(const float *a, const float *b, const float *c) {
-    return a && b && c && mesh_triangle_area_sq_f32(a, b, c) > 1e-20;
+    double area_sq = a && b && c ? mesh_triangle_area_sq_f32(a, b, c) : 0.0;
+    return isfinite(area_sq) && area_sq > 1e-20;
 }
 
 /// @brief Return non-zero when three mesh indices define a usable, non-degenerate face.
@@ -386,6 +387,11 @@ void rt_mesh3d_add_triangle(void *obj, int64_t v0, int64_t v1, int64_t v2) {
         rt_trap("Mesh3D.AddTriangle: degenerate triangle");
         return;
     }
+    if (!mesh_indices_form_triangle(m, (uint32_t)v0, (uint32_t)v1, (uint32_t)v2)) {
+        mesh_mark_build_failed(m);
+        rt_trap("Mesh3D.AddTriangle: degenerate triangle");
+        return;
+    }
 
     if (m->index_count + 3 > m->index_capacity) {
         uint32_t new_cap;
@@ -446,30 +452,39 @@ void rt_mesh3d_recalc_normals(void *obj) {
         float *p1 = m->vertices[i1].pos;
         float *p2 = m->vertices[i2].pos;
 
-        float e1[3] = {p1[0] - p0[0], p1[1] - p0[1], p1[2] - p0[2]};
-        float e2[3] = {p2[0] - p0[0], p2[1] - p0[1], p2[2] - p0[2]};
+        double e1[3] = {(double)p1[0] - (double)p0[0],
+                        (double)p1[1] - (double)p0[1],
+                        (double)p1[2] - (double)p0[2]};
+        double e2[3] = {(double)p2[0] - (double)p0[0],
+                        (double)p2[1] - (double)p0[1],
+                        (double)p2[2] - (double)p0[2]};
 
-        /* cross product */
-        float nx = e1[1] * e2[2] - e1[2] * e2[1];
-        float ny = e1[2] * e2[0] - e1[0] * e2[2];
-        float nz = e1[0] * e2[1] - e1[1] * e2[0];
+        double nx = e1[1] * e2[2] - e1[2] * e2[1];
+        double ny = e1[2] * e2[0] - e1[0] * e2[2];
+        double nz = e1[0] * e2[1] - e1[1] * e2[0];
+        double len_sq = nx * nx + ny * ny + nz * nz;
+        if (!isfinite(len_sq) || len_sq <= 1e-20)
+            continue;
+        if (!mesh_value_fits_float(nx) || !mesh_value_fits_float(ny) ||
+            !mesh_value_fits_float(nz))
+            continue;
 
-        m->vertices[i0].normal[0] += nx;
-        m->vertices[i0].normal[1] += ny;
-        m->vertices[i0].normal[2] += nz;
-        m->vertices[i1].normal[0] += nx;
-        m->vertices[i1].normal[1] += ny;
-        m->vertices[i1].normal[2] += nz;
-        m->vertices[i2].normal[0] += nx;
-        m->vertices[i2].normal[1] += ny;
-        m->vertices[i2].normal[2] += nz;
+        m->vertices[i0].normal[0] += (float)nx;
+        m->vertices[i0].normal[1] += (float)ny;
+        m->vertices[i0].normal[2] += (float)nz;
+        m->vertices[i1].normal[0] += (float)nx;
+        m->vertices[i1].normal[1] += (float)ny;
+        m->vertices[i1].normal[2] += (float)nz;
+        m->vertices[i2].normal[0] += (float)nx;
+        m->vertices[i2].normal[1] += (float)ny;
+        m->vertices[i2].normal[2] += (float)nz;
     }
 
     /* Normalize */
     for (uint32_t i = 0; i < m->vertex_count; i++) {
         float *n = m->vertices[i].normal;
         float len = sqrtf(n[0] * n[0] + n[1] * n[1] + n[2] * n[2]);
-        if (len > 1e-8f) {
+        if (isfinite(len) && len > 1e-8f) {
             n[0] /= len;
             n[1] /= len;
             n[2] /= len;
@@ -828,11 +843,9 @@ void *rt_mesh3d_new_plane(double sx, double sz) {
     rt_mesh3d_add_vertex(m, hx, 0, hz, 0, 1, 0, 1, 1);
     rt_mesh3d_add_vertex(m, -hx, 0, hz, 0, 1, 0, 0, 1);
 
-    /* CCW winding — matches box/sphere/cylinder convention.
-     * Vertex normals are set explicitly to +Y above; face winding
-     * only affects backface culling, not lighting. */
-    rt_mesh3d_add_triangle(m, 0, 1, 2);
-    rt_mesh3d_add_triangle(m, 0, 2, 3);
+    /* CCW when viewed from +Y so normals, lighting, and backface culling agree. */
+    rt_mesh3d_add_triangle(m, 0, 2, 1);
+    rt_mesh3d_add_triangle(m, 0, 3, 2);
 
     return mesh_return_null_if_build_failed(m);
 }
@@ -968,10 +981,14 @@ static int obj_parse_face_vert(const char **p, int64_t *vi, int64_t *ti, int64_t
     *ni = 0;
     if (**p == '/') {
         (*p)++;
+        if (**p == '\0' || **p == ' ' || **p == '\t' || **p == '\n' || **p == '\r')
+            return 0;
         if (!obj_parse_int(p, ti))
             return 0;
         if (**p == '/') {
             (*p)++;
+            if (**p == '\0' || **p == ' ' || **p == '\t' || **p == '\n' || **p == '\r')
+                return 0;
             if (!obj_parse_int(p, ni))
                 return 0;
         }
@@ -1316,22 +1333,34 @@ void rt_mesh3d_calc_tangents(void *obj) {
         float *uv1 = m->vertices[i1].uv;
         float *uv2 = m->vertices[i2].uv;
 
-        float edge1[3] = {p1[0] - p0[0], p1[1] - p0[1], p1[2] - p0[2]};
-        float edge2[3] = {p2[0] - p0[0], p2[1] - p0[1], p2[2] - p0[2]};
-        float duv1[2] = {uv1[0] - uv0[0], uv1[1] - uv0[1]};
-        float duv2[2] = {uv2[0] - uv0[0], uv2[1] - uv0[1]};
+        double edge1[3] = {(double)p1[0] - (double)p0[0],
+                           (double)p1[1] - (double)p0[1],
+                           (double)p1[2] - (double)p0[2]};
+        double edge2[3] = {(double)p2[0] - (double)p0[0],
+                           (double)p2[1] - (double)p0[1],
+                           (double)p2[2] - (double)p0[2]};
+        double duv1[2] = {(double)uv1[0] - (double)uv0[0],
+                          (double)uv1[1] - (double)uv0[1]};
+        double duv2[2] = {(double)uv2[0] - (double)uv0[0],
+                          (double)uv2[1] - (double)uv0[1]};
 
-        float det = duv1[0] * duv2[1] - duv1[1] * duv2[0];
-        if (fabsf(det) < 1e-8f)
+        double det = duv1[0] * duv2[1] - duv1[1] * duv2[0];
+        if (!isfinite(det) || fabs(det) < 1e-8)
             continue; /* degenerate UV */
-        float inv_det = 1.0f / det;
+        double inv_det = 1.0 / det;
 
-        float sdir[3] = {(edge1[0] * duv2[1] - edge2[0] * duv1[1]) * inv_det,
-                         (edge1[1] * duv2[1] - edge2[1] * duv1[1]) * inv_det,
-                         (edge1[2] * duv2[1] - edge2[2] * duv1[1]) * inv_det};
-        float tdir[3] = {(edge2[0] * duv1[0] - edge1[0] * duv2[0]) * inv_det,
-                         (edge2[1] * duv1[0] - edge1[1] * duv2[0]) * inv_det,
-                         (edge2[2] * duv1[0] - edge1[2] * duv2[0]) * inv_det};
+        double sdir_d[3] = {(edge1[0] * duv2[1] - edge2[0] * duv1[1]) * inv_det,
+                            (edge1[1] * duv2[1] - edge2[1] * duv1[1]) * inv_det,
+                            (edge1[2] * duv2[1] - edge2[2] * duv1[1]) * inv_det};
+        double tdir_d[3] = {(edge2[0] * duv1[0] - edge1[0] * duv2[0]) * inv_det,
+                            (edge2[1] * duv1[0] - edge1[1] * duv2[0]) * inv_det,
+                            (edge2[2] * duv1[0] - edge1[2] * duv2[0]) * inv_det};
+        if (!mesh_value_fits_float(sdir_d[0]) || !mesh_value_fits_float(sdir_d[1]) ||
+            !mesh_value_fits_float(sdir_d[2]) || !mesh_value_fits_float(tdir_d[0]) ||
+            !mesh_value_fits_float(tdir_d[1]) || !mesh_value_fits_float(tdir_d[2]))
+            continue;
+        float sdir[3] = {(float)sdir_d[0], (float)sdir_d[1], (float)sdir_d[2]};
+        float tdir[3] = {(float)tdir_d[0], (float)tdir_d[1], (float)tdir_d[2]};
 
         tan1[i0 * 3u + 0] += sdir[0];
         tan1[i0 * 3u + 1] += sdir[1];
@@ -1369,7 +1398,7 @@ void rt_mesh3d_calc_tangents(void *obj) {
 
         /* Normalize */
         float len = sqrtf(t[0] * t[0] + t[1] * t[1] + t[2] * t[2]);
-        if (len > 1e-8f) {
+        if (isfinite(len) && len > 1e-8f) {
             t[0] /= len;
             t[1] /= len;
             t[2] /= len;
@@ -1377,10 +1406,9 @@ void rt_mesh3d_calc_tangents(void *obj) {
                 float cross_nt[3] = {n[1] * t[2] - n[2] * t[1],
                                      n[2] * t[0] - n[0] * t[2],
                                      n[0] * t[1] - n[1] * t[0]};
-                t[3] = (cross_nt[0] * bitan[0] + cross_nt[1] * bitan[1] +
-                        cross_nt[2] * bitan[2]) < 0.0f
-                           ? -1.0f
-                           : 1.0f;
+                float handedness = cross_nt[0] * bitan[0] + cross_nt[1] * bitan[1] +
+                                    cross_nt[2] * bitan[2];
+                t[3] = (isfinite(handedness) && handedness < 0.0f) ? -1.0f : 1.0f;
             }
         } else {
             mesh_default_tangent_from_normal(n, t);

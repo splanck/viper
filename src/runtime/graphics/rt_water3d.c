@@ -61,6 +61,9 @@ extern void rt_material3d_set_color(void *m, double r, double g, double b);
 
 #define WATER_GRID 64
 #define WATER_MAX_WAVES 8
+#define WATER3D_SIZE_MAX 1000000.0
+#define WATER3D_HEIGHT_ABS_MAX 1000000000000.0
+#define WATER3D_PARAM_MAX 1000000.0
 
 typedef struct {
     double dir[2]; /* normalized wave direction */
@@ -134,6 +137,32 @@ static double water3d_clamp01(double value) {
     return value;
 }
 
+static double water3d_clamp_positive_or(double value, double fallback, double max_value) {
+    if (!isfinite(value) || value <= 0.0)
+        return fallback;
+    if (value > max_value)
+        return max_value;
+    return value;
+}
+
+static double water3d_clamp_abs_or(double value, double fallback, double max_abs) {
+    if (!isfinite(value))
+        return fallback;
+    if (value > max_abs)
+        return max_abs;
+    if (value < -max_abs)
+        return -max_abs;
+    return value;
+}
+
+static double water3d_clamp_nonnegative(double value, double max_value) {
+    if (!isfinite(value) || value < 0.0)
+        return 0.0;
+    if (value > max_value)
+        return max_value;
+    return value;
+}
+
 /// @brief GC finalizer: release every retained graphics resource (textures, mesh, material).
 static void water3d_finalizer(void *obj) {
     rt_water3d *w = (rt_water3d *)obj;
@@ -153,10 +182,8 @@ static void water3d_finalizer(void *obj) {
 /// @param depth World-space depth of the water plane (Z axis).
 /// @return Opaque water handle, or NULL on failure.
 void *rt_water3d_new(double width, double depth) {
-    if (!isfinite(width) || width <= 0.0)
-        width = 1.0;
-    if (!isfinite(depth) || depth <= 0.0)
-        depth = 1.0;
+    width = water3d_clamp_positive_or(width, 1.0, WATER3D_SIZE_MAX);
+    depth = water3d_clamp_positive_or(depth, 1.0, WATER3D_SIZE_MAX);
     rt_water3d *w =
         (rt_water3d *)rt_obj_new_i64(RT_G3D_WATER3D_CLASS_ID, (int64_t)sizeof(rt_water3d));
     if (!w) {
@@ -191,8 +218,8 @@ void *rt_water3d_new(double width, double depth) {
 /// @brief Set the base Y-coordinate (world height) of the water plane.
 void rt_water3d_set_height(void *obj, double y) {
     rt_water3d *w = water3d_checked(obj);
-    if (w && isfinite(y)) {
-        w->height = y;
+    if (w) {
+        w->height = water3d_clamp_abs_or(y, w->height, WATER3D_HEIGHT_ABS_MAX);
         w->mesh_dirty = 1;
     }
 }
@@ -202,9 +229,9 @@ void rt_water3d_set_wave_params(void *obj, double speed, double amplitude, doubl
     rt_water3d *w = water3d_checked(obj);
     if (!w)
         return;
-    w->wave_speed = isfinite(speed) ? speed : 0.0;
-    w->wave_amplitude = (isfinite(amplitude) && amplitude >= 0.0) ? amplitude : 0.0;
-    w->wave_frequency = isfinite(frequency) ? frequency : 0.0;
+    w->wave_speed = water3d_clamp_abs_or(speed, 0.0, WATER3D_PARAM_MAX);
+    w->wave_amplitude = water3d_clamp_nonnegative(amplitude, WATER3D_PARAM_MAX);
+    w->wave_frequency = water3d_clamp_abs_or(frequency, 0.0, WATER3D_PARAM_MAX);
     w->mesh_dirty = 1;
 }
 
@@ -293,14 +320,15 @@ void rt_water3d_add_wave(
         return;
     /* Normalize direction */
     double len = sqrt(dirX * dirX + dirZ * dirZ);
-    if (len < 1e-8)
+    if (!isfinite(len) || len < 1e-8)
         return;
     water_wave_t *wv = &w->waves[w->wave_count];
     wv->dir[0] = dirX / len;
     wv->dir[1] = dirZ / len;
-    wv->speed = speed;
-    wv->amplitude = amplitude;
-    wv->frequency = (wavelength > 0.001) ? (6.283185307 / wavelength) : 1.0;
+    wv->speed = water3d_clamp_abs_or(speed, 0.0, WATER3D_PARAM_MAX);
+    wv->amplitude = water3d_clamp_nonnegative(amplitude, WATER3D_PARAM_MAX);
+    wavelength = water3d_clamp_positive_or(wavelength, 1.0, WATER3D_PARAM_MAX);
+    wv->frequency = 6.283185307 / wavelength;
     w->wave_count++;
     w->mesh_dirty = 1;
 }
@@ -390,10 +418,14 @@ void rt_water3d_update(void *obj, double dt) {
             /* Normal from wave derivatives */
             double nx = -dydx, ny = 1.0, nz = -dydz;
             double nlen = sqrt(nx * nx + ny * ny + nz * nz);
-            if (nlen > 1e-8) {
+            if (isfinite(nlen) && nlen > 1e-8) {
                 nx /= nlen;
                 ny /= nlen;
                 nz /= nlen;
+            } else {
+                nx = 0.0;
+                ny = 1.0;
+                nz = 0.0;
             }
 
             double u = (double)gx / grid;
@@ -411,8 +443,11 @@ void rt_water3d_update(void *obj, double dt) {
             rt_mesh3d_add_triangle(w->mesh, base + 1, base + row, base + row + 1);
         }
     }
-    if (((rt_mesh3d *)w->mesh)->build_failed)
+    if (((rt_mesh3d *)w->mesh)->build_failed) {
+        rt_mesh3d_clear(w->mesh);
+        w->mesh_dirty = 1;
         return;
+    }
 
     /* Update material — create on first use, update properties every frame */
     if (!w->material) {

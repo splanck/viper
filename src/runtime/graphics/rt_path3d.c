@@ -243,11 +243,17 @@ void *rt_path3d_get_position_at(void *obj, double t) {
     }
 
     int n = p->point_count;
-    double seg_f = t * (double)(n - 1);
+    int segment_count = p->looping ? n : n - 1;
+    double seg_f = t * (double)segment_count;
     int seg = (int)seg_f;
     double local_t = seg_f - (double)seg;
-    if (seg >= n - 1) {
-        seg = n - 2;
+    if (p->looping) {
+        if (seg >= segment_count) {
+            seg = 0;
+            local_t = 0.0;
+        }
+    } else if (seg >= segment_count) {
+        seg = segment_count - 1;
         local_t = 1.0;
     }
 

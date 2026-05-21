@@ -63,6 +63,8 @@
 #include <string.h>
 
 #define NODE_INIT_CHILDREN 4
+#define SCENE3D_ABS_MAX 1000000000000.0
+#define SCENE3D_FLOAT_ABS_MAX 3.40282346638528859812e38
 
 /// @brief Validate @p obj as a Scene3D handle and return its typed pointer (NULL on mismatch).
 static rt_scene3d *scene3d_checked(void *obj) {
@@ -95,6 +97,21 @@ static double scene3d_finite_or(double value, double fallback) {
     return isfinite(value) ? value : fallback;
 }
 
+static double scene3d_clamp_abs_or(double value, double fallback) {
+    value = scene3d_finite_or(value, fallback);
+    if (value > SCENE3D_ABS_MAX)
+        return SCENE3D_ABS_MAX;
+    if (value < -SCENE3D_ABS_MAX)
+        return -SCENE3D_ABS_MAX;
+    return value;
+}
+
+static float scene3d_float_or_zero(double value) {
+    if (!isfinite(value) || value < -SCENE3D_FLOAT_ABS_MAX || value > SCENE3D_FLOAT_ABS_MAX)
+        return 0.0f;
+    return (float)value;
+}
+
 /// @brief Return @p value if finite and non-zero, or +/-1.0 as a safe scale factor.
 /// @details Specialisation of `scene3d_finite_or` for scale components where a
 ///   zero-or-NaN value would collapse the node to a point or produce a degenerate
@@ -107,6 +124,10 @@ static double scene3d_scale_or_unit(double value) {
         return 1.0;
     if (fabs(value) < 1e-12)
         return value < 0.0 ? -1.0 : 1.0;
+    if (value > SCENE3D_ABS_MAX)
+        return SCENE3D_ABS_MAX;
+    if (value < -SCENE3D_ABS_MAX)
+        return -SCENE3D_ABS_MAX;
     return value;
 }
 
@@ -1070,20 +1091,33 @@ static void node_anim_sample_channel(const rt_node_anim_channel3d *channel,
 static void node_anim_apply_weights_recursive(rt_scene_node3d *node,
                                               const float *weights,
                                               int32_t weight_count) {
-    rt_mesh3d *mesh;
-    int64_t shape_count;
-    int32_t limit;
+    rt_scene_node3d **stack = NULL;
+    size_t count = 0;
+    size_t capacity = 0;
     if (!node || !weights || weight_count <= 0)
         return;
-    mesh = (rt_mesh3d *)node->mesh;
-    if (mesh && mesh->morph_targets_ref) {
-        shape_count = rt_morphtarget3d_get_shape_count(mesh->morph_targets_ref);
-        limit = (int32_t)((shape_count < weight_count) ? shape_count : weight_count);
-        for (int32_t i = 0; i < limit; i++)
-            rt_morphtarget3d_set_weight(mesh->morph_targets_ref, i, weights[i]);
+    if (!scene_node_stack_push(&stack, &count, &capacity, node)) {
+        rt_trap("NodeAnimation3D: traversal stack allocation failed");
+        return;
     }
-    for (int32_t i = 0; i < node->child_count; i++)
-        node_anim_apply_weights_recursive(node->children[i], weights, weight_count);
+    while (count > 0) {
+        rt_scene_node3d *current = stack[--count];
+        rt_mesh3d *mesh = (rt_mesh3d *)current->mesh;
+        if (mesh && mesh->morph_targets_ref) {
+            int64_t shape_count = rt_morphtarget3d_get_shape_count(mesh->morph_targets_ref);
+            int32_t limit = (int32_t)((shape_count < weight_count) ? shape_count : weight_count);
+            for (int32_t i = 0; i < limit; i++)
+                rt_morphtarget3d_set_weight(mesh->morph_targets_ref, i, weights[i]);
+        }
+        for (int32_t i = current->child_count - 1; i >= 0; i--) {
+            if (!scene_node_stack_push(&stack, &count, &capacity, current->children[i])) {
+                rt_trap("NodeAnimation3D: traversal stack allocation failed");
+                free(stack);
+                return;
+            }
+        }
+    }
+    free(stack);
 }
 
 /// @brief Resolve a channel's target node by name, sample the channel, and write the
@@ -1311,9 +1345,9 @@ static void scene_node_set_world_transform(rt_scene_node3d *node,
     quat_normalize_local(world_rot);
 
     if (!node->parent) {
-        node->position[0] = world_pos[0];
-        node->position[1] = world_pos[1];
-        node->position[2] = world_pos[2];
+        node->position[0] = scene3d_clamp_abs_or(world_pos[0], 0.0);
+        node->position[1] = scene3d_clamp_abs_or(world_pos[1], 0.0);
+        node->position[2] = scene3d_clamp_abs_or(world_pos[2], 0.0);
         node->rotation[0] = world_rot[0];
         node->rotation[1] = world_rot[1];
         node->rotation[2] = world_rot[2];
@@ -1323,13 +1357,24 @@ static void scene_node_set_world_transform(rt_scene_node3d *node,
     }
 
     recompute_world_matrix(node->parent);
-    build_trs_matrix(world_pos, world_rot, node->scale_xyz, desired_world);
+    {
+        double safe_world_pos[3] = {scene3d_clamp_abs_or(world_pos[0], 0.0),
+                                    scene3d_clamp_abs_or(world_pos[1], 0.0),
+                                    scene3d_clamp_abs_or(world_pos[2], 0.0)};
+        build_trs_matrix(safe_world_pos, world_rot, node->scale_xyz, desired_world);
+    }
     if (mat4d_invert(node->parent->world_matrix, inv_parent) == 0) {
         mat4d_mul(inv_parent, desired_world, local_matrix);
     } else {
         memcpy(local_matrix, desired_world, sizeof(local_matrix));
     }
     decompose_trs_matrix(local_matrix, node->position, node->rotation, node->scale_xyz);
+    node->position[0] = scene3d_clamp_abs_or(node->position[0], 0.0);
+    node->position[1] = scene3d_clamp_abs_or(node->position[1], 0.0);
+    node->position[2] = scene3d_clamp_abs_or(node->position[2], 0.0);
+    node->scale_xyz[0] = scene3d_scale_or_unit(node->scale_xyz[0]);
+    node->scale_xyz[1] = scene3d_scale_or_unit(node->scale_xyz[1]);
+    node->scale_xyz[2] = scene3d_scale_or_unit(node->scale_xyz[2]);
 
     mark_dirty(node);
 }
@@ -1383,73 +1428,110 @@ static void scene_node_apply_root_motion(rt_scene_node3d *node) {
 ///   - root motion: bumps the local TRS by the animator's per-frame delta.
 /// Then recurses into children.
 static void scene_node_sync_recursive(rt_scene_node3d *node, double dt) {
-    int64_t mode;
-    int pull_from_body;
-    int push_to_body;
-    int body_is_kinematic;
+    rt_scene_node3d **stack = NULL;
+    size_t count = 0;
+    size_t capacity = 0;
     if (!node)
         return;
-
-    if (node->bound_node_animator)
-        node_animator_update((rt_node_animator3d *)node->bound_node_animator, dt);
-
-    mode = node->sync_mode;
-    body_is_kinematic = node->bound_body ? rt_body3d_is_kinematic(node->bound_body) : 0;
-    pull_from_body = node->bound_body &&
-                     (mode == RT_SCENE_NODE3D_SYNC_NODE_FROM_BODY ||
-                      (mode == RT_SCENE_NODE3D_SYNC_TWO_WAY_KINEMATIC && !body_is_kinematic));
-    push_to_body = node->bound_body &&
-                   (mode == RT_SCENE_NODE3D_SYNC_BODY_FROM_NODE ||
-                    (mode == RT_SCENE_NODE3D_SYNC_TWO_WAY_KINEMATIC && body_is_kinematic));
-
-    if (pull_from_body) {
-        double world_pos[3];
-        double world_quat[4];
-        void *pos = rt_body3d_get_position(node->bound_body);
-        void *quat = rt_body3d_get_orientation(node->bound_body);
-        world_pos[0] = pos ? rt_vec3_x(pos) : 0.0;
-        world_pos[1] = pos ? rt_vec3_y(pos) : 0.0;
-        world_pos[2] = pos ? rt_vec3_z(pos) : 0.0;
-        world_quat[0] = quat ? rt_quat_x(quat) : 0.0;
-        world_quat[1] = quat ? rt_quat_y(quat) : 0.0;
-        world_quat[2] = quat ? rt_quat_z(quat) : 0.0;
-        world_quat[3] = quat ? rt_quat_w(quat) : 1.0;
-        scene_node_set_world_transform(node, world_pos, world_quat);
-        scene3d_release_ref(&pos);
-        scene3d_release_ref(&quat);
-    } else if (node->bound_animator &&
-               (mode == RT_SCENE_NODE3D_SYNC_NODE_FROM_ANIMATOR_ROOT_MOTION || push_to_body)) {
-        scene_node_apply_root_motion(node);
+    if (!scene_node_stack_push(&stack, &count, &capacity, node)) {
+        rt_trap("Scene3D.SyncBindings: traversal stack allocation failed");
+        return;
     }
+    while (count > 0) {
+        rt_scene_node3d *current = stack[--count];
+        int64_t mode;
+        int pull_from_body;
+        int push_to_body;
+        int body_is_kinematic;
 
-    if (push_to_body) {
-        double world_pos[3];
-        double world_quat[4];
-        scene_node_get_world_position(node, &world_pos[0], &world_pos[1], &world_pos[2]);
-        scene_node_get_world_rotation(node, world_quat);
-        rt_body3d_set_position(node->bound_body, world_pos[0], world_pos[1], world_pos[2]);
-        {
-            void *quat = rt_quat_new(world_quat[0], world_quat[1], world_quat[2], world_quat[3]);
-            rt_body3d_set_orientation(node->bound_body, quat);
+        if (current->bound_node_animator)
+            node_animator_update((rt_node_animator3d *)current->bound_node_animator, dt);
+
+        mode = current->sync_mode;
+        body_is_kinematic =
+            current->bound_body ? rt_body3d_is_kinematic(current->bound_body) : 0;
+        pull_from_body =
+            current->bound_body &&
+            (mode == RT_SCENE_NODE3D_SYNC_NODE_FROM_BODY ||
+             (mode == RT_SCENE_NODE3D_SYNC_TWO_WAY_KINEMATIC && !body_is_kinematic));
+        push_to_body =
+            current->bound_body &&
+            (mode == RT_SCENE_NODE3D_SYNC_BODY_FROM_NODE ||
+             (mode == RT_SCENE_NODE3D_SYNC_TWO_WAY_KINEMATIC && body_is_kinematic));
+
+        if (pull_from_body) {
+            double world_pos[3];
+            double world_quat[4];
+            void *pos = rt_body3d_get_position(current->bound_body);
+            void *quat = rt_body3d_get_orientation(current->bound_body);
+            world_pos[0] = pos ? rt_vec3_x(pos) : 0.0;
+            world_pos[1] = pos ? rt_vec3_y(pos) : 0.0;
+            world_pos[2] = pos ? rt_vec3_z(pos) : 0.0;
+            world_quat[0] = quat ? rt_quat_x(quat) : 0.0;
+            world_quat[1] = quat ? rt_quat_y(quat) : 0.0;
+            world_quat[2] = quat ? rt_quat_z(quat) : 0.0;
+            world_quat[3] = quat ? rt_quat_w(quat) : 1.0;
+            scene_node_set_world_transform(current, world_pos, world_quat);
+            scene3d_release_ref(&pos);
             scene3d_release_ref(&quat);
+        } else if (current->bound_animator &&
+                   (mode == RT_SCENE_NODE3D_SYNC_NODE_FROM_ANIMATOR_ROOT_MOTION ||
+                    push_to_body)) {
+            scene_node_apply_root_motion(current);
+        }
+
+        if (push_to_body) {
+            double world_pos[3];
+            double world_quat[4];
+            scene_node_get_world_position(
+                current, &world_pos[0], &world_pos[1], &world_pos[2]);
+            scene_node_get_world_rotation(current, world_quat);
+            rt_body3d_set_position(
+                current->bound_body, world_pos[0], world_pos[1], world_pos[2]);
+            {
+                void *quat =
+                    rt_quat_new(world_quat[0], world_quat[1], world_quat[2], world_quat[3]);
+                rt_body3d_set_orientation(current->bound_body, quat);
+                scene3d_release_ref(&quat);
+            }
+        }
+
+        for (int32_t i = current->child_count - 1; i >= 0; i--) {
+            if (!scene_node_stack_push(&stack, &count, &capacity, current->children[i])) {
+                rt_trap("Scene3D.SyncBindings: traversal stack allocation failed");
+                free(stack);
+                return;
+            }
         }
     }
-
-    for (int32_t i = 0; i < node->child_count; i++)
-        scene_node_sync_recursive(node->children[i], dt);
+    free(stack);
 }
 
 /// @brief True if `target` appears anywhere in the subtree rooted at `root`.
 /// Used to prevent cycles when reparenting (don't re-attach a node under one of its descendants).
 static int node_contains(const rt_scene_node3d *root, const rt_scene_node3d *target) {
+    const rt_scene_node3d **stack = NULL;
+    size_t count = 0;
+    size_t capacity = 0;
     if (!root)
         return 0;
-    if (root == target)
-        return 1;
-    for (int32_t i = 0; i < root->child_count; i++) {
-        if (node_contains(root->children[i], target))
+    if (!scene_node_const_stack_push(&stack, &count, &capacity, root))
+        return root == target;
+    while (count > 0) {
+        const rt_scene_node3d *current = stack[--count];
+        if (current == target) {
+            free(stack);
             return 1;
+        }
+        for (int32_t i = 0; i < current->child_count; i++) {
+            if (!scene_node_const_stack_push(&stack, &count, &capacity, current->children[i])) {
+                rt_trap("SceneNode3D: traversal stack allocation failed");
+                free(stack);
+                return 0;
+            }
+        }
     }
+    free(stack);
     return 0;
 }
 
@@ -1487,12 +1569,15 @@ static void scene_mesh_bounds(rt_mesh3d *mesh,
 static void scene_world_point(const double *world_matrix, const float local[3], float out[3]) {
     if (!world_matrix || !local || !out)
         return;
-    out[0] = (float)(world_matrix[0] * (double)local[0] + world_matrix[1] * (double)local[1] +
-                     world_matrix[2] * (double)local[2] + world_matrix[3]);
-    out[1] = (float)(world_matrix[4] * (double)local[0] + world_matrix[5] * (double)local[1] +
-                     world_matrix[6] * (double)local[2] + world_matrix[7]);
-    out[2] = (float)(world_matrix[8] * (double)local[0] + world_matrix[9] * (double)local[1] +
-                     world_matrix[10] * (double)local[2] + world_matrix[11]);
+    out[0] = scene3d_float_or_zero(world_matrix[0] * (double)local[0] +
+                                   world_matrix[1] * (double)local[1] +
+                                   world_matrix[2] * (double)local[2] + world_matrix[3]);
+    out[1] = scene3d_float_or_zero(world_matrix[4] * (double)local[0] +
+                                   world_matrix[5] * (double)local[1] +
+                                   world_matrix[6] * (double)local[2] + world_matrix[7]);
+    out[2] = scene3d_float_or_zero(world_matrix[8] * (double)local[0] +
+                                   world_matrix[9] * (double)local[1] +
+                                   world_matrix[10] * (double)local[2] + world_matrix[11]);
 }
 
 /// @brief Normalize a float[3] vector in-place, substituting a caller-supplied fallback
@@ -1572,16 +1657,36 @@ static void scene_collect_node_lights(rt_scene_node3d *node,
                                       rt_light3d *storage,
                                       rt_light3d **out_lights,
                                       int32_t *io_count) {
-    if (!node || !storage || !out_lights || !io_count || !node->visible)
+    rt_scene_node3d **stack = NULL;
+    size_t count = 0;
+    size_t capacity = 0;
+    if (!node || !storage || !out_lights || !io_count)
         return;
-    if (node->light && *io_count < VGFX3D_MAX_LIGHTS) {
-        int32_t index = *io_count;
-        scene_transform_node_light(node, (const rt_light3d *)node->light, &storage[index]);
-        out_lights[index] = &storage[index];
-        *io_count = index + 1;
+    if (!scene_node_stack_push(&stack, &count, &capacity, node)) {
+        rt_trap("Scene3D.Draw: light traversal stack allocation failed");
+        return;
     }
-    for (int32_t i = 0; i < node->child_count; i++)
-        scene_collect_node_lights(node->children[i], storage, out_lights, io_count);
+    while (count > 0 && *io_count < VGFX3D_MAX_LIGHTS) {
+        rt_scene_node3d *current = stack[--count];
+        if (!current->visible)
+            continue;
+        if (current->light) {
+            int32_t index = *io_count;
+            scene_transform_node_light(current, (const rt_light3d *)current->light, &storage[index]);
+            out_lights[index] = &storage[index];
+            *io_count = index + 1;
+            if (*io_count >= VGFX3D_MAX_LIGHTS)
+                break;
+        }
+        for (int32_t i = current->child_count - 1; i >= 0; i--) {
+            if (!scene_node_stack_push(&stack, &count, &capacity, current->children[i])) {
+                rt_trap("Scene3D.Draw: light traversal stack allocation failed");
+                free(stack);
+                return;
+            }
+        }
+    }
+    free(stack);
 }
 
 /// @brief Initialise a min/max pair so subsequent point inserts grow a valid AABB.
@@ -1633,6 +1738,36 @@ static void scene_bounds_include_aabb(float bounds_min[3],
     }
 }
 
+typedef struct {
+    rt_scene_node3d *node;
+    double node_to_root[16];
+} scene_bounds_stack_item_t;
+
+static int scene_bounds_stack_push(scene_bounds_stack_item_t **stack,
+                                   size_t *count,
+                                   size_t *capacity,
+                                   rt_scene_node3d *node,
+                                   const double *node_to_root) {
+    scene_bounds_stack_item_t *grown;
+    size_t new_capacity;
+    if (!stack || !count || !capacity || !node || !node_to_root)
+        return 1;
+    if (*count >= *capacity) {
+        new_capacity = *capacity > 0 ? *capacity * 2u : 64u;
+        if (new_capacity <= *capacity || new_capacity > SIZE_MAX / sizeof(**stack))
+            return 0;
+        grown = (scene_bounds_stack_item_t *)realloc(*stack, new_capacity * sizeof(**stack));
+        if (!grown)
+            return 0;
+        *stack = grown;
+        *capacity = new_capacity;
+    }
+    (*stack)[*count].node = node;
+    memcpy((*stack)[*count].node_to_root, node_to_root, sizeof(double) * 16);
+    (*count)++;
+    return 1;
+}
+
 /// @brief Compute a node subtree's local-space AABB relative to the queried root node.
 ///
 /// @param node Current subtree node.
@@ -1645,43 +1780,103 @@ static int scene_node_collect_subtree_bounds(rt_scene_node3d *node,
                                              float out_min[3],
                                              float out_max[3]) {
     int has_bounds = 0;
+    scene_bounds_stack_item_t *stack = NULL;
+    size_t count = 0;
+    size_t capacity = 0;
     if (!node || !node_to_root || !out_min || !out_max)
         return 0;
 
-    if (node->mesh) {
-        float mesh_min[3];
-        float mesh_max[3];
-        scene_mesh_bounds((rt_mesh3d *)node->mesh, mesh_min, mesh_max, NULL);
-        scene_bounds_include_aabb(out_min, out_max, mesh_min, mesh_max, node_to_root);
-        has_bounds = 1;
+    if (!scene_bounds_stack_push(&stack, &count, &capacity, node, node_to_root)) {
+        rt_trap("SceneNode3D.GetAabb: traversal stack allocation failed");
+        return 0;
     }
-
-    for (int32_t i = 0; i < node->child_count; i++) {
-        rt_scene_node3d *child = node->children[i];
-        double child_local[16];
-        double child_to_root[16];
-        build_trs_matrix(child->position, child->rotation, child->scale_xyz, child_local);
-        mat4d_mul(node_to_root, child_local, child_to_root);
-        if (scene_node_collect_subtree_bounds(child, child_to_root, out_min, out_max))
+    while (count > 0) {
+        scene_bounds_stack_item_t item = stack[--count];
+        if (item.node->mesh) {
+            float mesh_min[3];
+            float mesh_max[3];
+            scene_mesh_bounds((rt_mesh3d *)item.node->mesh, mesh_min, mesh_max, NULL);
+            scene_bounds_include_aabb(out_min, out_max, mesh_min, mesh_max, item.node_to_root);
             has_bounds = 1;
+        }
+        for (int32_t i = item.node->child_count - 1; i >= 0; i--) {
+            rt_scene_node3d *child = item.node->children[i];
+            double child_local[16];
+            double child_to_root[16];
+            build_trs_matrix(child->position, child->rotation, child->scale_xyz, child_local);
+            mat4d_mul(item.node_to_root, child_local, child_to_root);
+            if (!scene_bounds_stack_push(&stack, &count, &capacity, child, child_to_root)) {
+                rt_trap("SceneNode3D.GetAabb: traversal stack allocation failed");
+                free(stack);
+                return has_bounds;
+            }
+        }
     }
+    free(stack);
 
     return has_bounds;
 }
 
 /// @brief Depth-first search for a node whose `name` matches `target` (NULL on miss).
 static rt_scene_node3d *find_by_name(rt_scene_node3d *node, const char *target) {
-    if (node->name) {
-        const char *s = rt_string_cstr(node->name);
-        if (s && strcmp(s, target) == 0)
-            return node;
+    rt_scene_node3d **stack = NULL;
+    size_t count = 0;
+    size_t capacity = 0;
+    if (!node || !target)
+        return NULL;
+    if (!scene_node_stack_push(&stack, &count, &capacity, node)) {
+        rt_trap("SceneNode3D.Find: traversal stack allocation failed");
+        return NULL;
     }
-    for (int32_t i = 0; i < node->child_count; i++) {
-        rt_scene_node3d *found = find_by_name(node->children[i], target);
-        if (found)
-            return found;
+    while (count > 0) {
+        rt_scene_node3d *current = stack[--count];
+        if (current->name) {
+            const char *s = rt_string_cstr(current->name);
+            if (s && strcmp(s, target) == 0) {
+                free(stack);
+                return current;
+            }
+        }
+        for (int32_t i = current->child_count - 1; i >= 0; i--) {
+            if (!scene_node_stack_push(&stack, &count, &capacity, current->children[i])) {
+                rt_trap("SceneNode3D.Find: traversal stack allocation failed");
+                free(stack);
+                return NULL;
+            }
+        }
     }
+    free(stack);
     return NULL;
+}
+
+typedef struct {
+    rt_scene_node3d *node;
+    void *inherited_animator;
+} scene_draw_stack_item_t;
+
+static int scene_draw_stack_push(scene_draw_stack_item_t **stack,
+                                 size_t *count,
+                                 size_t *capacity,
+                                 rt_scene_node3d *node,
+                                 void *inherited_animator) {
+    scene_draw_stack_item_t *grown;
+    size_t new_capacity;
+    if (!stack || !count || !capacity || !node)
+        return 1;
+    if (*count >= *capacity) {
+        new_capacity = *capacity > 0 ? *capacity * 2u : 64u;
+        if (new_capacity <= *capacity || new_capacity > SIZE_MAX / sizeof(**stack))
+            return 0;
+        grown = (scene_draw_stack_item_t *)realloc(*stack, new_capacity * sizeof(**stack));
+        if (!grown)
+            return 0;
+        *stack = grown;
+        *capacity = new_capacity;
+    }
+    (*stack)[*count].node = node;
+    (*stack)[*count].inherited_animator = inherited_animator;
+    (*count)++;
+    return 1;
 }
 
 /// @brief Draw traversal: depth-first, skip invisible nodes, frustum-cull meshes.
@@ -1693,101 +1888,131 @@ static void draw_node(rt_scene_node3d *node,
                       int32_t *culled,
                       const float *cam_pos,
                       void *inherited_animator) {
-    if (!node->visible)
+    scene_draw_stack_item_t *stack = NULL;
+    size_t count = 0;
+    size_t capacity = 0;
+    if (!node)
         return;
+    if (!scene_draw_stack_push(&stack, &count, &capacity, node, inherited_animator)) {
+        rt_trap("Scene3D.Draw: traversal stack allocation failed");
+        return;
+    }
+    while (count > 0) {
+        scene_draw_stack_item_t item = stack[--count];
+        rt_scene_node3d *current = item.node;
+        void *effective_animator;
+        int draw_self = 1;
+        void *draw_mesh;
+        float draw_min[3] = {0.0f, 0.0f, 0.0f};
+        float draw_max[3] = {0.0f, 0.0f, 0.0f};
+        float draw_radius = 0.0f;
 
-    recompute_world_matrix(node);
-    void *effective_animator = node->bound_animator ? node->bound_animator : inherited_animator;
+        if (!current->visible)
+            continue;
 
-    int draw_self = 1;
-    void *draw_mesh = node->mesh;
-    float draw_min[3] = {0.0f, 0.0f, 0.0f};
-    float draw_max[3] = {0.0f, 0.0f, 0.0f};
-    float draw_radius = 0.0f;
+        recompute_world_matrix(current);
+        effective_animator =
+            current->bound_animator ? current->bound_animator : item.inherited_animator;
+        draw_mesh = current->mesh;
 
-    if (draw_mesh) {
-        if (node->lod_count > 0 && cam_pos) {
-            float local_center[3];
-            float world_center[3];
-            scene_mesh_bounds((rt_mesh3d *)node->mesh, draw_min, draw_max, &draw_radius);
-            local_center[0] = 0.5f * (draw_min[0] + draw_max[0]);
-            local_center[1] = 0.5f * (draw_min[1] + draw_max[1]);
-            local_center[2] = 0.5f * (draw_min[2] + draw_max[2]);
-            scene_world_point(node->world_matrix, local_center, world_center);
-            {
-                float dx = world_center[0] - cam_pos[0];
-                float dy = world_center[1] - cam_pos[1];
-                float dz = world_center[2] - cam_pos[2];
-                float dist = sqrtf(dx * dx + dy * dy + dz * dz);
-                for (int32_t l = node->lod_count - 1; l >= 0; l--) {
-                    if (dist >= (float)node->lod_levels[l].distance) {
-                        draw_mesh = node->lod_levels[l].mesh;
-                        break;
+        if (draw_mesh) {
+            if (current->lod_count > 0 && cam_pos) {
+                float local_center[3];
+                float world_center[3];
+                scene_mesh_bounds((rt_mesh3d *)current->mesh, draw_min, draw_max, &draw_radius);
+                local_center[0] = 0.5f * (draw_min[0] + draw_max[0]);
+                local_center[1] = 0.5f * (draw_min[1] + draw_max[1]);
+                local_center[2] = 0.5f * (draw_min[2] + draw_max[2]);
+                scene_world_point(current->world_matrix, local_center, world_center);
+                {
+                    float dx = world_center[0] - cam_pos[0];
+                    float dy = world_center[1] - cam_pos[1];
+                    float dz = world_center[2] - cam_pos[2];
+                    float dist = sqrtf(dx * dx + dy * dy + dz * dz);
+                    if (!isfinite(dist))
+                        dist = 0.0f;
+                    for (int32_t l = current->lod_count - 1; l >= 0; l--) {
+                        if (dist >= (float)current->lod_levels[l].distance) {
+                            draw_mesh = current->lod_levels[l].mesh;
+                            break;
+                        }
                     }
                 }
             }
+            scene_mesh_bounds((rt_mesh3d *)draw_mesh, draw_min, draw_max, &draw_radius);
         }
-        scene_mesh_bounds((rt_mesh3d *)draw_mesh, draw_min, draw_max, &draw_radius);
+
+        if (frustum && draw_mesh && draw_radius > 0.0f) {
+            rt_mesh3d *draw_mesh_impl = (rt_mesh3d *)draw_mesh;
+            int has_dynamic_deformation =
+                (effective_animator != NULL || draw_mesh_impl->morph_targets_ref != NULL ||
+                 draw_mesh_impl->morph_deltas != NULL || draw_mesh_impl->morph_weights != NULL ||
+                 draw_mesh_impl->morph_shape_count > 0);
+            float cull_min[3] = {draw_min[0], draw_min[1], draw_min[2]};
+            float cull_max[3] = {draw_max[0], draw_max[1], draw_max[2]};
+            float world_min[3], world_max[3];
+            if (has_dynamic_deformation) {
+                float inflate = draw_radius > 0.0f ? draw_radius * 2.0f : 1.0f;
+                cull_min[0] -= inflate;
+                cull_min[1] -= inflate;
+                cull_min[2] -= inflate;
+                cull_max[0] += inflate;
+                cull_max[1] += inflate;
+                cull_max[2] += inflate;
+            }
+            vgfx3d_transform_aabb(cull_min, cull_max, current->world_matrix, world_min, world_max);
+            if (vgfx3d_frustum_test_aabb(frustum, world_min, world_max) == 0) {
+                draw_self = 0;
+                if (culled)
+                    (*culled)++;
+            }
+        }
+
+        if (draw_self && draw_mesh && current->material) {
+            const float *anim_palette = NULL;
+            const float *anim_prev_palette = NULL;
+            int32_t anim_bone_count = 0;
+            int32_t mesh_bone_count = ((rt_mesh3d *)draw_mesh)->bone_count;
+
+            if (effective_animator) {
+                anim_palette =
+                    rt_anim_controller3d_get_final_palette_data(effective_animator, &anim_bone_count);
+                anim_prev_palette =
+                    rt_anim_controller3d_get_previous_palette_data(effective_animator,
+                                                                   &anim_bone_count);
+            }
+            if (anim_palette && anim_bone_count > 0 && mesh_bone_count > 0) {
+                int32_t draw_bone_count =
+                    anim_bone_count < mesh_bone_count ? anim_bone_count : mesh_bone_count;
+                rt_canvas3d_draw_mesh_matrix_skinned_keyed(canvas3d,
+                                                           draw_mesh,
+                                                           current->world_matrix,
+                                                           current->material,
+                                                           current,
+                                                           anim_palette,
+                                                           anim_prev_palette,
+                                                           draw_bone_count);
+            } else {
+                rt_canvas3d_draw_mesh_matrix_keyed(canvas3d,
+                                                   draw_mesh,
+                                                   current->world_matrix,
+                                                   current->material,
+                                                   current,
+                                                   NULL,
+                                                   NULL);
+            }
+        }
+
+        for (int32_t i = current->child_count - 1; i >= 0; i--) {
+            if (!scene_draw_stack_push(
+                    &stack, &count, &capacity, current->children[i], effective_animator)) {
+                rt_trap("Scene3D.Draw: traversal stack allocation failed");
+                free(stack);
+                return;
+            }
+        }
     }
-
-    /* Frustum cull: test world-space AABB if the node has a mesh */
-    if (frustum && draw_mesh && draw_radius > 0.0f) {
-        rt_mesh3d *draw_mesh_impl = (rt_mesh3d *)draw_mesh;
-        int has_dynamic_deformation =
-            (effective_animator != NULL || draw_mesh_impl->morph_targets_ref != NULL ||
-             draw_mesh_impl->morph_deltas != NULL || draw_mesh_impl->morph_weights != NULL ||
-             draw_mesh_impl->morph_shape_count > 0);
-        float cull_min[3] = {draw_min[0], draw_min[1], draw_min[2]};
-        float cull_max[3] = {draw_max[0], draw_max[1], draw_max[2]};
-        float world_min[3], world_max[3];
-        if (has_dynamic_deformation) {
-            float inflate = draw_radius > 0.0f ? draw_radius * 2.0f : 1.0f;
-            cull_min[0] -= inflate;
-            cull_min[1] -= inflate;
-            cull_min[2] -= inflate;
-            cull_max[0] += inflate;
-            cull_max[1] += inflate;
-            cull_max[2] += inflate;
-        }
-        vgfx3d_transform_aabb(cull_min, cull_max, node->world_matrix, world_min, world_max);
-        if (vgfx3d_frustum_test_aabb(frustum, world_min, world_max) == 0) {
-            draw_self = 0;
-            if (culled)
-                (*culled)++;
-        }
-    }
-
-    if (draw_self && draw_mesh && node->material) {
-        const float *anim_palette = NULL;
-        const float *anim_prev_palette = NULL;
-        int32_t anim_bone_count = 0;
-        int32_t mesh_bone_count = ((rt_mesh3d *)draw_mesh)->bone_count;
-
-        if (effective_animator) {
-            anim_palette =
-                rt_anim_controller3d_get_final_palette_data(effective_animator, &anim_bone_count);
-            anim_prev_palette = rt_anim_controller3d_get_previous_palette_data(effective_animator,
-                                                                                &anim_bone_count);
-        }
-        if (anim_palette && anim_bone_count > 0 && mesh_bone_count > 0) {
-            int32_t draw_bone_count =
-                anim_bone_count < mesh_bone_count ? anim_bone_count : mesh_bone_count;
-            rt_canvas3d_draw_mesh_matrix_skinned_keyed(canvas3d,
-                                                       draw_mesh,
-                                                       node->world_matrix,
-                                                       node->material,
-                                                       node,
-                                                       anim_palette,
-                                                       anim_prev_palette,
-                                                       draw_bone_count);
-        } else {
-            rt_canvas3d_draw_mesh_matrix_keyed(
-                canvas3d, draw_mesh, node->world_matrix, node->material, node, NULL, NULL);
-        }
-    }
-
-    for (int32_t i = 0; i < node->child_count; i++)
-        draw_node(node->children[i], canvas3d, frustum, culled, cam_pos, effective_animator);
+    free(stack);
 }
 
 /*==========================================================================
@@ -1892,9 +2117,9 @@ void rt_scene_node3d_set_position(void *obj, double x, double y, double z) {
     rt_scene_node3d *n = scene_node3d_checked(obj);
     if (!n)
         return;
-    n->position[0] = scene3d_finite_or(x, 0.0);
-    n->position[1] = scene3d_finite_or(y, 0.0);
-    n->position[2] = scene3d_finite_or(z, 0.0);
+    n->position[0] = scene3d_clamp_abs_or(x, 0.0);
+    n->position[1] = scene3d_clamp_abs_or(y, 0.0);
+    n->position[2] = scene3d_clamp_abs_or(z, 0.0);
     mark_dirty(n);
 }
 
@@ -2409,7 +2634,7 @@ void *rt_scene3d_find(void *obj, rt_string name) {
 /// @brief Helper to convert double[16] to float[16] for frustum extraction.
 static void mat4_d2f_local(const double *src, float *dst) {
     for (int i = 0; i < 16; i++)
-        dst[i] = (float)src[i];
+        dst[i] = scene3d_float_or_zero(src[i]);
 }
 
 /// @brief Compute the actual output aspect ratio for projection matrix construction.
@@ -2513,7 +2738,9 @@ void rt_scene3d_draw(void *obj, void *canvas3d, void *camera) {
     scene3d_build_culling_vp(canvas, cam, vp);
     vgfx3d_frustum_extract(&frustum, vp);
 
-    float cam_pos[3] = {(float)cam->eye[0], (float)cam->eye[1], (float)cam->eye[2]};
+    float cam_pos[3] = {scene3d_float_or_zero(cam->eye[0]),
+                        scene3d_float_or_zero(cam->eye[1]),
+                        scene3d_float_or_zero(cam->eye[2])};
     prev_scene_light_count = canvas->scene_light_count;
     memcpy(prev_scene_lights, canvas->scene_lights, sizeof(prev_scene_lights));
     memset(scene_light_ptrs, 0, sizeof(scene_light_ptrs));

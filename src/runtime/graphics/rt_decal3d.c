@@ -34,6 +34,8 @@
 #include <stdlib.h>
 #include <string.h>
 
+#define DECAL3D_SIZE_MAX 1000000.0
+
 extern void *rt_obj_new_i64(int64_t class_id, int64_t byte_size);
 extern void rt_obj_set_finalizer(void *obj, void (*fn)(void *));
 extern void rt_obj_retain_maybe(void *obj);
@@ -91,7 +93,7 @@ static void decal3d_normalize_or_default(double *x, double *y, double *z) {
     *y = decal3d_finite_or(*y, 1.0);
     *z = decal3d_finite_or(*z, 0.0);
     len = sqrt((*x) * (*x) + (*y) * (*y) + (*z) * (*z));
-    if (len <= 1e-8) {
+    if (!isfinite(len) || len <= 1e-8) {
         *x = 0.0;
         *y = 1.0;
         *z = 0.0;
@@ -145,6 +147,8 @@ void *rt_decal3d_new(void *pos_v, void *normal_v, double size, void *texture) {
     d->normal[2] = rt_vec3_z(normal_v);
     decal3d_normalize_or_default(&d->normal[0], &d->normal[1], &d->normal[2]);
     d->size = (isfinite(size) && size > 0.0) ? size : 1.0;
+    if (d->size > DECAL3D_SIZE_MAX)
+        d->size = DECAL3D_SIZE_MAX;
     d->texture = texture;
     rt_obj_retain_maybe(texture);
     d->lifetime = -1.0; /* permanent by default */
@@ -232,7 +236,7 @@ static void ensure_decal_mesh(rt_decal3d *d) {
     double ry = uz * nx - ux * nz;
     double rz = ux * ny - uy * nx;
     double rlen = sqrt(rx * rx + ry * ry + rz * rz);
-    if (rlen <= 1e-8) {
+    if (!isfinite(rlen) || rlen <= 1e-8) {
         rx = 1.0;
         ry = 0.0;
         rz = 0.0;

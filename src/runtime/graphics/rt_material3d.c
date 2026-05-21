@@ -37,6 +37,10 @@
 #include <string.h>
 
 #define MATERIAL3D_UV_TRANSFORM_ABS_MAX 1000000.0
+#define MATERIAL3D_CUSTOM_PARAM_ABS_MAX 1000000.0
+#define MATERIAL3D_SHININESS_MAX 8192.0
+#define MATERIAL3D_EMISSIVE_INTENSITY_MAX 1000000.0
+#define MATERIAL3D_NORMAL_SCALE_MAX 1000.0
 #define MATERIAL3D_TWO_PI 6.28318530717958647692
 
 extern void *rt_obj_new_i64(int64_t class_id, int64_t byte_size);
@@ -145,13 +149,14 @@ static double clamp01(double value) {
     return value;
 }
 
-/// @brief Clamp into the half-open range `[min_value, +inf)`. Used by setters whose
-/// input only needs a floor (shininess, normal scale, emissive intensity, etc.) and
-/// don't have a natural upper bound.
-static double clamp_min(double value, double min_value) {
+static double clamp_range(double value, double min_value, double max_value) {
     if (!isfinite(value))
         return min_value;
-    return value < min_value ? min_value : value;
+    if (value < min_value)
+        return min_value;
+    if (value > max_value)
+        return max_value;
+    return value;
 }
 
 /// @brief Clamp a UV-transform component into ±MATERIAL3D_UV_TRANSFORM_ABS_MAX, falling
@@ -525,7 +530,7 @@ void rt_material3d_set_shininess(void *obj, double s) {
     rt_material3d *mat = material_checked(obj);
     if (!mat)
         return;
-    mat->shininess = clamp_min(s, 0.0);
+    mat->shininess = clamp_range(s, 0.0, MATERIAL3D_SHININESS_MAX);
 }
 
 /// @brief Enable or disable unlit mode (ignores scene lighting, renders flat color/texture).
@@ -552,7 +557,8 @@ void rt_material3d_set_custom_param(void *obj, int64_t index, double value) {
     rt_material3d *mat = material_checked(obj);
     if (!mat || index < 0 || index >= 8)
         return;
-    mat->custom_params[index] = isfinite(value) ? value : 0.0;
+    mat->custom_params[index] =
+        clamp_range(value, -MATERIAL3D_CUSTOM_PARAM_ABS_MAX, MATERIAL3D_CUSTOM_PARAM_ABS_MAX);
 }
 
 /// @brief Set the transparency level (0.0 = invisible, 1.0 = fully opaque).
@@ -641,7 +647,8 @@ void rt_material3d_set_emissive_intensity(void *obj, double value) {
     rt_material3d *mat = material_checked(obj);
     if (!mat)
         return;
-    mat->emissive_intensity = clamp_min(value, 0.0);
+    mat->emissive_intensity =
+        clamp_range(value, 0.0, MATERIAL3D_EMISSIVE_INTENSITY_MAX);
 }
 
 /// @brief Read the emissive intensity multiplier (default 1.0).
@@ -711,7 +718,7 @@ void rt_material3d_set_normal_scale(void *obj, double value) {
     rt_material3d *mat = material_checked(obj);
     if (!mat)
         return;
-    mat->normal_scale = clamp_min(value, 0.0);
+    mat->normal_scale = clamp_range(value, 0.0, MATERIAL3D_NORMAL_SCALE_MAX);
 }
 
 /// @brief Read the normal-map scale factor (default 1.0).

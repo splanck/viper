@@ -45,6 +45,8 @@
 #ifndef M_PI
 #define M_PI 3.14159265358979323846
 #endif
+#define PARTICLES3D_WORLD_ABS_MAX 1000000000000.0
+#define PARTICLES3D_PARAM_MAX 1000000.0
 
 extern void *rt_obj_new_i64(int64_t class_id, int64_t byte_size);
 extern void rt_obj_set_finalizer(void *obj, void (*fn)(void *));
@@ -147,6 +149,15 @@ static double particles_finite_or(double value, double fallback) {
     return isfinite(value) ? value : fallback;
 }
 
+static double particles_clamp_abs_or(double value, double fallback, double max_abs) {
+    value = particles_finite_or(value, fallback);
+    if (value > max_abs)
+        return max_abs;
+    if (value < -max_abs)
+        return -max_abs;
+    return value;
+}
+
 /// @brief Clamp a parameter to [0, +inf), converting NaN/Inf and negatives to 0.
 /// @details Applied to speeds, rates, sizes, and lifetimes that have no meaningful
 ///   negative value — negative inputs are treated as zero rather than as an error
@@ -154,6 +165,8 @@ static double particles_finite_or(double value, double fallback) {
 static double particles_nonnegative_or_zero(double value) {
     if (!isfinite(value) || value < 0.0)
         return 0.0;
+    if (value > PARTICLES3D_PARAM_MAX)
+        return PARTICLES3D_PARAM_MAX;
     return value;
 }
 
@@ -179,7 +192,7 @@ static void normalize3(float *x, float *y, float *z) {
     if (!x || !y || !z)
         return;
     len = sqrtf((*x) * (*x) + (*y) * (*y) + (*z) * (*z));
-    if (len <= 1e-8f)
+    if (!isfinite(len) || len <= 1e-8f)
         return;
     *x /= len;
     *y /= len;
@@ -204,7 +217,7 @@ static void random_cone_dir(rt_particles3d *ps, const double *dir, double spread
     /* Build a coordinate frame around dir */
     float d[3] = {(float)dir[0], (float)dir[1], (float)dir[2]};
     float dlen = sqrtf(d[0] * d[0] + d[1] * d[1] + d[2] * d[2]);
-    if (dlen > 1e-6f) {
+    if (isfinite(dlen) && dlen > 1e-6f) {
         d[0] /= dlen;
         d[1] /= dlen;
         d[2] /= dlen;
@@ -255,6 +268,17 @@ static void random_cone_dir(rt_particles3d *ps, const double *dir, double spread
         out[1] /= olen;
         out[2] /= olen;
     }
+}
+
+static int particle_state_is_finite(const vgfx3d_particle_t *p) {
+    if (!p)
+        return 0;
+    for (int i = 0; i < 3; i++) {
+        if (!isfinite(p->pos[i]) || !isfinite(p->vel[i]) || !isfinite(p->color[i]))
+            return 0;
+    }
+    return isfinite(p->color[3]) && isfinite(p->size) && p->size >= 0.0f &&
+           isfinite(p->life) && isfinite(p->max_life) && p->max_life > 0.0f;
 }
 
 /*==========================================================================
@@ -355,9 +379,9 @@ void rt_particles3d_set_position(void *o, double x, double y, double z) {
     rt_particles3d *p = particles3d_checked(o);
     if (!p)
         return;
-    p->position[0] = particles_finite_or(x, 0.0);
-    p->position[1] = particles_finite_or(y, 0.0);
-    p->position[2] = particles_finite_or(z, 0.0);
+    p->position[0] = particles_clamp_abs_or(x, 0.0, PARTICLES3D_WORLD_ABS_MAX);
+    p->position[1] = particles_clamp_abs_or(y, 0.0, PARTICLES3D_WORLD_ABS_MAX);
+    p->position[2] = particles_clamp_abs_or(z, 0.0, PARTICLES3D_WORLD_ABS_MAX);
 }
 
 /// @brief Set the average emit direction (normalized internally) and cone half-angle in degrees.
@@ -394,6 +418,10 @@ void rt_particles3d_set_speed(void *o, double mn, double mx) {
         mn = mx;
         mx = tmp;
     }
+    if (mn > PARTICLES3D_PARAM_MAX)
+        mn = PARTICLES3D_PARAM_MAX;
+    if (mx > PARTICLES3D_PARAM_MAX)
+        mx = PARTICLES3D_PARAM_MAX;
     p->speed_min = mn;
     p->speed_max = mx;
 }
@@ -414,6 +442,10 @@ void rt_particles3d_set_lifetime(void *o, double mn, double mx) {
         mn = mx;
         mx = tmp;
     }
+    if (mn > PARTICLES3D_PARAM_MAX)
+        mn = PARTICLES3D_PARAM_MAX;
+    if (mx > PARTICLES3D_PARAM_MAX)
+        mx = PARTICLES3D_PARAM_MAX;
     p->life_min = mn;
     p->life_max = mx;
 }
@@ -432,9 +464,9 @@ void rt_particles3d_set_gravity(void *o, double gx, double gy, double gz) {
     rt_particles3d *p = particles3d_checked(o);
     if (!p)
         return;
-    p->gravity[0] = particles_finite_or(gx, 0.0);
-    p->gravity[1] = particles_finite_or(gy, 0.0);
-    p->gravity[2] = particles_finite_or(gz, 0.0);
+    p->gravity[0] = particles_clamp_abs_or(gx, 0.0, PARTICLES3D_PARAM_MAX);
+    p->gravity[1] = particles_clamp_abs_or(gy, 0.0, PARTICLES3D_PARAM_MAX);
+    p->gravity[2] = particles_clamp_abs_or(gz, 0.0, PARTICLES3D_PARAM_MAX);
 }
 
 /// @brief Set start (`sc`) and end (`ec`) colors as packed 0xRRGGBBAA. Each particle linearly
@@ -508,9 +540,9 @@ void rt_particles3d_set_emitter_size(void *o, double sx, double sy, double sz) {
     rt_particles3d *p = particles3d_checked(o);
     if (!p)
         return;
-    p->emitter_size[0] = fabs(particles_finite_or(sx, 0.0));
-    p->emitter_size[1] = fabs(particles_finite_or(sy, 0.0));
-    p->emitter_size[2] = fabs(particles_finite_or(sz, 0.0));
+    p->emitter_size[0] = fabs(particles_clamp_abs_or(sx, 0.0, PARTICLES3D_PARAM_MAX));
+    p->emitter_size[1] = fabs(particles_clamp_abs_or(sy, 0.0, PARTICLES3D_PARAM_MAX));
+    p->emitter_size[2] = fabs(particles_clamp_abs_or(sz, 0.0, PARTICLES3D_PARAM_MAX));
 }
 
 /*==========================================================================
@@ -610,6 +642,8 @@ static void spawn_particle(rt_particles3d *ps) {
     p->color[1] = ps->color_start[1];
     p->color[2] = ps->color_start[2];
     p->color[3] = (float)ps->alpha_start;
+    if (!particle_state_is_finite(p))
+        ps->count--;
 }
 
 /// @brief Spawn `count` particles immediately (in addition to any continuous emission). Useful
@@ -669,6 +703,11 @@ void rt_particles3d_update(void *o, double delta_time) {
         p->color[1] = ps->color_start[1] + age * (ps->color_end[1] - ps->color_start[1]);
         p->color[2] = ps->color_start[2] + age * (ps->color_end[2] - ps->color_start[2]);
         p->color[3] = (float)ps->alpha_start + age * (float)(ps->alpha_end - ps->alpha_start);
+
+        if (!particle_state_is_finite(p)) {
+            ps->particles[i] = ps->particles[--ps->count];
+            continue;
+        }
 
         i++;
     }

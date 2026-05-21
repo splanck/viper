@@ -73,30 +73,37 @@ fallbacks, so they remain stable if backend names or platform selection change.
 ## Runtime Input Guards
 
 Graphics3D clamps public numeric state before it enters renderer-facing structs. `Canvas3D` clamps
-clear, ambient, fog, and frame-delta inputs before they reach backend color state or camera shake.
+clear, ambient, fog, and frame-delta inputs before they reach backend color state or camera shake,
+validates camera position/projection floats at `Begin`, sanitizes material shader uniforms while
+packing draw commands, and stores stable motion-history keys for single and instanced draws.
 Mesh, skinned, morphed, blended, and instanced draw entry points validate finite model matrices before
 they reach culling, terrain splat capture, or backend command queues.
-`Camera3D` rejects non-finite projection, `LookAt`, orbit, FPS, shake, and follow inputs so
-view/projection matrices and picking rays stay finite. `SceneNode3D` and `Transform3D` sanitize TRS
-components, normalize quaternions, and keep LOD distances non-negative; node animation clips reject
+`Camera3D` clamps clip planes, aspect, ortho size, positions, orbit/follow distances, and projection
+narrowing so view/projection matrices and picking rays stay finite. `SceneNode3D` and `Transform3D`
+sanitize TRS components, normalize quaternions, keep LOD distances non-negative, and use iterative
+subtree traversals for sync, search, bounds, lights, and draw collection so deep imported hierarchies
+do not depend on C stack depth. Node animation clips reject
 non-finite samples and non-increasing key times before they reach the sampler. `Collider3D` sanitizes
 primitive dimensions and heightfield scales, rejects compound-child cycles, and guards heightfield
 allocation sizes. `Physics3D` keeps world gravity, time steps, body motion state, damping, impulses,
 and character-controller settings finite before they feed integration and broadphase code; capsule
 primitive narrow-phase uses the body's quaternion orientation when deriving its world-space axis, and
 ray queries use analytic sphere/capsule/box tests with AABB fallback for complex colliders.
-`Mesh3D` rejects invalid procedural dimensions, non-finite OBJ/STL attributes, and overflowing OBJ face
-indices; generated UV spheres avoid zero-area pole triangles, importers skip isolated degenerate faces,
-bone weights are filtered and renormalized, and failed mesh builds are not cloned as drawable meshes.
+`Mesh3D` rejects invalid procedural dimensions, non-finite OBJ/STL attributes, malformed OBJ face
+tokens, collinear triangles, and overflowing OBJ face indices; generated planes face +Y, generated UV
+spheres avoid zero-area pole triangles, importers skip isolated degenerate faces, normals/tangents skip
+overflowing intermediate vectors, bone weights are filtered and renormalized, and failed mesh builds
+are not cloned as drawable meshes.
 `Particles3D` bounds emitter ranges,
-rates, alpha, spread, shape, and update time. `InstanceBatch3D` stores only finite matrix elements
-for culling and backend submission. `Light3D` clamps colors, intensities, attenuations, spot angles,
+rates, alpha, spread, shape, update time, positions, gravity, and emitter extents. `InstanceBatch3D`
+stores only finite float-range matrix elements for culling and backend submission. `Light3D` clamps colors, intensities, attenuations, spot angles,
 and fallback directions before the light list is copied into backend parameters. `PostFX3D` bounds
 every effect parameter and exports the sanitized ordered chain, including bloom pass counts, to GPU
 backends. `Mat4` operations validate matrix handles before reading storage and reject non-finite
 inverse determinants. `MorphTarget3D`, `Skeleton3D`, animation players, and animation blenders
-bound vertex counts, keyframe growth, blend times, speeds, and authored matrices before draw calls
-can copy them into backend commands. These guards are intentionally in the runtime classes instead
+bound vertex counts, keyframe growth, blend times, speeds, authored matrices, and morph delta floats
+before draw calls can copy them into backend commands. Render targets guard stride and pixel-count
+math before allocating or copying color/depth buffers. These guards are intentionally in the runtime classes instead
 of individual backends so software, Metal, D3D11, and OpenGL receive the same clean state.
 
 Graphics3D object handles use stable internal class IDs from `rt_graphics3d_ids.h`. Public APIs that
