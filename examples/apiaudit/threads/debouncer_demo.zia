@@ -7,7 +7,7 @@
 module DebouncerDemo;
 bind Viper.Threads.Debouncer as Debouncer;
 bind Viper.Terminal;
-bind Viper.Fmt as Fmt;
+bind Viper.Text.Fmt as Fmt;
 
 func start() {
     Say("=== API Audit: Viper.Threads.Debouncer ===");

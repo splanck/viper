@@ -12,13 +12,13 @@ last-verified: 2026-04-09
 
 ## Contents
 
-- [Viper.Lazy](#viperlazy)
+- [Viper.Functional.Lazy](#viperlazy)
 - [Viper.Option](#viperoption)
 - [Viper.Result](#viperresult)
 
 ---
 
-## Viper.Lazy
+## Viper.Functional.Lazy
 
 Lazy evaluation wrapper that defers computation until the value is first accessed. Supports wrapping objects, strings, and integers.
 
@@ -73,8 +73,8 @@ Lazy evaluation wrapper that defers computation until the value is first accesse
 module LazyDemo;
 
 bind Viper.Terminal;
-bind Viper.Lazy as Lazy;
-bind Viper.Fmt as Fmt;
+bind Viper.Functional.Lazy as Lazy;
+bind Viper.Text.Fmt as Fmt;
 
 func start() {
     var l = Lazy.OfI64(42);
@@ -87,22 +87,22 @@ func start() {
 
 ```basic
 ' Create a lazy integer value
-DIM l AS OBJECT = Viper.Lazy.OfI64(42)
+DIM l AS OBJECT = Viper.Functional.Lazy.OfI64(42)
 
 ' Check if evaluated
 PRINT "IsEvaluated: "; l.IsEvaluated   ' Output: 1
 
 ' Retrieve the value
-DIM val AS INTEGER = Viper.Lazy.GetI64(l)
+DIM val AS INTEGER = Viper.Functional.Lazy.GetI64(l)
 PRINT "Value: "; val                    ' Output: 42
 
 ' Create a lazy string value
-DIM ls AS OBJECT = Viper.Lazy.OfStr("hello")
-PRINT "String: "; Viper.Lazy.GetStr(ls) ' Output: hello
+DIM ls AS OBJECT = Viper.Functional.Lazy.OfStr("hello")
+PRINT "String: "; Viper.Functional.Lazy.GetStr(ls) ' Output: hello
 
 ' Force evaluation without retrieving
-DIM l2 AS OBJECT = Viper.Lazy.OfI64(99)
-Viper.Lazy.Force(l2)
+DIM l2 AS OBJECT = Viper.Functional.Lazy.OfI64(99)
+Viper.Functional.Lazy.Force(l2)
 PRINT "Forced IsEvaluated: "; l2.IsEvaluated  ' Output: 1
 ```
 
@@ -175,7 +175,7 @@ module OptionDemo;
 
 bind Viper.Terminal;
 bind Viper.Option as Option;
-bind Viper.Fmt as Fmt;
+bind Viper.Text.Fmt as Fmt;
 
 func start() {
     var some = Option.SomeI64(42);
@@ -311,7 +311,7 @@ module ResultDemo;
 
 bind Viper.Terminal;
 bind Viper.Result as Result;
-bind Viper.Fmt as Fmt;
+bind Viper.Text.Fmt as Fmt;
 
 func start() {
     // Success case

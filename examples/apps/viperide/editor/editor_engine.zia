@@ -71,10 +71,16 @@ class EditorEngine {
         }
 
         if doc.cursorLine > 0 {
-            editor.SetCursor(doc.cursorLine, doc.cursorCol);
+            var cursorLine0 = doc.cursorLine - 1;
+            var cursorCol0 = doc.cursorCol - 1;
+            if cursorLine0 < 0 { cursorLine0 = 0; }
+            if cursorCol0 < 0 { cursorCol0 = 0; }
+            editor.SetCursor(cursorLine0, cursorCol0);
         }
         if doc.scrollLine > 1 {
-            editor.ScrollToLine(doc.scrollLine);
+            var scrollLine0 = doc.scrollLine - 1;
+            if scrollLine0 < 0 { scrollLine0 = 0; }
+            editor.ScrollToLine(scrollLine0);
         }
     }
 
@@ -93,8 +99,10 @@ class EditorEngine {
 
     /// @brief Move cursor and scroll to the given 1-based line.
     expose func GoToLine(line: Integer) {
-        editor.SetCursor(line, 1);
-        editor.ScrollToLine(line);
+        var line0 = line - 1;
+        if line0 < 0 { line0 = 0; }
+        editor.SetCursor(line0, 0);
+        editor.ScrollToLine(line0);
     }
 
     /// @brief True if the editor has unsaved changes since last clear.

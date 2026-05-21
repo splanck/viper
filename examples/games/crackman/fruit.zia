@@ -25,7 +25,7 @@ module fruit;
 
 bind Viper.Game;
 bind Viper.Graphics;
-bind Viper.Fmt;
+bind Viper.Text.Fmt;
 
 bind "./config";
 bind "./utils";

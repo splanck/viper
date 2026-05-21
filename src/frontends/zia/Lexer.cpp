@@ -1043,6 +1043,10 @@ Token Lexer::next() {
     }
 
     // Operators and punctuation
+    return lexOperatorOrPunctuation(c);
+}
+
+Token Lexer::lexOperatorOrPunctuation(char c) {
     Token tok;
     tok.loc = currentLoc();
 

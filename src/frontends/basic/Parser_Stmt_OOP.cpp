@@ -114,6 +114,30 @@ StmtPtr Parser::parseClassDecl() {
     if (at(TokenKind::EndOfLine))
         consume();
 
+    std::optional<Access> curAccess;
+    parseClassFieldSection(*decl, curAccess);
+    parseClassMemberSection(*decl, curAccess);
+
+    while (at(TokenKind::EndOfLine) || at(TokenKind::Colon))
+        consume();
+
+    if (at(TokenKind::Number) && peek(1).kind == TokenKind::KeywordEnd &&
+        peek(2).kind == TokenKind::KeywordClass) {
+        consume();
+    }
+
+    expect(TokenKind::KeywordEnd);
+    expect(TokenKind::KeywordClass);
+
+    // BUG-102 fix: Reset current class tracking
+    currentClass_ = nullptr;
+
+    return decl;
+}
+
+void Parser::parseClassFieldSection(ClassDecl &declRef, std::optional<Access> &curAccess) {
+    ClassDecl *decl = &declRef;
+
     // Helper to optionally consume PUBLIC/PRIVATE and return it.
     auto parseAccessPrefix = [&]() -> std::optional<Access> {
         if (at(TokenKind::KeywordPublic)) {
@@ -127,7 +151,6 @@ StmtPtr Parser::parseClassDecl() {
         return std::nullopt;
     };
 
-    std::optional<Access> curAccess;
     bool pendingStaticField = false; // single-use STATIC modifier for next field
 
     while (!at(TokenKind::EndOfFile)) {
@@ -299,6 +322,10 @@ StmtPtr Parser::parseClassDecl() {
         if (at(TokenKind::EndOfLine))
             consume();
     }
+}
+
+void Parser::parseClassMemberSection(ClassDecl &declRef, std::optional<Access> curAccess) {
+    ClassDecl *decl = &declRef;
 
     while (!at(TokenKind::EndOfFile)) {
         while (at(TokenKind::EndOfLine) || at(TokenKind::Colon))
@@ -717,22 +744,6 @@ StmtPtr Parser::parseClassDecl() {
 
         break;
     }
-
-    while (at(TokenKind::EndOfLine) || at(TokenKind::Colon))
-        consume();
-
-    if (at(TokenKind::Number) && peek(1).kind == TokenKind::KeywordEnd &&
-        peek(2).kind == TokenKind::KeywordClass) {
-        consume();
-    }
-
-    expect(TokenKind::KeywordEnd);
-    expect(TokenKind::KeywordClass);
-
-    // BUG-102 fix: Reset current class tracking
-    currentClass_ = nullptr;
-
-    return decl;
 }
 
 /// @brief Parse a BASIC `TYPE` declaration used for user-defined records.

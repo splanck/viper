@@ -33,6 +33,7 @@
 #include "../../include/vg_event.h"
 #include "../../include/vg_ide_widgets.h"
 #include "../../include/vg_theme.h"
+#include <stdint.h>
 #include <stdlib.h>
 #include <string.h>
 
@@ -86,10 +87,14 @@ static bool ensure_item_capacity(vg_toolbar_t *tb, size_t needed) {
     if (needed <= tb->item_capacity)
         return true;
 
-    size_t new_capacity = tb->item_capacity == 0 ? INITIAL_ITEM_CAPACITY : tb->item_capacity * 2;
+    size_t new_capacity = tb->item_capacity == 0 ? INITIAL_ITEM_CAPACITY : tb->item_capacity;
     while (new_capacity < needed) {
+        if (new_capacity > SIZE_MAX / 2)
+            return false;
         new_capacity *= 2;
     }
+    if (new_capacity > SIZE_MAX / sizeof(vg_toolbar_item_t *))
+        return false;
 
     vg_toolbar_item_t **new_items = realloc(tb->items, new_capacity * sizeof(vg_toolbar_item_t *));
     if (!new_items)
@@ -295,6 +300,10 @@ static vg_toolbar_item_t *create_item(vg_toolbar_item_type_t type, const char *i
     item->magic = VG_TOOLBAR_ITEM_MAGIC;
     item->owner = NULL;
     item->id = id ? strdup(id) : NULL;
+    if (id && !item->id) {
+        free(item);
+        return NULL;
+    }
     item->label = NULL;
     item->tooltip = NULL;
     item->icon.type = VG_ICON_NONE;
@@ -1762,14 +1771,22 @@ vg_toolbar_item_t *vg_toolbar_add_button(vg_toolbar_t *tb,
                                          void *user_data) {
     if (!tb)
         return NULL;
-    if (!ensure_item_capacity(tb, tb->item_count + 1))
+    if (tb->item_count == SIZE_MAX || !ensure_item_capacity(tb, tb->item_count + 1))
         return NULL;
 
     vg_toolbar_item_t *item = create_item(VG_TOOLBAR_ITEM_BUTTON, id);
-    if (!item)
+    if (!item) {
+        vg_icon_destroy(&icon);
         return NULL;
+    }
 
-    item->label = label ? strdup(label) : NULL;
+    char *label_copy = label ? strdup(label) : NULL;
+    if (label && !label_copy) {
+        vg_icon_destroy(&icon);
+        free_item(item);
+        return NULL;
+    }
+    item->label = label_copy;
     item->icon = icon;
     item->show_label = tb->show_labels;
     item->on_click = on_click;
@@ -1801,14 +1818,22 @@ vg_toolbar_item_t *vg_toolbar_add_toggle(vg_toolbar_t *tb,
                                          void *user_data) {
     if (!tb)
         return NULL;
-    if (!ensure_item_capacity(tb, tb->item_count + 1))
+    if (tb->item_count == SIZE_MAX || !ensure_item_capacity(tb, tb->item_count + 1))
         return NULL;
 
     vg_toolbar_item_t *item = create_item(VG_TOOLBAR_ITEM_TOGGLE, id);
-    if (!item)
+    if (!item) {
+        vg_icon_destroy(&icon);
         return NULL;
+    }
 
-    item->label = label ? strdup(label) : NULL;
+    char *label_copy = label ? strdup(label) : NULL;
+    if (label && !label_copy) {
+        vg_icon_destroy(&icon);
+        free_item(item);
+        return NULL;
+    }
+    item->label = label_copy;
     item->icon = icon;
     item->checked = initial_checked;
     item->show_label = tb->show_labels;
@@ -1834,14 +1859,22 @@ vg_toolbar_item_t *vg_toolbar_add_dropdown(
     vg_toolbar_t *tb, const char *id, const char *label, vg_icon_t icon, struct vg_menu *menu) {
     if (!tb)
         return NULL;
-    if (!ensure_item_capacity(tb, tb->item_count + 1))
+    if (tb->item_count == SIZE_MAX || !ensure_item_capacity(tb, tb->item_count + 1))
         return NULL;
 
     vg_toolbar_item_t *item = create_item(VG_TOOLBAR_ITEM_DROPDOWN, id);
-    if (!item)
+    if (!item) {
+        vg_icon_destroy(&icon);
         return NULL;
+    }
 
-    item->label = label ? strdup(label) : NULL;
+    char *label_copy = label ? strdup(label) : NULL;
+    if (label && !label_copy) {
+        vg_icon_destroy(&icon);
+        free_item(item);
+        return NULL;
+    }
+    item->label = label_copy;
     item->icon = icon;
     item->show_label = tb->show_labels;
     item->dropdown_menu = menu;
@@ -1860,7 +1893,7 @@ vg_toolbar_item_t *vg_toolbar_add_dropdown(
 vg_toolbar_item_t *vg_toolbar_add_separator(vg_toolbar_t *tb) {
     if (!tb)
         return NULL;
-    if (!ensure_item_capacity(tb, tb->item_count + 1))
+    if (tb->item_count == SIZE_MAX || !ensure_item_capacity(tb, tb->item_count + 1))
         return NULL;
 
     vg_toolbar_item_t *item = create_item(VG_TOOLBAR_ITEM_SEPARATOR, NULL);
@@ -1881,7 +1914,7 @@ vg_toolbar_item_t *vg_toolbar_add_separator(vg_toolbar_t *tb) {
 vg_toolbar_item_t *vg_toolbar_add_spacer(vg_toolbar_t *tb) {
     if (!tb)
         return NULL;
-    if (!ensure_item_capacity(tb, tb->item_count + 1))
+    if (tb->item_count == SIZE_MAX || !ensure_item_capacity(tb, tb->item_count + 1))
         return NULL;
 
     vg_toolbar_item_t *item = create_item(VG_TOOLBAR_ITEM_SPACER, NULL);
@@ -1904,7 +1937,7 @@ vg_toolbar_item_t *vg_toolbar_add_spacer(vg_toolbar_t *tb) {
 vg_toolbar_item_t *vg_toolbar_add_widget(vg_toolbar_t *tb, const char *id, vg_widget_t *widget) {
     if (!tb)
         return NULL;
-    if (!ensure_item_capacity(tb, tb->item_count + 1))
+    if (tb->item_count == SIZE_MAX || !ensure_item_capacity(tb, tb->item_count + 1))
         return NULL;
 
     vg_toolbar_item_t *item = create_item(VG_TOOLBAR_ITEM_WIDGET, id);
@@ -2028,9 +2061,11 @@ void vg_toolbar_item_set_checked(vg_toolbar_item_t *item, bool checked) {
 void vg_toolbar_item_set_tooltip(vg_toolbar_item_t *item, const char *tooltip) {
     if (!vg_toolbar_item_is_live(item))
         return;
-    if (item->tooltip)
-        free(item->tooltip);
-    item->tooltip = tooltip ? strdup(tooltip) : NULL;
+    char *copy = tooltip ? strdup(tooltip) : NULL;
+    if (tooltip && !copy)
+        return;
+    free(item->tooltip);
+    item->tooltip = copy;
     if (item->owner) {
         item->owner->overflow_popup_dirty = true;
         item->owner->base.needs_paint = true;
@@ -2044,9 +2079,11 @@ void vg_toolbar_item_set_tooltip(vg_toolbar_item_t *item, const char *tooltip) {
 void vg_toolbar_item_set_text(vg_toolbar_item_t *item, const char *text) {
     if (!vg_toolbar_item_is_live(item))
         return;
-    if (item->label)
-        free(item->label);
-    item->label = text ? strdup(text) : NULL;
+    char *copy = text ? strdup(text) : NULL;
+    if (text && !copy)
+        return;
+    free(item->label);
+    item->label = copy;
     if (item->owner) {
         item->owner->overflow_popup_dirty = true;
         item->owner->base.needs_layout = true;
@@ -2141,8 +2178,14 @@ vg_icon_t vg_icon_from_pixels(uint8_t *rgba, uint32_t w, uint32_t h) {
     if (!rgba || w == 0 || h == 0)
         return icon;
 
+    if ((size_t)w > SIZE_MAX / (size_t)h)
+        return icon;
+    size_t pixel_count = (size_t)w * (size_t)h;
+    if (pixel_count > SIZE_MAX / 4)
+        return icon;
+
     icon.type = VG_ICON_IMAGE;
-    size_t size = w * h * 4;
+    size_t size = pixel_count * 4;
     icon.data.image.pixels = malloc(size);
     if (icon.data.image.pixels) {
         memcpy(icon.data.image.pixels, rgba, size);

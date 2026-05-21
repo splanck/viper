@@ -118,7 +118,22 @@ RuntimeStatementLowerer::RuntimeStatementLowerer(Lowerer &lowerer) : lowerer_(lo
 void RuntimeStatementLowerer::lowerLet(const LetStmt &stmt) {
     LocationScope loc(lowerer_, stmt.loc);
     Lowerer::RVal value = lowerer_.lowerExpr(*stmt.expr);
-    if (auto *var = as<const VarExpr>(*stmt.target)) {
+    if (auto *var = as<const VarExpr>(*stmt.target))
+        lowerLetToVar(stmt, *var, std::move(value));
+    else if (auto *mc = as<const MethodCallExpr>(*stmt.target))
+        lowerLetToMethodCall(stmt, *mc, std::move(value));
+    else if (auto *call = as<const CallExpr>(*stmt.target))
+        lowerLetToCall(stmt, *call, std::move(value));
+    else if (auto *arr = as<const ArrayExpr>(*stmt.target))
+        lowerLetToArray(stmt, *arr, std::move(value));
+    else if (auto *member = as<const MemberAccessExpr>(*stmt.target))
+        lowerLetToMember(stmt, *member, std::move(value));
+}
+
+void RuntimeStatementLowerer::lowerLetToVar(const LetStmt &stmt, const VarExpr &varRef,
+                                            Lowerer::RVal value) {
+    const VarExpr *var = &varRef;
+    {
         auto storage = lowerer_.resolveVariableStorage(var->name, stmt.loc);
         assert(storage && "LET target should have storage");
         if (!storage)
@@ -198,7 +213,13 @@ void RuntimeStatementLowerer::lowerLet(const LetStmt &stmt) {
             lowerer_.curLoc = {};
             lowerer_.emitCallRet(lowerer_.ilBoolTy(), "rt_obj_release_check0", {newTempValue});
         }
-    } else if (auto *mc = as<const MethodCallExpr>(*stmt.target)) {
+    }
+}
+
+void RuntimeStatementLowerer::lowerLetToMethodCall(const LetStmt &stmt, const MethodCallExpr &mcRef,
+                                                   Lowerer::RVal value) {
+    const MethodCallExpr *mc = &mcRef;
+    {
         // Handle array field assignment (obj.arrayField(index) = value). (BUG-056)
         // Only handle simple base forms we can resolve (VarExpr or ME).
         if (mc->base) {
@@ -377,7 +398,13 @@ void RuntimeStatementLowerer::lowerLet(const LetStmt &stmt) {
             }
         }
         // Fallback: not a supported lvalue form; do nothing here (analyzer should have errored).
-    } else if (auto *call = as<const CallExpr>(*stmt.target)) {
+    }
+}
+
+void RuntimeStatementLowerer::lowerLetToCall(const LetStmt &stmt, const CallExpr &callRef,
+                                             Lowerer::RVal value) {
+    const CallExpr *call = &callRef;
+    {
         // CallExpr can be an implicit field array access (e.g., items(i) inside a method).
         // Check if this refers to a field array in the current class. (BUG-089)
         if (lowerer_.isFieldInScope(call->callee)) {
@@ -502,9 +529,19 @@ void RuntimeStatementLowerer::lowerLet(const LetStmt &stmt) {
             }
         }
         // Not a field array; fall through (analyzer should have errored)
-    } else if (auto *arr = as<const ArrayExpr>(*stmt.target)) {
-        assignArrayElement(*arr, std::move(value), stmt.loc);
-    } else if (auto *member = as<const MemberAccessExpr>(*stmt.target)) {
+    }
+}
+
+void RuntimeStatementLowerer::lowerLetToArray(const LetStmt &stmt, const ArrayExpr &arr,
+                                              Lowerer::RVal value) {
+    assignArrayElement(arr, std::move(value), stmt.loc);
+}
+
+void RuntimeStatementLowerer::lowerLetToMember(const LetStmt &stmt,
+                                               const MemberAccessExpr &memberRef,
+                                               Lowerer::RVal value) {
+    const MemberAccessExpr *member = &memberRef;
+    {
         if (auto access = lowerer_.resolveMemberField(*member)) {
             Lowerer::SlotType slotInfo;
             slotInfo.type = access->ilType;

@@ -60,7 +60,7 @@ bind Viper.Terminal;
 bind Viper.Crypto.Aes as Aes;
 bind Viper.Crypto.Rand as CRand;
 bind Viper.Collections;
-bind Viper.Fmt as Fmt;
+bind Viper.Text.Fmt as Fmt;
 
 func start() {
     // Encrypt a string with a password
@@ -173,7 +173,7 @@ module CipherDemo;
 bind Viper.Terminal;
 bind Viper.Crypto.Cipher as Cipher;
 bind Viper.Collections;
-bind Viper.Fmt as Fmt;
+bind Viper.Text.Fmt as Fmt;
 
 func start() {
     // Encrypt data with a password
@@ -353,7 +353,7 @@ module FastHashDemo;
 
 bind Viper.Terminal;
 bind Viper.Crypto.Hash as Hash;
-bind Viper.Fmt as Fmt;
+bind Viper.Text.Fmt as Fmt;
 
 func start() {
     Say("Hash: " + Fmt.Int(Hash.Fast("hello")));
@@ -650,7 +650,7 @@ module CryptoRandDemo;
 bind Viper.Terminal;
 bind Viper.Crypto.Rand as CRand;
 bind Viper.Collections;
-bind Viper.Fmt as Fmt;
+bind Viper.Text.Fmt as Fmt;
 
 func start() {
     // Generate cryptographically secure random bytes
@@ -955,7 +955,7 @@ module PasswordDemo;
 
 bind Viper.Terminal;
 bind Viper.Crypto.Password as Password;
-bind Viper.Fmt as Fmt;
+bind Viper.Text.Fmt as Fmt;
 
 func start() {
     // Hash a password

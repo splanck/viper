@@ -135,6 +135,16 @@ class CompletionEngine {
                                          std::string_view filePath = "<editor>",
                                          int maxResults = 50);
 
+    /// @brief Return display text for the call signature active at (line, col).
+    /// @details Parses the call expression immediately before the cursor,
+    /// resolves it through scope symbols, member types, and runtime classes,
+    /// then formats one or more callable signatures. Returns empty when no
+    /// callable can be resolved.
+    std::string signatureHelp(std::string_view source,
+                              int line,
+                              int col,
+                              std::string_view filePath = "<editor>");
+
     /// @brief Discard the cached AnalysisResult (forces re-parse next call).
     void clearCache();
 
@@ -247,6 +257,8 @@ class CompletionEngine {
 
     /// @brief FNV-1a hash of a string (fast, ~1µs for 10 KB).
     static uint64_t fnv1a(std::string_view data);
+
+    AnalysisResult *analyze(std::string_view source, std::string_view filePath);
 
     struct Cache {
         uint64_t hash{0};

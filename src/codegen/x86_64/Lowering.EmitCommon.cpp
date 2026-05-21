@@ -348,6 +348,28 @@ Operand EmitCommon::materialiseGpr(Operand operand) {
     return materialise(std::move(operand), RegClass::GPR);
 }
 
+/// @brief Fold an oversized displacement into a freshly allocated base register.
+/// @details See header for the contract. Centralises the imm32-bounds check so
+///          load and store lowering stay in lockstep; previously this sequence
+///          was copy-pasted at both call sites.
+Operand EmitCommon::materialiseDisplacement(const Operand &baseOp, int64_t &disp) {
+    if (fitsImm32(disp))
+        return clone(baseOp);
+
+    const VReg offsetReg = builder().makeTempVReg(RegClass::GPR);
+    const Operand offset = makeVRegOperand(offsetReg.cls, offsetReg.id);
+    const VReg addrReg = builder().makeTempVReg(RegClass::GPR);
+    const Operand addr = makeVRegOperand(addrReg.cls, addrReg.id);
+    builder().append(MInstr::make(
+        MOpcode::MOVri, std::vector<Operand>{clone(offset), makeImmOperand(disp)}));
+    builder().append(MInstr::make(
+        MOpcode::MOVrr, std::vector<Operand>{clone(addr), clone(baseOp)}));
+    builder().append(MInstr::make(
+        MOpcode::ADDrr, std::vector<Operand>{clone(addr), offset}));
+    disp = 0;
+    return addr;
+}
+
 /// @brief Emit a binary arithmetic instruction with immediate folding support.
 /// @details Copies the left-hand operand into the destination register, then
 ///          attempts to use the immediate form when the right-hand operand is a
@@ -723,20 +745,7 @@ void EmitCommon::emitLoad(const ILInstr &instr, RegClass cls) {
     const VReg destReg = builder().ensureVReg(instr.resultId, instr.resultKind);
     const Operand dest = makeVRegOperand(destReg.cls, destReg.id);
 
-    Operand effectiveBase = clone(baseOp);
-    if (!fitsImm32(disp64)) {
-        const VReg offsetReg = builder().makeTempVReg(RegClass::GPR);
-        const Operand offset = makeVRegOperand(offsetReg.cls, offsetReg.id);
-        const VReg addrReg = builder().makeTempVReg(RegClass::GPR);
-        const Operand addr = makeVRegOperand(addrReg.cls, addrReg.id);
-        builder().append(MInstr::make(MOpcode::MOVri,
-                                      std::vector<Operand>{clone(offset), makeImmOperand(disp64)}));
-        builder().append(
-            MInstr::make(MOpcode::MOVrr, std::vector<Operand>{clone(addr), clone(baseOp)}));
-        builder().append(MInstr::make(MOpcode::ADDrr, std::vector<Operand>{clone(addr), offset}));
-        effectiveBase = addr;
-        disp64 = 0;
-    }
+    Operand effectiveBase = materialiseDisplacement(baseOp, disp64);
 
     Operand mem = makeMemOperand(std::get<OpReg>(effectiveBase), static_cast<int32_t>(disp64));
     if (fitsImm32(disp64)) {
@@ -789,20 +798,7 @@ void EmitCommon::emitStore(const ILInstr &instr) {
         disp64 = integerImmediateValue(instr.ops[2]);
     }
 
-    Operand effectiveBase = clone(baseOp);
-    if (!fitsImm32(disp64)) {
-        const VReg offsetReg = builder().makeTempVReg(RegClass::GPR);
-        const Operand offset = makeVRegOperand(offsetReg.cls, offsetReg.id);
-        const VReg addrReg = builder().makeTempVReg(RegClass::GPR);
-        const Operand addr = makeVRegOperand(addrReg.cls, addrReg.id);
-        builder().append(MInstr::make(MOpcode::MOVri,
-                                      std::vector<Operand>{clone(offset), makeImmOperand(disp64)}));
-        builder().append(
-            MInstr::make(MOpcode::MOVrr, std::vector<Operand>{clone(addr), clone(baseOp)}));
-        builder().append(MInstr::make(MOpcode::ADDrr, std::vector<Operand>{clone(addr), offset}));
-        effectiveBase = addr;
-        disp64 = 0;
-    }
+    Operand effectiveBase = materialiseDisplacement(baseOp, disp64);
 
     Operand mem = makeMemOperand(std::get<OpReg>(effectiveBase), static_cast<int32_t>(disp64));
     if (fitsImm32(disp64)) {

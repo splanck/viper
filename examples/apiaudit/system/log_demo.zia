@@ -1,5 +1,5 @@
 // =============================================================================
-// API Audit: Viper.Log - Logging Utilities
+// API Audit: Viper.Diagnostics.Log - Logging Utilities
 // =============================================================================
 // Tests: Debug, Info, Warn, Error, get_Level, set_Level, Enabled,
 //        get_DEBUG, get_INFO, get_WARN, get_ERROR, get_OFF
@@ -7,9 +7,9 @@
 
 module LogDemo;
 bind Viper.Terminal;
-bind Viper.Log as Log;
+bind Viper.Diagnostics.Log as Log;
 func start() {
-    Say("=== API Audit: Viper.Log ===");
+    Say("=== API Audit: Viper.Diagnostics.Log ===");
 
     // --- Level Constants ---
     Say("--- Level Constants ---");

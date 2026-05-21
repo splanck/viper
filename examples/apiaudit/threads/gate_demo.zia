@@ -7,7 +7,7 @@
 module GateDemo;
 bind Viper.Threads.Gate as Gate;
 bind Viper.Terminal;
-bind Viper.Fmt as Fmt;
+bind Viper.Text.Fmt as Fmt;
 
 func start() {
     Say("=== API Audit: Viper.Threads.Gate ===");

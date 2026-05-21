@@ -6,7 +6,7 @@ bind Viper.Crypto.Rand as CRand;
 bind Viper.Crypto.Cipher as Cipher;
 bind Viper.Crypto.KeyDerive as KD;
 bind Viper.Collections.Bytes as Bytes;
-bind Viper.Fmt as Fmt;
+bind Viper.Text.Fmt as Fmt;
 
 // EXPECT_OUT: RESULT: ok
 // COVER: Bug #7  - Crypto function return types as Bytes

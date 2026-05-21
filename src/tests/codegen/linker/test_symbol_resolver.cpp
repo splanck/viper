@@ -102,6 +102,19 @@ static void addCommonSymbol(ObjFile &obj,
     obj.symbols.push_back(sym);
 }
 
+static ObjFile makeComdatObj(const std::string &objName,
+                             const std::string &symName,
+                             ComdatSelection selection,
+                             const std::vector<uint8_t> &bytes,
+                             const std::string &key = "comdat-key") {
+    auto obj = makeObj(objName, {".text$" + symName}, 0);
+    obj.sections[1].data = bytes;
+    obj.sections[1].comdatSelection = selection;
+    obj.sections[1].comdatKey = key;
+    addSymbol(obj, symName, 1, ObjSymbol::Global);
+    return obj;
+}
+
 static std::vector<uint8_t> readBinaryFile(const std::string &path) {
     std::ifstream in(path, std::ios::binary | std::ios::ate);
     if (!in)
@@ -222,6 +235,127 @@ int main() {
         CHECK(!ok);
         CHECK(err.str().find("multiply defined") != std::string::npos);
         CHECK(err.str().find("collide") != std::string::npos);
+    }
+
+    // --- COMDAT ANY duplicate strong definitions pick the first copy ---
+    {
+        auto obj1 = makeComdatObj("a.o", "inline_func", ComdatSelection::Any, {0xC3});
+        auto obj2 = makeComdatObj("b.o", "inline_func", ComdatSelection::Any, {0x90, 0xC3});
+
+        std::vector<ObjFile> initObjs = {obj1, obj2};
+        std::vector<Archive> archives;
+        std::unordered_map<std::string, GlobalSymEntry> globalSyms;
+        std::vector<ObjFile> allObjects;
+        std::unordered_set<std::string> dynamicSyms;
+        std::ostringstream err;
+
+        bool ok = resolveSymbols(initObjs, archives, globalSyms, allObjects, dynamicSyms, err);
+        CHECK(ok);
+        CHECK(err.str().empty());
+        CHECK(globalSyms["inline_func"].objIndex == 0);
+    }
+
+    // --- COMDAT SAME_SIZE diagnoses mismatched section sizes ---
+    {
+        auto obj1 = makeComdatObj("a.o", "same_size_func", ComdatSelection::SameSize, {0xC3});
+        auto obj2 =
+            makeComdatObj("b.o", "same_size_func", ComdatSelection::SameSize, {0x90, 0xC3});
+
+        std::vector<ObjFile> initObjs = {obj1, obj2};
+        std::vector<Archive> archives;
+        std::unordered_map<std::string, GlobalSymEntry> globalSyms;
+        std::vector<ObjFile> allObjects;
+        std::unordered_set<std::string> dynamicSyms;
+        std::ostringstream err;
+
+        bool ok = resolveSymbols(initObjs, archives, globalSyms, allObjects, dynamicSyms, err);
+        CHECK(!ok);
+        CHECK(err.str().find("SAME_SIZE") != std::string::npos);
+    }
+
+    // --- COMDAT EXACT_MATCH diagnoses same-size content mismatches ---
+    {
+        auto obj1 =
+            makeComdatObj("a.o", "exact_func", ComdatSelection::ExactMatch, {0x90, 0xC3});
+        auto obj2 =
+            makeComdatObj("b.o", "exact_func", ComdatSelection::ExactMatch, {0xCC, 0xC3});
+
+        std::vector<ObjFile> initObjs = {obj1, obj2};
+        std::vector<Archive> archives;
+        std::unordered_map<std::string, GlobalSymEntry> globalSyms;
+        std::vector<ObjFile> allObjects;
+        std::unordered_set<std::string> dynamicSyms;
+        std::ostringstream err;
+
+        bool ok = resolveSymbols(initObjs, archives, globalSyms, allObjects, dynamicSyms, err);
+        CHECK(!ok);
+        CHECK(err.str().find("EXACT_MATCH") != std::string::npos);
+    }
+
+    // --- COMDAT EXACT_MATCH includes relocation identity, not just raw bytes ---
+    {
+        auto obj1 =
+            makeComdatObj("a.o", "exact_reloc", ComdatSelection::ExactMatch, {0xE8, 0, 0, 0, 0});
+        addSymbol(obj1, "target_a", 0, ObjSymbol::Undefined);
+        ObjReloc rel1;
+        rel1.offset = 1;
+        rel1.type = 4;
+        rel1.symIndex = static_cast<uint32_t>(obj1.symbols.size() - 1);
+        obj1.sections[1].relocs.push_back(rel1);
+
+        auto obj2 =
+            makeComdatObj("b.o", "exact_reloc", ComdatSelection::ExactMatch, {0xE8, 0, 0, 0, 0});
+        addSymbol(obj2, "target_b", 0, ObjSymbol::Undefined);
+        ObjReloc rel2 = rel1;
+        rel2.symIndex = static_cast<uint32_t>(obj2.symbols.size() - 1);
+        obj2.sections[1].relocs.push_back(rel2);
+
+        std::vector<ObjFile> initObjs = {obj1, obj2};
+        std::vector<Archive> archives;
+        std::unordered_map<std::string, GlobalSymEntry> globalSyms;
+        std::vector<ObjFile> allObjects;
+        std::unordered_set<std::string> dynamicSyms;
+        std::ostringstream err;
+
+        bool ok = resolveSymbols(initObjs, archives, globalSyms, allObjects, dynamicSyms, err);
+        CHECK(!ok);
+        CHECK(err.str().find("EXACT_MATCH") != std::string::npos);
+    }
+
+    // --- COMDAT LARGEST selects the largest section contribution ---
+    {
+        auto obj1 = makeComdatObj("a.o", "largest_func", ComdatSelection::Largest, {0xC3});
+        auto obj2 =
+            makeComdatObj("b.o", "largest_func", ComdatSelection::Largest, {0x90, 0x90, 0xC3});
+
+        std::vector<ObjFile> initObjs = {obj1, obj2};
+        std::vector<Archive> archives;
+        std::unordered_map<std::string, GlobalSymEntry> globalSyms;
+        std::vector<ObjFile> allObjects;
+        std::unordered_set<std::string> dynamicSyms;
+        std::ostringstream err;
+
+        bool ok = resolveSymbols(initObjs, archives, globalSyms, allObjects, dynamicSyms, err);
+        CHECK(ok);
+        CHECK(err.str().empty());
+        CHECK(globalSyms["largest_func"].objIndex == 1);
+    }
+
+    // --- COMDAT NODUPLICATES remains a hard multiple-definition error ---
+    {
+        auto obj1 = makeComdatObj("a.o", "unique_func", ComdatSelection::NoDuplicates, {0xC3});
+        auto obj2 = makeComdatObj("b.o", "unique_func", ComdatSelection::NoDuplicates, {0xC3});
+
+        std::vector<ObjFile> initObjs = {obj1, obj2};
+        std::vector<Archive> archives;
+        std::unordered_map<std::string, GlobalSymEntry> globalSyms;
+        std::vector<ObjFile> allObjects;
+        std::unordered_set<std::string> dynamicSyms;
+        std::ostringstream err;
+
+        bool ok = resolveSymbols(initObjs, archives, globalSyms, allObjects, dynamicSyms, err);
+        CHECK(!ok);
+        CHECK(err.str().find("NODUPLICATES") != std::string::npos);
     }
 
     // --- Windows CRT inline stdio option storage is pick-any ---
@@ -566,6 +700,83 @@ int main() {
         CHECK(globalSyms["fallback_func"].objIndex == 1);
     }
 
+    // --- COFF weak external NOLIBRARY fallback does not extract archives ---
+    {
+        auto user = makeObj("weak_nolib_user.obj", {".text"});
+        addSymbol(user, "main", 1, ObjSymbol::Global);
+        ObjSymbol weak;
+        weak.name = "maybe_func";
+        weak.binding = ObjSymbol::Undefined;
+        weak.weakExternal = true;
+        weak.weakDefaultName = "fallback_func";
+        weak.weakExternalCharacteristics = 1; // IMAGE_WEAK_EXTERN_SEARCH_NOLIBRARY.
+        user.symbols.push_back(std::move(weak));
+
+        CodeSection providerText;
+        CodeSection providerRodata;
+        providerText.defineSymbol("fallback_func", SymbolBinding::Global, SymbolSection::Text);
+        providerText.emit8(0xC3);
+
+        std::ostringstream writeErr;
+        const std::string providerPath = "build/test-out/weak_nolib_provider.o";
+        ElfWriter writer(ObjArch::X86_64);
+        CHECK(writer.write(providerPath, providerText, providerRodata, writeErr));
+
+        Archive archive;
+        archive.path = "synthetic_weak_nolib.a";
+        archive.data = readBinaryFile(providerPath);
+        archive.members.push_back({"fallback.o", 0, archive.data.size()});
+        archive.symbolIndex["fallback_func"] = 0;
+
+        std::vector<ObjFile> initObjs = {user};
+        std::vector<Archive> archives = {archive};
+        std::unordered_map<std::string, GlobalSymEntry> globalSyms;
+        std::vector<ObjFile> allObjects;
+        std::unordered_set<std::string> dynamicSyms;
+        std::ostringstream err;
+
+        bool ok = resolveSymbols(initObjs, archives, globalSyms, allObjects, dynamicSyms, err);
+        CHECK(ok);
+        CHECK(err.str().empty());
+        CHECK(allObjects.size() == 1);
+        CHECK(globalSyms.count("fallback_func") == 0);
+    }
+
+    // --- COFF weak external ALIAS fallback also triggers archive extraction ---
+    {
+        auto user = makeObj("weak_alias_user.obj", {".text"});
+        addSymbol(user, "main", 1, ObjSymbol::Global);
+        ObjSymbol weak;
+        weak.name = "maybe_func";
+        weak.binding = ObjSymbol::Undefined;
+        weak.weakExternal = true;
+        weak.weakDefaultName = "fallback_alias_func";
+        weak.weakExternalCharacteristics = 3; // IMAGE_WEAK_EXTERN_SEARCH_ALIAS.
+        user.symbols.push_back(std::move(weak));
+
+        auto providerBytes =
+            writeElfObjectWithGlobals("build/test-out/weak_alias_provider.o", {"fallback_alias_func"});
+        Archive archive;
+        archive.path = "synthetic_weak_alias.a";
+        archive.data = providerBytes;
+        archive.members.push_back({"fallback.o", 0, archive.data.size()});
+        archive.symbolIndex["fallback_alias_func"] = 0;
+
+        std::vector<ObjFile> initObjs = {user};
+        std::vector<Archive> archives = {archive};
+        std::unordered_map<std::string, GlobalSymEntry> globalSyms;
+        std::vector<ObjFile> allObjects;
+        std::unordered_set<std::string> dynamicSyms;
+        std::ostringstream err;
+
+        bool ok = resolveSymbols(initObjs, archives, globalSyms, allObjects, dynamicSyms, err);
+        CHECK(ok);
+        CHECK(err.str().empty());
+        CHECK(allObjects.size() == 2);
+        CHECK(globalSyms.count("fallback_alias_func") == 1);
+        CHECK(globalSyms["fallback_alias_func"].objIndex == 1);
+    }
+
     // --- Archive duplicate symbol candidates are retried after stale entries ---
     {
         auto user = makeObj("dup_candidate_user.o", {".text"});
@@ -731,7 +942,9 @@ int main() {
         CHECK(allObjects.size() == 3);
         CHECK(allObjects.back().sections.size() == 2);
         CHECK(allObjects.back().sections[1].name == ".common");
-        CHECK(allObjects.back().sections[1].data.size() == 12);
+        CHECK(allObjects.back().sections[1].zeroFill);
+        CHECK(allObjects.back().sections[1].data.empty());
+        CHECK(objSectionMemSize(allObjects.back().sections[1]) == 12);
         CHECK(allObjects.back().sections[1].alignment == 8);
         CHECK(globalSyms["tentative"].binding == GlobalSymEntry::Global);
         CHECK(globalSyms["tentative"].objIndex == 2);

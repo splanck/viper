@@ -28,6 +28,7 @@
 #include <cstdlib>
 #include <cstring>
 #include <iostream>
+#include <limits>
 #include <stdexcept>
 #include <string>
 #include <unordered_set>
@@ -1239,6 +1240,63 @@ static void testFunctionMetadataValidation() {
     CHECK(encodeThrowsContaining(badFpr, "V8-V15"));
 }
 
+static void testAssemblerCorrectnessValidation() {
+    MFunction duplicateSanitizedLabels;
+    duplicateSanitizedLabels.name = "duplicate_sanitized_labels";
+    MBasicBlock hyphenBlock;
+    hyphenBlock.name = "join-block";
+    hyphenBlock.instrs.push_back(MInstr{MOpcode::Ret, {}});
+    duplicateSanitizedLabels.blocks.push_back(std::move(hyphenBlock));
+    MBasicBlock underscoreBlock;
+    underscoreBlock.name = "join_block";
+    underscoreBlock.instrs.push_back(MInstr{MOpcode::Ret, {}});
+    duplicateSanitizedLabels.blocks.push_back(std::move(underscoreBlock));
+    CHECK(encodeThrowsContaining(duplicateSanitizedLabels, "duplicate/sanitized label 'join_block'"));
+
+    MFunction spBaseLargeOffset;
+    spBaseLargeOffset.name = "sp_base_large_offset";
+    MBasicBlock spBlock;
+    spBlock.name = "entry";
+    spBlock.instrs.push_back(
+        MInstr{MOpcode::LdrRegBaseImm, {gpr(PhysReg::X0), gpr(PhysReg::SP), imm(40000)}});
+    spBlock.instrs.push_back(MInstr{MOpcode::Ret, {}});
+    spBaseLargeOffset.blocks.push_back(std::move(spBlock));
+    CHECK(encodeThrowsContaining(spBaseLargeOffset, "large-offset load/store cannot materialize SP base"));
+
+    MFunction pairOverflow;
+    pairOverflow.name = "pair_overflow";
+    MBasicBlock pairBlock;
+    pairBlock.name = "entry";
+    pairBlock.instrs.push_back(MInstr{MOpcode::LdpRegFpImm,
+                                      {gpr(PhysReg::X0),
+                                       gpr(PhysReg::X1),
+                                       imm(std::numeric_limits<long long>::max())}});
+    pairBlock.instrs.push_back(MInstr{MOpcode::Ret, {}});
+    pairOverflow.blocks.push_back(std::move(pairBlock));
+    CHECK(encodeThrowsContaining(pairOverflow, "pair fallback offset"));
+
+    MFunction winHugePrologue;
+    winHugePrologue.name = "win_huge_prologue";
+    winHugePrologue.isLeaf = false;
+    winHugePrologue.localFrameSize = 16777216; // Forces more than 255 bytes of prologue code.
+    MBasicBlock winBlock;
+    winBlock.name = "entry";
+    winBlock.instrs.push_back(MInstr{MOpcode::Ret, {}});
+    winHugePrologue.blocks.push_back(std::move(winBlock));
+
+    bool threw = false;
+    try {
+        CodeSection text, rodata;
+        A64BinaryEncoder enc;
+        enc.encodeFunction(winHugePrologue, text, rodata, ABIFormat::Windows);
+    } catch (const std::runtime_error &ex) {
+        const std::string msg = ex.what();
+        threw = msg.find("Windows ARM64 prologue") != std::string::npos &&
+                msg.find("exceeds 255") != std::string::npos;
+    }
+    CHECK(threw);
+}
+
 static void testAddSubImmediateHelpersRejectWideImmediates() {
     bool threwAdd = false;
     try {
@@ -1328,6 +1386,7 @@ int main() {
     testWindowsArm64UnwindEntryRecorded();
     testBranchRejectsMissingTarget();
     testFunctionMetadataValidation();
+    testAssemblerCorrectnessValidation();
     testAddSubImmediateHelpersRejectWideImmediates();
 
     // --- Encoding coverage validation (W7 remediation) ---

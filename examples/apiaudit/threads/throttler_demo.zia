@@ -7,7 +7,7 @@
 module ThrottlerDemo;
 bind Viper.Threads.Throttler as Throttler;
 bind Viper.Terminal;
-bind Viper.Fmt as Fmt;
+bind Viper.Text.Fmt as Fmt;
 
 func start() {
     Say("=== API Audit: Viper.Threads.Throttler ===");

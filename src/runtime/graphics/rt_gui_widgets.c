@@ -49,6 +49,12 @@ static vg_widget_t *rt_widget_parent_or_null_if_invalid(void *parent) {
     return parent_widget;
 }
 
+/// @brief External shim for modules that need parent-container validation
+///        without including rt_gui_internal.h inline helpers.
+void *rt_gui_widget_parent_container_checked(void *handle) {
+    return rt_gui_widget_parent_container_from_handle(handle);
+}
+
 //=============================================================================
 // Font Functions
 //=============================================================================
@@ -84,7 +90,8 @@ void rt_font_destroy(void *font) {
         return;
     if (rt_gui_retire_font_if_in_use((vg_font_t *)font))
         return;
-    vg_font_destroy((vg_font_t *)font);
+    if (vg_font_is_live((vg_font_t *)font))
+        vg_font_destroy((vg_font_t *)font);
 }
 
 //=============================================================================
@@ -95,13 +102,13 @@ void rt_font_destroy(void *font) {
 /// @details Used by rt_widget_forget_runtime_refs to check whether a cached app-level
 ///          pointer (last_clicked, drag_source, etc.) falls inside the subtree that is
 ///          about to be destroyed, so it can be nulled out before the widget is freed.
-static int rt_widget_tree_contains(vg_widget_t *root, vg_widget_t *candidate) {
+int rt_gui_widget_tree_contains(vg_widget_t *root, const vg_widget_t *candidate) {
     if (!root || !candidate)
         return 0;
     if (root == candidate)
         return 1;
     for (vg_widget_t *child = root->first_child; child; child = child->next_sibling) {
-        if (rt_widget_tree_contains(child, candidate))
+        if (rt_gui_widget_tree_contains(child, candidate))
             return 1;
     }
     return 0;
@@ -156,27 +163,31 @@ static int rt_widget_tree_contains_toolbar_item(vg_widget_t *root, vg_toolbar_it
 ///          raw pointers (last_clicked, drag_source, drag_over_widget,
 ///          last_statusbar_clicked, last_toolbar_clicked) from becoming dangling after
 ///          the widget tree is freed.
-static void rt_widget_forget_runtime_refs(rt_gui_app_t *app, vg_widget_t *widget) {
-    if (!app || !widget)
+void rt_widget_forget_runtime_refs(rt_gui_app_t *app, vg_widget_t *widget) {
+    if (!widget)
         return;
-    if (rt_widget_tree_contains(widget, app->last_clicked))
-        app->last_clicked = NULL;
-    if (rt_widget_tree_contains(widget, app->drag_candidate))
-        app->drag_candidate = NULL;
-    if (rt_widget_tree_contains(widget, app->drag_source)) {
-        if (app->drag_source)
-            app->drag_source->_is_being_dragged = false;
-        app->drag_source = NULL;
+    if (app) {
+        if (rt_gui_widget_tree_contains(widget, app->last_clicked))
+            app->last_clicked = NULL;
+        if (rt_gui_widget_tree_contains(widget, app->drag_candidate))
+            app->drag_candidate = NULL;
+        if (rt_gui_widget_tree_contains(widget, app->drag_source)) {
+            if (app->drag_source)
+                app->drag_source->_is_being_dragged = false;
+            app->drag_source = NULL;
+        }
+        if (rt_gui_widget_tree_contains(widget, app->drag_over_widget)) {
+            if (app->drag_over_widget)
+                app->drag_over_widget->_is_drag_over = false;
+            app->drag_over_widget = NULL;
+        }
+        if (rt_widget_tree_contains_statusbar_item(widget, app->last_statusbar_clicked))
+            app->last_statusbar_clicked = NULL;
+        if (rt_widget_tree_contains_toolbar_item(widget, app->last_toolbar_clicked))
+            app->last_toolbar_clicked = NULL;
     }
-    if (rt_widget_tree_contains(widget, app->drag_over_widget)) {
-        if (app->drag_over_widget)
-            app->drag_over_widget->_is_drag_over = false;
-        app->drag_over_widget = NULL;
-    }
-    if (rt_widget_tree_contains_statusbar_item(widget, app->last_statusbar_clicked))
-        app->last_statusbar_clicked = NULL;
-    if (rt_widget_tree_contains_toolbar_item(widget, app->last_toolbar_clicked))
-        app->last_toolbar_clicked = NULL;
+    rt_findbar_forget_editor_subtree(widget);
+    rt_minimap_forget_editor_subtree(widget);
 }
 
 /// @brief Destroy a widget and its entire subtree, freeing all resources.
@@ -259,6 +270,9 @@ void rt_widget_set_preferred_size(void *widget, double width, double height) {
     RT_ASSERT_MAIN_THREAD();
     vg_widget_t *w = rt_gui_widget_handle_checked(widget);
     if (w) {
+        rt_gui_app_t *app = rt_gui_app_from_widget(w);
+        if (app && app->root == w)
+            return;
         vg_widget_set_preferred_size(w,
                                      rt_gui_sanitize_nonnegative_float(
                                          width, RT_GUI_MAX_LAYOUT_VALUE),
@@ -278,6 +292,9 @@ void rt_widget_set_max_size(void *widget, double width, double height) {
     RT_ASSERT_MAIN_THREAD();
     vg_widget_t *w = rt_gui_widget_handle_checked(widget);
     if (w) {
+        rt_gui_app_t *app = rt_gui_app_from_widget(w);
+        if (app && app->root == w)
+            return;
         vg_widget_set_max_size(w,
                                rt_gui_sanitize_nonnegative_float(width, RT_GUI_MAX_LAYOUT_VALUE),
                                rt_gui_sanitize_nonnegative_float(height, RT_GUI_MAX_LAYOUT_VALUE));
@@ -482,7 +499,10 @@ void rt_label_set_font(void *label, void *font, double size) {
     vg_label_t *lbl = (vg_label_t *)rt_gui_widget_handle_checked_type(label, VG_WIDGET_LABEL);
     if (!lbl)
         return;
-    vg_label_set_font(lbl, (vg_font_t *)font, (float)rt_gui_sanitize_font_size(size, 14.0));
+    vg_font_t *checked_font = rt_gui_font_handle_checked(font);
+    if (!checked_font)
+        return;
+    vg_label_set_font(lbl, checked_font, (float)rt_gui_sanitize_font_size(size, 14.0));
 }
 
 /// @brief Set the text color of a label as a packed ARGB integer.
@@ -537,7 +557,10 @@ void rt_button_set_font(void *button, void *font, double size) {
     vg_button_t *btn = (vg_button_t *)rt_gui_widget_handle_checked_type(button, VG_WIDGET_BUTTON);
     if (!btn)
         return;
-    vg_button_set_font(btn, (vg_font_t *)font, (float)rt_gui_sanitize_font_size(size, 14.0));
+    vg_font_t *checked_font = rt_gui_font_handle_checked(font);
+    if (!checked_font)
+        return;
+    vg_button_set_font(btn, checked_font, (float)rt_gui_sanitize_font_size(size, 14.0));
 }
 
 /// @brief Set the visual style preset for a button (primary, secondary, danger, etc.).
@@ -658,7 +681,10 @@ void rt_textinput_set_font(void *input, void *font, double size) {
         (vg_textinput_t *)rt_gui_widget_handle_checked_type(input, VG_WIDGET_TEXTINPUT);
     if (!ti)
         return;
-    vg_textinput_set_font(ti, (vg_font_t *)font, (float)rt_gui_sanitize_font_size(size, 14.0));
+    vg_font_t *checked_font = rt_gui_font_handle_checked(font);
+    if (!checked_font)
+        return;
+    vg_textinput_set_font(ti, checked_font, (float)rt_gui_sanitize_font_size(size, 14.0));
 }
 
 //=============================================================================
@@ -932,7 +958,10 @@ void rt_treeview_set_font(void *tree, void *font, double size) {
         (vg_treeview_t *)rt_gui_widget_handle_checked_type(tree, VG_WIDGET_TREEVIEW);
     if (!tv)
         return;
-    vg_treeview_set_font(tv, (vg_font_t *)font, (float)rt_gui_sanitize_font_size(size, 14.0));
+    vg_font_t *checked_font = rt_gui_font_handle_checked(font);
+    if (!checked_font)
+        return;
+    vg_treeview_set_font(tv, checked_font, (float)rt_gui_sanitize_font_size(size, 14.0));
 }
 
 /// @brief Currently-selected tree node handle (NULL if none / null tree).
@@ -953,9 +982,8 @@ int64_t rt_treeview_was_selection_changed(void *tree) {
     if (!tv)
         return 0;
 
-    // Per-instance selection tracking using prev_selected field
-    // (matches the pattern used by rt_tabbar_was_changed / prev_active_tab).
-    if (tv->selected != tv->prev_selected) {
+    if (tv->selection_revision != tv->reported_selection_revision) {
+        tv->reported_selection_revision = tv->selection_revision;
         tv->prev_selected = tv->selected;
         return 1;
     }

@@ -20,6 +20,7 @@
 
 #include "codegen/common/linker/AlignUtil.hpp"
 #include "codegen/common/linker/ExeWriterUtil.hpp"
+#include "codegen/common/objfile/ObjFileWriterUtil.hpp"
 
 #include <algorithm>
 #include <cstring>
@@ -323,13 +324,7 @@ bool fitsInt32(int64_t value) {
     return value >= -2147483648LL && value <= 2147483647LL;
 }
 
-/// @brief Patch a 32-bit little-endian value at @p offset within @p buf.
-void putLE32(std::vector<uint8_t> &buf, size_t offset, uint32_t val) {
-    buf[offset] = static_cast<uint8_t>(val);
-    buf[offset + 1] = static_cast<uint8_t>(val >> 8);
-    buf[offset + 2] = static_cast<uint8_t>(val >> 16);
-    buf[offset + 3] = static_cast<uint8_t>(val >> 24);
-}
+using viper::codegen::objfile::putLE32;
 
 /// @brief Compute the SVR4 ELF hash (`DT_HASH`) of a symbol name.
 /// @details The original Bourne-shell-era PJW hash, specified by the System V
@@ -352,11 +347,12 @@ uint32_t elfHash(std::string_view name) {
 bool maxAllocEndAddr(const LinkLayout &layout, uint64_t &maxEnd, std::ostream &err) {
     maxEnd = 0;
     for (const auto &sec : layout.sections) {
-        if (!sec.alloc || sec.data.empty())
+        const size_t memSize = outputSectionMemSize(sec);
+        if (!sec.alloc || memSize == 0)
             continue;
         uint64_t secEnd = 0;
         if (!checkedAddU64(sec.virtualAddr,
-                           static_cast<uint64_t>(sec.data.size()),
+                           static_cast<uint64_t>(memSize),
                            "section address range",
                            err,
                            secEnd))
@@ -734,12 +730,13 @@ bool writeElfExe(const std::string &path,
         if (!checkedAlignUpSize(filePos, pageSize, "load segment file offset", err, filePos))
             return false;
         const size_t fileSize = sec.zeroFill ? 0 : sec.data.size();
+        const size_t memSize = outputSectionMemSize(sec);
         uint32_t flags = PF_R;
         if (sec.executable)
             flags |= PF_X;
         if (sec.writable)
             flags |= PF_W;
-        segments.push_back({idx, filePos, sec.virtualAddr, fileSize, sec.data.size(), flags});
+        segments.push_back({idx, filePos, sec.virtualAddr, fileSize, memSize, flags});
         if (!checkedAddSize(filePos, fileSize, "load segment file range", err, filePos))
             return false;
     }
@@ -1157,7 +1154,7 @@ bool writeElfExe(const std::string &path,
             shdr.sh_flags |= SHF_TLS;
         shdr.sh_addr = sec.virtualAddr;
         shdr.sh_offset = segments[i].fileOffset;
-        shdr.sh_size = sec.data.size();
+        shdr.sh_size = outputSectionMemSize(sec);
         shdr.sh_addralign = std::max<uint32_t>(sec.alignment, 1u);
         writeStruct(fileData, shdrOff, shdr);
         shdrOff += sizeof(Elf64_Shdr);

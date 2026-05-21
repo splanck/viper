@@ -21,9 +21,9 @@ func main() {
     Viper.Terminal.Say("");
     Viper.Terminal.Say("--- Runtime Modules ---");
     Viper.Terminal.Say("Viper.Terminal: works");
-    Viper.Terminal.Say("Viper.Math: " + Viper.Fmt.Num(Viper.Math.Sqrt(4.0)));
+    Viper.Terminal.Say("Viper.Math: " + Viper.Text.Fmt.Num(Viper.Math.Sqrt(4.0)));
     Viper.Terminal.Say("Viper.String: " + Viper.String.ToUpper("works"));
-    Viper.Terminal.Say("Viper.Fmt: works");
+    Viper.Terminal.Say("Viper.Text.Fmt: works");
 
     Viper.Terminal.Say("");
     Viper.Terminal.Say("=== Modules & Namespaces test complete ===");

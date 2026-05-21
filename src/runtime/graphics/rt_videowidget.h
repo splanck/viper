@@ -20,6 +20,7 @@
 //===----------------------------------------------------------------------===//
 #pragma once
 
+#include "rt_string.h"
 #include <stdint.h>
 
 #ifdef __cplusplus
@@ -27,7 +28,7 @@ extern "C" {
 #endif
 
 /// @brief Create a video-playback widget under @p parent that loads the file at @p path.
-void *rt_videowidget_new(void *parent, void *path);
+void *rt_videowidget_new(void *parent, rt_string path);
 /// @brief Destroy the widget subtree and release the owned VideoPlayer immediately.
 /// Safe to call multiple times; later calls are no-ops.
 void rt_videowidget_destroy(void *vw);
@@ -55,6 +56,18 @@ int64_t rt_videowidget_get_is_playing(void *vw);
 double rt_videowidget_get_position(void *vw);
 /// @brief Get the total stream duration in seconds.
 double rt_videowidget_get_duration(void *vw);
+/// @brief Return the internal root widget so callers can compose or inspect layout.
+void *rt_videowidget_get_root(void *vw);
+/// @brief Proxy common Widget APIs to the internal root widget.
+void rt_videowidget_set_visible(void *vw, int64_t visible);
+void rt_videowidget_set_enabled(void *vw, int64_t enabled);
+void rt_videowidget_set_size(void *vw, int64_t width, int64_t height);
+void rt_videowidget_set_preferred_size(void *vw, double width, double height);
+void rt_videowidget_set_max_size(void *vw, double width, double height);
+void rt_videowidget_set_flex(void *vw, double flex);
+void rt_videowidget_set_margin(void *vw, int64_t margin);
+void rt_videowidget_set_position(void *vw, int64_t x, int64_t y);
+void rt_videowidget_add_child(void *vw, void *child);
 
 #ifdef __cplusplus
 }

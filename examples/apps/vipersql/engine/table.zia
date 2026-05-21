@@ -91,7 +91,7 @@ module table;
 // Fmt for column/row count rendering in `toString`.
 // `types` / `schema` define `SqlValue`, `Column`, `Row` which appear in
 // every method signature below.
-bind Viper.Fmt as Fmt;
+bind Viper.Text.Fmt as Fmt;
 bind "./types";
 bind "./schema";
 

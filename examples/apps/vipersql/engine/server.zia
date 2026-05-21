@@ -79,7 +79,7 @@
 
 module server;
 
-bind Viper.Fmt as Fmt;
+bind Viper.Text.Fmt as Fmt;
 bind Viper.IO as IO;
 bind Viper.Threads as Threads;
 bind Viper.Crypto.Hash as CryptoHash;

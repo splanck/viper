@@ -67,7 +67,7 @@ module ListDemo;
 
 bind Viper.Terminal;
 bind Viper.Collections;
-bind Viper.Fmt as Fmt;
+bind Viper.Text.Fmt as Fmt;
 
 func start() {
     var list = new List[String]();
@@ -181,7 +181,7 @@ module QueueDemo;
 
 bind Viper.Terminal;
 bind Viper.Collections;
-bind Viper.Fmt as Fmt;
+bind Viper.Text.Fmt as Fmt;
 
 func start() {
     var queue = new Queue();
@@ -275,7 +275,7 @@ module StackDemo;
 
 bind Viper.Terminal;
 bind Viper.Collections;
-bind Viper.Fmt as Fmt;
+bind Viper.Text.Fmt as Fmt;
 
 func start() {
     var stack = new Stack();
@@ -493,7 +493,7 @@ module RingDemo;
 
 bind Viper.Terminal;
 bind Viper.Collections;
-bind Viper.Fmt as Fmt;
+bind Viper.Text.Fmt as Fmt;
 
 func start() {
     var ring = new Ring(3);

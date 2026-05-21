@@ -6,6 +6,7 @@
 set(_linker_tests
         archive_reader
         reloc_applier
+        object_readers
         section_merger
         dead_strip
         string_dedup
@@ -19,7 +20,8 @@ set(_linker_tests
         runtime_import_audit
         icf
         branch_trampoline
-        debug_sections)
+        debug_sections
+        p1_hardening)
 
 foreach (_case IN LISTS _linker_tests)
     set(_target test_linker_${_case})

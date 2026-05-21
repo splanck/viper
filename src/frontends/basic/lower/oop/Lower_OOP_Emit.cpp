@@ -794,93 +794,8 @@ void Lowerer::emitOopDeclsAndBodies(const Program &prog) {
     scan(prog.main);
 
     // Synthesize interface registration, binding thunks, and a module init.
-
-    // 2) Interface registration thunks
-    std::vector<std::string> regThunks;
-    for (const auto &p : oopIndex_.interfacesByQname()) {
-        const std::string &qname = p.first;
-        const InterfaceInfo &iface = p.second;
-        const std::string fn = mangleIfaceRegThunk(qname);
-        regThunks.push_back(fn);
-        // fn(): void
-        Function &f = builder->startFunction(fn, Type(Type::Kind::Void), {});
-        context().setFunction(&f);
-        context().setNextTemp(f.valueNames.size());
-        // Create entry block for thunk body
-        builder->addBlock(f, "entry");
-        context().setCurrent(&f.blocks.front());
-        f.blocks.front().terminated = false;
-        // Call the runtime-string bridge so IL `str` is not passed to a raw pointer ABI.
-        std::string qnameLabel = getStringLabel(qname);
-        emitCall("rt_register_interface_direct_rs",
-                 {Value::constInt(iface.ifaceId),
-                  emitConstStr(qnameLabel),
-                  Value::constInt((long long)iface.slots.size())});
-        emitRetVoid();
-    }
-
-    // 2) Class->interface binding thunks (allocate + populate itable arrays)
-    std::vector<std::string> bindThunks;
-    for (const auto &entry : oopIndex_.classes()) {
-        const ClassInfo &ci = entry.second;
-        // Resolve type id from class layout cache (by unqualified name)
-        auto itLayout = classLayouts_.find(ci.name);
-        if (itLayout == classLayouts_.end())
-            continue;
-        const long long typeId = (long long)itLayout->second.classId;
-        for (int ifaceId : ci.implementedInterfaces) {
-            // Find iface qname
-            const InterfaceInfo *iface = nullptr;
-            for (const auto &ip : oopIndex_.interfacesByQname()) {
-                if (ip.second.ifaceId == ifaceId) {
-                    iface = &ip.second;
-                    break;
-                }
-            }
-            if (!iface)
-                continue;
-            const std::string thunk = mangleIfaceBindThunk(ci.qualifiedName, iface->qualifiedName);
-            bindThunks.push_back(thunk);
-            Function &fb = builder->startFunction(thunk, Type(Type::Kind::Void), {});
-            context().setFunction(&fb);
-            context().setNextTemp(fb.valueNames.size());
-            // Create entry block for thunk body
-            builder->addBlock(fb, "entry");
-            context().setCurrent(&fb.blocks.front());
-            fb.blocks.front().terminated = false;
-            // Allocate a persistent itable: slot_count * sizeof(void*)
-            const std::size_t slotCount = iface->slots.size();
-            const long long bytes = static_cast<long long>(slotCount * 8ULL);
-            Value itablePtr =
-                emitCallRet(Type(Type::Kind::Ptr), "rt_alloc", {Value::constInt(bytes)});
-
-            // Populate itable slots in interface slot order using consolidated helper
-            auto mapIt = ci.ifaceSlotImpl.find(ifaceId);
-            for (std::size_t s = 0; s < slotCount; ++s) {
-                const long long offset = static_cast<long long>(s * 8ULL);
-                Value slotPtr = emitBinary(
-                    Opcode::GEP, Type(Type::Kind::Ptr), itablePtr, Value::constInt(offset));
-                // Resolve method name for this slot; may be empty for abstract/missing
-                std::string mname;
-                if (mapIt != ci.ifaceSlotImpl.end() && s < mapIt->second.size())
-                    mname = mapIt->second[s];
-                if (mname.empty()) {
-                    // Store null for missing implementations (keeps layout deterministic)
-                    emitStore(Type(Type::Kind::Ptr), slotPtr, Value::null());
-                } else {
-                    const std::string implQ =
-                        OopEmitHelper::findImplementorClass(oopIndex_, ci.qualifiedName, mname);
-                    const std::string targetLabel = mangleMethod(implQ, mname);
-                    emitStore(Type(Type::Kind::Ptr), slotPtr, Value::global(targetLabel));
-                }
-            }
-
-            // Bind the populated itable to (typeId, ifaceId)
-            emitCall("rt_bind_interface",
-                     {Value::constInt(typeId), Value::constInt((long long)ifaceId), itablePtr});
-            emitRetVoid();
-        }
-    }
+    std::vector<std::string> regThunks = emitInterfaceRegThunks();
+    std::vector<std::string> bindThunks = emitInterfaceBindThunks();
 
     // 3) Module init that calls iface reg thunks, then bind thunks.
     const std::string initName = mangleOopModuleInit();
@@ -1012,6 +927,97 @@ void Lowerer::emitOopDeclsAndBodies(const Program &prog) {
 
     // Call module init at the start of main by emitting a call in program emission.
     // Note: Program emission will run after this; ensure ProgramLowering invokes this init.
+}
+
+std::vector<std::string> Lowerer::emitInterfaceRegThunks() {
+    std::vector<std::string> regThunks;
+    for (const auto &p : oopIndex_.interfacesByQname()) {
+        const std::string &qname = p.first;
+        const InterfaceInfo &iface = p.second;
+        const std::string fn = mangleIfaceRegThunk(qname);
+        regThunks.push_back(fn);
+        // fn(): void
+        Function &f = builder->startFunction(fn, Type(Type::Kind::Void), {});
+        context().setFunction(&f);
+        context().setNextTemp(f.valueNames.size());
+        // Create entry block for thunk body
+        builder->addBlock(f, "entry");
+        context().setCurrent(&f.blocks.front());
+        f.blocks.front().terminated = false;
+        // Call the runtime-string bridge so IL `str` is not passed to a raw pointer ABI.
+        std::string qnameLabel = getStringLabel(qname);
+        emitCall("rt_register_interface_direct_rs",
+                 {Value::constInt(iface.ifaceId),
+                  emitConstStr(qnameLabel),
+                  Value::constInt((long long)iface.slots.size())});
+        emitRetVoid();
+    }
+    return regThunks;
+}
+
+std::vector<std::string> Lowerer::emitInterfaceBindThunks() {
+    std::vector<std::string> bindThunks;
+    for (const auto &entry : oopIndex_.classes()) {
+        const ClassInfo &ci = entry.second;
+        // Resolve type id from class layout cache (by unqualified name)
+        auto itLayout = classLayouts_.find(ci.name);
+        if (itLayout == classLayouts_.end())
+            continue;
+        const long long typeId = (long long)itLayout->second.classId;
+        for (int ifaceId : ci.implementedInterfaces) {
+            // Find iface qname
+            const InterfaceInfo *iface = nullptr;
+            for (const auto &ip : oopIndex_.interfacesByQname()) {
+                if (ip.second.ifaceId == ifaceId) {
+                    iface = &ip.second;
+                    break;
+                }
+            }
+            if (!iface)
+                continue;
+            const std::string thunk = mangleIfaceBindThunk(ci.qualifiedName, iface->qualifiedName);
+            bindThunks.push_back(thunk);
+            Function &fb = builder->startFunction(thunk, Type(Type::Kind::Void), {});
+            context().setFunction(&fb);
+            context().setNextTemp(fb.valueNames.size());
+            // Create entry block for thunk body
+            builder->addBlock(fb, "entry");
+            context().setCurrent(&fb.blocks.front());
+            fb.blocks.front().terminated = false;
+            // Allocate a persistent itable: slot_count * sizeof(void*)
+            const std::size_t slotCount = iface->slots.size();
+            const long long bytes = static_cast<long long>(slotCount * 8ULL);
+            Value itablePtr =
+                emitCallRet(Type(Type::Kind::Ptr), "rt_alloc", {Value::constInt(bytes)});
+
+            // Populate itable slots in interface slot order using consolidated helper
+            auto mapIt = ci.ifaceSlotImpl.find(ifaceId);
+            for (std::size_t s = 0; s < slotCount; ++s) {
+                const long long offset = static_cast<long long>(s * 8ULL);
+                Value slotPtr = emitBinary(
+                    Opcode::GEP, Type(Type::Kind::Ptr), itablePtr, Value::constInt(offset));
+                // Resolve method name for this slot; may be empty for abstract/missing
+                std::string mname;
+                if (mapIt != ci.ifaceSlotImpl.end() && s < mapIt->second.size())
+                    mname = mapIt->second[s];
+                if (mname.empty()) {
+                    // Store null for missing implementations (keeps layout deterministic)
+                    emitStore(Type(Type::Kind::Ptr), slotPtr, Value::null());
+                } else {
+                    const std::string implQ =
+                        OopEmitHelper::findImplementorClass(oopIndex_, ci.qualifiedName, mname);
+                    const std::string targetLabel = mangleMethod(implQ, mname);
+                    emitStore(Type(Type::Kind::Ptr), slotPtr, Value::global(targetLabel));
+                }
+            }
+
+            // Bind the populated itable to (typeId, ifaceId)
+            emitCall("rt_bind_interface",
+                     {Value::constInt(typeId), Value::constInt((long long)ifaceId), itablePtr});
+            emitRetVoid();
+        }
+    }
+    return bindThunks;
 }
 
 } // namespace il::frontends::basic

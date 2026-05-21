@@ -21,6 +21,7 @@
 
 #include "codegen/common/linker/AlignUtil.hpp"
 #include "codegen/common/linker/ExeWriterUtil.hpp"
+#include "codegen/common/objfile/ObjFileWriterUtil.hpp"
 
 #include <algorithm>
 #include <cstdint>
@@ -100,25 +101,9 @@ struct PeSection {
     bool zeroFill = false;
 };
 
-/// @brief In-place little-endian uint16 patch at @p offset within @p buf.
-void putLE16(std::vector<uint8_t> &buf, size_t offset, uint16_t val) {
-    buf[offset + 0] = static_cast<uint8_t>(val & 0xFF);
-    buf[offset + 1] = static_cast<uint8_t>((val >> 8) & 0xFF);
-}
-
-/// @brief In-place little-endian uint32 patch at @p offset within @p buf.
-void putLE32(std::vector<uint8_t> &buf, size_t offset, uint32_t val) {
-    buf[offset + 0] = static_cast<uint8_t>(val & 0xFF);
-    buf[offset + 1] = static_cast<uint8_t>((val >> 8) & 0xFF);
-    buf[offset + 2] = static_cast<uint8_t>((val >> 16) & 0xFF);
-    buf[offset + 3] = static_cast<uint8_t>((val >> 24) & 0xFF);
-}
-
-/// @brief In-place little-endian uint64 patch at @p offset within @p buf.
-void putLE64(std::vector<uint8_t> &buf, size_t offset, uint64_t val) {
-    putLE32(buf, offset, static_cast<uint32_t>(val & 0xFFFFFFFFULL));
-    putLE32(buf, offset + 4, static_cast<uint32_t>(val >> 32));
-}
+using viper::codegen::objfile::putLE16;
+using viper::codegen::objfile::putLE32;
+using viper::codegen::objfile::putLE64;
 
 /// @brief Append a little-endian uint16 to @p buf.
 void appendLE16(std::vector<uint8_t> &buf, uint16_t val) {
@@ -621,13 +606,14 @@ TlsLayout buildTlsDirectory(uint64_t imageBase,
     uint32_t tlsAlignment = 1;
     bool sawRawTemplateBytes = false;
     for (const auto &sec : layout.sections) {
-        if (!sec.alloc || !sec.tls || sec.data.empty())
+        const size_t secMemSize = outputSectionMemSize(sec);
+        if (!sec.alloc || !sec.tls || secMemSize == 0)
             continue;
         uint32_t secRva = 0;
         if (!checkedRva(imageBase, sec.virtualAddr, sec.name, err, secRva))
             return {};
         uint32_t secSize = 0;
-        if (!checkedSizeU32(sec.data.size(), "TLS section size", err, secSize))
+        if (!checkedSizeU32(secMemSize, "TLS section size", err, secSize))
             return {};
         uint32_t secEnd = 0;
         if (!checkedAddU32(secRva, secSize, "TLS section RVA range", err, secEnd))
@@ -824,7 +810,7 @@ bool writePeExe(const std::string &path,
         ps.zeroFill = sec.zeroFill;
         if (!checkedRva(imageBase, sec.virtualAddr, sec.name, err, ps.virtualAddress))
             return false;
-        if (!checkedSizeU32(ownedSectionData.back().size(), "section virtual size", err, ps.virtualSize))
+        if (!checkedSizeU32(outputSectionMemSize(sec), "section virtual size", err, ps.virtualSize))
             return false;
         ps.characteristics = sectionChars(sec.executable, sec.writable, sec.alloc, sec.zeroFill);
         sections.push_back(ps);

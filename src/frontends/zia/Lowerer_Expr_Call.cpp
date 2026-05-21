@@ -152,6 +152,45 @@ std::string httpHandlerTargetName(Sema &sema, const std::string &tag) {
     return tag == "start" ? "main" : tag;
 }
 
+/// @brief Pick the type-specialised `Viper.Result.Ok*` callee for @p type.
+const char *resultOkCalleeFor(TypeRef type) {
+    if (!type)
+        return "Viper.Result.Ok";
+    switch (type->kind) {
+        case TypeKindSem::String:  return "Viper.Result.OkStr";
+        case TypeKindSem::Integer:
+        case TypeKindSem::Enum:    return "Viper.Result.OkI64";
+        case TypeKindSem::Number:  return "Viper.Result.OkF64";
+        default:                   return "Viper.Result.Ok";
+    }
+}
+
+/// @brief Pick the type-specialised `Viper.Result.Unwrap*` callee.
+const char *resultUnwrapCalleeFor(TypeRef type) {
+    if (!type)
+        return "Viper.Result.Unwrap";
+    switch (type->kind) {
+        case TypeKindSem::String:  return "Viper.Result.UnwrapStr";
+        case TypeKindSem::Integer:
+        case TypeKindSem::Enum:    return "Viper.Result.UnwrapI64";
+        case TypeKindSem::Number:  return "Viper.Result.UnwrapF64";
+        default:                   return "Viper.Result.Unwrap";
+    }
+}
+
+/// @brief Pick the type-specialised `Viper.Result.UnwrapOr*` callee.
+const char *resultUnwrapOrCalleeFor(TypeRef type) {
+    if (!type)
+        return "Viper.Result.UnwrapOr";
+    switch (type->kind) {
+        case TypeKindSem::String:  return "Viper.Result.UnwrapOrStr";
+        case TypeKindSem::Integer:
+        case TypeKindSem::Enum:    return "Viper.Result.UnwrapOrI64";
+        case TypeKindSem::Number:  return "Viper.Result.UnwrapOrF64";
+        default:                   return "Viper.Result.UnwrapOr";
+    }
+}
+
 } // namespace
 
 //=============================================================================
@@ -231,7 +270,7 @@ std::optional<LowerResult> Lowerer::lowerBuiltinCall(const std::string &name, Ca
                     return LowerResult{strVal, Type(Type::Kind::Str)};
                 }
                 case TypeKindSem::Boolean: {
-                    Value strVal = emitCallRet(Type(Type::Kind::Str), kFmtBool, {arg.value});
+                    Value strVal = emitCallRet(Type(Type::Kind::Str), kTextFmtBool, {arg.value});
                     return LowerResult{strVal, Type(Type::Kind::Str)};
                 }
                 default:
@@ -255,106 +294,9 @@ std::optional<LowerResult> Lowerer::lowerBuiltinCall(const std::string &name, Ca
 //=============================================================================
 
 LowerResult Lowerer::lowerCall(CallExpr *expr) {
-    auto emitRuntimeCallResult = [&](const std::string &calleeName,
-                                     TypeRef surfaceType,
-                                     Type ilSurfaceType,
-                                     const std::vector<Value> &callArgs) -> LowerResult {
-        std::string effectiveCallee = calleeName;
-        Type callReturnType = ilSurfaceType;
-        if (const auto *desc = il::runtime::findRuntimeDescriptor(effectiveCallee))
-            callReturnType = desc->signature.retType;
-
-        if (std::string specialized = specializedRuntimeReturnCallee(calleeName, surfaceType);
-            !specialized.empty()) {
-            effectiveCallee = specialized;
-            if (const auto *specializedDesc = il::runtime::findRuntimeDescriptor(effectiveCallee))
-                callReturnType = specializedDesc->signature.retType;
-            else
-                callReturnType = ilSurfaceType;
-        }
-
-        Value rawResult = emitCallRet(callReturnType, effectiveCallee, callArgs);
-        if (callReturnType.kind == ilSurfaceType.kind)
-            return {rawResult, ilSurfaceType};
-
-        if (callReturnType.kind == Type::Kind::Ptr && ilSurfaceType.kind != Type::Kind::Ptr)
-            return emitUnboxValue(rawResult, ilSurfaceType, surfaceType);
-
-        return {rawResult, ilSurfaceType};
-    };
-
-    auto isUserClassReleaseType = [&](TypeRef type) {
-        type = unwrapSurfaceType(type);
-        return type && type->kind == TypeKindSem::Class &&
-               classTypes_.find(type->name) != classTypes_.end();
-    };
-
-    auto emitExplicitMemoryRelease = [&](Value argValue, TypeRef argType) -> LowerResult {
-        if (isStringType(argType)) {
-            Value releaseCount = emitCallRet(Type(Type::Kind::I64), kHeapReleaseStr, {argValue});
-            return {releaseCount, Type(Type::Kind::I64)};
-        }
-
-        if (isUserClassReleaseType(argType)) {
-            Value releaseCount = emitManagedReleaseRet(argValue, false);
-            return {releaseCount, Type(Type::Kind::I64)};
-        }
-
-        Value releaseCount = emitCallRet(Type(Type::Kind::I64), kHeapRelease, {argValue});
-        return {releaseCount, Type(Type::Kind::I64)};
-    };
-
     RangeModifierInfo rangeInfo;
     if (collectRangeModifierChain(expr, rangeInfo) && rangeInfo.range)
         return lowerRangeWithModifiers(rangeInfo.range, rangeInfo.reversed, rangeInfo.stepArg);
-
-    auto resultOkCallee = [&](TypeRef type) -> const char * {
-        if (!type)
-            return "Viper.Result.Ok";
-        switch (type->kind) {
-            case TypeKindSem::String:
-                return "Viper.Result.OkStr";
-            case TypeKindSem::Integer:
-            case TypeKindSem::Enum:
-                return "Viper.Result.OkI64";
-            case TypeKindSem::Number:
-                return "Viper.Result.OkF64";
-            default:
-                return "Viper.Result.Ok";
-        }
-    };
-
-    auto resultUnwrapCallee = [&](TypeRef type) -> const char * {
-        if (!type)
-            return "Viper.Result.Unwrap";
-        switch (type->kind) {
-            case TypeKindSem::String:
-                return "Viper.Result.UnwrapStr";
-            case TypeKindSem::Integer:
-            case TypeKindSem::Enum:
-                return "Viper.Result.UnwrapI64";
-            case TypeKindSem::Number:
-                return "Viper.Result.UnwrapF64";
-            default:
-                return "Viper.Result.Unwrap";
-        }
-    };
-
-    auto resultUnwrapOrCallee = [&](TypeRef type) -> const char * {
-        if (!type)
-            return "Viper.Result.UnwrapOr";
-        switch (type->kind) {
-            case TypeKindSem::String:
-                return "Viper.Result.UnwrapOrStr";
-            case TypeKindSem::Integer:
-            case TypeKindSem::Enum:
-                return "Viper.Result.UnwrapOrI64";
-            case TypeKindSem::Number:
-                return "Viper.Result.UnwrapOrF64";
-            default:
-                return "Viper.Result.UnwrapOr";
-        }
-    };
 
     if (auto *ident = dynamic_cast<IdentExpr *>(expr->callee.get())) {
         if (ident->name == "Ok" || ident->name == "Err") {
@@ -365,7 +307,7 @@ LowerResult Lowerer::lowerCall(CallExpr *expr) {
             Value argValue = payload.value;
             std::string callee;
             if (ident->name == "Ok") {
-                callee = resultOkCallee(payloadType);
+                callee = resultOkCalleeFor(payloadType);
                 if (callee == "Viper.Result.Ok" && payload.type.kind != Type::Kind::Ptr)
                     argValue = emitBoxValue(payload.value, payload.type, payloadType);
             } else {
@@ -583,7 +525,7 @@ LowerResult Lowerer::lowerCall(CallExpr *expr) {
                 }
                 if (fieldExpr->field == "unwrap") {
                     Type ilSuccessType = mapType(successType);
-                    const char *callee = resultUnwrapCallee(successType);
+                    const char *callee = resultUnwrapCalleeFor(successType);
                     Type runtimeReturn = ilSuccessType;
                     if (std::string_view(callee) == "Viper.Result.Unwrap")
                         runtimeReturn = Type(Type::Kind::Ptr);
@@ -597,7 +539,7 @@ LowerResult Lowerer::lowerCall(CallExpr *expr) {
                     TypeRef defType = sema_.typeOf(expr->args[0].value.get());
                     auto coerced = coerceValueToType(def.value, def.type, defType, successType);
                     Value defaultValue = coerced.value;
-                    const char *callee = resultUnwrapOrCallee(successType);
+                    const char *callee = resultUnwrapOrCalleeFor(successType);
                     Type ilSuccessType = mapType(successType);
                     Type runtimeReturn = ilSuccessType;
                     if (std::string_view(callee) == "Viper.Result.UnwrapOr") {
@@ -1156,6 +1098,52 @@ LowerResult Lowerer::lowerCall(CallExpr *expr) {
             return materializeCallResult(result, returnType, ilReturnType);
         }
     }
+}
+
+LowerResult Lowerer::emitRuntimeCallResult(const std::string &calleeName,
+                                           TypeRef surfaceType,
+                                           Type ilSurfaceType,
+                                           const std::vector<Value> &callArgs) {
+    std::string effectiveCallee = calleeName;
+    Type callReturnType = ilSurfaceType;
+    if (const auto *desc = il::runtime::findRuntimeDescriptor(effectiveCallee))
+        callReturnType = desc->signature.retType;
+
+    if (std::string specialized = specializedRuntimeReturnCallee(calleeName, surfaceType);
+        !specialized.empty()) {
+        effectiveCallee = specialized;
+        if (const auto *specializedDesc = il::runtime::findRuntimeDescriptor(effectiveCallee))
+            callReturnType = specializedDesc->signature.retType;
+        else
+            callReturnType = ilSurfaceType;
+    }
+
+    Value rawResult = emitCallRet(callReturnType, effectiveCallee, callArgs);
+    if (callReturnType.kind == ilSurfaceType.kind)
+        return {rawResult, ilSurfaceType};
+
+    if (callReturnType.kind == Type::Kind::Ptr && ilSurfaceType.kind != Type::Kind::Ptr)
+        return emitUnboxValue(rawResult, ilSurfaceType, surfaceType);
+
+    return {rawResult, ilSurfaceType};
+}
+
+LowerResult Lowerer::emitExplicitMemoryRelease(Value argValue, TypeRef argType) {
+    if (isStringType(argType)) {
+        Value releaseCount = emitCallRet(Type(Type::Kind::I64), kHeapReleaseStr, {argValue});
+        return {releaseCount, Type(Type::Kind::I64)};
+    }
+
+    TypeRef unwrapped = unwrapSurfaceType(argType);
+    const bool isUserClass = unwrapped && unwrapped->kind == TypeKindSem::Class &&
+                             classTypes_.find(unwrapped->name) != classTypes_.end();
+    if (isUserClass) {
+        Value releaseCount = emitManagedReleaseRet(argValue, false);
+        return {releaseCount, Type(Type::Kind::I64)};
+    }
+
+    Value releaseCount = emitCallRet(Type(Type::Kind::I64), kHeapRelease, {argValue});
+    return {releaseCount, Type(Type::Kind::I64)};
 }
 
 //=============================================================================

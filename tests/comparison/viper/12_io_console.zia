@@ -28,9 +28,9 @@ func main() {
     // Test formatted numbers
     Viper.Terminal.Say("");
     Viper.Terminal.Say("--- Formatted Output ---");
-    Viper.Terminal.Say("Formatted int: " + Viper.Fmt.Int(42));
-    Viper.Terminal.Say("Formatted num: " + Viper.Fmt.Num(3.14159));
-    Viper.Terminal.Say("Formatted bool: " + Viper.Fmt.Bool(true));
+    Viper.Terminal.Say("Formatted int: " + Viper.Text.Fmt.Int(42));
+    Viper.Terminal.Say("Formatted num: " + Viper.Text.Fmt.Num(3.14159));
+    Viper.Terminal.Say("Formatted bool: " + Viper.Text.Fmt.Bool(true));
 
     Viper.Terminal.Say("");
     Viper.Terminal.Say("=== I/O Console test complete ===");

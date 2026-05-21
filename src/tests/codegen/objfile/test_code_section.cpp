@@ -317,7 +317,7 @@ int main() {
         CHECK(a.relocations()[0].offset == 1);
     }
 
-    // --- appendSection rebases direct section-offset relocation targets ---
+    // --- appendSection requires identity for section-offset relocation targets ---
     {
         CodeSection a;
         a.emit8(0x90);
@@ -328,11 +328,13 @@ int main() {
         b.addSectionOffsetRelocationAt(100, RelocKind::PCRel32, SymbolSection::Text, 100, -4);
         b.emit32LE(0);
 
-        a.appendSection(b);
-        CHECK(a.relocations().size() == 1);
-        CHECK(a.relocations()[0].offset == 1);
-        CHECK(a.relocations()[0].targetOffsetValid);
-        CHECK(a.relocations()[0].targetOffset == 1);
+        bool threw = false;
+        try {
+            a.appendSection(b);
+        } catch (const std::logic_error &) {
+            threw = true;
+        }
+        CHECK(threw);
     }
 
     // --- appendSection rebases identity-targeted section-offset relocations without symbols ---
@@ -352,6 +354,38 @@ int main() {
         CHECK(a.relocations()[0].targetOffset == 1);
         CHECK(a.relocations()[0].targetSectionIdentityValid);
         CHECK(a.relocations()[0].targetSectionIdentity == a.sectionIdentity());
+    }
+
+    // --- copied sections receive fresh identities and keep self-target relocs coherent ---
+    {
+        CodeSection original;
+        original.addSectionOffsetRelocationAt(
+            0, RelocKind::PCRel32, original, SymbolSection::Text, 0, -4);
+        original.emit32LE(0);
+
+        CodeSection copy = original;
+        CHECK(copy.sectionIdentity() != original.sectionIdentity());
+        CHECK(copy.relocations().size() == 1);
+        CHECK(copy.relocations()[0].targetSectionIdentity == copy.sectionIdentity());
+    }
+
+    // --- appendSection rejects ambiguous section-offset relocations without identity ---
+    {
+        CodeSection a;
+        a.emit8(0x90);
+
+        CodeSection b;
+        b.setLogicalOffsetBias(100);
+        b.addSectionOffsetRelocationAt(100, RelocKind::PCRel32, SymbolSection::Text, 100, -4);
+        b.emit32LE(0);
+
+        bool threw = false;
+        try {
+            a.appendSection(b);
+        } catch (const std::logic_error &) {
+            threw = true;
+        }
+        CHECK(threw);
     }
 
     // --- appendSection validates unwind symbol indices ---

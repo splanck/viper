@@ -49,161 +49,22 @@ namespace bytecode {
 void BytecodeVM::runThreaded() {
     // Dispatch table for computed goto. Keep it local: GCC C++ rejects label
     // addresses in designated initializers, and static post-init mutation races.
-    void *dispatchTable[256] = {};
-
-    // Stack Operations (0x00-0x0F)
-    dispatchTable[0x00] = &&L_NOP;
-    dispatchTable[0x01] = &&L_DUP;
-    dispatchTable[0x02] = &&L_DUP2;
-    dispatchTable[0x03] = &&L_POP;
-    dispatchTable[0x04] = &&L_POP2;
-    dispatchTable[0x05] = &&L_SWAP;
-    dispatchTable[0x06] = &&L_ROT3;
-
-    // Local Variable Operations (0x10-0x1F)
-    dispatchTable[0x10] = &&L_LOAD_LOCAL;
-    dispatchTable[0x11] = &&L_STORE_LOCAL;
-    dispatchTable[0x12] = &&L_LOAD_LOCAL_W;
-    dispatchTable[0x13] = &&L_STORE_LOCAL_W;
-    dispatchTable[0x14] = &&L_INC_LOCAL;
-    dispatchTable[0x15] = &&L_DEC_LOCAL;
-
-    // Constant Loading (0x20-0x2F)
-    dispatchTable[0x20] = &&L_LOAD_I8;
-    dispatchTable[0x21] = &&L_LOAD_I16;
-    dispatchTable[0x22] = &&L_LOAD_I32;
-    dispatchTable[0x23] = &&L_LOAD_I64;
-    dispatchTable[0x24] = &&L_LOAD_F64;
-    dispatchTable[0x25] = &&L_LOAD_STR;
-    dispatchTable[0x26] = &&L_LOAD_NULL;
-    dispatchTable[0x27] = &&L_LOAD_ZERO;
-    dispatchTable[0x28] = &&L_LOAD_ONE;
-    dispatchTable[0x29] = &&L_LOAD_GLOBAL;
-    dispatchTable[0x2A] = &&L_STORE_GLOBAL;
-    dispatchTable[0x2B] = &&L_LOAD_GLOBAL_ADDR;
-
-    // Integer Arithmetic (0x30-0x3F)
-    dispatchTable[0x30] = &&L_ADD_I64;
-    dispatchTable[0x31] = &&L_SUB_I64;
-    dispatchTable[0x32] = &&L_MUL_I64;
-    dispatchTable[0x33] = &&L_SDIV_I64;
-    dispatchTable[0x34] = &&L_UDIV_I64;
-    dispatchTable[0x35] = &&L_SREM_I64;
-    dispatchTable[0x36] = &&L_UREM_I64;
-    dispatchTable[0x37] = &&L_NEG_I64;
-    dispatchTable[0x38] = &&L_ADD_I64_OVF;
-    dispatchTable[0x39] = &&L_SUB_I64_OVF;
-    dispatchTable[0x3A] = &&L_MUL_I64_OVF;
-    dispatchTable[0x3B] = &&L_SDIV_I64_CHK;
-    dispatchTable[0x3C] = &&L_UDIV_I64_CHK;
-    dispatchTable[0x3D] = &&L_SREM_I64_CHK;
-    dispatchTable[0x3E] = &&L_UREM_I64_CHK;
-    dispatchTable[0x3F] = &&L_IDX_CHK;
-
-    // Float Arithmetic (0x50-0x5F)
-    dispatchTable[0x50] = &&L_ADD_F64;
-    dispatchTable[0x51] = &&L_SUB_F64;
-    dispatchTable[0x52] = &&L_MUL_F64;
-    dispatchTable[0x53] = &&L_DIV_F64;
-    dispatchTable[0x54] = &&L_NEG_F64;
-
-    // Bitwise Operations (0x60-0x6F)
-    dispatchTable[0x60] = &&L_AND_I64;
-    dispatchTable[0x61] = &&L_OR_I64;
-    dispatchTable[0x62] = &&L_XOR_I64;
-    dispatchTable[0x63] = &&L_NOT_I64;
-    dispatchTable[0x64] = &&L_SHL_I64;
-    dispatchTable[0x65] = &&L_LSHR_I64;
-    dispatchTable[0x66] = &&L_ASHR_I64;
-
-    // Integer Comparisons (0x70-0x7F)
-    dispatchTable[0x70] = &&L_CMP_EQ_I64;
-    dispatchTable[0x71] = &&L_CMP_NE_I64;
-    dispatchTable[0x72] = &&L_CMP_SLT_I64;
-    dispatchTable[0x73] = &&L_CMP_SLE_I64;
-    dispatchTable[0x74] = &&L_CMP_SGT_I64;
-    dispatchTable[0x75] = &&L_CMP_SGE_I64;
-    dispatchTable[0x76] = &&L_CMP_ULT_I64;
-    dispatchTable[0x77] = &&L_CMP_ULE_I64;
-    dispatchTable[0x78] = &&L_CMP_UGT_I64;
-    dispatchTable[0x79] = &&L_CMP_UGE_I64;
-
-    // Float Comparisons (0x80-0x8F)
-    dispatchTable[0x80] = &&L_CMP_EQ_F64;
-    dispatchTable[0x81] = &&L_CMP_NE_F64;
-    dispatchTable[0x82] = &&L_CMP_LT_F64;
-    dispatchTable[0x83] = &&L_CMP_LE_F64;
-    dispatchTable[0x84] = &&L_CMP_GT_F64;
-    dispatchTable[0x85] = &&L_CMP_GE_F64;
-
-    // Type Conversions (0x90-0x9F)
-    dispatchTable[0x90] = &&L_I64_TO_F64;
-    dispatchTable[0x91] = &&L_U64_TO_F64;
-    dispatchTable[0x92] = &&L_F64_TO_I64;
-    dispatchTable[0x93] = &&L_F64_TO_I64_CHK;
-    dispatchTable[0x94] = &&L_F64_TO_U64_CHK;
-    dispatchTable[0x95] = &&L_I64_NARROW_CHK;
-    dispatchTable[0x96] = &&L_U64_NARROW_CHK;
-    dispatchTable[0x97] = &&L_BOOL_TO_I64;
-    dispatchTable[0x98] = &&L_I64_TO_BOOL;
-
-    // Memory Operations (0xA0-0xAF)
-    dispatchTable[0xA0] = &&L_ALLOCA;
-    dispatchTable[0xA1] = &&L_GEP;
-    dispatchTable[0xA2] = &&L_LOAD_I8_MEM;
-    dispatchTable[0xA3] = &&L_LOAD_I16_MEM;
-    dispatchTable[0xA4] = &&L_LOAD_I32_MEM;
-    dispatchTable[0xA5] = &&L_LOAD_I64_MEM;
-    dispatchTable[0xA6] = &&L_LOAD_F64_MEM;
-    dispatchTable[0xA7] = &&L_LOAD_PTR_MEM;
-    dispatchTable[0xA8] = &&L_LOAD_STR_MEM;
-    dispatchTable[0xA9] = &&L_STORE_I8_MEM;
-    dispatchTable[0xAA] = &&L_STORE_I16_MEM;
-    dispatchTable[0xAB] = &&L_STORE_I32_MEM;
-    dispatchTable[0xAC] = &&L_STORE_I64_MEM;
-    dispatchTable[0xAD] = &&L_STORE_F64_MEM;
-    dispatchTable[0xAE] = &&L_STORE_PTR_MEM;
-    dispatchTable[0xAF] = &&L_STORE_STR_MEM;
-
-    // Control Flow (0xB0-0xBF)
-    dispatchTable[0xB0] = &&L_JUMP;
-    dispatchTable[0xB1] = &&L_JUMP_IF_TRUE;
-    dispatchTable[0xB2] = &&L_JUMP_IF_FALSE;
-    dispatchTable[0xB3] = &&L_JUMP_LONG;
-    dispatchTable[0xB4] = &&L_SWITCH;
-    dispatchTable[0xB5] = &&L_CALL;
-    dispatchTable[0xB6] = &&L_CALL_NATIVE;
-    dispatchTable[0xB7] = &&L_CALL_INDIRECT;
-    dispatchTable[0xB8] = &&L_RETURN;
-    dispatchTable[0xB9] = &&L_RETURN_VOID;
-    dispatchTable[0xBA] = &&L_DEFAULT; // TAIL_CALL
-
-    // Exception Handling (0xC0-0xCF)
-    dispatchTable[0xC0] = &&L_EH_PUSH;
-    dispatchTable[0xC1] = &&L_EH_POP;
-    dispatchTable[0xC2] = &&L_EH_ENTRY;
-    dispatchTable[0xC3] = &&L_TRAP;
-    dispatchTable[0xC4] = &&L_TRAP_FROM_ERR;
-    dispatchTable[0xC6] = &&L_ERR_GET_KIND;
-    dispatchTable[0xC7] = &&L_ERR_GET_CODE;
-    dispatchTable[0xC8] = &&L_ERR_GET_IP;
-    dispatchTable[0xC9] = &&L_ERR_GET_LINE;
-    dispatchTable[0xCA] = &&L_RESUME_SAME;
-    dispatchTable[0xCB] = &&L_RESUME_NEXT;
-    dispatchTable[0xCC] = &&L_RESUME_LABEL;
-    dispatchTable[0xCD] = &&L_TRAP_KIND;
-
-    // Runtime Fast-Path Operations (0xD8-0xDF)
-    dispatchTable[0xD8] = &&L_ARR_I32_GET_FAST;
-    dispatchTable[0xD9] = &&L_ARR_I32_SET_FAST;
-    dispatchTable[0xDA] = &&L_ARR_I64_GET_FAST;
-    dispatchTable[0xDB] = &&L_ARR_I64_SET_FAST;
-    dispatchTable[0xDC] = &&L_ARR_F64_GET_FAST;
-    dispatchTable[0xDD] = &&L_ARR_F64_SET_FAST;
-
-    // String Operations (0xE0-0xEF)
-    dispatchTable[0xE0] = &&L_STR_RETAIN;
-    dispatchTable[0xE1] = &&L_STR_RELEASE;
+    //
+    // The opcode -> handler-label mapping is generated from bytecode/Bytecode.def
+    // (single source of truth). Every slot defaults to &&L_DEFAULT; opcodes with a
+    // real handler override it. BC_OPCODE_TRAP opcodes (TAIL_CALL, MAKE_ERROR,
+    // LINE, BREAKPOINT, WATCH_VAR, OPCODE_COUNT) have no handler label and stay
+    // routed to L_DEFAULT. The compiler enforces this classification: a missing
+    // label triggers an "undefined label" error and an over-marked one triggers
+    // -Wunused-label -Werror, so the table can never silently drift from the enum.
+    void *dispatchTable[256];
+    for (auto &slot : dispatchTable)
+        slot = &&L_DEFAULT;
+#define BC_OPCODE(name, value) dispatchTable[(value)] = &&L_##name;
+#define BC_OPCODE_TRAP(name, value) /* no handler label: stays L_DEFAULT */
+#include "bytecode/Bytecode.def"
+#undef BC_OPCODE
+#undef BC_OPCODE_TRAP
 
     state_ = VMState::Running;
 
@@ -237,7 +98,9 @@ void BytecodeVM::runThreaded() {
         }                                                                                          \
         ++pc;                                                                                      \
         ++instrCount_;                                                                             \
-        goto *(dispatchTable[instr & 0xFF] ? dispatchTable[instr & 0xFF] : &&L_DEFAULT);           \
+        /* Every slot is default-filled to &&L_DEFAULT (see runThreaded), so no */                \
+        /* per-dispatch null-guard is needed — the jump target is always valid. */                \
+        goto *dispatchTable[instr & 0xFF];                                                         \
     } while (0)
 
 #define SYNC_STATE()                                                                               \

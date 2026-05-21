@@ -7,7 +7,7 @@
 
 module ArchiveDemo;
 bind Viper.Terminal;
-bind Viper.Fmt as Fmt;
+bind Viper.Text.Fmt as Fmt;
 bind Viper.IO.Archive as Archive;
 bind Viper.IO.File as File;
 bind Viper.IO.Path as Path;

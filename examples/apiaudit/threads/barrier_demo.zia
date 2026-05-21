@@ -7,7 +7,7 @@
 module BarrierDemo;
 bind Viper.Threads.Barrier as Barrier;
 bind Viper.Terminal;
-bind Viper.Fmt as Fmt;
+bind Viper.Text.Fmt as Fmt;
 
 func start() {
     Say("=== API Audit: Viper.Threads.Barrier ===");

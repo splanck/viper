@@ -24,6 +24,7 @@
 //===----------------------------------------------------------------------===//
 #pragma once
 
+#include "rt_string.h"
 #include <stdint.h>
 
 #ifdef __cplusplus
@@ -31,7 +32,7 @@ extern "C" {
 #endif
 
 /// @brief Open a video file (AVI/MJPEG or OGG/Theora) and return a player handle (NULL on failure).
-void *rt_videoplayer_open(void *path);
+void *rt_videoplayer_open(rt_string path);
 /// @brief Begin or resume playback (decoding advances on each Update).
 void rt_videoplayer_play(void *vp);
 /// @brief Pause playback (decoding halts; current frame remains displayed).

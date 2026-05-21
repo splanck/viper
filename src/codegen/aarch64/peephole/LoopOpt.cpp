@@ -22,6 +22,7 @@
 
 #include "LoopOpt.hpp"
 
+#include "Dominators.hpp"
 #include "PeepholeCommon.hpp"
 
 #include <algorithm>
@@ -31,6 +32,20 @@
 
 namespace viper::codegen::aarch64::peephole {
 namespace {
+
+/// @brief Return the branch-target label of a terminator instruction, or "" if
+///        @p mi is not a (conditional or unconditional) branch.
+[[nodiscard]] std::string getBranchTarget(const MInstr &mi) {
+    if (mi.opc == MOpcode::Br && !mi.ops.empty() && mi.ops[0].kind == MOperand::Kind::Label)
+        return mi.ops[0].label;
+    if (mi.opc == MOpcode::BCond && mi.ops.size() >= 2 &&
+        mi.ops[1].kind == MOperand::Kind::Label)
+        return mi.ops[1].label;
+    if ((mi.opc == MOpcode::Cbz || mi.opc == MOpcode::Cbnz) && mi.ops.size() >= 2 &&
+        mi.ops[1].kind == MOperand::Kind::Label)
+        return mi.ops[1].label;
+    return {};
+}
 
 /// @brief Check whether a physical register is callee-saved (x19-x28).
 [[nodiscard]] bool isCalleeSavedGPR(uint32_t phys) noexcept {
@@ -106,18 +121,6 @@ std::size_t hoistLoopConstants(MFunction &fn) {
     for (std::size_t i = 0; i < fn.blocks.size(); ++i)
         nameToIdx[fn.blocks[i].name] = i;
 
-    auto getBranchTarget = [](const MInstr &mi) -> std::string {
-        if (mi.opc == MOpcode::Br && !mi.ops.empty() && mi.ops[0].kind == MOperand::Kind::Label)
-            return mi.ops[0].label;
-        if (mi.opc == MOpcode::BCond && mi.ops.size() >= 2 &&
-            mi.ops[1].kind == MOperand::Kind::Label)
-            return mi.ops[1].label;
-        if ((mi.opc == MOpcode::Cbz || mi.opc == MOpcode::Cbnz) && mi.ops.size() >= 2 &&
-            mi.ops[1].kind == MOperand::Kind::Label)
-            return mi.ops[1].label;
-        return {};
-    };
-
     auto isNonDefOpc = [](MOpcode opc) -> bool {
         return opc == MOpcode::StrRegFpImm || opc == MOpcode::StrRegBaseImm ||
                opc == MOpcode::Str8RegFpImm || opc == MOpcode::Str8RegBaseImm ||
@@ -160,61 +163,12 @@ std::size_t hoistLoopConstants(MFunction &fn) {
         }
     }
 
-    const auto computeDominators = [&preds, &fn]() {
-        const std::size_t n = fn.blocks.size();
-        std::vector<std::unordered_set<std::size_t>> dom(n);
-        if (n == 0)
-            return dom;
-
-        dom[0].insert(0);
-        for (std::size_t i = 1; i < n; ++i) {
-            for (std::size_t j = 0; j < n; ++j)
-                dom[i].insert(j);
-        }
-
-        bool changed = true;
-        while (changed) {
-            changed = false;
-            for (std::size_t i = 1; i < n; ++i) {
-                auto pit = preds.find(i);
-                if (pit == preds.end() || pit->second.empty()) {
-                    std::unordered_set<std::size_t> onlySelf{i};
-                    if (dom[i] != onlySelf) {
-                        dom[i] = std::move(onlySelf);
-                        changed = true;
-                    }
-                    continue;
-                }
-
-                std::unordered_set<std::size_t> next;
-                bool firstPred = true;
-                for (std::size_t p : pit->second) {
-                    if (p >= n)
-                        continue;
-                    if (firstPred) {
-                        next = dom[p];
-                        firstPred = false;
-                        continue;
-                    }
-                    for (auto it = next.begin(); it != next.end();) {
-                        if (dom[p].count(*it) == 0)
-                            it = next.erase(it);
-                        else
-                            ++it;
-                    }
-                }
-                next.insert(i);
-
-                if (dom[i] != next) {
-                    dom[i] = std::move(next);
-                    changed = true;
-                }
-            }
-        }
-        return dom;
-    };
-
-    const auto dominators = computeDominators();
+    std::vector<std::vector<std::size_t>> predsVec(fn.blocks.size());
+    for (const auto &kv : preds) {
+        if (kv.first < predsVec.size())
+            predsVec[kv.first] = kv.second;
+    }
+    const auto dominators = computeDominators(fn.blocks.size(), predsVec);
 
     // Compute natural loop body from a back-edge (latch -> header).
     // Uses the standard reverse-reachability algorithm: start from the latch,
@@ -273,7 +227,7 @@ std::size_t hoistLoopConstants(MFunction &fn) {
                 // If/else joins can be placed before one predecessor, making
                 // that predecessor branch "back" to the join. Only a real loop
                 // header dominates its latch.
-                if (i >= dominators.size() || dominators[i].count(it->second) == 0)
+                if (i >= dominators.blockCount || !dominators.dominates(it->second, i))
                     continue;
                 if (seenHeaders.insert(it->second).second)
                     loops.push_back({it->second, i, computeLoopBody(it->second, i)});
@@ -559,18 +513,6 @@ std::size_t eliminateLoopPhiSpills(MFunction &fn) {
         nameToIdx[fn.blocks[i].name] = i;
 
     // Helper: get branch target label from an instruction.
-    auto getBranchTarget = [](const MInstr &mi) -> std::string {
-        if (mi.opc == MOpcode::Br && !mi.ops.empty() && mi.ops[0].kind == MOperand::Kind::Label)
-            return mi.ops[0].label;
-        if (mi.opc == MOpcode::BCond && mi.ops.size() >= 2 &&
-            mi.ops[1].kind == MOperand::Kind::Label)
-            return mi.ops[1].label;
-        if ((mi.opc == MOpcode::Cbz || mi.opc == MOpcode::Cbnz) && mi.ops.size() >= 2 &&
-            mi.ops[1].kind == MOperand::Kind::Label)
-            return mi.ops[1].label;
-        return {};
-    };
-
     // Helper: check if instruction is a branch or terminator.
     auto isTerminator = [](MOpcode opc) -> bool {
         return opc == MOpcode::Br || opc == MOpcode::BCond || opc == MOpcode::Cbz ||
@@ -600,61 +542,12 @@ std::size_t eliminateLoopPhiSpills(MFunction &fn) {
         }
     }
 
-    const auto computeDominators = [&preds, &fn]() {
-        const std::size_t n = fn.blocks.size();
-        std::vector<std::unordered_set<std::size_t>> dom(n);
-        if (n == 0)
-            return dom;
-
-        dom[0].insert(0);
-        for (std::size_t i = 1; i < n; ++i) {
-            for (std::size_t j = 0; j < n; ++j)
-                dom[i].insert(j);
-        }
-
-        bool changed = true;
-        while (changed) {
-            changed = false;
-            for (std::size_t i = 1; i < n; ++i) {
-                auto pit = preds.find(i);
-                if (pit == preds.end() || pit->second.empty()) {
-                    std::unordered_set<std::size_t> onlySelf{i};
-                    if (dom[i] != onlySelf) {
-                        dom[i] = std::move(onlySelf);
-                        changed = true;
-                    }
-                    continue;
-                }
-
-                std::unordered_set<std::size_t> next;
-                bool firstPred = true;
-                for (std::size_t p : pit->second) {
-                    if (p >= n)
-                        continue;
-                    if (firstPred) {
-                        next = dom[p];
-                        firstPred = false;
-                        continue;
-                    }
-                    for (auto it = next.begin(); it != next.end();) {
-                        if (dom[p].count(*it) == 0)
-                            it = next.erase(it);
-                        else
-                            ++it;
-                    }
-                }
-                next.insert(i);
-
-                if (dom[i] != next) {
-                    dom[i] = std::move(next);
-                    changed = true;
-                }
-            }
-        }
-        return dom;
-    };
-
-    const auto dominators = computeDominators();
+    std::vector<std::vector<std::size_t>> predsVec(fn.blocks.size());
+    for (const auto &kv : preds) {
+        if (kv.first < predsVec.size())
+            predsVec[kv.first] = kv.second;
+    }
+    const auto dominators = computeDominators(fn.blocks.size(), predsVec);
 
     auto callClobbersReg = [](const MInstr &mi, const MOperand &reg) -> bool {
         if ((mi.opc != MOpcode::Bl && mi.opc != MOpcode::Blr) || !isPhysReg(reg))
@@ -681,7 +574,7 @@ std::size_t eliminateLoopPhiSpills(MFunction &fn) {
                 continue;
             auto it = nameToIdx.find(target);
             if (it != nameToIdx.end() && it->second <= i &&
-                i < dominators.size() && dominators[i].count(it->second) != 0)
+                i < dominators.blockCount && dominators.dominates(it->second, i))
                 backEdges.push_back({i, it->second});
         }
     }

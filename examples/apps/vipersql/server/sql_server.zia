@@ -46,7 +46,7 @@
 module sql_server;
 
 bind Viper.String as String;
-bind Viper.Fmt as Fmt;
+bind Viper.Text.Fmt as Fmt;
 bind "../engine/executor";
 bind "../engine/types";
 

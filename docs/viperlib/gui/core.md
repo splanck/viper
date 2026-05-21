@@ -115,7 +115,9 @@ Main application class that manages the window and widget tree.
 `SetFont()` applies to newly created text-bearing widgets, including
 `Slider` value text, `ProgressBar` percentage labels, and `Spinner` value text. `Font.Destroy()`
 defers release while any active app or registered GUI app still references the
-font.
+font. `SetFont()` and widget-level `SetFont(font, size)` calls accept only live
+handles returned by `Viper.GUI.Font.Load`; stale, destroyed, or arbitrary object
+handles are ignored.
 
 ### Window Management
 
@@ -141,7 +143,7 @@ font.
 | `SetWindowSize(w, h)`     | `Void(Integer, Integer)` | Resize the window                           |
 | `GetFontSize()`           | `Number()`        | Get current UI font size                             |
 | `SetFontSize(size)`       | `Void(Number)`    | Set UI font size                                     |
-| `WasCloseRequested()`     | `Integer()`       | 1 when the window received a close request this frame |
+| `WasCloseRequested()`     | `Integer()`       | Consumes and returns 1 once when the window received a close request |
 
 ### Lifecycle And Validation
 
@@ -150,7 +152,8 @@ font.
 `SetSize()` and `SetWindowSize()` share the same window-size validation. Width and height are clamped to at least one pixel and to the platform `int32` range, and invalid font sizes, scale factors, and non-finite numeric values fall back to bounded defaults.
 When `SetPreventClose(1)` is active, a window close request no longer sets
 `ShouldClose`; poll `WasCloseRequested()` after `Poll()` to decide whether to
-save, confirm, or close manually.
+save, confirm, or close manually. `WasCloseRequested()` is edge-consuming:
+after it returns `1`, later calls return `0` until another close request arrives.
 
 Low-level widget dispatch keeps focus, hover, modal, click, and capture state
 separate for each recently dispatched root. When a subtree is hidden, detached,
@@ -215,7 +218,7 @@ TrueType outline rasterization preserves separate contour boundaries, so glyphs 
 | `Load(path)` | `Font(String)`   | Load font from TTF file. Returns NULL on failure |
 | `Destroy()`  | `Void()`         | Destroy the font, or defer it while live GUI objects still reference it |
 
-`Font.Destroy()` is safe to call while a live app or widget still references the font. In that case the runtime retires the font in every app that still uses it and frees it during app teardown, preventing dangling GUI font pointers.
+`Font.Destroy()` is safe to call while a live app or widget still references the font. In that case the runtime retires the font in every app that still uses it and frees it during app teardown, preventing dangling GUI font pointers. Repeated destroys or stale handles are ignored.
 
 ### Example
 
@@ -240,6 +243,11 @@ app.SetFont(font, 14);
 
 All widgets share these common functions:
 
+Concrete widget classes such as `Button`, `Label`, `TextInput`, `ScrollView`,
+`TreeView`, `ListBox`, `Image`, `VBox`, `HBox`, and `FloatingPanel` expose these
+common methods directly. The `Widget` receiver remains useful when code stores
+heterogeneous widget handles.
+
 Focusable widgets now participate in standard desktop keyboard traversal: `Tab` moves to the next focusable widget and `Shift+Tab` moves to the previous one, respecting modal roots when a dialog or popup is active.
 Passing `NULL` to `Focus()` is a no-op. Detached widgets no longer inherit the current app's font or theme until they are attached to an app-owned tree or explicitly configured.
 Common numeric setters clamp invalid input: negative sizes, margins, padding, flex factors, and layout gaps become zero, very large layout values are bounded, and non-finite doubles use safe defaults. Widget identifiers are generated from a 64-bit counter for long-running GUI sessions.
@@ -252,6 +260,9 @@ dropdowns, tree views, toolbars, and menus reject runtime children.
 leave manually positioned children at their assigned coordinates, so use
 preferred size, flex, and margins for children that should remain managed by
 VBox/HBox/Flex/Grid/Dock layout.
+The app root owns the window-sized layout surface, so `SetSize()`,
+`SetPreferredSize()`, and `SetMaxSize()` are ignored when called on the root
+widget returned by `app.Root`.
 
 | Method                        | Signature                | Description                              |
 |-------------------------------|--------------------------|------------------------------------------|
@@ -289,6 +300,8 @@ VBox/HBox/Flex/Grid/Dock layout.
 | `WasDropped()`                | `Integer()`              | 1 if something was dropped this frame    |
 
 ### Drag and Drop
+
+Drag/drop type and payload strings are stored as C-string payloads by the GUI layer. `SetDragData(type, data)` and `SetAcceptedDropTypes(types)` reject strings containing embedded NUL bytes instead of truncating them.
 
 | Method                        | Signature              | Description                                              |
 |-------------------------------|------------------------|----------------------------------------------------------|

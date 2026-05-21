@@ -18,5 +18,5 @@ DO WHILE i < 50000001
     sum = (sum + s) MOD 268435456
     i = i + 1
 LOOP
-Viper.Environment.EndProgram(sum)
+Viper.System.Environment.EndProgram(sum)
 END

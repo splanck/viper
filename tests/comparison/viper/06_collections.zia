@@ -21,7 +21,7 @@ func main() {
     while (i < Viper.Collections.List.Length(list)) {
         var item = Viper.Collections.List.Get(list, i);
         Viper.Terminal.Print("  [");
-        Viper.Terminal.Print(Viper.Fmt.Int(i));
+        Viper.Terminal.Print(Viper.Text.Fmt.Int(i));
         Viper.Terminal.Print("] = ");
         Viper.Terminal.SayInt(Viper.Core.Box.ToI64(item));
         i = i + 1;
@@ -35,7 +35,7 @@ func main() {
     Viper.Collections.Map.Set(map, Viper.Core.Box.Str("city"), Viper.Core.Box.Str("Boston"));
 
     Viper.Terminal.Print("Map has 'name': ");
-    Viper.Terminal.Say(Viper.Fmt.Bool(Viper.Collections.Map.Has(map, Viper.Core.Box.Str("name"))));
+    Viper.Terminal.Say(Viper.Text.Fmt.Bool(Viper.Collections.Map.Has(map, Viper.Core.Box.Str("name"))));
 
     var nameVal = Viper.Collections.Map.Get(map, Viper.Core.Box.Str("name"));
     Viper.Terminal.Say("Map get 'name': " + Viper.Core.Box.ToStr(nameVal));

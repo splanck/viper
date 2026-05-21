@@ -17,8 +17,8 @@
 //     selection and scrolls it into view.
 //   - Replace-all iterates matches in reverse document order to preserve column
 //     positions after each replacement.
-//   - On non-Windows platforms, regex search uses POSIX regcomp/regexec.
-//     On Windows, regex is not available and use_regex is a no-op stub.
+//   - Regex search uses POSIX regcomp/regexec where available and a built-in
+//     literal/dot/class/anchor/quantifier fallback on Windows.
 // Ownership/Lifetime:
 //   - Child widgets are owned by the widget hierarchy and freed automatically.
 //   - bar->matches is owned by the bar; freed in findreplacebar_destroy.
@@ -34,6 +34,7 @@
 #include "../../include/vg_theme.h"
 #include "../../include/vg_widgets.h"
 #include <ctype.h>
+#include <stdint.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -77,6 +78,12 @@ static const char *find_in_line(const char *text,
 static const char *find_regex_in_line(const char *text,
                                       const char *start,
                                       regex_t *regex,
+                                      vg_search_options_t *options,
+                                      size_t *match_len);
+#else
+static const char *find_regex_in_line(const char *text,
+                                      const char *start,
+                                      const char *pattern,
                                       vg_search_options_t *options,
                                       size_t *match_len);
 #endif
@@ -297,15 +304,263 @@ static const char *find_regex_in_line(const char *text,
 
     return NULL;
 }
+#else
+static int fr_regex_fold(unsigned char c, bool case_sensitive) {
+    return case_sensitive ? (int)c : tolower(c);
+}
+
+static const char *fr_regex_atom_end(const char *pattern) {
+    if (!pattern || !*pattern)
+        return NULL;
+    if (*pattern == '\\')
+        return pattern[1] ? pattern + 2 : NULL;
+    if (*pattern != '[')
+        return pattern + 1;
+
+    const char *p = pattern + 1;
+    if (*p == '^' || *p == '!')
+        p++;
+    if (*p == ']')
+        p++;
+    while (*p && *p != ']') {
+        if (*p == '\\' && p[1])
+            p += 2;
+        else
+            p++;
+    }
+    return *p == ']' ? p + 1 : NULL;
+}
+
+static bool fr_regex_read_class_char(const char **cursor, unsigned char *out) {
+    const char *p = *cursor;
+    if (!p || !*p)
+        return false;
+    if (*p == '\\' && p[1]) {
+        *out = (unsigned char)p[1];
+        *cursor = p + 2;
+        return true;
+    }
+    *out = (unsigned char)*p;
+    *cursor = p + 1;
+    return true;
+}
+
+static bool fr_regex_match_class(const char *pattern,
+                                 unsigned char ch,
+                                 bool case_sensitive,
+                                 const char **after) {
+    const char *p = pattern + 1;
+    bool negate = false;
+    bool matched = false;
+    bool valid = false;
+    if (*p == '^' || *p == '!') {
+        negate = true;
+        p++;
+    }
+
+    while (*p && *p != ']') {
+        unsigned char start = 0;
+        if (!fr_regex_read_class_char(&p, &start))
+            return false;
+
+        if (*p == '-' && p[1] && p[1] != ']') {
+            p++;
+            unsigned char end = 0;
+            if (!fr_regex_read_class_char(&p, &end))
+                return false;
+            int folded_ch = fr_regex_fold(ch, case_sensitive);
+            int folded_start = fr_regex_fold(start, case_sensitive);
+            int folded_end = fr_regex_fold(end, case_sensitive);
+            if (folded_start > folded_end) {
+                int tmp = folded_start;
+                folded_start = folded_end;
+                folded_end = tmp;
+            }
+            matched = matched || (folded_ch >= folded_start && folded_ch <= folded_end);
+        } else {
+            matched = matched ||
+                      fr_regex_fold(ch, case_sensitive) == fr_regex_fold(start, case_sensitive);
+        }
+        valid = true;
+    }
+
+    if (!valid || *p != ']')
+        return false;
+    *after = p + 1;
+    return negate ? !matched : matched;
+}
+
+static bool fr_regex_match_atom(const char *pattern,
+                                const char *text,
+                                bool case_sensitive,
+                                const char **after,
+                                size_t *match_len) {
+    if (!pattern || !*pattern || !text || !*text)
+        return false;
+
+    if (*pattern == '.') {
+        const char *next = fr_utf8_next(text);
+        *after = pattern + 1;
+        *match_len = (size_t)(next - text);
+        return *match_len > 0;
+    }
+
+    if (*pattern == '[') {
+        if (!fr_regex_match_class(pattern, (unsigned char)*text, case_sensitive, after))
+            return false;
+        *match_len = 1;
+        return true;
+    }
+
+    if (*pattern == '\\') {
+        if (!pattern[1])
+            return false;
+        *after = pattern + 2;
+        *match_len = 1;
+        return fr_regex_fold((unsigned char)*text, case_sensitive) ==
+               fr_regex_fold((unsigned char)pattern[1], case_sensitive);
+    }
+
+    *after = pattern + 1;
+    *match_len = 1;
+    return fr_regex_fold((unsigned char)*text, case_sensitive) ==
+           fr_regex_fold((unsigned char)*pattern, case_sensitive);
+}
+
+static bool fr_regex_match_here(const char *pattern,
+                                const char *text,
+                                bool case_sensitive,
+                                size_t *matched_len);
+
+static bool fr_regex_match_repeat(const char *atom,
+                                  const char *rest,
+                                  const char *text,
+                                  bool case_sensitive,
+                                  int min_count,
+                                  size_t *matched_len) {
+    const char *after_atom = NULL;
+    size_t atom_len = 0;
+    if (fr_regex_match_atom(atom, text, case_sensitive, &after_atom, &atom_len) && atom_len > 0) {
+        size_t tail_len = 0;
+        int next_min = min_count > 0 ? min_count - 1 : 0;
+        if (fr_regex_match_repeat(atom, rest, text + atom_len, case_sensitive, next_min, &tail_len)) {
+            *matched_len = atom_len + tail_len;
+            return true;
+        }
+    }
+
+    if (min_count <= 0) {
+        size_t tail_len = 0;
+        if (fr_regex_match_here(rest, text, case_sensitive, &tail_len)) {
+            *matched_len = tail_len;
+            return true;
+        }
+    }
+
+    return false;
+}
+
+static bool fr_regex_match_here(const char *pattern,
+                                const char *text,
+                                bool case_sensitive,
+                                size_t *matched_len) {
+    if (!pattern)
+        return false;
+    if (*pattern == '\0') {
+        *matched_len = 0;
+        return true;
+    }
+    if (pattern[0] == '$' && pattern[1] == '\0') {
+        if (*text == '\0') {
+            *matched_len = 0;
+            return true;
+        }
+        return false;
+    }
+
+    const char *after_atom = fr_regex_atom_end(pattern);
+    if (!after_atom)
+        return false;
+
+    char quantifier = *after_atom;
+    if (quantifier == '*')
+        return fr_regex_match_repeat(pattern, after_atom + 1, text, case_sensitive, 0, matched_len);
+    if (quantifier == '+')
+        return fr_regex_match_repeat(pattern, after_atom + 1, text, case_sensitive, 1, matched_len);
+    if (quantifier == '?') {
+        const char *unused_after = NULL;
+        size_t atom_len = 0;
+        if (fr_regex_match_atom(pattern, text, case_sensitive, &unused_after, &atom_len) &&
+            atom_len > 0) {
+            size_t tail_len = 0;
+            if (fr_regex_match_here(after_atom + 1, text + atom_len, case_sensitive, &tail_len)) {
+                *matched_len = atom_len + tail_len;
+                return true;
+            }
+        }
+        return fr_regex_match_here(after_atom + 1, text, case_sensitive, matched_len);
+    }
+
+    const char *unused_after = NULL;
+    size_t atom_len = 0;
+    if (!fr_regex_match_atom(pattern, text, case_sensitive, &unused_after, &atom_len) ||
+        atom_len == 0)
+        return false;
+    size_t tail_len = 0;
+    if (!fr_regex_match_here(after_atom, text + atom_len, case_sensitive, &tail_len))
+        return false;
+    *matched_len = atom_len + tail_len;
+    return true;
+}
+
+static const char *find_regex_in_line(const char *text,
+                                      const char *start,
+                                      const char *pattern,
+                                      vg_search_options_t *options,
+                                      size_t *match_len) {
+    if (!text || !start || !pattern || !*pattern || !match_len)
+        return NULL;
+
+    bool anchored = pattern[0] == '^';
+    const char *search_pattern = anchored ? pattern + 1 : pattern;
+    if (anchored && start != text)
+        return NULL;
+
+    const char *pos = anchored ? text : start;
+    while (*pos) {
+        size_t len = 0;
+        if (fr_regex_match_here(search_pattern, pos, options->case_sensitive, &len) && len > 0) {
+            if (options->whole_word && !check_whole_word(text, pos, len)) {
+                if (anchored)
+                    return NULL;
+            } else {
+                *match_len = len;
+                return pos;
+            }
+        }
+        if (anchored)
+            return NULL;
+        pos = fr_utf8_next(pos);
+    }
+
+    return NULL;
+}
 #endif
 
 /// @brief Append a match record to bar->matches[], growing the array if needed.
 static void add_match(vg_findreplacebar_t *bar, uint32_t line, uint32_t start, uint32_t end) {
     // Grow array if needed
     if (bar->match_count >= bar->match_capacity) {
-        size_t new_cap = bar->match_capacity * 2;
+        size_t new_cap = bar->match_capacity ? bar->match_capacity : INITIAL_MATCH_CAPACITY;
         if (new_cap < INITIAL_MATCH_CAPACITY)
             new_cap = INITIAL_MATCH_CAPACITY;
+        while (new_cap <= bar->match_count) {
+            if (new_cap > SIZE_MAX / 2)
+                return;
+            new_cap *= 2;
+        }
+        if (new_cap > SIZE_MAX / sizeof(vg_search_match_t))
+            return;
 
         vg_search_match_t *new_matches = realloc(bar->matches, new_cap * sizeof(vg_search_match_t));
         if (!new_matches)
@@ -321,6 +576,17 @@ static void add_match(vg_findreplacebar_t *bar, uint32_t line, uint32_t start, u
     bar->match_count++;
 }
 
+static vg_codeeditor_t *findreplacebar_live_target(vg_findreplacebar_t *bar) {
+    if (!bar || !bar->target_editor)
+        return NULL;
+    if (!vg_widget_is_live(&bar->target_editor->base) ||
+        bar->target_editor->base.type != VG_WIDGET_CODEEDITOR) {
+        bar->target_editor = NULL;
+        return NULL;
+    }
+    return bar->target_editor;
+}
+
 /// @brief Reset match_count and current_match to 0 and clear the result text.
 static void clear_matches(vg_findreplacebar_t *bar) {
     bar->match_count = 0;
@@ -332,7 +598,8 @@ static void clear_matches(vg_findreplacebar_t *bar) {
 static void perform_search(vg_findreplacebar_t *bar) {
     clear_matches(bar);
 
-    if (!bar->target_editor)
+    vg_codeeditor_t *ed = findreplacebar_live_target(bar);
+    if (!ed)
         return;
 
     vg_textinput_t *find_input = (vg_textinput_t *)bar->find_input;
@@ -344,8 +611,6 @@ static void perform_search(vg_findreplacebar_t *bar) {
         update_result_text(bar);
         return;
     }
-
-    vg_codeeditor_t *ed = bar->target_editor;
 
 #ifndef _WIN32
     regex_t regex;
@@ -361,10 +626,7 @@ static void perform_search(vg_findreplacebar_t *bar) {
         regex_ready = true;
     }
 #else
-    if (bar->options.use_regex) {
-        snprintf(bar->result_text, sizeof(bar->result_text), "Regex unavailable");
-        return;
-    }
+    bool regex_ready = bar->options.use_regex;
 #endif
 
     // Search through editor lines
@@ -380,7 +642,8 @@ static void perform_search(vg_findreplacebar_t *bar) {
         while ((pos = regex_ready ? find_regex_in_line(text, pos, &regex, &bar->options, &match_len)
                                   : find_in_line(pos, query, &bar->options, &match_len)) != NULL) {
 #else
-        while ((pos = find_in_line(pos, query, &bar->options, &match_len)) != NULL) {
+        while ((pos = regex_ready ? find_regex_in_line(text, pos, query, &bar->options, &match_len)
+                                  : find_in_line(pos, query, &bar->options, &match_len)) != NULL) {
 #endif
             uint32_t start_col = (uint32_t)(pos - text);
             uint32_t end_col = start_col + (uint32_t)match_len;
@@ -443,11 +706,11 @@ static void findreplacebar_apply_replace_visibility(vg_findreplacebar_t *bar) {
 
 /// @brief Select the current match in the target editor and scroll it into view.
 static void highlight_current_match(vg_findreplacebar_t *bar) {
-    if (bar->match_count == 0 || !bar->target_editor)
+    vg_codeeditor_t *ed = findreplacebar_live_target(bar);
+    if (bar->match_count == 0 || !ed)
         return;
 
     vg_search_match_t *match = &bar->matches[bar->current_match];
-    vg_codeeditor_t *ed = bar->target_editor;
 
     // Set selection to current match
     vg_codeeditor_set_selection(
@@ -479,14 +742,14 @@ static void on_find_next_click(vg_widget_t *btn, void *user_data) {
 static void on_replace_click(vg_widget_t *btn, void *user_data) {
     (void)btn;
     vg_findreplacebar_t *bar = (vg_findreplacebar_t *)user_data;
-    vg_findreplacebar_replace_current(bar);
+    (void)vg_findreplacebar_replace_current(bar);
 }
 
 /// @brief Button callback: replaces all matches in the linked editor.
 static void on_replace_all_click(vg_widget_t *btn, void *user_data) {
     (void)btn;
     vg_findreplacebar_t *bar = (vg_findreplacebar_t *)user_data;
-    vg_findreplacebar_replace_all(bar);
+    (void)vg_findreplacebar_replace_all(bar);
 }
 
 /// @brief Button callback: hides the find/replace bar when the close button is clicked.
@@ -866,7 +1129,10 @@ void vg_findreplacebar_destroy(vg_findreplacebar_t *bar) {
 void vg_findreplacebar_set_target(vg_findreplacebar_t *bar, struct vg_codeeditor *editor) {
     if (!bar)
         return;
-    bar->target_editor = editor;
+    bar->target_editor =
+        (editor && vg_widget_is_live(&editor->base) && editor->base.type == VG_WIDGET_CODEEDITOR)
+            ? editor
+            : NULL;
 
     // Re-run search if there's text
     perform_search(bar);
@@ -976,21 +1242,20 @@ void vg_findreplacebar_find_prev(vg_findreplacebar_t *bar) {
 /// @details After replacement the search is re-run to update the match list.
 ///
 /// @param bar The find/replace bar to use.
-void vg_findreplacebar_replace_current(vg_findreplacebar_t *bar) {
-    if (!bar || bar->match_count == 0 || !bar->target_editor)
-        return;
+bool vg_findreplacebar_replace_current(vg_findreplacebar_t *bar) {
+    vg_codeeditor_t *ed = findreplacebar_live_target(bar);
+    if (!bar || bar->match_count == 0 || !ed)
+        return false;
 
     vg_textinput_t *replace_input = (vg_textinput_t *)bar->replace_input;
     vg_textinput_t *find_input = (vg_textinput_t *)bar->find_input;
     if (!replace_input || !find_input)
-        return;
+        return false;
 
     const char *replace_text = vg_textinput_get_text(replace_input);
     const char *find_text = vg_textinput_get_text(find_input);
     if (!replace_text)
         replace_text = "";
-
-    vg_codeeditor_t *ed = bar->target_editor;
 
     // Delete selection (current match) and insert replacement
     vg_codeeditor_delete_selection(ed);
@@ -1003,6 +1268,7 @@ void vg_findreplacebar_replace_current(vg_findreplacebar_t *bar) {
 
     // Re-search
     perform_search(bar);
+    return true;
 }
 
 /// @brief Replace every match with the replace-input text in a single pass.
@@ -1011,21 +1277,21 @@ void vg_findreplacebar_replace_current(vg_findreplacebar_t *bar) {
 ///          column positions.  The search is re-run after all replacements.
 ///
 /// @param bar The find/replace bar to use.
-void vg_findreplacebar_replace_all(vg_findreplacebar_t *bar) {
-    if (!bar || bar->match_count == 0 || !bar->target_editor)
-        return;
+size_t vg_findreplacebar_replace_all(vg_findreplacebar_t *bar) {
+    vg_codeeditor_t *ed = findreplacebar_live_target(bar);
+    if (!bar || bar->match_count == 0 || !ed)
+        return 0;
 
     vg_textinput_t *replace_input = (vg_textinput_t *)bar->replace_input;
     vg_textinput_t *find_input = (vg_textinput_t *)bar->find_input;
     if (!replace_input || !find_input)
-        return;
+        return 0;
 
     const char *replace_text = vg_textinput_get_text(replace_input);
     const char *find_text = vg_textinput_get_text(find_input);
     if (!replace_text)
         replace_text = "";
-
-    vg_codeeditor_t *ed = bar->target_editor;
+    size_t replacement_count = bar->match_count;
 
     // Replace from end to start to preserve positions
     for (size_t i = bar->match_count; i > 0; i--) {
@@ -1047,6 +1313,7 @@ void vg_findreplacebar_replace_all(vg_findreplacebar_t *bar) {
 
     // Re-search (should find nothing)
     perform_search(bar);
+    return replacement_count;
 }
 
 /// @brief Return the number of matches found in the last search.

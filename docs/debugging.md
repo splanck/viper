@@ -326,15 +326,15 @@ Use `--dump-trap` to ensure trap messages are printed to stderr even when the pr
 
 ## 7. Runtime Logging
 
-### Viper.Log API (Zia / BASIC)
+### Viper.Diagnostics.Log API (Zia / BASIC)
 
 The runtime provides a leveled logging system accessible from both Zia and BASIC:
 
 ```rust
-Viper.Log.Debug("detailed info")
-Viper.Log.Info("normal info")
-Viper.Log.Warn("potential issue")
-Viper.Log.Error("something failed")
+Viper.Diagnostics.Log.Debug("detailed info")
+Viper.Diagnostics.Log.Info("normal info")
+Viper.Diagnostics.Log.Warn("potential issue")
+Viper.Diagnostics.Log.Error("something failed")
 ```
 
 Output format:
@@ -372,15 +372,15 @@ These are exposed as static methods on `Viper.Core.Diagnostics` and registered i
 
 ### Debug Print
 
-There is no `Viper.Debug` namespace. For quick debugging, route messages through `Viper.Log` (see
+There is no `Viper.Debug` namespace. For quick debugging, route messages through `Viper.Diagnostics.Log` (see
 above) or directly to the terminal:
 
 ```viper
-Viper.Log.Debug("value=" + IntToStr(value))    // Goes through the leveled logger
+Viper.Diagnostics.Log.Debug("value=" + IntToStr(value))    // Goes through the leveled logger
 Viper.Terminal.Print("debug: " + msg)          // Prints to stdout
 ```
 
-`Viper.Log.*` writes to stderr (or the configured log sink) and is suppressed when the active level
+`Viper.Diagnostics.Log.*` writes to stderr (or the configured log sink) and is suppressed when the active level
 is above the call's level.
 
 ---
@@ -795,4 +795,4 @@ std::cout << "Instructions: " << runner.instructionCount() << "\n";
 | Debug Adapter Protocol | Not implemented | No IDE integration (VS Code, etc.) |
 | Signal/crash handler | Not implemented | Native crashes produce no diagnostic output |
 | In-VM profiling | Not implemented | No function-level timing or allocation tracking |
-| Subsystem log filtering | Not implemented | VM trace and Viper.Log are all-or-nothing |
+| Subsystem log filtering | Not implemented | VM trace and Viper.Diagnostics.Log are all-or-nothing |

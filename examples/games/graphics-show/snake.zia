@@ -11,7 +11,7 @@ bind "./colors";
 bind Viper.Math.Random;
 bind Viper.Graphics;
 bind Viper.Graphics.Color;
-bind Viper.Fmt;
+bind Viper.Text.Fmt;
 bind Viper.Time;
 
 var DIR_UP: Integer;

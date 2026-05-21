@@ -103,27 +103,25 @@ BasicType basicTypeFromExprType(Lowerer::ExprType ty) {
 /// @param expr AST node representing the method invocation.
 /// @return Result value placeholder; currently the runtime returns @c void so
 ///         a zero integer is used to preserve SSA expectations.
-Lowerer::RVal Lowerer::lowerMethodCallExpr(const MethodCallExpr &expr) {
-    if (!expr.base)
-        return {Value::constInt(0), Type(Type::Kind::I64)};
+std::vector<BasicType> Lowerer::methodCallRuntimeArgTypes(const MethodCallExpr &expr) {
+    std::vector<BasicType> result;
+    result.reserve(expr.args.size());
+    for (const auto &arg : expr.args)
+        result.push_back(arg ? basicTypeFromExprType(scanExpr(*arg)) : BasicType::Unknown);
+    return result;
+}
 
-    auto makeRuntimeArgTypes = [&]() {
-        std::vector<BasicType> result;
-        result.reserve(expr.args.size());
-        for (const auto &arg : expr.args)
-            result.push_back(arg ? basicTypeFromExprType(scanExpr(*arg)) : BasicType::Unknown);
-        return result;
-    };
+std::vector<::il::frontends::basic::Type>
+Lowerer::methodCallAstArgTypes(const MethodCallExpr &expr) {
+    std::vector<::il::frontends::basic::Type> result;
+    result.reserve(expr.args.size());
+    for (const auto &arg : expr.args)
+        result.push_back(arg ? astTypeFromExprType(scanExpr(*arg))
+                             : ::il::frontends::basic::Type::I64);
+    return result;
+}
 
-    auto makeAstArgTypes = [&]() {
-        std::vector<::il::frontends::basic::Type> result;
-        result.reserve(expr.args.size());
-        for (const auto &arg : expr.args)
-            result.push_back(arg ? astTypeFromExprType(scanExpr(*arg))
-                                 : ::il::frontends::basic::Type::I64);
-        return result;
-    };
-
+std::optional<Lowerer::RVal> Lowerer::tryLowerStaticMethodCall(const MethodCallExpr &expr) {
     // Static method calls: Class.Method(...)
     if (const auto *vb = as<const VarExpr>(*expr.base)) {
         // If a symbol with this name exists (local/param/global), treat as instance, not static.
@@ -134,7 +132,7 @@ Lowerer::RVal Lowerer::lowerMethodCallExpr(const MethodCallExpr &expr) {
             std::string qname = resolveQualifiedClassCasing(qualify(vb->name));
             if (const ClassInfo *ci = oopIndex_.findClass(qname)) {
                 // Overload resolution for static call
-                std::vector<::il::frontends::basic::Type> argAstTypes = makeAstArgTypes();
+                std::vector<::il::frontends::basic::Type> argAstTypes = methodCallAstArgTypes(expr);
                 std::string selected = expr.method;
                 if (auto resolved = sem::resolveMethodOverload(oopIndex_,
                                                                qname,
@@ -175,7 +173,7 @@ Lowerer::RVal Lowerer::lowerMethodCallExpr(const MethodCallExpr &expr) {
                     Type ilRetTy(Type::Kind::Ptr);
                     Value result = emitCallRet(ilRetTy, callee, args);
                     deferReleaseObj(result, retClassName);
-                    return {result, ilRetTy};
+                    return RVal{result, ilRetTy};
                 }
                 if (auto retType = findMethodReturnType(qname, selected)) {
                     Type ilRetTy = type_conv::astToIlType(*retType);
@@ -184,15 +182,15 @@ Lowerer::RVal Lowerer::lowerMethodCallExpr(const MethodCallExpr &expr) {
                         deferReleaseStr(result);
                     else if (ilRetTy.kind == Type::Kind::Ptr)
                         deferReleaseObj(result, qname);
-                    return {result, ilRetTy};
+                    return RVal{result, ilRetTy};
                 }
                 emitCall(callee, args);
-                return {Value::constInt(0), Type(Type::Kind::I64)};
+                return RVal{Value::constInt(0), Type(Type::Kind::I64)};
             } else {
                 // Static call on a runtime class from the catalog (no receiver)
                 if (il::runtime::findRuntimeClassByQName(qname)) {
                     auto &midx = runtimeMethodIndex();
-                    auto info = midx.find(qname, expr.method, makeRuntimeArgTypes());
+                    auto info = midx.find(qname, expr.method, methodCallRuntimeArgTypes(expr));
                     if (info && info->hasReceiver)
                         info = std::nullopt;
                     if (!info) {
@@ -214,7 +212,7 @@ Lowerer::RVal Lowerer::lowerMethodCallExpr(const MethodCallExpr &expr) {
                                      static_cast<uint32_t>(expr.method.size()),
                                      std::move(msg));
                         }
-                        return {Value::constInt(0), Type(Type::Kind::I64)};
+                        return RVal{Value::constInt(0), Type(Type::Kind::I64)};
                     }
                     std::vector<Value> args;
                     args.reserve(expr.args.size());
@@ -240,11 +238,21 @@ Lowerer::RVal Lowerer::lowerMethodCallExpr(const MethodCallExpr &expr) {
                         deferReleaseStr(result);
                     else if (retTy.kind == Type::Kind::Ptr)
                         deferReleaseObj(result);
-                    return {result, retTy.kind == Type::Kind::Void ? Type(Type::Kind::I64) : retTy};
+                    return RVal{result,
+                                retTy.kind == Type::Kind::Void ? Type(Type::Kind::I64) : retTy};
                 }
             }
         }
     }
+    return std::nullopt;
+}
+
+Lowerer::RVal Lowerer::lowerMethodCallExpr(const MethodCallExpr &expr) {
+    if (!expr.base)
+        return {Value::constInt(0), Type(Type::Kind::I64)};
+
+    if (auto staticResult = tryLowerStaticMethodCall(expr))
+        return *staticResult;
 
     // Runtime class method calls via catalog (e.g., Viper.String)
     {
@@ -262,7 +270,7 @@ Lowerer::RVal Lowerer::lowerMethodCallExpr(const MethodCallExpr &expr) {
         // Only consult the runtime method catalog for true runtime classes
         if (!qClass.empty() && il::runtime::findRuntimeClassByQName(qClass)) {
             auto &midx = runtimeMethodIndex();
-            auto info = midx.find(qClass, expr.method, makeRuntimeArgTypes());
+            auto info = midx.find(qClass, expr.method, methodCallRuntimeArgTypes(expr));
             if (info && !info->hasReceiver)
                 info = std::nullopt;
             if (!info) {
@@ -355,7 +363,7 @@ Lowerer::RVal Lowerer::lowerMethodCallExpr(const MethodCallExpr &expr) {
             auto info =
                 midx.find(std::string(il::runtime::RTCLASS_OBJECT),
                           expr.method,
-                          makeRuntimeArgTypes());
+                          methodCallRuntimeArgTypes(expr));
             if (info && !info->hasReceiver)
                 info = std::nullopt;
             if (info && !userClassHasMethod) {
@@ -515,7 +523,7 @@ Lowerer::RVal Lowerer::lowerMethodCallExpr(const MethodCallExpr &expr) {
 
     // Resolve overload to select the best callee among same-name methods.
     // Build argument AST types (excluding implicit self).
-    std::vector<::il::frontends::basic::Type> argAstTypes = makeAstArgTypes();
+    std::vector<::il::frontends::basic::Type> argAstTypes = methodCallAstArgTypes(expr);
 
     std::string qc = qname.empty() ? directQClass : qname;
     std::string curClass = currentClass();

@@ -261,6 +261,13 @@ class Parser {
     ///         false when no ADDFILE directive was present.
     bool handleAddFileInto(std::vector<StmtPtr> &dst);
     StmtPtr parseClassDecl();
+    /// @brief Parse the leading field-declaration section of a CLASS body.
+    /// @param curAccess Carries the pending PUBLIC/PRIVATE prefix; on return it
+    ///        holds any access prefix consumed just before the first non-field
+    ///        member (which the member section then applies).
+    void parseClassFieldSection(ClassDecl &decl, std::optional<Access> &curAccess);
+    /// @brief Parse the method/property/destructor section of a CLASS body.
+    void parseClassMemberSection(ClassDecl &decl, std::optional<Access> curAccess);
     StmtPtr parseInterfaceDecl();
     StmtPtr parseTypeDecl();
     StmtPtr parseEnumDecl();

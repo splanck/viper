@@ -78,7 +78,7 @@
 module setops;
 
 bind Viper.String as String;
-bind Viper.Fmt as Fmt;
+bind Viper.Text.Fmt as Fmt;
 bind Viper.Crypto.Hash as CryptoHash;
 bind "./types";
 bind "./result";

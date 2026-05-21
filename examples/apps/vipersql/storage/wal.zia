@@ -102,7 +102,7 @@ module wal;
 
 bind Viper.IO as IO;
 bind Viper.String as String;
-bind Viper.Fmt as Fmt;
+bind Viper.Text.Fmt as Fmt;
 bind Viper.Threads as Threads;
 bind "./page";
 bind "./serializer";

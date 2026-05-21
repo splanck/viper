@@ -112,8 +112,8 @@ TEST(ZiaStaticCalls, LazyOfI64) {
     ASSERT_TRUE(compileOk(R"(
 module Test;
 /// @brief Start.
-func start() {    var lazy = Viper.Lazy.OfI64(42);
-    var v = Viper.Lazy.GetI64(lazy);
+func start() {    var lazy = Viper.Functional.Lazy.OfI64(42);
+    var v = Viper.Functional.Lazy.GetI64(lazy);
 }
 )"));
 }

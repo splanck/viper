@@ -6,7 +6,7 @@
 //===----------------------------------------------------------------------===//
 //
 // File: src/runtime/core/rt_fmt.c
-// Purpose: Implements the Viper.Fmt namespace — value-to-string formatting
+// Purpose: Implements the Viper.Text.Fmt namespace — value-to-string formatting
 //          helpers for integers, floats, booleans, and radix-based encodings.
 //          All functions are defensive: invalid inputs produce empty strings
 //          or sensible defaults rather than trapping.

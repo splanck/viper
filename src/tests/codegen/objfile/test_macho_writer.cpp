@@ -419,12 +419,20 @@ static void testX64Relocations() {
     CHECK(rLength == 2);
     CHECK(rExtern == 1);
 
-    // Verify addend is patched into instruction bytes (-4 = FC FF FF FF)
+    // Mach-O stores x86-64 PC-relative addends relative to the end of the
+    // 4-byte displacement. The reader normalizes this back to the internal -4.
     uint32_t textOff = readLE32(data, kOffTextSect + 48);
-    CHECK(data[textOff + 1] == 0xFC);
-    CHECK(data[textOff + 2] == 0xFF);
-    CHECK(data[textOff + 3] == 0xFF);
-    CHECK(data[textOff + 4] == 0xFF);
+    CHECK(readLE32(data, textOff + 1) == 0);
+
+    ObjFile obj;
+    CHECK(readObjFile(path, obj, errStream));
+    const ObjSection *textSec = findSection(obj, "__TEXT,__text");
+    CHECK(textSec != nullptr);
+    if (textSec != nullptr) {
+        CHECK(textSec->relocs.size() == 1);
+        if (!textSec->relocs.empty())
+            CHECK(textSec->relocs[0].addend == -4);
+    }
 
     std::remove(path.c_str());
 }
@@ -545,6 +553,37 @@ static void testA64AddendRangeValidation() {
         CHECK(errStream.str().find("signed 24-bit") != std::string::npos);
         std::remove("/tmp/viper_test_macho_a64_large_addend.o");
     }
+}
+
+static void testA64LargeSectionOffsetUsesSyntheticAnchor() {
+    CodeSection text, rodata;
+    constexpr size_t kLargeOffset = 0x800000;
+    rodata.emitZeros(kLargeOffset + 4);
+
+    text.addSectionOffsetRelocation(RelocKind::A64AdrpPage21,
+                                    rodata,
+                                    SymbolSection::Rodata,
+                                    kLargeOffset);
+    text.emit32LE(0x90000000); // ADRP X0, #0
+
+    const std::string path = "/tmp/viper_test_macho_a64_large_section_offset.o";
+    std::ostringstream errStream;
+    MachOWriter writer(ObjArch::AArch64);
+    CHECK(writer.write(path, text, rodata, errStream));
+
+    ObjFile obj;
+    std::ostringstream readErr;
+    CHECK(readObjFile(path, obj, readErr));
+    bool sawAnchor = false;
+    for (const auto &sym : obj.symbols) {
+        if (sym.sectionIndex == 0 || sym.offset != kLargeOffset)
+            continue;
+        if (sym.sectionIndex < obj.sections.size() &&
+            obj.sections[sym.sectionIndex].name.find("__const") != std::string::npos)
+            sawAnchor = true;
+    }
+    CHECK(sawAnchor);
+    std::remove(path.c_str());
 }
 
 // =============================================================================
@@ -755,6 +794,40 @@ static void testMultiSectionReaderSplitsSubsectionsViaSymbols() {
     if (funcB != nullptr) {
         CHECK(funcB->offset == 0);
         CHECK(funcB->sectionIndex != 1);
+    }
+
+    std::remove(path.c_str());
+}
+
+static void testSplitSubsectionsDoesNotDuplicateDirectRelocs() {
+    CodeSection textA, textB, rodata;
+    textA.defineSymbol("func_a", SymbolBinding::Global, SymbolSection::Text);
+    textA.emit8(0xC3);
+
+    textB.defineSymbol("func_b", SymbolBinding::Global, SymbolSection::Text);
+    textB.emit8(0xC3);
+
+    const uint32_t funcA = rodata.findOrDeclareSymbol("func_a");
+    rodata.addRelocation(RelocKind::Abs64, funcA, 0, SymbolSection::Text);
+    rodata.emit64LE(0);
+
+    std::string path = "/tmp/viper_test_macho_split_direct_relocs.o";
+    std::ostringstream errStream;
+
+    auto writer = createObjectFileWriter(ObjFormat::MachO, ObjArch::X86_64);
+    CHECK(writer != nullptr);
+    const bool ok = writer != nullptr &&
+                    writer->write(path, std::vector<CodeSection>{textA, textB}, rodata, errStream);
+    CHECK(ok);
+
+    ObjFile obj;
+    CHECK(readObjFile(path, obj, errStream));
+    const ObjSection *constSec = findSection(obj, "__TEXT,__const");
+    CHECK(constSec != nullptr);
+    if (constSec != nullptr) {
+        CHECK(constSec->relocs.size() == 1);
+        if (!constSec->relocs.empty())
+            CHECK(obj.symbols[constSec->relocs[0].symIndex].name == "func_a");
     }
 
     std::remove(path.c_str());
@@ -1123,12 +1196,14 @@ int main() {
     testA64Relocations();
     testA64AddendRelocationPair();
     testA64AddendRangeValidation();
+    testA64LargeSectionOffsetUsesSyntheticAnchor();
     testRelocDescendingOrder();
     testFactory();
     testRodataSection();
     testRodataRelocation();
     testDysymtabRanges();
     testMultiSectionReaderSplitsSubsectionsViaSymbols();
+    testSplitSubsectionsDoesNotDuplicateDirectRelocs();
     testMultiSectionMergeUniquifiesDuplicateLocals();
     testUnsupportedRelocationFails();
     testWrongArchRelocationFails();

@@ -115,6 +115,13 @@ vg_font_t *vg_font_load_file(const char *path);
 /// @param font The font to destroy (may be NULL, in which case this is a no-op).
 void vg_font_destroy(vg_font_t *font);
 
+/// @brief Return true when @p font is a currently-live font handle.
+///
+/// @details This is intended for runtime bindings that receive opaque user
+///          handles and must reject stale or non-font pointers before storing
+///          them in widgets.
+bool vg_font_is_live(const vg_font_t *font);
+
 //=============================================================================
 // Font Information
 //=============================================================================

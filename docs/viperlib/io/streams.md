@@ -258,7 +258,7 @@ module MemStreamDemo;
 
 bind Viper.Terminal;
 bind Viper.IO.MemStream as MS;
-bind Viper.Fmt as Fmt;
+bind Viper.Text.Fmt as Fmt;
 
 func start() {
     // Create a new memory stream
@@ -720,7 +720,7 @@ module BinaryBufferDemo;
 
 bind Viper.Terminal;
 bind Viper.IO.BinaryBuffer as BB;
-bind Viper.Fmt as Fmt;
+bind Viper.Text.Fmt as Fmt;
 
 func start() {
     // Create a new buffer

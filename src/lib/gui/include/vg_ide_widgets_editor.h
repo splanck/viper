@@ -245,6 +245,12 @@ vg_codeeditor_t *vg_codeeditor_create(vg_widget_t *parent);
 /// @param text   Null-terminated UTF-8 string (copied internally).
 void vg_codeeditor_set_text(vg_codeeditor_t *editor, const char *text);
 
+/// @brief Replace the entire document with an explicit byte span.
+/// @param editor Code editor widget.
+/// @param text   UTF-8 byte buffer (copied internally, may contain embedded NUL).
+/// @param len    Number of bytes to read from @p text.
+void vg_codeeditor_set_text_bytes(vg_codeeditor_t *editor, const char *text, size_t len);
+
 /// @brief Return the full document text as a newly allocated string.
 /// @param editor Code editor widget.
 /// @return Caller-owned null-terminated string; must be freed with free().
@@ -466,11 +472,13 @@ void vg_findreplacebar_find_prev(vg_findreplacebar_t *bar);
 
 /// @brief Replace the current match with the replacement text.
 /// @param bar Find/replace bar.
-void vg_findreplacebar_replace_current(vg_findreplacebar_t *bar);
+/// @return true when a replacement was applied.
+bool vg_findreplacebar_replace_current(vg_findreplacebar_t *bar);
 
 /// @brief Replace every match in the document with the replacement text.
 /// @param bar Find/replace bar.
-void vg_findreplacebar_replace_all(vg_findreplacebar_t *bar);
+/// @return Number of replacements applied.
+size_t vg_findreplacebar_replace_all(vg_findreplacebar_t *bar);
 
 /// @brief Get the total number of matches found by the last search.
 /// @param bar Find/replace bar.

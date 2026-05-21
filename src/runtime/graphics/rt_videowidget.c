@@ -22,10 +22,13 @@
 #ifdef VIPER_ENABLE_GRAPHICS
 
 #include "rt_videowidget.h"
+#include "rt_gui.h"
+#include "rt_pixels.h"
 #include "rt_platform.h"
 #include "rt_string.h"
 #include "rt_videoplayer.h"
 
+#include <limits.h>
 #include <stdint.h>
 #include <stdlib.h>
 #include <string.h>
@@ -35,31 +38,14 @@ extern void *rt_obj_new_i64(int64_t class_id, int64_t byte_size);
 extern void rt_obj_set_finalizer(void *obj, void (*fn)(void *));
 extern int rt_obj_release_check0(void *obj);
 extern void rt_obj_free(void *obj);
-extern const char *rt_string_cstr(rt_string str);
-extern int64_t rt_pixels_width(void *pixels);
-extern int64_t rt_pixels_height(void *pixels);
 
-/* GUI widget creation functions */
-extern void *rt_image_new(void *parent);
-extern void rt_image_set_pixels(void *image, void *pixels, int64_t w, int64_t h);
-extern void rt_image_set_scale_mode(void *image, int64_t mode);
-extern void rt_widget_destroy(void *widget);
-extern void rt_widget_set_size(void *widget, int64_t w, int64_t h);
-extern void rt_widget_set_flex(void *widget, double flex);
-extern void rt_widget_set_visible(void *widget, int64_t visible);
-extern int64_t rt_widget_was_clicked(void *widget);
-extern void *rt_vbox_new(void);
-extern void *rt_hbox_new(void);
-extern void rt_container_set_spacing(void *container, double spacing);
-extern void rt_widget_add_child(void *parent, void *child);
-extern void *rt_button_new(void *parent, void *text);
-extern void *rt_slider_new(void *parent, int64_t horizontal);
-extern void rt_slider_set_value(void *slider, double value);
-extern double rt_slider_get_value(void *slider);
-extern rt_string rt_string_from_bytes(const char *data, size_t len);
+/* GUI parent validation shim implemented by rt_gui_widgets.c. Kept as a
+ * single external dependency so isolated VideoWidget contract tests can stub
+ * the runtime GUI layer without linking all widget/app objects. */
+extern void *rt_gui_widget_parent_container_checked(void *handle);
 
 /* VideoPlayer functions */
-extern void *rt_videoplayer_open(void *path);
+extern void *rt_videoplayer_open(rt_string path);
 extern void rt_videoplayer_play(void *vp);
 extern void rt_videoplayer_pause(void *vp);
 extern void rt_videoplayer_stop(void *vp);
@@ -72,12 +58,6 @@ extern double rt_videoplayer_get_duration(void *vp);
 extern double rt_videoplayer_get_position(void *vp);
 extern int64_t rt_videoplayer_get_is_playing(void *vp);
 extern void *rt_videoplayer_get_frame(void *vp);
-
-/* Internal Pixels layout for raw buffer access */
-typedef struct {
-    int64_t width, height;
-    uint32_t *data;
-} px_view;
 
 typedef struct {
     uint64_t magic;
@@ -105,18 +85,71 @@ static void videowidget_dispose(rt_videowidget *w, int destroy_widget_tree);
 
 #define RT_VIDEOWIDGET_MAGIC UINT64_C(0x5254564944454F57)
 
-static rt_videowidget *videowidget_checked(void *obj) {
-    rt_videowidget *w = (rt_videowidget *)obj;
-    return w && w->magic == RT_VIDEOWIDGET_MAGIC ? w : NULL;
+static rt_videowidget **s_videowidget_wrappers = NULL;
+static size_t s_videowidget_wrapper_count = 0;
+static size_t s_videowidget_wrapper_cap = 0;
+
+static int videowidget_register_wrapper(rt_videowidget *w) {
+    if (!w)
+        return 0;
+    for (size_t i = 0; i < s_videowidget_wrapper_count; i++) {
+        if (s_videowidget_wrappers[i] == w)
+            return 1;
+    }
+    if (s_videowidget_wrapper_count >= s_videowidget_wrapper_cap) {
+        size_t new_cap = s_videowidget_wrapper_cap ? s_videowidget_wrapper_cap : 8;
+        while (new_cap <= s_videowidget_wrapper_count) {
+            if (new_cap > SIZE_MAX / 2)
+                return 0;
+            new_cap *= 2;
+        }
+        if (new_cap > SIZE_MAX / sizeof(*s_videowidget_wrappers))
+            return 0;
+        void *p = realloc(s_videowidget_wrappers, new_cap * sizeof(*s_videowidget_wrappers));
+        if (!p)
+            return 0;
+        s_videowidget_wrappers = (rt_videowidget **)p;
+        s_videowidget_wrapper_cap = new_cap;
+    }
+    s_videowidget_wrappers[s_videowidget_wrapper_count++] = w;
+    return 1;
 }
 
-/// @brief GC finalizer for a VideoWidget — disposes resources without destroying the
-///        widget tree, since the GUI tree has its own ownership chain.
-/// @details Passes `destroy_widget_tree = 0` because by the time the GC collects
-///   the VideoWidget the widget tree has already been torn down through the normal
-///   GUI destruction path. Destroying it a second time here would be a double-free.
+static void videowidget_unregister_wrapper(rt_videowidget *w) {
+    if (!w)
+        return;
+    for (size_t i = 0; i < s_videowidget_wrapper_count; i++) {
+        if (s_videowidget_wrappers[i] != w)
+            continue;
+        memmove(&s_videowidget_wrappers[i],
+                &s_videowidget_wrappers[i + 1],
+                (s_videowidget_wrapper_count - i - 1) * sizeof(*s_videowidget_wrappers));
+        s_videowidget_wrapper_count--;
+        return;
+    }
+}
+
+static int videowidget_wrapper_is_registered(const rt_videowidget *w) {
+    if (!w)
+        return 0;
+    for (size_t i = 0; i < s_videowidget_wrapper_count; i++) {
+        if (s_videowidget_wrappers[i] == w)
+            return 1;
+    }
+    return 0;
+}
+
+static rt_videowidget *videowidget_checked(void *obj) {
+    rt_videowidget *w = (rt_videowidget *)obj;
+    return videowidget_wrapper_is_registered(w) && w->magic == RT_VIDEOWIDGET_MAGIC ? w : NULL;
+}
+
+/// @brief GC finalizer for a VideoWidget.
+/// @details The wrapper owns the transport subtree it created. If user code
+///          drops the wrapper while the GUI tree is still attached, destroy the
+///          subtree so controls are not left orphaned with a released player.
 static void videowidget_finalizer(void *obj) {
-    videowidget_dispose((rt_videowidget *)obj, 0);
+    videowidget_dispose((rt_videowidget *)obj, 1);
 }
 
 /// @brief Release a GC-managed object if it exists, freeing it when the refcount drops to zero.
@@ -129,11 +162,11 @@ static void release_gc_object(void *obj) {
 /// @details Clears all widget pointers (image, controls, buttons, slider) to prevent
 ///   dangling references after disposal. When @p destroy_widget_tree is non-zero it
 ///   also calls `rt_widget_destroy` on the root, which tears down the entire GUI
-///   subtree — used during explicit `VideoWidget.Destroy` calls. GC-driven cleanup
-///   uses `destroy_widget_tree = 0` since the tree is already gone.
+///   subtree — used during explicit `VideoWidget.Destroy` calls and GC finalization.
 static void videowidget_dispose(rt_videowidget *w, int destroy_widget_tree) {
     if (!w || w->magic != RT_VIDEOWIDGET_MAGIC)
         return;
+    videowidget_unregister_wrapper(w);
 
     if (destroy_widget_tree && w->root_widget) {
         rt_widget_destroy(w->root_widget);
@@ -170,9 +203,12 @@ static double clamp_volume(double vol) {
 /// @brief Construct a video-playback GUI widget. Opens the file via `rt_videoplayer_open`,
 /// builds a vbox containing an Image widget (for frames) plus an hbox of Play/Pause/Stop buttons
 /// and a position-slider. Returns NULL if the file can't be opened or the video has zero dimensions.
-void *rt_videowidget_new(void *parent, void *path) {
+void *rt_videowidget_new(void *parent, rt_string path) {
     RT_ASSERT_MAIN_THREAD();
     if (!parent || !path)
+        return NULL;
+    void *parent_widget = rt_gui_widget_parent_container_checked(parent);
+    if (!parent_widget)
         return NULL;
 
     /* Open video file */
@@ -180,12 +216,14 @@ void *rt_videowidget_new(void *parent, void *path) {
     if (!player)
         return NULL;
 
-    int32_t vw = (int32_t)rt_videoplayer_get_width(player);
-    int32_t vh = (int32_t)rt_videoplayer_get_height(player);
-    if (vw <= 0 || vh <= 0) {
+    int64_t vw64 = rt_videoplayer_get_width(player);
+    int64_t vh64 = rt_videoplayer_get_height(player);
+    if (vw64 <= 0 || vh64 <= 0 || vw64 > INT32_MAX || vh64 > INT32_MAX) {
         release_gc_object(player);
         return NULL;
     }
+    int32_t vw = (int32_t)vw64;
+    int32_t vh = (int32_t)vh64;
 
     /* Create widget */
     rt_videowidget *w = (rt_videowidget *)rt_obj_new_i64(0, (int64_t)sizeof(rt_videowidget));
@@ -202,6 +240,11 @@ void *rt_videowidget_new(void *parent, void *path) {
     w->looping = 0;
     w->volume = 1.0;
     w->slider_last_value = 0.0;
+    if (!videowidget_register_wrapper(w)) {
+        videowidget_dispose(w, 0);
+        release_gc_object(w);
+        return NULL;
+    }
 
     w->root_widget = rt_vbox_new();
     if (!w->root_widget) {
@@ -234,12 +277,13 @@ void *rt_videowidget_new(void *parent, void *path) {
         w->position_slider = rt_slider_new(w->controls_widget, 1);
         if (w->position_slider) {
             rt_widget_set_flex(w->position_slider, 1.0);
+            rt_slider_set_range(w->position_slider, 0.0, 1.0);
             rt_slider_set_value(w->position_slider, 0.0);
         }
     }
 
     rt_obj_set_finalizer(w, videowidget_finalizer);
-    rt_widget_add_child(parent, w->root_widget);
+    rt_widget_add_child(parent_widget, w->root_widget);
     if (w->controls_widget)
         rt_widget_add_child(w->root_widget, w->controls_widget);
 
@@ -315,9 +359,11 @@ void rt_videowidget_update(void *obj, double dt) {
     if (isfinite(dt) && dt > 0.0)
         rt_videoplayer_update(w->player, dt);
 
-    /* Check for loop */
+    /* Check for natural end-of-video before auto-looping. Paused videos also
+       report !is_playing, so position must be at the end of the stream. */
     if (w->looping && rt_videoplayer_get_is_playing(w->player) == 0 &&
-        rt_videoplayer_get_position(w->player) > 0.0) {
+        rt_videoplayer_get_duration(w->player) > 0.0 &&
+        rt_videoplayer_get_position(w->player) >= rt_videoplayer_get_duration(w->player) - 0.001) {
         rt_videoplayer_stop(w->player);
         rt_videoplayer_play(w->player);
     }
@@ -325,9 +371,16 @@ void rt_videowidget_update(void *obj, double dt) {
     /* Update image widget with current frame */
     void *frame = rt_videoplayer_get_frame(w->player);
     if (frame && w->image_widget) {
-        px_view *px = (px_view *)frame;
-        if (px->data && px->width == w->video_width && px->height == w->video_height) {
-            rt_image_set_pixels(w->image_widget, frame, w->video_width, w->video_height);
+        int64_t frame_w = rt_pixels_width(frame);
+        int64_t frame_h = rt_pixels_height(frame);
+        const uint32_t *raw = rt_pixels_raw_buffer(frame);
+        if (raw && frame_w > 0 && frame_h > 0 && frame_w <= INT32_MAX && frame_h <= INT32_MAX) {
+            rt_image_set_pixels(w->image_widget, frame, frame_w, frame_h);
+            if (w->video_width != (int32_t)frame_w || w->video_height != (int32_t)frame_h) {
+                w->video_width = (int32_t)frame_w;
+                w->video_height = (int32_t)frame_h;
+                rt_widget_set_size(w->image_widget, frame_w, frame_h);
+            }
         }
     }
 
@@ -431,6 +484,75 @@ double rt_videowidget_get_duration(void *obj) {
     if (!w)
         return 0.0;
     return w->player ? rt_videoplayer_get_duration(w->player) : 0.0;
+}
+
+void *rt_videowidget_get_root(void *obj) {
+    RT_ASSERT_MAIN_THREAD();
+    rt_videowidget *w = videowidget_checked(obj);
+    return w ? w->root_widget : NULL;
+}
+
+void rt_videowidget_set_visible(void *obj, int64_t visible) {
+    RT_ASSERT_MAIN_THREAD();
+    rt_videowidget *w = videowidget_checked(obj);
+    if (w && w->root_widget)
+        rt_widget_set_visible(w->root_widget, visible);
+}
+
+void rt_videowidget_set_enabled(void *obj, int64_t enabled) {
+    RT_ASSERT_MAIN_THREAD();
+    rt_videowidget *w = videowidget_checked(obj);
+    if (w && w->root_widget)
+        rt_widget_set_enabled(w->root_widget, enabled);
+}
+
+void rt_videowidget_set_size(void *obj, int64_t width, int64_t height) {
+    RT_ASSERT_MAIN_THREAD();
+    rt_videowidget *w = videowidget_checked(obj);
+    if (w && w->root_widget)
+        rt_widget_set_size(w->root_widget, width, height);
+}
+
+void rt_videowidget_set_preferred_size(void *obj, double width, double height) {
+    RT_ASSERT_MAIN_THREAD();
+    rt_videowidget *w = videowidget_checked(obj);
+    if (w && w->root_widget)
+        rt_widget_set_preferred_size(w->root_widget, width, height);
+}
+
+void rt_videowidget_set_max_size(void *obj, double width, double height) {
+    RT_ASSERT_MAIN_THREAD();
+    rt_videowidget *w = videowidget_checked(obj);
+    if (w && w->root_widget)
+        rt_widget_set_max_size(w->root_widget, width, height);
+}
+
+void rt_videowidget_set_flex(void *obj, double flex) {
+    RT_ASSERT_MAIN_THREAD();
+    rt_videowidget *w = videowidget_checked(obj);
+    if (w && w->root_widget)
+        rt_widget_set_flex(w->root_widget, flex);
+}
+
+void rt_videowidget_set_margin(void *obj, int64_t margin) {
+    RT_ASSERT_MAIN_THREAD();
+    rt_videowidget *w = videowidget_checked(obj);
+    if (w && w->root_widget)
+        rt_widget_set_margin(w->root_widget, margin);
+}
+
+void rt_videowidget_set_position(void *obj, int64_t x, int64_t y) {
+    RT_ASSERT_MAIN_THREAD();
+    rt_videowidget *w = videowidget_checked(obj);
+    if (w && w->root_widget)
+        rt_widget_set_position(w->root_widget, x, y);
+}
+
+void rt_videowidget_add_child(void *obj, void *child) {
+    RT_ASSERT_MAIN_THREAD();
+    rt_videowidget *w = videowidget_checked(obj);
+    if (w && w->root_widget)
+        rt_widget_add_child(w->root_widget, child);
 }
 
 #else

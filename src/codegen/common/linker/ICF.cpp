@@ -28,6 +28,7 @@
 #include <algorithm>
 #include <cstdint>
 #include <limits>
+#include <optional>
 #include <string>
 #include <unordered_map>
 #include <unordered_set>
@@ -208,8 +209,17 @@ bool candidatesIdentical(const std::vector<ObjFile> &objects,
     return true;
 }
 
-LinkArch archForObject(const ObjFile &obj) {
-    return (obj.machine == 183 || obj.machine == 0xAA64) ? LinkArch::AArch64 : LinkArch::X86_64;
+/// Map an ObjFile's e_machine / IMAGE_FILE_MACHINE_* value to LinkArch.
+/// Returns nullopt for machine codes we don't natively link — callers must
+/// treat that as "skip ICF for this object" rather than defaulting the
+/// classification to X86_64, which used to silently misroute relocations
+/// through the wrong type-number space.
+std::optional<LinkArch> archForObject(const ObjFile &obj) {
+    if (obj.machine == 62 || obj.machine == 0x8664) // EM_X86_64 / IMAGE_FILE_MACHINE_AMD64
+        return LinkArch::X86_64;
+    if (obj.machine == 183 || obj.machine == 0xAA64) // EM_AARCH64 / IMAGE_FILE_MACHINE_ARM64
+        return LinkArch::AArch64;
+    return std::nullopt;
 }
 
 bool isKnownBranchReloc(const ObjFile &obj, RelocAction action, uint32_t type) {
@@ -223,7 +233,10 @@ bool isKnownBranchReloc(const ObjFile &obj, RelocAction action, uint32_t type) {
 }
 
 bool isAddressTakingReloc(const ObjFile &obj, const ObjSection &sec, const ObjReloc &rel) {
-    const RelocAction action = classifyReloc(obj.format, archForObject(obj), rel.type);
+    const auto arch = archForObject(obj);
+    if (!arch)
+        return true; // Unknown machine — conservatively treat every reloc as address-taking.
+    const RelocAction action = classifyReloc(obj.format, *arch, rel.type);
     if (action == RelocAction::Abs64 || action == RelocAction::Abs32)
         return true;
     if (!sec.executable)
@@ -295,6 +308,8 @@ size_t foldIdenticalCode(std::vector<ObjFile> &allObjects,
     std::vector<Candidate> candidates;
     for (size_t oi = 0; oi < allObjects.size(); ++oi) {
         const auto &obj = allObjects[oi];
+        if (!archForObject(obj))
+            continue; // Unknown machine — don't risk wrong-arch reloc classification.
         if (obj.format == ObjFileFormat::COFF)
             continue; // COFF COMDATs may have associated .pdata/.xdata siblings.
         for (size_t si = 1; si < obj.sections.size(); ++si) {

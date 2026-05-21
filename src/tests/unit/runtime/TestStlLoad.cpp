@@ -10,8 +10,13 @@
 //
 //===----------------------------------------------------------------------===//
 
+#ifndef VIPER_ENABLE_GRAPHICS
+#define VIPER_ENABLE_GRAPHICS 1
+#endif
+
 #include "tests/TestHarness.hpp"
 
+#include <cmath>
 #include <cstdio>
 #include <cstdint>
 #include <cstdlib>
@@ -19,10 +24,11 @@
 #include <limits>
 
 extern "C" {
+#include "rt_canvas3d_internal.h"
 void *rt_mesh3d_from_stl(void *path);
 int64_t rt_mesh3d_get_vertex_count(void *obj);
 int64_t rt_mesh3d_get_triangle_count(void *obj);
-void *rt_const_cstr(const char *str);
+rt_string rt_const_cstr(const char *str);
 int64_t rt_obj_release_check0(void *obj);
 void rt_obj_free(void *obj);
 }
@@ -41,6 +47,47 @@ static const char *write_temp(const char *name, const void *data, size_t len) {
     fwrite(data, 1, len, f);
     fclose(f);
     return path;
+}
+
+static void put_f32_le(uint8_t *dst, float value) {
+    uint32_t bits;
+    memcpy(&bits, &value, sizeof(bits));
+    dst[0] = (uint8_t)(bits & 0xffu);
+    dst[1] = (uint8_t)((bits >> 8) & 0xffu);
+    dst[2] = (uint8_t)((bits >> 16) & 0xffu);
+    dst[3] = (uint8_t)((bits >> 24) & 0xffu);
+}
+
+static void put_binary_triangle(uint8_t *dst,
+                                const float normal[3],
+                                const float v1[3],
+                                const float v2[3],
+                                const float v3[3]) {
+    for (int i = 0; i < 3; i++)
+        put_f32_le(dst + i * 4, normal[i]);
+    for (int i = 0; i < 3; i++)
+        put_f32_le(dst + 12 + i * 4, v1[i]);
+    for (int i = 0; i < 3; i++)
+        put_f32_le(dst + 24 + i * 4, v2[i]);
+    for (int i = 0; i < 3; i++)
+        put_f32_le(dst + 36 + i * 4, v3[i]);
+}
+
+static double first_triangle_normal_dot(const rt_mesh3d *mesh, const float expected[3]) {
+    const uint32_t *idx = mesh->indices;
+    const float *a = mesh->vertices[idx[0]].pos;
+    const float *b = mesh->vertices[idx[1]].pos;
+    const float *c = mesh->vertices[idx[2]].pos;
+    double abx = (double)b[0] - (double)a[0];
+    double aby = (double)b[1] - (double)a[1];
+    double abz = (double)b[2] - (double)a[2];
+    double acx = (double)c[0] - (double)a[0];
+    double acy = (double)c[1] - (double)a[1];
+    double acz = (double)c[2] - (double)a[2];
+    double nx = aby * acz - abz * acy;
+    double ny = abz * acx - abx * acz;
+    double nz = abx * acy - aby * acx;
+    return nx * expected[0] + ny * expected[1] + nz * expected[2];
 }
 
 TEST(StlLoadTest, RejectNull) {
@@ -79,10 +126,7 @@ TEST(StlLoadTest, BinaryOneTriangle) {
     float v2[] = {1.0f, 0.0f, 0.0f};
     float v3[] = {0.0f, 0.0f, 1.0f};
 
-    memcpy(stl + 84, normal, 12);
-    memcpy(stl + 96, v1, 12);
-    memcpy(stl + 108, v2, 12);
-    memcpy(stl + 120, v3, 12);
+    put_binary_triangle(stl + 84, normal, v1, v2, v3);
     // Attribute bytes: stl[132..133] = 0 (already zero)
 
     const char *path = write_temp("one_tri.stl", stl, sizeof(stl));
@@ -92,6 +136,8 @@ TEST(StlLoadTest, BinaryOneTriangle) {
 
     EXPECT_EQ(rt_mesh3d_get_vertex_count(mesh), 3);
     EXPECT_EQ(rt_mesh3d_get_triangle_count(mesh), 1);
+    float expected[] = {0.0f, 1.0f, 0.0f};
+    EXPECT_GT(first_triangle_normal_dot((const rt_mesh3d *)mesh, expected), 0.0);
 
     free_mesh(mesh);
     remove(path);
@@ -115,8 +161,47 @@ TEST(StlLoadTest, AsciiOneTriangle) {
 
     EXPECT_EQ(rt_mesh3d_get_vertex_count(mesh), 3);
     EXPECT_EQ(rt_mesh3d_get_triangle_count(mesh), 1);
+    float expected[] = {0.0f, 1.0f, 0.0f};
+    EXPECT_GT(first_triangle_normal_dot((const rt_mesh3d *)mesh, expected), 0.0);
 
     free_mesh(mesh);
+    remove(path);
+}
+
+TEST(StlLoadTest, BinarySkipsDegenerateTriangles) {
+    uint8_t stl[184];
+    memset(stl, 0, sizeof(stl));
+    stl[80] = 2;
+
+    float normal[] = {0.0f, 1.0f, 0.0f};
+    float a[] = {0.0f, 0.0f, 0.0f};
+    float b[] = {1.0f, 0.0f, 0.0f};
+    float c[] = {0.0f, 0.0f, 1.0f};
+    put_binary_triangle(stl + 84, normal, a, a, a);
+    put_binary_triangle(stl + 134, normal, a, b, c);
+
+    const char *path = write_temp("degenerate_binary.stl", stl, sizeof(stl));
+    void *rts = rt_const_cstr(path);
+    void *mesh = rt_mesh3d_from_stl(rts);
+    ASSERT_TRUE(mesh != nullptr);
+    EXPECT_EQ(rt_mesh3d_get_vertex_count(mesh), 3);
+    EXPECT_EQ(rt_mesh3d_get_triangle_count(mesh), 1);
+
+    free_mesh(mesh);
+    remove(path);
+}
+
+TEST(StlLoadTest, RejectAsciiVertexOutsideFacet) {
+    const char *ascii_stl = "solid bad\n"
+                            "  vertex 0 0 0\n"
+                            "  vertex 1 0 0\n"
+                            "  vertex 0 0 1\n"
+                            "endsolid bad\n";
+
+    const char *path = write_temp("vertex_outside_facet.stl", ascii_stl, strlen(ascii_stl));
+    void *rts = rt_const_cstr(path);
+    void *mesh = rt_mesh3d_from_stl(rts);
+    EXPECT_EQ(mesh, nullptr);
     remove(path);
 }
 
@@ -183,10 +268,7 @@ TEST(StlLoadTest, RejectBinaryWithNonFiniteVertex) {
     float v2[] = {std::numeric_limits<float>::quiet_NaN(), 0.0f, 0.0f};
     float v3[] = {0.0f, 0.0f, 1.0f};
 
-    memcpy(stl + 84, normal, 12);
-    memcpy(stl + 96, v1, 12);
-    memcpy(stl + 108, v2, 12);
-    memcpy(stl + 120, v3, 12);
+    put_binary_triangle(stl + 84, normal, v1, v2, v3);
 
     const char *path = write_temp("nan_binary.stl", stl, sizeof(stl));
     void *rts = rt_const_cstr(path);

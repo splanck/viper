@@ -367,7 +367,7 @@ Lowerer::Value Lowerer::emitToString(Value val, TypeRef sourceType) {
         case TypeKindSem::Number:
             return emitCallRet(Type(Type::Kind::Str), kStringFromNum, {val});
         case TypeKindSem::Boolean:
-            return emitCallRet(Type(Type::Kind::Str), kFmtBool, {val});
+            return emitCallRet(Type(Type::Kind::Str), kTextFmtBool, {val});
         default:
             return emitCallRet(Type(Type::Kind::Str), kObjectToString, {val});
     }

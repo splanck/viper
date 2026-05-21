@@ -1042,6 +1042,7 @@ void vg_treeview_remove_node(vg_treeview_t *tree, vg_tree_node_t *node) {
     // Update selection if needed
     if (node_in_subtree(node, tree->selected)) {
         tree->selected = NULL;
+        tree->selection_revision++;
     }
     if (node_in_subtree(node, tree->prev_selected)) {
         tree->prev_selected = NULL;
@@ -1101,6 +1102,8 @@ void vg_treeview_clear(vg_treeview_t *tree) {
     tree->root->last_child = NULL;
     tree->root->child_count = 0;
     tree->root->has_children = false;
+    if (tree->selected)
+        tree->selection_revision++;
     tree->selected = NULL;
     tree->prev_selected = NULL;
     tree->hovered = NULL;
@@ -1201,6 +1204,7 @@ void vg_treeview_select(vg_treeview_t *tree, vg_tree_node_t *node) {
             tree->selected->selected = false;
         }
         tree->selected = node;
+        tree->selection_revision++;
         if (node) {
             node->selected = true;
             vg_treeview_scroll_to(tree, node);

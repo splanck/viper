@@ -165,7 +165,7 @@ module PixelsDemo;
 bind Viper.Terminal;
 bind Viper.Graphics.Pixels as Pixels;
 bind Viper.Graphics.Color as Color;
-bind Viper.Fmt as Fmt;
+bind Viper.Text.Fmt as Fmt;
 
 func start() {
     var p = Pixels.New(64, 64);
@@ -363,7 +363,7 @@ bind Viper.Terminal;
 bind Viper.Graphics.Sprite as Sprite;
 bind Viper.Graphics.Pixels as Pixels;
 bind Viper.Graphics.Color as Color;
-bind Viper.Fmt as Fmt;
+bind Viper.Text.Fmt as Fmt;
 
 func start() {
     // Create sprite from pixels
@@ -535,7 +535,7 @@ module SpriteSheetDemo;
 
 bind Viper.Graphics;
 bind Viper.Terminal;
-bind Viper.Fmt as Fmt;
+bind Viper.Text.Fmt as Fmt;
 
 func start() {
     var atlas = Pixels.New(128, 128);
@@ -669,7 +669,7 @@ module TilemapDemo;
 
 bind Viper.Terminal;
 bind Viper.Graphics.Tilemap as TM;
-bind Viper.Fmt as Fmt;
+bind Viper.Text.Fmt as Fmt;
 
 func start() {
     var map = TM.New(10, 10, 16, 16);

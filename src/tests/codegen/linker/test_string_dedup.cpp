@@ -132,6 +132,24 @@ int main() {
         CHECK(globalSyms.count("__viper_dedup_str_2") == 1);
     }
 
+    // --- Synthetic name assignment is deterministic by string contents ---
+    {
+        auto beta1 = makeRodataObj("beta1.o", "beta");
+        auto beta2 = makeRodataObj("beta2.o", "beta");
+        auto alpha1 = makeRodataObj("alpha1.o", "alpha");
+        auto alpha2 = makeRodataObj("alpha2.o", "alpha");
+
+        std::vector<ObjFile> objs = {beta1, beta2, alpha1, alpha2};
+        std::unordered_map<std::string, GlobalSymEntry> globalSyms;
+        size_t eliminated = deduplicateStrings(objs, globalSyms);
+
+        CHECK(eliminated == 2);
+        CHECK(objs[2].symbols[1].name == "__viper_dedup_str_0");
+        CHECK(objs[3].symbols[1].name == "__viper_dedup_str_0");
+        CHECK(objs[0].symbols[1].name == "__viper_dedup_str_1");
+        CHECK(objs[1].symbols[1].name == "__viper_dedup_str_1");
+    }
+
     // --- Same-section duplicate strings are compacted using original offsets ---
     {
         ObjFile obj;
@@ -211,6 +229,24 @@ int main() {
 
         // Symbols should retain their original distinct names.
         CHECK(objs[0].symbols[1].name != objs[1].symbols[1].name);
+    }
+
+    // --- Symbols inside a string body are not treated as string starts ---
+    {
+        auto obj1 = makeRodataObj("a.o", "hello");
+        auto obj2 = makeRodataObj("b.o", "hello");
+        obj1.symbols[1].offset = 1;
+        obj1.symbols[1].name = "L.interior.0";
+        obj2.symbols[1].offset = 1;
+        obj2.symbols[1].name = "L.interior.1";
+
+        std::vector<ObjFile> objs = {obj1, obj2};
+        std::unordered_map<std::string, GlobalSymEntry> globalSyms;
+        size_t eliminated = deduplicateStrings(objs, globalSyms);
+
+        CHECK(eliminated == 0);
+        CHECK(objs[0].symbols[1].name == "L.interior.0");
+        CHECK(objs[1].symbols[1].name == "L.interior.1");
     }
 
     // --- Single-occurrence string is not modified ---
@@ -366,6 +402,80 @@ int main() {
         // obj1's symbol is Global → skipped. Only obj2 is LOCAL.
         // Single LOCAL occurrence → not deduplicated.
         CHECK(eliminated == 0);
+    }
+
+    // --- Non-alloc debug strings are not treated as linkable cstrings ---
+    {
+        auto obj1 = makeRodataObj("a.o", "debug");
+        obj1.sections[1].name = ".debug_str";
+        obj1.sections[1].alloc = false;
+
+        auto obj2 = makeRodataObj("b.o", "debug");
+        obj2.sections[1].name = ".debug_str";
+        obj2.sections[1].alloc = false;
+
+        std::vector<ObjFile> objs = {obj1, obj2};
+        std::unordered_map<std::string, GlobalSymEntry> globalSyms;
+        size_t eliminated = deduplicateStrings(objs, globalSyms);
+
+        CHECK(eliminated == 0);
+        CHECK(objs[0].symbols[1].name != objs[1].symbols[1].name);
+        CHECK(globalSyms.empty());
+    }
+
+    // --- Local string symbols with mismatched sizes are not deduplicated ---
+    {
+        auto obj1 = makeRodataObj("a.o", "hello");
+        auto obj2 = makeRodataObj("b.o", "hello");
+        obj1.symbols[1].size = 4; // Does not include the full "hello\0" byte range.
+        obj2.symbols[1].size = 4;
+
+        std::vector<ObjFile> objs = {obj1, obj2};
+        std::unordered_map<std::string, GlobalSymEntry> globalSyms;
+        size_t eliminated = deduplicateStrings(objs, globalSyms);
+
+        CHECK(eliminated == 0);
+        CHECK(objs[0].symbols[1].name != objs[1].symbols[1].name);
+    }
+
+    // --- Sections with non-local symbols are aliased but not compacted ---
+    {
+        ObjFile obj;
+        obj.name = "mixed_symbols.o";
+        obj.format = ObjFileFormat::ELF;
+        obj.sections.push_back({});
+
+        ObjSection sec;
+        sec.name = ".rodata.str1.1";
+        sec.data = {'s', 'a', 'm', 'e', 0, 's', 'a', 'm', 'e', 0};
+        sec.alloc = true;
+        sec.isCStringSection = true;
+        obj.sections.push_back(sec);
+
+        obj.symbols.push_back({});
+        ObjSymbol first;
+        first.name = "L.str.0";
+        first.sectionIndex = 1;
+        first.offset = 0;
+        first.binding = ObjSymbol::Local;
+        obj.symbols.push_back(first);
+        ObjSymbol second = first;
+        second.name = "L.str.1";
+        second.offset = 5;
+        obj.symbols.push_back(second);
+        ObjSymbol global = first;
+        global.name = "exported_string_anchor";
+        global.binding = ObjSymbol::Global;
+        obj.symbols.push_back(global);
+
+        std::vector<ObjFile> objs = {obj};
+        std::unordered_map<std::string, GlobalSymEntry> globalSyms;
+        size_t eliminated = deduplicateStrings(objs, globalSyms);
+
+        CHECK(eliminated == 1);
+        CHECK(objs[0].sections[1].data.size() == 10);
+        CHECK(objs[0].symbols[2].sectionIndex == 0);
+        CHECK(objs[0].symbols[3].sectionIndex == 1);
     }
 
     // --- Executable section symbols are not touched ---

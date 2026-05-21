@@ -297,7 +297,7 @@ module SafeI64Demo;
 
 bind Viper.Terminal;
 bind Viper.Threads.SafeI64 as SafeI64;
-bind Viper.Fmt as Fmt;
+bind Viper.Text.Fmt as Fmt;
 
 func start() {
     var counter = SafeI64.New(0);
@@ -386,7 +386,7 @@ module GateDemo;
 
 bind Viper.Terminal;
 bind Viper.Threads.Gate as Gate;
-bind Viper.Fmt as Fmt;
+bind Viper.Text.Fmt as Fmt;
 
 func start() {
     var gate = Gate.New(3);
@@ -467,7 +467,7 @@ module BarrierDemo;
 
 bind Viper.Terminal;
 bind Viper.Threads.Barrier as Barrier;
-bind Viper.Fmt as Fmt;
+bind Viper.Text.Fmt as Fmt;
 
 func start() {
     var b = Barrier.New(3);
@@ -547,7 +547,7 @@ module RwLockDemo;
 
 bind Viper.Terminal;
 bind Viper.Threads.RwLock as RwLock;
-bind Viper.Fmt as Fmt;
+bind Viper.Text.Fmt as Fmt;
 
 func start() {
     var lock = RwLock.New();
@@ -1393,7 +1393,7 @@ module ConcMapDemo;
 bind Viper.Terminal;
 bind Viper.Threads.ConcurrentMap as CMap;
 bind Viper.Core.Box as Box;
-bind Viper.Fmt as Fmt;
+bind Viper.Text.Fmt as Fmt;
 
 func start() {
     var m = CMap.New();
@@ -1500,7 +1500,7 @@ module ConcQueueDemo;
 bind Viper.Terminal;
 bind Viper.Threads.ConcurrentQueue as CQ;
 bind Viper.Core.Box as Box;
-bind Viper.Fmt as Fmt;
+bind Viper.Text.Fmt as Fmt;
 
 func start() {
     var q = CQ.New();
@@ -1618,7 +1618,7 @@ module ChannelDemo;
 bind Viper.Terminal;
 bind Viper.Threads.Channel as Channel;
 bind Viper.Core.Box as Box;
-bind Viper.Fmt as Fmt;
+bind Viper.Text.Fmt as Fmt;
 
 func start() {
     var ch = Channel.New(8);

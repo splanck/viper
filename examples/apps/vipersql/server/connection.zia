@@ -78,7 +78,7 @@ module connection;
 bind Viper.Terminal as Terminal;
 bind Viper.String as String;
 bind Viper.Network as Network;
-bind Viper.Fmt as Fmt;
+bind Viper.Text.Fmt as Fmt;
 bind Viper.Threads as Threads;
 bind Viper.Collections;
 

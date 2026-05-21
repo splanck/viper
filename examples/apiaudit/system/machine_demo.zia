@@ -1,5 +1,5 @@
 // =============================================================================
-// API Audit: Viper.Machine - System Information
+// API Audit: Viper.System.Machine - System Information
 // =============================================================================
 // Tests: get_Cores, get_Endian, get_Home, get_Host, get_MemFree, get_MemTotal,
 //        get_OS, get_OSVer, get_Temp, get_User
@@ -7,9 +7,9 @@
 
 module MachineDemo;
 bind Viper.Terminal;
-bind Viper.Machine as Machine;
+bind Viper.System.Machine as Machine;
 func start() {
-    Say("=== API Audit: Viper.Machine ===");
+    Say("=== API Audit: Viper.System.Machine ===");
 
     // --- get_OS ---
     Say("--- get_OS ---");

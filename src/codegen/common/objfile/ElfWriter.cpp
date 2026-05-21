@@ -151,24 +151,16 @@ static uint32_t elfRelocType(RelocKind kind, ObjArch arch) {
     return 0;
 }
 
+/// Adapter to the shared @ref viper::codegen::objfile::physicalSymbolValue helper
+/// that pins the writerName to "ElfWriter:" so existing call sites compile
+/// unchanged.
 static bool physicalSymbolValue(const CodeSection &section,
                                 const Symbol &sym,
                                 const char *sectionName,
                                 std::ostream &err,
                                 uint64_t &out) {
-    if (sym.offset < section.logicalOffsetBias()) {
-        err << "ElfWriter: symbol '" << sym.name << "' in " << sectionName
-            << " is before the section logical offset bias\n";
-        return false;
-    }
-    const size_t physicalOffset = sym.offset - section.logicalOffsetBias();
-    if (physicalOffset > section.bytes().size()) {
-        err << "ElfWriter: symbol '" << sym.name << "' in " << sectionName
-            << " is outside section contents\n";
-        return false;
-    }
-    out = static_cast<uint64_t>(physicalOffset);
-    return true;
+    return viper::codegen::objfile::physicalSymbolValue(
+        section, sym, sectionName, "ElfWriter", err, out);
 }
 
 static bool reserveFileBytes(uint64_t offShtab,
@@ -506,14 +498,14 @@ bool ElfWriter::write(const std::string &path,
                         << rel.targetOffset << " beyond section contents\n";
                     return false;
                 }
-                if (rel.targetOffset > static_cast<size_t>(std::numeric_limits<int64_t>::max()) ||
-                    rel.addend > std::numeric_limits<int64_t>::max() -
-                                     static_cast<int64_t>(rel.targetOffset)) {
-                    err << "ElfWriter: relocation in " << sectionName
-                        << " has a section-offset addend outside int64 range\n";
+                if (!checkedSectionOffsetAddend(rel.addend,
+                                                rel.targetOffset,
+                                                "ElfWriter",
+                                                sectionName,
+                                                rel.offset,
+                                                err,
+                                                effectiveAddend))
                     return false;
-                }
-                effectiveAddend = rel.addend + static_cast<int64_t>(rel.targetOffset);
                 elfSymIdx = (rel.targetSection == SymbolSection::Text) ? 1u : 2u;
                 return true;
             }
@@ -766,12 +758,8 @@ bool ElfWriter::write(const std::string &path,
         err << "ElfWriter: cannot open " << path << " for writing\n";
         return false;
     }
-    ofs.write(reinterpret_cast<const char *>(file.data()),
-              static_cast<std::streamsize>(file.size()));
-    if (!ofs) {
-        err << "ElfWriter: write failed for " << path << "\n";
+    if (!checkedWriteAll(ofs, file, "ElfWriter", path, err))
         return false;
-    }
     return true;
     } catch (const std::exception &ex) {
         err << "ElfWriter: " << ex.what() << "\n";
@@ -786,6 +774,26 @@ bool ElfWriter::write(const std::string &path,
 // stripping at link time.  For 0 or 1 text sections, delegates to the
 // single-section write() to avoid unnecessary complexity.
 // =============================================================================
+
+namespace {
+/// @brief Derive a section base-name for each text section: the first global
+///        Text-bound symbol, or a synthetic `func_<i>` fallback.
+std::vector<std::string> collectElfTextFuncNames(const std::vector<CodeSection> &textSections) {
+    const size_t n = textSections.size();
+    std::vector<std::string> funcNames(n);
+    for (size_t i = 0; i < n; ++i) {
+        funcNames[i] = "func_" + std::to_string(i);
+        for (uint32_t j = 1; j < textSections[i].symbols().count(); ++j) {
+            const auto &s = textSections[i].symbols().at(j);
+            if (s.binding == SymbolBinding::Global && s.section == SymbolSection::Text) {
+                funcNames[i] = s.name;
+                break;
+            }
+        }
+    }
+    return funcNames;
+}
+} // namespace
 
 bool ElfWriter::write(const std::string &path,
                       const std::vector<CodeSection> &textSections,
@@ -810,17 +818,7 @@ bool ElfWriter::write(const std::string &path,
     const size_t sectionCount = 2 * N + baseSectionCount;
 
     // --- 1. Extract function names from each text section ---
-    std::vector<std::string> funcNames(N);
-    for (size_t i = 0; i < N; ++i) {
-        funcNames[i] = "func_" + std::to_string(i);
-        for (uint32_t j = 1; j < textSections[i].symbols().count(); ++j) {
-            const auto &s = textSections[i].symbols().at(j);
-            if (s.binding == SymbolBinding::Global && s.section == SymbolSection::Text) {
-                funcNames[i] = s.name;
-                break;
-            }
-        }
-    }
+    const std::vector<std::string> funcNames = collectElfTextFuncNames(textSections);
 
     // --- 2. Section index layout ---
     // [0] null
@@ -1058,11 +1056,17 @@ bool ElfWriter::write(const std::string &path,
                     size_t textIdx = sourceTextIndex;
                     if (rel.targetSectionIdentityValid) {
                         textIdx = SIZE_MAX;
+                        size_t matches = 0;
                         for (size_t ti = 0; ti < N; ++ti) {
-                            if (textSections[ti].sectionIdentity() == rel.targetSectionIdentity) {
+                            if (textSections[ti].matchesSectionIdentity(rel.targetSectionIdentity)) {
                                 textIdx = ti;
-                                break;
+                                ++matches;
                             }
+                        }
+                        if (matches > 1) {
+                            err << "ElfWriter: relocation in " << sectionName << " at offset "
+                                << rel.offset << " references duplicate .text section identity\n";
+                            return false;
                         }
                     } else if (textIdx == SIZE_MAX || textIdx >= N ||
                                rel.targetOffset > textSections[textIdx].bytes().size()) {
@@ -1146,13 +1150,14 @@ bool ElfWriter::write(const std::string &path,
                 return false;
             int64_t effectiveAddend = rel.addend;
             if (rel.targetOffsetValid) {
-                if (rel.targetOffset > static_cast<size_t>(std::numeric_limits<int64_t>::max()) ||
-                    rel.addend > std::numeric_limits<int64_t>::max() -
-                                     static_cast<int64_t>(rel.targetOffset)) {
-                    err << "ElfWriter: relocation in .text has a section-offset addend outside int64 range\n";
+                if (!checkedSectionOffsetAddend(rel.addend,
+                                                rel.targetOffset,
+                                                "ElfWriter",
+                                                ".text",
+                                                rel.offset,
+                                                err,
+                                                effectiveAddend))
                     return false;
-                }
-                effectiveAddend += static_cast<int64_t>(rel.targetOffset);
             }
             const size_t physicalRelOffset = rel.offset - textSections[ti].logicalOffsetBias();
             uint32_t relocType = elfRelocType(rel.kind, arch_);
@@ -1172,13 +1177,14 @@ bool ElfWriter::write(const std::string &path,
             return false;
         int64_t effectiveAddend = rel.addend;
         if (rel.targetOffsetValid) {
-            if (rel.targetOffset > static_cast<size_t>(std::numeric_limits<int64_t>::max()) ||
-                rel.addend > std::numeric_limits<int64_t>::max() -
-                                 static_cast<int64_t>(rel.targetOffset)) {
-                err << "ElfWriter: relocation in .rodata has a section-offset addend outside int64 range\n";
+            if (!checkedSectionOffsetAddend(rel.addend,
+                                            rel.targetOffset,
+                                            "ElfWriter",
+                                            ".rodata",
+                                            rel.offset,
+                                            err,
+                                            effectiveAddend))
                 return false;
-            }
-            effectiveAddend += static_cast<int64_t>(rel.targetOffset);
         }
         const size_t physicalRelOffset = rel.offset - rodata.logicalOffsetBias();
         uint32_t relocType = elfRelocType(rel.kind, arch_);
@@ -1379,12 +1385,8 @@ bool ElfWriter::write(const std::string &path,
         err << "ElfWriter: cannot open " << path << " for writing\n";
         return false;
     }
-    ofs.write(reinterpret_cast<const char *>(file.data()),
-              static_cast<std::streamsize>(file.size()));
-    if (!ofs) {
-        err << "ElfWriter: write failed for " << path << "\n";
+    if (!checkedWriteAll(ofs, file, "ElfWriter", path, err))
         return false;
-    }
     return true;
     } catch (const std::exception &ex) {
         err << "ElfWriter: " << ex.what() << "\n";

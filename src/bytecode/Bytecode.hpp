@@ -76,168 +76,11 @@ constexpr uint32_t kMaxStackSize = 1024;
 ///          - 0xD8-0xDF  Runtime fast-path operations
 ///          - 0xE0-0xEF  String operations
 enum class BCOpcode : uint8_t {
-    // Stack Operations (0x00-0x0F)
-    NOP = 0x00,  ///< No operation.
-    DUP = 0x01,  ///< Duplicate top-of-stack (TOS).
-    DUP2 = 0x02, ///< Duplicate the top two stack entries.
-    POP = 0x03,  ///< Discard TOS.
-    POP2 = 0x04, ///< Discard the top two stack entries.
-    SWAP = 0x05, ///< Swap the top two stack entries.
-    ROT3 = 0x06, ///< Rotate the top three stack entries (a b c -> c a b).
-
-    // Local Variable Operations (0x10-0x1F)
-    LOAD_LOCAL = 0x10,    ///< Push locals[arg0] onto the operand stack.
-    STORE_LOCAL = 0x11,   ///< Pop TOS and store to locals[arg0].
-    LOAD_LOCAL_W = 0x12,  ///< Wide local load using a 16-bit index.
-    STORE_LOCAL_W = 0x13, ///< Wide local store using a 16-bit index.
-    INC_LOCAL = 0x14,     ///< Increment locals[arg0] in-place (locals[arg0]++).
-    DEC_LOCAL = 0x15,     ///< Decrement locals[arg0] in-place (locals[arg0]--).
-
-    // Constant Loading (0x20-0x2F)
-    LOAD_I8 = 0x20,      ///< Push a signed 8-bit immediate value.
-    LOAD_I16 = 0x21,     ///< Push a signed 16-bit immediate value.
-    LOAD_I32 = 0x22,     ///< Push a signed 32-bit value (extended format).
-    LOAD_I64 = 0x23,     ///< Push an i64 from the constant pool at index [arg0:arg1].
-    LOAD_F64 = 0x24,     ///< Push an f64 from the constant pool at index [arg0:arg1].
-    LOAD_STR = 0x25,     ///< Push a string from the constant pool at index [arg0:arg1].
-    LOAD_NULL = 0x26,    ///< Push a null pointer value.
-    LOAD_ZERO = 0x27,    ///< Push i64 zero (fast-path constant).
-    LOAD_ONE = 0x28,     ///< Push i64 one (fast-path constant).
-    LOAD_GLOBAL = 0x29,  ///< Push the value of global[arg0:arg1].
-    STORE_GLOBAL = 0x2A, ///< Pop TOS and store to global[arg0:arg1].
-    LOAD_GLOBAL_ADDR = 0x2B, ///< Push a pointer to global[arg0:arg1] storage.
-
-    // Integer Arithmetic (0x30-0x4F)
-    ADD_I64 = 0x30,      ///< Integer addition: a + b.
-    SUB_I64 = 0x31,      ///< Integer subtraction: a - b.
-    MUL_I64 = 0x32,      ///< Integer multiplication: a * b.
-    SDIV_I64 = 0x33,     ///< Signed integer division: a / b.
-    UDIV_I64 = 0x34,     ///< Unsigned integer division: a / b.
-    SREM_I64 = 0x35,     ///< Signed integer remainder: a % b.
-    UREM_I64 = 0x36,     ///< Unsigned integer remainder: a % b.
-    NEG_I64 = 0x37,      ///< Integer negation: -a.
-    ADD_I64_OVF = 0x38,  ///< Integer addition with overflow trap.
-    SUB_I64_OVF = 0x39,  ///< Integer subtraction with overflow trap.
-    MUL_I64_OVF = 0x3A,  ///< Integer multiplication with overflow trap.
-    SDIV_I64_CHK = 0x3B, ///< Signed division with zero-divisor trap.
-    UDIV_I64_CHK = 0x3C, ///< Unsigned division with zero-divisor trap.
-    SREM_I64_CHK = 0x3D, ///< Signed remainder with zero-divisor trap.
-    UREM_I64_CHK = 0x3E, ///< Unsigned remainder with zero-divisor trap.
-    IDX_CHK = 0x3F,      ///< Bounds check: traps unless lo <= idx < hi.
-
-    // Float Arithmetic (0x50-0x5F)
-    ADD_F64 = 0x50, ///< Float addition: a + b.
-    SUB_F64 = 0x51, ///< Float subtraction: a - b.
-    MUL_F64 = 0x52, ///< Float multiplication: a * b.
-    DIV_F64 = 0x53, ///< Float division: a / b.
-    NEG_F64 = 0x54, ///< Float negation: -a.
-
-    // Bitwise Operations (0x60-0x6F)
-    AND_I64 = 0x60,  ///< Bitwise AND: a & b.
-    OR_I64 = 0x61,   ///< Bitwise OR: a | b.
-    XOR_I64 = 0x62,  ///< Bitwise XOR: a ^ b.
-    NOT_I64 = 0x63,  ///< Bitwise NOT: ~a.
-    SHL_I64 = 0x64,  ///< Left shift: a << b.
-    LSHR_I64 = 0x65, ///< Logical right shift: a >>> b.
-    ASHR_I64 = 0x66, ///< Arithmetic right shift: a >> b.
-
-    // Integer Comparisons (0x70-0x7F)
-    CMP_EQ_I64 = 0x70,  ///< Integer equality: a == b.
-    CMP_NE_I64 = 0x71,  ///< Integer inequality: a != b.
-    CMP_SLT_I64 = 0x72, ///< Signed less-than: a < b.
-    CMP_SLE_I64 = 0x73, ///< Signed less-or-equal: a <= b.
-    CMP_SGT_I64 = 0x74, ///< Signed greater-than: a > b.
-    CMP_SGE_I64 = 0x75, ///< Signed greater-or-equal: a >= b.
-    CMP_ULT_I64 = 0x76, ///< Unsigned less-than: a < b.
-    CMP_ULE_I64 = 0x77, ///< Unsigned less-or-equal: a <= b.
-    CMP_UGT_I64 = 0x78, ///< Unsigned greater-than: a > b.
-    CMP_UGE_I64 = 0x79, ///< Unsigned greater-or-equal: a >= b.
-
-    // Float Comparisons (0x80-0x8F)
-    CMP_EQ_F64 = 0x80, ///< Float equality: a == b.
-    CMP_NE_F64 = 0x81, ///< Float inequality: a != b.
-    CMP_LT_F64 = 0x82, ///< Float less-than: a < b.
-    CMP_LE_F64 = 0x83, ///< Float less-or-equal: a <= b.
-    CMP_GT_F64 = 0x84, ///< Float greater-than: a > b.
-    CMP_GE_F64 = 0x85, ///< Float greater-or-equal: a >= b.
-
-    // Type Conversions (0x90-0x9F)
-    I64_TO_F64 = 0x90,     ///< Convert signed i64 to f64.
-    U64_TO_F64 = 0x91,     ///< Convert unsigned i64 to f64.
-    F64_TO_I64 = 0x92,     ///< Convert f64 to signed i64 (truncation).
-    F64_TO_I64_CHK = 0x93, ///< Convert f64 to i64 with range-check trap.
-    F64_TO_U64_CHK = 0x94, ///< Convert f64 to u64 with range-check trap.
-    I64_NARROW_CHK = 0x95, ///< Signed narrow with overflow-check trap.
-    U64_NARROW_CHK = 0x96, ///< Unsigned narrow with overflow-check trap.
-    BOOL_TO_I64 = 0x97,    ///< Convert boolean (0/1) to i64.
-    I64_TO_BOOL = 0x98,    ///< Convert i64 to boolean (nonzero -> 1, zero -> 0).
-
-    // Memory Operations (0xA0-0xAF)
-    ALLOCA = 0xA0,        ///< Allocate n bytes on the alloca stack.
-    GEP = 0xA1,           ///< Get element pointer: ptr + offset.
-    LOAD_I8_MEM = 0xA2,   ///< Load 8-bit signed value from memory.
-    LOAD_I16_MEM = 0xA3,  ///< Load 16-bit signed value from memory.
-    LOAD_I32_MEM = 0xA4,  ///< Load 32-bit signed value from memory.
-    LOAD_I64_MEM = 0xA5,  ///< Load 64-bit value from memory.
-    LOAD_F64_MEM = 0xA6,  ///< Load f64 value from memory.
-    LOAD_PTR_MEM = 0xA7,  ///< Load pointer value from memory.
-    LOAD_STR_MEM = 0xA8,  ///< Load string handle from memory.
-    STORE_I8_MEM = 0xA9,  ///< Store 8-bit value to memory.
-    STORE_I16_MEM = 0xAA, ///< Store 16-bit value to memory.
-    STORE_I32_MEM = 0xAB, ///< Store 32-bit value to memory.
-    STORE_I64_MEM = 0xAC, ///< Store 64-bit value to memory.
-    STORE_F64_MEM = 0xAD, ///< Store f64 value to memory.
-    STORE_PTR_MEM = 0xAE, ///< Store pointer value to memory.
-    STORE_STR_MEM = 0xAF, ///< Store string handle to memory.
-
-    // Control Flow (0xB0-0xBF)
-    JUMP = 0xB0,          ///< Unconditional jump (16-bit signed offset).
-    JUMP_IF_TRUE = 0xB1,  ///< Conditional jump if TOS != 0 (16-bit offset).
-    JUMP_IF_FALSE = 0xB2, ///< Conditional jump if TOS == 0 (16-bit offset).
-    JUMP_LONG = 0xB3,     ///< Extended unconditional jump (24-bit offset).
-    SWITCH = 0xB4,        ///< Table-driven switch dispatch.
-    CALL = 0xB5,          ///< Call bytecode function by index [arg0:arg1].
-    CALL_NATIVE = 0xB6,   ///< Call a native/runtime function [argCount:8][nativeIdx:16].
-    CALL_INDIRECT = 0xB7, ///< Indirect call through a function pointer.
-    RETURN = 0xB8,        ///< Return TOS from the current function.
-    RETURN_VOID = 0xB9,   ///< Return void from the current function.
-    TAIL_CALL = 0xBA,     ///< Tail-call optimization: reuse current frame.
-
-    // Exception Handling (0xC0-0xCF)
-    EH_PUSH = 0xC0,       ///< Register an exception handler at a given offset.
-    EH_POP = 0xC1,        ///< Unregister the most recently pushed handler.
-    EH_ENTRY = 0xC2,      ///< Marker for handler entry point.
-    TRAP = 0xC3,          ///< Raise a trap with a specified kind.
-    TRAP_FROM_ERR = 0xC4, ///< Raise a trap from an error value.
-    MAKE_ERROR = 0xC5,    ///< Create an error value on the stack.
-    ERR_GET_KIND = 0xC6,  ///< Extract the trap kind from an error value.
-    ERR_GET_CODE = 0xC7,  ///< Extract the error code from an error value.
-    ERR_GET_IP = 0xC8,    ///< Extract the faulting instruction pointer.
-    ERR_GET_LINE = 0xC9,  ///< Extract the source line number from an error.
-    RESUME_SAME = 0xCA,   ///< Resume execution at the faulting instruction.
-    RESUME_NEXT = 0xCB,   ///< Resume execution at the instruction after the fault.
-    RESUME_LABEL = 0xCC,  ///< Resume execution at a labelled target.
-    TRAP_KIND = 0xCD,     ///< Push the current trap kind (no operands).
-
-    // Debug Operations (0xD0-0xDF)
-    LINE = 0xD0,       ///< Source line marker for debug info.
-    BREAKPOINT = 0xD1, ///< Debug breakpoint trap.
-    WATCH_VAR = 0xD2,  ///< Variable watch trigger for the debugger.
-
-    // Runtime Fast-Path Operations (0xD8-0xDF)
-    ARR_I32_GET_FAST = 0xD8, ///< Direct unchecked i32 array load: arr, idx -> value.
-    ARR_I32_SET_FAST = 0xD9, ///< Direct unchecked i32 array store: arr, idx, value -> void.
-    ARR_I64_GET_FAST = 0xDA, ///< Direct unchecked i64 array load: arr, idx -> value.
-    ARR_I64_SET_FAST = 0xDB, ///< Direct unchecked i64 array store: arr, idx, value -> void.
-    ARR_F64_GET_FAST = 0xDC, ///< Direct unchecked f64 array load: arr, idx -> value.
-    ARR_F64_SET_FAST = 0xDD, ///< Direct unchecked f64 array store: arr, idx, value -> void.
-
-    // String Operations (0xE0-0xEF)
-    STR_RETAIN = 0xE0,  ///< Increment the reference count of a string handle.
-    STR_RELEASE = 0xE1, ///< Decrement the reference count of a string handle.
-
-    // Sentinel value
-    OPCODE_COUNT = 0xFF ///< Sentinel / total opcode count marker.
+// The opcode set (names + values) is defined once in bytecode/Bytecode.def and
+// expanded here and in opcodeName(); per-opcode descriptions live in that file.
+#define BC_OPCODE(name, value) name = value,
+#include "bytecode/Bytecode.def"
+#undef BC_OPCODE
 };
 
 /// @brief Get the human-readable name for an opcode.
@@ -396,6 +239,22 @@ inline constexpr uint32_t encodeOpI24(BCOpcode op, int32_t arg0) {
 /// @return The BCOpcode stored in bits 0-7.
 inline constexpr BCOpcode decodeOpcode(uint32_t instr) {
     return static_cast<BCOpcode>(instr & 0xFF);
+}
+
+/// @brief Whether @p byte is a defined bytecode opcode.
+/// @details Generated from bytecode/Bytecode.def so it can never drift from the
+///          BCOpcode enum. Lets dispatchers validate a raw instruction byte and
+///          trap unknown opcodes *before* a (default-less, -Wswitch-exhaustive)
+///          dispatch switch — keeping invalid-byte safety without a `default:`.
+inline constexpr bool isKnownOpcode(uint8_t byte) {
+    switch (byte) {
+#define BC_OPCODE(name, value) case (value):
+#include "bytecode/Bytecode.def"
+#undef BC_OPCODE
+        return true;
+    default:
+        return false;
+    }
 }
 
 /// @brief Extract the first unsigned 8-bit argument (bits 8-15).

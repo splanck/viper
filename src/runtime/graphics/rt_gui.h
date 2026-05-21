@@ -905,7 +905,7 @@ void rt_image_set_opacity(void *image, double opacity);
 /// @param image Image widget handle.
 /// @param path File path (runtime string).
 /// @return 1 on success, 0 on failure.
-int64_t rt_image_load_file(void *image, void *path);
+int64_t rt_image_load_file(void *image, rt_string path);
 
 //=========================================================================
 // Theme Functions
@@ -2119,8 +2119,19 @@ rt_string rt_filedialog_open(rt_string title, rt_string default_path, rt_string 
 /// @param title Dialog title.
 /// @param default_path Default directory path.
 /// @param filter File filter.
-/// @return Semicolon-separated list of paths, or empty string if cancelled.
+/// @return Escaped semicolon-separated list of paths, or empty string if cancelled.
 rt_string rt_filedialog_open_multiple(rt_string title, rt_string default_path, rt_string filter);
+
+/// @brief Count entries in the escaped list returned by rt_filedialog_open_multiple.
+/// @param escaped Escaped path list.
+/// @return Number of paths in the list.
+int64_t rt_filedialog_path_list_count(rt_string escaped);
+
+/// @brief Decode one entry from the escaped list returned by rt_filedialog_open_multiple.
+/// @param escaped Escaped path list.
+/// @param index Zero-based path index.
+/// @return Decoded path, or empty string when out of range.
+rt_string rt_filedialog_path_list_get(rt_string escaped, int64_t index);
 
 /// @brief Show a file save dialog (quick version).
 /// @param title Dialog title.
@@ -2795,6 +2806,13 @@ rt_string rt_zia_complete(rt_string source, int64_t line, int64_t col);
 /// @brief Run Zia code completion with a source path for relative bind resolution.
 rt_string rt_zia_complete_for_file(rt_string source, rt_string file_path, int64_t line, int64_t col);
 
+/// @brief Return call signature help for the invocation active at the source position.
+rt_string rt_zia_signature_help(rt_string source, int64_t line, int64_t col);
+
+/// @brief Return call signature help with a source path for relative bind resolution.
+rt_string rt_zia_signature_help_for_file(
+    rt_string source, rt_string file_path, int64_t line, int64_t col);
+
 /// @brief Run semantic analysis and return serialized diagnostics for editor tooling.
 rt_string rt_zia_check(rt_string source);
 
@@ -2822,6 +2840,9 @@ void rt_zia_completion_clear_cache(void);
 
 /// @brief Create a floating overlay panel attached to @p root.
 void *rt_floatingpanel_new(void *root);
+
+/// @brief Destroy a floating panel and its overlay children.
+void rt_floatingpanel_destroy(void *panel);
 
 /// @brief Set absolute screen position.
 void rt_floatingpanel_set_position(void *panel, double x, double y);

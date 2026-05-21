@@ -261,25 +261,25 @@ static void controller_fire_entry_events(rt_anim_controller3d *controller, int32
     }
 }
 
-/// @brief Fire any state events whose timestamp falls in the (prev_time, curr_time] window.
+/// @brief Fire state events crossed by the last playback step.
 /// @details Three cases:
 ///          - **Zero-duration animation** (no real timeline): any event with
 ///            `time_seconds <= curr_time` fires. Treats the animation as a
 ///            single-frame impulse.
-///          - **Non-looping**: standard half-open window — events fire when
-///            `prev_time < t <= curr_time`.
-///          - **Looping**: when `curr_time < prev_time` the playback wrapped
-///            around the loop boundary, so the window is the union of
-///            `(prev_time, duration]` and `[0, curr_time]`. Events are
-///            still fired at most once per crossing.
-///          Half-open semantics on the lower bound prevent an event at
-///          exactly `prev_time` from firing twice on consecutive ticks.
+///          - **Non-looping**: half-open forward/reverse windows fire only
+///            events crossed by the clamped step.
+///          - **Looping**: forward and reverse wrap split the window at the
+///            loop boundary. A step that spans at least one full duration
+///            fires each registered event once.
+///          Lower-bound exclusivity prevents an event exactly at `prev_time`
+///          from firing twice on consecutive ticks.
 static void controller_process_events(rt_anim_controller3d *controller,
                                       int32_t state_index,
                                       double prev_time,
                                       double curr_time,
                                       double duration,
-                                      int8_t looping) {
+                                      int8_t looping,
+                                      double elapsed_time) {
     if (!controller || state_index < 0 || state_index >= controller->state_count)
         return;
     if (duration <= 0.0) {
@@ -298,8 +298,26 @@ static void controller_process_events(rt_anim_controller3d *controller,
             continue;
         t = (double)event->time_seconds;
         if (!looping) {
-            if (t > prev_time && t <= curr_time)
+            if (elapsed_time >= 0.0) {
+                if (t > prev_time && t <= curr_time)
+                    controller_enqueue_event(controller, event->name);
+            } else if (t < prev_time && t >= curr_time) {
                 controller_enqueue_event(controller, event->name);
+            }
+            continue;
+        }
+        if (isfinite(elapsed_time) && fabs(elapsed_time) >= duration) {
+            controller_enqueue_event(controller, event->name);
+            continue;
+        }
+        if (elapsed_time < 0.0) {
+            if (curr_time <= prev_time) {
+                if (t < prev_time && t >= curr_time)
+                    controller_enqueue_event(controller, event->name);
+            } else {
+                if (t < prev_time || t >= curr_time)
+                    controller_enqueue_event(controller, event->name);
+            }
             continue;
         }
         if (curr_time >= prev_time) {
@@ -434,6 +452,105 @@ static void controller_identity_palette(rt_anim_controller3d *controller) {
     }
 }
 
+static void controller_quat_from_matrix_rows(double m00,
+                                             double m01,
+                                             double m02,
+                                             double m10,
+                                             double m11,
+                                             double m12,
+                                             double m20,
+                                             double m21,
+                                             double m22,
+                                             double *out);
+
+static void controller_quat_slerp_float(const float *a, const float *b, float t, float *out) {
+    float dot = a[0] * b[0] + a[1] * b[1] + a[2] * b[2] + a[3] * b[3];
+    float nb[4] = {b[0], b[1], b[2], b[3]};
+    if (dot < 0.0f) {
+        dot = -dot;
+        nb[0] = -nb[0];
+        nb[1] = -nb[1];
+        nb[2] = -nb[2];
+        nb[3] = -nb[3];
+    }
+    if (dot > 0.9995f) {
+        for (int32_t i = 0; i < 4; i++)
+            out[i] = a[i] + t * (nb[i] - a[i]);
+    } else {
+        if (dot > 1.0f)
+            dot = 1.0f;
+        float theta = acosf(dot);
+        float sin_theta = sinf(theta);
+        float wa = sinf((1.0f - t) * theta) / sin_theta;
+        float wb = sinf(t * theta) / sin_theta;
+        for (int32_t i = 0; i < 4; i++)
+            out[i] = wa * a[i] + wb * nb[i];
+    }
+    float len = sqrtf(out[0] * out[0] + out[1] * out[1] + out[2] * out[2] + out[3] * out[3]);
+    if (!isfinite(len) || len <= 1e-8f) {
+        out[0] = out[1] = out[2] = 0.0f;
+        out[3] = 1.0f;
+        return;
+    }
+    for (int32_t i = 0; i < 4; i++)
+        out[i] /= len;
+}
+
+static void controller_build_trs_float(const float *pos,
+                                       const float *quat,
+                                       const float *scl,
+                                       float *out) {
+    float x = quat[0], y = quat[1], z = quat[2], w = quat[3];
+    float x2 = x + x, y2 = y + y, z2 = z + z;
+    float xx = x * x2, xy = x * y2, xz = x * z2;
+    float yy = y * y2, yz = y * z2, zz = z * z2;
+    float wx = w * x2, wy = w * y2, wz = w * z2;
+    out[0] = (1.0f - (yy + zz)) * scl[0];
+    out[1] = (xy - wz) * scl[1];
+    out[2] = (xz + wy) * scl[2];
+    out[3] = pos[0];
+    out[4] = (xy + wz) * scl[0];
+    out[5] = (1.0f - (xx + zz)) * scl[1];
+    out[6] = (yz - wx) * scl[2];
+    out[7] = pos[1];
+    out[8] = (xz - wy) * scl[0];
+    out[9] = (yz + wx) * scl[1];
+    out[10] = (1.0f - (xx + yy)) * scl[2];
+    out[11] = pos[2];
+    out[12] = out[13] = out[14] = 0.0f;
+    out[15] = 1.0f;
+}
+
+static void controller_decompose_trs_float(const float *m,
+                                           float *out_pos,
+                                           float *out_rot,
+                                           float *out_scl) {
+    double rot[4];
+    float sx = sqrtf(m[0] * m[0] + m[4] * m[4] + m[8] * m[8]);
+    float sy = sqrtf(m[1] * m[1] + m[5] * m[5] + m[9] * m[9]);
+    float sz = sqrtf(m[2] * m[2] + m[6] * m[6] + m[10] * m[10]);
+    out_pos[0] = isfinite(m[3]) ? m[3] : 0.0f;
+    out_pos[1] = isfinite(m[7]) ? m[7] : 0.0f;
+    out_pos[2] = isfinite(m[11]) ? m[11] : 0.0f;
+    out_scl[0] = isfinite(sx) && sx > 1e-6f ? sx : 1.0f;
+    out_scl[1] = isfinite(sy) && sy > 1e-6f ? sy : 1.0f;
+    out_scl[2] = isfinite(sz) && sz > 1e-6f ? sz : 1.0f;
+    controller_quat_from_matrix_rows((double)m[0] / out_scl[0],
+                                     (double)m[1] / out_scl[1],
+                                     (double)m[2] / out_scl[2],
+                                     (double)m[4] / out_scl[0],
+                                     (double)m[5] / out_scl[1],
+                                     (double)m[6] / out_scl[2],
+                                     (double)m[8] / out_scl[0],
+                                     (double)m[9] / out_scl[1],
+                                     (double)m[10] / out_scl[2],
+                                     rot);
+    out_rot[0] = (float)rot[0];
+    out_rot[1] = (float)rot[1];
+    out_rot[2] = (float)rot[2];
+    out_rot[3] = (float)rot[3];
+}
+
 /// @brief Composite the base layer + weighted overlay layers into the final bone palette.
 /// @details Two-pass blend:
 ///          1. Base layer (layer 0) is copied wholesale into `final_palette`.
@@ -442,7 +559,8 @@ static void controller_identity_palette(rt_anim_controller3d *controller) {
 ///          2. For each overlay layer (1..MAX-1) with weight > 0, blend the
 ///             overlay's palette into `final_palette` at the layer's weight,
 ///             but only on bones whose `mask_bits` flag is set. The blend
-///             is per-element linear interpolation: `dst += (src - dst) * w`.
+///             decomposes each matrix to TRS, lerps translation/scale, and
+///             slerps rotation before recomposition.
 ///          Weight is clamped to `[0, 1]`. Layers with empty masks contribute
 ///          nothing.
 static void controller_compute_final_palette(rt_anim_controller3d *controller) {
@@ -476,8 +594,19 @@ static void controller_compute_final_palette(rt_anim_controller3d *controller) {
                 continue;
             dst = &controller->final_palette[bone * 16];
             src = &layer->player->bone_palette[bone * 16];
-            for (int32_t i = 0; i < 16; i++)
-                dst[i] += (src[i] - dst[i]) * weight;
+            {
+                float dst_pos[3], dst_rot[4], dst_scl[3];
+                float src_pos[3], src_rot[4], src_scl[3];
+                float blend_pos[3], blend_rot[4], blend_scl[3];
+                controller_decompose_trs_float(dst, dst_pos, dst_rot, dst_scl);
+                controller_decompose_trs_float(src, src_pos, src_rot, src_scl);
+                for (int32_t i = 0; i < 3; i++) {
+                    blend_pos[i] = dst_pos[i] + (src_pos[i] - dst_pos[i]) * weight;
+                    blend_scl[i] = dst_scl[i] + (src_scl[i] - dst_scl[i]) * weight;
+                }
+                controller_quat_slerp_float(dst_rot, src_rot, weight, blend_rot);
+                controller_build_trs_float(blend_pos, blend_rot, blend_scl, dst);
+            }
         }
     }
 }
@@ -906,10 +1035,12 @@ void rt_anim_controller3d_update(void *obj, double delta_time) {
         anim_controller3d_layer_t *layer = &controller->layers[layer_index];
         double prev_time;
         double curr_time;
+        double elapsed_time;
         int32_t state_index = layer->current_state;
         if (!layer->player || state_index < 0 || state_index >= controller->state_count)
             continue;
         prev_time = rt_anim_player3d_get_time(layer->player);
+        elapsed_time = delta_time * rt_anim_player3d_get_speed(layer->player);
         rt_anim_player3d_update(layer->player, delta_time);
         curr_time = rt_anim_player3d_get_time(layer->player);
         controller_process_events(controller,
@@ -917,7 +1048,8 @@ void rt_anim_controller3d_update(void *obj, double delta_time) {
                                   prev_time,
                                   curr_time,
                                   rt_animation3d_get_duration(controller->states[state_index].animation),
-                                  controller->states[state_index].looping);
+                                  controller->states[state_index].looping,
+                                  elapsed_time);
         if (layer->transitioning) {
             layer->transition_time += (float)delta_time;
             if (layer->transition_time >= layer->transition_duration) {
@@ -987,6 +1119,8 @@ void rt_anim_controller3d_set_state_speed(void *obj, rt_string state_name, doubl
     state_index = controller_find_state(controller, state_name);
     if (state_index < 0)
         return;
+    if (!isfinite(speed))
+        speed = 1.0;
     controller->states[state_index].speed = (float)speed;
     for (int32_t layer_index = 0; layer_index < RT_ANIM_CONTROLLER3D_MAX_LAYERS; layer_index++) {
         if (controller->layers[layer_index].current_state == state_index)
@@ -1027,6 +1161,15 @@ void rt_anim_controller3d_add_event(
     state_index = controller_find_state(controller, state_name);
     if (state_index < 0)
         return;
+    if (!isfinite(time_seconds))
+        return;
+    if (time_seconds < 0.0)
+        time_seconds = 0.0;
+    {
+        double duration = rt_animation3d_get_duration(controller->states[state_index].animation);
+        if (duration > 0.0 && time_seconds > duration)
+            time_seconds = duration;
+    }
     if (!controller_grow_array((void **)&controller->events,
                                &controller->event_capacity,
                                controller->event_count + 1,
@@ -1129,6 +1272,8 @@ void rt_anim_controller3d_set_layer_weight(void *obj, int64_t layer_index, doubl
         controller->layers[0].weight = 1.0f;
         return;
     }
+    if (!isfinite(weight))
+        weight = 0.0;
     if (weight < 0.0)
         weight = 0.0;
     if (weight > 1.0)

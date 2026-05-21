@@ -856,7 +856,7 @@ static void videoplayer_finalizer(void *obj) {
 /// `ogv_scan_stream` to find the Theora track + duration, then
 /// initialises the decoder. Returns NULL on any failure (file
 /// not found, not an Ogg/Theora file, OOM).
-void *rt_videoplayer_open(void *path) {
+void *rt_videoplayer_open(rt_string path) {
     if (!path)
         return NULL;
 

@@ -86,7 +86,7 @@ module TweenDemo;
 
 bind Viper.Terminal;
 bind Viper.Game.Tween as Tween;
-bind Viper.Fmt as Fmt;
+bind Viper.Text.Fmt as Fmt;
 
 func start() {
     var tw = Tween.New();
@@ -208,7 +208,7 @@ module SpriteAnimDemo;
 
 bind Viper.Terminal;
 bind Viper.Game.SpriteAnimation as SA;
-bind Viper.Fmt as Fmt;
+bind Viper.Text.Fmt as Fmt;
 
 func start() {
     var anim = SA.New();
@@ -455,7 +455,7 @@ module SpriteSheetDemo;
 bind Viper.Graphics;
 bind Viper.Terminal;
 bind Viper.Collections;
-bind Viper.Fmt as Fmt;
+bind Viper.Text.Fmt as Fmt;
 
 func start() {
     var atlas = Pixels.New(128, 128);
@@ -594,7 +594,7 @@ module PathFollowerDemo;
 
 bind Viper.Terminal;
 bind Viper.Game.PathFollower as PF;
-bind Viper.Fmt as Fmt;
+bind Viper.Text.Fmt as Fmt;
 
 func start() {
     var pf = PF.New();
@@ -707,7 +707,7 @@ module ButtonGroupDemo;
 
 bind Viper.Terminal;
 bind Viper.Game.ButtonGroup as BG;
-bind Viper.Fmt as Fmt;
+bind Viper.Text.Fmt as Fmt;
 
 func start() {
     var bg = BG.New();

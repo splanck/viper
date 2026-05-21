@@ -4,7 +4,7 @@
 module test_phase74_partial_indexes;
 
 bind Viper.Terminal as Terminal;
-bind Viper.Fmt as Fmt;
+bind Viper.Text.Fmt as Fmt;
 bind "./test_common";
 bind "../engine/executor";
 bind "../engine/types";

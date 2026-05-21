@@ -14,5 +14,5 @@ func start() {
         var t9: Integer = t8 - 11;
         sum = sum + t9;
     }
-    Viper.Environment.EndProgram(sum);
+    Viper.System.Environment.EndProgram(sum);
 }

@@ -3,7 +3,7 @@ module game;
 bind Viper.Graphics;
 bind Viper.Input;
 bind Viper.Time;
-bind Viper.Fmt;
+bind Viper.Text.Fmt;
 bind Viper.Terminal;
 bind Thread = Viper.Threads.Thread;
 bind Monitor = Viper.Threads.Monitor;

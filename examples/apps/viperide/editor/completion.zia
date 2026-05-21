@@ -1,10 +1,12 @@
 module completion;
 
 bind Viper.GUI as GUI;
+bind Viper.Input as Input;
 bind Viper.String as Str;
 bind Viper.Collections.Seq as Seq;
 bind Viper.Core.Object as Obj;
 bind Viper.Zia.Completion as ZiaCompletion;
+bind "../editor/zia_query";
 
 // ============================================================================
 // MODULE: completion
@@ -98,6 +100,7 @@ class CompletionController {
         popup.AddChild(listbox);
 
         popup.SetVisible(0);
+        Input.Keyboard.EnableTextInput();
     }
 
     /// @brief Set the active file's path so CompleteForFile can resolve
@@ -110,8 +113,8 @@ class CompletionController {
     /// @note Reads cursor coords from `editor`, sends them through
     ///       `CompleteForFile` (path-aware), parses the tab-separated
     ///       result format, populates the listbox, positions the popup
-    ///       under the caret, and focuses the listbox so arrow keys
-    ///       navigate. Hides immediately if the engine returns empty.
+    ///       under the caret, and focuses the listbox for arrow / Enter
+    ///       navigation. Hides immediately if the engine returns empty.
     expose func TriggerCompletion() {
         if editor == null {
             return;
@@ -119,11 +122,16 @@ class CompletionController {
 
         // Get current source and cursor position
         var text    = editor.Text;
-        var curLine = editor.CursorLine + 1;  // convert to 1-based for engine
-        var curCol  = editor.CursorCol;       // 0-based column
+        // A buffer with no `module` line yields null Sema; query a synthetic-
+        // module-prefixed copy and shift the cursor line by the same amount.
+        var qtext   = zia_query.WrapForQuery(text);
+        var off     = zia_query.LineOffset(text);
+        var curLine = editor.CursorLine + 1 + off;  // 1-based + prefix shift
+        var curCol  = editor.CursorCol;             // 0-based column
 
-        // Ask the Zia completion engine (returns "" on failure/empty)
-        var result = ZiaCompletion.CompleteForFile(text, sourcePath, curLine, curCol);
+        // Ask the Zia completion engine (returns "" on failure/empty).
+        // Completion items carry no line numbers, so no inbound un-shift.
+        var result = ZiaCompletion.CompleteForFile(qtext, sourcePath, curLine, curCol);
         if result == "" {
             Hide();
             return;
@@ -241,11 +249,18 @@ class CompletionController {
         }
     }
 
-    /// @brief Show the popup and focus the listbox.
+    /// @brief Show the popup and focus the listbox for keyboard navigation.
     expose func Show() {
         isVisible = true;
         popup.SetVisible(1);
         listbox.Focus();
+    }
+
+    /// @brief Keep keyboard focus on the popup list while completions are open.
+    expose func EnsureFocus() {
+        if isVisible {
+            listbox.Focus();
+        }
     }
 
     /// @brief Hide the popup and return focus to the editor.
@@ -261,9 +276,22 @@ class CompletionController {
     ///        to a different line (the candidates would be stale).
     /// @return true if an event was consumed (currently always false —
     ///         reserved for future use).
-    expose func Update() -> Boolean {
+    expose func Update(typed: String) -> Boolean {
         if isVisible == false {
             return false;
+        }
+
+        var hadListFocus = listbox.IsFocused();
+        EnsureFocus();
+
+        // The popup keeps focus so Up/Down/Enter work on the listbox. Forward
+        // literal text input back into the editor, then close stale candidates.
+        if typed != "" {
+            if hadListFocus != 0 {
+                editor.InsertAtCursor(typed);
+            }
+            Hide();
+            return true;
         }
 
         // Auto-dismiss if the user moved to a different line

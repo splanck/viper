@@ -10726,7 +10726,7 @@ void rt_canvas3d_draw_vegetation(void *c, void *v) {
 /// @param path Filesystem path to the video file (ignored).
 ///
 /// @return `NULL`.
-void *rt_videowidget_new(void *p, void *path) {
+void *rt_videowidget_new(void *p, rt_string path) {
     (void)p;
     (void)path;
     return NULL;
@@ -10873,6 +10873,60 @@ double rt_videowidget_get_duration(void *v) {
     return 0.0;
 }
 
+void *rt_videowidget_get_root(void *v) {
+    (void)v;
+    return NULL;
+}
+
+void rt_videowidget_set_visible(void *v, int64_t visible) {
+    (void)v;
+    (void)visible;
+}
+
+void rt_videowidget_set_enabled(void *v, int64_t enabled) {
+    (void)v;
+    (void)enabled;
+}
+
+void rt_videowidget_set_size(void *v, int64_t width, int64_t height) {
+    (void)v;
+    (void)width;
+    (void)height;
+}
+
+void rt_videowidget_set_preferred_size(void *v, double width, double height) {
+    (void)v;
+    (void)width;
+    (void)height;
+}
+
+void rt_videowidget_set_max_size(void *v, double width, double height) {
+    (void)v;
+    (void)width;
+    (void)height;
+}
+
+void rt_videowidget_set_flex(void *v, double flex) {
+    (void)v;
+    (void)flex;
+}
+
+void rt_videowidget_set_margin(void *v, int64_t margin) {
+    (void)v;
+    (void)margin;
+}
+
+void rt_videowidget_set_position(void *v, int64_t x, int64_t y) {
+    (void)v;
+    (void)x;
+    (void)y;
+}
+
+void rt_videowidget_add_child(void *v, void *child) {
+    (void)v;
+    (void)child;
+}
+
 /* VideoPlayer stubs */
 
 /// @brief Stub for `VideoPlayer.Open` — would normally parse the video
@@ -10884,7 +10938,7 @@ double rt_videowidget_get_duration(void *v) {
 /// @param p Filesystem path to the video file (ignored).
 ///
 /// @return `NULL`.
-void *rt_videoplayer_open(void *p) {
+void *rt_videoplayer_open(rt_string p) {
     (void)p;
     return NULL;
 }

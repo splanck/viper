@@ -6,7 +6,7 @@
 //===----------------------------------------------------------------------===//
 //
 // File: src/tests/runtime/RTExecTests.cpp
-// Purpose: Tests for Viper.Exec external command execution.
+// Purpose: Tests for Viper.System.Exec external command execution.
 //
 //===----------------------------------------------------------------------===//
 

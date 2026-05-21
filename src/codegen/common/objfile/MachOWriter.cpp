@@ -139,24 +139,16 @@ static bool checkedRelocSymbolNum(uint32_t value, const char *what, std::ostream
     return true;
 }
 
+/// Adapter to the shared @ref viper::codegen::objfile::physicalSymbolValue helper
+/// that pins the writerName to "MachOWriter:" so existing call sites compile
+/// unchanged.
 static bool physicalSymbolValue(const CodeSection &section,
                                 const Symbol &sym,
                                 const char *sectionName,
                                 std::ostream &err,
                                 uint64_t &out) {
-    if (sym.offset < section.logicalOffsetBias()) {
-        err << "MachOWriter: symbol '" << sym.name << "' in " << sectionName
-            << " is before the section logical offset bias\n";
-        return false;
-    }
-    const size_t physicalOffset = sym.offset - section.logicalOffsetBias();
-    if (physicalOffset > section.bytes().size()) {
-        err << "MachOWriter: symbol '" << sym.name << "' in " << sectionName
-            << " is outside section contents\n";
-        return false;
-    }
-    out = static_cast<uint64_t>(physicalOffset);
-    return true;
+    return viper::codegen::objfile::physicalSymbolValue(
+        section, sym, sectionName, "MachOWriter", err, out);
 }
 
 // =============================================================================
@@ -403,16 +395,16 @@ struct PendingSym {
         return value >= -0x800000LL && value <= 0x7FFFFFLL;
     };
 
-    auto sectionOffsetAddend = [&](const Relocation &rel, int64_t &out) -> bool {
-        if (rel.targetOffset > static_cast<size_t>(std::numeric_limits<int64_t>::max()))
-            return false;
-        const int64_t targetOffset = static_cast<int64_t>(rel.targetOffset);
-        if (rel.addend > 0 && targetOffset > std::numeric_limits<int64_t>::max() - rel.addend)
-            return false;
-        if (rel.addend < 0 && targetOffset < std::numeric_limits<int64_t>::min() - rel.addend)
-            return false;
-        out = targetOffset + rel.addend;
-        return true;
+    auto sectionOffsetAddend = [&](const Relocation &rel,
+                                   const char *sectionName,
+                                   int64_t &out) -> bool {
+        return checkedSectionOffsetAddend(rel.addend,
+                                          rel.targetOffset,
+                                          "MachOWriter",
+                                          sectionName,
+                                          rel.offset,
+                                          err,
+                                          out);
     };
 
     auto relocationNeedsAnchor = [](const CodeSection &sec, SymbolSection targetSection) {
@@ -495,7 +487,7 @@ struct PendingSym {
             }
             int64_t effectiveAddend = 0;
             const bool needsAnchor =
-                !sectionOffsetAddend(rel, effectiveAddend) ||
+                !sectionOffsetAddend(rel, sectionName, effectiveAddend) ||
                 !fitsArm64RelocAddend(effectiveAddend);
             if (!needsAnchor)
                 continue;
@@ -617,7 +609,16 @@ struct PendingSym {
     std::vector<FinalSym> allSyms(nsyms);
     auto emitSyms = [&](const std::vector<PendingSym> &syms, bool skipIfDefined) {
         for (const auto &ps : syms) {
-            uint32_t idx = (ps.fromText) ? textSymMap[ps.encoderIdx] : rodataSymMap[ps.encoderIdx];
+            uint32_t idx = 0;
+            if (ps.syntheticOffsetAnchor) {
+                const auto &anchorMap = ps.fromText ? textOffsetAnchorMap : constOffsetAnchorMap;
+                auto anchorIt = anchorMap.find(static_cast<size_t>(ps.value));
+                if (anchorIt == anchorMap.end())
+                    continue;
+                idx = anchorIt->second;
+            } else {
+                idx = (ps.fromText) ? textSymMap[ps.encoderIdx] : rodataSymMap[ps.encoderIdx];
+            }
             // When an undefined symbol in text duplicates a defined symbol in
             // rodata, the defined version must win (they share the same Mach-O
             // index). Skip the undefined overwrite when the slot already holds
@@ -683,7 +684,8 @@ struct PendingSym {
                         << rel.targetOffset << " beyond section contents\n";
                     return false;
                 }
-                const bool haveSectionOffsetAddend = sectionOffsetAddend(rel, effectiveAddend);
+                const bool haveSectionOffsetAddend =
+                    sectionOffsetAddend(rel, sectionName, effectiveAddend);
                 if (arch_ == ObjArch::AArch64 &&
                     (!haveSectionOffsetAddend || !fitsArm64RelocAddend(effectiveAddend))) {
                     const auto &anchorMap = (rel.targetSection == SymbolSection::Text)
@@ -1136,15 +1138,13 @@ struct PendingSym {
                     << " beyond section contents\n";
                 return false;
             }
-            if (rel.targetOffset > static_cast<size_t>(std::numeric_limits<int64_t>::max()) ||
-                rel.addend > std::numeric_limits<int64_t>::max() -
-                                 static_cast<int64_t>(rel.targetOffset)) {
-                err << "MachOWriter: relocation in " << sectionName
-                    << " has a section-offset addend outside int64 range\n";
-                return false;
-            }
-            effectiveAddend = rel.addend + static_cast<int64_t>(rel.targetOffset);
-            return true;
+            return checkedSectionOffsetAddend(rel.addend,
+                                              rel.targetOffset,
+                                              "MachOWriter",
+                                              sectionName,
+                                              rel.offset,
+                                              err,
+                                              effectiveAddend);
         };
 
         auto patchX64Addends =
@@ -1155,9 +1155,16 @@ struct PendingSym {
                 if (!computeEffectiveAddend(rel, sectionName, effectiveAddend))
                     return false;
                 if (rel.kind == RelocKind::PCRel32 || rel.kind == RelocKind::Branch32) {
-                    if (effectiveAddend < std::numeric_limits<int32_t>::min() ||
-                        effectiveAddend > std::numeric_limits<int32_t>::max()) {
+                    if (effectiveAddend > std::numeric_limits<int64_t>::max() - 4 ||
+                        effectiveAddend < std::numeric_limits<int64_t>::min() + 4) {
                         err << "MachOWriter: x86_64 rel32 addend " << effectiveAddend
+                            << " overflows Mach-O encoded addend adjustment\n";
+                        return false;
+                    }
+                    const int64_t encodedAddend = effectiveAddend + 4;
+                    if (encodedAddend < std::numeric_limits<int32_t>::min() ||
+                        encodedAddend > std::numeric_limits<int32_t>::max()) {
+                        err << "MachOWriter: x86_64 rel32 addend " << encodedAddend
                             << " is outside signed 32-bit range\n";
                         return false;
                     }
@@ -1174,7 +1181,7 @@ struct PendingSym {
                             << " out of bounds (file size=" << file.size() << ")\n";
                         return false;
                     }
-                    auto addend = static_cast<int32_t>(effectiveAddend);
+                    auto addend = static_cast<int32_t>(encodedAddend);
                     file[patchOff + 0] = static_cast<uint8_t>(addend);
                     file[patchOff + 1] = static_cast<uint8_t>(addend >> 8);
                     file[patchOff + 2] = static_cast<uint8_t>(addend >> 16);
@@ -1239,12 +1246,8 @@ struct PendingSym {
         err << "MachOWriter: cannot open " << path << " for writing\n";
         return false;
     }
-    ofs.write(reinterpret_cast<const char *>(file.data()),
-              static_cast<std::streamsize>(file.size()));
-    if (!ofs) {
-        err << "MachOWriter: write failed for " << path << "\n";
+    if (!checkedWriteAll(ofs, file, "MachOWriter", path, err))
         return false;
-    }
     return true;
     } catch (const std::exception &ex) {
         err << "MachOWriter: " << ex.what() << "\n";

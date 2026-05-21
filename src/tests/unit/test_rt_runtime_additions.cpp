@@ -479,6 +479,48 @@ static void test_camera_smooth_follow_deadzone_and_system_clipboard() {
     PASS();
 }
 
+static void test_pixels_set_fill_accept_tagged_color_rgba() {
+    TEST("Pixels.Set/Fill unpack tagged Color.RGBA and pass raw RGBA through unchanged");
+
+    // Color.RGBA(R, G, B, A) packs ARGB into the low 32 bits and sets bit 56 as
+    // an "I have explicit alpha" tag (RT_PIXELS_COLOR_EXPLICIT_ALPHA_FLAG).
+    auto tagged = [](uint8_t r, uint8_t g, uint8_t b, uint8_t a) -> int64_t {
+        uint64_t argb = ((uint64_t)a << 24) | ((uint64_t)r << 16) | ((uint64_t)g << 8) | b;
+        return (int64_t)(argb | (UINT64_C(1) << 56));
+    };
+
+    void *pixels = rt_pixels_new(4, 1);
+    assert(pixels != nullptr);
+
+    // Tagged Color.RGBA(255, 255, 255, 25) — the Xenoscape bevel top-edge case.
+    // Before the fix, raw_rgba truncation produced 0x19FFFFFF (opaque cyan).
+    rt_pixels_set(pixels, 0, 0, tagged(255, 255, 255, 25));
+    assert(rt_pixels_get(pixels, 0, 0) == 0xFFFFFF19);
+
+    // Raw 0xRRGGBBAA passthrough — must remain unchanged.
+    rt_pixels_set(pixels, 1, 0, 0xFFFFFF19);
+    assert(rt_pixels_get(pixels, 1, 0) == 0xFFFFFF19);
+
+    // SetRGBA alias takes the same tag-or-raw treatment.
+    rt_pixels_set_rgba(pixels, 2, 0, tagged(0, 0, 0, 35));
+    assert(rt_pixels_get(pixels, 2, 0) == 0x00000023);
+    rt_pixels_set_rgba(pixels, 3, 0, 0x00000023);
+    assert(rt_pixels_get(pixels, 3, 0) == 0x00000023);
+
+    // Fill broadcasts a tagged value to every pixel.
+    rt_pixels_fill(pixels, tagged(16, 32, 64, 128));
+    for (int64_t x = 0; x < 4; x++)
+        assert(rt_pixels_get(pixels, x, 0) == 0x10204080);
+
+    // FillRGBA with a raw value preserves it verbatim.
+    rt_pixels_fill_rgba(pixels, 0x10204080);
+    for (int64_t x = 0; x < 4; x++)
+        assert(rt_pixels_get(pixels, x, 0) == 0x10204080);
+
+    release_obj(pixels);
+    PASS();
+}
+
 int main() {
     printf("Running runtime additions tests...\n");
     test_textinput_unicode_selection_and_limits();
@@ -489,6 +531,7 @@ int main() {
     test_animstate_events_and_timeline();
     test_projectile2d_and_named_audio_groups();
     test_camera_smooth_follow_deadzone_and_system_clipboard();
+    test_pixels_set_fill_accept_tagged_color_rgba();
     printf("\n%d/%d tests passed\n", tests_passed, tests_total);
     return tests_passed == tests_total ? 0 : 1;
 }

@@ -570,6 +570,230 @@ void Sema::validateCallArgs(CallExpr *expr, TypeRef funcType, const std::string 
 // Call Expression Analysis
 //=============================================================================
 
+bool Sema::bindExternCallOnCall(CallExpr *expr,
+                                const std::string &calleeName,
+                                Symbol *sym,
+                                size_t skipLeadingParams) {
+    if (!sym || !sym->isExtern || !sym->type || sym->type->kind != TypeKindSem::Function)
+        return true;
+
+    CallArgBinding binding;
+    auto specs = makeExternParamSpecs(*sym, skipLeadingParams);
+    if (!bindCallArgs(expr->args, specs, expr->loc, calleeName, binding, nullptr, true, true)) {
+        return false;
+    }
+    if (!checkRuntimePointerSafety(
+            calleeName, expr->args, specs, binding, skipLeadingParams, expr->loc)) {
+        return false;
+    }
+    callArgBindings_[expr] = binding;
+    return true;
+}
+
+bool Sema::tryBindTerminalTextCall(CallExpr *expr,
+                                   const std::string &calleeName,
+                                   Symbol *sym,
+                                   TypeRef &outType) {
+    if (!sym || !sym->isExtern || !sym->type || sym->type->kind != TypeKindSem::Function ||
+        !isTerminalTextRuntime(calleeName) || expr->args.size() != 1) {
+        return false;
+    }
+
+    TypeRef argType = exprTypes_.count(expr->args[0].value.get())
+                          ? exprTypes_.at(expr->args[0].value.get())
+                          : nullptr;
+    if (!canAutoStringifyForTerminal(argType))
+        return false;
+
+    runtimeCallees_[expr] = calleeName;
+    exprTypes_[expr->callee.get()] = sym->type;
+    callArgBindings_.erase(expr);
+    outType = normalizeRuntimeSurfaceType(sym->type->returnType());
+    return true;
+}
+
+bool Sema::shouldDeferDottedCalleeToQualifiedLookup(const CallExpr *expr) const {
+    std::string dottedName;
+    if (!extractDottedName(expr->callee.get(), dottedName))
+        return false;
+
+    auto dotPos = dottedName.find('.');
+    if (dotPos == std::string::npos)
+        return false;
+
+    std::string root = dottedName.substr(0, dotPos);
+    if (root == "Viper" || aliasToNamespace_.find(root) != aliasToNamespace_.end() ||
+        importedSymbols_.find(root) != importedSymbols_.end() ||
+        moduleExports_.find(root) != moduleExports_.end()) {
+        return true;
+    }
+
+    Symbol *rootSym = currentScope_ ? currentScope_->lookup(root) : nullptr;
+    return rootSym &&
+           (rootSym->kind == Symbol::Kind::Module || rootSym->kind == Symbol::Kind::Type);
+}
+
+TypeRef Sema::refineRuntimeCallReturnType(const CallExpr *expr,
+                                          const std::string &calleeName,
+                                          TypeRef fallback) const {
+    fallback = normalizeRuntimeSurfaceType(fallback);
+
+    const auto &registry = il::runtime::RuntimeRegistry::instance();
+    if (auto sig = registry.findFunction(calleeName); sig && sig->isValid()) {
+        TypeRef refined = normalizeRuntimeSurfaceType(toZiaReturnType(*sig));
+        auto isOpaquePtr = [](TypeRef type) {
+            return type && type->kind == TypeKindSem::Ptr && type->name.empty();
+        };
+        auto isTypedSeq = [](TypeRef type) {
+            return type && type->kind == TypeKindSem::Ptr &&
+                   type->name == "Viper.Collections.Seq" && !type->typeArgs.empty();
+        };
+        auto isConcreteRuntimeClass = [](TypeRef type) {
+            return type && type->kind == TypeKindSem::Ptr && !type->name.empty() &&
+                   type->name != "Viper.Collections.Seq";
+        };
+
+        if (!fallback || fallback->kind == TypeKindSem::Unknown ||
+            (refined && refined->kind != TypeKindSem::Unknown &&
+             (isTypedSeq(refined) ||
+              (isConcreteRuntimeClass(refined) && isOpaquePtr(fallback)) ||
+              (!isOpaquePtr(refined) && isOpaquePtr(fallback))))) {
+            fallback = refined;
+        }
+    }
+
+    auto argTypeAt = [&](size_t index) -> TypeRef {
+        if (index >= expr->args.size())
+            return nullptr;
+        auto it = exprTypes_.find(expr->args[index].value.get());
+        if (it == exprTypes_.end())
+            return nullptr;
+        TypeRef ty = it->second;
+        if (ty && ty->kind == TypeKindSem::Optional && ty->innerType())
+            ty = ty->innerType();
+        return ty;
+    };
+
+    TypeRef firstArg = argTypeAt(0);
+    TypeRef receiverArg = nullptr;
+    if (expr->callee && expr->callee->kind == ExprKind::Field) {
+        auto *fieldExpr = static_cast<FieldExpr *>(expr->callee.get());
+        auto it = exprTypes_.find(fieldExpr->base.get());
+        if (it != exprTypes_.end()) {
+            receiverArg = it->second;
+            if (receiverArg && receiverArg->kind == TypeKindSem::Optional &&
+                receiverArg->innerType())
+                receiverArg = receiverArg->innerType();
+        }
+    }
+    TypeRef elementReceiver =
+        receiverArg && receiverArg->elementType() ? receiverArg : firstArg;
+    TypeRef mapReceiver = receiverArg && receiverArg->valueType() ? receiverArg : firstArg;
+    TypeRef setReceiver =
+        receiverArg && receiverArg->kind == TypeKindSem::Set ? receiverArg : firstArg;
+    auto asSeq = [&](TypeRef elemType) -> TypeRef {
+        return elemType ? normalizeRuntimeSurfaceType(types::seqOf(elemType)) : fallback;
+    };
+
+    if (calleeName == "Viper.Collections.Seq.Get" ||
+        calleeName == "Viper.Collections.Seq.First" ||
+        calleeName == "Viper.Collections.Seq.Last" ||
+        calleeName == "Viper.Collections.Seq.Peek" ||
+        calleeName == "Viper.Collections.Seq.Pop" ||
+        calleeName == "Viper.Collections.Seq.Remove" ||
+        calleeName == "Viper.Collections.Seq.FindWhere") {
+        return elementReceiver && elementReceiver->elementType()
+                   ? normalizeRuntimeSurfaceType(elementReceiver->elementType())
+                   : fallback;
+    }
+
+    if (calleeName == "Viper.Collections.List.Get" ||
+        calleeName == "Viper.Collections.List.First" ||
+        calleeName == "Viper.Collections.List.Last" ||
+        calleeName == "Viper.Collections.List.Pop" ||
+        calleeName == "Viper.Collections.Queue.Peek" ||
+        calleeName == "Viper.Collections.Queue.Pop" ||
+        calleeName == "Viper.Collections.Queue.TryPop" ||
+        calleeName == "Viper.Collections.Stack.Peek" ||
+        calleeName == "Viper.Collections.Stack.Pop" ||
+        calleeName == "Viper.Collections.Stack.TryPop" ||
+        calleeName == "Viper.Collections.Ring.Get" ||
+        calleeName == "Viper.Collections.Ring.Peek" ||
+        calleeName == "Viper.Collections.Ring.Pop" ||
+        calleeName == "Viper.Collections.Heap.Peek" ||
+        calleeName == "Viper.Collections.Heap.Pop" ||
+        calleeName == "Viper.Collections.Heap.TryPeek" ||
+        calleeName == "Viper.Collections.Heap.TryPop" ||
+        calleeName == "Viper.Collections.Deque.Get" ||
+        calleeName == "Viper.Collections.Deque.PeekFront" ||
+        calleeName == "Viper.Collections.Deque.PeekBack" ||
+        calleeName == "Viper.Collections.Deque.PopFront" ||
+        calleeName == "Viper.Collections.Deque.PopBack" ||
+        calleeName == "Viper.Collections.Deque.TryPopFront" ||
+        calleeName == "Viper.Collections.Deque.TryPopBack") {
+        return elementReceiver && elementReceiver->elementType()
+                   ? normalizeRuntimeSurfaceType(elementReceiver->elementType())
+                   : fallback;
+    }
+
+    if (calleeName == "Viper.Collections.Map.Get" ||
+        calleeName == "Viper.Collections.Map.GetOr" ||
+        calleeName == "Viper.Collections.OrderedMap.Get" ||
+        calleeName == "Viper.Collections.TreeMap.Get" ||
+        calleeName == "Viper.Collections.Trie.Get" ||
+        calleeName == "Viper.Collections.FrozenMap.Get" ||
+        calleeName == "Viper.Collections.FrozenMap.GetOr" ||
+        calleeName == "Viper.Collections.DefaultMap.Get" ||
+        calleeName == "Viper.Collections.WeakMap.Get" ||
+        calleeName == "Viper.Collections.LruCache.Get" ||
+        calleeName == "Viper.Collections.LruCache.Peek" ||
+        calleeName == "Viper.Collections.MultiMap.Get" ||
+        calleeName == "Viper.Collections.MultiMap.GetFirst") {
+        return mapReceiver && mapReceiver->valueType()
+                   ? normalizeRuntimeSurfaceType(mapReceiver->valueType())
+                   : fallback;
+    }
+
+    if (calleeName == "Viper.Collections.Map.Keys" ||
+        calleeName == "Viper.Collections.OrderedMap.Keys" ||
+        calleeName == "Viper.Collections.TreeMap.Keys" ||
+        calleeName == "Viper.Collections.Trie.Keys" ||
+        calleeName == "Viper.Collections.FrozenMap.Keys" ||
+        calleeName == "Viper.Collections.DefaultMap.Keys" ||
+        calleeName == "Viper.Collections.WeakMap.Keys" ||
+        calleeName == "Viper.Collections.LruCache.Keys" ||
+        calleeName == "Viper.Collections.MultiMap.Keys") {
+        return mapReceiver && mapReceiver->keyType() ? asSeq(mapReceiver->keyType()) : fallback;
+    }
+
+    if (calleeName == "Viper.Collections.Map.Values" ||
+        calleeName == "Viper.Collections.OrderedMap.Values" ||
+        calleeName == "Viper.Collections.TreeMap.Values" ||
+        calleeName == "Viper.Collections.FrozenMap.Values" ||
+        calleeName == "Viper.Collections.LruCache.Values") {
+        return mapReceiver && mapReceiver->valueType() ? asSeq(mapReceiver->valueType())
+                                                       : fallback;
+    }
+
+    if (calleeName == "Viper.Collections.Set.Items") {
+        return setReceiver && setReceiver->kind == TypeKindSem::Set &&
+                       setReceiver->elementType()
+                   ? asSeq(setReceiver->elementType())
+                   : fallback;
+    }
+
+    if (calleeName == "Viper.Collections.List.Items" ||
+        calleeName == "Viper.Collections.Queue.Items" ||
+        calleeName == "Viper.Collections.Stack.Items" ||
+        calleeName == "Viper.Collections.Deque.Items") {
+        return elementReceiver && elementReceiver->elementType()
+                   ? asSeq(elementReceiver->elementType())
+                   : fallback;
+    }
+
+    return fallback;
+}
+
 /// @brief Analyze a function or method call expression.
 /// @param expr The call expression node.
 /// @return The return type of the called function/method.
@@ -588,224 +812,6 @@ TypeRef Sema::analyzeCall(CallExpr *expr) {
         for (auto &arg : expr->args)
             argTypes.push_back(analyzeExpr(arg.value.get()));
         return argTypes;
-    };
-
-    auto bindExternCall =
-        [&](const std::string &calleeName, Symbol *sym, size_t skipLeadingParams = 0) -> bool {
-        if (!sym || !sym->isExtern || !sym->type || sym->type->kind != TypeKindSem::Function)
-            return true;
-
-        CallArgBinding binding;
-        auto specs = makeExternParamSpecs(*sym, skipLeadingParams);
-        if (!bindCallArgs(expr->args, specs, expr->loc, calleeName, binding, nullptr, true, true)) {
-            return false;
-        }
-        if (!checkRuntimePointerSafety(
-                calleeName, expr->args, specs, binding, skipLeadingParams, expr->loc)) {
-            return false;
-        }
-        callArgBindings_[expr] = binding;
-        return true;
-    };
-
-    auto bindTerminalTextCall =
-        [&](const std::string &calleeName, Symbol *sym, TypeRef &outType) -> bool {
-        if (!sym || !sym->isExtern || !sym->type || sym->type->kind != TypeKindSem::Function ||
-            !isTerminalTextRuntime(calleeName) || expr->args.size() != 1) {
-            return false;
-        }
-
-        TypeRef argType = exprTypes_.count(expr->args[0].value.get())
-                              ? exprTypes_.at(expr->args[0].value.get())
-                              : nullptr;
-        if (!canAutoStringifyForTerminal(argType))
-            return false;
-
-        runtimeCallees_[expr] = calleeName;
-        exprTypes_[expr->callee.get()] = sym->type;
-        callArgBindings_.erase(expr);
-        outType = normalizeRuntimeSurfaceType(sym->type->returnType());
-        return true;
-    };
-
-    auto shouldDeferDottedCalleeToQualifiedLookup = [&]() -> bool {
-        std::string dottedName;
-        if (!extractDottedName(expr->callee.get(), dottedName))
-            return false;
-
-        auto dotPos = dottedName.find('.');
-        if (dotPos == std::string::npos)
-            return false;
-
-        std::string root = dottedName.substr(0, dotPos);
-        if (root == "Viper" || aliasToNamespace_.find(root) != aliasToNamespace_.end() ||
-            importedSymbols_.find(root) != importedSymbols_.end() ||
-            moduleExports_.find(root) != moduleExports_.end()) {
-            return true;
-        }
-
-        Symbol *rootSym = currentScope_ ? currentScope_->lookup(root) : nullptr;
-        return rootSym &&
-               (rootSym->kind == Symbol::Kind::Module || rootSym->kind == Symbol::Kind::Type);
-    };
-
-    auto refineRuntimeReturnType = [&](const std::string &calleeName, TypeRef fallback) -> TypeRef {
-        fallback = normalizeRuntimeSurfaceType(fallback);
-
-        const auto &registry = il::runtime::RuntimeRegistry::instance();
-        if (auto sig = registry.findFunction(calleeName); sig && sig->isValid()) {
-            TypeRef refined = normalizeRuntimeSurfaceType(toZiaReturnType(*sig));
-            auto isOpaquePtr = [](TypeRef type) {
-                return type && type->kind == TypeKindSem::Ptr && type->name.empty();
-            };
-            auto isTypedSeq = [](TypeRef type) {
-                return type && type->kind == TypeKindSem::Ptr &&
-                       type->name == "Viper.Collections.Seq" && !type->typeArgs.empty();
-            };
-            auto isConcreteRuntimeClass = [](TypeRef type) {
-                return type && type->kind == TypeKindSem::Ptr && !type->name.empty() &&
-                       type->name != "Viper.Collections.Seq";
-            };
-
-            if (!fallback || fallback->kind == TypeKindSem::Unknown ||
-                (refined && refined->kind != TypeKindSem::Unknown &&
-                 (isTypedSeq(refined) ||
-                  (isConcreteRuntimeClass(refined) && isOpaquePtr(fallback)) ||
-                  (!isOpaquePtr(refined) && isOpaquePtr(fallback))))) {
-                fallback = refined;
-            }
-        }
-
-        auto argTypeAt = [&](size_t index) -> TypeRef {
-            if (index >= expr->args.size())
-                return nullptr;
-            auto it = exprTypes_.find(expr->args[index].value.get());
-            if (it == exprTypes_.end())
-                return nullptr;
-            TypeRef ty = it->second;
-            if (ty && ty->kind == TypeKindSem::Optional && ty->innerType())
-                ty = ty->innerType();
-            return ty;
-        };
-
-        TypeRef firstArg = argTypeAt(0);
-        TypeRef receiverArg = nullptr;
-        if (expr->callee && expr->callee->kind == ExprKind::Field) {
-            auto *fieldExpr = static_cast<FieldExpr *>(expr->callee.get());
-            auto it = exprTypes_.find(fieldExpr->base.get());
-            if (it != exprTypes_.end()) {
-                receiverArg = it->second;
-                if (receiverArg && receiverArg->kind == TypeKindSem::Optional &&
-                    receiverArg->innerType())
-                    receiverArg = receiverArg->innerType();
-            }
-        }
-        TypeRef elementReceiver =
-            receiverArg && receiverArg->elementType() ? receiverArg : firstArg;
-        TypeRef mapReceiver = receiverArg && receiverArg->valueType() ? receiverArg : firstArg;
-        TypeRef setReceiver =
-            receiverArg && receiverArg->kind == TypeKindSem::Set ? receiverArg : firstArg;
-        auto asSeq = [&](TypeRef elemType) -> TypeRef {
-            return elemType ? normalizeRuntimeSurfaceType(types::seqOf(elemType)) : fallback;
-        };
-
-        if (calleeName == "Viper.Collections.Seq.Get" ||
-            calleeName == "Viper.Collections.Seq.First" ||
-            calleeName == "Viper.Collections.Seq.Last" ||
-            calleeName == "Viper.Collections.Seq.Peek" ||
-            calleeName == "Viper.Collections.Seq.Pop" ||
-            calleeName == "Viper.Collections.Seq.Remove" ||
-            calleeName == "Viper.Collections.Seq.FindWhere") {
-            return elementReceiver && elementReceiver->elementType()
-                       ? normalizeRuntimeSurfaceType(elementReceiver->elementType())
-                       : fallback;
-        }
-
-        if (calleeName == "Viper.Collections.List.Get" ||
-            calleeName == "Viper.Collections.List.First" ||
-            calleeName == "Viper.Collections.List.Last" ||
-            calleeName == "Viper.Collections.List.Pop" ||
-            calleeName == "Viper.Collections.Queue.Peek" ||
-            calleeName == "Viper.Collections.Queue.Pop" ||
-            calleeName == "Viper.Collections.Queue.TryPop" ||
-            calleeName == "Viper.Collections.Stack.Peek" ||
-            calleeName == "Viper.Collections.Stack.Pop" ||
-            calleeName == "Viper.Collections.Stack.TryPop" ||
-            calleeName == "Viper.Collections.Ring.Get" ||
-            calleeName == "Viper.Collections.Ring.Peek" ||
-            calleeName == "Viper.Collections.Ring.Pop" ||
-            calleeName == "Viper.Collections.Heap.Peek" ||
-            calleeName == "Viper.Collections.Heap.Pop" ||
-            calleeName == "Viper.Collections.Heap.TryPeek" ||
-            calleeName == "Viper.Collections.Heap.TryPop" ||
-            calleeName == "Viper.Collections.Deque.Get" ||
-            calleeName == "Viper.Collections.Deque.PeekFront" ||
-            calleeName == "Viper.Collections.Deque.PeekBack" ||
-            calleeName == "Viper.Collections.Deque.PopFront" ||
-            calleeName == "Viper.Collections.Deque.PopBack" ||
-            calleeName == "Viper.Collections.Deque.TryPopFront" ||
-            calleeName == "Viper.Collections.Deque.TryPopBack") {
-            return elementReceiver && elementReceiver->elementType()
-                       ? normalizeRuntimeSurfaceType(elementReceiver->elementType())
-                       : fallback;
-        }
-
-        if (calleeName == "Viper.Collections.Map.Get" ||
-            calleeName == "Viper.Collections.Map.GetOr" ||
-            calleeName == "Viper.Collections.OrderedMap.Get" ||
-            calleeName == "Viper.Collections.TreeMap.Get" ||
-            calleeName == "Viper.Collections.Trie.Get" ||
-            calleeName == "Viper.Collections.FrozenMap.Get" ||
-            calleeName == "Viper.Collections.FrozenMap.GetOr" ||
-            calleeName == "Viper.Collections.DefaultMap.Get" ||
-            calleeName == "Viper.Collections.WeakMap.Get" ||
-            calleeName == "Viper.Collections.LruCache.Get" ||
-            calleeName == "Viper.Collections.LruCache.Peek" ||
-            calleeName == "Viper.Collections.MultiMap.Get" ||
-            calleeName == "Viper.Collections.MultiMap.GetFirst") {
-            return mapReceiver && mapReceiver->valueType()
-                       ? normalizeRuntimeSurfaceType(mapReceiver->valueType())
-                       : fallback;
-        }
-
-        if (calleeName == "Viper.Collections.Map.Keys" ||
-            calleeName == "Viper.Collections.OrderedMap.Keys" ||
-            calleeName == "Viper.Collections.TreeMap.Keys" ||
-            calleeName == "Viper.Collections.Trie.Keys" ||
-            calleeName == "Viper.Collections.FrozenMap.Keys" ||
-            calleeName == "Viper.Collections.DefaultMap.Keys" ||
-            calleeName == "Viper.Collections.WeakMap.Keys" ||
-            calleeName == "Viper.Collections.LruCache.Keys" ||
-            calleeName == "Viper.Collections.MultiMap.Keys") {
-            return mapReceiver && mapReceiver->keyType() ? asSeq(mapReceiver->keyType()) : fallback;
-        }
-
-        if (calleeName == "Viper.Collections.Map.Values" ||
-            calleeName == "Viper.Collections.OrderedMap.Values" ||
-            calleeName == "Viper.Collections.TreeMap.Values" ||
-            calleeName == "Viper.Collections.FrozenMap.Values" ||
-            calleeName == "Viper.Collections.LruCache.Values") {
-            return mapReceiver && mapReceiver->valueType() ? asSeq(mapReceiver->valueType())
-                                                           : fallback;
-        }
-
-        if (calleeName == "Viper.Collections.Set.Items") {
-            return setReceiver && setReceiver->kind == TypeKindSem::Set &&
-                           setReceiver->elementType()
-                       ? asSeq(setReceiver->elementType())
-                       : fallback;
-        }
-
-        if (calleeName == "Viper.Collections.List.Items" ||
-            calleeName == "Viper.Collections.Queue.Items" ||
-            calleeName == "Viper.Collections.Stack.Items" ||
-            calleeName == "Viper.Collections.Deque.Items") {
-            return elementReceiver && elementReceiver->elementType()
-                       ? asSeq(elementReceiver->elementType())
-                       : fallback;
-        }
-
-        return fallback;
     };
 
     if (auto *optionalCallee = dynamic_cast<OptionalChainExpr *>(expr->callee.get())) {
@@ -893,7 +899,7 @@ TypeRef Sema::analyzeCall(CallExpr *expr) {
     }
 
     if (auto *fieldExpr = dynamic_cast<FieldExpr *>(expr->callee.get());
-        fieldExpr && !shouldDeferDottedCalleeToQualifiedLookup()) {
+        fieldExpr && !shouldDeferDottedCalleeToQualifiedLookup(expr)) {
         TypeRef baseType = analyzeExpr(fieldExpr->base.get());
         if (baseType && baseType->kind == TypeKindSem::Result) {
             TypeRef successType =
@@ -1222,10 +1228,10 @@ TypeRef Sema::analyzeCall(CallExpr *expr) {
                 }
 
                 TypeRef terminalTextResult = nullptr;
-                if (bindTerminalTextCall(fullName, sym, terminalTextResult))
+                if (tryBindTerminalTextCall(expr, fullName, sym, terminalTextResult))
                     return terminalTextResult;
 
-                if (!bindExternCall(fullName, sym))
+                if (!bindExternCallOnCall(expr, fullName, sym))
                     return types::unknown();
 
                 // Skip validation for extern/runtime functions — their signatures
@@ -1233,7 +1239,7 @@ TypeRef Sema::analyzeCall(CallExpr *expr) {
 
                 // Return the function's return type
                 if (sym->type && sym->type->kind == TypeKindSem::Function) {
-                    return refineRuntimeReturnType(fullName, sym->type->returnType());
+                    return refineRuntimeCallReturnType(expr, fullName, sym->type->returnType());
                 }
                 return normalizeRuntimeSurfaceType(sym->type);
             }
@@ -1393,9 +1399,9 @@ TypeRef Sema::analyzeCall(CallExpr *expr) {
                     validateCallArgs(expr, funcType, dottedName);
                 } else {
                     TypeRef terminalTextResult = nullptr;
-                    if (bindTerminalTextCall(dottedName, sym, terminalTextResult))
+                    if (tryBindTerminalTextCall(expr, dottedName, sym, terminalTextResult))
                         return terminalTextResult;
-                    if (!bindExternCall(dottedName, sym))
+                    if (!bindExternCallOnCall(expr, dottedName, sym))
                         return types::unknown();
                 }
 
@@ -1406,7 +1412,7 @@ TypeRef Sema::analyzeCall(CallExpr *expr) {
                 }
                 // Bug #023 fix: Return the function's return type, not the function type itself
                 if (funcType && funcType->kind == TypeKindSem::Function) {
-                    return refineRuntimeReturnType(dottedName, funcType->returnType());
+                    return refineRuntimeCallReturnType(expr, dottedName, funcType->returnType());
                 }
 
                 return normalizeRuntimeSurfaceType(funcType);
@@ -1674,13 +1680,13 @@ TypeRef Sema::analyzeCall(CallExpr *expr) {
             }
             if (sym && sym->kind == Symbol::Kind::Function) {
                 analyzeArgs();
-                if (!bindExternCall(fullMethodName, sym, 1))
+                if (!bindExternCallOnCall(expr, fullMethodName, sym, 1))
                     return types::unknown();
                 if (sym->isExtern) {
                     runtimeCallees_[expr] = fullMethodName;
                 }
                 if (sym->type && sym->type->kind == TypeKindSem::Function) {
-                    return refineRuntimeReturnType(fullMethodName, sym->type->returnType());
+                    return refineRuntimeCallReturnType(expr, fullMethodName, sym->type->returnType());
                 }
                 return normalizeRuntimeSurfaceType(sym->type);
             }
@@ -1715,14 +1721,14 @@ TypeRef Sema::analyzeCall(CallExpr *expr) {
 
             if (sym && sym->kind == Symbol::Kind::Function) {
                 analyzeArgs();
-                if (!bindExternCall(fullMethodName, sym, 1))
+                if (!bindExternCallOnCall(expr, fullMethodName, sym, 1))
                     return types::unknown();
 
                 if (sym->isExtern)
                     runtimeCallees_[expr] = fullMethodName;
 
                 if (sym->type && sym->type->kind == TypeKindSem::Function) {
-                    return refineRuntimeReturnType(fullMethodName, sym->type->returnType());
+                    return refineRuntimeCallReturnType(expr, fullMethodName, sym->type->returnType());
                 }
                 return normalizeRuntimeSurfaceType(sym->type);
             }
@@ -1802,7 +1808,7 @@ TypeRef Sema::analyzeCall(CallExpr *expr) {
                     analyzeExpr(arg.value.get());
                 }
 
-                if (!bindExternCall(fullMethodName, sym, 1))
+                if (!bindExternCallOnCall(expr, fullMethodName, sym, 1))
                     return types::unknown();
 
                 // Skip validation for runtime class methods — their signatures
@@ -1816,7 +1822,7 @@ TypeRef Sema::analyzeCall(CallExpr *expr) {
                 // This is critical for chained method calls (e.g., bytes.Slice(x,y).ToStr())
                 // where the caller needs the return type to resolve the next method.
                 if (sym->type && sym->type->kind == TypeKindSem::Function) {
-                    return refineRuntimeReturnType(fullMethodName, sym->type->returnType());
+                    return refineRuntimeCallReturnType(expr, fullMethodName, sym->type->returnType());
                 }
                 return normalizeRuntimeSurfaceType(sym->type);
             }

@@ -871,7 +871,7 @@ static void body3d_update_shape_cache_from_collider(rt_body3d *body) {
         body->shape = PH3D_SHAPE_CAPSULE;
         body->radius = rt_collider3d_get_radius_raw(body->collider);
         body->height = rt_collider3d_get_height_raw(body->collider);
-        vec3_set(body->half_extents, body->radius, body->height * 0.5, body->radius);
+        vec3_set(body->half_extents, body->radius, fmax(body->height * 0.5, body->radius), body->radius);
         break;
     default:
         rt_collider3d_get_local_bounds_raw(body->collider, local_min, local_max);
@@ -927,7 +927,8 @@ static void body3d_compute_inv_inertia(rt_body3d *b) {
 
     {
         double r2 = b->radius * b->radius;
-        double h2 = b->height * b->height;
+        double cylinder_height = fmax(b->height - 2.0 * b->radius, 0.0);
+        double h2 = cylinder_height * cylinder_height;
         double ixx = b->mass * (3.0 * r2 + h2) / 12.0;
         double iyy = 0.5 * b->mass * r2;
         double izz = ixx;
@@ -1616,8 +1617,14 @@ static int build_simple_proxy(const rt_collider_pose *pose,
         return 1;
     case RT_COLLIDER3D_TYPE_CAPSULE:
         out->shape = PH3D_SHAPE_CAPSULE;
-        out->radius = rt_collider3d_get_radius_raw(collider) * (sx > sz ? sx : sz);
-        out->height = rt_collider3d_get_height_raw(collider) * sy;
+        {
+            double raw_radius = rt_collider3d_get_radius_raw(collider);
+            double raw_height = rt_collider3d_get_height_raw(collider);
+            double scaled_radius = raw_radius * (sx > sz ? sx : sz);
+            double scaled_cylinder = fmax(raw_height - 2.0 * raw_radius, 0.0) * sy;
+            out->radius = scaled_radius;
+            out->height = scaled_cylinder + 2.0 * scaled_radius;
+        }
         return 1;
     default:
         return 0;

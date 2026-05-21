@@ -24,6 +24,7 @@
 #include <cstdint>
 #include <limits>
 #include <sstream>
+#include <unordered_map>
 #include <vector>
 
 namespace viper::codegen::linker {
@@ -36,6 +37,15 @@ static bool allowDuplicateStrongDefinition(const std::string &name,
 static bool materializeCommonSymbols(std::vector<ObjFile> &allObjects,
                                      std::unordered_map<std::string, GlobalSymEntry> &globalSyms,
                                      std::ostream &err);
+
+struct ComdatDefinition {
+    ComdatSelection selection = ComdatSelection::None;
+    std::string key;
+    size_t objIdx = 0;
+    uint32_t secIdx = 0;
+    size_t size = 0;
+    uint64_t hash = 0;
+};
 
 static bool isSupportedCommonAlignment(size_t alignment) {
     return alignment != 0 && (alignment & (alignment - 1)) == 0 &&
@@ -51,6 +61,7 @@ static void setEntryFromSymbol(GlobalSymEntry &entry,
     entry.secIndex = sym.sectionIndex;
     entry.offset = sym.offset;
     entry.resolvedAddr = sym.absolute ? static_cast<uint64_t>(sym.offset) : 0;
+    entry.resolvedAddrValid = sym.absolute;
     entry.absolute = sym.absolute;
     entry.common = false;
     entry.commonSize = 0;
@@ -66,10 +77,169 @@ static void setEntryFromCommon(GlobalSymEntry &entry,
     entry.secIndex = 0;
     entry.offset = 0;
     entry.resolvedAddr = 0;
+    entry.resolvedAddrValid = false;
     entry.absolute = false;
     entry.common = true;
     entry.commonSize = std::max(entry.commonSize, sym.size);
     entry.commonAlignment = std::max(entry.commonAlignment, sym.commonAlignment);
+}
+
+static uint64_t hashBytes(const std::vector<uint8_t> &bytes) {
+    uint64_t h = 1469598103934665603ULL;
+    for (uint8_t b : bytes) {
+        h ^= b;
+        h *= 1099511628211ULL;
+    }
+    return h;
+}
+
+static void hashU64(uint64_t value, uint64_t &h) {
+    for (unsigned i = 0; i < 8; ++i) {
+        h ^= static_cast<uint8_t>(value >> (i * 8));
+        h *= 1099511628211ULL;
+    }
+}
+
+static void hashString(const std::string &value, uint64_t &h) {
+    hashU64(value.size(), h);
+    for (unsigned char ch : value) {
+        h ^= ch;
+        h *= 1099511628211ULL;
+    }
+}
+
+static void hashRelocTarget(const ObjFile &obj, const ObjReloc &rel, uint64_t &h) {
+    if (rel.symIndex >= obj.symbols.size()) {
+        hashU64(rel.symIndex, h);
+        return;
+    }
+
+    const auto &sym = obj.symbols[rel.symIndex];
+    hashString(sym.name, h);
+    hashU64(sym.binding, h);
+    hashU64(sym.offset, h);
+    hashU64(sym.size, h);
+    hashU64(sym.absolute ? 1 : 0, h);
+    hashU64(sym.common ? 1 : 0, h);
+    hashU64(sym.commonAlignment, h);
+
+    if (sym.sectionIndex == 0 || sym.absolute || sym.common) {
+        hashU64(sym.sectionIndex, h);
+        return;
+    }
+    if (sym.sectionIndex >= obj.sections.size()) {
+        hashU64(sym.sectionIndex, h);
+        return;
+    }
+
+    const auto &targetSec = obj.sections[sym.sectionIndex];
+    hashString(targetSec.name, h);
+    hashString(targetSec.comdatKey, h);
+    hashU64(static_cast<uint64_t>(targetSec.comdatSelection), h);
+    hashU64(targetSec.associativeSection, h);
+}
+
+static uint64_t hashComdatSection(const ObjFile &obj, const ObjSection &sec) {
+    uint64_t h = hashBytes(sec.data);
+    hashU64(objSectionMemSize(sec), h);
+    hashU64(sec.memSize, h);
+    hashU64(sec.alignment, h);
+    hashU64(sec.executable ? 1 : 0, h);
+    hashU64(sec.writable ? 1 : 0, h);
+    hashU64(sec.alloc ? 1 : 0, h);
+    hashU64(sec.tls ? 1 : 0, h);
+    hashU64(sec.zeroFill ? 1 : 0, h);
+    hashU64(sec.dataSegment ? 1 : 0, h);
+    hashU64(sec.associativeSection, h);
+    hashU64(sec.relocs.size(), h);
+    for (const auto &rel : sec.relocs) {
+        hashU64(rel.offset, h);
+        hashU64(rel.type, h);
+        hashU64(static_cast<uint64_t>(rel.addend), h);
+        hashU64(rel.pcrel ? 1 : 0, h);
+        hashU64(rel.length, h);
+        hashU64(rel.sectionRelative ? 1 : 0, h);
+        hashRelocTarget(obj, rel, h);
+    }
+    return h;
+}
+
+static bool weakExternalSearchesFallbackLibrary(const ObjSymbol &sym) {
+    // COFF values: 1=NOLIBRARY, 2=LIBRARY, 3=ALIAS. ALIAS must also seed
+    // archive extraction; otherwise an archive-only fallback is never loaded.
+    // Viper-created tests and older readers used 0; keep that legacy value as
+    // "search fallback".
+    if (!sym.weakExternal || sym.weakDefaultName.empty())
+        return false;
+    return sym.weakExternalCharacteristics == 0 || sym.weakExternalCharacteristics == 2 ||
+           sym.weakExternalCharacteristics == 3;
+}
+
+static bool getComdatDefinition(const ObjFile &obj,
+                                size_t objIdx,
+                                const ObjSymbol &sym,
+                                ComdatDefinition &out) {
+    if (sym.sectionIndex == 0 || sym.sectionIndex >= obj.sections.size())
+        return false;
+    const auto &sec = obj.sections[sym.sectionIndex];
+    if (sec.comdatSelection == ComdatSelection::None ||
+        sec.comdatSelection == ComdatSelection::Associative ||
+        sec.comdatKey.empty())
+        return false;
+    out.selection = sec.comdatSelection;
+    out.key = sec.comdatKey;
+    out.objIdx = objIdx;
+    out.secIdx = sym.sectionIndex;
+    out.size = objSectionMemSize(sec);
+    out.hash = hashComdatSection(obj, sec);
+    return true;
+}
+
+static bool selectComdatDuplicate(const ObjFile &obj,
+                                  const ObjSymbol &sym,
+                                  size_t objIdx,
+                                  const ComdatDefinition &existing,
+                                  const ComdatDefinition &candidate,
+                                  GlobalSymEntry &entry,
+                                  std::ostream &err) {
+    if (existing.key != candidate.key) {
+        err << "error: multiply defined symbol '" << sym.name
+            << "' has mismatched COMDAT keys\n";
+        return false;
+    }
+
+    const ComdatSelection selection =
+        existing.selection != ComdatSelection::None ? existing.selection : candidate.selection;
+    switch (selection) {
+        case ComdatSelection::Any:
+            return true;
+        case ComdatSelection::SameSize:
+            if (existing.size == candidate.size)
+                return true;
+            err << "error: COMDAT SAME_SIZE symbol '" << sym.name
+                << "' has different section sizes\n";
+            return false;
+        case ComdatSelection::ExactMatch:
+            if (existing.size == candidate.size && existing.hash == candidate.hash)
+                return true;
+            err << "error: COMDAT EXACT_MATCH symbol '" << sym.name
+                << "' has different contents\n";
+            return false;
+        case ComdatSelection::Largest:
+            if (candidate.size > existing.size)
+                setEntryFromSymbol(entry, sym, objIdx, GlobalSymEntry::Global);
+            return true;
+        case ComdatSelection::NoDuplicates:
+            err << "error: COMDAT NODUPLICATES symbol '" << sym.name
+                << "' is defined more than once\n";
+            return false;
+        case ComdatSelection::None:
+        case ComdatSelection::Associative:
+            err << "error: multiply defined symbol '" << sym.name << "' in " << obj.name
+                << "\n";
+            return false;
+    }
+    return false;
 }
 
 /// Add symbols from a single object file into the global table.
@@ -82,6 +252,7 @@ static void setEntryFromCommon(GlobalSymEntry &entry,
 static bool addObjSymbols(const ObjFile &obj,
                           size_t objIdx,
                           std::unordered_map<std::string, GlobalSymEntry> &globalSyms,
+                          std::unordered_map<std::string, ComdatDefinition> &comdatDefs,
                           std::unordered_set<std::string> &undefined,
                           LinkPlatform platform,
                           bool allowArchiveDefinitionPreference,
@@ -115,7 +286,7 @@ static bool addObjSymbols(const ObjFile &obj,
             };
 
             if (sym.weakExternal) {
-                if (!sym.weakDefaultName.empty())
+                if (weakExternalSearchesFallbackLibrary(sym))
                     addUndefined(sym.weakDefaultName);
                 continue;
             }
@@ -134,32 +305,44 @@ static bool addObjSymbols(const ObjFile &obj,
         }
 
         auto it = findWithPlatformFallback(globalSyms, sym.name, platform);
+        ComdatDefinition candidateComdat;
+        const bool hasCandidateComdat = getComdatDefinition(obj, objIdx, sym, candidateComdat);
         if (it == globalSyms.end()) {
             // New symbol.
             GlobalSymEntry e;
             e.name = sym.name;
-            if (sym.common)
+            if (sym.common) {
                 setEntryFromCommon(
                     e, sym, objIdx, isWeak ? GlobalSymEntry::Weak : GlobalSymEntry::Global);
-            else
+            } else {
                 setEntryFromSymbol(
                     e, sym, objIdx, isWeak ? GlobalSymEntry::Weak : GlobalSymEntry::Global);
+            }
             globalSyms[sym.name] = std::move(e);
+            if (hasCandidateComdat)
+                comdatDefs[sym.name] = candidateComdat;
+            else
+                comdatDefs.erase(sym.name);
             eraseUndefinedVariants(sym.name);
         } else {
             auto &existing = it->second;
             if (existing.binding == GlobalSymEntry::Undefined) {
                 // Was undefined, now defined.
-                if (sym.common)
+                if (sym.common) {
                     setEntryFromCommon(existing,
                                        sym,
                                        objIdx,
                                        isWeak ? GlobalSymEntry::Weak : GlobalSymEntry::Global);
-                else
+                } else {
                     setEntryFromSymbol(existing,
                                        sym,
                                        objIdx,
                                        isWeak ? GlobalSymEntry::Weak : GlobalSymEntry::Global);
+                }
+                if (hasCandidateComdat)
+                    comdatDefs[sym.name] = candidateComdat;
+                else
+                    comdatDefs.erase(sym.name);
                 eraseUndefinedVariants(sym.name);
             } else if (sym.common) {
                 if (existing.common) {
@@ -170,10 +353,12 @@ static bool addObjSymbols(const ObjFile &obj,
                         existing.binding = GlobalSymEntry::Global;
                         existing.objIndex = objIdx;
                     }
+                    comdatDefs.erase(sym.name);
                     eraseUndefinedVariants(sym.name);
                 } else if (existing.binding == GlobalSymEntry::Weak && !isWeak) {
                     // A strong common definition overrides a weak real definition.
                     setEntryFromCommon(existing, sym, objIdx, GlobalSymEntry::Global);
+                    comdatDefs.erase(sym.name);
                     eraseUndefinedVariants(sym.name);
                 }
                 // Existing strong real definitions override tentative definitions.
@@ -181,22 +366,42 @@ static bool addObjSymbols(const ObjFile &obj,
                 if (!isWeak) {
                     // A strong real definition overrides any tentative definition.
                     setEntryFromSymbol(existing, sym, objIdx, GlobalSymEntry::Global);
+                    if (hasCandidateComdat)
+                        comdatDefs[sym.name] = candidateComdat;
+                    else
+                        comdatDefs.erase(sym.name);
                     eraseUndefinedVariants(sym.name);
                 }
                 // Weak real definitions do not override common definitions.
             } else if (existing.binding == GlobalSymEntry::Weak && !isWeak) {
                 // Strong overrides weak.
                 setEntryFromSymbol(existing, sym, objIdx, GlobalSymEntry::Global);
+                if (hasCandidateComdat)
+                    comdatDefs[sym.name] = candidateComdat;
+                else
+                    comdatDefs.erase(sym.name);
                 eraseUndefinedVariants(sym.name);
             } else if (existing.binding == GlobalSymEntry::Global && !isWeak) {
+                auto comdatIt = findWithPlatformFallback(comdatDefs, sym.name, platform);
+                if (hasCandidateComdat && comdatIt != comdatDefs.end()) {
+                    if (!selectComdatDuplicate(
+                            obj, sym, objIdx, comdatIt->second, candidateComdat, existing, err))
+                        return false;
+                    if (candidateComdat.selection == ComdatSelection::Largest &&
+                        candidateComdat.size > comdatIt->second.size)
+                        comdatIt->second = candidateComdat;
+                    eraseUndefinedVariants(sym.name);
+                    continue;
+                }
                 if (allowDuplicateStrongDefinition(
                         sym.name, platform, allowArchiveDefinitionPreference))
                     continue;
                 err << "error: multiply defined symbol '" << sym.name << "' in " << obj.name
                     << "\n";
                 return false;
+            } else {
+                // Weak doesn't override anything.
             }
-            // Weak doesn't override anything.
         }
     }
     return true;
@@ -208,6 +413,15 @@ static bool addObjSymbols(const ObjFile &obj,
 static bool preferArchiveDefinition(const std::string &name, LinkPlatform platform) {
     if (platform != LinkPlatform::Windows)
         return false;
+
+    // The Zia completion bridge (rt_zia_*) ships a non-weak stub in
+    // viper_rt_base on MSVC (RT_WEAK expands to nothing). When the fe_zia
+    // frontend is force-loaded its strong definitions are added first; treat a
+    // later duplicate strong stub definition as the same "runtime archive
+    // provides an overridable shim" case the CRT names below already use, so it
+    // is preferred-away rather than reported as multiply defined.
+    if (name.rfind("rt_zia_", 0) == 0)
+        return true;
 
     if (name == "?_OptionsStorage@?1??__local_stdio_printf_options@@9@9" ||
         name == "?_OptionsStorage@?1??__local_stdio_scanf_options@@9@9")
@@ -264,20 +478,33 @@ bool resolveSymbols(const std::vector<ObjFile> &initialObjects,
     // Start with initial objects.
     allObjects = initialObjects;
     std::unordered_set<std::string> undefined;
+    std::unordered_map<std::string, ComdatDefinition> comdatDefs;
 
     for (size_t i = 0; i < allObjects.size(); ++i) {
-        if (!addObjSymbols(allObjects[i], i, globalSyms, undefined, platform, false, err))
+        if (!addObjSymbols(allObjects[i], i, globalSyms, comdatDefs, undefined, platform, false, err))
             return false;
     }
 
     // Iteratively resolve from archives until fixed point.
     std::unordered_set<InputSectionKey, InputSectionKeyHash> extractedMembers;
-    constexpr size_t kMaxResolveIterations = 1000;
+    size_t maxArchiveExtractions = 0;
+    for (const auto &ar : archives) {
+        if (ar.members.size() > std::numeric_limits<size_t>::max() - maxArchiveExtractions) {
+            err << "error: archive member count exceeds addressable size\n";
+            return false;
+        }
+        maxArchiveExtractions += ar.members.size();
+    }
+    if (maxArchiveExtractions == std::numeric_limits<size_t>::max()) {
+        err << "error: archive member count exceeds addressable size\n";
+        return false;
+    }
+    const size_t maxResolveIterations = maxArchiveExtractions + 1;
     size_t iteration = 0;
     bool changed = true;
     while (changed) {
-        if (++iteration > kMaxResolveIterations) {
-            err << "error: symbol resolution exceeded " << kMaxResolveIterations << " iterations\n";
+        if (++iteration > maxResolveIterations) {
+            err << "error: symbol resolution exceeded archive extraction bound\n";
             return false;
         }
         changed = false;
@@ -344,6 +571,7 @@ bool resolveSymbols(const std::vector<ObjFile> &initialObjects,
                     if (!addObjSymbols(allObjects[newIdx],
                                        newIdx,
                                        globalSyms,
+                                       comdatDefs,
                                        undefined,
                                        platform,
                                        allowArchiveDefinitionPreference,
@@ -380,8 +608,10 @@ bool resolveSymbols(const std::vector<ObjFile> &initialObjects,
         }
 
         dynamicSyms.insert(undef);
-        if (it != globalSyms.end())
+        if (it != globalSyms.end()) {
             it->second.binding = GlobalSymEntry::Dynamic;
+            it->second.resolvedAddrValid = it->second.resolvedAddr != 0;
+        }
     }
 
     if (!unresolvedErrors.empty()) {
@@ -449,18 +679,17 @@ static bool materializeCommonSymbols(std::vector<ObjFile> &allObjects,
             return false;
         }
 
-        const size_t rem = commonSec.data.size() % entry.commonAlignment;
+        const size_t rem = commonSec.memSize % entry.commonAlignment;
         const size_t padding = (rem == 0) ? 0 : entry.commonAlignment - rem;
-        if (padding > kMaxObjSectionBytes - commonSec.data.size() ||
-            entry.commonSize > kMaxObjSectionBytes - commonSec.data.size() - padding) {
+        if (padding > kMaxObjSectionBytes - commonSec.memSize ||
+            entry.commonSize > kMaxObjSectionBytes - commonSec.memSize - padding) {
             err << "error: materialized common section exceeds size limit\n";
             return false;
         }
-        if (padding != 0)
-            commonSec.data.resize(commonSec.data.size() + padding, 0);
 
-        const size_t offset = commonSec.data.size();
-        commonSec.data.resize(offset + entry.commonSize, 0);
+        commonSec.memSize += padding;
+        const size_t offset = commonSec.memSize;
+        commonSec.memSize += entry.commonSize;
         if (entry.commonAlignment > commonSec.alignment)
             commonSec.alignment = static_cast<uint32_t>(entry.commonAlignment);
 
@@ -478,6 +707,7 @@ static bool materializeCommonSymbols(std::vector<ObjFile> &allObjects,
         entry.offset = offset;
         entry.absolute = false;
         entry.resolvedAddr = 0;
+        entry.resolvedAddrValid = false;
         entry.common = false;
     }
 

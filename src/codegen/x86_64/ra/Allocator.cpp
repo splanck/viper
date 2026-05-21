@@ -497,6 +497,71 @@ void LinearScanAllocator::expireIntervals() {
     }
 }
 
+bool LinearScanAllocator::isCallerSaved(PhysReg reg, RegClass cls) const noexcept {
+    const auto &bits = cls == RegClass::GPR ? callerSavedGPRBits_ : callerSavedFPRBits_;
+    return bits.test(static_cast<std::size_t>(reg));
+}
+
+std::pair<bool, PhysReg> LinearScanAllocator::takeFreeCalleeSaved(RegClass cls) {
+    auto &pool = poolFor(cls);
+    const auto &bits = cls == RegClass::GPR ? callerSavedGPRBits_ : callerSavedFPRBits_;
+    for (auto it = pool.begin(); it != pool.end(); ++it) {
+        if (!bits.test(static_cast<std::size_t>(*it))) {
+            PhysReg reg = *it;
+            pool.erase(it);
+            return {true, reg};
+        }
+    }
+    return {false, PhysReg::RAX};
+}
+
+std::vector<uint16_t> LinearScanAllocator::collectCallerSavedToSpill(RegClass cls) const {
+    std::vector<uint16_t> out;
+    const auto &active = cls == RegClass::GPR ? activeGPR_ : activeXMM_;
+    for (auto vreg : active) {
+        auto it = states_.find(vreg);
+        if (it == states_.end() || !it->second.hasPhys)
+            continue;
+        if (!isCallerSaved(it->second.phys, cls))
+            continue;
+        // If we don't have interval info, conservatively spill to avoid data loss.
+        const auto *interval = intervals_.lookup(vreg);
+        const bool liveOut = liveness_.liveOut(currentBlockIdx_).count(vreg) != 0;
+        if (!liveOut && interval && interval->end <= currentInstrIdx_ + 1)
+            continue; // Value confirmed dead after the call.
+        out.push_back(vreg);
+    }
+    return out;
+}
+
+void LinearScanAllocator::spillOrRehomeAcrossCall(RegClass cls,
+                                                  const std::vector<uint16_t> &candidates,
+                                                  std::vector<MInstr> &prefix) {
+    // Phase 1: Try to move each value to a free callee-saved register so it
+    // survives the CALL without a memory round-trip.
+    std::vector<uint16_t> stillNeedSpill;
+    for (auto vreg : candidates) {
+        auto &state = states_[vreg];
+        auto [found, csReg] = takeFreeCalleeSaved(cls);
+        if (found) {
+            prefix.push_back(makeMove(cls, csReg, state.phys));
+            releaseRegister(state.phys, cls);
+            state.phys = csReg;
+            result_.vregToPhys[vreg] = csReg;
+            // Value stays active with new physical register; cachedInBlock preserved.
+        } else {
+            stillNeedSpill.push_back(vreg);
+        }
+    }
+
+    // Phase 2: Spill remaining values to memory.
+    for (auto vreg : stillNeedSpill) {
+        auto &state = states_[vreg];
+        spillActiveValue(vreg, state, prefix);
+        removeActive(cls, vreg);
+    }
+}
+
 /// @brief Rewrite a block so each instruction uses allocated registers.
 /// @details The method iterates the block, lowering PX_COPY pseudos via the
 ///          coalescer and handling other instructions by:
@@ -570,125 +635,16 @@ void LinearScanAllocator::processBlock(MBasicBlock &block, Coalescer &coalescer)
             handleOperand(current.operands[idx], roles[idx], prefix, suffix, scratch);
         }
 
-        // Handle CALL: values in caller-saved registers are clobbered
-        // Spill them BEFORE the call and mark for reload on next use
+        // Handle CALL: values in caller-saved registers are clobbered.
+        // Spill (or re-home into callee-saved registers when free) BEFORE the call.
         if (instr.opcode == MOpcode::CALL) {
-            // Use precomputed bitsets for O(1) caller-saved lookup instead of O(n) linear search
-            auto isCallerSaved = [this](PhysReg reg, RegClass cls) {
-                const auto &bits = cls == RegClass::GPR ? callerSavedGPRBits_ : callerSavedFPRBits_;
-                return bits.test(static_cast<std::size_t>(reg));
-            };
+            // Snapshot active sets first — spillOrRehome mutates them.
+            const auto gprCandidates = collectCallerSavedToSpill(RegClass::GPR);
+            const auto xmmCandidates = collectCallerSavedToSpill(RegClass::XMM);
+            spillOrRehomeAcrossCall(RegClass::GPR, gprCandidates, prefix);
+            spillOrRehomeAcrossCall(RegClass::XMM, xmmCandidates, prefix);
 
-            // Collect vregs to spill (can't modify active list while iterating)
-            std::vector<uint16_t> gprToSpill{};
-            std::vector<uint16_t> xmmToSpill{};
-
-            // Process GPR values - spill before call
-            for (auto vreg : activeGPR_) {
-                auto it = states_.find(vreg);
-                if (it == states_.end() || !it->second.hasPhys) {
-                    continue;
-                }
-                auto &state = it->second;
-                if (!isCallerSaved(state.phys, RegClass::GPR)) {
-                    continue;
-                }
-                // Check if this value is used after the call.
-                // If we don't have interval info, conservatively spill to avoid data loss.
-                const auto *interval = intervals_.lookup(vreg);
-                const bool liveOut = liveness_.liveOut(currentBlockIdx_).count(vreg) != 0;
-                if (!liveOut && interval && interval->end <= currentInstrIdx_ + 1) {
-                    continue; // Only skip if interval confirms value is dead after call
-                }
-                gprToSpill.push_back(vreg);
-            }
-
-            // Process XMM values - spill before call
-            for (auto vreg : activeXMM_) {
-                auto it = states_.find(vreg);
-                if (it == states_.end() || !it->second.hasPhys) {
-                    continue;
-                }
-                auto &state = it->second;
-                if (!isCallerSaved(state.phys, RegClass::XMM)) {
-                    continue;
-                }
-                // If we don't have interval info, conservatively spill to avoid data loss.
-                const auto *interval = intervals_.lookup(vreg);
-                const bool liveOut = liveness_.liveOut(currentBlockIdx_).count(vreg) != 0;
-                if (!liveOut && interval && interval->end <= currentInstrIdx_ + 1) {
-                    continue; // Only skip if interval confirms value is dead after call
-                }
-                xmmToSpill.push_back(vreg);
-            }
-
-            // Helper: find a free callee-saved register in the pool for re-homing.
-            // Returns {true, reg} if found, {false, _} otherwise.
-            auto findFreeCalleeSaved = [this](RegClass cls) -> std::pair<bool, PhysReg> {
-                auto &pool = poolFor(cls);
-                const auto &bits = cls == RegClass::GPR ? callerSavedGPRBits_ : callerSavedFPRBits_;
-                for (auto it = pool.begin(); it != pool.end(); ++it) {
-                    // NOT caller-saved = callee-saved
-                    if (!bits.test(static_cast<std::size_t>(*it))) {
-                        PhysReg reg = *it;
-                        pool.erase(it);
-                        return {true, reg};
-                    }
-                }
-                return {false, PhysReg::RAX};
-            };
-
-            // Phase 1: Try to re-home GPR values to free callee-saved registers.
-            // This avoids a memory round-trip by moving the value to a register
-            // that survives the CALL.
-            std::vector<uint16_t> gprStillNeedSpill{};
-            for (auto vreg : gprToSpill) {
-                auto &state = states_[vreg];
-                auto [found, csReg] = findFreeCalleeSaved(RegClass::GPR);
-                if (found) {
-                    // Move value to callee-saved register — survives the CALL.
-                    prefix.push_back(makeMove(RegClass::GPR, csReg, state.phys));
-                    releaseRegister(state.phys, RegClass::GPR);
-                    state.phys = csReg;
-                    result_.vregToPhys[vreg] = csReg;
-                    // Value stays active with new physical register; cachedInBlock preserved.
-                } else {
-                    gprStillNeedSpill.push_back(vreg);
-                }
-            }
-
-            // Phase 2: Spill remaining GPR values to memory.
-            for (auto vreg : gprStillNeedSpill) {
-                auto &state = states_[vreg];
-                spillActiveValue(vreg, state, prefix);
-                removeActive(RegClass::GPR, vreg);
-            }
-
-            // Phase 1: Try to re-home XMM values to free callee-saved XMM registers
-            // (relevant on Win64 where XMM6-15 are callee-saved).
-            std::vector<uint16_t> xmmStillNeedSpill{};
-            for (auto vreg : xmmToSpill) {
-                auto &state = states_[vreg];
-                auto [found, csReg] = findFreeCalleeSaved(RegClass::XMM);
-                if (found) {
-                    prefix.push_back(makeMove(RegClass::XMM, csReg, state.phys));
-                    releaseRegister(state.phys, RegClass::XMM);
-                    state.phys = csReg;
-                    result_.vregToPhys[vreg] = csReg;
-                } else {
-                    xmmStillNeedSpill.push_back(vreg);
-                }
-            }
-
-            // Phase 2: Spill remaining XMM values to memory.
-            for (auto vreg : xmmStillNeedSpill) {
-                auto &state = states_[vreg];
-                spillActiveValue(vreg, state, prefix);
-                removeActive(RegClass::XMM, vreg);
-            }
-
-            // Release the argument registers that were reserved during call setup
-            // back to the pool now that the call is complete.
+            // Release argument registers reserved during call setup.
             releaseCallReserved();
         }
 

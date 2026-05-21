@@ -105,19 +105,34 @@ std::optional<std::filesystem::path> installedLibraryPath(std::string_view libBa
     return std::nullopt;
 }
 
+/// @brief Source/build-tree sub-directory that produces a given support lib.
+/// @details Most companion libs land under `lib/`, but a few live where their
+///          sources are: GUI under src/lib/gui, the Zia frontend under
+///          src/frontends/zia, and the Zia-frontend static-link closure (the
+///          IL build/verify/transform/runtime/core/support archives that
+///          fe_zia pulls when IntelliSense is embedded in a codegen'd binary)
+///          directly under src/ (viper_support under src/support).
+std::filesystem::path supportLibBuildSubdir(std::string_view libBaseName) {
+    if (libBaseName == "vipergui")
+        return std::filesystem::path("src") / "lib" / "gui";
+    if (libBaseName == "fe_zia")
+        return std::filesystem::path("src") / "frontends" / "zia";
+    if (libBaseName == "viper_support")
+        return std::filesystem::path("src") / "support";
+    if (libBaseName == "viper_il_io")
+        return std::filesystem::path("src") / "il" / "io";
+    if (libBaseName == "il_build" || libBaseName == "il_transform" ||
+        libBaseName == "il_runtime" || libBaseName == "il_analysis" ||
+        libBaseName == "il_utils" || libBaseName == "il_api" ||
+        libBaseName == "viper_il_core" || libBaseName == "viper_il_verify" ||
+        libBaseName == "viper_pass")
+        return std::filesystem::path("src");
+    return std::filesystem::path("lib");
+}
+
 /// @brief Best-effort static-layout path for a support lib, used as a final fallback.
-/// @details Treats `vipergui` specially because GUI code lives under src/lib/gui;
-///          everything else falls through to a bare `lib/` prefix.
 std::filesystem::path fallbackSupportLibraryPath(std::string_view libBaseName) {
-#ifdef _WIN32
-    if (libBaseName == "vipergui")
-        return std::filesystem::path("src") / "lib" / "gui" / archiveFileName(libBaseName);
-    return std::filesystem::path("lib") / archiveFileName(libBaseName);
-#else
-    if (libBaseName == "vipergui")
-        return std::filesystem::path("src") / "lib" / "gui" / archiveFileName(libBaseName);
-    return std::filesystem::path("lib") / archiveFileName(libBaseName);
-#endif
+    return supportLibBuildSubdir(libBaseName) / archiveFileName(libBaseName);
 }
 
 /// @brief Locate a support-library archive inside a CMake build directory.
@@ -135,19 +150,14 @@ std::filesystem::path buildTreeSupportLibraryPath(const std::filesystem::path &b
         return std::filesystem::path{};
     };
 
+    const std::filesystem::path subdir = supportLibBuildSubdir(libBaseName);
+    const std::string archive = archiveFileName(libBaseName);
 #ifdef _WIN32
-    if (libBaseName == "vipergui") {
-        return pickFirstExisting({buildDir / "src/lib/gui/Release" / archiveFileName(libBaseName),
-                                  buildDir / "src/lib/gui/Debug" / archiveFileName(libBaseName),
-                                  buildDir / "src/lib/gui" / archiveFileName(libBaseName)});
-    }
-    return pickFirstExisting({buildDir / "lib/Release" / archiveFileName(libBaseName),
-                              buildDir / "lib/Debug" / archiveFileName(libBaseName),
-                              buildDir / "lib" / archiveFileName(libBaseName)});
+    return pickFirstExisting({buildDir / subdir / "Release" / archive,
+                              buildDir / subdir / "Debug" / archive,
+                              buildDir / subdir / archive});
 #else
-    if (libBaseName == "vipergui")
-        return buildDir / "src" / "lib" / "gui" / archiveFileName(libBaseName);
-    return buildDir / "lib" / archiveFileName(libBaseName);
+    return buildDir / subdir / archive;
 #endif
 }
 
@@ -210,6 +220,14 @@ bool ensureRequiredTargetsBuilt(const LinkContext &ctx, std::ostream &out, std::
         const std::filesystem::path audLib = supportLibraryPath(ctx.buildDir, "viperaud");
         if (!fileExists(audLib))
             missingTargets.push_back("viperaud");
+    }
+    if (ctx.needsZiaFrontend) {
+        if (!fileExists(supportLibraryPath(ctx.buildDir, "fe_zia")))
+            missingTargets.push_back("fe_zia");
+        for (const auto &lib : ziaFrontendClosureLibs()) {
+            if (!fileExists(supportLibraryPath(ctx.buildDir, lib)))
+                missingTargets.push_back(lib);
+        }
     }
     if (missingTargets.empty())
         return true;
@@ -634,6 +652,15 @@ std::filesystem::path supportLibraryPath(const std::filesystem::path &buildDir,
     return fallbackSupportLibraryPath(libBaseName);
 }
 
+const std::vector<std::string> &ziaFrontendClosureLibs() {
+    static const std::vector<std::string> kLibs = {
+        "il_build",      "il_transform",   "il_runtime",  "il_analysis",
+        "il_utils",      "il_api",         "viper_pass",  "viper_il_core",
+        "viper_il_verify", "viper_il_io",  "viper_support",
+    };
+    return kLibs;
+}
+
 // =========================================================================
 // Link context
 // =========================================================================
@@ -688,6 +715,12 @@ static int resolveAndBuildArchives(const std::unordered_set<std::string> &symbol
             break;
         }
     }
+
+    ctx.needsZiaFrontend = std::any_of(
+        closureSymbols.begin(), closureSymbols.end(), [](const std::string &sym) {
+            return sym.rfind("rt_zia_", 0) == 0 || sym.rfind("_rt_zia_", 0) == 0 ||
+                   sym.rfind("Viper.Zia.", 0) == 0 || sym.rfind("_Viper.Zia.", 0) == 0;
+        });
 
     {
         std::lock_guard<std::mutex> lock(cacheMutex);

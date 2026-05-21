@@ -62,7 +62,7 @@
 module csv;
 
 bind Viper.String as String;
-bind Viper.Fmt as Fmt;
+bind Viper.Text.Fmt as Fmt;
 bind Viper.IO as IO;
 bind Viper.Text.StringBuilder as SB;
 bind Viper.Text.Csv as Csv;

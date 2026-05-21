@@ -17,7 +17,9 @@
 //===----------------------------------------------------------------------===//
 
 #include "codegen/common/linker/ObjFileReader.hpp"
+#include "codegen/common/AArch64RelocUtil.hpp"
 #include "codegen/common/linker/RelocConstants.hpp"
+#include "codegen/common/objfile/ObjFileWriterUtil.hpp"
 
 #include <algorithm>
 #include <cstring>
@@ -27,6 +29,10 @@
 #include <vector>
 
 namespace viper::codegen::linker {
+
+using viper::codegen::objfile::checkedRange;
+using viper::codegen::objfile::readLE32;
+using viper::codegen::objfile::readLE64;
 
 namespace macho {
 static constexpr uint32_t MH_MAGIC_64 = 0xFEEDFACF;
@@ -123,10 +129,6 @@ template <typename T> static std::optional<T> readAt(const uint8_t *data, size_t
 }
 
 /// @brief Verify that the byte range [@p off, @p off+@p len) fits within @p size.
-static bool checkedRange(size_t off, size_t len, size_t size) {
-    return off <= size && len <= size - off;
-}
-
 /// @brief Copy @p s up to the first NUL or @p maxLen bytes (Mach-O fixed-name fields).
 /// @details Mach-O segment/section names occupy fixed 16-byte slots that are
 ///          NUL-padded; this helper trims to the actual logical length.
@@ -166,20 +168,6 @@ static void splitMachOTextSubsections(ObjFile &obj) {
     std::vector<uint32_t> directMap(obj.sections.size(), 0);
     std::vector<Range> ranges;
 
-    auto findRange = [&](uint32_t oldSec, size_t off) -> const Range * {
-        const Range *lastForSection = nullptr;
-        for (const auto &range : ranges) {
-            if (range.oldSec != oldSec)
-                continue;
-            lastForSection = &range;
-            if (off >= range.start && off < range.end)
-                return &range;
-        }
-        if (lastForSection && off == lastForSection->end)
-            return lastForSection;
-        return nullptr;
-    };
-
     for (uint32_t si = 1; si < obj.sections.size(); ++si) {
         const auto &sec = obj.sections[si];
         const bool splitCandidate =
@@ -187,10 +175,11 @@ static void splitMachOTextSubsections(ObjFile &obj) {
 
         std::vector<size_t> cuts;
         if (splitCandidate) {
+            cuts.push_back(0);
             for (const auto &sym : obj.symbols) {
                 if (sym.sectionIndex != si || sym.name.empty())
                     continue;
-                if (sym.binding != ObjSymbol::Global && sym.binding != ObjSymbol::Weak)
+                if (sym.name.rfind("$sect.", 0) == 0)
                     continue;
                 if (sym.offset < sec.data.size())
                     cuts.push_back(sym.offset);
@@ -211,19 +200,30 @@ static void splitMachOTextSubsections(ObjFile &obj) {
             if (start >= end)
                 continue;
 
-            ObjSection part = sec;
+            ObjSection part;
             part.name = "__TEXT,__text";
+            part.alignment = sec.alignment;
+            part.executable = sec.executable;
+            part.writable = sec.writable;
+            part.alloc = sec.alloc;
+            part.tls = sec.tls;
+            part.zeroFill = sec.zeroFill;
+            part.dataSegment = sec.dataSegment;
+            part.isCStringSection = sec.isCStringSection;
+            part.associativeSection = sec.associativeSection;
+            part.comdatSelection = sec.comdatSelection;
+            part.comdatKey = sec.comdatKey;
+            part.stripped = sec.stripped;
             for (const auto &sym : obj.symbols) {
-                if (sym.sectionIndex == si && sym.offset == start &&
-                    (sym.binding == ObjSymbol::Global || sym.binding == ObjSymbol::Weak) &&
-                    !sym.name.empty()) {
+                if (sym.sectionIndex == si && sym.offset == start && !sym.name.empty() &&
+                    sym.name.rfind("$sect.", 0) != 0) {
                     part.name = "__TEXT,__text." + sym.name;
                     break;
                 }
             }
             part.data.assign(sec.data.begin() + static_cast<std::ptrdiff_t>(start),
                              sec.data.begin() + static_cast<std::ptrdiff_t>(end));
-            part.relocs.clear();
+            part.memSize = part.data.size();
             const uint32_t newSecIdx = static_cast<uint32_t>(newSections.size());
             ranges.push_back({si, newSecIdx, start, end});
             newSections.push_back(std::move(part));
@@ -232,6 +232,44 @@ static void splitMachOTextSubsections(ObjFile &obj) {
 
     if (ranges.empty())
         return;
+
+    // Direct-mapped sections were copied with their original relocation lists
+    // above. Once any __text splitting happens, all relocations are redistributed
+    // below so offsets can be adjusted for split ranges. Clear the copied lists
+    // first to avoid applying direct-mapped section relocations twice.
+    for (size_t si = 1; si < newSections.size(); ++si)
+        newSections[si].relocs.clear();
+
+    std::vector<std::vector<const Range *>> rangesByOldSec(obj.sections.size());
+    for (const auto &range : ranges) {
+        if (range.oldSec < rangesByOldSec.size())
+            rangesByOldSec[range.oldSec].push_back(&range);
+    }
+
+    auto findRange = [&](uint32_t oldSec, size_t off) -> const Range * {
+        if (oldSec >= rangesByOldSec.size())
+            return nullptr;
+        const auto &sectionRanges = rangesByOldSec[oldSec];
+        if (sectionRanges.empty())
+            return nullptr;
+
+        auto it = std::upper_bound(sectionRanges.begin(),
+                                   sectionRanges.end(),
+                                   off,
+                                   [](size_t value, const Range *range) {
+                                       return value < range->start;
+                                   });
+        if (it != sectionRanges.begin()) {
+            --it;
+            if (off >= (*it)->start && off < (*it)->end)
+                return *it;
+        }
+
+        const Range *last = sectionRanges.back();
+        if (off == last->end)
+            return last;
+        return nullptr;
+    };
 
     for (auto &sym : obj.symbols) {
         if (sym.sectionIndex == 0 || sym.sectionIndex >= directMap.size())
@@ -267,20 +305,34 @@ static int64_t signExtend(uint64_t value, unsigned bits) {
     return static_cast<int64_t>((value ^ signBit) - signBit);
 }
 
-/// Read little-endian 32-bit from raw bytes.
-static uint32_t readLE32(const uint8_t *p) {
-    return static_cast<uint32_t>(p[0]) | (static_cast<uint32_t>(p[1]) << 8) |
-           (static_cast<uint32_t>(p[2]) << 16) | (static_cast<uint32_t>(p[3]) << 24);
-}
-
 /// Extract relocation addend from instruction bytes (Mach-O has no explicit addend).
 static int64_t extractMachOAddend(const uint8_t *sectionData,
                                   size_t sectionSize,
                                   size_t offset,
                                   uint32_t relocType,
-    uint32_t relocLength,
-    bool isArm64) {
+                                  uint32_t relocLength,
+                                  bool isArm64) {
     if (isArm64) {
+        if (relocType == macho_a64::kUnsigned) {
+            const size_t fieldSize = size_t{1} << relocLength;
+            if (!checkedRange(offset, fieldSize, sectionSize))
+                return 0;
+            if (fieldSize == 8)
+                return static_cast<int64_t>(readLE64(sectionData + offset));
+            if (fieldSize == 4) {
+                int32_t val = 0;
+                std::memcpy(&val, sectionData + offset, 4);
+                return val;
+            }
+            if (fieldSize == 2) {
+                int16_t val = 0;
+                std::memcpy(&val, sectionData + offset, 2);
+                return val;
+            }
+            int8_t val = 0;
+            std::memcpy(&val, sectionData + offset, 1);
+            return val;
+        }
         if (!checkedRange(offset, 4, sectionSize))
             return 0;
         const uint32_t insn = readLE32(sectionData + offset);
@@ -298,10 +350,8 @@ static int64_t extractMachOAddend(const uint8_t *sectionData,
             case macho_a64::kGotLoadPageOff12:
             case macho_a64::kTlvpLoadPageOff12: {
                 uint32_t pageOff = (insn >> 10) & 0xFFFu;
-                if ((insn & 0x3B000000) == 0x39000000) {
-                    uint32_t shift = insn >> 30;
-                    if ((insn & 0x04800000) == 0x04800000)
-                        shift = 4;
+                uint32_t shift = 0;
+                if (viper::codegen::a64UnsignedLdStOffsetShift(insn, shift)) {
                     pageOff <<= shift;
                 }
                 return static_cast<int64_t>(pageOff);
@@ -313,24 +363,36 @@ static int64_t extractMachOAddend(const uint8_t *sectionData,
     } else {
         const size_t fieldSize = size_t{1} << relocLength;
         if (checkedRange(offset, fieldSize, sectionSize)) {
+            auto normalizeX64Addend = [&](int64_t val) {
+                switch (relocType) {
+                    case macho_x64::kSigned:
+                    case macho_x64::kSigned1:
+                    case macho_x64::kSigned2:
+                    case macho_x64::kSigned4:
+                    case macho_x64::kBranch:
+                        return val - 4;
+                    default:
+                        return val;
+                }
+            };
             if (fieldSize == 1) {
                 int8_t val = 0;
                 std::memcpy(&val, sectionData + offset, 1);
-                return val;
+                return normalizeX64Addend(val);
             }
             if (fieldSize == 2) {
                 int16_t val = 0;
                 std::memcpy(&val, sectionData + offset, 2);
-                return val;
+                return normalizeX64Addend(val);
             }
             if (fieldSize == 4) {
                 int32_t val = 0;
                 std::memcpy(&val, sectionData + offset, 4);
-                return val;
+                return normalizeX64Addend(val);
             }
             int64_t val = 0;
             std::memcpy(&val, sectionData + offset, 8);
-            return val;
+            return normalizeX64Addend(val);
         }
         return 0;
     }
@@ -449,12 +511,15 @@ bool readMachOObj(
                 // .o files don't have segment permission bits, but each section header
                 // carries the intended segment name (__TEXT vs __DATA).
                 const uint32_t secType = sec->flags & 0xFF;
-                const bool dataLikeSegment =
+                const bool dataSegment =
                     segName == "__DATA" || segName == "__DATA_CONST" ||
                     segName == "__DATA_DIRTY" || segName == "__AUTH" ||
                     segName == "__AUTH_CONST";
+                const bool writableDataSegment =
+                    segName == "__DATA" || segName == "__DATA_DIRTY" || segName == "__AUTH";
+                os.dataSegment = !isDebugSection && dataSegment;
                 os.writable = !isDebugSection &&
-                              (dataLikeSegment || (secType == macho::S_ZEROFILL) ||
+                              (writableDataSegment || (secType == macho::S_ZEROFILL) ||
                                (secType == macho::S_THREAD_LOCAL_REGULAR) ||
                                (secType == macho::S_THREAD_LOCAL_ZEROFILL) ||
                                (secType == macho::S_THREAD_LOCAL_VARIABLES) ||
@@ -481,15 +546,15 @@ bool readMachOObj(
                     err << "error: " << name << ": Mach-O section is too large\n";
                     return false;
                 }
-                if (sec->size > kMaxObjMaterializedBytes - materializedBytes) {
+                if (!isZerofill && sec->size > kMaxObjMaterializedBytes - materializedBytes) {
                     err << "error: " << name << ": Mach-O materialized section data exceeds limit\n";
                     return false;
                 }
                 if (isZerofill && sec->size > 0) {
-                    os.data.resize(static_cast<size_t>(sec->size), 0);
-                    materializedBytes += static_cast<size_t>(sec->size);
+                    os.memSize = static_cast<size_t>(sec->size);
                 } else if (sec->size > 0 && checkedRange(sec->offset, static_cast<size_t>(sec->size), size)) {
                     os.data.assign(data + sec->offset, data + sec->offset + sec->size);
+                    os.memSize = os.data.size();
                     materializedBytes += static_cast<size_t>(sec->size);
                 } else if (sec->size > 0) {
                     err << "error: " << name << ": Mach-O section '" << os.name
@@ -529,6 +594,7 @@ bool readMachOObj(
 
                     const uint32_t info = ri->r_info;
                     const uint32_t symbolNum = info & 0x00FFFFFF;
+                    const bool isPcRel = ((info >> 24) & 1) != 0;
                     const bool isExtern = ((info >> 27) & 1) != 0;
                     const uint32_t relLength = (info >> 25) & 0x3;
                     const uint32_t relType = (info >> 28) & 0xF;
@@ -546,10 +612,22 @@ bool readMachOObj(
                         continue;
                     }
 
+                    const size_t fixupSize =
+                        isArm64 && relType != macho_a64::kUnsigned ? 4u : (size_t{1} << relLength);
+                    if (!checkedRange(static_cast<size_t>(ri->r_address),
+                                      fixupSize,
+                                      os.data.size())) {
+                        err << "error: " << name << ": Mach-O relocation at offset "
+                            << ri->r_address << " extends beyond section " << os.name << "\n";
+                        return false;
+                    }
+
                     ObjReloc rel;
                     rel.offset = static_cast<size_t>(ri->r_address);
                     rel.symIndex = symbolNum; // nlist index or section ordinal.
                     rel.type = relType;
+                    rel.pcrel = isPcRel;
+                    rel.length = static_cast<uint8_t>(relLength);
                     rel.sectionRelative = !isExtern;
 
                     if (hasPendingAddend) {
@@ -676,8 +754,25 @@ bool readMachOObj(
             // Map Mach-O 1-based section number to our section index.
             // machoSecMap translates Mach-O indices (which include skipped debug
             // sections) to ObjFile section indices.
-            if (nl->n_sect > 0 && nl->n_sect < machoSecMap.size())
+            //
+            // An n_sect that is past the number of sections we actually saw in
+            // the load commands indicates a truncated or malformed Mach-O. We
+            // must not silently fall through with sectionIndex = 0 because the
+            // symbol would then masquerade as undefined and could turn into a
+            // bogus dynamic import downstream. (n_sect == 0 with N_SECT type
+            // is also illegal per the Mach-O ABI.) machoSecMap[n_sect] == 0
+            // for a non-debug section is legitimate — it means the section
+            // was skipped (e.g. it was a debug section) — so let that case
+            // pass through with os.sectionIndex left at 0.
+            if (nl->n_sect > 0 && nl->n_sect < machoSecMap.size()) {
                 os.sectionIndex = machoSecMap[nl->n_sect];
+            } else if (nType == 0x0E) {
+                err << "error: " << name << ": Mach-O symbol '" << os.name
+                    << "' references section " << static_cast<unsigned>(nl->n_sect)
+                    << " which is outside the parsed section table (size="
+                    << machoSecMap.size() << ")\n";
+                return false;
+            }
             // Convert Mach-O absolute n_value to section-relative offset.
             // n_value is an address in the .o's virtual space; subtract section base.
             if (nl->n_sect > 0 && nl->n_sect < secAddrs.size() && os.sectionIndex > 0) {
@@ -691,6 +786,12 @@ bool readMachOObj(
                 if (relValue > static_cast<uint64_t>(SIZE_MAX)) {
                     err << "error: " << name << ": Mach-O symbol '" << os.name
                         << "' offset exceeds addressable size\n";
+                    return false;
+                }
+                const size_t secSize = objSectionMemSize(obj.sections[os.sectionIndex]);
+                if (relValue > static_cast<uint64_t>(secSize)) {
+                    err << "error: " << name << ": Mach-O symbol '" << os.name
+                        << "' is outside section '" << obj.sections[os.sectionIndex].name << "'\n";
                     return false;
                 }
                 os.offset = static_cast<size_t>(relValue);

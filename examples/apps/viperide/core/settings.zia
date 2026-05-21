@@ -4,7 +4,7 @@ bind Viper.Text.Ini as Ini;
 bind Viper.IO as IO;
 bind Viper.IO.Dir as Dir;
 bind Viper.IO.Path as Path;
-bind Viper.Environment as Env;
+bind Viper.System.Environment as Env;
 bind Viper.Core.Convert as Convert;
 bind Viper.GUI;
 

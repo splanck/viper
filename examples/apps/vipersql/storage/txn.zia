@@ -84,7 +84,7 @@
 
 module txn;
 
-bind Viper.Fmt as Fmt;
+bind Viper.Text.Fmt as Fmt;
 bind Viper.Threads as Threads;
 bind Viper.Time as Time;
 bind "./page";

@@ -888,90 +888,8 @@ PreservedAnalyses CheckOpt::run(Function &function, AnalysisManager &analysis) {
     // We scan each block for CBr instructions on signed comparisons, propagate
     // range constraints to the target blocks, and demote overflow ops to plain
     // ops when the range proves safety.
-    for (auto &block : function.blocks) {
-        if (block.instructions.empty())
-            continue;
-
-        const auto &term = block.instructions.back();
-        if (term.op != Opcode::CBr || term.labels.size() != 2 || term.operands.empty())
-            continue;
-
-        // Find the comparison instruction feeding the CBr.
-        const Value &condVal = term.operands[0];
-        if (condVal.kind != Value::Kind::Temp)
-            continue;
-
-        const Instr *cmpInstr = nullptr;
-        for (const auto &instr : block.instructions) {
-            if (instr.result && *instr.result == condVal.id) {
-                cmpInstr = &instr;
-                break;
-            }
-        }
-        if (!cmpInstr || cmpInstr->operands.size() < 2)
-            continue;
-
-        // Only handle scmp_le %x, C where C is a constant.
-        if (cmpInstr->op != Opcode::SCmpLE)
-            continue;
-
-        const Value &cmpLHS = cmpInstr->operands[0]; // %x
-        const Value &cmpRHS = cmpInstr->operands[1]; // C
-        if (cmpRHS.kind != Value::Kind::ConstInt || cmpLHS.kind != Value::Kind::Temp)
-            continue;
-
-        const int64_t threshold = cmpRHS.i64;
-        const unsigned guardedVar = cmpLHS.id;
-
-        // Avoid overflow in threshold + 1.
-        if (threshold == std::numeric_limits<int64_t>::max())
-            continue;
-
-        // CBr: labels[0] = true branch (cmp is true → x <= C)
-        //      labels[1] = false branch (cmp is false → x > C → x >= C+1)
-        // On the FALSE branch, we know: guardedVar >= threshold + 1
-        const std::string &falseBranch = term.labels[1];
-        auto predCountIt = predecessorCounts.find(falseBranch);
-        if (predCountIt == predecessorCounts.end() || predCountIt->second != 1)
-            continue;
-        const int64_t lowerBound = threshold + 1; // x >= lowerBound on false branch
-
-        // Find the false-branch target block and demote safe overflow ops.
-        auto tgtIt = blockMap.find(falseBranch);
-        if (tgtIt == blockMap.end())
-            continue;
-        BasicBlock *targetBlock = tgtIt->second;
-
-        for (auto &instr : targetBlock->instructions) {
-            if (instr.op != Opcode::ISubOvf)
-                continue;
-            if (instr.operands.size() < 2)
-                continue;
-
-            const Value &subLHS = instr.operands[0];
-            const Value &subRHS = instr.operands[1];
-
-            // Match: isub.ovf %guardedVar, K where K is a constant
-            if (subLHS.kind != Value::Kind::Temp || subLHS.id != guardedVar)
-                continue;
-            if (subRHS.kind != Value::Kind::ConstInt)
-                continue;
-
-            const int64_t K = subRHS.i64;
-
-            // Check: lowerBound - K >= INT64_MIN (subtraction can't overflow)
-            // Since lowerBound >= C+1 and K is small (typically 1 or 2),
-            // this is almost always safe.
-            if (K >= 0 && lowerBound >= std::numeric_limits<int64_t>::min() + K) {
-                // x >= lowerBound, K >= 0 → x - K >= lowerBound - K >= INT64_MIN → safe
-                if (!canDemoteToPlainI64(instr))
-                    continue;
-                instr.op = Opcode::Sub;
-                stampPlainI64ResultType(instr);
-                changed = true;
-            }
-        }
-    }
+    if (runGuardOverflowElim(function, blockMap, predecessorCounts))
+        changed = true;
 
     // =========================================================================
     // Phase 0.6: Range-backed overflow elimination
@@ -1183,6 +1101,95 @@ PreservedAnalyses CheckOpt::run(Function &function, AnalysisManager &analysis) {
     // Loop info is preserved (loop structure unchanged)
     preserved.preserveFunction(kAnalysisLoopInfo);
     return preserved;
+}
+
+bool CheckOpt::runGuardOverflowElim(
+    Function &function,
+    const std::unordered_map<std::string, BasicBlock *> &blockMap,
+    const std::unordered_map<std::string, unsigned> &predecessorCounts) {
+    bool changed = false;
+    for (auto &block : function.blocks) {
+        if (block.instructions.empty())
+            continue;
+
+        const auto &term = block.instructions.back();
+        if (term.op != Opcode::CBr || term.labels.size() != 2 || term.operands.empty())
+            continue;
+
+        // Find the comparison instruction feeding the CBr.
+        const Value &condVal = term.operands[0];
+        if (condVal.kind != Value::Kind::Temp)
+            continue;
+
+        const Instr *cmpInstr = nullptr;
+        for (const auto &instr : block.instructions) {
+            if (instr.result && *instr.result == condVal.id) {
+                cmpInstr = &instr;
+                break;
+            }
+        }
+        if (!cmpInstr || cmpInstr->operands.size() < 2)
+            continue;
+
+        // Only handle scmp_le %x, C where C is a constant.
+        if (cmpInstr->op != Opcode::SCmpLE)
+            continue;
+
+        const Value &cmpLHS = cmpInstr->operands[0]; // %x
+        const Value &cmpRHS = cmpInstr->operands[1]; // C
+        if (cmpRHS.kind != Value::Kind::ConstInt || cmpLHS.kind != Value::Kind::Temp)
+            continue;
+
+        const int64_t threshold = cmpRHS.i64;
+        const unsigned guardedVar = cmpLHS.id;
+
+        // Avoid overflow in threshold + 1.
+        if (threshold == std::numeric_limits<int64_t>::max())
+            continue;
+
+        // CBr: labels[0] = true branch (cmp is true → x <= C)
+        //      labels[1] = false branch (cmp is false → x > C → x >= C+1)
+        // On the FALSE branch, we know: guardedVar >= threshold + 1
+        const std::string &falseBranch = term.labels[1];
+        auto predCountIt = predecessorCounts.find(falseBranch);
+        if (predCountIt == predecessorCounts.end() || predCountIt->second != 1)
+            continue;
+        const int64_t lowerBound = threshold + 1; // x >= lowerBound on false branch
+
+        // Find the false-branch target block and demote safe overflow ops.
+        auto tgtIt = blockMap.find(falseBranch);
+        if (tgtIt == blockMap.end())
+            continue;
+        BasicBlock *targetBlock = tgtIt->second;
+
+        for (auto &instr : targetBlock->instructions) {
+            if (instr.op != Opcode::ISubOvf)
+                continue;
+            if (instr.operands.size() < 2)
+                continue;
+
+            const Value &subLHS = instr.operands[0];
+            const Value &subRHS = instr.operands[1];
+
+            // Match: isub.ovf %guardedVar, K where K is a constant
+            if (subLHS.kind != Value::Kind::Temp || subLHS.id != guardedVar)
+                continue;
+            if (subRHS.kind != Value::Kind::ConstInt)
+                continue;
+
+            const int64_t K = subRHS.i64;
+
+            // Check: lowerBound - K >= INT64_MIN (subtraction can't overflow).
+            if (K >= 0 && lowerBound >= std::numeric_limits<int64_t>::min() + K) {
+                if (!canDemoteToPlainI64(instr))
+                    continue;
+                instr.op = Opcode::Sub;
+                stampPlainI64ResultType(instr);
+                changed = true;
+            }
+        }
+    }
+    return changed;
 }
 
 void registerCheckOptPass(PassRegistry &registry) {

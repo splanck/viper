@@ -32,6 +32,7 @@ Dropdown menu (returned by `MenuBar.AddMenu()`).
 Disabled top-level menus render in the disabled state and ignore mouse and keyboard open requests.
 Menu and menu-item handles are owner-checked; removing an item through the wrong menu, or a menu through the wrong menubar, is ignored rather than corrupting either list.
 Removed menu-item handles become inert, open/highlighted menu state is cleared when its item disappears, and stale accelerator entries are ignored instead of firing removed actions.
+Menu-item shortcuts registered through `SetShortcut()` or add-with-shortcut runtime paths are rebuilt after menu mutations and dispatch from menu-bar key events as well as native macOS menus.
 
 | Method                  | Signature          | Description                    |
 |-------------------------|--------------------|--------------------------------|
@@ -217,8 +218,8 @@ if copyItem.WasClicked() == 1 { /* copy */ }
 Find and replace bar for text searching.
 
 `GetFindText()` and `GetReplaceText()` read the live text currently shown in the inputs, `Replace()` returns `0` when there is no active editor or no current match to replace, and pointer input now routes through the standard widget event pipeline so focus, hover, and click behavior match the rest of the toolkit.
-`SetRegex(1)` enables regular-expression search in the bound `CodeEditor`; matches may have variable length and still honor case-sensitive and whole-word options.
-If the parent widget destroys the underlying bar, the runtime wrapper disconnects from it and all later `FindBar` calls become no-ops.
+`SetRegex(1)` enables regular-expression search in the bound `CodeEditor`; matches may have variable length and still honor case-sensitive and whole-word options. POSIX-style regular expressions are used on platforms that provide them, and Windows builds use the built-in regex subset for literals, `.`, character classes, `^`/`$`, and `*`/`+`/`?`.
+If the parent widget destroys the underlying bar, the runtime wrapper disconnects from it and all later `FindBar` calls become no-ops. If the bound `CodeEditor` is destroyed, the bar unbinds itself before any later search or replace call. Boolean option getters return normalized `0` or `1` from the live widget state, including user checkbox clicks and `Ctrl+H` replace-mode toggles.
 
 **Constructor:** `NEW Viper.GUI.FindBar(parent)`
 
@@ -227,7 +228,7 @@ If the parent widget destroys the underlying bar, the runtime wrapper disconnect
 | `FindNext()`                | `Integer()`     | Find next match; returns 1 if found      |
 | `FindPrev()`                | `Integer()`     | Find previous match; returns 1 if found  |
 | `Focus()`                   | `Void()`        | Focus the find input                     |
-| `GetCurrentMatch()`         | `Integer()`     | Get current match index                  |
+| `GetCurrentMatch()`         | `Integer()`     | Get current match as a 1-based index, or 0 when there is no match |
 | `GetFindText()`             | `String()`      | Get search text                          |
 | `GetMatchCount()`           | `Integer()`     | Get total match count                    |
 | `GetReplaceText()`          | `String()`      | Get replacement text                     |
@@ -313,6 +314,9 @@ Breadcrumb wrappers install runtime finalizers and ignore calls after `Destroy()
 `SetPath(path, separator)` treats `separator` as a literal string. For example,
 `"alpha::beta"` split with `"::"` yields `alpha`, `beta`; it does not split on
 each `:` character independently.
+Replacing or clearing items also clears stale click payloads. After
+`WasItemClicked()` reports `0`, `GetClickedIndex()` returns `-1` and
+`GetClickedData()` returns an empty string until the next click.
 
 **Constructor:** `NEW Viper.GUI.Breadcrumb(parent)`
 
@@ -350,7 +354,7 @@ if bc.WasItemClicked() == 1 {
 
 Code minimap widget (pairs with CodeEditor).
 
-Minimap wrappers install runtime finalizers and clamp width/scale changes through the live widget only; calls after `Destroy()` are ignored.
+Minimap wrappers install runtime finalizers and clamp width/scale changes through the live widget only; calls after `Destroy()` are ignored. If the bound `CodeEditor` is destroyed, the minimap unbinds itself before painting, scrolling, or handling input.
 
 **Constructor:** `NEW Viper.GUI.Minimap(parent)`
 
@@ -391,21 +395,39 @@ Dialog hit-testing is local to the dialog surface, so button clicks, close click
 
 ### MessageBox
 
-System message dialog boxes (static methods).
+System message dialog boxes. Static helpers show one dialog immediately; object-style dialogs let you configure buttons before `Show()`.
+`Info`, `Warning`, and `Error` return `0` after the only OK-style action, matching
+their runtime `Integer(String, String)` signatures. One-shot dialogs return their
+documented fallback value when no active GUI window is available instead of trying
+to run a modal loop without an owner.
 Stateful message boxes are safe to destroy explicitly; calling `Show()` on a
 destroyed wrapper returns `-1` instead of trying to reuse the freed dialog.
 Object-style `Show()` also returns `-1` when the dialog closes without a button
 result, such as a window close or unavailable owner app.
 Custom button IDs preserve the exact `Integer` passed to `AddButton()`, including
-`0` and values outside the C dialog result enum range.
+`0` and values outside the C dialog result enum range. `AddButton()` does not make button ID `0` the default implicitly; call `SetDefaultButton(id)` to choose the Enter-key button.
 
 | Method                                       | Signature                 | Description                   |
 |----------------------------------------------|---------------------------|-------------------------------|
 | `Viper.GUI.MessageBox.Confirm(title, text)`  | `Integer(String, String)` | Show confirmation dialog      |
-| `Viper.GUI.MessageBox.Error(title, text)`    | `Void(String, String)`    | Show error dialog             |
-| `Viper.GUI.MessageBox.Info(title, text)`     | `Void(String, String)`    | Show info dialog              |
+| `Viper.GUI.MessageBox.Error(title, text)`    | `Integer(String, String)` | Show error dialog; returns 0  |
+| `Viper.GUI.MessageBox.Info(title, text)`     | `Integer(String, String)` | Show info dialog; returns 0   |
 | `Viper.GUI.MessageBox.Question(title, text)` | `Integer(String, String)` | Show yes/no question dialog   |
-| `Viper.GUI.MessageBox.Warning(title, text)`  | `Void(String, String)`    | Show warning dialog           |
+| `Viper.GUI.MessageBox.Warning(title, text)`  | `Integer(String, String)` | Show warning dialog; returns 0 |
+
+Object-style dialogs:
+
+| Method | Signature | Description |
+|--------|-----------|-------------|
+| `Viper.GUI.MessageBox.New(title, text, type)` | `Object(String,String,Integer)` | Create a message dialog object |
+| `Viper.GUI.MessageBox.NewInfo(title, text)` | `Object(String,String)` | Create an info dialog object |
+| `Viper.GUI.MessageBox.NewWarning(title, text)` | `Object(String,String)` | Create a warning dialog object |
+| `Viper.GUI.MessageBox.NewError(title, text)` | `Object(String,String)` | Create an error dialog object |
+| `Viper.GUI.MessageBox.NewQuestion(title, text)` | `Object(String,String)` | Create a question dialog object |
+| `box.AddButton(text, id)` | `Void(String,Integer)` | Add a custom button returning `id` |
+| `box.SetDefaultButton(id)` | `Void(Integer)` | Mark the matching custom button as default |
+| `box.Show()` | `Integer()` | Show the dialog and return the selected ID |
+| `box.Destroy()` | `Void()` | Destroy the dialog object |
 
 ### Example
 
@@ -428,14 +450,18 @@ Native or in-app file dialog boxes (static methods).
 Save dialogs honor the default filename field, append the configured default extension when needed, and keep buttons/bookmarks/file-list hit-testing correct after the window is repositioned.
 Object-style dialogs snapshot their accepted path list on each `Show()`, so repeated `Show()` / `Destroy()` cycles and multi-select accessors stay valid.
 Destroying an object-style dialog removes it from the app's modal stack before freeing it, and destroyed handles are inert for setters, `Show()`, and path accessors.
+Object-style dialogs remember the app that created them, include the default bookmarks used by static dialogs, and do not switch owners just because another app becomes active before a failed `Show()`.
+`FileDialog.New(type)` returns `NULL` for unknown mode values instead of silently creating an open-file dialog.
 On macOS, one-shot static dialogs use native panels, including native multi-select for `OpenMultiple`. On other GUI builds, static and object-style dialogs use the same in-app modal dialog and therefore require an active `Viper.GUI.App` window; they return an empty string or `0` when no active GUI window is available. The lower-level C convenience API can install a modal runner so `Open`, `Save`, and `SelectFolder` wait for the in-app dialog instead of returning immediately.
-`OpenMultiple()` returns selected paths joined with semicolons. Literal semicolons and backslashes inside paths are escaped as `\;` and `\\` so callers can split the result without ambiguity.
+`OpenMultiple()` returns selected paths joined with semicolons. Literal semicolons and backslashes inside paths are escaped as `\;` and `\\`; use `PathListCount()` and `PathListGet()` to decode the list without truncating paths that contain those characters.
 The in-app dialog implementation now scrolls long file and bookmark lists, keeps the selected row visible during keyboard navigation, clips long path text, and supports caret-aware editing in the save-name field (`Left` / `Right`, `Home`, `End`, `Backspace`, `Delete`).
 
 | Method                                          | Signature                        | Description                              |
 |-------------------------------------------------|----------------------------------|------------------------------------------|
 | `Viper.GUI.FileDialog.Open(title, defaultPath, filter)` | `String(String,String,String)`  | Open file dialog; returns path           |
-| `Viper.GUI.FileDialog.OpenMultiple(title, defaultPath, filter)` | `String(String,String,String)` | Open multi-file dialog; returns semicolon-separated paths |
+| `Viper.GUI.FileDialog.OpenMultiple(title, defaultPath, filter)` | `String(String,String,String)` | Open multi-file dialog; returns escaped path list |
+| `Viper.GUI.FileDialog.PathListCount(paths)` | `Integer(String)` | Count paths in an escaped `OpenMultiple` result |
+| `Viper.GUI.FileDialog.PathListGet(paths, index)` | `String(String,Integer)` | Decode one path from an escaped `OpenMultiple` result |
 | `Viper.GUI.FileDialog.Save(title, defaultPath, filter, defaultName)` | `String(Str,Str,Str,Str)` | Save file dialog; returns path     |
 | `Viper.GUI.FileDialog.SelectFolder(title, dir)` | `String(String, String)`       | Folder selection dialog                  |
 
@@ -444,6 +470,7 @@ filters, a default filename, or multiple selected paths:
 
 | Method | Signature | Description |
 |--------|-----------|-------------|
+| `Viper.GUI.FileDialog.New(type)` | `Object(Integer)` | Create a dialog object by mode |
 | `Viper.GUI.FileDialog.NewOpen()` | `Object()` | Create an open-file dialog object |
 | `Viper.GUI.FileDialog.NewSave()` | `Object()` | Create a save-file dialog object |
 | `Viper.GUI.FileDialog.NewFolder()` | `Object()` | Create a select-folder dialog object |
@@ -468,6 +495,10 @@ if path != "" { /* open file at path */ }
 
 var savePath = FileDialog.Save("Save As", "/home", "*.txt", "untitled.txt");
 var folder = FileDialog.SelectFolder("Choose Folder", "/home");
+
+var paths = FileDialog.OpenMultiple("Open Files", "/home", "*.txt");
+var count = FileDialog.PathListCount(paths);
+var firstSelected = FileDialog.PathListGet(paths, 0);
 
 var dlg = FileDialog.NewSave();
 dlg.SetTitle("Export Image");
@@ -640,7 +671,7 @@ vbox.SetPadding(20.0)
 Keyboard shortcut registration system (static methods).
 
 Shortcut matching uses the translated `VG_KEY_*` key space, so function keys, arrows, `Home`/`End`, `PageUp`/`PageDown`, and other named keys match the same strings accepted by `Register()`. Function keys are case-insensitive (`F5` and `f5` are equivalent), and malformed tokens such as `F1x` are rejected. Focused widgets receive key-down events first; a global shortcut only fires when the widget tree leaves the key unhandled. While a modal dialog is open, global shortcuts are suppressed so accelerators cannot leak through the modal.
-Invalid shortcut strings are rejected without registering a new shortcut or replacing an existing one. `SetGlobalEnabled(0)` stops new shortcut matches, but `WasTriggered(id)` still reports a shortcut that was already triggered earlier in the same frame.
+Invalid shortcut strings are rejected without registering a new shortcut or replacing an existing one. IDs and key specs containing embedded NUL bytes are rejected instead of being truncated. `SetGlobalEnabled(0)` stops new shortcut matches, but `WasTriggered(id)` still reports a shortcut that was already triggered earlier in the same frame.
 
 | Method                                          | Signature               | Description                              |
 |-------------------------------------------------|-------------------------|------------------------------------------|
@@ -728,6 +759,7 @@ Embedded video player widget that renders decoded frames inside a GUI layout. Wr
 | `IsPlaying`    | Integer | Read   | Non-zero while the video is playing |
 | `Position`     | Double  | Read   | Current playback position in seconds |
 | `Duration`     | Double  | Read   | Total duration in seconds |
+| `Root`         | Widget  | Read   | Internal root widget for advanced composition |
 | `ShowControls` | Boolean | Read/Write | Show or hide built-in play/pause controls |
 | `Loop`         | Boolean | Read/Write | Loop the video when it ends |
 
@@ -740,6 +772,10 @@ Embedded video player widget that renders decoded frames inside a GUI layout. Wr
 | `Stop()` | `Void()` | Stop and reset to the start |
 | `Update(deltaSeconds)` | `Void(Double)` | Advance the video decoder; finite positive values only |
 | `SetVolume(volume)` | `Void(Double)` | Set playback volume `[0.0–1.0]`; non-finite values become `0.0` |
+| `SetFlex(flex)` / `SetMargin(margin)` | `Void(...)` | Proxy layout configuration to the internal root widget |
+| `SetSize(w, h)` / `SetPreferredSize(w, h)` / `SetMaxSize(w, h)` | `Void(...)` | Proxy sizing to the internal root widget |
+| `SetVisible(flag)` / `SetEnabled(flag)` | `Void(Integer)` | Proxy visibility/enabled state to the internal root widget |
+| `AddChild(widget)` | `Void(Object)` | Add extra content to the widget's internal root container |
 | `Destroy()` | `Void()` | Release decoder resources |
 
 ```rust
@@ -773,7 +809,8 @@ WEND
 vid.Destroy()
 ```
 
-`VideoWidget.Destroy` must be called when done; the widget does not release the decoder automatically when removed from the layout. Call `Update` once per frame inside the application loop — do not drive it from a background thread.
+`VideoWidget.Destroy` releases the decoder and its GUI subtree immediately. The runtime finalizer also destroys the subtree if the wrapper is collected while still attached, so controls are not left alive without their player. Call `Update` once per frame inside the application loop — do not drive it from a background thread.
+All `VideoWidget` layout, visibility, child, and playback methods are GUI main-thread operations. The widget accepts decoded frame-size changes from the underlying player and resizes the internal image surface safely when the frame dimensions change.
 
 ---
 

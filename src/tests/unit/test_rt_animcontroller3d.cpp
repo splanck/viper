@@ -164,10 +164,48 @@ static void test_controller_masked_layer() {
     EXPECT_NEAR(rt_mat4_get(root_mat, 1, 3), 0.0, 0.01, "Masked layer does not affect root y");
     EXPECT_NEAR(rt_mat4_get(arm_mat, 1, 3), 1.0, 0.1, "Masked layer drives arm y");
 
+    rt_anim_controller3d_set_layer_weight(controller, 1, NAN);
+    rt_anim_controller3d_update(controller, 0.1);
+    arm_mat = rt_anim_controller3d_get_bone_matrix(controller, arm_bone);
+    EXPECT_TRUE(std::isfinite(rt_mat4_get(arm_mat, 1, 3)),
+                "AnimController3D converts NaN layer weights to finite output");
+
     rt_anim_controller3d_stop_layer(controller, 1);
     EXPECT_TRUE(rt_anim_controller3d_crossfade_layer(controller, 1, rt_const_cstr("wave"), 0.2) ==
                     1,
                 "CrossfadeLayer succeeds");
+}
+
+static void test_controller_events_cover_full_loops_and_reverse() {
+    void *skel = rt_skeleton3d_new();
+    rt_skeleton3d_add_bone(skel, rt_const_cstr("root"), -1, rt_mat4_identity());
+    rt_skeleton3d_compute_inverse_bind(skel);
+
+    void *walk = make_anim("walk", 0, 0.0, 0.0, 0.0, 10.0, 0.0, 0.0);
+    void *controller = rt_anim_controller3d_new(skel);
+    rt_anim_controller3d_add_state(controller, rt_const_cstr("walk"), walk);
+    rt_anim_controller3d_add_event(controller, rt_const_cstr("walk"), 0.5, rt_const_cstr("step"));
+
+    rt_anim_controller3d_play(controller, rt_const_cstr("walk"));
+    rt_anim_controller3d_update(controller, 1.0);
+    EXPECT_TRUE(strcmp(rt_string_cstr(rt_anim_controller3d_poll_event(controller)), "step") == 0,
+                "AnimController3D fires events crossed by an exact full loop");
+
+    rt_anim_controller3d_update(controller, 2.25);
+    EXPECT_TRUE(strcmp(rt_string_cstr(rt_anim_controller3d_poll_event(controller)), "step") == 0,
+                "AnimController3D fires looping events after multi-loop updates");
+
+    rt_anim_controller3d_set_state_speed(controller, rt_const_cstr("walk"), -1.0);
+    rt_anim_controller3d_play(controller, rt_const_cstr("walk"));
+    rt_anim_controller3d_update(controller, 0.75);
+    EXPECT_TRUE(strcmp(rt_string_cstr(rt_anim_controller3d_poll_event(controller)), "step") == 0,
+                "AnimController3D fires looping events during reverse wrap");
+
+    rt_anim_controller3d_set_state_speed(controller, rt_const_cstr("walk"), NAN);
+    rt_anim_controller3d_play(controller, rt_const_cstr("walk"));
+    rt_anim_controller3d_update(controller, 0.5);
+    EXPECT_TRUE(std::isfinite(rt_mat4_get(rt_anim_controller3d_get_bone_matrix(controller, 0), 0, 3)),
+                "AnimController3D sanitizes non-finite state speeds");
 }
 
 static void test_controller_rejects_wrong_animation_handles() {
@@ -190,6 +228,7 @@ static void test_controller_rejects_wrong_animation_handles() {
 int main() {
     test_controller_state_flow();
     test_controller_masked_layer();
+    test_controller_events_cover_full_loops_and_reverse();
     test_controller_rejects_wrong_animation_handles();
 
     printf("AnimController3D tests: %d/%d passed\n", tests_passed, tests_run);

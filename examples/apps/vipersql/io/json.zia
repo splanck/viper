@@ -41,7 +41,7 @@
 module json;
 
 bind Viper.String as String;
-bind Viper.Fmt as Fmt;
+bind Viper.Text.Fmt as Fmt;
 bind Viper.Text.Json as Json;
 bind Viper.Text.JsonPath as JP;
 bind Viper.Text.StringBuilder as SB;

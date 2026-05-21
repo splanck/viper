@@ -4,7 +4,7 @@
 // See LICENSE for license information.
 //
 // File: src/runtime/system/rt_exec.h
-// Purpose: External command execution for Viper.Exec, providing Run, Capture, and Shell variants
+// Purpose: External command execution for Viper.System.Exec, providing Run, Capture, and Shell variants
 // with argument arrays and exit code capture.
 //
 // Key invariants:

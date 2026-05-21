@@ -36,18 +36,14 @@ typedef struct {
     int64_t whole_word;
     int64_t regex;
     int64_t replace_mode;
-    const vg_widget_vtable_t *original_vtable;
-    vg_widget_vtable_t vtable;
 } rt_findbar_data_view_t;
 
 typedef struct {
     uint64_t magic;
     vg_breadcrumb_t *breadcrumb;
     int64_t clicked_index;
-    char *clicked_data;
+    rt_gui_string_data_t *clicked_data;
     int64_t was_clicked;
-    const vg_widget_vtable_t *original_vtable;
-    vg_widget_vtable_t vtable;
 } rt_breadcrumb_data_view_t;
 
 typedef struct {
@@ -64,6 +60,7 @@ typedef struct {
     vg_dialog_t *dialog;
     int64_t result;
     int64_t default_button;
+    int has_default_button;
     rt_gui_app_t *owner_app;
     vg_dialog_button_def_t *custom_buttons;
     int64_t *custom_button_ids;
@@ -78,6 +75,14 @@ typedef struct {
     char *selected_command;
     int64_t was_selected;
 } rt_commandpalette_data_view_t;
+
+typedef struct {
+    uint64_t magic;
+    vg_minimap_t *minimap;
+    int64_t width;
+    const vg_widget_vtable_t *original_vtable;
+    vg_widget_vtable_t vtable;
+} rt_minimap_data_view_t;
 
 static char *test_strdup_local(const char *s) {
     size_t len = strlen(s) + 1;
@@ -277,6 +282,12 @@ static void test_default_font_is_applied_to_complex_text_widgets(void) {
     vg_slider_t *slider = (vg_slider_t *)rt_slider_new(app.root, 1);
     vg_progressbar_t *progress = (vg_progressbar_t *)rt_progressbar_new(app.root);
     vg_spinner_t *spinner = (vg_spinner_t *)rt_spinner_new(app.root);
+    vg_menubar_t *menubar = (vg_menubar_t *)rt_menubar_new(app.root);
+    vg_toolbar_t *toolbar = (vg_toolbar_t *)rt_toolbar_new(app.root);
+    vg_statusbar_t *statusbar = (vg_statusbar_t *)rt_statusbar_new(app.root);
+    void *breadcrumb = rt_breadcrumb_new(app.root);
+    void *findbar = rt_findbar_new(app.root);
+    void *palette = rt_commandpalette_new(app.root);
 
     assert(tree && tree->font == app.default_font && tree->font_size == app.default_font_size);
     assert(tabbar && tabbar->font == app.default_font &&
@@ -289,9 +300,73 @@ static void test_default_font_is_applied_to_complex_text_widgets(void) {
            progress->font_size == app.default_font_size);
     assert(spinner && spinner->font == app.default_font &&
            spinner->font_size == app.default_font_size);
+    assert(menubar && menubar->font == app.default_font &&
+           menubar->font_size == app.default_font_size);
+    assert(toolbar && toolbar->font == app.default_font &&
+           toolbar->font_size == app.default_font_size);
+    assert(statusbar && statusbar->font == app.default_font &&
+           statusbar->font_size == app.default_font_size);
+    rt_breadcrumb_data_view_t *breadcrumb_view = (rt_breadcrumb_data_view_t *)breadcrumb;
+    assert(breadcrumb_view && breadcrumb_view->breadcrumb->font == app.default_font &&
+           breadcrumb_view->breadcrumb->font_size == app.default_font_size);
+    rt_findbar_data_view_t *findbar_view = (rt_findbar_data_view_t *)findbar;
+    assert(findbar_view && findbar_view->bar->font == app.default_font &&
+           findbar_view->bar->font_size == app.default_font_size);
+    rt_commandpalette_data_view_t *palette_view = (rt_commandpalette_data_view_t *)palette;
+    assert(palette_view && palette_view->palette->font == app.default_font &&
+           palette_view->palette->font_size == app.default_font_size);
 
+    rt_commandpalette_destroy(palette);
     cleanup_fake_app(&app);
     printf("test_default_font_is_applied_to_complex_text_widgets: PASSED\n");
+}
+
+static void test_widget_set_font_rejects_stale_font_handles(void) {
+    vg_font_t *sentinel = (vg_font_t *)(uintptr_t)0x1000;
+    void *stale = (void *)(uintptr_t)0x12345678;
+
+    vg_label_t *label = vg_label_create(NULL, "label");
+    vg_button_t *button = vg_button_create(NULL, "button");
+    vg_textinput_t *input = vg_textinput_create(NULL);
+    vg_treeview_t *tree = vg_treeview_create(NULL);
+    vg_codeeditor_t *editor = vg_codeeditor_create(NULL);
+    vg_listbox_t *listbox = vg_listbox_create(NULL);
+    assert(label && button && input && tree && editor && listbox);
+
+    label->font = sentinel;
+    label->font_size = 11.0f;
+    button->font = sentinel;
+    button->font_size = 12.0f;
+    input->font = sentinel;
+    input->font_size = 13.0f;
+    tree->font = sentinel;
+    tree->font_size = 14.0f;
+    editor->font = sentinel;
+    editor->font_size = 15.0f;
+    listbox->font = sentinel;
+    listbox->font_size = 16.0f;
+
+    rt_label_set_font(label, stale, 21.0);
+    rt_button_set_font(button, stale, 22.0);
+    rt_textinput_set_font(input, stale, 23.0);
+    rt_treeview_set_font(tree, stale, 24.0);
+    rt_codeeditor_set_font(editor, stale, 25.0);
+    rt_listbox_set_font(listbox, stale, 26.0);
+
+    assert(label->font == sentinel && label->font_size == 11.0f);
+    assert(button->font == sentinel && button->font_size == 12.0f);
+    assert(input->font == sentinel && input->font_size == 13.0f);
+    assert(tree->font == sentinel && tree->font_size == 14.0f);
+    assert(editor->font == sentinel && editor->font_size == 15.0f);
+    assert(listbox->font == sentinel && listbox->font_size == 16.0f);
+
+    vg_widget_destroy(&listbox->base);
+    vg_widget_destroy(&editor->base);
+    vg_widget_destroy(&tree->base);
+    vg_widget_destroy(&input->base);
+    vg_widget_destroy(&button->base);
+    vg_widget_destroy(&label->base);
+    printf("test_widget_set_font_rejects_stale_font_handles: PASSED\n");
 }
 
 static void test_dropdown_placeholder_is_copied(void) {
@@ -336,6 +411,24 @@ static void test_notification_cleanup_runs_for_manual_dismiss(void) {
 
     vg_notification_manager_destroy(mgr);
     printf("test_notification_cleanup_runs_for_manual_dismiss: PASSED\n");
+}
+
+static void test_notification_ids_skip_zero_on_wrap(void) {
+    vg_notification_manager_t *mgr = vg_notification_manager_create();
+    assert(mgr);
+    mgr->next_id = UINT32_MAX;
+
+    uint32_t max_id = vg_notification_show(mgr, VG_NOTIFICATION_INFO, "A", "first", 0);
+    uint32_t wrapped_id = vg_notification_show(mgr, VG_NOTIFICATION_INFO, "B", "second", 0);
+
+    assert(max_id == UINT32_MAX);
+    assert(wrapped_id == 1);
+    assert(mgr->notification_count == 2);
+    assert(mgr->notifications[0]->id == UINT32_MAX);
+    assert(mgr->notifications[1]->id == 1);
+
+    vg_notification_manager_destroy(mgr);
+    printf("test_notification_ids_skip_zero_on_wrap: PASSED\n");
 }
 
 static void test_command_palette_placeholder_and_utf8_input(void) {
@@ -473,6 +566,24 @@ static void test_codeeditor_runtime_supports_multicursor_editing(void) {
     printf("test_codeeditor_runtime_supports_multicursor_editing: PASSED\n");
 }
 
+static void test_codeeditor_set_text_round_trips_embedded_nuls(void) {
+    vg_codeeditor_t *editor = vg_codeeditor_create(NULL);
+    assert(editor);
+
+    const char bytes[] = {'a', 'b', '\0', 'c', 'd'};
+    rt_codeeditor_set_text(editor, rt_string_from_bytes(bytes, sizeof(bytes)));
+    assert(editor->line_count == 1);
+    assert(editor->lines[0].length == sizeof(bytes));
+    assert(memcmp(editor->lines[0].text, bytes, sizeof(bytes)) == 0);
+
+    rt_string text = rt_codeeditor_get_text(editor);
+    assert(rt_str_len(text) == (int64_t)sizeof(bytes));
+    assert(memcmp(rt_string_cstr(text), bytes, sizeof(bytes)) == 0);
+
+    vg_widget_destroy(&editor->base);
+    printf("test_codeeditor_set_text_round_trips_embedded_nuls: PASSED\n");
+}
+
 static void test_codeeditor_runtime_pixel_helpers_follow_scroll_and_wrap(void) {
     vg_codeeditor_t *editor = vg_codeeditor_create(NULL);
     assert(editor);
@@ -504,6 +615,10 @@ static void test_codeeditor_runtime_pixel_helpers_follow_scroll_and_wrap(void) {
     assert(rt_codeeditor_get_line_at_pixel(editor, 60) == 0);
     assert(rt_codeeditor_get_line_at_pixel(editor, 70) == 1);
     assert(rt_codeeditor_get_col_at_pixel(editor, 140, 60) == 8);
+
+    editor->base.width = editor->gutter_width;
+    editor->scroll_y = 0.0f;
+    assert(rt_codeeditor_get_col_at_pixel(editor, 130, 50) == 1);
 
     vg_widget_destroy(&editor->base);
     printf("test_codeeditor_runtime_pixel_helpers_follow_scroll_and_wrap: PASSED\n");
@@ -612,8 +727,30 @@ static void test_findbar_runtime_reads_live_text_and_reports_noop_replace(void) 
     rt_findbar_bind_editor(bar, editor);
     rt_findbar_set_find_text(bar, rt_const_cstr("alpha"));
     rt_findbar_set_replace_text(bar, rt_const_cstr("omega"));
+    rt_findbar_set_replace_mode(bar, 42);
+    rt_findbar_set_case_sensitive(bar, -7);
+    rt_findbar_set_whole_word(bar, 123);
+    rt_findbar_set_regex(bar, 9);
+    assert(rt_findbar_is_replace_mode(bar) == 1);
+    assert(rt_findbar_is_case_sensitive(bar) == 1);
+    assert(rt_findbar_is_whole_word(bar) == 1);
+    assert(rt_findbar_is_regex(bar) == 1);
 
     rt_findbar_data_view_t *view = (rt_findbar_data_view_t *)bar;
+    view->bar->show_replace = false;
+    view->bar->options.case_sensitive = false;
+    view->bar->options.whole_word = false;
+    view->bar->options.use_regex = false;
+    assert(rt_findbar_is_replace_mode(bar) == 0);
+    assert(rt_findbar_is_case_sensitive(bar) == 0);
+    assert(rt_findbar_is_whole_word(bar) == 0);
+    assert(rt_findbar_is_regex(bar) == 0);
+
+    rt_findbar_set_find_text(bar, rt_const_cstr("alpha"));
+    assert(rt_findbar_find_next(bar) == 1);
+    assert(rt_findbar_get_match_count(bar) == 1);
+    assert(rt_findbar_get_current_match(bar) == 1);
+
     vg_textinput_set_text((vg_textinput_t *)view->bar->find_input, "beta");
     vg_textinput_set_text((vg_textinput_t *)view->bar->replace_input, "theta");
 
@@ -809,6 +946,8 @@ static void test_widget_set_size_refuses_app_root(void) {
     rt_gui_activate_app(&app);
 
     rt_widget_set_size(app.root, 320, 200);
+    rt_widget_set_preferred_size(app.root, 480.0, 320.0);
+    rt_widget_set_max_size(app.root, 640.0, 480.0);
     assert(app.root->constraints.min_width == 0.0f);
     assert(app.root->constraints.max_width == 0.0f);
     assert(app.root->constraints.preferred_width == 0.0f);
@@ -1002,8 +1141,72 @@ static void test_listbox_selection_changed_is_edge_triggered(void) {
     assert(rt_listbox_was_selection_changed(listbox) == 1);
     assert(rt_listbox_was_selection_changed(listbox) == 0);
 
+    vg_listbox_remove_item(listbox, second);
+    assert(rt_listbox_get_selected(listbox) == NULL);
+    assert(rt_listbox_was_selection_changed(listbox) == 1);
+    assert(rt_listbox_was_selection_changed(listbox) == 0);
+
+    rt_listbox_select(listbox, first);
+    assert(rt_listbox_was_selection_changed(listbox) == 1);
+    vg_listbox_clear(listbox);
+    assert(rt_listbox_get_selected(listbox) == NULL);
+    assert(rt_listbox_was_selection_changed(listbox) == 1);
+    assert(rt_listbox_was_selection_changed(listbox) == 0);
+
     vg_widget_destroy(&listbox->base);
     printf("test_listbox_selection_changed_is_edge_triggered: PASSED\n");
+}
+
+static void test_runtime_listbox_select_index_rejects_out_of_range_indices(void) {
+    vg_listbox_t *listbox = vg_listbox_create(NULL);
+    assert(listbox);
+    vg_listbox_add_item(listbox, "first", NULL);
+    vg_listbox_add_item(listbox, "second", NULL);
+
+    rt_listbox_select_index(listbox, 1);
+    assert(rt_listbox_get_selected_index(listbox) == 1);
+    rt_listbox_select_index(listbox, INT64_MAX);
+    assert(rt_listbox_get_selected_index(listbox) == 1);
+
+    vg_listbox_set_virtual_mode(listbox, true, 2, 20.0f);
+    assert(rt_listbox_get_count(listbox) == 2);
+    rt_listbox_select_index(listbox, 1);
+    assert(rt_listbox_get_selected_index(listbox) == 1);
+    rt_listbox_select_index(listbox, 2);
+    assert(rt_listbox_get_selected_index(listbox) == 1);
+
+    vg_widget_destroy(&listbox->base);
+    printf("test_runtime_listbox_select_index_rejects_out_of_range_indices: PASSED\n");
+}
+
+static void test_treeview_selection_changed_reports_removal_and_clear(void) {
+    vg_treeview_t *tree = vg_treeview_create(NULL);
+    assert(tree);
+    vg_tree_node_t *first = vg_treeview_add_node(tree, NULL, "first");
+    vg_tree_node_t *second = vg_treeview_add_node(tree, NULL, "second");
+    assert(first && second);
+
+    assert(rt_treeview_was_selection_changed(tree) == 0);
+    rt_treeview_select(tree, first);
+    assert(rt_treeview_was_selection_changed(tree) == 1);
+    assert(rt_treeview_was_selection_changed(tree) == 0);
+
+    rt_treeview_select(tree, second);
+    assert(rt_treeview_was_selection_changed(tree) == 1);
+    vg_treeview_remove_node(tree, second);
+    assert(rt_treeview_get_selected(tree) == NULL);
+    assert(rt_treeview_was_selection_changed(tree) == 1);
+    assert(rt_treeview_was_selection_changed(tree) == 0);
+
+    rt_treeview_select(tree, first);
+    assert(rt_treeview_was_selection_changed(tree) == 1);
+    vg_treeview_clear(tree);
+    assert(rt_treeview_get_selected(tree) == NULL);
+    assert(rt_treeview_was_selection_changed(tree) == 1);
+    assert(rt_treeview_was_selection_changed(tree) == 0);
+
+    vg_widget_destroy(&tree->base);
+    printf("test_treeview_selection_changed_reports_removal_and_clear: PASSED\n");
 }
 
 static void test_removed_listbox_and_treeview_handles_are_inert(void) {
@@ -1110,6 +1313,9 @@ static void test_filedialog_show_without_active_window_returns_zero(void) {
     rt_gui_activate_app(NULL);
     void *dialog = rt_filedialog_new_open();
     assert(dialog);
+    rt_filedialog_data_view_t *view = (rt_filedialog_data_view_t *)dialog;
+    assert(view->dialog);
+    assert(view->dialog->bookmark_count > 0);
     assert(rt_filedialog_show(dialog) == 0);
     assert(rt_filedialog_get_path_count(dialog) == 0);
     assert(rt_str_len(rt_filedialog_get_path(dialog)) == 0);
@@ -1127,6 +1333,51 @@ static void test_filedialog_show_without_active_window_returns_zero(void) {
     vg_widget_destroy(probe);
 
     printf("test_filedialog_show_without_active_window_returns_zero: PASSED\n");
+}
+
+static void test_filedialog_show_uses_original_owner_app(void) {
+    rt_gui_app_t app_a;
+    rt_gui_app_t app_b;
+    reset_fake_app(&app_a);
+    reset_fake_app(&app_b);
+    app_a.root = vg_widget_create(VG_WIDGET_CONTAINER);
+    app_b.root = vg_widget_create(VG_WIDGET_CONTAINER);
+    assert(app_a.root && app_b.root);
+    app_a.root->user_data = &app_a;
+    app_b.root->user_data = &app_b;
+
+    rt_gui_activate_app(&app_a);
+    void *dialog = rt_filedialog_new_open();
+    assert(dialog);
+    rt_filedialog_data_view_t *view = (rt_filedialog_data_view_t *)dialog;
+    assert(view->owner_app == &app_a);
+
+    rt_gui_activate_app(&app_b);
+    assert(rt_filedialog_show(dialog) == 0);
+    assert(view->owner_app == &app_a);
+
+    rt_filedialog_destroy(dialog);
+    cleanup_fake_app(&app_b);
+    cleanup_fake_app(&app_a);
+    printf("test_filedialog_show_uses_original_owner_app: PASSED\n");
+}
+
+static void test_filedialog_path_list_helpers_decode_escaped_paths(void) {
+    rt_string escaped = rt_const_cstr("/a\\;b;/c\\\\d;tail\\");
+    assert(rt_filedialog_path_list_count(escaped) == 3);
+
+    rt_string first = rt_filedialog_path_list_get(escaped, 0);
+    rt_string second = rt_filedialog_path_list_get(escaped, 1);
+    rt_string third = rt_filedialog_path_list_get(escaped, 2);
+    rt_string missing = rt_filedialog_path_list_get(escaped, 3);
+
+    assert(strcmp(rt_string_cstr(first), "/a;b") == 0);
+    assert(strcmp(rt_string_cstr(second), "/c\\d") == 0);
+    assert(strcmp(rt_string_cstr(third), "tail\\") == 0);
+    assert(rt_str_len(missing) == 0);
+    assert(rt_filedialog_path_list_count(rt_str_empty()) == 0);
+
+    printf("test_filedialog_path_list_helpers_decode_escaped_paths: PASSED\n");
 }
 
 static void test_commandpalette_methods_after_destroy_are_inert(void) {
@@ -1207,6 +1458,38 @@ static void test_commandpalette_show_clear_remove_drop_stale_selection(void) {
     rt_commandpalette_destroy(palette);
     cleanup_fake_app(&app);
     printf("test_commandpalette_show_clear_remove_drop_stale_selection: PASSED\n");
+}
+
+static void test_commandpalette_rejects_embedded_nul_command_ids(void) {
+    rt_gui_app_t app;
+    reset_fake_app(&app);
+    app.root = vg_widget_create(VG_WIDGET_CONTAINER);
+    assert(app.root);
+    app.root->user_data = &app;
+    rt_gui_activate_app(&app);
+
+    void *palette = rt_commandpalette_new(&app);
+    assert(palette);
+    rt_commandpalette_data_view_t *data = (rt_commandpalette_data_view_t *)palette;
+    assert(data->palette);
+
+    const char bad_id[] = {'b', 'a', 'd', '\0', 'i', 'd'};
+    rt_commandpalette_add_command(palette,
+                                  rt_string_from_bytes(bad_id, sizeof(bad_id)),
+                                  rt_const_cstr("Bad"),
+                                  rt_const_cstr("File"));
+    assert(data->palette->command_count == 0);
+
+    rt_commandpalette_add_command_with_shortcut(palette,
+                                                rt_string_from_bytes(bad_id, sizeof(bad_id)),
+                                                rt_const_cstr("Bad"),
+                                                rt_const_cstr("File"),
+                                                rt_const_cstr("Ctrl+B"));
+    assert(data->palette->command_count == 0);
+
+    rt_commandpalette_destroy(palette);
+    cleanup_fake_app(&app);
+    printf("test_commandpalette_rejects_embedded_nul_command_ids: PASSED\n");
 }
 
 static void test_numeric_setters_sanitize_invalid_values(void) {
@@ -1319,6 +1602,15 @@ static void test_app_font_size_and_late_attach_reapply_default_font(void) {
     assert(detached->font == app.default_font);
     assert(detached->font_size == 21.0f);
 
+    vg_floatingpanel_t *panel = (vg_floatingpanel_t *)rt_floatingpanel_new(&app);
+    assert(panel);
+    vg_label_t *panel_child = (vg_label_t *)rt_label_new(NULL, rt_const_cstr("panel child"));
+    assert(panel_child);
+    assert(panel_child->font != app.default_font);
+    rt_floatingpanel_add_child(panel, panel_child);
+    assert(panel_child->font == app.default_font);
+    assert(panel_child->font_size == 21.0f);
+
     cleanup_fake_app(&app);
     printf("test_app_font_size_and_late_attach_reapply_default_font: PASSED\n");
 }
@@ -1339,6 +1631,16 @@ static void test_messagebox_show_after_destroy_returns_minus_one(void) {
 
     cleanup_fake_app(&app);
     printf("test_messagebox_show_after_destroy_returns_minus_one: PASSED\n");
+}
+
+static void test_messagebox_one_shots_without_window_return_fallbacks(void) {
+    rt_gui_activate_app(NULL);
+    assert(rt_messagebox_info(rt_const_cstr("title"), rt_const_cstr("body")) == 0);
+    assert(rt_messagebox_warning(rt_const_cstr("title"), rt_const_cstr("body")) == 0);
+    assert(rt_messagebox_error(rt_const_cstr("title"), rt_const_cstr("body")) == 0);
+    assert(rt_messagebox_question(rt_const_cstr("title"), rt_const_cstr("body")) == 0);
+    assert(rt_messagebox_confirm(rt_const_cstr("title"), rt_const_cstr("body")) == 0);
+    printf("test_messagebox_one_shots_without_window_return_fallbacks: PASSED\n");
 }
 
 static void test_toast_duration_is_clamped(void) {
@@ -1407,6 +1709,40 @@ static void test_breadcrumb_set_path_uses_literal_separator(void) {
     printf("test_breadcrumb_set_path_uses_literal_separator: PASSED\n");
 }
 
+static void test_breadcrumb_clicked_data_preserves_embedded_nuls(void) {
+    rt_gui_app_t app;
+    reset_fake_app(&app);
+    app.root = vg_widget_create(VG_WIDGET_CONTAINER);
+    assert(app.root);
+    app.root->user_data = &app;
+    rt_gui_activate_app(&app);
+
+    void *crumb = rt_breadcrumb_new(&app);
+    assert(crumb);
+    const char payload[] = {'a', '\0', 'b'};
+    rt_breadcrumb_add_item(crumb,
+                           rt_const_cstr("node"),
+                           rt_string_from_bytes(payload, sizeof(payload)));
+
+    rt_breadcrumb_data_view_t *view = (rt_breadcrumb_data_view_t *)crumb;
+    assert(view->breadcrumb && view->breadcrumb->item_count == 1);
+    assert(view->breadcrumb->on_click);
+    view->breadcrumb->on_click(view->breadcrumb, 0, view->breadcrumb->user_data);
+
+    assert(rt_breadcrumb_was_item_clicked(crumb) == 1);
+    assert(rt_breadcrumb_get_clicked_index(crumb) == 0);
+    rt_string clicked = rt_breadcrumb_get_clicked_data(crumb);
+    assert(rt_str_len(clicked) == (int64_t)sizeof(payload));
+    assert(memcmp(rt_string_cstr(clicked), payload, sizeof(payload)) == 0);
+    assert(rt_breadcrumb_was_item_clicked(crumb) == 0);
+    assert(rt_breadcrumb_get_clicked_index(crumb) == -1);
+    assert(rt_str_len(rt_breadcrumb_get_clicked_data(crumb)) == 0);
+
+    rt_breadcrumb_destroy(crumb);
+    cleanup_fake_app(&app);
+    printf("test_breadcrumb_clicked_data_preserves_embedded_nuls: PASSED\n");
+}
+
 static void test_shortcuts_reject_invalid_bindings_atomically(void) {
     rt_gui_app_t app;
     reset_fake_app(&app);
@@ -1418,10 +1754,20 @@ static void test_shortcuts_reject_invalid_bindings_atomically(void) {
     assert(app.shortcut_count == 0);
     rt_shortcuts_register(rt_const_cstr("bad3"), rt_const_cstr("F1x"), rt_const_cstr(""));
     assert(app.shortcut_count == 0);
+    const char bad_id[] = {'s', 'a', 'v', 'e', '\0', 'x'};
+    const char bad_keys[] = {'C', 't', 'r', 'l', '+', 'S', '\0', 'x'};
+    rt_shortcuts_register(
+        rt_string_from_bytes(bad_id, sizeof(bad_id)), rt_const_cstr("Ctrl+S"), rt_const_cstr(""));
+    assert(app.shortcut_count == 0);
+    rt_shortcuts_register(
+        rt_const_cstr("bad4"), rt_string_from_bytes(bad_keys, sizeof(bad_keys)), rt_const_cstr(""));
+    assert(app.shortcut_count == 0);
 
     rt_shortcuts_register(rt_const_cstr("save"), rt_const_cstr("Ctrl+S"), rt_const_cstr("save"));
     assert(app.shortcut_count == 1);
     assert(app.shortcuts[0].parsed_key == 'S');
+    rt_shortcuts_unregister(rt_string_from_bytes(bad_id, sizeof(bad_id)));
+    assert(app.shortcut_count == 1);
 
     rt_shortcuts_register(rt_const_cstr("save"), rt_const_cstr("Ctrl+NotAKey"), rt_const_cstr("bad"));
     assert(app.shortcut_count == 1);
@@ -1451,6 +1797,7 @@ static void test_close_prevention_tracks_request_without_closing(void) {
     app.close_requested = 1;
     app.should_close = 0;
     assert(rt_app_was_close_requested(&app) == 1);
+    assert(rt_app_was_close_requested(&app) == 0);
     assert(rt_gui_app_should_close(&app) == 0);
 
     rt_app_set_prevent_close(&app, 0);
@@ -1547,6 +1894,10 @@ static void test_floatingpanel_and_tabbar_reject_wrong_or_out_of_range_handles(v
     assert(label->base.parent == NULL);
     rt_floatingpanel_add_child(panel, label);
     assert(label->base.parent == &panel->base);
+    rt_floatingpanel_destroy(&app);
+    assert(vg_widget_is_live(&panel->base));
+    rt_floatingpanel_destroy(panel);
+    assert(!vg_widget_is_live(&panel->base));
 
     vg_tabbar_t *tabbar = (vg_tabbar_t *)rt_tabbar_new(app.root);
     assert(tabbar);
@@ -1587,6 +1938,30 @@ static void test_breadcrumb_minimap_methods_after_destroy_are_inert(void) {
 
     cleanup_fake_app(&app);
     printf("test_breadcrumb_minimap_methods_after_destroy_are_inert: PASSED\n");
+}
+
+static void test_minimap_editor_destroy_unbinds_target(void) {
+    rt_gui_app_t app;
+    reset_fake_app(&app);
+    app.root = vg_widget_create(VG_WIDGET_CONTAINER);
+    assert(app.root);
+    app.root->user_data = &app;
+    rt_gui_activate_app(&app);
+
+    void *editor = rt_codeeditor_new(app.root);
+    void *minimap = rt_minimap_new(app.root);
+    assert(editor && minimap);
+    rt_minimap_bind_editor(minimap, editor);
+
+    rt_minimap_data_view_t *view = (rt_minimap_data_view_t *)minimap;
+    assert(view->minimap->editor == (vg_codeeditor_t *)editor);
+
+    rt_widget_destroy(editor);
+    assert(view->minimap->editor == NULL);
+
+    rt_minimap_destroy(minimap);
+    cleanup_fake_app(&app);
+    printf("test_minimap_editor_destroy_unbinds_target: PASSED\n");
 }
 
 static void test_type_specific_widget_apis_reject_wrong_types(void) {
@@ -1662,6 +2037,7 @@ static void test_findbar_parent_destroy_disconnects_wrapper(void) {
     void *bar = rt_findbar_new(container);
     assert(editor && bar);
     rt_findbar_bind_editor(bar, editor);
+    rt_findbar_set_find_text(bar, rt_const_cstr("before-parent-destroy"));
 
     rt_findbar_data_view_t *view = (rt_findbar_data_view_t *)bar;
     assert(view->bar != NULL);
@@ -1674,8 +2050,63 @@ static void test_findbar_parent_destroy_disconnects_wrapper(void) {
     assert(rt_findbar_replace(bar) == 0);
     assert(rt_findbar_get_match_count(bar) == 0);
 
+    rt_findbar_destroy(bar);
+    assert(view->magic == 0);
+
     cleanup_fake_app(&app);
     printf("test_findbar_parent_destroy_disconnects_wrapper: PASSED\n");
+}
+
+static void test_findbar_editor_destroy_unbinds_target(void) {
+    rt_gui_app_t app;
+    reset_fake_app(&app);
+    app.root = vg_widget_create(VG_WIDGET_CONTAINER);
+    assert(app.root);
+    app.root->user_data = &app;
+    rt_gui_activate_app(&app);
+
+    void *editor = rt_codeeditor_new(app.root);
+    void *bar = rt_findbar_new(app.root);
+    assert(editor && bar);
+    rt_findbar_bind_editor(bar, editor);
+
+    rt_findbar_data_view_t *view = (rt_findbar_data_view_t *)bar;
+    assert(view->bound_editor == editor);
+    assert(view->bar->target_editor == (vg_codeeditor_t *)editor);
+
+    rt_widget_destroy(editor);
+    assert(view->bound_editor == NULL);
+    assert(view->bar->target_editor == NULL);
+    assert(rt_findbar_find_next(bar) == 0);
+
+    cleanup_fake_app(&app);
+    printf("test_findbar_editor_destroy_unbinds_target: PASSED\n");
+}
+
+static void test_unparented_editor_destroy_unbinds_findbar_and_minimap(void) {
+    rt_gui_activate_app(NULL);
+    void *editor = rt_codeeditor_new(NULL);
+    void *bar = rt_findbar_new(NULL);
+    void *minimap = rt_minimap_new(NULL);
+    assert(editor && bar && minimap);
+
+    rt_findbar_bind_editor(bar, editor);
+    rt_minimap_bind_editor(minimap, editor);
+
+    rt_findbar_data_view_t *bar_view = (rt_findbar_data_view_t *)bar;
+    rt_minimap_data_view_t *minimap_view = (rt_minimap_data_view_t *)minimap;
+    assert(bar_view->bound_editor == editor);
+    assert(bar_view->bar->target_editor == (vg_codeeditor_t *)editor);
+    assert(minimap_view->minimap->editor == (vg_codeeditor_t *)editor);
+
+    rt_widget_destroy(editor);
+    assert(bar_view->bound_editor == NULL);
+    assert(bar_view->bar->target_editor == NULL);
+    assert(minimap_view->minimap->editor == NULL);
+
+    rt_findbar_destroy(bar);
+    rt_minimap_destroy(minimap);
+    printf("test_unparented_editor_destroy_unbinds_findbar_and_minimap: PASSED\n");
 }
 
 static void test_radiogroup_runtime_handle_invalidates_after_destroy(void) {
@@ -1743,6 +2174,47 @@ static void test_filedialog_destroy_removes_modal_stack_entry(void) {
     printf("test_filedialog_destroy_removes_modal_stack_entry: PASSED\n");
 }
 
+static void test_app_destroy_invalidates_stateful_dialog_wrappers(void) {
+    rt_gui_app_t app;
+    reset_fake_app(&app);
+    app.root = vg_widget_create(VG_WIDGET_CONTAINER);
+    assert(app.root);
+    app.root->user_data = &app;
+    rt_gui_activate_app(&app);
+
+    void *box = rt_messagebox_new_info(rt_const_cstr("title"), rt_const_cstr("body"));
+    void *file = rt_filedialog_new_open();
+    void *editor = rt_codeeditor_new(app.root);
+    void *bar = rt_findbar_new(NULL);
+    assert(box && file && editor && bar);
+    rt_messagebox_data_view_t *box_view = (rt_messagebox_data_view_t *)box;
+    rt_filedialog_data_view_t *file_view = (rt_filedialog_data_view_t *)file;
+    rt_findbar_data_view_t *bar_view = (rt_findbar_data_view_t *)bar;
+    assert(box_view->dialog && file_view->dialog);
+    rt_findbar_bind_editor(bar, editor);
+    assert(bar_view->bound_editor == editor);
+
+    vg_dialog_show(box_view->dialog);
+    vg_filedialog_show(file_view->dialog);
+    rt_gui_push_dialog(&app, box_view->dialog);
+    rt_gui_push_dialog(&app, &file_view->dialog->base);
+    assert(app.dialog_count == 2);
+
+    rt_gui_app_destroy(&app);
+    assert(box_view->dialog == NULL);
+    assert(file_view->dialog == NULL);
+    assert(bar_view->bound_editor == NULL);
+    assert(bar_view->bar->target_editor == NULL);
+    assert(rt_messagebox_show(box) == -1);
+    assert(rt_filedialog_show(file) == 0);
+
+    rt_messagebox_destroy(box);
+    rt_filedialog_destroy(file);
+    rt_findbar_destroy(bar);
+    rt_gui_activate_app(NULL);
+    printf("test_app_destroy_invalidates_stateful_dialog_wrappers: PASSED\n");
+}
+
 static void test_messagebox_custom_button_ids_preserve_zero_and_i64(void) {
     rt_gui_app_t app;
     reset_fake_app(&app);
@@ -1756,7 +2228,6 @@ static void test_messagebox_custom_button_ids_preserve_zero_and_i64(void) {
     int64_t large_id = ((int64_t)1 << 40) + 17;
     rt_messagebox_add_button(box, rt_const_cstr("Zero"), 0);
     rt_messagebox_add_button(box, rt_const_cstr("Large"), large_id);
-    rt_messagebox_set_default_button(box, large_id);
 
     rt_messagebox_data_view_t *view = (rt_messagebox_data_view_t *)box;
     assert(view->custom_button_count == 2);
@@ -1765,6 +2236,9 @@ static void test_messagebox_custom_button_ids_preserve_zero_and_i64(void) {
     assert(view->custom_buttons[0].result == (vg_dialog_result_t)1);
     assert(view->custom_buttons[1].result == (vg_dialog_result_t)2);
     assert(view->custom_buttons[0].is_default == false);
+    assert(view->custom_buttons[1].is_default == false);
+
+    rt_messagebox_set_default_button(box, large_id);
     assert(view->custom_buttons[1].is_default == true);
 
     vg_dialog_set_custom_buttons(view->dialog, view->custom_buttons, view->custom_button_count);
@@ -1928,6 +2402,15 @@ static void test_codeeditor_gutter_slots_are_validated_and_click_coords_are_fres
     assert(editor->gutter_icon_count == 0);
 
     rt_codeeditor_set_gutter_icon(editor, 0, NULL, 3);
+    assert(editor->gutter_icon_count == 0);
+    void *pixels = rt_pixels_new(1, 1);
+    assert(pixels);
+    rt_pixels_set(pixels, 0, 0, 0x11223344);
+    rt_codeeditor_set_gutter_icon(editor, 0, pixels, 3);
+    assert(editor->gutter_icon_count == 1);
+    rt_codeeditor_set_gutter_icon(editor, 0, NULL, 3);
+    assert(editor->gutter_icon_count == 0);
+    rt_codeeditor_set_gutter_icon(editor, 0, pixels, 3);
     assert(editor->gutter_icon_count == 1);
     rt_codeeditor_clear_gutter_icon(editor, 0, -1);
     assert(editor->gutter_icon_count == 1);
@@ -1959,14 +2442,17 @@ int main(void) {
     test_statusbar_runtime_button_wires_click_polling();
     test_default_font_is_applied_to_text_widgets();
     test_default_font_is_applied_to_complex_text_widgets();
+    test_widget_set_font_rejects_stale_font_handles();
     test_dropdown_placeholder_is_copied();
     test_dialog_content_is_parented();
     test_notification_cleanup_runs_for_manual_dismiss();
+    test_notification_ids_skip_zero_on_wrap();
     test_command_palette_placeholder_and_utf8_input();
     test_platform_text_events_translate_to_gui_text();
     test_platform_scroll_events_keep_screen_coordinates_separate();
     test_app_handles_resolve_to_root_widgets_for_overlays();
     test_codeeditor_runtime_supports_multicursor_editing();
+    test_codeeditor_set_text_round_trips_embedded_nuls();
     test_codeeditor_runtime_pixel_helpers_follow_scroll_and_wrap();
     test_codeeditor_runtime_fold_helpers_skip_hidden_lines();
     test_codeeditor_line_number_width_override_tracks_character_width();
@@ -1987,33 +2473,44 @@ int main(void) {
     test_image_set_pixels_converts_viper_pixels_to_rgba();
     test_treeview_and_listbox_data_preserve_embedded_nuls();
     test_listbox_selection_changed_is_edge_triggered();
+    test_runtime_listbox_select_index_rejects_out_of_range_indices();
+    test_treeview_selection_changed_reports_removal_and_clear();
     test_removed_listbox_and_treeview_handles_are_inert();
     test_listbox_and_treeview_reject_foreign_child_handles();
     test_contextmenu_separator_returns_item_handle();
     test_contextmenu_item_click_updates_menuitem_was_clicked();
     test_filedialog_show_without_active_window_returns_zero();
+    test_filedialog_show_uses_original_owner_app();
+    test_filedialog_path_list_helpers_decode_escaped_paths();
     test_commandpalette_methods_after_destroy_are_inert();
     test_commandpalette_show_clear_remove_drop_stale_selection();
+    test_commandpalette_rejects_embedded_nul_command_ids();
     test_numeric_setters_sanitize_invalid_values();
     test_font_destroy_defers_live_app_font();
     test_detached_widgets_do_not_inherit_current_app_font();
     test_app_font_size_and_late_attach_reapply_default_font();
     test_messagebox_show_after_destroy_returns_minus_one();
+    test_messagebox_one_shots_without_window_return_fallbacks();
     test_toast_duration_is_clamped();
     test_toast_dismissal_is_edge_triggered_and_survives_cleanup();
     test_breadcrumb_set_path_uses_literal_separator();
+    test_breadcrumb_clicked_data_preserves_embedded_nuls();
     test_shortcuts_reject_invalid_bindings_atomically();
     test_close_prevention_tracks_request_without_closing();
     test_menu_context_toolbar_statusbar_handles_are_type_checked();
     test_toolbar_set_style_rejects_unknown_values();
     test_floatingpanel_and_tabbar_reject_wrong_or_out_of_range_handles();
     test_breadcrumb_minimap_methods_after_destroy_are_inert();
+    test_minimap_editor_destroy_unbinds_target();
     test_type_specific_widget_apis_reject_wrong_types();
     test_findbar_methods_after_destroy_are_inert();
     test_findbar_parent_destroy_disconnects_wrapper();
+    test_findbar_editor_destroy_unbinds_target();
+    test_unparented_editor_destroy_unbinds_findbar_and_minimap();
     test_radiogroup_runtime_handle_invalidates_after_destroy();
     test_filedialog_setters_after_destroy_are_inert();
     test_filedialog_destroy_removes_modal_stack_entry();
+    test_app_destroy_invalidates_stateful_dialog_wrappers();
     test_messagebox_custom_button_ids_preserve_zero_and_i64();
     test_menuitem_checkable_state_is_real_and_invalidates_context();
     test_contextmenu_submenu_ownership_detaches_safely();

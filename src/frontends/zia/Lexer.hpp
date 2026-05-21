@@ -321,6 +321,13 @@ class Lexer {
     /// @pre Current character is `"`.
     Token lexString();
 
+    /// @brief Lex an operator or punctuation token from leading character @p c.
+    /// @details Handles multi-char operators (`+=`, `->`, `==`, `..`, etc.),
+    ///          single-char punctuation, and brace tracking for interpolated
+    ///          strings. Emits an Error token for an unexpected character.
+    /// @return The lexed operator/punctuation token.
+    Token lexOperatorOrPunctuation(char c);
+
     /// @brief Lex a triple-quoted string literal.
     /// @return Token with kind StringLiteral or Error.
     ///

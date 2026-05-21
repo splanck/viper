@@ -625,68 +625,68 @@ void *rt_mat4_inverse(void *m) {
     if (!mat)
         return rt_mat4_identity();
 
-    double *a = mat->m;
+    const double *a = mat->m;
+    double inv[16];
+    double det;
+    double inv_det;
 
-    // Compute 2x2 determinants
-    double s0 = a[0] * a[5] - a[1] * a[4];
-    double s1 = a[0] * a[6] - a[2] * a[4];
-    double s2 = a[0] * a[7] - a[3] * a[4];
-    double s3 = a[1] * a[6] - a[2] * a[5];
-    double s4 = a[1] * a[7] - a[3] * a[5];
-    double s5 = a[2] * a[7] - a[3] * a[6];
+    inv[0] = a[5] * a[10] * a[15] - a[5] * a[11] * a[14] - a[9] * a[6] * a[15] +
+             a[9] * a[7] * a[14] + a[13] * a[6] * a[11] - a[13] * a[7] * a[10];
+    inv[4] = -a[4] * a[10] * a[15] + a[4] * a[11] * a[14] + a[8] * a[6] * a[15] -
+             a[8] * a[7] * a[14] - a[12] * a[6] * a[11] + a[12] * a[7] * a[10];
+    inv[8] = a[4] * a[9] * a[15] - a[4] * a[11] * a[13] - a[8] * a[5] * a[15] +
+             a[8] * a[7] * a[13] + a[12] * a[5] * a[11] - a[12] * a[7] * a[9];
+    inv[12] = -a[4] * a[9] * a[14] + a[4] * a[10] * a[13] + a[8] * a[5] * a[14] -
+              a[8] * a[6] * a[13] - a[12] * a[5] * a[10] + a[12] * a[6] * a[9];
+    inv[1] = -a[1] * a[10] * a[15] + a[1] * a[11] * a[14] + a[9] * a[2] * a[15] -
+             a[9] * a[3] * a[14] - a[13] * a[2] * a[11] + a[13] * a[3] * a[10];
+    inv[5] = a[0] * a[10] * a[15] - a[0] * a[11] * a[14] - a[8] * a[2] * a[15] +
+             a[8] * a[3] * a[14] + a[12] * a[2] * a[11] - a[12] * a[3] * a[10];
+    inv[9] = -a[0] * a[9] * a[15] + a[0] * a[11] * a[13] + a[8] * a[1] * a[15] -
+             a[8] * a[3] * a[13] - a[12] * a[1] * a[11] + a[12] * a[3] * a[9];
+    inv[13] = a[0] * a[9] * a[14] - a[0] * a[10] * a[13] - a[8] * a[1] * a[14] +
+              a[8] * a[2] * a[13] + a[12] * a[1] * a[10] - a[12] * a[2] * a[9];
+    inv[2] = a[1] * a[6] * a[15] - a[1] * a[7] * a[14] - a[5] * a[2] * a[15] +
+             a[5] * a[3] * a[14] + a[13] * a[2] * a[7] - a[13] * a[3] * a[6];
+    inv[6] = -a[0] * a[6] * a[15] + a[0] * a[7] * a[14] + a[4] * a[2] * a[15] -
+             a[4] * a[3] * a[14] - a[12] * a[2] * a[7] + a[12] * a[3] * a[6];
+    inv[10] = a[0] * a[5] * a[15] - a[0] * a[7] * a[13] - a[4] * a[1] * a[15] +
+              a[4] * a[3] * a[13] + a[12] * a[1] * a[7] - a[12] * a[3] * a[5];
+    inv[14] = -a[0] * a[5] * a[14] + a[0] * a[6] * a[13] + a[4] * a[1] * a[14] -
+              a[4] * a[2] * a[13] - a[12] * a[1] * a[6] + a[12] * a[2] * a[5];
+    inv[3] = -a[1] * a[6] * a[11] + a[1] * a[7] * a[10] + a[5] * a[2] * a[11] -
+             a[5] * a[3] * a[10] - a[9] * a[2] * a[7] + a[9] * a[3] * a[6];
+    inv[7] = a[0] * a[6] * a[11] - a[0] * a[7] * a[10] - a[4] * a[2] * a[11] +
+             a[4] * a[3] * a[10] + a[8] * a[2] * a[7] - a[8] * a[3] * a[6];
+    inv[11] = -a[0] * a[5] * a[11] + a[0] * a[7] * a[9] + a[4] * a[1] * a[11] -
+              a[4] * a[3] * a[9] - a[8] * a[1] * a[7] + a[8] * a[3] * a[5];
+    inv[15] = a[0] * a[5] * a[10] - a[0] * a[6] * a[9] - a[4] * a[1] * a[10] +
+              a[4] * a[2] * a[9] + a[8] * a[1] * a[6] - a[8] * a[2] * a[5];
 
-    double c5 = a[10] * a[15] - a[11] * a[14];
-    double c4 = a[9] * a[15] - a[11] * a[13];
-    double c3 = a[9] * a[14] - a[10] * a[13];
-    double c2 = a[8] * a[15] - a[11] * a[12];
-    double c1 = a[8] * a[14] - a[10] * a[12];
-    double c0 = a[8] * a[13] - a[9] * a[12];
-
-    double det = s0 * c5 - s1 * c4 + s2 * c3 + s3 * c2 - s4 * c1 + s5 * c0;
-
+    det = a[0] * inv[0] + a[1] * inv[4] + a[2] * inv[8] + a[3] * inv[12];
     if (!isfinite(det) || fabs(det) < 1e-15)
         return rt_mat4_identity(); // Singular
 
-    double invDet = 1.0 / det;
+    inv_det = 1.0 / det;
+    for (int i = 0; i < 16; i++)
+        inv[i] *= inv_det;
 
-    double r[16];
-
-    r[0] = (a[5] * c5 - a[6] * c4 + a[7] * c3) * invDet;
-    r[1] = (-a[1] * c5 + a[2] * c4 - a[3] * c3) * invDet;
-    r[2] = (a[13] * s5 - a[14] * s4 + a[15] * s3) * invDet;
-    r[3] = (-a[9] * s5 + a[10] * s4 - a[11] * s3) * invDet;
-
-    r[4] = (-a[4] * c5 + a[6] * c2 - a[7] * c1) * invDet;
-    r[5] = (a[0] * c5 - a[2] * c2 + a[3] * c1) * invDet;
-    r[6] = (-a[12] * s5 + a[14] * s2 - a[15] * s1) * invDet;
-    r[7] = (a[8] * s5 - a[10] * s2 + a[11] * s1) * invDet;
-
-    r[8] = (a[4] * c4 - a[5] * c2 + a[7] * c0) * invDet;
-    r[9] = (-a[0] * c4 + a[1] * c2 - a[3] * c0) * invDet;
-    r[10] = (a[12] * s4 - a[13] * s2 + a[15] * s0) * invDet;
-    r[11] = (-a[8] * s4 + a[9] * s2 - a[11] * s0) * invDet;
-
-    r[12] = (-a[4] * c3 + a[5] * c1 - a[6] * c0) * invDet;
-    r[13] = (a[0] * c3 - a[1] * c1 + a[2] * c0) * invDet;
-    r[14] = (-a[12] * s3 + a[13] * s1 - a[14] * s0) * invDet;
-    r[15] = (a[8] * s3 - a[9] * s1 + a[10] * s0) * invDet;
-
-    return rt_mat4_new(r[0],
-                       r[1],
-                       r[2],
-                       r[3],
-                       r[4],
-                       r[5],
-                       r[6],
-                       r[7],
-                       r[8],
-                       r[9],
-                       r[10],
-                       r[11],
-                       r[12],
-                       r[13],
-                       r[14],
-                       r[15]);
+    return rt_mat4_new(inv[0],
+                       inv[1],
+                       inv[2],
+                       inv[3],
+                       inv[4],
+                       inv[5],
+                       inv[6],
+                       inv[7],
+                       inv[8],
+                       inv[9],
+                       inv[10],
+                       inv[11],
+                       inv[12],
+                       inv[13],
+                       inv[14],
+                       inv[15]);
 }
 
 /// @brief Element-wise negation (-m). Returns identity for NULL input.

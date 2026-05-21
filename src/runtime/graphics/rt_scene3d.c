@@ -95,15 +95,19 @@ static double scene3d_finite_or(double value, double fallback) {
     return isfinite(value) ? value : fallback;
 }
 
-/// @brief Return @p value if finite, or 1.0 as the identity scale factor.
+/// @brief Return @p value if finite and non-zero, or +/-1.0 as a safe scale factor.
 /// @details Specialisation of `scene3d_finite_or` for scale components where a
 ///   zero-or-NaN value would collapse the node to a point or produce a degenerate
-///   inverse matrix. Returning 1.0 preserves the parent scale and keeps the node
-///   visible while the asset author fixes the bad data.
+///   inverse matrix. Negative finite scales are preserved so mirrored nodes remain
+///   representable; only near-zero and non-finite inputs are replaced.
 /// @param value Scale factor candidate — may be NaN or Inf.
-/// @return @p value when finite, 1.0 otherwise.
+/// @return @p value when usable, otherwise +/-1.0.
 static double scene3d_scale_or_unit(double value) {
-    return isfinite(value) ? value : 1.0;
+    if (!isfinite(value))
+        return 1.0;
+    if (fabs(value) < 1e-12)
+        return value < 0.0 ? -1.0 : 1.0;
+    return value;
 }
 
 extern void *rt_anim_controller3d_consume_root_motion_rotation(void *obj);
@@ -715,6 +719,10 @@ static void decompose_trs_matrix(const double *m, double *pos, double *quat, dou
     double fx;
     double fy;
     double fz;
+    double sx;
+    double sy;
+    double sz;
+    double det;
     if (!m)
         return;
     if (pos) {
@@ -731,44 +739,49 @@ static void decompose_trs_matrix(const double *m, double *pos, double *quat, dou
     fx = m[2];
     fy = m[6];
     fz = m[10];
+    sx = sqrt(rx * rx + ry * ry + rz * rz);
+    sy = sqrt(ux * ux + uy * uy + uz * uz);
+    sz = sqrt(fx * fx + fy * fy + fz * fz);
+    if (sx < 1e-12)
+        sx = 1.0;
+    if (sy < 1e-12)
+        sy = 1.0;
+    if (sz < 1e-12)
+        sz = 1.0;
+    rx /= sx;
+    ry /= sx;
+    rz /= sx;
+    ux /= sy;
+    uy /= sy;
+    uz /= sy;
+    fx /= sz;
+    fy /= sz;
+    fz /= sz;
+
+    det = rx * (uy * fz - uz * fy) - ux * (ry * fz - rz * fy) +
+          fx * (ry * uz - rz * uy);
+    if (det < 0.0) {
+        if (sx >= sy && sx >= sz) {
+            sx = -sx;
+            rx = -rx;
+            ry = -ry;
+            rz = -rz;
+        } else if (sy >= sz) {
+            sy = -sy;
+            ux = -ux;
+            uy = -uy;
+            uz = -uz;
+        } else {
+            sz = -sz;
+            fx = -fx;
+            fy = -fy;
+            fz = -fz;
+        }
+    }
     if (scale) {
-        scale[0] = sqrt(rx * rx + ry * ry + rz * rz);
-        scale[1] = sqrt(ux * ux + uy * uy + uz * uz);
-        scale[2] = sqrt(fx * fx + fy * fy + fz * fz);
-        if (scale[0] < 1e-12)
-            scale[0] = 1.0;
-        if (scale[1] < 1e-12)
-            scale[1] = 1.0;
-        if (scale[2] < 1e-12)
-            scale[2] = 1.0;
-        rx /= scale[0];
-        ry /= scale[0];
-        rz /= scale[0];
-        ux /= scale[1];
-        uy /= scale[1];
-        uz /= scale[1];
-        fx /= scale[2];
-        fy /= scale[2];
-        fz /= scale[2];
-    } else {
-        double rlen = sqrt(rx * rx + ry * ry + rz * rz);
-        double ulen = sqrt(ux * ux + uy * uy + uz * uz);
-        double flen = sqrt(fx * fx + fy * fy + fz * fz);
-        if (rlen < 1e-12)
-            rlen = 1.0;
-        if (ulen < 1e-12)
-            ulen = 1.0;
-        if (flen < 1e-12)
-            flen = 1.0;
-        rx /= rlen;
-        ry /= rlen;
-        rz /= rlen;
-        ux /= ulen;
-        uy /= ulen;
-        uz /= ulen;
-        fx /= flen;
-        fy /= flen;
-        fz /= flen;
+        scale[0] = scene3d_scale_or_unit(sx);
+        scale[1] = scene3d_scale_or_unit(sy);
+        scale[2] = scene3d_scale_or_unit(sz);
     }
     if (quat)
         quat_from_matrix_rows(rx, ux, fx, ry, uy, fy, rz, uz, fz, quat);

@@ -874,6 +874,11 @@ static bool menubar_handle_event(vg_widget_t *widget, vg_event_t *event) {
             return false;
 
         case VG_EVENT_KEY_DOWN:
+            if (vg_menubar_handle_accelerator(menubar, event->key.key, event->modifiers)) {
+                widget->needs_paint = true;
+                return true;
+            }
+
             if (menubar->open_menu) {
                 switch (event->key.key) {
                     case VG_KEY_ESCAPE:

@@ -20,5 +20,5 @@ FOR i = 0 TO 9999999
     END IF
     sum = sum + tmp
 NEXT i
-Viper.Environment.EndProgram(sum)
+Viper.System.Environment.EndProgram(sum)
 END

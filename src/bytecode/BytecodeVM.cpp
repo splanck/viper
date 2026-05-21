@@ -1073,6 +1073,14 @@ void BytecodeVM::run() {
 
         ++instrCount_;
 
+        // Trap unknown (non-enumerator) opcode bytes here so the dispatch switch
+        // below can omit a `default:` and let -Wswitch enforce that every defined
+        // opcode has an explicit handler (compile-time completeness).
+        if (!isKnownOpcode(static_cast<uint8_t>(op))) {
+            trap(TrapKind::InvalidOpcode, "Unknown opcode");
+            continue;
+        }
+
         switch (op) {
             //==================================================================
             // Stack Operations
@@ -2482,9 +2490,18 @@ void BytecodeVM::run() {
             }
 
             //==================================================================
-            // Default
+            // Opcodes with no run()-switch handler — trap. (Same set the
+            // threaded VM routes to L_DEFAULT via BC_OPCODE_TRAP.) There is no
+            // `default:`: with the unknown-byte guard above, the switch covers
+            // every BCOpcode enumerator, so -Wswitch -Werror forces any newly
+            // added opcode to be handled here too.
             //==================================================================
-            default:
+            case BCOpcode::TAIL_CALL:
+            case BCOpcode::MAKE_ERROR:
+            case BCOpcode::LINE:
+            case BCOpcode::BREAKPOINT:
+            case BCOpcode::WATCH_VAR:
+            case BCOpcode::OPCODE_COUNT:
                 trap(TrapKind::InvalidOpcode, "Unknown opcode");
                 break;
         }

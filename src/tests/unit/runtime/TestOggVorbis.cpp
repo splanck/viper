@@ -28,10 +28,11 @@
 #include <vector>
 
 extern "C" {
+#include "rt_string.h"
 #include "runtime/audio/rt_ogg.h"
 #include "runtime/audio/rt_vorbis.h"
 #include "runtime/graphics/rt_theora.h"
-void *rt_videoplayer_open(void *path);
+void *rt_videoplayer_open(rt_string path);
 void rt_videoplayer_play(void *vp);
 void rt_videoplayer_pause(void *vp);
 void rt_videoplayer_stop(void *vp);
@@ -43,7 +44,7 @@ double rt_videoplayer_get_duration(void *vp);
 double rt_videoplayer_get_position(void *vp);
 int64_t rt_videoplayer_get_is_playing(void *vp);
 void *rt_videoplayer_get_frame(void *vp);
-void *rt_const_cstr(const char *s);
+rt_string rt_const_cstr(const char *s);
 int64_t rt_pixels_width(void *pixels);
 int64_t rt_pixels_height(void *pixels);
 int64_t rt_obj_release_check0(void *obj);
@@ -540,7 +541,7 @@ TEST(VideoPlayerTest, OpenSyntheticOgvAndAdvanceFrames) {
     std::string path = write_temp_file(".ogv", bytes);
     ASSERT_FALSE(path.empty());
 
-    void *rts_path = rt_const_cstr(path.c_str());
+    rt_string rts_path = rt_const_cstr(path.c_str());
     ASSERT_TRUE(rts_path != nullptr);
 
     void *player = rt_videoplayer_open(rts_path);

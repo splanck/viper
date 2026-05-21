@@ -280,6 +280,32 @@ bool hasExceptionHandling(const Function &F) {
     return false;
 }
 
+/// @brief Compute a reverse-post-order block listing via DFS over the CFG
+///        (successors follow terminator labels). Used to drive forward dataflow.
+std::vector<Block *> buildReversePostOrder(Function &F) {
+    std::vector<Block *> rpo;
+    std::unordered_set<Block *> visited;
+    std::vector<Block *> postOrder;
+    std::function<void(Block *)> dfs = [&](Block *b) {
+        if (!visited.insert(b).second)
+            return;
+        if (!b->instructions.empty()) {
+            for (const auto &label : b->instructions.back().labels) {
+                for (auto &succ : F.blocks) {
+                    if (succ.label == label) {
+                        dfs(&succ);
+                        break;
+                    }
+                }
+            }
+        }
+        postOrder.push_back(b);
+    };
+    dfs(&F.blocks.front());
+    rpo.assign(postOrder.rbegin(), postOrder.rend());
+    return rpo;
+}
+
 } // namespace
 
 MemorySSA computeMemorySSA(Function &F, BasicAA &AA) {
@@ -337,30 +363,7 @@ MemorySSA computeMemorySSA(Function &F, BasicAA &AA) {
     // -----------------------------------------------------------------------
     // Phase 1: Compute RPO order for forward dataflow.
     // -----------------------------------------------------------------------
-    std::vector<Block *> rpo;
-    {
-        // Simple RPO via DFS.
-        std::unordered_set<Block *> visited;
-        std::vector<Block *> postOrder;
-        std::function<void(Block *)> dfs = [&](Block *b) {
-            if (!visited.insert(b).second)
-                return;
-            // Visit successors (follow terminator labels).
-            if (!b->instructions.empty()) {
-                for (const auto &label : b->instructions.back().labels) {
-                    for (auto &succ : F.blocks) {
-                        if (succ.label == label) {
-                            dfs(&succ);
-                            break;
-                        }
-                    }
-                }
-            }
-            postOrder.push_back(b);
-        };
-        dfs(&F.blocks.front());
-        rpo.assign(postOrder.rbegin(), postOrder.rend());
-    }
+    std::vector<Block *> rpo = buildReversePostOrder(F);
 
     // Build label→Block* map for successor lookup.
     std::unordered_map<std::string, Block *> labelToBlock;

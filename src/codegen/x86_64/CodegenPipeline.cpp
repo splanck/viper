@@ -298,6 +298,13 @@ void collectNativeLinkArchives(const common::LinkContext &ctx, std::vector<std::
         appendIfExists(audLib);
     }
 
+    // Embedding the Zia frontend pulls in il_runtime's RuntimeRegistry, which
+    // references the entire rt_* catalog regardless of what the program itself
+    // uses. Link every runtime component so those references resolve.
+    if (ctx.needsZiaFrontend) {
+        for (int i = 0; i < static_cast<int>(RtComponent::Count); ++i)
+            appendComponent(static_cast<RtComponent>(i));
+    }
 }
 
 /// @brief Link @p objPath into @p exePath using Viper's in-process linker.
@@ -327,6 +334,19 @@ int linkObjectWithNativeLinker(const std::filesystem::path &objPath,
     linkOpts.preserveDebugSections = preserveDebugSections;
     linkOpts.windowsDebugRuntime = windowsDebugRuntime;
     collectNativeLinkArchives(ctx, linkOpts.archivePaths);
+    if (ctx.needsZiaFrontend) {
+        const auto ziaLib = common::supportLibraryPath(ctx.buildDir, "fe_zia");
+        if (common::fileExists(ziaLib))
+            linkOpts.forceLoadArchivePaths.push_back(ziaLib.lexically_normal().string());
+        // fe_zia's static-link closure (IL build/verify/transform/runtime/core/
+        // support). Demand-driven: only members the force-loaded fe_zia objects
+        // reference are extracted.
+        for (const auto &lib : common::ziaFrontendClosureLibs()) {
+            const auto p = common::supportLibraryPath(ctx.buildDir, lib);
+            if (common::fileExists(p))
+                linkOpts.archivePaths.push_back(p.lexically_normal().string());
+        }
+    }
     linkOpts.extraObjPaths = extraObjects;
     return linker::nativeLink(linkOpts, out, err);
 }
@@ -349,20 +369,21 @@ PipelineResult CodegenPipeline::run() {
     PipelineResult result{0, "", ""};
     std::ostringstream out;
     std::ostringstream err;
+    auto finish = [&]() -> PipelineResult {
+        result.stdout_text = out.str();
+        result.stderr_text = err.str();
+        return result;
+    };
 
     il::core::Module module;
     const auto loadResult = il::tools::common::loadModuleFromFile(opts_.input_il_path, module, err);
     if (!loadResult.succeeded()) {
         result.exit_code = 1;
-        result.stdout_text = out.str();
-        result.stderr_text = err.str();
-        return result;
+        return finish();
     }
     if (!il::tools::common::verifyModule(module, err)) {
         result.exit_code = 1;
-        result.stdout_text = out.str();
-        result.stderr_text = err.str();
-        return result;
+        return finish();
     }
 
     return runWithModule(std::move(module), opts_.input_il_path, true);
@@ -375,23 +396,28 @@ PipelineResult CodegenPipeline::runWithModule(il::core::Module module,
     std::ostringstream out;
     std::ostringstream err;
 
+    // Flush the accumulated stdout/stderr buffers into `result` and return it.
+    // Used at every pipeline exit (success and failure) to avoid repeating the
+    // same three-line epilogue ~26 times.
+    auto finish = [&]() -> PipelineResult {
+        result.stdout_text = out.str();
+        result.stderr_text = err.str();
+        return result;
+    };
+
     if (debugSourcePath.empty())
         debugSourcePath = opts_.input_il_path;
 
     if (!moduleAlreadyVerified && !il::tools::common::verifyModule(module, err)) {
         result.exit_code = 1;
-        result.stdout_text = out.str();
-        result.stderr_text = err.str();
-        return result;
+        return finish();
     }
 
     viper::codegen::common::lowerNativeEh(module);
     if (const auto residualEh = viper::codegen::common::findResidualStructuredEh(module)) {
         err << "error: " << *residualEh << "\n";
         result.exit_code = 1;
-        result.stdout_text = out.str();
-        result.stderr_text = err.str();
-        return result;
+        return finish();
     }
 
     // Run the canonical IL optimization pipeline before lowering to MIR so native
@@ -403,17 +429,13 @@ PipelineResult CodegenPipeline::runWithModule(il::core::Module module,
         if (!ok) {
             err << "error: failed to run x86-64 IL optimization pipeline\n";
             result.exit_code = 1;
-            result.stdout_text = out.str();
-            result.stderr_text = err.str();
-            return result;
+            return finish();
         }
         // Re-verify IL after optimization to catch optimizer bugs early.
         if (!il::tools::common::verifyModule(module, err)) {
             err << "error: IL verification failed after optimization\n";
             result.exit_code = 1;
-            result.stdout_text = out.str();
-            result.stderr_text = err.str();
-            return result;
+            return finish();
         }
     }
 
@@ -424,9 +446,7 @@ PipelineResult CodegenPipeline::runWithModule(il::core::Module module,
     if (!useNativeAsm && !opts_.asset_blob_path.empty() && opts_.extra_objects.empty()) {
         err << "error: x64 --asset-blob requires --native-asm or a companion --extra-obj\n";
         result.exit_code = 1;
-        result.stdout_text = out.str();
-        result.stderr_text = err.str();
-        return result;
+        return finish();
     }
 
     CodegenOptions codegenOpts{};
@@ -460,9 +480,7 @@ PipelineResult CodegenPipeline::runWithModule(il::core::Module module,
     if (!manager.run(pipelineModule, diagnostics)) {
         diagnostics.flush(err);
         result.exit_code = 1;
-        result.stdout_text = out.str();
-        result.stderr_text = err.str();
-        return result;
+        return finish();
     }
 
     diagnostics.flush(err);
@@ -497,9 +515,7 @@ PipelineResult CodegenPipeline::runWithModule(il::core::Module module,
         if (!pipelineModule.binaryText) {
             err << "error: binary emit pass did not produce machine code\n";
             result.exit_code = 1;
-            result.stdout_text = out.str();
-            result.stderr_text = err.str();
-            return result;
+            return finish();
         }
 
         // If user requested assembly text output via -S, we still need text emit.
@@ -539,9 +555,7 @@ PipelineResult CodegenPipeline::runWithModule(il::core::Module module,
         if (!writer) {
             err << "error: no native object file writer for this platform\n";
             result.exit_code = 1;
-            result.stdout_text = out.str();
-            result.stderr_text = err.str();
-            return result;
+            return finish();
         }
 
         // Pass pre-encoded DWARF .debug_line data to the writer.
@@ -561,16 +575,12 @@ PipelineResult CodegenPipeline::runWithModule(il::core::Module module,
                                 err);
         if (!wroteObject) {
             result.exit_code = 1;
-            result.stdout_text = out.str();
-            result.stderr_text = err.str();
-            return result;
+            return finish();
         }
 
         if (wantsObjectOnly) {
             result.exit_code = 0;
-            result.stdout_text = out.str();
-            result.stderr_text = err.str();
-            return result;
+            return finish();
         }
 
         // Link the emitted object with the native linker, deriving the runtime
@@ -596,9 +606,7 @@ PipelineResult CodegenPipeline::runWithModule(il::core::Module module,
         if (const int rc = common::prepareLinkContextFromSymbols(extSymbols, ctx, out, err);
             rc != 0) {
             result.exit_code = 1;
-            result.stdout_text = out.str();
-            result.stderr_text = err.str();
-            return result;
+            return finish();
         }
 
         if (opts_.link_mode == LinkMode::System)
@@ -618,9 +626,7 @@ PipelineResult CodegenPipeline::runWithModule(il::core::Module module,
                                        err);
         if (linkExit != 0) {
             result.exit_code = linkExit == -1 ? 1 : linkExit;
-            result.stdout_text = out.str();
-            result.stderr_text = err.str();
-            return result;
+            return finish();
         }
 
         // Clean up intermediate .o file.
@@ -631,25 +637,19 @@ PipelineResult CodegenPipeline::runWithModule(il::core::Module module,
 
         if (!opts_.run_native) {
             result.exit_code = 0;
-            result.stdout_text = out.str();
-            result.stderr_text = err.str();
-            return result;
+            return finish();
         }
 
         const int runExit = runExecutable(exePath, out, err);
         result.exit_code = (runExit == -1) ? 1 : runExit;
-        result.stdout_text = out.str();
-        result.stderr_text = err.str();
-        return result;
+        return finish();
     }
 
     // --- System assembler path (existing): text assembly → cc -c → .o ---
     if (!pipelineModule.codegenResult) {
         err << "error: emit pass did not produce assembly output\n";
         result.exit_code = 1;
-        result.stdout_text = out.str();
-        result.stderr_text = err.str();
-        return result;
+        return finish();
     }
 
     const std::string &asmText = pipelineModule.codegenResult->asmText;
@@ -659,18 +659,14 @@ PipelineResult CodegenPipeline::runWithModule(il::core::Module module,
                                               : std::filesystem::path(opts_.output_asm_path);
     if (!writeAssemblyFile(asmPath, asmText, err)) {
         result.exit_code = 1;
-        result.stdout_text = out.str();
-        result.stderr_text = err.str();
-        return result;
+        return finish();
     }
 
     // If user requested assembly output via -S with a specific path, stop here.
     // Don't try to assemble or link - just emit the assembly file.
     if (opts_.emit_asm && !opts_.output_asm_path.empty()) {
         result.exit_code = 0;
-        result.stdout_text = out.str();
-        result.stderr_text = err.str();
-        return result;
+        return finish();
     }
 
     // Check if -o path looks like an executable (ends with .exe or has no extension)
@@ -698,9 +694,7 @@ PipelineResult CodegenPipeline::runWithModule(il::core::Module module,
                 std::filesystem::remove(asmPath, ec);
             }
         }
-        result.stdout_text = out.str();
-        result.stderr_text = err.str();
-        return result;
+        return finish();
     }
 
     // Link to executable if: running native, no output path specified, or output looks like .exe
@@ -708,9 +702,7 @@ PipelineResult CodegenPipeline::runWithModule(il::core::Module module,
                                  !looksLikeObjectFile(opts_.output_obj_path);
     if (!needsExecutable) {
         result.exit_code = 0;
-        result.stdout_text = out.str();
-        result.stderr_text = err.str();
-        return result;
+        return finish();
     }
 
     const std::filesystem::path exePath = opts_.output_obj_path.empty()
@@ -722,17 +714,13 @@ PipelineResult CodegenPipeline::runWithModule(il::core::Module module,
     const int assembleExit = invokeAssembler(asmPath, objPath, targetPlatform, out, err);
     if (assembleExit != 0) {
         result.exit_code = assembleExit == -1 ? 1 : assembleExit;
-        result.stdout_text = out.str();
-        result.stderr_text = err.str();
-        return result;
+        return finish();
     }
 
     common::LinkContext ctx;
     if (const int rc = common::prepareLinkContext(asmPath.string(), ctx, out, err); rc != 0) {
         result.exit_code = 1;
-        result.stdout_text = out.str();
-        result.stderr_text = err.str();
-        return result;
+        return finish();
     }
 
     if (opts_.link_mode == LinkMode::System)
@@ -757,9 +745,7 @@ PipelineResult CodegenPipeline::runWithModule(il::core::Module module,
     }
     if (linkExit != 0) {
         result.exit_code = linkExit == -1 ? 1 : linkExit;
-        result.stdout_text = out.str();
-        result.stderr_text = err.str();
-        return result;
+        return finish();
     }
 
     // Clean up the intermediate assembly file after successful linking,
@@ -771,9 +757,7 @@ PipelineResult CodegenPipeline::runWithModule(il::core::Module module,
 
     if (!opts_.run_native) {
         result.exit_code = 0;
-        result.stdout_text = out.str();
-        result.stderr_text = err.str();
-        return result;
+        return finish();
     }
 
     const int runExit = runExecutable(exePath, out, err);
@@ -782,9 +766,7 @@ PipelineResult CodegenPipeline::runWithModule(il::core::Module module,
     } else {
         result.exit_code = runExit;
     }
-    result.stdout_text = out.str();
-    result.stderr_text = err.str();
-    return result;
+    return finish();
 }
 
 } // namespace viper::codegen::x64

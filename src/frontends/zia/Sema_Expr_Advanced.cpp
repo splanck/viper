@@ -109,28 +109,6 @@ TypeRef Sema::analyzeIndex(IndexExpr *expr) {
 ///          - Entity/Value field and method access with visibility checking
 ///          - Built-in collection properties (e.g., list.count)
 TypeRef Sema::analyzeField(FieldExpr *expr) {
-    auto resolveStaticField = [&](const std::string &ownerName) -> TypeRef {
-        std::string fieldKey = ownerName + "." + expr->field;
-        if (!staticFields_.contains(fieldKey))
-            return nullptr;
-
-        auto fieldIt = fieldTypes_.find(fieldKey);
-        if (fieldIt == fieldTypes_.end())
-            return nullptr;
-
-        bool isInsideType = currentSelfType_ && currentSelfType_->name == ownerName;
-        auto visIt = memberVisibility_.find(fieldKey);
-        if (visIt != memberVisibility_.end() && visIt->second == Visibility::Private &&
-            !isInsideType) {
-            error(expr->loc,
-                  "Cannot access private member '" + expr->field + "' of type '" + ownerName + "'");
-            return types::unknown();
-        }
-
-        exprTypes_[expr->base.get()] = types::module(ownerName);
-        return fieldIt->second;
-    };
-
     // BUG-012 fix: Handle runtime class namespace property access (e.g., Viper.Math.Pi)
     // For property access like Viper.Math.Pi, we need to resolve it as a getter call
     // before trying to analyze the base, because "Viper" is not a symbol.
@@ -139,7 +117,7 @@ TypeRef Sema::analyzeField(FieldExpr *expr) {
         // Check if the dotted base is a runtime class (registered in typeRegistry_)
         auto typeIt = typeRegistry_.find(dottedBase);
         if (typeIt != typeRegistry_.end()) {
-            if (TypeRef staticFieldType = resolveStaticField(dottedBase))
+            if (TypeRef staticFieldType = resolveStaticField(expr, dottedBase))
                 return staticFieldType;
 
             // Try to find a getter function: {ClassName}.get_{PropertyName}
@@ -208,85 +186,7 @@ TypeRef Sema::analyzeField(FieldExpr *expr) {
 
     // Handle module-qualified access (e.g., colors.initColors or Canvas.New)
     if (baseType && baseType->kind == TypeKindSem::Module) {
-        if (TypeRef staticFieldType = resolveStaticField(baseType->name))
-            return staticFieldType;
-
-        if (auto moduleIt = moduleExports_.find(baseType->name); moduleIt != moduleExports_.end()) {
-            auto exportIt = moduleIt->second.find(expr->field);
-            if (exportIt != moduleIt->second.end()) {
-                const Symbol &sym = exportIt->second;
-                if (sym.kind == Symbol::Kind::Function && hasOverloadedFunctionName(sym.name)) {
-                    error(expr->loc,
-                          "Member '" + expr->field +
-                              "' is overloaded and must be called with arguments to resolve it");
-                    return types::unknown();
-                }
-                resolvedFieldSymbolNames_[expr] = sym.name;
-                return sym.type;
-            }
-        }
-
-        // Build the full qualified name (e.g., Viper.Graphics.Canvas.New)
-        std::string fullName = baseType->name + "." + expr->field;
-
-        // First try to look up the qualified name directly
-        Symbol *sym = lookupAccessibleSymbol(fullName, expr->loc, true);
-        if (sym) {
-            resolvedFieldSymbolNames_[expr] = sym->name;
-            if (sym->kind == Symbol::Kind::Function && sym->isExtern && sym->type &&
-                sym->type->kind == TypeKindSem::Function && sym->type->paramTypes().empty()) {
-                resolvedFieldGetters_[expr] = fullName;
-                return normalizeRuntimeSurfaceType(sym->type->returnType());
-            }
-            return sym->type;
-        }
-
-        // For runtime classes (Viper.*), the symbol might not be in the symbol table
-        // but could be a valid runtime method. Check importedSymbols_ for the method.
-        auto importIt = importedSymbols_.find(fullName);
-        if (importIt != importedSymbols_.end()) {
-            return types::module(importIt->second);
-        }
-
-        // For local modules, also try unqualified name (for backwards compatibility)
-        sym = lookupAccessibleSymbol(expr->field, expr->loc, true);
-        if (sym) {
-            return sym->type;
-        }
-
-        // Check if fullName is a valid runtime class or sub-namespace
-        // (e.g., "Viper.Collections.List" when accessed via alias "Collections.List")
-        if (isValidRuntimeNamespace(fullName)) {
-            return types::module(fullName);
-        }
-
-        // Also check typeRegistry_ for the qualified name directly
-        // (handles runtime types that are registered but not in importedSymbols_)
-        auto typeIt = typeRegistry_.find(fullName);
-        if (typeIt != typeRegistry_.end()) {
-            return typeIt->second;
-        }
-
-        // Try the getter convention (get_PropertyName) for static properties
-        // on runtime classes. Properties like Color.RED are registered as
-        // "Viper.Graphics.Color.get_RED" in the symbol table.
-        {
-            std::string getterName = baseType->name + ".get_" + expr->field;
-            Symbol *getter = lookupAccessibleSymbol(getterName, expr->loc, true);
-            if (getter && getter->kind == Symbol::Kind::Function) {
-                // Record the getter so the lowerer emits a call (same as Path A)
-                resolvedFieldGetters_[expr] = getterName;
-                TypeRef funcType = getter->type;
-                if (funcType && funcType->kind == TypeKindSem::Function)
-                    return normalizeRuntimeSurfaceType(funcType->returnType());
-                return normalizeRuntimeSurfaceType(funcType);
-            }
-        }
-
-        // If not found in global scope, report error
-        error(expr->loc,
-              "Module '" + baseType->name + "' has no exported symbol '" + expr->field + "'");
-        return types::unknown();
+        return resolveModuleFieldAccess(expr, baseType);
     }
 
     // Check if this is an enum variant access (e.g., Color.Red)
@@ -300,75 +200,10 @@ TypeRef Sema::analyzeField(FieldExpr *expr) {
         return types::unknown();
     }
 
-    // Check if this is a field or method access on a value or class type
+    // Field/method/property access on a class or struct.
     if (baseType &&
         (baseType->kind == TypeKindSem::Struct || baseType->kind == TypeKindSem::Class)) {
-        std::string memberKey = baseType->name + "." + expr->field;
-
-        // Check if accessing from inside or outside the type
-        bool isInsideType = currentSelfType_ && currentSelfType_->name == baseType->name;
-
-        // Check visibility
-        auto visIt = memberVisibility_.find(memberKey);
-        if (visIt != memberVisibility_.end()) {
-            if (visIt->second == Visibility::Private && !isInsideType) {
-                error(expr->loc,
-                      "Cannot access private member '" + expr->field + "' of type '" +
-                          baseType->name + "'");
-            }
-        }
-
-        // Check if it's a method
-        auto overloads = collectMethodOverloads(baseType->name, expr->field, true);
-        if (!overloads.empty()) {
-            if (overloads.size() > 1) {
-                error(expr->loc,
-                      "Member '" + expr->field +
-                          "' is overloaded and must be called with arguments to resolve it");
-                return types::unknown();
-            }
-
-            MethodDecl *method = overloads.front();
-            if (method->visibility == Visibility::Private && !isInsideType) {
-                error(expr->loc,
-                      "Cannot access private member '" + expr->field + "' of type '" +
-                          baseType->name + "'");
-                return types::unknown();
-            }
-            TypeRef methodType = getMethodType(baseType->name, method);
-            if (methodType)
-                return methodType;
-        }
-
-        // Check if it's a field
-        auto fieldIt = fieldTypes_.find(memberKey);
-        if (fieldIt != fieldTypes_.end()) {
-            return fieldIt->second;
-        }
-
-        std::string declaringOwner;
-        if (const PropertyDecl *prop =
-                propertyDeclForLowering(baseType->name, expr->field, &declaringOwner)) {
-            if (prop->visibility == Visibility::Private && !isInsideType) {
-                error(expr->loc,
-                      "Cannot access private member '" + expr->field + "' of type '" +
-                          declaringOwner + "'");
-                return types::unknown();
-            }
-            if (!prop->getterBody) {
-                error(expr->loc,
-                      "Property '" + expr->field + "' of type '" + declaringOwner +
-                          "' is write-only");
-                return types::unknown();
-            }
-
-            resolvedFieldGetters_[expr] = declaringOwner + ".get_" + prop->name;
-            return prop->type ? resolveTypeNode(prop->type.get()) : types::unknown();
-        }
-
-        // Field/method not found on this class or struct type
-        error(expr->loc, "Type '" + baseType->name + "' has no member '" + expr->field + "'");
-        return types::unknown();
+        return resolveClassStructFieldAccess(expr, baseType);
     }
 
     // Handle built-in properties like .Length on lists
@@ -460,6 +295,175 @@ TypeRef Sema::analyzeField(FieldExpr *expr) {
         }
     }
 
+    return types::unknown();
+}
+
+TypeRef Sema::resolveStaticField(FieldExpr *expr, const std::string &ownerName) {
+    std::string fieldKey = ownerName + "." + expr->field;
+    if (!staticFields_.contains(fieldKey))
+        return nullptr;
+
+    auto fieldIt = fieldTypes_.find(fieldKey);
+    if (fieldIt == fieldTypes_.end())
+        return nullptr;
+
+    bool isInsideType = currentSelfType_ && currentSelfType_->name == ownerName;
+    auto visIt = memberVisibility_.find(fieldKey);
+    if (visIt != memberVisibility_.end() && visIt->second == Visibility::Private &&
+        !isInsideType) {
+        error(expr->loc,
+              "Cannot access private member '" + expr->field + "' of type '" + ownerName + "'");
+        return types::unknown();
+    }
+
+    exprTypes_[expr->base.get()] = types::module(ownerName);
+    return fieldIt->second;
+}
+
+TypeRef Sema::resolveModuleFieldAccess(FieldExpr *expr, TypeRef baseType) {
+    if (TypeRef staticFieldType = resolveStaticField(expr, baseType->name))
+        return staticFieldType;
+
+    if (auto moduleIt = moduleExports_.find(baseType->name); moduleIt != moduleExports_.end()) {
+        auto exportIt = moduleIt->second.find(expr->field);
+        if (exportIt != moduleIt->second.end()) {
+            const Symbol &sym = exportIt->second;
+            if (sym.kind == Symbol::Kind::Function && hasOverloadedFunctionName(sym.name)) {
+                error(expr->loc,
+                      "Member '" + expr->field +
+                          "' is overloaded and must be called with arguments to resolve it");
+                return types::unknown();
+            }
+            resolvedFieldSymbolNames_[expr] = sym.name;
+            return sym.type;
+        }
+    }
+
+    // Build the full qualified name (e.g., Viper.Graphics.Canvas.New).
+    std::string fullName = baseType->name + "." + expr->field;
+
+    // First try to look up the qualified name directly.
+    Symbol *sym = lookupAccessibleSymbol(fullName, expr->loc, true);
+    if (sym) {
+        resolvedFieldSymbolNames_[expr] = sym->name;
+        if (sym->kind == Symbol::Kind::Function && sym->isExtern && sym->type &&
+            sym->type->kind == TypeKindSem::Function && sym->type->paramTypes().empty()) {
+            resolvedFieldGetters_[expr] = fullName;
+            return normalizeRuntimeSurfaceType(sym->type->returnType());
+        }
+        return sym->type;
+    }
+
+    // For runtime classes (Viper.*), the symbol might not be in the symbol table
+    // but could be a valid runtime method. Check importedSymbols_ for the method.
+    auto importIt = importedSymbols_.find(fullName);
+    if (importIt != importedSymbols_.end()) {
+        return types::module(importIt->second);
+    }
+
+    // For local modules, also try unqualified name (for backwards compatibility).
+    sym = lookupAccessibleSymbol(expr->field, expr->loc, true);
+    if (sym) {
+        return sym->type;
+    }
+
+    // Check if fullName is a valid runtime class or sub-namespace
+    // (e.g., "Viper.Collections.List" when accessed via alias "Collections.List").
+    if (isValidRuntimeNamespace(fullName)) {
+        return types::module(fullName);
+    }
+
+    // Also check typeRegistry_ for the qualified name directly (handles runtime
+    // types that are registered but not in importedSymbols_).
+    auto typeIt = typeRegistry_.find(fullName);
+    if (typeIt != typeRegistry_.end()) {
+        return typeIt->second;
+    }
+
+    // Try the getter convention (get_PropertyName) for static properties
+    // on runtime classes. Properties like Color.RED are registered as
+    // "Viper.Graphics.Color.get_RED" in the symbol table.
+    {
+        std::string getterName = baseType->name + ".get_" + expr->field;
+        Symbol *getter = lookupAccessibleSymbol(getterName, expr->loc, true);
+        if (getter && getter->kind == Symbol::Kind::Function) {
+            resolvedFieldGetters_[expr] = getterName;
+            TypeRef funcType = getter->type;
+            if (funcType && funcType->kind == TypeKindSem::Function)
+                return normalizeRuntimeSurfaceType(funcType->returnType());
+            return normalizeRuntimeSurfaceType(funcType);
+        }
+    }
+
+    // If not found in global scope, report error.
+    error(expr->loc,
+          "Module '" + baseType->name + "' has no exported symbol '" + expr->field + "'");
+    return types::unknown();
+}
+
+TypeRef Sema::resolveClassStructFieldAccess(FieldExpr *expr, TypeRef baseType) {
+    std::string memberKey = baseType->name + "." + expr->field;
+    bool isInsideType = currentSelfType_ && currentSelfType_->name == baseType->name;
+
+    auto visIt = memberVisibility_.find(memberKey);
+    if (visIt != memberVisibility_.end()) {
+        if (visIt->second == Visibility::Private && !isInsideType) {
+            error(expr->loc,
+                  "Cannot access private member '" + expr->field + "' of type '" +
+                      baseType->name + "'");
+        }
+    }
+
+    // Method?
+    auto overloads = collectMethodOverloads(baseType->name, expr->field, true);
+    if (!overloads.empty()) {
+        if (overloads.size() > 1) {
+            error(expr->loc,
+                  "Member '" + expr->field +
+                      "' is overloaded and must be called with arguments to resolve it");
+            return types::unknown();
+        }
+
+        MethodDecl *method = overloads.front();
+        if (method->visibility == Visibility::Private && !isInsideType) {
+            error(expr->loc,
+                  "Cannot access private member '" + expr->field + "' of type '" +
+                      baseType->name + "'");
+            return types::unknown();
+        }
+        TypeRef methodType = getMethodType(baseType->name, method);
+        if (methodType)
+            return methodType;
+    }
+
+    // Field?
+    auto fieldIt = fieldTypes_.find(memberKey);
+    if (fieldIt != fieldTypes_.end()) {
+        return fieldIt->second;
+    }
+
+    // Property?
+    std::string declaringOwner;
+    if (const PropertyDecl *prop =
+            propertyDeclForLowering(baseType->name, expr->field, &declaringOwner)) {
+        if (prop->visibility == Visibility::Private && !isInsideType) {
+            error(expr->loc,
+                  "Cannot access private member '" + expr->field + "' of type '" +
+                      declaringOwner + "'");
+            return types::unknown();
+        }
+        if (!prop->getterBody) {
+            error(expr->loc,
+                  "Property '" + expr->field + "' of type '" + declaringOwner +
+                      "' is write-only");
+            return types::unknown();
+        }
+
+        resolvedFieldGetters_[expr] = declaringOwner + ".get_" + prop->name;
+        return prop->type ? resolveTypeNode(prop->type.get()) : types::unknown();
+    }
+
+    error(expr->loc, "Type '" + baseType->name + "' has no member '" + expr->field + "'");
     return types::unknown();
 }
 

@@ -1,5 +1,5 @@
 // =============================================================================
-// API Audit: Viper.Environment - Environment Access
+// API Audit: Viper.System.Environment - Environment Access
 // =============================================================================
 // Tests: GetArgumentCount, GetCommandLine, GetVariable, HasVariable,
 //        SetVariable, IsNative
@@ -8,9 +8,9 @@
 
 module EnvironmentDemo;
 bind Viper.Terminal;
-bind Viper.Environment as Env;
+bind Viper.System.Environment as Env;
 func start() {
-    Say("=== API Audit: Viper.Environment ===");
+    Say("=== API Audit: Viper.System.Environment ===");
 
     // --- GetArgumentCount ---
     Say("--- GetArgumentCount ---");

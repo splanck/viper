@@ -9,7 +9,7 @@
 
 module DateOnlyDemo;
 bind Viper.Terminal;
-bind Viper.Fmt as Fmt;
+bind Viper.Text.Fmt as Fmt;
 bind Viper.Time.DateOnly as DO;
 func start() {
     Say("=== API Audit: Viper.Time.DateOnly ===");

@@ -28,7 +28,7 @@
 module franchise_shell;
 
 bind Viper.Terminal as Terminal;
-bind Viper.Fmt as Fmt;
+bind Viper.Text.Fmt as Fmt;
 bind Viper.IO.Path as Path;
 bind Viper.Collections.Seq as Seq;
 bind "../model/constants";

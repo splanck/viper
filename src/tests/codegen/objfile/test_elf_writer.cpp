@@ -70,6 +70,11 @@ static uint32_t readLE32(const std::vector<uint8_t> &d, size_t off) {
            (static_cast<uint32_t>(d[off + 2]) << 16) | (static_cast<uint32_t>(d[off + 3]) << 24);
 }
 
+static void writeLE32(std::vector<uint8_t> &d, size_t off, uint32_t value) {
+    for (size_t i = 0; i < 4; ++i)
+        d[off + i] = static_cast<uint8_t>(value >> (i * 8));
+}
+
 /// Read a little-endian uint64_t.
 static uint64_t readLE64(const std::vector<uint8_t> &d, size_t off) {
     uint64_t val = 0;
@@ -110,6 +115,28 @@ static const ObjSymbol *findSymbol(const ObjFile &obj, const std::string &name) 
             return &obj.symbols[i];
     }
     return nullptr;
+}
+
+static size_t findElfSymbolEntryOffset(const std::vector<uint8_t> &data,
+                                       const std::string &name) {
+    const size_t symHdr = sectionHeaderOff(data, kSecSymtab);
+    const size_t strHdr = sectionHeaderOff(data, kSecStrtab);
+    const uint64_t symOff = readLE64(data, symHdr + 24);
+    const uint64_t symSize = readLE64(data, symHdr + 32);
+    const uint64_t symEntSize = readLE64(data, symHdr + 56);
+    const uint64_t strOff = readLE64(data, strHdr + 24);
+    const uint64_t strSize = readLE64(data, strHdr + 32);
+
+    std::string strtab(reinterpret_cast<const char *>(data.data() + static_cast<size_t>(strOff)),
+                       static_cast<size_t>(strSize));
+    for (size_t off = static_cast<size_t>(symOff); off < symOff + symSize; off += symEntSize) {
+        const uint32_t nameOff = readLE32(data, off);
+        if (nameOff >= strtab.size())
+            continue;
+        if (std::string(strtab.c_str() + nameOff) == name)
+            return off;
+    }
+    return static_cast<size_t>(-1);
 }
 
 // =============================================================================
@@ -724,6 +751,37 @@ static void testMalformedRelaSizeFails() {
     std::remove(path.c_str());
 }
 
+static void testMalformedRelAddendFails() {
+    CodeSection text, rodata;
+
+    text.defineSymbol("caller", SymbolBinding::Global, SymbolSection::Text);
+    const uint32_t target = text.findOrDeclareSymbol("target");
+    text.emit8(0xE8);
+    text.addRelocation(RelocKind::Branch32, target, -4);
+    text.emit32LE(0);
+
+    std::string path = "/tmp/viper_test_elf_bad_rel_addend.o";
+    std::ostringstream errStream;
+
+    ElfWriter writer(ObjArch::X86_64);
+    CHECK(writer.write(path, text, rodata, errStream));
+
+    auto data = readFile(path);
+    size_t relaHdr = sectionHeaderOff(data, kSecRelaText);
+    uint64_t relaOff = readLE64(data, relaHdr + 24);
+    writeLE32(data, relaHdr + 4, 9);   // SHT_REL, no explicit addend.
+    writeLE64(data, relaHdr + 32, 16); // one Elf64_Rel entry.
+    writeLE64(data, relaHdr + 56, 16); // sh_entsize = sizeof(Elf64_Rel).
+    writeLE64(data, static_cast<size_t>(relaOff), 4); // PC32 addend read would overrun .text.
+
+    ObjFile obj;
+    std::ostringstream readErr;
+    CHECK(!readObjFile(data.data(), data.size(), "bad_rel_addend.o", obj, readErr));
+    CHECK(readErr.str().find("ELF REL relocation addend") != std::string::npos);
+
+    std::remove(path.c_str());
+}
+
 static void testAmbiguousCrossSectionRelocationFails() {
     CodeSection text, rodata;
     text.defineSymbol("dup", SymbolBinding::Local, SymbolSection::Text);
@@ -828,6 +886,80 @@ static void testMalformedSectionAlignmentFails() {
     std::remove(path.c_str());
 }
 
+static void testMalformedSymbolPastSectionFails() {
+    CodeSection text, rodata;
+    text.defineSymbol("test_func", SymbolBinding::Global, SymbolSection::Text);
+    text.emit8(0xC3);
+
+    std::string path = "/tmp/viper_test_elf_bad_symbol_offset.o";
+    std::ostringstream errStream;
+
+    ElfWriter writer(ObjArch::X86_64);
+    CHECK(writer.write(path, text, rodata, errStream));
+
+    auto data = readFile(path);
+    const size_t symOff = findElfSymbolEntryOffset(data, "test_func");
+    CHECK(symOff != static_cast<size_t>(-1));
+    if (symOff != static_cast<size_t>(-1))
+        writeLE64(data, symOff + 8, 2); // st_value beyond the one-byte .text section.
+
+    ObjFile obj;
+    std::ostringstream readErr;
+    CHECK(!readObjFile(data.data(), data.size(), "bad_symbol_offset.o", obj, readErr));
+    CHECK(readErr.str().find("extends beyond section '.text'") != std::string::npos);
+
+    std::remove(path.c_str());
+}
+
+static void testA64RelocationShapeValidationFails() {
+    CodeSection text, rodata;
+    const uint32_t callee = text.findOrDeclareSymbol("callee");
+    text.addRelocation(RelocKind::A64Call26, callee, 0);
+    text.emit32LE(0xD503201F); // NOP, not BL.
+
+    std::ostringstream errStream;
+    ElfWriter writer(ObjArch::AArch64);
+    CHECK(!writer.write("/tmp/viper_test_elf_bad_a64_shape.o", text, rodata, errStream));
+    CHECK(errStream.str().find("does not match the AArch64 instruction") != std::string::npos);
+    std::remove("/tmp/viper_test_elf_bad_a64_shape.o");
+}
+
+static void testA64PageOffsetShapeValidationRejectsSubAndWrongScale() {
+    {
+        CodeSection text, rodata;
+        const uint32_t target = text.findOrDeclareSymbol("target");
+        text.addRelocation(RelocKind::A64AddPageOff12, target, 0);
+        text.emit32LE(0xD1000000); // SUB X0, X0, #0, not ADD.
+
+        std::ostringstream errStream;
+        ElfWriter writer(ObjArch::AArch64);
+        CHECK(!writer.write("/tmp/viper_test_elf_bad_a64_sub_pageoff.o",
+                            text,
+                            rodata,
+                            errStream));
+        CHECK(errStream.str().find("does not match the AArch64 instruction") !=
+              std::string::npos);
+        std::remove("/tmp/viper_test_elf_bad_a64_sub_pageoff.o");
+    }
+
+    {
+        CodeSection text, rodata;
+        const uint32_t target = text.findOrDeclareSymbol("target");
+        text.addRelocation(RelocKind::A64LdSt64Off12, target, 0);
+        text.emit32LE(0xB9400000); // LDR W0, [X0], 32-bit scale, not 64-bit.
+
+        std::ostringstream errStream;
+        ElfWriter writer(ObjArch::AArch64);
+        CHECK(!writer.write("/tmp/viper_test_elf_bad_a64_ldst_scale.o",
+                            text,
+                            rodata,
+                            errStream));
+        CHECK(errStream.str().find("does not match the AArch64 instruction") !=
+              std::string::npos);
+        std::remove("/tmp/viper_test_elf_bad_a64_ldst_scale.o");
+    }
+}
+
 int main() {
     testMinimalX64Elf();
     testMinimalA64Elf();
@@ -845,10 +977,14 @@ int main() {
     testMultiSectionOffsetRelocationUsesSectionSymbol();
     testMultiSectionOffsetRelocationRejectsAmbiguousLegacyTarget();
     testMalformedRelaSizeFails();
+    testMalformedRelAddendFails();
     testMalformedSectionAlignmentFails();
+    testMalformedSymbolPastSectionFails();
     testAmbiguousCrossSectionRelocationFails();
     testMissingCrossSectionRelocationFails();
     testWrongArchRelocationFails();
+    testA64RelocationShapeValidationFails();
+    testA64PageOffsetShapeValidationRejectsSubAndWrongScale();
     testRelocationOffsetBoundsFails();
     testLogicalBiasSymbolsArePhysical();
 

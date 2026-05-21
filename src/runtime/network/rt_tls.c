@@ -3510,28 +3510,36 @@ retry_recv:;
 /// @brief Politely shut down a TLS session and release its resources.
 ///
 /// If still connected, sends a `close_notify` warning alert and
-/// drains records (capped at 32) until the peer's matching alert
-/// arrives — required by RFC 5246 §7.2.1 to detect truncation
-/// attacks. Then frees per-session scratch state, closes the
-/// underlying socket, marks the session `CLOSED`, and decrements
-/// its GC refcount; if the count hits zero, the session memory is
-/// freed via `rt_obj_free`. Safe to call on NULL or an already
-/// closed session.
+/// opportunistically drains a few records until the peer's matching
+/// alert arrives. Shutdown uses a short bounded timeout rather than
+/// the normal handshake/read timeout so a peer that drops the socket
+/// or does not respond cannot stall local server teardown for tens of
+/// seconds. Then frees per-session scratch state, closes the underlying
+/// socket, marks the session `CLOSED`, and decrements its GC refcount;
+/// if the count hits zero, the session memory is freed via `rt_obj_free`.
+/// Safe to call on NULL or an already closed session.
 void rt_tls_close(rt_tls_session_t *session) {
     if (!session)
         return;
 
     if (session->state == TLS_STATE_CONNECTED) {
+        const int close_timeout_ms =
+            (session->timeout_ms > 0 && session->timeout_ms < 100) ? session->timeout_ms : 100;
+        session->timeout_ms = close_timeout_ms;
+        if (session->socket_fd >= 0) {
+            tls_set_socket_timeout((socket_t)session->socket_fd, close_timeout_ms, 1);
+            tls_set_socket_timeout((socket_t)session->socket_fd, close_timeout_ms, 0);
+        }
+
         // Send close_notify alert
         uint8_t alert[2] = {1, 0}; // warning, close_notify
         send_record(session, TLS_CONTENT_ALERT, alert, 2);
 
-        // M-12: Await the peer's close_notify before closing the read side.
-        // RFC 5246 §7.2.1 requires the initiator to receive the responding
-        // close_notify before considering the connection fully closed.
-        // Bound the drain loop to avoid hanging if the server never responds.
+        // M-12: Await the peer's close_notify briefly before closing the read side.
+        // RFC 5246 §7.2.1 expects the initiator to receive the responding
+        // close_notify, but close must stay bounded for peers that disappear.
         int drain = 0;
-        while (drain < 32) {
+        while (drain < 4) {
             uint8_t content_type;
             size_t data_len;
             uint8_t buf[TLS_MAX_RECORD_SIZE + 256];

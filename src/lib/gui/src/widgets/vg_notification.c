@@ -873,11 +873,32 @@ uint32_t vg_notification_show_with_action(vg_notification_manager_t *mgr,
     if (!mgr)
         return 0;
 
+    uint32_t id = mgr->next_id;
+    for (uint32_t attempts = 0;; attempts++) {
+        if (id == 0)
+            id = 1;
+        bool collision = false;
+        for (size_t i = 0; i < mgr->notification_count; i++) {
+            if (mgr->notifications[i] && mgr->notifications[i]->id == id) {
+                collision = true;
+                break;
+            }
+        }
+        if (!collision)
+            break;
+        if (attempts == UINT32_MAX)
+            return 0;
+        id++;
+    }
+    mgr->next_id = id + 1;
+    if (mgr->next_id == 0)
+        mgr->next_id = 1;
+
     vg_notification_t *notif = calloc(1, sizeof(vg_notification_t));
     if (!notif)
         return 0;
 
-    notif->id = mgr->next_id++;
+    notif->id = id;
     notif->type = type;
     notif->title = title ? strdup(title) : NULL;
     notif->message = message ? strdup(message) : NULL;
@@ -890,12 +911,22 @@ uint32_t vg_notification_show_with_action(vg_notification_manager_t *mgr,
     notif->slide_progress = 0.0f;
     notif->dismiss_started_at = 0;
     notif->dismissed = false;
+    if ((title && !notif->title) || (message && !notif->message) ||
+        (action_label && !notif->action_label)) {
+        free_notification(notif);
+        return 0;
+    }
 
     // Add to array
     if (mgr->notification_count >= mgr->notification_capacity) {
         size_t new_cap = mgr->notification_capacity * 2;
         if (new_cap < 8)
             new_cap = 8;
+        if (new_cap <= mgr->notification_capacity ||
+            new_cap > SIZE_MAX / sizeof(vg_notification_t *)) {
+            free_notification(notif);
+            return 0;
+        }
         vg_notification_t **new_notifs =
             realloc(mgr->notifications, new_cap * sizeof(vg_notification_t *));
         if (!new_notifs) {

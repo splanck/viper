@@ -78,7 +78,7 @@ The following advanced regex features are not implemented:
 module PatternDemo;
 
 bind Viper.Terminal;
-bind Viper.Fmt as Fmt;
+bind Viper.Text.Fmt as Fmt;
 
 func start() {
     // Note: Pattern functions take (pattern, text) order
@@ -387,7 +387,7 @@ module ScannerDemo;
 
 bind Viper.Terminal;
 bind Viper.Text.Scanner as Scanner;
-bind Viper.Fmt as Fmt;
+bind Viper.Text.Fmt as Fmt;
 
 func start() {
     var sc = Scanner.New("hello 42 world");
@@ -506,7 +506,7 @@ module DiffDemo;
 
 bind Viper.Terminal;
 bind Viper.Text.Diff as Diff;
-bind Viper.Fmt as Fmt;
+bind Viper.Text.Fmt as Fmt;
 
 func start() {
     var a = "hello world";
@@ -587,7 +587,7 @@ SQL-style LIKE pattern matching on strings. These are methods available on any S
 module LikeDemo;
 
 bind Viper.Terminal;
-bind Viper.Fmt as Fmt;
+bind Viper.Text.Fmt as Fmt;
 
 func start() {
     // Wildcard matching

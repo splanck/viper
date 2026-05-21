@@ -88,7 +88,7 @@ module SeqDemo;
 
 bind Viper.Terminal;
 bind Viper.Collections;
-bind Viper.Fmt as Fmt;
+bind Viper.Text.Fmt as Fmt;
 
 func start() {
     var seq = new Seq();
@@ -273,19 +273,19 @@ DIM sum AS INTEGER = numbers.Fold(0, FUNCTION(acc, n) RETURN acc + n)
 
 ---
 
-## Viper.LazySeq
+## Viper.Functional.LazySeq
 
 A lazy sequence that generates elements on demand rather than storing them all in memory. Useful for infinite sequences,
 computed sequences, and memory-efficient processing of large datasets. Supports functional-style transformations and
 collectors.
 
-> **Note:** The canonical namespace is `Viper.LazySeq`, not `Viper.Collections.LazySeq`.
+> **Note:** The canonical namespace is `Viper.Functional.LazySeq`, not `Viper.Collections.LazySeq`.
 
 **Type:** Instance (obj)
 **Constructors:**
 
-- `Viper.LazySeq.Range(start, end, step)` - Generate integer range
-- `Viper.LazySeq.Repeat(value, count)` - Repeat value count times (-1 for infinite)
+- `Viper.Functional.LazySeq.Range(start, end, step)` - Generate integer range
+- `Viper.Functional.LazySeq.Repeat(value, count)` - Repeat value count times (-1 for infinite)
 
 ### Properties
 
@@ -335,7 +335,7 @@ collectors.
 
 ```basic
 ' Create a range (like Python's range)
-DIM nums AS OBJECT = Viper.LazySeq.Range(1, 11, 1)
+DIM nums AS OBJECT = Viper.Functional.LazySeq.Range(1, 11, 1)
 ' Generates: 1, 2, 3, 4, 5, 6, 7, 8, 9, 10
 
 ' Manual iteration
@@ -345,7 +345,7 @@ WHILE NOT nums.IsExhausted
 WEND
 
 ' Create and transform lazily
-DIM evens AS OBJECT = Viper.LazySeq.Range(1, 100, 1) _
+DIM evens AS OBJECT = Viper.Functional.LazySeq.Range(1, 100, 1) _
     .Filter(FUNCTION(n) RETURN n MOD 2 = 0) _
     .Take(5)
 ' Generates: 2, 4, 6, 8, 10 (only computes what's needed)
@@ -355,22 +355,22 @@ DIM evenSeq AS OBJECT = evens.ToSeq()
 PRINT evenSeq.Length    ' Output: 5
 
 ' Infinite sequence with Take
-DIM ones AS OBJECT = Viper.LazySeq.Repeat(1, -1)  ' Infinite 1s
+DIM ones AS OBJECT = Viper.Functional.LazySeq.Repeat(1, -1)  ' Infinite 1s
 DIM firstTen AS OBJECT = ones.Take(10).ToSeq()
 PRINT firstTen.Length   ' Output: 10
 
 ' Find first element matching condition
-DIM firstBig AS OBJECT = Viper.LazySeq.Range(1, 1000000, 1) _
+DIM firstBig AS OBJECT = Viper.Functional.LazySeq.Range(1, 1000000, 1) _
     .Find(FUNCTION(n) RETURN n > 500)
 PRINT firstBig       ' Output: 501 (stops immediately, doesn't check all million)
 
 ' Check predicates
-DIM allPositive AS INTEGER = Viper.LazySeq.Range(1, 100, 1) _
+DIM allPositive AS INTEGER = Viper.Functional.LazySeq.Range(1, 100, 1) _
     .All(FUNCTION(n) RETURN n > 0)
 PRINT allPositive    ' Output: 1 (true)
 
 ' Peek without consuming
-DIM seq AS OBJECT = Viper.LazySeq.Range(1, 5, 1)
+DIM seq AS OBJECT = Viper.Functional.LazySeq.Range(1, 5, 1)
 PRINT seq.Peek()     ' Output: 1
 PRINT seq.Peek()     ' Output: 1 (still 1)
 PRINT seq.Next()     ' Output: 1 (now consumed)
@@ -455,7 +455,7 @@ module IteratorDemo;
 bind Viper.Collections;
 bind Viper.Core;
 bind Viper.Terminal;
-bind Viper.Fmt as Fmt;
+bind Viper.Text.Fmt as Fmt;
 
 func start() {
     var seq = Seq.New();

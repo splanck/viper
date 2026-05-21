@@ -278,6 +278,15 @@ void Lowerer::emitVtable(const ClassTypeInfo & /*info*/) {
 // Interface Registration and ITable Binding
 //=============================================================================
 
+namespace {
+/// @brief Compose the cache key identifying a struct→interface→method adapter.
+std::string itableAdapterKey(const std::string &structName,
+                             const std::string &ifaceName,
+                             const std::string &methodName) {
+    return structName + "|" + ifaceName + "|" + methodName;
+}
+} // namespace
+
 void Lowerer::emitItableInit() {
     // Skip if no interfaces are defined (no call was emitted in start())
     if (interfaceTypes_.empty())
@@ -289,96 +298,7 @@ void Lowerer::emitItableInit() {
     auto savedSlots = std::move(slots_);
     auto savedLocalTypes = std::move(localTypes_);
 
-    auto adapterKey = [](const std::string &structName,
-                         const std::string &ifaceName,
-                         const std::string &methodName) {
-        return structName + "|" + ifaceName + "|" + methodName;
-    };
-
     std::unordered_map<std::string, std::string> structIfaceAdapters;
-
-    auto defaultInterfaceMethodName = [&](const InterfaceTypeInfo &ifaceInfo,
-                                          MethodDecl *ifaceMethod) -> std::string {
-        if (!ifaceMethod || !ifaceMethod->body)
-            return "";
-        std::string lowered = sema_.loweredMethodName(ifaceInfo.name, ifaceMethod);
-        if (!lowered.empty())
-            return lowered;
-        return ifaceInfo.name + "." + ifaceMethod->name;
-    };
-
-    auto emitStructInterfaceAdapter = [&](const StructTypeInfo &structInfo,
-                                          const InterfaceTypeInfo &ifaceInfo,
-                                          MethodDecl *ifaceMethod,
-                                          MethodDecl *implMethod) -> std::string {
-        std::string adapterName =
-            structInfo.name + ".__iface_" + ifaceInfo.name + "." + ifaceMethod->name;
-        if (definedFunctions_.count(adapterName))
-            return adapterName;
-
-        TypeRef methodType = sema_.getMethodType(ifaceInfo.name, ifaceMethod);
-        if (!methodType)
-            methodType = sema_.getMethodType(structInfo.name, implMethod);
-
-        std::vector<TypeRef> paramTypes;
-        TypeRef returnType = types::voidType();
-        if (methodType && methodType->kind == TypeKindSem::Function) {
-            paramTypes = methodType->paramTypes();
-            returnType = methodType->returnType();
-        }
-
-        Type ilReturnType = mapType(returnType);
-        std::vector<il::core::Param> params;
-        params.push_back({"self", Type(Type::Kind::Ptr)});
-        for (size_t i = 0; i < ifaceMethod->params.size(); ++i) {
-            TypeRef paramType = i < paramTypes.size() ? paramTypes[i] : types::unknown();
-            params.push_back({ifaceMethod->params[i].name, mapType(paramType)});
-        }
-
-        currentFunc_ = &builder_->startFunction(adapterName, ilReturnType, params);
-        definedFunctions_.insert(adapterName);
-        blockMgr_.bind(builder_.get(), currentFunc_);
-        locals_.clear();
-        slots_.clear();
-        localTypes_.clear();
-        deferredTemps_.clear();
-        currentStructType_ = nullptr;
-        currentClassType_ = nullptr;
-
-        builder_->createBlock(*currentFunc_, "entry_0", currentFunc_->params);
-        size_t entryIdx = currentFunc_->blocks.size() - 1;
-        setBlock(entryIdx);
-
-        const auto &bp = currentFunc_->blocks[entryIdx].params;
-        Value wrapperSelf = Value::temp(bp[0].id);
-        Value structSelf = emitGEP(wrapperSelf, static_cast<int64_t>(kClassFieldsOffset));
-
-        std::vector<Value> args;
-        args.reserve(bp.size());
-        args.push_back(structSelf);
-        for (size_t i = 1; i < bp.size(); ++i)
-            args.push_back(Value::temp(bp[i].id));
-
-        std::string implName = sema_.loweredMethodName(structInfo.name, implMethod);
-        if (implName.empty())
-            implName = structInfo.name + "." + implMethod->name;
-
-        if (ilReturnType.kind == Type::Kind::Void) {
-            emitCall(implName, args);
-            releaseDeferredTemps();
-            emitRetVoid();
-        } else {
-            Value result = emitCallRet(ilReturnType, implName, args);
-            consumeDeferred(result);
-            releaseDeferredTemps();
-            emitRet(result);
-        }
-
-        currentFunc_ = nullptr;
-        currentReturnType_ = nullptr;
-        deferredTemps_.clear();
-        return adapterName;
-    };
 
     for (const auto &[structName, structInfo] : structTypes_) {
         for (const auto &ifaceName : structInfo.implementedInterfaces) {
@@ -390,7 +310,7 @@ void Lowerer::emitItableInit() {
                 MethodDecl *implMethod = structInfo.findMethod(ifaceMethod->name);
                 if (!implMethod)
                     continue;
-                std::string key = adapterKey(structName, ifaceName, ifaceMethod->name);
+                std::string key = itableAdapterKey(structName, ifaceName, ifaceMethod->name);
                 structIfaceAdapters[key] =
                     emitStructInterfaceAdapter(structInfo, ifaceInfo, ifaceMethod, implMethod);
             }
@@ -570,7 +490,7 @@ void Lowerer::emitItableInit() {
                 Value slotPtr = emitBinary(
                     Opcode::GEP, Type(Type::Kind::Ptr), itablePtr, Value::constInt(offset));
 
-                std::string key = adapterKey(structName, ifaceName, ifaceMethod->name);
+                std::string key = itableAdapterKey(structName, ifaceName, ifaceMethod->name);
                 auto adapterIt = structIfaceAdapters.find(key);
                 if (adapterIt == structIfaceAdapters.end()) {
                     std::string defaultImpl = defaultInterfaceMethodName(ifaceInfo, ifaceMethod);
@@ -597,6 +517,89 @@ void Lowerer::emitItableInit() {
     locals_ = std::move(savedLocals);
     slots_ = std::move(savedSlots);
     localTypes_ = std::move(savedLocalTypes);
+}
+
+std::string Lowerer::defaultInterfaceMethodName(const InterfaceTypeInfo &ifaceInfo,
+                                                MethodDecl *ifaceMethod) {
+    if (!ifaceMethod || !ifaceMethod->body)
+        return "";
+    std::string lowered = sema_.loweredMethodName(ifaceInfo.name, ifaceMethod);
+    if (!lowered.empty())
+        return lowered;
+    return ifaceInfo.name + "." + ifaceMethod->name;
+}
+
+std::string Lowerer::emitStructInterfaceAdapter(const StructTypeInfo &structInfo,
+                                                const InterfaceTypeInfo &ifaceInfo,
+                                                MethodDecl *ifaceMethod,
+                                                MethodDecl *implMethod) {
+    std::string adapterName =
+        structInfo.name + ".__iface_" + ifaceInfo.name + "." + ifaceMethod->name;
+    if (definedFunctions_.count(adapterName))
+        return adapterName;
+
+    TypeRef methodType = sema_.getMethodType(ifaceInfo.name, ifaceMethod);
+    if (!methodType)
+        methodType = sema_.getMethodType(structInfo.name, implMethod);
+
+    std::vector<TypeRef> paramTypes;
+    TypeRef returnType = types::voidType();
+    if (methodType && methodType->kind == TypeKindSem::Function) {
+        paramTypes = methodType->paramTypes();
+        returnType = methodType->returnType();
+    }
+
+    Type ilReturnType = mapType(returnType);
+    std::vector<il::core::Param> params;
+    params.push_back({"self", Type(Type::Kind::Ptr)});
+    for (size_t i = 0; i < ifaceMethod->params.size(); ++i) {
+        TypeRef paramType = i < paramTypes.size() ? paramTypes[i] : types::unknown();
+        params.push_back({ifaceMethod->params[i].name, mapType(paramType)});
+    }
+
+    currentFunc_ = &builder_->startFunction(adapterName, ilReturnType, params);
+    definedFunctions_.insert(adapterName);
+    blockMgr_.bind(builder_.get(), currentFunc_);
+    locals_.clear();
+    slots_.clear();
+    localTypes_.clear();
+    deferredTemps_.clear();
+    currentStructType_ = nullptr;
+    currentClassType_ = nullptr;
+
+    builder_->createBlock(*currentFunc_, "entry_0", currentFunc_->params);
+    size_t entryIdx = currentFunc_->blocks.size() - 1;
+    setBlock(entryIdx);
+
+    const auto &bp = currentFunc_->blocks[entryIdx].params;
+    Value wrapperSelf = Value::temp(bp[0].id);
+    Value structSelf = emitGEP(wrapperSelf, static_cast<int64_t>(kClassFieldsOffset));
+
+    std::vector<Value> args;
+    args.reserve(bp.size());
+    args.push_back(structSelf);
+    for (size_t i = 1; i < bp.size(); ++i)
+        args.push_back(Value::temp(bp[i].id));
+
+    std::string implName = sema_.loweredMethodName(structInfo.name, implMethod);
+    if (implName.empty())
+        implName = structInfo.name + "." + implMethod->name;
+
+    if (ilReturnType.kind == Type::Kind::Void) {
+        emitCall(implName, args);
+        releaseDeferredTemps();
+        emitRetVoid();
+    } else {
+        Value result = emitCallRet(ilReturnType, implName, args);
+        consumeDeferred(result);
+        releaseDeferredTemps();
+        emitRet(result);
+    }
+
+    currentFunc_ = nullptr;
+    currentReturnType_ = nullptr;
+    deferredTemps_.clear();
+    return adapterName;
 }
 
 //=============================================================================

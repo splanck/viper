@@ -113,7 +113,7 @@ All demos located in `/demos/basic/classes/`:
 
 | Demo File | Classes Covered | Status |
 |-----------|-----------------|--------|
-| `fmt.bas` | Viper.Fmt | WORKING |
+| `fmt.bas` | Viper.Text.Fmt | WORKING |
 | `collections.bas` | Bag, Bytes, Heap, Map, Queue, Ring, Seq, Stack | WORKING |
 | `math.bas` | Bits, Math, Random, Vec2, Vec3 | WORKING |
 | `text.bas` | Codec, Guid, Pattern, StringBuilder, Template | WORKING |

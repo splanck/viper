@@ -806,32 +806,11 @@ bool validatePackageConfigForTarget(const ProjectConfig &proj,
     return true;
 }
 
-} // namespace
-
-// The compile functions are in cmd_run.cpp — we need to expose them or
-// duplicate the pattern. For now, we use the same resolveProject + compileToNative
-// pipeline that cmdBuild uses.
-
-int cmdPackage(int argc, char **argv) {
-    using namespace il::tools::common;
-    namespace fs = std::filesystem;
-
-    PackageArgs args;
-    if (!parsePackageArgs(argc, argv, args))
-        return 1;
-    if (args.help)
-        return 0;
-
-    // Resolve project
-    auto project = resolveProject(args.target);
-    if (!project) {
-        SourceManager sm;
-        il::support::printDiag(project.error(), std::cerr, &sm);
-        return 1;
-    }
-
-    ProjectConfig &proj = project.value();
-
+/// @brief Overlay command-line `--macos-*` / `--windows-*` signing & install
+///        options onto the project's package config (CLI flags win over the
+///        manifest). Only set options override; unset ones leave the manifest
+///        value intact.
+void applyPackageCliOverrides(ProjectConfig &proj, const PackageArgs &args) {
     if (!args.macosSignMode.empty())
         proj.packageConfig.macosSignMode = args.macosSignMode;
     if (!args.macosSignIdentity.empty())
@@ -862,6 +841,35 @@ int cmdPackage(int argc, char **argv) {
         proj.packageConfig.windowsSigntoolPath = args.windowsSigntoolPath;
     if (args.windowsSignNoVerifySet)
         proj.packageConfig.windowsSignNoVerify = args.windowsSignNoVerify;
+}
+
+} // namespace
+
+// The compile functions are in cmd_run.cpp — we need to expose them or
+// duplicate the pattern. For now, we use the same resolveProject + compileToNative
+// pipeline that cmdBuild uses.
+
+int cmdPackage(int argc, char **argv) {
+    using namespace il::tools::common;
+    namespace fs = std::filesystem;
+
+    PackageArgs args;
+    if (!parsePackageArgs(argc, argv, args))
+        return 1;
+    if (args.help)
+        return 0;
+
+    // Resolve project
+    auto project = resolveProject(args.target);
+    if (!project) {
+        SourceManager sm;
+        il::support::printDiag(project.error(), std::cerr, &sm);
+        return 1;
+    }
+
+    ProjectConfig &proj = project.value();
+
+    applyPackageCliOverrides(proj, args);
 
     // Check that package config is present
     if (!proj.packageConfig.hasPackageConfig()) {

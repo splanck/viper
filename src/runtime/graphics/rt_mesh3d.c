@@ -10,7 +10,7 @@
 //   with programmatic construction and procedural generators.
 //
 // Key invariants:
-//   - Vertices stored as vgfx3d_vertex_t (84 bytes, float internally)
+//   - Vertices stored as vgfx3d_vertex_t (92 bytes, float internally)
 //   - Indices are uint32_t (max 16M vertices per mesh)
 //   - CCW winding is front-facing
 //   - GC finalizer frees vertex/index arrays
@@ -85,6 +85,45 @@ static mat4_impl *mesh3d_mat4_checked(void *obj) {
 /// @brief Test whether @p value is finite and within ±FLT_MAX for safe `double → float` narrowing.
 static int mesh_value_fits_float(double value) {
     return isfinite(value) && value >= -MESH3D_FLOAT_ABS_MAX && value <= MESH3D_FLOAT_ABS_MAX;
+}
+
+static int mesh_matrix4f_is_finite(const float *m) {
+    if (!m)
+        return 0;
+    for (int i = 0; i < 16; i++) {
+        if (!isfinite(m[i]))
+            return 0;
+    }
+    return 1;
+}
+
+/// @brief Squared face-normal length for three float positions.
+static double mesh_triangle_area_sq_f32(const float *a, const float *b, const float *c) {
+    double abx = (double)b[0] - (double)a[0];
+    double aby = (double)b[1] - (double)a[1];
+    double abz = (double)b[2] - (double)a[2];
+    double acx = (double)c[0] - (double)a[0];
+    double acy = (double)c[1] - (double)a[1];
+    double acz = (double)c[2] - (double)a[2];
+    double nx = aby * acz - abz * acy;
+    double ny = abz * acx - abx * acz;
+    double nz = abx * acy - aby * acx;
+    return nx * nx + ny * ny + nz * nz;
+}
+
+/// @brief Return non-zero when three float positions define a usable triangle.
+static int mesh_positions_form_triangle(const float *a, const float *b, const float *c) {
+    return a && b && c && mesh_triangle_area_sq_f32(a, b, c) > 1e-20;
+}
+
+/// @brief Return non-zero when three mesh indices define a usable, non-degenerate face.
+static int mesh_indices_form_triangle(const rt_mesh3d *mesh, uint32_t i0, uint32_t i1, uint32_t i2) {
+    if (!mesh || !mesh->vertices || i0 == i1 || i1 == i2 || i0 == i2 ||
+        i0 >= mesh->vertex_count || i1 >= mesh->vertex_count || i2 >= mesh->vertex_count)
+        return 0;
+    return mesh_positions_form_triangle(mesh->vertices[i0].pos,
+                                        mesh->vertices[i1].pos,
+                                        mesh->vertices[i2].pos);
 }
 
 /// @brief Guard for procedural-generator dimensions — trap if `value` is NaN/inf or ≤ 0.
@@ -197,7 +236,7 @@ static void rt_mesh3d_finalize(void *obj) {
 
 /// @brief Create a new empty 3D mesh for programmatic construction.
 /// @details Allocates vertex and index arrays with initial capacity. Vertices are
-///          stored as vgfx3d_vertex_t (84 bytes each, float internally) and indices
+///          stored as vgfx3d_vertex_t (92 bytes each, float internally) and indices
 ///          as uint32_t. The mesh supports up to 16M vertices. Geometry is built
 ///          by calling add_vertex/add_triangle, or by using the procedural generators
 ///          (new_box, new_sphere, new_plane, new_cylinder). GC finalizer frees arrays.
@@ -547,6 +586,10 @@ void rt_mesh3d_transform(void *obj, void *mat4_obj) {
         model_matrix[i] = (float)xform->m[i];
     }
     vgfx3d_compute_normal_matrix4(model_matrix, normal_matrix);
+    if (!mesh_matrix4f_is_finite(normal_matrix)) {
+        rt_trap("Mesh3D.Transform: normal matrix must be finite");
+        return;
+    }
     {
         float det = model_matrix[0] * (model_matrix[5] * model_matrix[10] -
                                        model_matrix[6] * model_matrix[9]) -
@@ -568,6 +611,28 @@ void rt_mesh3d_transform(void *obj, void *mat4_obj) {
             !mesh_value_fits_float(tz)) {
             rt_trap("Mesh3D.Transform: transformed vertex position must be finite and fit float range");
             return;
+        }
+        {
+            const float *n = m->vertices[i].normal;
+            const float *t = m->vertices[i].tangent;
+            double nx = normal_matrix[0] * (double)n[0] + normal_matrix[1] * (double)n[1] +
+                        normal_matrix[2] * (double)n[2];
+            double ny = normal_matrix[4] * (double)n[0] + normal_matrix[5] * (double)n[1] +
+                        normal_matrix[6] * (double)n[2];
+            double nz = normal_matrix[8] * (double)n[0] + normal_matrix[9] * (double)n[1] +
+                        normal_matrix[10] * (double)n[2];
+            double txv = normal_matrix[0] * (double)t[0] + normal_matrix[1] * (double)t[1] +
+                         normal_matrix[2] * (double)t[2];
+            double tyv = normal_matrix[4] * (double)t[0] + normal_matrix[5] * (double)t[1] +
+                         normal_matrix[6] * (double)t[2];
+            double tzv = normal_matrix[8] * (double)t[0] + normal_matrix[9] * (double)t[1] +
+                         normal_matrix[10] * (double)t[2];
+            if (!mesh_value_fits_float(nx) || !mesh_value_fits_float(ny) ||
+                !mesh_value_fits_float(nz) || !mesh_value_fits_float(txv) ||
+                !mesh_value_fits_float(tyv) || !mesh_value_fits_float(tzv)) {
+                rt_trap("Mesh3D.Transform: transformed normal/tangent must be finite and fit float range");
+                return;
+            }
         }
     }
 
@@ -724,7 +789,7 @@ void *rt_mesh3d_new_sphere(double radius, int64_t segments) {
     /* Generate indices (CCW) */
     for (int64_t slice = 0; slice < slices; slice++) {
         int64_t b = first_ring + slice;
-        rt_mesh3d_add_triangle(m, top_index, b, b + 1);
+        rt_mesh3d_add_triangle(m, top_index, b + 1, b);
     }
     for (int64_t ring = 1; ring < rings - 1; ring++) {
         int64_t a_base = first_ring + (ring - 1) * ring_stride;
@@ -732,15 +797,15 @@ void *rt_mesh3d_new_sphere(double radius, int64_t segments) {
         for (int64_t slice = 0; slice < slices; slice++) {
             int64_t a = a_base + slice;
             int64_t b = b_base + slice;
-            rt_mesh3d_add_triangle(m, a, b, a + 1);
-            rt_mesh3d_add_triangle(m, a + 1, b, b + 1);
+            rt_mesh3d_add_triangle(m, a, a + 1, b);
+            rt_mesh3d_add_triangle(m, a + 1, b + 1, b);
         }
     }
     {
         int64_t last_ring = first_ring + (rings - 2) * ring_stride;
         for (int64_t slice = 0; slice < slices; slice++) {
             int64_t a = last_ring + slice;
-            rt_mesh3d_add_triangle(m, a, bottom_index, a + 1);
+            rt_mesh3d_add_triangle(m, a, a + 1, bottom_index);
         }
     }
 
@@ -803,8 +868,8 @@ void *rt_mesh3d_new_cylinder(double radius, double height, int64_t segments) {
     /* Side triangles */
     for (int64_t i = 0; i < segments; i++) {
         int64_t b = i * 2;
-        rt_mesh3d_add_triangle(m, b, b + 2, b + 1);
-        rt_mesh3d_add_triangle(m, b + 1, b + 2, b + 3);
+        rt_mesh3d_add_triangle(m, b, b + 1, b + 2);
+        rt_mesh3d_add_triangle(m, b + 1, b + 3, b + 2);
     }
 
     /* Top cap center */
@@ -817,7 +882,7 @@ void *rt_mesh3d_new_cylinder(double radius, double height, int64_t segments) {
     }
     for (int64_t i = 0; i < segments; i++) {
         int64_t next = (i + 1) % segments;
-        rt_mesh3d_add_triangle(m, tc, tc + 1 + i, tc + 1 + next);
+        rt_mesh3d_add_triangle(m, tc, tc + 1 + next, tc + 1 + i);
     }
 
     /* Bottom cap center */
@@ -830,7 +895,7 @@ void *rt_mesh3d_new_cylinder(double radius, double height, int64_t segments) {
     }
     for (int64_t i = 0; i < segments; i++) {
         int64_t next = (i + 1) % segments;
-        rt_mesh3d_add_triangle(m, bc, bc + 1 + next, bc + 1 + i);
+        rt_mesh3d_add_triangle(m, bc, bc + 1 + i, bc + 1 + next);
     }
 
     return mesh_return_null_if_build_failed(m);
@@ -1617,6 +1682,11 @@ void *rt_mesh3d_from_obj(rt_string path) {
             /* Fan triangulation: (0,1,2), (0,2,3), (0,3,4), ... */
             if (!parse_failed) {
                 for (int fi = 1; fi < face_count - 1; fi++) {
+                    if (!mesh_indices_form_triangle((const rt_mesh3d *)mesh,
+                                                    mesh_indices[0],
+                                                    mesh_indices[fi],
+                                                    mesh_indices[fi + 1]))
+                        continue;
                     rt_mesh3d_add_triangle(
                         mesh, mesh_indices[0], mesh_indices[fi], mesh_indices[fi + 1]);
                     if (((rt_mesh3d *)mesh)->build_failed) {
@@ -1679,9 +1749,71 @@ static uint32_t stl_read_u32_le(const uint8_t *p) {
 
 /// @brief Read a little-endian IEEE-754 float from a binary STL byte stream.
 static float stl_read_f32_le(const uint8_t *p) {
+    uint32_t bits = (uint32_t)p[0] | ((uint32_t)p[1] << 8) | ((uint32_t)p[2] << 16) |
+                    ((uint32_t)p[3] << 24);
     float val;
-    memcpy(&val, p, sizeof(float));
+    memcpy(&val, &bits, sizeof(val));
     return val;
+}
+
+/// @brief Return non-zero if a facet normal is finite and directionally useful.
+static int stl_normal_is_usable(const float *normal) {
+    double nx;
+    double ny;
+    double nz;
+    double len_sq;
+    if (!normal || !isfinite(normal[0]) || !isfinite(normal[1]) || !isfinite(normal[2]))
+        return 0;
+    nx = (double)normal[0];
+    ny = (double)normal[1];
+    nz = (double)normal[2];
+    len_sq = nx * nx + ny * ny + nz * nz;
+    return len_sq > 1e-20;
+}
+
+/// @brief Return non-zero when STL vertex order should be flipped to match facet normal.
+static int stl_triangle_should_flip(const float *verts, const float *normal) {
+    double abx;
+    double aby;
+    double abz;
+    double acx;
+    double acy;
+    double acz;
+    double nx;
+    double ny;
+    double nz;
+    double dot;
+    if (!verts || !stl_normal_is_usable(normal))
+        return 0;
+    abx = (double)verts[3] - (double)verts[0];
+    aby = (double)verts[4] - (double)verts[1];
+    abz = (double)verts[5] - (double)verts[2];
+    acx = (double)verts[6] - (double)verts[0];
+    acy = (double)verts[7] - (double)verts[1];
+    acz = (double)verts[8] - (double)verts[2];
+    nx = aby * acz - abz * acy;
+    ny = abz * acx - abx * acz;
+    nz = abx * acy - aby * acx;
+    dot = nx * (double)normal[0] + ny * (double)normal[1] + nz * (double)normal[2];
+    return dot < 0.0;
+}
+
+/// @brief Append one STL triangle, skipping zero-area faces without failing the entire import.
+static int stl_emit_triangle(void *mesh, const float *verts, const float *normal) {
+    int64_t base;
+    if (!mesh || !verts)
+        return 0;
+    if (!mesh_positions_form_triangle(verts, verts + 3, verts + 6))
+        return 1;
+    base = (int64_t)((rt_mesh3d *)mesh)->vertex_count;
+    rt_mesh3d_add_vertex(mesh, verts[0], verts[1], verts[2], 0, 0, 0, 0, 0);
+    rt_mesh3d_add_vertex(mesh, verts[3], verts[4], verts[5], 0, 0, 0, 0, 0);
+    rt_mesh3d_add_vertex(mesh, verts[6], verts[7], verts[8], 0, 0, 0, 0, 0);
+    if (stl_triangle_should_flip(verts, normal))
+        rt_mesh3d_add_triangle(mesh, base, base + 2, base + 1);
+    else
+        rt_mesh3d_add_triangle(mesh, base, base + 1, base + 2);
+    return !((rt_mesh3d *)mesh)->build_failed;
 }
 
 /// @brief Decode a binary-STL byte buffer into a Mesh3D.
@@ -1707,31 +1839,39 @@ static void *stl_load_binary(const uint8_t *data, size_t len) {
 
     for (uint32_t i = 0; i < tri_count; i++) {
         const uint8_t *tri = data + 84 + (size_t)i * 50;
-        // Skip face normal (12 bytes) — we compute vertex normals later
-        float v1x = stl_read_f32_le(tri + 12), v1y = stl_read_f32_le(tri + 16),
-              v1z = stl_read_f32_le(tri + 20);
-        float v2x = stl_read_f32_le(tri + 24), v2y = stl_read_f32_le(tri + 28),
-              v2z = stl_read_f32_le(tri + 32);
-        float v3x = stl_read_f32_le(tri + 36), v3y = stl_read_f32_le(tri + 40),
-              v3z = stl_read_f32_le(tri + 44);
-        if (!isfinite(v1x) || !isfinite(v1y) || !isfinite(v1z) || !isfinite(v2x) ||
-            !isfinite(v2y) || !isfinite(v2z) || !isfinite(v3x) || !isfinite(v3y) ||
-            !isfinite(v3z)) {
+        float normal[3] = {
+            stl_read_f32_le(tri + 0),
+            stl_read_f32_le(tri + 4),
+            stl_read_f32_le(tri + 8),
+        };
+        float verts[9] = {
+            stl_read_f32_le(tri + 12),
+            stl_read_f32_le(tri + 16),
+            stl_read_f32_le(tri + 20),
+            stl_read_f32_le(tri + 24),
+            stl_read_f32_le(tri + 28),
+            stl_read_f32_le(tri + 32),
+            stl_read_f32_le(tri + 36),
+            stl_read_f32_le(tri + 40),
+            stl_read_f32_le(tri + 44),
+        };
+        if (!isfinite(verts[0]) || !isfinite(verts[1]) || !isfinite(verts[2]) ||
+            !isfinite(verts[3]) || !isfinite(verts[4]) || !isfinite(verts[5]) ||
+            !isfinite(verts[6]) || !isfinite(verts[7]) || !isfinite(verts[8])) {
             mesh_mark_build_failed((rt_mesh3d *)mesh);
             break;
         }
-
-        int64_t base = (int64_t)((rt_mesh3d *)mesh)->vertex_count;
-        rt_mesh3d_add_vertex(mesh, v1x, v1y, v1z, 0, 0, 0, 0, 0);
-        rt_mesh3d_add_vertex(mesh, v2x, v2y, v2z, 0, 0, 0, 0, 0);
-        rt_mesh3d_add_vertex(mesh, v3x, v3y, v3z, 0, 0, 0, 0, 0);
-        rt_mesh3d_add_triangle(mesh, base, base + 1, base + 2);
-        if (((rt_mesh3d *)mesh)->build_failed)
+        if (!stl_emit_triangle(mesh, verts, normal))
             break;
     }
 
     if (((rt_mesh3d *)mesh)->build_failed)
         return mesh_return_null_if_build_failed(mesh);
+    if (((rt_mesh3d *)mesh)->index_count == 0) {
+        if (rt_obj_release_check0(mesh))
+            rt_obj_free(mesh);
+        return NULL;
+    }
     rt_mesh3d_recalc_normals(mesh);
     return mesh;
 }
@@ -1752,12 +1892,87 @@ static int stl_parse_double(const char **pp, const char *end, double *out) {
     return 1;
 }
 
+static const char *stl_skip_horizontal_ws(const char *p, const char *end) {
+    while (p < end && (*p == ' ' || *p == '\t'))
+        p++;
+    return p;
+}
+
+static const char *stl_trim_line_end(const char *start, const char *end) {
+    while (end > start && (end[-1] == ' ' || end[-1] == '\t' || end[-1] == '\r'))
+        end--;
+    return end;
+}
+
+static int stl_line_equals(const char *start, const char *end, const char *text) {
+    size_t len = strlen(text);
+    return (size_t)(end - start) == len && strncmp(start, text, len) == 0;
+}
+
+static int stl_line_starts_keyword(const char *start, const char *end, const char *keyword) {
+    size_t len = strlen(keyword);
+    if ((size_t)(end - start) < len || strncmp(start, keyword, len) != 0)
+        return 0;
+    return (size_t)(end - start) == len || start[len] == ' ' || start[len] == '\t';
+}
+
+static int stl_parse_facet_normal_line(const char *start, const char *end, float *normal) {
+    double nx;
+    double ny;
+    double nz;
+    const char *p = start;
+    if ((size_t)(end - p) < 6u || strncmp(p, "facet", 5) != 0 || (p[5] != ' ' && p[5] != '\t'))
+        return 0;
+    p = stl_skip_horizontal_ws(p + 5, end);
+    if ((size_t)(end - p) < 7u || strncmp(p, "normal", 6) != 0 || (p[6] != ' ' && p[6] != '\t'))
+        return 0;
+    p = p + 6;
+    if (!stl_parse_double(&p, end, &nx) || !stl_parse_double(&p, end, &ny) ||
+        !stl_parse_double(&p, end, &nz) || !mesh_value_fits_float(nx) ||
+        !mesh_value_fits_float(ny) || !mesh_value_fits_float(nz))
+        return 0;
+    p = stl_skip_horizontal_ws(p, end);
+    if (p != end)
+        return 0;
+    normal[0] = (float)nx;
+    normal[1] = (float)ny;
+    normal[2] = (float)nz;
+    return 1;
+}
+
+static int stl_parse_vertex_line(const char *start, const char *end, float *out_xyz) {
+    double x;
+    double y;
+    double z;
+    const char *p = start;
+    if ((size_t)(end - p) < 7u || strncmp(p, "vertex", 6) != 0 || (p[6] != ' ' && p[6] != '\t'))
+        return 0;
+    p = p + 6;
+    if (!stl_parse_double(&p, end, &x) || !stl_parse_double(&p, end, &y) ||
+        !stl_parse_double(&p, end, &z) || !mesh_value_fits_float(x) ||
+        !mesh_value_fits_float(y) || !mesh_value_fits_float(z))
+        return 0;
+    p = stl_skip_horizontal_ws(p, end);
+    if (p != end)
+        return 0;
+    out_xyz[0] = (float)x;
+    out_xyz[1] = (float)y;
+    out_xyz[2] = (float)z;
+    return 1;
+}
+
 /// @brief Decode an ASCII-STL byte buffer into a Mesh3D.
 ///
 /// Walks the text, recognising `facet normal …` blocks each
 /// containing three `vertex …` lines. Same no-deduplication
 /// rule as the binary loader.
 static void *stl_load_ascii(const uint8_t *data, size_t len) {
+    enum {
+        STL_ASCII_OUTSIDE_FACET = 0,
+        STL_ASCII_EXPECT_OUTER_LOOP = 1,
+        STL_ASCII_IN_LOOP = 2,
+        STL_ASCII_EXPECT_ENDFACET = 3
+    };
     void *mesh = rt_mesh3d_new();
     if (!mesh)
         return NULL;
@@ -1775,60 +1990,78 @@ static void *stl_load_ascii(const uint8_t *data, size_t len) {
     const char *end = text + len;
     float verts[9]; // 3 vertices × 3 components
     int vert_idx = 0;
+    float normal[3] = {0.0f, 0.0f, 0.0f};
+    int state = STL_ASCII_OUTSIDE_FACET;
     int parse_failed = 0;
+    int emitted_triangles = 0;
 
     while (p < end) {
-        // Skip whitespace
-        while (p < end && (*p == ' ' || *p == '\t' || *p == '\n' || *p == '\r'))
-            p++;
-        if (p >= end)
-            break;
-
-        if ((size_t)(end - p) >= 7u && strncmp(p, "vertex", 6) == 0 &&
-            (p[6] == ' ' || p[6] == '\t')) {
-            const char *vp = p + 6;
-            double x, y, z;
-            if (!stl_parse_double(&vp, end, &x) || !stl_parse_double(&vp, end, &y) ||
-                !stl_parse_double(&vp, end, &z) || !mesh_value_fits_float(x) ||
-                !mesh_value_fits_float(y) || !mesh_value_fits_float(z)) {
-                parse_failed = 1;
-                break;
-            }
-            while (vp < end && (*vp == ' ' || *vp == '\t'))
-                vp++;
-            if (vp < end && *vp != '\r' && *vp != '\n') {
-                parse_failed = 1;
-                break;
-            }
-            verts[vert_idx * 3 + 0] = (float)x;
-            verts[vert_idx * 3 + 1] = (float)y;
-            verts[vert_idx * 3 + 2] = (float)z;
-            vert_idx++;
-
-            if (vert_idx == 3) {
-                int64_t base = (int64_t)((rt_mesh3d *)mesh)->vertex_count;
-                rt_mesh3d_add_vertex(mesh, verts[0], verts[1], verts[2], 0, 0, 0, 0, 0);
-                rt_mesh3d_add_vertex(mesh, verts[3], verts[4], verts[5], 0, 0, 0, 0, 0);
-                rt_mesh3d_add_vertex(mesh, verts[6], verts[7], verts[8], 0, 0, 0, 0, 0);
-                rt_mesh3d_add_triangle(mesh, base, base + 1, base + 2);
-                if (((rt_mesh3d *)mesh)->build_failed) {
-                    parse_failed = 1;
-                    break;
-                }
-                vert_idx = 0;
-            }
-        }
-
-        // Skip to next line
+        const char *line = p;
+        const char *line_end;
         while (p < end && *p != '\n')
             p++;
+        line_end = stl_trim_line_end(line, p);
+        line = stl_skip_horizontal_ws(line, line_end);
         if (p < end)
             p++;
+        if (line == line_end)
+            continue;
+
+        switch (state) {
+        case STL_ASCII_OUTSIDE_FACET:
+            if (stl_line_starts_keyword(line, line_end, "solid") ||
+                stl_line_starts_keyword(line, line_end, "endsolid"))
+                continue;
+            if (!stl_parse_facet_normal_line(line, line_end, normal)) {
+                parse_failed = 1;
+            } else {
+                vert_idx = 0;
+                state = STL_ASCII_EXPECT_OUTER_LOOP;
+            }
+            break;
+        case STL_ASCII_EXPECT_OUTER_LOOP:
+            if (stl_line_equals(line, line_end, "outer loop")) {
+                state = STL_ASCII_IN_LOOP;
+            } else {
+                parse_failed = 1;
+            }
+            break;
+        case STL_ASCII_IN_LOOP:
+            if (stl_line_starts_keyword(line, line_end, "vertex")) {
+                if (vert_idx >= 3 || !stl_parse_vertex_line(line, line_end, &verts[vert_idx * 3])) {
+                    parse_failed = 1;
+                } else {
+                    vert_idx++;
+                }
+            } else if (stl_line_equals(line, line_end, "endloop")) {
+                if (vert_idx != 3)
+                    parse_failed = 1;
+                else
+                    state = STL_ASCII_EXPECT_ENDFACET;
+            } else {
+                parse_failed = 1;
+            }
+            break;
+        case STL_ASCII_EXPECT_ENDFACET:
+            if (!stl_line_equals(line, line_end, "endfacet")) {
+                parse_failed = 1;
+            } else {
+                uint32_t before = ((rt_mesh3d *)mesh)->index_count;
+                if (!stl_emit_triangle(mesh, verts, normal) || ((rt_mesh3d *)mesh)->build_failed)
+                    parse_failed = 1;
+                if (((rt_mesh3d *)mesh)->index_count > before)
+                    emitted_triangles++;
+                vert_idx = 0;
+                state = STL_ASCII_OUTSIDE_FACET;
+            }
+            break;
+        }
+        if (parse_failed)
+            break;
     }
 
-    if (parse_failed || vert_idx != 0 || ((rt_mesh3d *)mesh)->vertex_count == 0 ||
+    if (parse_failed || state != STL_ASCII_OUTSIDE_FACET || emitted_triangles == 0 ||
         ((rt_mesh3d *)mesh)->build_failed) {
-        // No triangles found — free and return NULL
         free(text);
         if (rt_obj_release_check0(mesh))
             rt_obj_free(mesh);
@@ -1857,9 +2090,15 @@ void *rt_mesh3d_from_stl(rt_string path) {
     if (!f)
         return NULL;
 
-    fseek(f, 0, SEEK_END);
+    if (fseek(f, 0, SEEK_END) != 0) {
+        fclose(f);
+        return NULL;
+    }
     long file_len = ftell(f);
-    fseek(f, 0, SEEK_SET);
+    if (file_len < 0 || fseek(f, 0, SEEK_SET) != 0) {
+        fclose(f);
+        return NULL;
+    }
 
     if (file_len <= 0 || file_len > 512 * 1024 * 1024) {
         fclose(f);

@@ -41,6 +41,7 @@
 
 #include "fonts/embedded_font.h"
 #include "rt_gui_internal.h"
+#include "rt_input.h"
 #include "rt_platform.h"
 #include "rt_time.h"
 
@@ -947,7 +948,7 @@ static int rt_gui_widget_tree_uses_font(vg_widget_t *widget, vg_font_t *font) {
 /// @param font Candidate font handle.
 /// @return True when widget setters may safely query font metrics.
 static bool rt_gui_font_handle_supports_metrics(vg_font_t *font) {
-    return font && (uintptr_t)font >= 4096u;
+    return vg_font_is_live(font);
 }
 
 /// @brief Lazily copy a font handle into a widget subtree without measuring it.
@@ -1108,6 +1109,8 @@ static void rt_gui_inherit_font_to_widget(vg_widget_t *widget, vg_font_t *font, 
             break;
         }
         default:
+            if (widget->vtable && widget->vtable->set_font)
+                widget->vtable->set_font(widget, font, size);
             break;
     }
 
@@ -1193,7 +1196,7 @@ void *rt_gui_app_new(rt_string title, int64_t width, int64_t height) {
     vgfx_window_params_t params = vgfx_window_params_default();
     params.width = (int32_t)(width < 1 ? 1 : width > INT32_MAX ? INT32_MAX : width);
     params.height = (int32_t)(height < 1 ? 1 : height > INT32_MAX ? INT32_MAX : height);
-    char *ctitle = rt_string_to_cstr(title);
+    char *ctitle = rt_string_to_gui_cstr(title);
     if (ctitle) {
         params.title = ctitle;
     }
@@ -1321,10 +1324,14 @@ void rt_gui_app_destroy(void *app_ptr) {
         return;
     rt_gui_app_t *previous_active = s_active_app;
     rt_gui_activate_app(app);
+    if (app->window)
+        vgfx_set_resize_callback(app->window, NULL, NULL);
     rt_gui_features_cleanup(app);
 
     for (int i = 0; i < app->dialog_count; i++) {
         if (app->dialog_stack[i]) {
+            rt_messagebox_invalidate_dialog(app->dialog_stack[i]);
+            rt_filedialog_invalidate_dialog(app->dialog_stack[i]);
             vg_widget_destroy(&app->dialog_stack[i]->base);
         }
     }
@@ -1360,6 +1367,7 @@ void rt_gui_app_destroy(void *app_ptr) {
     free(app->title);
     app->title = NULL;
     if (app->root) {
+        rt_widget_forget_runtime_refs(app, app->root);
         vg_widget_destroy(app->root);
         app->root = NULL;
     }
@@ -1377,14 +1385,14 @@ void rt_gui_app_destroy(void *app_ptr) {
                 break;
             }
         }
-        if (!default_is_retired) {
+        if (!default_is_retired && vg_font_is_live(app->default_font)) {
             if (!rt_gui_retire_font_in_other_apps(app, app->default_font))
                 vg_font_destroy(app->default_font);
         }
         app->default_font = NULL;
     }
     for (int i = 0; i < app->retired_font_count; i++) {
-        if (app->retired_fonts[i] &&
+        if (app->retired_fonts[i] && vg_font_is_live(app->retired_fonts[i]) &&
             !rt_gui_retire_font_in_other_apps(app, app->retired_fonts[i]))
             vg_font_destroy(app->retired_fonts[i]);
     }
@@ -1480,6 +1488,18 @@ static int rt_gui_widget_accepts_drop_type(vg_widget_t *widget, const char *type
     return 0;
 }
 
+static vg_widget_t *rt_gui_find_drop_target(vg_widget_t *hit,
+                                            vg_widget_t *source,
+                                            const char *type) {
+    for (vg_widget_t *candidate = hit; candidate; candidate = candidate->parent) {
+        if (candidate == source)
+            continue;
+        if (rt_gui_widget_accepts_drop_type(candidate, type))
+            return candidate;
+    }
+    return NULL;
+}
+
 /// @brief Send a GUI event directly to a specific widget (bypassing tree dispatch).
 /// @details Sets the event target to the widget and, for mouse events, converts
 ///          screen-space coordinates to widget-local coordinates using the
@@ -1555,13 +1575,15 @@ static void rt_gui_update_drag_over_target(rt_gui_app_t *app, vg_widget_t *event
         return;
 
     vg_widget_t *next = NULL;
+    if (app->drag_source && !vg_widget_is_live(app->drag_source))
+        app->drag_source = NULL;
+    if (app->drag_over_widget && !vg_widget_is_live(app->drag_over_widget))
+        app->drag_over_widget = NULL;
+
     if (app->drag_source && event_root) {
         vg_widget_t *hit =
             vg_widget_hit_test(event_root, (float)app->mouse_x, (float)app->mouse_y);
-        if (hit && hit != app->drag_source &&
-            rt_gui_widget_accepts_drop_type(hit, app->drag_source->drag_type)) {
-            next = hit;
-        }
+        next = rt_gui_find_drop_target(hit, app->drag_source, app->drag_source->drag_type);
     }
 
     if (app->drag_over_widget && app->drag_over_widget != next) {
@@ -1617,25 +1639,31 @@ static void rt_gui_complete_drag_drop(rt_gui_app_t *app, vg_widget_t *event_root
     rt_gui_cancel_drag_candidate(app);
     if (!app->drag_source)
         return;
+    if (!vg_widget_is_live(app->drag_source)) {
+        app->drag_source = NULL;
+        rt_gui_update_drag_over_target(app, event_root);
+        return;
+    }
 
     vg_widget_t *source = app->drag_source;
     source->_is_being_dragged = false;
     vg_widget_t *hit = event_root ? vg_widget_hit_test(
                                         event_root, (float)app->mouse_x, (float)app->mouse_y)
                                   : NULL;
-    if (hit && hit != source && rt_gui_widget_accepts_drop_type(hit, source->drag_type)) {
+    vg_widget_t *target = rt_gui_find_drop_target(hit, source, source->drag_type);
+    if (target) {
         char *new_type = source->drag_type ? strdup(source->drag_type) : NULL;
         char *new_data = source->drag_data ? strdup(source->drag_data) : NULL;
         if ((source->drag_type && !new_type) || (source->drag_data && !new_data)) {
             free(new_type);
             free(new_data);
         } else {
-            free(hit->_drop_received_type);
-            free(hit->_drop_received_data);
-            hit->_drop_received_type = new_type;
-            hit->_drop_received_data = new_data;
-            hit->_was_dropped = true;
-            hit->_is_drag_over = false;
+            free(target->_drop_received_type);
+            free(target->_drop_received_data);
+            target->_drop_received_type = new_type;
+            target->_drop_received_data = new_data;
+            target->_was_dropped = true;
+            target->_is_drag_over = false;
         }
     }
     app->drag_source = NULL;
@@ -1717,13 +1745,38 @@ void rt_gui_app_poll(void *app_ptr) {
     rt_shortcuts_clear_triggered(app);
     app->close_requested = 0;
 
+    rt_keyboard_begin_frame();
+    rt_mouse_begin_frame();
+
     // Get mouse position
     vgfx_mouse_pos(app->window, &app->mouse_x, &app->mouse_y);
+    rt_mouse_update_pos(app->mouse_x, app->mouse_y);
 
     // Poll events
     vgfx_event_t event;
     while (vgfx_poll_event(app->window, &event)) {
         app->last_event_time_ms = (uint64_t)event.time_ms;
+        if (event.type == VGFX_EVENT_KEY_DOWN) {
+            rt_keyboard_on_vgfx_key_down((int64_t)event.data.key.key);
+        } else if (event.type == VGFX_EVENT_KEY_UP) {
+            rt_keyboard_on_vgfx_key_up((int64_t)event.data.key.key);
+        } else if (event.type == VGFX_EVENT_TEXT_INPUT) {
+            rt_keyboard_text_input((int32_t)event.data.text.codepoint);
+        } else if (event.type == VGFX_EVENT_MOUSE_MOVE) {
+            rt_mouse_update_pos((int64_t)event.data.mouse_move.x, (int64_t)event.data.mouse_move.y);
+        } else if (event.type == VGFX_EVENT_MOUSE_DOWN) {
+            rt_mouse_update_pos(
+                (int64_t)event.data.mouse_button.x, (int64_t)event.data.mouse_button.y);
+            rt_mouse_button_down((int64_t)event.data.mouse_button.button);
+        } else if (event.type == VGFX_EVENT_MOUSE_UP) {
+            rt_mouse_update_pos(
+                (int64_t)event.data.mouse_button.x, (int64_t)event.data.mouse_button.y);
+            rt_mouse_button_up((int64_t)event.data.mouse_button.button);
+        } else if (event.type == VGFX_EVENT_SCROLL) {
+            rt_mouse_update_pos((int64_t)event.data.scroll.x, (int64_t)event.data.scroll.y);
+            rt_mouse_update_wheel((double)event.data.scroll.delta_x, (double)event.data.scroll.delta_y);
+        }
+
         if (event.type == VGFX_EVENT_CLOSE) {
             app->close_requested = 1;
             if (!app->prevent_close)
@@ -1780,19 +1833,6 @@ void rt_gui_app_poll(void *app_ptr) {
                 }
             }
 
-            // Drag-and-drop: start a drag candidate on mouse-down, then promote
-            // to a real drag only after pointer movement crosses the threshold.
-            if (event.type == VGFX_EVENT_MOUSE_DOWN && !app->drag_source &&
-                event.data.mouse_button.button == VGFX_MOUSE_LEFT) {
-                vg_widget_t *hit =
-                    vg_widget_hit_test(event_root, (float)app->mouse_x, (float)app->mouse_y);
-                if (hit && hit->draggable) {
-                    app->drag_candidate = hit;
-                    app->drag_start_x = app->mouse_x;
-                    app->drag_start_y = app->mouse_y;
-                }
-            }
-
             if (top_palette && top_palette->is_visible) {
                 int is_mouse_event =
                     gui_event.type == VG_EVENT_MOUSE_MOVE ||
@@ -1806,7 +1846,7 @@ void rt_gui_app_poll(void *app_ptr) {
                     rt_gui_send_event_to_widget(&top_palette->base, &gui_event);
                     rt_gui_capture_reported_click(app, &gui_event);
                     if (event.type == VGFX_EVENT_MOUSE_UP)
-                        rt_gui_complete_drag_drop(app, event_root);
+                        rt_gui_complete_drag_drop(app, rt_gui_hit_root(app));
                     continue;
                 }
                 if (is_mouse_event && !inside_palette) {
@@ -1814,7 +1854,7 @@ void rt_gui_app_poll(void *app_ptr) {
                         vg_commandpalette_hide(top_palette);
                     }
                     if (event.type == VGFX_EVENT_MOUSE_UP)
-                        rt_gui_complete_drag_drop(app, event_root);
+                        rt_gui_complete_drag_drop(app, rt_gui_hit_root(app));
                     continue;
                 }
                 if (gui_event.type == VG_EVENT_KEY_DOWN || gui_event.type == VG_EVENT_KEY_UP ||
@@ -1829,8 +1869,21 @@ void rt_gui_app_poll(void *app_ptr) {
                 rt_gui_send_event_to_widget(&app->notification_manager->base, &gui_event)) {
                 rt_gui_capture_reported_click(app, &gui_event);
                 if (event.type == VGFX_EVENT_MOUSE_UP)
-                    rt_gui_complete_drag_drop(app, event_root);
+                    rt_gui_complete_drag_drop(app, rt_gui_hit_root(app));
                 continue;
+            }
+
+            // Drag-and-drop: start a drag candidate on mouse-down only after
+            // overlays have had first chance to route or consume the event.
+            if (event.type == VGFX_EVENT_MOUSE_DOWN && !app->drag_source &&
+                event.data.mouse_button.button == VGFX_MOUSE_LEFT) {
+                vg_widget_t *hit =
+                    vg_widget_hit_test(event_root, (float)app->mouse_x, (float)app->mouse_y);
+                if (hit && hit->draggable) {
+                    app->drag_candidate = hit;
+                    app->drag_start_x = app->mouse_x;
+                    app->drag_start_y = app->mouse_y;
+                }
             }
 
             if (gui_event.type == VG_EVENT_KEY_DOWN) {
@@ -1852,7 +1905,7 @@ void rt_gui_app_poll(void *app_ptr) {
             rt_gui_capture_reported_click(app, &gui_event);
             rt_gui_sync_modal_root(app);
             if (event.type == VGFX_EVENT_MOUSE_UP)
-                rt_gui_complete_drag_drop(app, event_root);
+                rt_gui_complete_drag_drop(app, rt_gui_hit_root(app));
         }
     }
 }
@@ -2050,13 +2103,16 @@ void rt_gui_app_set_font(void *app_ptr, void *font, double size) {
     if (!app)
         return;
     rt_gui_activate_app(app);
+    vg_font_t *new_font = rt_gui_font_handle_checked(font);
+    if (!new_font)
+        return;
     vg_font_t *old_font = app->default_font;
     int old_owned = app->default_font_owned;
     float _scale = app->window ? vgfx_window_get_scale(app->window) : 1.0f;
     if (!isfinite(_scale) || _scale <= 0.0f)
         _scale = 1.0f;
     double logical_size = rt_gui_sanitize_font_size(size, 14.0);
-    app->default_font = (vg_font_t *)font;
+    app->default_font = new_font;
     app->default_font_size = (float)logical_size * _scale;
     app->default_font_owned = 0;
 

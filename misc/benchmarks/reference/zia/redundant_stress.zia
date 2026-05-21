@@ -19,5 +19,5 @@ func start() {
         var live: Integer = a2 + b2 + k3 + c3 + d3;
         sum = (sum + live) & 268435455;
     }
-    Viper.Environment.EndProgram(sum);
+    Viper.System.Environment.EndProgram(sum);
 }

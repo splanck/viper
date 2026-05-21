@@ -38,6 +38,7 @@
 #include <optional>
 #include <stdexcept>
 #include <string>
+#include <unordered_set>
 #include <variant>
 
 namespace viper::codegen::x64::binenc {
@@ -151,6 +152,38 @@ static int32_t checkedRel32(int64_t disp, const char *context) {
         throw std::runtime_error(std::string(context) + " rel32 displacement out of range");
     }
     return static_cast<int32_t>(disp);
+}
+
+static int64_t checkedOffsetDelta(size_t target, size_t base, const char *context) {
+    if (target >= base) {
+        const size_t diff = target - base;
+        if (diff > static_cast<size_t>(std::numeric_limits<int64_t>::max()))
+            throw std::runtime_error(std::string(context) + " displacement exceeds int64 range");
+        return static_cast<int64_t>(diff);
+    }
+    const size_t diff = base - target;
+    const uint64_t maxMagnitude =
+        static_cast<uint64_t>(std::numeric_limits<int64_t>::max()) + 1ULL;
+    if (static_cast<uint64_t>(diff) > maxMagnitude)
+        throw std::runtime_error(std::string(context) + " displacement exceeds int64 range");
+    if (static_cast<uint64_t>(diff) == maxMagnitude)
+        return std::numeric_limits<int64_t>::min();
+    return -static_cast<int64_t>(diff);
+}
+
+static size_t checkedAddSize(size_t lhs, size_t rhs, const char *context) {
+    if (lhs > std::numeric_limits<size_t>::max() - rhs)
+        throw std::runtime_error(std::string(context) + " offset overflows addressable size");
+    return lhs + rhs;
+}
+
+static const OpLabel &checkedSingleLabelOperand(const MInstr &instr, const char *context) {
+    if (instr.operands.size() != 1)
+        throw std::runtime_error(std::string(context) + " requires exactly one label operand");
+    const auto &label = labelFromOperand(instr.operands[0]);
+    if (label.name.empty())
+        throw std::runtime_error(std::string(context) + " label must not be empty");
+    return label;
 }
 
 /// @brief Test whether @p op is an internal-branch opcode (`JMP` or `JCC`).
@@ -444,10 +477,20 @@ X64BinaryEncoder::LabelOffsetMap X64BinaryEncoder::computeFunctionLabelOffsets(c
     if (!shortBranchRelaxationEnabled_) {
         size_t offset = 0;
         for (const auto &block : fn.blocks) {
-            estimated[block.label] = offset;
+            auto assignLabel = [&](const std::string &name, size_t labelOffset) {
+                if (name.empty())
+                    return;
+                if (estimated.find(name) != estimated.end()) {
+                    throw std::runtime_error(
+                        "x86-64 binary encoder: duplicate label '" + name +
+                        "' in function '" + fn.name + "'");
+                }
+                estimated[name] = labelOffset;
+            };
+            assignLabel(block.label, offset);
             for (const auto &instr : block.instructions) {
                 if (instr.opcode == MOpcode::LABEL) {
-                    estimated[labelFromOperand(instr.operands[0]).name] = offset;
+                    assignLabel(checkedSingleLabelOperand(instr, "x86-64 LABEL").name, offset);
                     continue;
                 }
                 offset += measureInstructionSize(instr, offset, estimated, isDarwin);
@@ -472,6 +515,13 @@ X64BinaryEncoder::LabelOffsetMap X64BinaryEncoder::computeFunctionLabelOffsets(c
         next.reserve(estimated.size() + fn.blocks.size());
 
         auto assignLabel = [&](const std::string &name, size_t offset) {
+            if (name.empty())
+                return;
+            if (next.find(name) != next.end()) {
+                throw std::runtime_error(
+                    "x86-64 binary encoder: duplicate label '" + name +
+                    "' in function '" + fn.name + "'");
+            }
             auto prevIt = estimated.find(name);
             if (prevIt == estimated.end() || prevIt->second != offset)
                 changed = true;
@@ -485,7 +535,7 @@ X64BinaryEncoder::LabelOffsetMap X64BinaryEncoder::computeFunctionLabelOffsets(c
 
             for (const auto &instr : block.instructions) {
                 if (instr.opcode == MOpcode::LABEL) {
-                    assignLabel(labelFromOperand(instr.operands[0]).name, offset);
+                    assignLabel(checkedSingleLabelOperand(instr, "x86-64 LABEL").name, offset);
                     continue;
                 }
                 offset += measureInstructionSize(instr, offset, known, isDarwin);
@@ -556,7 +606,8 @@ void X64BinaryEncoder::encodeFunction(const MFunction &fn,
     // Define the function symbol at the current text offset.
     const size_t funcStartOffset = text.currentOffset();
     const auto relativeLabelOffsets = computeFunctionLabelOffsets(fn, isDarwin);
-    text.reserveAdditionalBytes(estimateFunctionSize(fn, relativeLabelOffsets, isDarwin));
+    const size_t estimatedSize = estimateFunctionSize(fn, relativeLabelOffsets, isDarwin);
+    text.reserveAdditionalBytes(estimatedSize);
     labelOffsets_.clear();
     labelOffsets_.reserve(relativeLabelOffsets.size());
     for (const auto &[label, offset] : relativeLabelOffsets)
@@ -574,8 +625,15 @@ void X64BinaryEncoder::encodeFunction(const MFunction &fn,
     for (std::size_t blockIndex = 0; blockIndex < fn.blocks.size(); ++blockIndex) {
         const auto &block = fn.blocks[blockIndex];
         // Record label offset for internal branch resolution.
-        verifyPredictedLabelOffset(block.label, text.currentOffset());
-        labelOffsets_[block.label] = text.currentOffset();
+        if (!block.label.empty()) {
+            verifyPredictedLabelOffset(block.label, text.currentOffset());
+            auto existing = labelOffsets_.find(block.label);
+            if (existing != labelOffsets_.end() && existing->second != text.currentOffset()) {
+                throw std::runtime_error("x86-64 binary encoder: duplicate emitted label '" +
+                                         block.label + "' in function '" + fn.name + "'");
+            }
+            labelOffsets_[block.label] = text.currentOffset();
+        }
 
         for (const auto &instr : block.instructions) {
             if (debugLines_ && instr.loc.hasLine())
@@ -600,10 +658,17 @@ void X64BinaryEncoder::encodeFunction(const MFunction &fn,
                                      pb.target + "' in function '" + fn.name + "'");
         }
         // rel32 = target - (patchOffset + 4)
-        const int64_t disp =
-            static_cast<int64_t>(it->second) - static_cast<int64_t>(pb.patchOffset + 4);
+        const size_t nextIp = checkedAddSize(pb.patchOffset, 4, "internal branch");
+        const int64_t disp = checkedOffsetDelta(it->second, nextIp, "internal branch");
         const int32_t rel = checkedRel32(disp, "internal branch");
         text.patch32LE(pb.patchOffset, static_cast<uint32_t>(rel));
+    }
+
+    const size_t actualSize = text.currentOffset() - funcStartOffset;
+    if (actualSize != estimatedSize) {
+        throw std::runtime_error("x86-64 binary encoder: function size drift for '" + fn.name +
+                                 "' (predicted=" + std::to_string(estimatedSize) +
+                                 ", actual=" + std::to_string(actualSize) + ")");
     }
 
     if (emitWin64Unwind && frame) {
@@ -689,7 +754,7 @@ void X64BinaryEncoder::encodeInstructionImpl(const MInstr &instr,
 
         // --- Pseudo: skip ---
         case MOpcode::PX_COPY:
-            return; // No bytes emitted.
+            throw std::runtime_error("x86-64 binary encoder: parallel-copy pseudo survived lowering");
 
         // --- Label definition ---
         case MOpcode::LABEL: {
@@ -914,55 +979,37 @@ void X64BinaryEncoder::encodeInstructionImpl(const MInstr &instr,
         // --- Branches and calls ---
         case MOpcode::JMP: {
             requireOps(1);
-            if (std::holds_alternative<OpLabel>(ops[0])) {
-                encodeBranchLabel(op, labelFromOperand(ops[0]).name, 0, text);
-            } else if (std::holds_alternative<OpReg>(ops[0])) {
-                encodeBranchReg(op, gprFromOperand(ops[0], "JMP target"), text);
-            } else if (std::holds_alternative<OpMem>(ops[0])) {
-                encodeBranchMem(op, memFromOperand(ops[0]), text);
-            } else {
-                throw std::runtime_error(
-                    "x86-64 binary encoder: JMP requires a label, register, or memory target");
-            }
+            encodeBranchOperand(op, ops[0], /*cc=*/0, text,
+                                "JMP requires a label, register, or memory target");
             return;
         }
 
         case MOpcode::JCC: {
             requireOps(2);
             int cc = static_cast<int>(immFromOperand(ops[0]));
-            if (std::holds_alternative<OpLabel>(ops[1])) {
-                encodeBranchLabel(op, labelFromOperand(ops[1]).name, cc, text);
-            } else {
+            if (!std::holds_alternative<OpLabel>(ops[1]))
                 throw std::runtime_error("x86-64 binary encoder: JCC requires a label target");
-            }
+            encodeBranchLabel(op, labelFromOperand(ops[1]).name, cc, text);
             return;
         }
 
         case MOpcode::CALL: {
             requireOps(1);
+            // CALL handles label specially (direct internal vs. PLT external), so
+            // the operand-kind dispatcher only covers the non-label paths.
             if (std::holds_alternative<OpLabel>(ops[0])) {
                 const auto &label = labelFromOperand(ops[0]);
-                // Check if this is an internal function label.
-                auto it = labelOffsets_.find(label.name);
-                if (it != labelOffsets_.end()) {
-                    // Internal call — use direct encoding with patch.
+                if (labelOffsets_.find(label.name) != labelOffsets_.end()) {
                     encodeBranchLabel(op, label.name, 0, text);
                 } else {
-                    // External call — generate relocation.
                     encodeCallExternal(label.name, text, isDarwin);
                 }
             } else if (std::holds_alternative<OpRipLabel>(ops[0])) {
-                // RIP-relative label — treat as external call (same relocation).
-                // This arises from call.indirect when the callee is a global label.
-                const auto &rip = ripFromOperand(ops[0]);
-                encodeCallExternal(rip.name, text, isDarwin);
-            } else if (std::holds_alternative<OpReg>(ops[0])) {
-                encodeBranchReg(op, gprFromOperand(ops[0], "CALL target"), text);
-            } else if (std::holds_alternative<OpMem>(ops[0])) {
-                encodeBranchMem(op, memFromOperand(ops[0]), text);
+                // call.indirect through a global label → same relocation as external.
+                encodeCallExternal(ripFromOperand(ops[0]).name, text, isDarwin);
             } else {
-                throw std::runtime_error(
-                    "x86-64 binary encoder: CALL has unsupported operand shape");
+                encodeBranchOperand(op, ops[0], /*cc=*/0, text,
+                                    "CALL has unsupported operand shape");
             }
             return;
         }
@@ -1457,6 +1504,9 @@ void X64BinaryEncoder::encodeBranchLabel(MOpcode op,
                                          const std::string &label,
                                          int condCode,
                                          objfile::CodeSection &cs) {
+    if (label.empty())
+        throw std::runtime_error("x86-64 binary encoder: branch target label must not be empty");
+
     // --- Short-form relaxation (any resolved internal JMP/JCC) ---
     // Short JMP  = 0xEB + rel8 (2 bytes, saves 3 over near form)
     // Short JCC  = 0x7x + rel8 (2 bytes, saves 4 over near form)
@@ -1467,8 +1517,8 @@ void X64BinaryEncoder::encodeBranchLabel(MOpcode op,
         if (it != labelOffsets_.end()) {
             // Short-form instruction is 2 bytes total: opcode + rel8.
             // IP after instruction = currentOffset + 2.
-            auto disp =
-                static_cast<int64_t>(it->second) - static_cast<int64_t>(cs.currentOffset() + 2);
+            const size_t nextIp = checkedAddSize(cs.currentOffset(), 2, "short branch");
+            auto disp = checkedOffsetDelta(it->second, nextIp, "short branch");
             if (disp >= -128 && disp <= 127) {
                 if (op == MOpcode::JMP)
                     cs.emit8(0xEB); // JMP rel8
@@ -1510,8 +1560,8 @@ void X64BinaryEncoder::encodeBranchLabel(MOpcode op,
     // Check if target is already known (backward branch, near form).
     auto it = labelOffsets_.find(label);
     if (it != labelOffsets_.end()) {
-        const int64_t disp =
-            static_cast<int64_t>(it->second) - static_cast<int64_t>(patchOffset + 4);
+        const size_t nextIp = checkedAddSize(patchOffset, 4, "branch");
+        const int64_t disp = checkedOffsetDelta(it->second, nextIp, "branch");
         const int32_t rel = checkedRel32(disp, "branch");
         cs.patch32LE(patchOffset, static_cast<uint32_t>(rel));
     } else {
@@ -1549,6 +1599,27 @@ void X64BinaryEncoder::encodeBranchMem(MOpcode op, const OpMem &mem, objfile::Co
                        /*mandatoryPrefix=*/0,
                        0xFF,
                        0);
+}
+
+// === Branch / call operand-kind dispatcher ===
+
+/// @brief Dispatch JMP/CALL target by operand variant kind.
+/// @details Centralises the label/reg/mem switch shared by JMP and CALL so the
+///          giant @ref encodeInstructionImpl dispatcher stays a thin glue layer.
+void X64BinaryEncoder::encodeBranchOperand(MOpcode op,
+                                           const Operand &target,
+                                           int condCode,
+                                           objfile::CodeSection &cs,
+                                           const char *errPrefix) {
+    if (std::holds_alternative<OpLabel>(target)) {
+        encodeBranchLabel(op, labelFromOperand(target).name, condCode, cs);
+    } else if (std::holds_alternative<OpReg>(target)) {
+        encodeBranchReg(op, gprFromOperand(target, "branch target"), cs);
+    } else if (std::holds_alternative<OpMem>(target)) {
+        encodeBranchMem(op, memFromOperand(target), cs);
+    } else {
+        throw std::runtime_error(std::string{"x86-64 binary encoder: "} + errPrefix);
+    }
 }
 
 // === External CALL (generates relocation) ===

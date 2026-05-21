@@ -937,9 +937,9 @@ void rt_postfx3d_apply_to_canvas(void *canvas) {
     int32_t height = 0;
     int32_t stride = 0;
 
-    if (!canvas)
+    rt_canvas3d *c = rt_canvas3d_checked_or_stack(canvas);
+    if (!c)
         return;
-    rt_canvas3d *c = (rt_canvas3d *)canvas;
     rt_postfx3d *fx = postfx3d_checked(c->postfx);
     if (!fx || !fx->enabled || fx->effect_count == 0)
         return;

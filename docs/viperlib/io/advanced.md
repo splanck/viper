@@ -105,7 +105,7 @@ module ArchiveDemo;
 bind Viper.Terminal;
 bind Viper.IO.Archive as Arc;
 bind Viper.IO.File as File;
-bind Viper.Fmt as Fmt;
+bind Viper.Text.Fmt as Fmt;
 
 func start() {
     // Create a new archive

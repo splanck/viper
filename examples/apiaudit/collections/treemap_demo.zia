@@ -8,7 +8,7 @@ bind Viper.Collections;
 bind Viper.Collections.Seq as Seq;
 bind Viper.Core;
 bind Viper.Terminal;
-bind Viper.Fmt;
+bind Viper.Text.Fmt;
 
 func start() {
     Say("=== TreeMap API Audit ===");

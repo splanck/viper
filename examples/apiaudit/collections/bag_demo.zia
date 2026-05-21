@@ -6,7 +6,7 @@ module BagDemo;
 bind Viper.Collections;
 bind Viper.Core;
 bind Viper.Terminal;
-bind Viper.Fmt;
+bind Viper.Text.Fmt;
 
 func start() {
     Say("=== Bag API Audit ===");

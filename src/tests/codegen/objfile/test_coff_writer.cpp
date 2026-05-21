@@ -12,6 +12,7 @@
 //===----------------------------------------------------------------------===//
 
 #include "codegen/common/linker/ObjFileReader.hpp"
+#include "codegen/common/linker/RelocApplier.hpp"
 #include "codegen/common/objfile/CoffWriter.hpp"
 
 #include <cstdlib>
@@ -21,6 +22,7 @@
 #include <iterator>
 #include <limits>
 #include <sstream>
+#include <unordered_set>
 #include <vector>
 
 using namespace viper::codegen::linker;
@@ -144,6 +146,85 @@ int main() {
     CHECK(pdataSec->relocs[0].symIndex == mainIdx);
     CHECK(pdataSec->relocs[1].symIndex == mainIdx);
     CHECK(pdataSec->relocs[2].symIndex == xdataIdx);
+
+    {
+        CodeSection callText;
+        CodeSection callRodata;
+        callText.defineSymbol("caller", SymbolBinding::Global, SymbolSection::Text);
+        callText.emit8(0xE8);
+        const size_t dispOff = callText.currentOffset();
+        callText.emit32LE(0);
+        const uint32_t calleeIdx = callText.findOrDeclareSymbol("callee");
+        callText.addRelocationAt(dispOff, RelocKind::Branch32, calleeIdx, -4);
+        callText.emit8(0xC3);
+
+        std::ostringstream callErr;
+        CoffWriter callWriter(ObjArch::X86_64);
+        const std::string callPath = "build/test-out/coff_x64_call.obj";
+        ASSERT(callWriter.write(callPath, callText, callRodata, callErr));
+
+        ObjFile callObj;
+        ASSERT(readObjFile(callPath, callObj, callErr));
+        const ObjSection *callTextSec = findSection(callObj, ".text");
+        ASSERT(callTextSec != nullptr);
+        CHECK(callTextSec->relocs.size() == 1);
+        if (!callTextSec->relocs.empty()) {
+            CHECK(callTextSec->relocs[0].type == 4);
+            CHECK(callTextSec->relocs[0].addend == 0);
+        }
+        CHECK(readLE32(callTextSec->data, dispOff) == 0);
+
+        ObjFile targetObj;
+        targetObj.name = "callee.obj";
+        targetObj.format = ObjFileFormat::COFF;
+        targetObj.sections.push_back({});
+        ObjSection targetText;
+        targetText.name = ".text";
+        targetText.data.push_back(0xC3);
+        targetText.executable = true;
+        targetText.alloc = true;
+        targetObj.sections.push_back(targetText);
+        targetObj.symbols.push_back({});
+        ObjSymbol calleeSym;
+        calleeSym.name = "callee";
+        calleeSym.binding = ObjSymbol::Global;
+        calleeSym.sectionIndex = 1;
+        targetObj.symbols.push_back(calleeSym);
+
+        std::vector<ObjFile> objs = {callObj, targetObj};
+        LinkLayout layout;
+        OutputSection out;
+        out.name = ".text";
+        out.executable = true;
+        out.alloc = true;
+        out.virtualAddr = 0x140001000ULL;
+        for (size_t oi = 0; oi < objs.size(); ++oi) {
+            for (size_t si = 1; si < objs[oi].sections.size(); ++si) {
+                if (objs[oi].sections[si].name != ".text")
+                    continue;
+                InputChunk chunk;
+                chunk.inputObjIndex = oi;
+                chunk.inputSecIndex = si;
+                chunk.outputOffset = out.data.size();
+                chunk.size = objs[oi].sections[si].data.size();
+                out.chunks.push_back(chunk);
+                out.data.insert(out.data.end(),
+                                objs[oi].sections[si].data.begin(),
+                                objs[oi].sections[si].data.end());
+            }
+        }
+        layout.sections.push_back(out);
+        GlobalSymEntry calleeEntry;
+        calleeEntry.name = "callee";
+        calleeEntry.binding = GlobalSymEntry::Global;
+        calleeEntry.objIndex = 1;
+        calleeEntry.secIndex = 1;
+        layout.globalSyms["callee"] = calleeEntry;
+        std::unordered_set<std::string> dynSyms;
+        CHECK(applyRelocations(
+            objs, layout, dynSyms, LinkPlatform::Windows, LinkArch::X86_64, callErr));
+        CHECK(readLE32(layout.sections[0].data, dispOff) == 1);
+    }
 
     {
         CodeSection armText;
@@ -586,6 +667,25 @@ int main() {
     }
 
     {
+        CodeSection textA;
+        textA.emit8(0x90);
+        textA.emit8(0xC3);
+        CodeSection textCopy = textA;
+        CodeSection rodataMulti;
+        rodataMulti.addSectionOffsetRelocation(RelocKind::Abs64, textA, SymbolSection::Text, 1);
+        rodataMulti.emit64LE(0);
+
+        std::ostringstream duplicateIdentityErr;
+        CoffWriter duplicateIdentityWriter(ObjArch::X86_64);
+        CHECK(!duplicateIdentityWriter.write("build/test-out/coff_duplicate_identity.obj",
+                                             std::vector<CodeSection>{textA, textCopy},
+                                             rodataMulti,
+                                             duplicateIdentityErr));
+        CHECK(duplicateIdentityErr.str().find("duplicate .text section identity") !=
+              std::string::npos);
+    }
+
+    {
         std::vector<uint8_t> commonObj(20 + 18 + 4, 0);
         writeLE16(commonObj, 0, 0x8664);      // IMAGE_FILE_MACHINE_AMD64
         writeLE32(commonObj, 8, 20);          // symbol table immediately after header
@@ -608,7 +708,7 @@ int main() {
         CHECK(commonParsed.symbols[commonIdx].binding == ObjSymbol::Global);
         CHECK(commonParsed.symbols[commonIdx].common);
         CHECK(commonParsed.symbols[commonIdx].size == 16);
-        CHECK(commonParsed.symbols[commonIdx].commonAlignment == 8);
+        CHECK(commonParsed.symbols[commonIdx].commonAlignment == 16);
         CHECK(commonParsed.symbols[commonIdx].sectionIndex == 0);
     }
 

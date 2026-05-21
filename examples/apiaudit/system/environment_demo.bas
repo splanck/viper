@@ -1,40 +1,40 @@
 ' =============================================================================
-' API Audit: Viper.Environment - Environment Access
+' API Audit: Viper.System.Environment - Environment Access
 ' =============================================================================
 ' Tests: GetArgumentCount, GetCommandLine, GetVariable, HasVariable,
 '        SetVariable, IsNative
 ' NOTE: Do NOT call EndProgram!
 ' =============================================================================
 
-PRINT "=== API Audit: Viper.Environment ==="
+PRINT "=== API Audit: Viper.System.Environment ==="
 
 ' --- GetArgumentCount ---
 PRINT "--- GetArgumentCount ---"
-PRINT "GetArgumentCount: "; Viper.Environment.GetArgumentCount()
+PRINT "GetArgumentCount: "; Viper.System.Environment.GetArgumentCount()
 
 ' --- GetCommandLine ---
 PRINT "--- GetCommandLine ---"
-PRINT "GetCommandLine: "; Viper.Environment.GetCommandLine()
+PRINT "GetCommandLine: "; Viper.System.Environment.GetCommandLine()
 
 ' --- GetVariable ---
 PRINT "--- GetVariable ---"
-PRINT "GetVariable('PATH'): "; Viper.Environment.GetVariable("PATH")
+PRINT "GetVariable('PATH'): "; Viper.System.Environment.GetVariable("PATH")
 
 ' --- HasVariable ---
 PRINT "--- HasVariable ---"
-PRINT "HasVariable('PATH'): "; Viper.Environment.HasVariable("PATH")
-PRINT "HasVariable('VIPER_TEST_NONEXISTENT_12345'): "; Viper.Environment.HasVariable("VIPER_TEST_NONEXISTENT_12345")
+PRINT "HasVariable('PATH'): "; Viper.System.Environment.HasVariable("PATH")
+PRINT "HasVariable('VIPER_TEST_NONEXISTENT_12345'): "; Viper.System.Environment.HasVariable("VIPER_TEST_NONEXISTENT_12345")
 
 ' --- SetVariable ---
 PRINT "--- SetVariable ---"
-Viper.Environment.SetVariable("VIPER_AUDIT_TEST", "hello_from_viper")
+Viper.System.Environment.SetVariable("VIPER_AUDIT_TEST", "hello_from_viper")
 PRINT "SetVariable done"
-PRINT "GetVariable('VIPER_AUDIT_TEST'): "; Viper.Environment.GetVariable("VIPER_AUDIT_TEST")
-PRINT "HasVariable('VIPER_AUDIT_TEST'): "; Viper.Environment.HasVariable("VIPER_AUDIT_TEST")
+PRINT "GetVariable('VIPER_AUDIT_TEST'): "; Viper.System.Environment.GetVariable("VIPER_AUDIT_TEST")
+PRINT "HasVariable('VIPER_AUDIT_TEST'): "; Viper.System.Environment.HasVariable("VIPER_AUDIT_TEST")
 
 ' --- IsNative ---
 PRINT "--- IsNative ---"
-PRINT "IsNative: "; Viper.Environment.IsNative()
+PRINT "IsNative: "; Viper.System.Environment.IsNative()
 
 PRINT "=== Environment Demo Complete ==="
 END

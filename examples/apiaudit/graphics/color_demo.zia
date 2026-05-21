@@ -9,7 +9,7 @@
 module ColorDemo;
 bind Viper.Graphics.Color as Color;
 bind Viper.Terminal;
-bind Viper.Fmt as Fmt;
+bind Viper.Text.Fmt as Fmt;
 
 func start() {
     Say("=== API Audit: Viper.Graphics.Color ===");

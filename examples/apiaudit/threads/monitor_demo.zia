@@ -10,7 +10,7 @@ module MonitorDemo;
 bind Viper.Threads.Monitor as Monitor;
 bind Viper.Collections.Seq as Seq;
 bind Viper.Terminal;
-bind Viper.Fmt as Fmt;
+bind Viper.Text.Fmt as Fmt;
 
 func start() {
     Say("=== API Audit: Viper.Threads.Monitor ===");

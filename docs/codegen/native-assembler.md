@@ -1,7 +1,7 @@
 ---
 status: active
 audience: contributors
-last-verified: 2026-05-11
+last-verified: 2026-05-19
 ---
 
 # Native Assembler — Binary Encoding & Object File Generation
@@ -101,6 +101,8 @@ writing output. Format limits are reported through the writer error stream inste
 Section-offset relocations can also carry the identity of the target `CodeSection`; multi-text object emission uses
 that identity to select the exact section anchor and rejects legacy offset-only relocations when the offset is
 ambiguous across function sections.
+`CodeSection` copies receive fresh section identities and self-targeted section-offset relocations are retargeted to
+the copy, so copied buffers cannot accidentally alias another section's relocation anchors.
 
 ---
 
@@ -164,12 +166,19 @@ The `PhysReg` enum order differs from hardware encoding. The encoder maps via lo
 - **PC-relative addend**: x86_64 branch and RIP-relative relocations always carry addend = −4 because the CPU
   computes displacement relative to the *end* of the instruction, but the relocation offset points to the *start*
   of the 4-byte displacement field
+- **Label validation**: Basic-block and in-block labels must be unique after the encoder's sizing pass, and `LABEL`
+  pseudos require exactly one label operand. Size drift between the measured pass and emission is a hard encoder
+  error.
+- **Pseudo lowering**: `PX_COPY` is a register-allocation pseudo. If it survives to binary encoding, emission fails
+  instead of silently dropping the copy.
 - **Condition codes**: Invalid MIR condition-code integers are rejected even in release builds before the encoder
   constructs JCC/SETcc/CMOVcc opcodes.
 - **Operand validation**: Opcode handlers require exact operand counts and validate GPR/XMM roles before touching
   hardware encoding tables. This catches malformed post-RA MIR instead of encoding the wrong register class.
 - **Win64 unwind metadata**: COFF unwind emission requires every planned prologue operation to match emitted code,
   and rejects prologue/code offsets that exceed the 8-bit PE unwind fields.
+- **AArch64 relocation shapes**: ADD-immediate and unsigned-offset load/store relocation sites use shared validation
+  helpers across the writers and linker so page-offset relocations are only accepted on compatible instruction forms.
 - **Symbol names**: Encoders record canonical, unmangled names in `CodeSection`; platform ABI spelling is applied
   by the object writer. This keeps ELF/COFF/Mach-O inputs comparable until serialization.
 - **Symbol offsets**: Object writers serialize physical offsets within emitted section bytes. `CodeSection` logical
@@ -236,10 +245,16 @@ The AArch64 encoder synthesizes function prologues and epilogues at emit time:
   duplicate callee-saved registers, GPR saves outside X19-X28, and FPR saves outside V8-V15 before emission.
 - **Large stack/base offsets**: Materialized-address load/store fallbacks, including SP-relative stores, choose a
   scratch register that does not alias the base register or a GPR store source.
+- **SP base safety**: Generic large-offset load/store fallback rejects `SP` as the base register, because the
+  required register-register `ADD` encoding would interpret register 31 as `XZR`. SP-relative stores use the
+  dedicated SP path instead.
 - **Late immediate materialization**: Compare/logical-immediate fallbacks avoid clobbering source registers when
   choosing reserved scratch registers.
 - **Pair load/store offsets**: `ldp/stp` immediate offsets are validated for 8-byte alignment and signed imm7 range
-  before encoding.
+  before encoding. If the fallback splits a pair into scalar loads/stores, the second `offset + 8` calculation is
+  overflow-checked before emission.
+- **Windows ARM64 unwind**: Prologue byte size is rejected if it exceeds the one-byte Windows ARM64 unwind field
+  instead of being truncated.
 - **Immediate validation**: Shift immediates must be in range `0..63`; invalid condition strings are rejected; logical
   immediates are encoded through a safe decode-equivalence search that avoids 64-bit shift undefined behavior.
   Low-level ADD/SUB immediate helpers throw on values wider than imm12 in release builds.
@@ -271,12 +286,18 @@ The native assembler validates object metadata before serialization:
   checked before patching the line-table header.
 - ELF, Mach-O, and COFF writers validate that every relocation kind matches the target architecture and that the
   fixup width fits inside the section contents.
+- AArch64 relocation shape is validated against the instruction word before object serialization: `A64Call26` must
+  sit on `BL`, `A64Jump26` on `B`, `A64AdrpPage21` on `ADRP`, page-offset ADD relocations on ADD-immediate, and
+  scaled load/store relocations on an unsigned-offset load/store of the matching width.
 - Undefined external symbols are only coalesced with defined global symbols of the same name. Local same-name
   symbols remain local, and local cross-section references must use an explicit relocation target-section hint.
 - Cross-section references can also target an explicit section offset. Writers lower these to section-symbol
   relocations where the format supports them, which lets native object output represent duplicate local labels
   without guessing by name. Mach-O AArch64 creates synthetic local anchors for section offsets whose effective
   addend cannot fit in `ARM64_RELOC_ADDEND`'s signed 24-bit payload.
+- When one `CodeSection` is appended into another, explicit section-offset relocations must carry the source
+  section identity. This prevents copied text sections with duplicate local labels from being resolved by whichever
+  same-name symbol happens to appear first.
 - Standard COFF output is rejected before section indexes exceed the signed 16-bit section-number range used in
   symbol table entries. BigObj emission is not currently implemented.
 - COFF emits unwind sections for both supported Windows ABIs: x86-64 uses Win64 `.pdata` records with begin/end/xdata relocations, while AArch64 emits ARM64 `.pdata` begin/xdata records plus packed `.xdata` unwind opcodes.
@@ -369,6 +390,9 @@ LC_BUILD_VERSION → LC_SYMTAB → LC_DYSYMTAB → section data → relocations 
   ABI-prefixed; normal external/global names beginning with `L` still receive the Darwin `_` prefix.
 - Relocations stored per-section (not in separate `.rela` sections like ELF)
 - Both `__TEXT,__text` and `__TEXT,__const` publish their own relocation tables when needed.
+- x86_64 branch and signed PC-relative relocation sites are serialized using the platform raw-field convention:
+  Viper's internal addend `-4` is written as a zero displacement field, and the object reader normalizes it back to
+  `-4` when linking.
 - AArch64 non-zero addends are range-checked as signed 24-bit values and serialized with paired
   `ARM64_RELOC_ADDEND` records before the target relocation. Addend+target pairs stay adjacent even when multiple
   relocations share the same address, preserving Mach-O's paired-record semantics after descending-address sorting.

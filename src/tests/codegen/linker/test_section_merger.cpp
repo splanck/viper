@@ -402,6 +402,33 @@ int main() {
         CHECK(layout.sections[0].chunks[4].inputSecIndex == 5); // overflowed priority ignored
     }
 
+    // --- ELF read-only metadata sections keep their original output names ---
+    {
+        auto obj = makeObj("metadata.o",
+                           ObjFileFormat::ELF,
+                           {makeSection(".eh_frame", 8, false, false, false, 8),
+                            makeSection(".note.viper", 12, false, false, false, 4),
+                            makeSection(".rodata", 16, false, false, false, 16)});
+
+        std::vector<ObjFile> objs = {obj};
+        LinkLayout layout;
+        std::ostringstream err;
+
+        bool ok = mergeSections(objs, LinkPlatform::Linux, LinkArch::X86_64, layout, err);
+        CHECK(ok);
+        bool sawRodata = false;
+        bool sawEhFrame = false;
+        bool sawNote = false;
+        for (const auto &sec : layout.sections) {
+            sawRodata = sawRodata || sec.name == ".rodata";
+            sawEhFrame = sawEhFrame || sec.name == ".eh_frame";
+            sawNote = sawNote || sec.name == ".note.viper";
+        }
+        CHECK(sawRodata);
+        CHECK(sawEhFrame);
+        CHECK(sawNote);
+    }
+
     // --- Mach-O mod-init functions preserve source order instead of alignment order ---
     {
         auto obj = makeObj("modinit.o",
@@ -449,6 +476,80 @@ int main() {
         CHECK(layout.sections[0].chunks[0].size == 0);
     }
 
+    // --- Zero-fill sections keep logical memory size without materialized bytes ---
+    {
+        ObjSection bss = makeSection(".bss", 0, false, true, false, 16, true);
+        bss.data.clear();
+        bss.memSize = 64;
+        auto obj = makeObj("bss.o", ObjFileFormat::ELF, {bss});
+        obj.symbols.push_back({});
+        ObjSymbol sym;
+        sym.name = "bss_sym";
+        sym.binding = ObjSymbol::Global;
+        sym.sectionIndex = 1;
+        sym.offset = 32;
+        obj.symbols.push_back(sym);
+
+        std::vector<ObjFile> objs = {obj};
+        LinkLayout layout;
+        std::ostringstream err;
+
+        bool ok = mergeSections(objs, LinkPlatform::Linux, LinkArch::X86_64, layout, err);
+        CHECK(ok);
+        CHECK(layout.sections.size() == 1);
+        CHECK(layout.sections[0].name == ".bss");
+        CHECK(layout.sections[0].zeroFill);
+        CHECK(layout.sections[0].data.empty());
+        CHECK(outputSectionMemSize(layout.sections[0]) == 64);
+        CHECK(layout.sections[0].chunks.size() == 1);
+        CHECK(layout.sections[0].chunks[0].size == 64);
+    }
+
+    // --- Mach-O const data stays in a data segment without becoming writable ---
+    {
+        ObjSection constData = makeSection("__DATA_CONST,__const", 8, false, false, false, 8);
+        constData.dataSegment = true;
+        auto obj = makeObj("constdata.o", ObjFileFormat::MachO, {constData});
+
+        std::vector<ObjFile> objs = {obj};
+        LinkLayout layout;
+        std::ostringstream err;
+
+        bool ok = mergeSections(objs, LinkPlatform::macOS, LinkArch::AArch64, layout, err);
+        CHECK(ok);
+        CHECK(layout.sections.size() == 1);
+        CHECK(layout.sections[0].name == "__DATA_CONST,__const");
+        CHECK(!layout.sections[0].writable);
+        CHECK(layout.sections[0].dataSegment);
+    }
+
+    // --- ObjC metadata sections merge despite harmless reader/synthetic flag differences ---
+    {
+        ObjSection inputSelrefs =
+            makeSection("__DATA,__objc_selrefs", 8, false, false, false, 8);
+        inputSelrefs.dataSegment = true;
+        ObjSection generatedSelrefs =
+            makeSection("__DATA,__objc_selrefs", 8, false, true, false, 8);
+        generatedSelrefs.dataSegment = false;
+
+        auto inputObj = makeObj("input.o", ObjFileFormat::MachO, {inputSelrefs});
+        auto generatedObj = makeObj("objc-stubs.o", ObjFileFormat::ELF, {generatedSelrefs});
+
+        std::vector<ObjFile> objs = {inputObj, generatedObj};
+        LinkLayout layout;
+        std::ostringstream err;
+
+        bool ok = mergeSections(objs, LinkPlatform::macOS, LinkArch::AArch64, layout, err);
+        CHECK(ok);
+        CHECK(err.str().empty());
+        CHECK(layout.sections.size() == 1);
+        CHECK(layout.sections[0].name == "__DATA,__objc_selrefs");
+        CHECK(layout.sections[0].data.size() == 16);
+        CHECK(layout.sections[0].writable);
+        CHECK(layout.sections[0].dataSegment);
+        CHECK(layout.sections[0].chunks.size() == 2);
+    }
+
     // --- Virtual address overflow is diagnosed ---
     {
         LinkLayout layout;
@@ -463,6 +564,16 @@ int main() {
         std::ostringstream err;
         CHECK(!assignSectionVirtualAddresses(layout, LinkPlatform::Linux, err));
         CHECK(err.str().find("image base plus page size") != std::string::npos);
+    }
+
+    // --- Read-only data names containing ".text" are not executable text ---
+    {
+        CHECK(classifySection(".rodata.textual_metadata",
+                              false,
+                              false,
+                              false,
+                              false) == SectionClass::Rodata);
+        CHECK(classifySection(".text.hot", false, false, false, false) == SectionClass::Text);
     }
 
     // --- Result ---

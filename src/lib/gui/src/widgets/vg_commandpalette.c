@@ -196,6 +196,9 @@ static void filter_commands(vg_commandpalette_t *palette) {
                 size_t new_cap = palette->filtered_capacity * 2;
                 if (new_cap < 32)
                     new_cap = 32;
+                if (new_cap <= palette->filtered_capacity ||
+                    new_cap > SIZE_MAX / sizeof(vg_command_t *))
+                    continue;
                 vg_command_t **new_filtered =
                     realloc(palette->filtered, new_cap * sizeof(vg_command_t *));
                 if (!new_filtered)
@@ -759,18 +762,46 @@ void vg_commandpalette_execute_selected(vg_commandpalette_t *palette) {
     if (!cmd || !cmd->enabled)
         return;
 
+    vg_command_t snapshot = *cmd;
+    snapshot.id = cmd->id ? strdup(cmd->id) : NULL;
+    snapshot.label = cmd->label ? strdup(cmd->label) : NULL;
+    snapshot.description = cmd->description ? strdup(cmd->description) : NULL;
+    snapshot.shortcut = cmd->shortcut ? strdup(cmd->shortcut) : NULL;
+    snapshot.category = cmd->category ? strdup(cmd->category) : NULL;
+    if ((cmd->id && !snapshot.id) || (cmd->label && !snapshot.label) ||
+        (cmd->description && !snapshot.description) ||
+        (cmd->category && !snapshot.category) ||
+        (cmd->shortcut && !snapshot.shortcut)) {
+        free(snapshot.id);
+        free(snapshot.label);
+        free(snapshot.description);
+        free(snapshot.shortcut);
+        free(snapshot.category);
+        return;
+    }
+    void (*action)(vg_command_t *, void *) = cmd->action;
+    void *action_user_data = cmd->user_data;
+    void (*on_execute)(vg_commandpalette_t *, vg_command_t *, void *) = palette->on_execute;
+    void *on_execute_user_data = palette->user_data;
+
     // Execute action
-    if (cmd->action) {
-        cmd->action(cmd, cmd->user_data);
+    if (action) {
+        action(&snapshot, action_user_data);
     }
 
     // Notify callback
-    if (palette->on_execute) {
-        palette->on_execute(palette, cmd, palette->user_data);
+    if (vg_widget_is_live(&palette->base) && on_execute) {
+        on_execute(palette, &snapshot, on_execute_user_data);
     }
 
     // Hide palette
-    vg_commandpalette_hide(palette);
+    if (vg_widget_is_live(&palette->base))
+        vg_commandpalette_hide(palette);
+    free(snapshot.id);
+    free(snapshot.label);
+    free(snapshot.description);
+    free(snapshot.shortcut);
+    free(snapshot.category);
 }
 
 /// @brief Register lifecycle callbacks invoked when a command is executed or the palette is dismissed.

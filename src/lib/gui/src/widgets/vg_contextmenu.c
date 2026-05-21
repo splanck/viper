@@ -10,8 +10,8 @@
 //          column support, keyboard navigation, and a global widget→menu
 //          registration registry.
 // Key invariants:
-//   - s_registry[] is a fixed-size flat array (CONTEXTMENU_REGISTRY_MAX = 64)
-//     mapping widget pointers to menus; stale entries are purged inline on every
+//   - s_registry is a dynamically-grown flat array mapping widget pointers to
+//     menus; stale entries are purged inline on every
 //     traversal using swap-with-last.
 //   - items[] is a heap-allocated pointer array; capacity doubles from 8 when
 //     exhausted.
@@ -36,6 +36,7 @@
 #include "../../include/vg_event.h"
 #include "../../include/vg_ide_widgets.h"
 #include "../../include/vg_theme.h"
+#include <stdint.h>
 #include <stdlib.h>
 #include <string.h>
 
@@ -64,15 +65,34 @@ static vg_widget_vtable_t g_contextmenu_vtable = {.destroy = contextmenu_destroy
 // Right-click Registry
 //=============================================================================
 
-#define CONTEXTMENU_REGISTRY_MAX 64
-
 typedef struct {
     vg_widget_t *widget;
     vg_contextmenu_t *menu;
 } contextmenu_registry_entry_t;
 
-static contextmenu_registry_entry_t s_registry[CONTEXTMENU_REGISTRY_MAX];
-static int s_registry_count = 0;
+static contextmenu_registry_entry_t *s_registry = NULL;
+static size_t s_registry_count = 0;
+static size_t s_registry_cap = 0;
+
+static bool contextmenu_ensure_registry_capacity(size_t needed) {
+    if (needed <= s_registry_cap)
+        return true;
+    size_t new_cap = s_registry_cap ? s_registry_cap : 64;
+    while (new_cap < needed) {
+        if (new_cap > SIZE_MAX / 2)
+            return false;
+        new_cap *= 2;
+    }
+    if (new_cap > SIZE_MAX / sizeof(*s_registry))
+        return false;
+    contextmenu_registry_entry_t *entries =
+        realloc(s_registry, new_cap * sizeof(*s_registry));
+    if (!entries)
+        return false;
+    s_registry = entries;
+    s_registry_cap = new_cap;
+    return true;
+}
 
 /// @brief Return true if menu is non-NULL and its base widget is still alive.
 bool vg_contextmenu_is_live(const vg_contextmenu_t *menu) {
@@ -83,7 +103,7 @@ bool vg_contextmenu_is_live(const vg_contextmenu_t *menu) {
 static void contextmenu_unregister_menu(vg_contextmenu_t *menu) {
     if (!menu)
         return;
-    for (int i = 0; i < s_registry_count;) {
+    for (size_t i = 0; i < s_registry_count;) {
         if (s_registry[i].menu == menu || !vg_widget_is_live(s_registry[i].widget)) {
             s_registry[i] = s_registry[--s_registry_count];
         } else {
@@ -118,13 +138,24 @@ static vg_menu_item_t *create_menu_item(const char *label,
                                         const char *shortcut,
                                         void (*action)(void *),
                                         void *user_data) {
-    vg_menu_item_t *item = calloc(1, sizeof(vg_menu_item_t));
-    if (!item)
+    char *label_copy = label ? strdup(label) : NULL;
+    char *shortcut_copy = shortcut ? strdup(shortcut) : NULL;
+    if ((label && !label_copy) || (shortcut && !shortcut_copy)) {
+        free(label_copy);
+        free(shortcut_copy);
         return NULL;
+    }
+
+    vg_menu_item_t *item = calloc(1, sizeof(vg_menu_item_t));
+    if (!item) {
+        free(label_copy);
+        free(shortcut_copy);
+        return NULL;
+    }
 
     item->magic = VG_MENU_ITEM_MAGIC;
-    item->text = label ? strdup(label) : NULL;
-    item->shortcut = shortcut ? strdup(shortcut) : NULL;
+    item->text = label_copy;
+    item->shortcut = shortcut_copy;
     item->action = action;
     item->action_data = user_data;
     item->enabled = true;
@@ -154,6 +185,27 @@ static void free_menu_item(vg_menu_item_t *item) {
         vg_icon_destroy(&item->icon);
         free(item);
     }
+}
+
+static bool contextmenu_ensure_item_capacity(vg_contextmenu_t *menu, size_t needed) {
+    if (!menu)
+        return false;
+    if (needed <= menu->item_capacity)
+        return true;
+    size_t new_cap = menu->item_capacity ? menu->item_capacity : 8;
+    while (new_cap < needed) {
+        if (new_cap > SIZE_MAX / 2)
+            return false;
+        new_cap *= 2;
+    }
+    if (new_cap > SIZE_MAX / sizeof(vg_menu_item_t *))
+        return false;
+    vg_menu_item_t **new_items = realloc(menu->items, new_cap * sizeof(vg_menu_item_t *));
+    if (!new_items)
+        return false;
+    menu->items = new_items;
+    menu->item_capacity = new_cap;
+    return true;
 }
 
 /// @brief Retire a context-menu item without freeing its struct so stale handles become inert.
@@ -946,16 +998,10 @@ vg_menu_item_t *vg_contextmenu_add_item(vg_contextmenu_t *menu,
         return NULL;
     item->owner_contextmenu = menu;
 
-    // Add to array
-    if (menu->item_count >= menu->item_capacity) {
-        size_t new_cap = menu->item_capacity == 0 ? 8 : menu->item_capacity * 2;
-        vg_menu_item_t **new_items = realloc(menu->items, new_cap * sizeof(vg_menu_item_t *));
-        if (!new_items) {
-            free_menu_item(item);
-            return NULL;
-        }
-        menu->items = new_items;
-        menu->item_capacity = new_cap;
+    if (menu->item_count == SIZE_MAX ||
+        !contextmenu_ensure_item_capacity(menu, menu->item_count + 1)) {
+        free_menu_item(item);
+        return NULL;
     }
 
     menu->items[menu->item_count++] = item;
@@ -980,18 +1026,14 @@ vg_menu_item_t *vg_contextmenu_add_submenu(vg_contextmenu_t *menu,
     if (!menu || !submenu)
         return NULL;
 
-    if (menu->item_count >= menu->item_capacity) {
-        size_t new_cap = menu->item_capacity == 0 ? 8 : menu->item_capacity * 2;
-        vg_menu_item_t **new_items = realloc(menu->items, new_cap * sizeof(vg_menu_item_t *));
-        if (!new_items)
-            return NULL;
-        menu->items = new_items;
-        menu->item_capacity = new_cap;
-    }
-
     vg_menu_item_t *item = create_menu_item(label, NULL, NULL, NULL);
     if (!item)
         return NULL;
+    if (menu->item_count == SIZE_MAX ||
+        !contextmenu_ensure_item_capacity(menu, menu->item_count + 1)) {
+        free_menu_item(item);
+        return NULL;
+    }
 
     item->owner_contextmenu = menu;
     item->submenu = (struct vg_menu *)submenu;
@@ -1018,16 +1060,10 @@ vg_menu_item_t *vg_contextmenu_add_separator(vg_contextmenu_t *menu) {
     item->separator = true;
     item->owner_contextmenu = menu;
 
-    // Add to array
-    if (menu->item_count >= menu->item_capacity) {
-        size_t new_cap = menu->item_capacity == 0 ? 8 : menu->item_capacity * 2;
-        vg_menu_item_t **new_items = realloc(menu->items, new_cap * sizeof(vg_menu_item_t *));
-        if (!new_items) {
-            free(item);
-            return NULL;
-        }
-        menu->items = new_items;
-        menu->item_capacity = new_cap;
+    if (menu->item_count == SIZE_MAX ||
+        !contextmenu_ensure_item_capacity(menu, menu->item_count + 1)) {
+        free(item);
+        return NULL;
     }
 
     menu->items[menu->item_count++] = item;
@@ -1233,9 +1269,8 @@ void vg_contextmenu_set_on_dismiss(vg_contextmenu_t *menu,
 
 /// @brief Associate a context menu with a widget so right-clicking the widget opens it.
 ///
-/// @details Stores a (widget, menu) pair in the global registry (max
-///          CONTEXTMENU_REGISTRY_MAX = 64 entries). If widget is already registered
-///          its menu is replaced. Stale entries (dead widgets/menus) are evicted
+/// @details Stores a (widget, menu) pair in the global registry. If widget is
+///          already registered its menu is replaced. Stale entries (dead widgets/menus) are evicted
 ///          inline using swap-with-last during traversal.
 ///
 /// @param widget The widget to attach the menu to; must be live (non-NULL).
@@ -1245,7 +1280,7 @@ void vg_contextmenu_register_for_widget(vg_widget_t *widget, vg_contextmenu_t *m
         return;
 
     // Update existing entry if widget already registered
-    for (int i = 0; i < s_registry_count;) {
+    for (size_t i = 0; i < s_registry_count;) {
         if (!vg_widget_is_live(s_registry[i].widget) ||
             !vg_contextmenu_is_live(s_registry[i].menu)) {
             s_registry[i] = s_registry[--s_registry_count];
@@ -1258,12 +1293,11 @@ void vg_contextmenu_register_for_widget(vg_widget_t *widget, vg_contextmenu_t *m
         i++;
     }
 
-    // Add new entry if space available
-    if (s_registry_count < CONTEXTMENU_REGISTRY_MAX) {
-        s_registry[s_registry_count].widget = widget;
-        s_registry[s_registry_count].menu = menu;
-        s_registry_count++;
-    }
+    if (!contextmenu_ensure_registry_capacity(s_registry_count + 1))
+        return;
+    s_registry[s_registry_count].widget = widget;
+    s_registry[s_registry_count].menu = menu;
+    s_registry_count++;
 }
 
 /// @brief Remove a widget's right-click menu registration from the global registry.
@@ -1273,7 +1307,7 @@ void vg_contextmenu_unregister_for_widget(vg_widget_t *widget) {
     if (!widget)
         return;
 
-    for (int i = 0; i < s_registry_count;) {
+    for (size_t i = 0; i < s_registry_count;) {
         if (s_registry[i].widget == widget || !vg_widget_is_live(s_registry[i].widget) ||
             !vg_contextmenu_is_live(s_registry[i].menu)) {
             // Swap with last entry and shrink
@@ -1300,7 +1334,7 @@ bool vg_contextmenu_process_event(vg_widget_t *widget, vg_event_t *event) {
     if (event->type != VG_EVENT_MOUSE_DOWN || event->mouse.button != VG_MOUSE_RIGHT)
         return false;
 
-    for (int i = 0; i < s_registry_count;) {
+    for (size_t i = 0; i < s_registry_count;) {
         if (!vg_widget_is_live(s_registry[i].widget) ||
             !vg_contextmenu_is_live(s_registry[i].menu)) {
             s_registry[i] = s_registry[--s_registry_count];

@@ -48,6 +48,8 @@ std::string editorPathOrDefault(rt_string filePath) {
 
 extern "C" {
 rt_string rt_zia_complete_for_file(rt_string source, rt_string file_path, int64_t line, int64_t col);
+rt_string rt_zia_signature_help_for_file(
+    rt_string source, rt_string file_path, int64_t line, int64_t col);
 rt_string rt_zia_check_for_file(rt_string source, rt_string file_path);
 rt_string rt_zia_hover_for_file(rt_string source, rt_string file_path, int64_t line, int64_t col);
 rt_string rt_zia_symbols_for_file(rt_string source, rt_string file_path);
@@ -73,6 +75,23 @@ rt_string rt_zia_complete_for_file(rt_string source, rt_string file_path, int64_
     auto items = s_engine.complete(sourceStr, (int)line, (int)col, pathStr);
     std::string result = serialize(items);
 
+    return rt_string_from_bytes(result.c_str(), result.size());
+}
+
+/// @brief Runtime entry point: signature help at (@p line, @p col) with no
+///        file context (delegates to @ref rt_zia_signature_help_for_file).
+rt_string rt_zia_signature_help(rt_string source, int64_t line, int64_t col) {
+    return rt_zia_signature_help_for_file(source, nullptr, line, col);
+}
+
+/// @brief Runtime entry point: return call signature text for the invocation
+///        active at (@p line, @p col), or an empty string if none resolves.
+rt_string rt_zia_signature_help_for_file(
+    rt_string source, rt_string file_path, int64_t line, int64_t col) {
+    std::string sourceStr = toStdString(source);
+    std::string pathStr = editorPathOrDefault(file_path);
+
+    std::string result = s_engine.signatureHelp(sourceStr, (int)line, (int)col, pathStr);
     return rt_string_from_bytes(result.c_str(), result.size());
 }
 

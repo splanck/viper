@@ -788,9 +788,9 @@ END NAMESPACE
 <li><code>NextInt(I64 n) -&gt; I64</code> — Return next random integer in [0, n)</li>
 <li><code>Seed(I64) -&gt; VOID</code> — Seed the random number generator</li>
 </ul>
-<h4 id="viper-environment">Viper.Environment</h4>
+<h4 id="viper-environment">Viper.System.Environment</h4>
 <ul>
-<li><code>Viper.Environment</code> — Command-line and environment (static utility)</li>
+<li><code>Viper.System.Environment</code> — Command-line and environment (static utility)</li>
 <li>Methods (static):</li>
 <li><code>GetArgumentCount() -&gt; I64</code> — Number of command-line arguments</li>
 <li><code>GetArgument(I64 index) -&gt; STRING</code> — Get argument by index (0-based)</li>
@@ -905,7 +905,7 @@ DIM r AS DOUBLE
 r = rng.Next()               &#x27; Returns value in [0, 1)
 PRINT r
 </code></pre>
-<p>Command-line arguments with Viper.Environment:</p>
+<p>Command-line arguments with Viper.System.Environment:</p>
 <pre><code data-lang="basic">
 USING Viper
 DIM argc AS INTEGER

@@ -122,7 +122,9 @@ extern "C" void rt_obj_free(void *obj) {
     std::free(obj);
 }
 
-extern "C" void rt_canvas3d_add_temp_buffer(void *, void *) {}
+extern "C" int rt_canvas3d_add_temp_buffer(void *, void *) {
+    return 1;
+}
 
 extern "C" void *rt_material3d_new(void) {
     return std::calloc(1, sizeof(StubMaterial));

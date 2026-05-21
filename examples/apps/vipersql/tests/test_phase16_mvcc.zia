@@ -6,7 +6,7 @@ module test_phase16_mvcc;
 
 bind Viper.Terminal as Terminal;
 bind Viper.String as String;
-bind Viper.Fmt as Fmt;
+bind Viper.Text.Fmt as Fmt;
 bind "./test_common";
 bind "../engine/executor";
 bind "../engine/types";

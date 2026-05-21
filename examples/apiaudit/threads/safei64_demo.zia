@@ -7,7 +7,7 @@
 module SafeI64Demo;
 bind Viper.Threads.SafeI64 as SafeI64;
 bind Viper.Terminal;
-bind Viper.Fmt as Fmt;
+bind Viper.Text.Fmt as Fmt;
 
 func start() {
     Say("=== API Audit: Viper.Threads.SafeI64 ===");

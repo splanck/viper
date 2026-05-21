@@ -69,7 +69,7 @@ module MapDemo;
 
 bind Viper.Terminal;
 bind Viper.Collections;
-bind Viper.Fmt as Fmt;
+bind Viper.Text.Fmt as Fmt;
 
 func start() {
     var scores = new Map[String, Integer]();
@@ -332,7 +332,7 @@ module OrderedMapDemo;
 bind Viper.Collections;
 bind Viper.Core;
 bind Viper.Terminal;
-bind Viper.Fmt as Fmt;
+bind Viper.Text.Fmt as Fmt;
 
 func start() {
     var om = OrderedMap.New();
@@ -628,7 +628,7 @@ module FrozenMapDemo;
 bind Viper.Collections;
 bind Viper.Core;
 bind Viper.Terminal;
-bind Viper.Fmt as Fmt;
+bind Viper.Text.Fmt as Fmt;
 
 func start() {
     // Build from parallel sequences
@@ -772,7 +772,7 @@ module FrozenSetDemo;
 bind Viper.Collections;
 bind Viper.Core;
 bind Viper.Terminal;
-bind Viper.Fmt as Fmt;
+bind Viper.Text.Fmt as Fmt;
 
 func start() {
     // Build from a Seq (duplicates removed)
@@ -919,7 +919,7 @@ module TreeMapDemo;
 
 bind Viper.Terminal;
 bind Viper.Collections;
-bind Viper.Fmt as Fmt;
+bind Viper.Text.Fmt as Fmt;
 
 func start() {
     var tm = new TreeMap();

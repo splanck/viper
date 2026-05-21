@@ -193,63 +193,67 @@ void AsmEmitter::emitEpilogue(std::ostream &os) const {
 }
 
 void AsmEmitter::emitPrologue(std::ostream &os, const FramePlan &plan) const {
-    emitPrologue(os);
-    if (plan.localFrameSize > 0)
-        emitSubSp(os, plan.localFrameSize);
-
-    // Save callee-saved GPRs in pairs (shared iteration logic).
-    forEachSaveReg(
-        plan.saveGPRs,
-        [&](PhysReg r0, PhysReg r1) {
+    // Step emitter for text output — each step corresponds one-to-one with a
+    // call in FrameCodegen.hpp::iteratePrologue.
+    struct Steps {
+        std::ostream &os;
+        const AsmEmitter &self;
+        void paciasp() const { os << "  paciasp\n"; }
+        void stpFpLrPre() const { os << "  stp x29, x30, [sp, #-16]!\n"; }
+        void movFpSp() const { os << "  mov x29, sp\n"; }
+        void subSp(int32_t n) const { self.emitSubSp(os, n); }
+        void stpGprPair(PhysReg r0, PhysReg r1) const {
             os << "  stp " << rn(r0) << ", " << rn(r1) << ", [sp, #-16]!\n";
-        },
-        [&](PhysReg r0) { os << "  str " << rn(r0) << ", [sp, #-16]!\n"; });
-
-    // Save callee-saved FPRs in pairs.
-    forEachSaveReg(
-        plan.saveFPRs,
-        [&](PhysReg r0, PhysReg r1) {
+        }
+        void strGprSingle(PhysReg r0) const {
+            os << "  str " << rn(r0) << ", [sp, #-16]!\n";
+        }
+        void stpFprPair(PhysReg r0, PhysReg r1) const {
             os << "  stp ";
-            printD(os, r0);
+            self.printD(os, r0);
             os << ", ";
-            printD(os, r1);
+            self.printD(os, r1);
             os << ", [sp, #-16]!\n";
-        },
-        [&](PhysReg r0) {
+        }
+        void strFprSingle(PhysReg r0) const {
             os << "  str ";
-            printD(os, r0);
+            self.printD(os, r0);
             os << ", [sp, #-16]!\n";
-        });
+        }
+    };
+    iteratePrologue(plan.saveGPRs, plan.saveFPRs, plan.localFrameSize,
+                    target_->hasReturnAddressSigning(), Steps{os, *this});
 }
 
 void AsmEmitter::emitEpilogue(std::ostream &os, const FramePlan &plan) const {
-    // Restore FPRs in reverse order (last saved = first restored).
-    forEachRestoreReg(
-        plan.saveFPRs,
-        [&](PhysReg r0, PhysReg r1) {
+    struct Steps {
+        std::ostream &os;
+        const AsmEmitter &self;
+        void ldpFprPair(PhysReg r0, PhysReg r1) const {
             os << "  ldp ";
-            printD(os, r0);
+            self.printD(os, r0);
             os << ", ";
-            printD(os, r1);
+            self.printD(os, r1);
             os << ", [sp], #16\n";
-        },
-        [&](PhysReg r0) {
+        }
+        void ldrFprSingle(PhysReg r0) const {
             os << "  ldr ";
-            printD(os, r0);
+            self.printD(os, r0);
             os << ", [sp], #16\n";
-        });
-
-    // Restore GPRs in reverse order.
-    forEachRestoreReg(
-        plan.saveGPRs,
-        [&](PhysReg r0, PhysReg r1) {
+        }
+        void ldpGprPair(PhysReg r0, PhysReg r1) const {
             os << "  ldp " << rn(r0) << ", " << rn(r1) << ", [sp], #16\n";
-        },
-        [&](PhysReg r0) { os << "  ldr " << rn(r0) << ", [sp], #16\n"; });
-
-    if (plan.localFrameSize > 0)
-        emitAddSp(os, plan.localFrameSize);
-    emitEpilogue(os);
+        }
+        void ldrGprSingle(PhysReg r0) const {
+            os << "  ldr " << rn(r0) << ", [sp], #16\n";
+        }
+        void addSp(int32_t n) const { self.emitAddSp(os, n); }
+        void ldpFpLrPost() const { os << "  ldp x29, x30, [sp], #16\n"; }
+        void autiasp() const { os << "  autiasp\n"; }
+        void ret() const { os << "  ret\n"; }
+    };
+    iterateEpilogue(plan.saveGPRs, plan.saveFPRs, plan.localFrameSize,
+                    target_->hasReturnAddressSigning(), Steps{os, *this});
 }
 
 void AsmEmitter::emitMovRR(std::ostream &os, PhysReg dst, PhysReg src) const {

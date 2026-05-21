@@ -473,7 +473,7 @@ bind Viper.Terminal;   // Terminal I/O (Say, Print, ReadLine, etc.)
 bind Viper.IO;         // File operations
 bind Viper.Math;       // Mathematical functions
 bind Viper.Math.Random as Random;  // Random numbers
-bind Viper.Fmt;        // Formatting
+bind Viper.Text.Fmt;        // Formatting
 bind Viper.Time;       // Date and time
 bind Viper.Graphics;   // 2D graphics (Canvas, Sprite, etc.)
 ```
@@ -499,7 +499,7 @@ bind Viper.Terminal as T;              // Alias: T.Say("Hello")
 bind Viper.Math { Sqrt, Sin, Cos };    // Selective: Sqrt(x) works, Tan(x) doesn't
 ```
 
-Understanding that these are namespaces helps you know where to look for functionality. Need to work with time? Check `Viper.Time`. Need to format numbers? Check `Viper.Fmt`.
+Understanding that these are namespaces helps you know where to look for functionality. Need to work with time? Check `Viper.Time`. Need to format numbers? Check `Viper.Text.Fmt`.
 
 ---
 

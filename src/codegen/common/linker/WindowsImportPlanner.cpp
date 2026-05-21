@@ -270,6 +270,7 @@ bool generateWindowsImports(LinkArch arch,
                             WindowsImportPlan &plan,
                             std::ostream &err) {
     plan.obj.name = (arch == LinkArch::AArch64) ? "<winarm64-imports>" : "<win64-imports>";
+    plan.obj.synthetic = true;
     plan.obj.format = ObjFileFormat::COFF;
     plan.obj.is64bit = true;
     plan.obj.isLittleEndian = true;

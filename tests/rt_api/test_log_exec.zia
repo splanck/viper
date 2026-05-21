@@ -2,21 +2,21 @@
 module TestLogExec;
 
 bind Viper.Terminal;
-bind Viper.Log;
-bind Viper.Exec;
+bind Viper.Diagnostics.Log;
+bind Viper.System.Exec;
 bind Viper.Text.NumberFormat;
 
 func start() {
-    SayInt(Viper.Log.DEBUG);
-    SayInt(Viper.Log.INFO);
-    SayInt(Viper.Log.WARN);
-    SayInt(Viper.Log.ERROR);
-    SayInt(Viper.Log.OFF);
-    SayInt(Viper.Log.Level);
-    SayBool(Viper.Log.Enabled(Viper.Log.DEBUG));
-    Viper.Log.Info("test info message");
-    Viper.Log.Warn("test warn message");
-    Viper.Log.Error("test error message");
+    SayInt(Viper.Diagnostics.Log.DEBUG);
+    SayInt(Viper.Diagnostics.Log.INFO);
+    SayInt(Viper.Diagnostics.Log.WARN);
+    SayInt(Viper.Diagnostics.Log.ERROR);
+    SayInt(Viper.Diagnostics.Log.OFF);
+    SayInt(Viper.Diagnostics.Log.Level);
+    SayBool(Viper.Diagnostics.Log.Enabled(Viper.Diagnostics.Log.DEBUG));
+    Viper.Diagnostics.Log.Info("test info message");
+    Viper.Diagnostics.Log.Warn("test warn message");
+    Viper.Diagnostics.Log.Error("test error message");
 
     Say(ShellCapture("echo hello"));
 

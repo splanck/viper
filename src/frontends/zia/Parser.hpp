@@ -343,6 +343,16 @@ class Parser {
     /// - If/match expressions
     ExprPtr parsePrimary();
 
+    /// @brief Parse a leading-identifier primary: either a `Type { ... }`
+    ///        struct literal (when struct literals are enabled) or a plain
+    ///        identifier reference. Assumes the current token is identifier-like.
+    ExprPtr parseIdentifierOrStructLiteral(SourceLoc loc);
+
+    /// @brief Parse the remainder of a `(`-led primary: unit literal `()`,
+    ///        parenthesized expression, tuple, or lambda. Assumes the opening
+    ///        `(` has already been consumed.
+    ExprPtr parseParenthesizedExpr(SourceLoc loc);
+
     /// @brief Parse an expression while permitting `Type { ... }` struct literals.
     /// @details Used for expression subcontexts that are already unambiguously value
     /// positions, while statement conditions keep struct literals disabled so

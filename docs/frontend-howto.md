@@ -3104,7 +3104,7 @@ Viper.String.Asc          | rt_str_asc           : i64(str)            // First 
 Viper.String.IndexOf      | rt_str_index_of      : i64(str,str)        // Find substring
 Viper.String.FromI16      | rt_str_i16_alloc     : str(i16)            // i16 → string
 Viper.String.FromI32      | rt_str_i32_alloc     : str(i32)            // i32 → string
-Viper.Fmt.Int             | rt_fmt_int           : str(i64)            // i64 → string
+Viper.Text.Fmt.Int             | rt_fmt_int           : str(i64)            // i64 → string
 Viper.Core.Convert.ToString_Double | rt_f64_to_str : str(f64)          // f64 → string
 ```
 

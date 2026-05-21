@@ -81,6 +81,7 @@ struct InputChunk {
     size_t inputSecIndex; ///< Index into that ObjFile's sections.
     size_t outputOffset;  ///< Byte offset within the output section.
     size_t size;          ///< Size in bytes.
+    bool synthetic = false; ///< True when the bytes were created by the linker.
 };
 
 /// Hashable key for maps indexed by an input object/section pair.
@@ -105,6 +106,7 @@ struct InputSectionKeyHash {
 struct OutputSection {
     std::string name;
     std::vector<uint8_t> data;      ///< Concatenated section bytes.
+    size_t memSize = 0;             ///< Logical in-memory size, including zero-fill bytes.
     std::vector<InputChunk> chunks; ///< Provenance info for each chunk.
     uint64_t virtualAddr = 0;       ///< Virtual address after layout.
     uint32_t alignment = 1;         ///< Required alignment.
@@ -113,7 +115,19 @@ struct OutputSection {
     bool tls = false;
     bool zeroFill = false; ///< Occupies memory but has no file backing.
     bool alloc = true; ///< Section is loadable (false for debug sections).
+    bool dataSegment = false; ///< Emit in data segment even when final protections are read-only.
+    /// True when this section contains Mach-O TLV descriptors (24-byte
+    /// {thunk, key, offset} records). Set by SectionMerger when merging
+    /// `__thread_vars` inputs. MachOBindRebase uses this to gate the
+    /// `_tlv_bootstrap` thunk-binding loop instead of matching by section
+    /// name, which avoids confusing TLV descriptors with TLS template data
+    /// (the two had to share the `.tdata` name historically).
+    bool tlvDescriptors = false;
 };
+
+inline size_t outputSectionMemSize(const OutputSection &sec) {
+    return sec.zeroFill ? (sec.memSize != 0 ? sec.memSize : sec.data.size()) : sec.data.size();
+}
 
 /// Section classification for merging.
 enum class SectionClass : uint8_t {
@@ -124,6 +138,7 @@ enum class SectionClass : uint8_t {
     TlsData, ///< Thread-local initialized data.
     TlsBss,  ///< Thread-local uninitialized data.
     ObjC,    ///< ObjC metadata — preserved with original section name.
+    Preserved, ///< Platform metadata preserved with its original section name.
     Other,   ///< Non-allocatable, debug, etc.
 };
 
@@ -138,6 +153,21 @@ inline bool isObjCSection(const std::string &name) {
 /// addressable so the exe writer can publish the matching data directories.
 inline bool isWindowsMetadataSection(const std::string &name) {
     return name.rfind(".pdata", 0) == 0 || name.rfind(".xdata", 0) == 0;
+}
+
+inline bool isElfMetadataSection(const std::string &name) {
+    return name == ".eh_frame" || name.rfind(".eh_frame.", 0) == 0 ||
+           name == ".gcc_except_table" || name.rfind(".gcc_except_table.", 0) == 0 ||
+           name.rfind(".note.", 0) == 0 || name == ".note";
+}
+
+inline bool isMachOConstDataSection(const std::string &name) {
+    return name.rfind("__DATA_CONST,", 0) == 0 || name.rfind("__AUTH_CONST,", 0) == 0;
+}
+
+inline bool isPreservedNamedSection(const std::string &name) {
+    return isObjCSection(name) || isWindowsMetadataSection(name) || isElfMetadataSection(name) ||
+           isMachOConstDataSection(name);
 }
 
 /// Symbols synthesized by the Windows native linker rather than imported from
@@ -183,11 +213,13 @@ inline SectionClass classifySection(const std::string &name,
             return SectionClass::TlsBss;
         return SectionClass::TlsData;
     }
-    // ObjC metadata and PE unwind sections must be preserved with their
-    // original names because downstream runtimes/loaders locate them by name
-    // or by dedicated data-directory ranges derived from those names.
-    if (isObjCSection(name) || isWindowsMetadataSection(name))
+    if (isObjCSection(name))
         return SectionClass::ObjC;
+    // Platform metadata must be preserved with its original name because
+    // runtimes/loaders locate it by name or dedicated data-directory ranges.
+    if (isWindowsMetadataSection(name) || isElfMetadataSection(name) ||
+        isMachOConstDataSection(name))
+        return SectionClass::Preserved;
     if (executable)
         return SectionClass::Text;
     if (writable) {
@@ -196,8 +228,11 @@ inline SectionClass classifySection(const std::string &name,
             return SectionClass::Bss;
         return SectionClass::Data;
     }
-    // Read-only: could be .rodata, .rdata, __TEXT,__const, etc.
-    if (name.find(".text") != std::string::npos || name.find("__text") != std::string::npos)
+    // Read-only: only known text-section spellings are code when producer flags
+    // failed to mark them executable. Do not classify arbitrary names containing
+    // ".text" as executable code.
+    if (name == ".text" || name.rfind(".text.", 0) == 0 || name.rfind(".text$", 0) == 0 ||
+        name == "__TEXT,__text")
         return SectionClass::Text;
     return SectionClass::Rodata;
 }
@@ -217,6 +252,7 @@ struct GlobalSymEntry {
     uint32_t secIndex = 0;     ///< Section within that ObjFile.
     size_t offset = 0;         ///< Offset within the section.
     uint64_t resolvedAddr = 0; ///< Final virtual address after layout.
+    bool resolvedAddrValid = false; ///< True when resolvedAddr is an intentional address, including zero.
     bool absolute = false;     ///< Symbol resolves to offset/resolvedAddr directly.
     bool common = false;       ///< Tentative/common symbol awaiting materialization.
     size_t commonSize = 0;     ///< Largest requested tentative definition size.
@@ -248,6 +284,13 @@ struct LinkLayout {
     std::vector<OutputSection> sections;                        ///< Merged output sections.
     std::unordered_map<std::string, GlobalSymEntry> globalSyms; ///< All resolved symbols.
     uint64_t entryAddr = 0;                                     ///< Entry point virtual address.
+    /// Image base virtual address. SectionMerger seeds this from
+    /// `defaultImageBaseForPlatform(platform)`. RelocApplier, MachOBindRebase,
+    /// and the executable writers must all read it from here so that any
+    /// future per-link override of the image base only has to be plumbed
+    /// through one field instead of dozens of `defaultImageBaseForPlatform`
+    /// call sites.
+    uint64_t imageBase = 0;
     size_t pageSize = 0x1000;                                   ///< Page size (platform-dependent).
     std::vector<GotEntry> gotEntries;       ///< GOT entries for dynamic linking.
     std::vector<RebaseEntry> rebaseEntries; ///< Locations needing ASLR pointer rebase.

@@ -7,7 +7,7 @@
 //
 // File: src/runtime/oop/rt_lazy.c
 // Purpose: Implements the Lazy<T> deferred initialization wrapper for the
-//          Viper.Lazy class. The wrapped factory function is called at most
+//          Viper.Functional.Lazy class. The wrapped factory function is called at most
 //          once on first Value access; subsequent accesses return the cached
 //          value without re-invoking the factory.
 //

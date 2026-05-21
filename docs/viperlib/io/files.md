@@ -64,7 +64,7 @@ module FileDemo;
 bind Viper.Terminal;
 bind Viper.IO.File as File;
 bind Viper.IO.Path as Path;
-bind Viper.Fmt as Fmt;
+bind Viper.Text.Fmt as Fmt;
 
 func start() {
     // Path utilities
@@ -239,7 +239,7 @@ module BinFileDemo;
 bind Viper.Terminal;
 bind Viper.IO.BinFile as BF;
 bind Viper.IO.File as File;
-bind Viper.Fmt as Fmt;
+bind Viper.Text.Fmt as Fmt;
 
 func start() {
     // Write binary data
@@ -465,7 +465,7 @@ module DirDemo;
 
 bind Viper.Terminal;
 bind Viper.IO.Dir as Dir;
-bind Viper.Fmt as Fmt;
+bind Viper.Text.Fmt as Fmt;
 
 func start() {
     // Current working directory
@@ -613,7 +613,7 @@ module PathDemo;
 
 bind Viper.Terminal;
 bind Viper.IO.Path as Path;
-bind Viper.Fmt as Fmt;
+bind Viper.Text.Fmt as Fmt;
 
 func start() {
     var p = "/home/user/documents/report.txt";
@@ -752,7 +752,7 @@ module GlobDemo;
 
 bind Viper.Terminal;
 bind Viper.IO.Glob as Glob;
-bind Viper.Fmt as Fmt;
+bind Viper.Text.Fmt as Fmt;
 
 func start() {
     Say("Match txt: " + Fmt.Bool(Glob.Match("hello.txt", "*.txt")));   // true

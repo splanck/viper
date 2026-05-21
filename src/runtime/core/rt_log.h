@@ -4,7 +4,7 @@
 // See LICENSE for license information.
 //
 // File: src/runtime/core/rt_log.h
-// Purpose: Simple leveled logging for the Viper.Log namespace, writing timestamped messages to
+// Purpose: Simple leveled logging for the Viper.Diagnostics.Log namespace, writing timestamped messages to
 // stderr with DEBUG/INFO/WARN/ERROR levels and a configurable minimum level filter.
 //
 // Key invariants:

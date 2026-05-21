@@ -20,9 +20,9 @@ This reference documents the Viper Runtime Library, the standard modules availab
 - [Viper.GUI](#vipergui) - Widget-based user interfaces
 - [Viper.Input](#viperinput) - Keyboard, mouse, gamepad
 - [Viper.Crypto](#vipercrypto) - Hashing and encoding
-- [Viper.Environment](#viperenvironment) - System information
+- [Viper.System.Environment](#viperenvironment) - System information
 - [Viper.Text.Pattern](#vipertextpattern) - Regular expressions
-- [Viper.Exec](#viperexec) - External processes
+- [Viper.System.Exec](#viperexec) - External processes
 - [Viper.Test](#vipertest) - Testing utilities
 
 ---
@@ -1543,7 +1543,7 @@ scores.values()                 // -> List[V]
 ```rust
 bind Viper.String as Str;
 bind Viper.Terminal;
-bind Viper.Fmt as Fmt;
+bind Viper.Text.Fmt as Fmt;
 
 func countWords(text: String) -> Map[String, Integer] {
     var counts: Map[String, Integer] = {};
@@ -1595,7 +1595,7 @@ visitors.count()        // -> Integer
 ```rust
 bind Viper.Collections;
 bind Viper.Terminal;
-bind Viper.Fmt as Fmt;
+bind Viper.Text.Fmt as Fmt;
 
 var visitors: Set[String] = Set.New();
 visitors.add("alice");
@@ -3116,7 +3116,7 @@ Terminal.Say(decoded);  // "Hello, World!"
 
 ---
 
-## Viper.Environment
+## Viper.System.Environment
 
 System information and environment variables.
 
@@ -3125,14 +3125,14 @@ System information and environment variables.
 ### Environment Variables
 
 ```rust
-func Viper.Environment.GetVariable(name: String) -> String
-func Viper.Environment.HasVariable(name: String) -> Boolean
-func Viper.Environment.SetVariable(name: String, value: String) -> void
+func Viper.System.Environment.GetVariable(name: String) -> String
+func Viper.System.Environment.HasVariable(name: String) -> Boolean
+func Viper.System.Environment.SetVariable(name: String, value: String) -> void
 ```
 
 **Example:**
 ```rust
-bind Viper.Environment;
+bind Viper.System.Environment;
 bind Viper.Terminal;
 
 if Environment.HasVariable("DATABASE_HOST") {
@@ -3146,19 +3146,19 @@ if Environment.HasVariable("DATABASE_HOST") {
 ### System Information
 
 ```rust
-Viper.Environment.os           // "windows", "macos", "linux"
-Viper.Environment.arch         // "x64", "arm64"
-Viper.Environment.cpuCount     // Number of CPU cores
-Viper.Environment.homeDir      // User's home directory
-Viper.Environment.currentDir   // Current working directory
-Viper.Environment.tempDir      // System temp directory
+Viper.System.Environment.os           // "windows", "macos", "linux"
+Viper.System.Environment.arch         // "x64", "arm64"
+Viper.System.Environment.cpuCount     // Number of CPU cores
+Viper.System.Environment.homeDir      // User's home directory
+Viper.System.Environment.currentDir   // Current working directory
+Viper.System.Environment.tempDir      // System temp directory
 ```
 
 **Example:**
 ```rust
-Terminal.Say("OS: " + Viper.Environment.os);
-Terminal.Say("Architecture: " + Viper.Environment.arch);
-Terminal.Say("CPU cores: " + Viper.Environment.cpuCount);
+Terminal.Say("OS: " + Viper.System.Environment.os);
+Terminal.Say("Architecture: " + Viper.System.Environment.arch);
+Terminal.Say("CPU cores: " + Viper.System.Environment.cpuCount);
 
 // Platform-specific paths (use IO.Path.Join for path construction)
 // var configPath = IO.Path.Join(homeDir, "config.json");
@@ -3169,15 +3169,15 @@ Terminal.Say("CPU cores: " + Viper.Environment.cpuCount);
 ### Process Control
 
 ```rust
-func Viper.Environment.GetArgumentCount() -> Integer
-func Viper.Environment.GetArgument(index: Integer) -> String
-func Viper.Environment.GetCommandLine() -> String
-func Viper.Environment.EndProgram(code: Integer) -> void
+func Viper.System.Environment.GetArgumentCount() -> Integer
+func Viper.System.Environment.GetArgument(index: Integer) -> String
+func Viper.System.Environment.GetCommandLine() -> String
+func Viper.System.Environment.EndProgram(code: Integer) -> void
 ```
 
 **Example:**
 ```rust
-bind Viper.Environment;
+bind Viper.System.Environment;
 bind Viper.Terminal;
 
 var count = Environment.GetArgumentCount();

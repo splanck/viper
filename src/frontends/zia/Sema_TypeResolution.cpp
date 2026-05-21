@@ -371,332 +371,319 @@ void Sema::collectCaptures(const Expr *expr,
     if (!expr)
         return;
 
-    std::set<std::string> captured;
-    std::vector<std::set<std::string>> localScopes;
-    localScopes.push_back(lambdaLocals);
+    CaptureContext ctx{{}, {lambdaLocals}, captures};
+    collectExprCaptures(ctx, expr);
+}
 
-    auto isLocalName = [&](const std::string &name) {
-        for (auto it = localScopes.rbegin(); it != localScopes.rend(); ++it) {
-            if (it->find(name) != it->end())
-                return true;
+void Sema::recordCapture(CaptureContext &ctx, const std::string &name) {
+    for (auto it = ctx.localScopes.rbegin(); it != ctx.localScopes.rend(); ++it) {
+        if (it->find(name) != it->end())
+            return;
+    }
+    Symbol *sym = lookupSymbol(name);
+    if (!sym || (sym->kind != Symbol::Kind::Variable && sym->kind != Symbol::Kind::Parameter))
+        return;
+    if (!ctx.captured.insert(name).second)
+        return;
+    ctx.captures.push_back({name});
+}
+
+void Sema::collectPatternBindings(CaptureContext &ctx, const MatchArm::Pattern &pattern) {
+    switch (pattern.kind) {
+        case MatchArm::Pattern::Kind::Binding:
+            if (pattern.binding != "Some" && pattern.binding != "None" &&
+                !pattern.binding.empty()) {
+                ctx.localScopes.back().insert(pattern.binding);
+            }
+            break;
+        case MatchArm::Pattern::Kind::Tuple:
+        case MatchArm::Pattern::Kind::Constructor:
+        case MatchArm::Pattern::Kind::Or:
+            for (const auto &subpattern : pattern.subpatterns)
+                collectPatternBindings(ctx, subpattern);
+            break;
+        default:
+            break;
+    }
+}
+
+void Sema::collectStmtCaptures(CaptureContext &ctx, const Stmt *stmt) {
+    if (!stmt)
+        return;
+
+    switch (stmt->kind) {
+        case StmtKind::Block: {
+            auto *block = static_cast<const BlockStmt *>(stmt);
+            ctx.localScopes.push_back({});
+            for (const auto &inner : block->statements)
+                collectStmtCaptures(ctx, inner.get());
+            ctx.localScopes.pop_back();
+            break;
         }
-        return false;
-    };
-
-    auto recordCapture = [&](const std::string &name) {
-        if (isLocalName(name))
-            return;
-        Symbol *sym = lookupSymbol(name);
-        if (!sym || (sym->kind != Symbol::Kind::Variable && sym->kind != Symbol::Kind::Parameter))
-            return;
-        if (!captured.insert(name).second)
-            return;
-        captures.push_back({name});
-    };
-
-    std::function<void(const MatchArm::Pattern &)> collectPatternBindings =
-        [&](const MatchArm::Pattern &pattern) {
-            switch (pattern.kind) {
-                case MatchArm::Pattern::Kind::Binding:
-                    if (pattern.binding != "Some" && pattern.binding != "None" &&
-                        !pattern.binding.empty()) {
-                        localScopes.back().insert(pattern.binding);
-                    }
-                    break;
-                case MatchArm::Pattern::Kind::Tuple:
-                case MatchArm::Pattern::Kind::Constructor:
-                case MatchArm::Pattern::Kind::Or:
-                    for (const auto &subpattern : pattern.subpatterns)
-                        collectPatternBindings(subpattern);
-                    break;
-                default:
-                    break;
-            }
-        };
-
-    std::function<void(const Expr *)> collectExpr;
-    std::function<void(const Stmt *)> collectStmt;
-
-    collectStmt = [&](const Stmt *stmt) {
-        if (!stmt)
-            return;
-
-        switch (stmt->kind) {
-            case StmtKind::Block: {
-                auto *block = static_cast<const BlockStmt *>(stmt);
-                localScopes.push_back({});
-                for (const auto &inner : block->statements)
-                    collectStmt(inner.get());
-                localScopes.pop_back();
-                break;
-            }
-            case StmtKind::Expr:
-                collectExpr(static_cast<const ExprStmt *>(stmt)->expr.get());
-                break;
-            case StmtKind::Var: {
-                auto *var = static_cast<const VarStmt *>(stmt);
-                if (var->initializer)
-                    collectExpr(var->initializer.get());
-                localScopes.back().insert(var->name);
-                if (var->isTupleDestructure) {
-                    if (!var->tupleNames.empty()) {
-                        for (const auto &name : var->tupleNames)
-                            localScopes.back().insert(name);
-                    } else if (!var->secondName.empty()) {
-                        localScopes.back().insert(var->secondName);
-                    }
+        case StmtKind::Expr:
+            collectExprCaptures(ctx, static_cast<const ExprStmt *>(stmt)->expr.get());
+            break;
+        case StmtKind::Var: {
+            auto *var = static_cast<const VarStmt *>(stmt);
+            if (var->initializer)
+                collectExprCaptures(ctx, var->initializer.get());
+            ctx.localScopes.back().insert(var->name);
+            if (var->isTupleDestructure) {
+                if (!var->tupleNames.empty()) {
+                    for (const auto &name : var->tupleNames)
+                        ctx.localScopes.back().insert(name);
+                } else if (!var->secondName.empty()) {
+                    ctx.localScopes.back().insert(var->secondName);
                 }
-                break;
             }
-            case StmtKind::If: {
-                auto *ifStmt = static_cast<const IfStmt *>(stmt);
-                collectExpr(ifStmt->condition.get());
-                if (ifStmt->thenBranch) {
-                    localScopes.push_back({});
-                    collectStmt(ifStmt->thenBranch.get());
-                    localScopes.pop_back();
-                }
-                if (ifStmt->elseBranch) {
-                    localScopes.push_back({});
-                    collectStmt(ifStmt->elseBranch.get());
-                    localScopes.pop_back();
-                }
-                break;
-            }
-            case StmtKind::While: {
-                auto *whileStmt = static_cast<const WhileStmt *>(stmt);
-                collectExpr(whileStmt->condition.get());
-                localScopes.push_back({});
-                collectStmt(whileStmt->body.get());
-                localScopes.pop_back();
-                break;
-            }
-            case StmtKind::For: {
-                auto *forStmt = static_cast<const ForStmt *>(stmt);
-                localScopes.push_back({});
-                collectStmt(forStmt->init.get());
-                collectExpr(forStmt->condition.get());
-                collectExpr(forStmt->update.get());
-                collectStmt(forStmt->body.get());
-                localScopes.pop_back();
-                break;
-            }
-            case StmtKind::ForIn: {
-                auto *forIn = static_cast<const ForInStmt *>(stmt);
-                localScopes.push_back({});
-                collectExpr(forIn->iterable.get());
-                localScopes.back().insert(forIn->variable);
-                if (forIn->isTuple && !forIn->secondVariable.empty())
-                    localScopes.back().insert(forIn->secondVariable);
-                collectStmt(forIn->body.get());
-                localScopes.pop_back();
-                break;
-            }
-            case StmtKind::Return:
-                collectExpr(static_cast<const ReturnStmt *>(stmt)->value.get());
-                break;
-            case StmtKind::Break:
-            case StmtKind::Continue:
-                break;
-            case StmtKind::Defer: {
-                auto *deferStmt = static_cast<const DeferStmt *>(stmt);
-                localScopes.push_back({});
-                collectStmt(deferStmt->action.get());
-                localScopes.pop_back();
-                break;
-            }
-            case StmtKind::Guard: {
-                auto *guard = static_cast<const GuardStmt *>(stmt);
-                collectExpr(guard->condition.get());
-                localScopes.push_back({});
-                collectStmt(guard->elseBlock.get());
-                localScopes.pop_back();
-                break;
-            }
-            case StmtKind::Match: {
-                auto *match = static_cast<const MatchStmt *>(stmt);
-                collectExpr(match->scrutinee.get());
-                for (const auto &arm : match->arms) {
-                    localScopes.push_back({});
-                    collectPatternBindings(arm.pattern);
-                    collectExpr(arm.pattern.guard.get());
-                    collectExpr(arm.body.get());
-                    localScopes.pop_back();
-                }
-                break;
-            }
-            case StmtKind::Try: {
-                auto *tryStmt = static_cast<const TryStmt *>(stmt);
-                localScopes.push_back({});
-                collectStmt(tryStmt->tryBody.get());
-                localScopes.pop_back();
-                for (const auto &catchClause : tryStmt->catches) {
-                    localScopes.push_back({});
-                    if (!catchClause.var.empty())
-                        localScopes.back().insert(catchClause.var);
-                    collectStmt(catchClause.body.get());
-                    localScopes.pop_back();
-                }
-                if (tryStmt->finallyBody) {
-                    localScopes.push_back({});
-                    collectStmt(tryStmt->finallyBody.get());
-                    localScopes.pop_back();
-                }
-                break;
-            }
-            case StmtKind::Throw:
-                collectExpr(static_cast<const ThrowStmt *>(stmt)->value.get());
-                break;
+            break;
         }
-    };
-
-    collectExpr = [&](const Expr *e) {
-        if (!e)
-            return;
-
-        switch (e->kind) {
-            case ExprKind::Ident:
-                recordCapture(static_cast<const IdentExpr *>(e)->name);
-                break;
-            case ExprKind::Binary: {
-                auto *bin = static_cast<const BinaryExpr *>(e);
-                collectExpr(bin->left.get());
-                collectExpr(bin->right.get());
-                break;
+        case StmtKind::If: {
+            auto *ifStmt = static_cast<const IfStmt *>(stmt);
+            collectExprCaptures(ctx, ifStmt->condition.get());
+            if (ifStmt->thenBranch) {
+                ctx.localScopes.push_back({});
+                collectStmtCaptures(ctx, ifStmt->thenBranch.get());
+                ctx.localScopes.pop_back();
             }
-            case ExprKind::Unary:
-                collectExpr(static_cast<const UnaryExpr *>(e)->operand.get());
-                break;
-            case ExprKind::Ternary: {
-                auto *ternary = static_cast<const TernaryExpr *>(e);
-                collectExpr(ternary->condition.get());
-                collectExpr(ternary->thenExpr.get());
-                collectExpr(ternary->elseExpr.get());
-                break;
+            if (ifStmt->elseBranch) {
+                ctx.localScopes.push_back({});
+                collectStmtCaptures(ctx, ifStmt->elseBranch.get());
+                ctx.localScopes.pop_back();
             }
-            case ExprKind::Call: {
-                auto *call = static_cast<const CallExpr *>(e);
-                collectExpr(call->callee.get());
-                for (const auto &arg : call->args)
-                    collectExpr(arg.value.get());
-                break;
-            }
-            case ExprKind::Index: {
-                auto *idx = static_cast<const IndexExpr *>(e);
-                collectExpr(idx->base.get());
-                collectExpr(idx->index.get());
-                break;
-            }
-            case ExprKind::Field:
-                collectExpr(static_cast<const FieldExpr *>(e)->base.get());
-                break;
-            case ExprKind::OptionalChain:
-                collectExpr(static_cast<const OptionalChainExpr *>(e)->base.get());
-                break;
-            case ExprKind::Coalesce: {
-                auto *coalesce = static_cast<const CoalesceExpr *>(e);
-                collectExpr(coalesce->left.get());
-                collectExpr(coalesce->right.get());
-                break;
-            }
-            case ExprKind::Is:
-                collectExpr(static_cast<const IsExpr *>(e)->value.get());
-                break;
-            case ExprKind::As:
-                collectExpr(static_cast<const AsExpr *>(e)->value.get());
-                break;
-            case ExprKind::Range: {
-                auto *range = static_cast<const RangeExpr *>(e);
-                collectExpr(range->start.get());
-                collectExpr(range->end.get());
-                break;
-            }
-            case ExprKind::Try:
-                collectExpr(static_cast<const TryExpr *>(e)->operand.get());
-                break;
-            case ExprKind::ForceUnwrap:
-                collectExpr(static_cast<const ForceUnwrapExpr *>(e)->operand.get());
-                break;
-            case ExprKind::Await:
-                collectExpr(static_cast<const AwaitExpr *>(e)->operand.get());
-                break;
-            case ExprKind::New: {
-                auto *created = static_cast<const NewExpr *>(e);
-                for (const auto &arg : created->args)
-                    collectExpr(arg.value.get());
-                break;
-            }
-            case ExprKind::StructLiteral: {
-                auto *literal = static_cast<const StructLiteralExpr *>(e);
-                for (const auto &field : literal->fields)
-                    collectExpr(field.value.get());
-                break;
-            }
-            case ExprKind::Lambda:
-                break;
-            case ExprKind::ListLiteral: {
-                auto *list = static_cast<const ListLiteralExpr *>(e);
-                for (const auto &elem : list->elements)
-                    collectExpr(elem.get());
-                break;
-            }
-            case ExprKind::MapLiteral: {
-                auto *map = static_cast<const MapLiteralExpr *>(e);
-                for (const auto &entry : map->entries) {
-                    collectExpr(entry.key.get());
-                    collectExpr(entry.value.get());
-                }
-                break;
-            }
-            case ExprKind::SetLiteral: {
-                auto *set = static_cast<const SetLiteralExpr *>(e);
-                for (const auto &elem : set->elements)
-                    collectExpr(elem.get());
-                break;
-            }
-            case ExprKind::Tuple: {
-                auto *tuple = static_cast<const TupleExpr *>(e);
-                for (const auto &elem : tuple->elements)
-                    collectExpr(elem.get());
-                break;
-            }
-            case ExprKind::TupleIndex:
-                collectExpr(static_cast<const TupleIndexExpr *>(e)->tuple.get());
-                break;
-            case ExprKind::If: {
-                auto *ifExpr = static_cast<const IfExpr *>(e);
-                collectExpr(ifExpr->condition.get());
-                collectExpr(ifExpr->thenBranch.get());
-                collectExpr(ifExpr->elseBranch.get());
-                break;
-            }
-            case ExprKind::Match: {
-                auto *match = static_cast<const MatchExpr *>(e);
-                collectExpr(match->scrutinee.get());
-                for (const auto &arm : match->arms) {
-                    localScopes.push_back({});
-                    collectPatternBindings(arm.pattern);
-                    collectExpr(arm.pattern.guard.get());
-                    collectExpr(arm.body.get());
-                    localScopes.pop_back();
-                }
-                break;
-            }
-            case ExprKind::Block: {
-                auto *block = static_cast<const BlockExpr *>(e);
-                localScopes.push_back({});
-                for (const auto &stmt : block->statements)
-                    collectStmt(stmt.get());
-                collectExpr(block->value.get());
-                localScopes.pop_back();
-                break;
-            }
-            default:
-                break;
+            break;
         }
-    };
+        case StmtKind::While: {
+            auto *whileStmt = static_cast<const WhileStmt *>(stmt);
+            collectExprCaptures(ctx, whileStmt->condition.get());
+            ctx.localScopes.push_back({});
+            collectStmtCaptures(ctx, whileStmt->body.get());
+            ctx.localScopes.pop_back();
+            break;
+        }
+        case StmtKind::For: {
+            auto *forStmt = static_cast<const ForStmt *>(stmt);
+            ctx.localScopes.push_back({});
+            collectStmtCaptures(ctx, forStmt->init.get());
+            collectExprCaptures(ctx, forStmt->condition.get());
+            collectExprCaptures(ctx, forStmt->update.get());
+            collectStmtCaptures(ctx, forStmt->body.get());
+            ctx.localScopes.pop_back();
+            break;
+        }
+        case StmtKind::ForIn: {
+            auto *forIn = static_cast<const ForInStmt *>(stmt);
+            ctx.localScopes.push_back({});
+            collectExprCaptures(ctx, forIn->iterable.get());
+            ctx.localScopes.back().insert(forIn->variable);
+            if (forIn->isTuple && !forIn->secondVariable.empty())
+                ctx.localScopes.back().insert(forIn->secondVariable);
+            collectStmtCaptures(ctx, forIn->body.get());
+            ctx.localScopes.pop_back();
+            break;
+        }
+        case StmtKind::Return:
+            collectExprCaptures(ctx, static_cast<const ReturnStmt *>(stmt)->value.get());
+            break;
+        case StmtKind::Break:
+        case StmtKind::Continue:
+            break;
+        case StmtKind::Defer: {
+            auto *deferStmt = static_cast<const DeferStmt *>(stmt);
+            ctx.localScopes.push_back({});
+            collectStmtCaptures(ctx, deferStmt->action.get());
+            ctx.localScopes.pop_back();
+            break;
+        }
+        case StmtKind::Guard: {
+            auto *guard = static_cast<const GuardStmt *>(stmt);
+            collectExprCaptures(ctx, guard->condition.get());
+            ctx.localScopes.push_back({});
+            collectStmtCaptures(ctx, guard->elseBlock.get());
+            ctx.localScopes.pop_back();
+            break;
+        }
+        case StmtKind::Match: {
+            auto *match = static_cast<const MatchStmt *>(stmt);
+            collectExprCaptures(ctx, match->scrutinee.get());
+            for (const auto &arm : match->arms) {
+                ctx.localScopes.push_back({});
+                collectPatternBindings(ctx, arm.pattern);
+                collectExprCaptures(ctx, arm.pattern.guard.get());
+                collectExprCaptures(ctx, arm.body.get());
+                ctx.localScopes.pop_back();
+            }
+            break;
+        }
+        case StmtKind::Try: {
+            auto *tryStmt = static_cast<const TryStmt *>(stmt);
+            ctx.localScopes.push_back({});
+            collectStmtCaptures(ctx, tryStmt->tryBody.get());
+            ctx.localScopes.pop_back();
+            for (const auto &catchClause : tryStmt->catches) {
+                ctx.localScopes.push_back({});
+                if (!catchClause.var.empty())
+                    ctx.localScopes.back().insert(catchClause.var);
+                collectStmtCaptures(ctx, catchClause.body.get());
+                ctx.localScopes.pop_back();
+            }
+            if (tryStmt->finallyBody) {
+                ctx.localScopes.push_back({});
+                collectStmtCaptures(ctx, tryStmt->finallyBody.get());
+                ctx.localScopes.pop_back();
+            }
+            break;
+        }
+        case StmtKind::Throw:
+            collectExprCaptures(ctx, static_cast<const ThrowStmt *>(stmt)->value.get());
+            break;
+    }
+}
 
-    collectExpr(expr);
+void Sema::collectExprCaptures(CaptureContext &ctx, const Expr *e) {
+    if (!e)
+        return;
+
+    switch (e->kind) {
+        case ExprKind::Ident:
+            recordCapture(ctx, static_cast<const IdentExpr *>(e)->name);
+            break;
+        case ExprKind::Binary: {
+            auto *bin = static_cast<const BinaryExpr *>(e);
+            collectExprCaptures(ctx, bin->left.get());
+            collectExprCaptures(ctx, bin->right.get());
+            break;
+        }
+        case ExprKind::Unary:
+            collectExprCaptures(ctx, static_cast<const UnaryExpr *>(e)->operand.get());
+            break;
+        case ExprKind::Ternary: {
+            auto *ternary = static_cast<const TernaryExpr *>(e);
+            collectExprCaptures(ctx, ternary->condition.get());
+            collectExprCaptures(ctx, ternary->thenExpr.get());
+            collectExprCaptures(ctx, ternary->elseExpr.get());
+            break;
+        }
+        case ExprKind::Call: {
+            auto *call = static_cast<const CallExpr *>(e);
+            collectExprCaptures(ctx, call->callee.get());
+            for (const auto &arg : call->args)
+                collectExprCaptures(ctx, arg.value.get());
+            break;
+        }
+        case ExprKind::Index: {
+            auto *idx = static_cast<const IndexExpr *>(e);
+            collectExprCaptures(ctx, idx->base.get());
+            collectExprCaptures(ctx, idx->index.get());
+            break;
+        }
+        case ExprKind::Field:
+            collectExprCaptures(ctx, static_cast<const FieldExpr *>(e)->base.get());
+            break;
+        case ExprKind::OptionalChain:
+            collectExprCaptures(ctx, static_cast<const OptionalChainExpr *>(e)->base.get());
+            break;
+        case ExprKind::Coalesce: {
+            auto *coalesce = static_cast<const CoalesceExpr *>(e);
+            collectExprCaptures(ctx, coalesce->left.get());
+            collectExprCaptures(ctx, coalesce->right.get());
+            break;
+        }
+        case ExprKind::Is:
+            collectExprCaptures(ctx, static_cast<const IsExpr *>(e)->value.get());
+            break;
+        case ExprKind::As:
+            collectExprCaptures(ctx, static_cast<const AsExpr *>(e)->value.get());
+            break;
+        case ExprKind::Range: {
+            auto *range = static_cast<const RangeExpr *>(e);
+            collectExprCaptures(ctx, range->start.get());
+            collectExprCaptures(ctx, range->end.get());
+            break;
+        }
+        case ExprKind::Try:
+            collectExprCaptures(ctx, static_cast<const TryExpr *>(e)->operand.get());
+            break;
+        case ExprKind::ForceUnwrap:
+            collectExprCaptures(ctx, static_cast<const ForceUnwrapExpr *>(e)->operand.get());
+            break;
+        case ExprKind::Await:
+            collectExprCaptures(ctx, static_cast<const AwaitExpr *>(e)->operand.get());
+            break;
+        case ExprKind::New: {
+            auto *created = static_cast<const NewExpr *>(e);
+            for (const auto &arg : created->args)
+                collectExprCaptures(ctx, arg.value.get());
+            break;
+        }
+        case ExprKind::StructLiteral: {
+            auto *literal = static_cast<const StructLiteralExpr *>(e);
+            for (const auto &field : literal->fields)
+                collectExprCaptures(ctx, field.value.get());
+            break;
+        }
+        case ExprKind::Lambda:
+            break;
+        case ExprKind::ListLiteral: {
+            auto *list = static_cast<const ListLiteralExpr *>(e);
+            for (const auto &elem : list->elements)
+                collectExprCaptures(ctx, elem.get());
+            break;
+        }
+        case ExprKind::MapLiteral: {
+            auto *map = static_cast<const MapLiteralExpr *>(e);
+            for (const auto &entry : map->entries) {
+                collectExprCaptures(ctx, entry.key.get());
+                collectExprCaptures(ctx, entry.value.get());
+            }
+            break;
+        }
+        case ExprKind::SetLiteral: {
+            auto *set = static_cast<const SetLiteralExpr *>(e);
+            for (const auto &elem : set->elements)
+                collectExprCaptures(ctx, elem.get());
+            break;
+        }
+        case ExprKind::Tuple: {
+            auto *tuple = static_cast<const TupleExpr *>(e);
+            for (const auto &elem : tuple->elements)
+                collectExprCaptures(ctx, elem.get());
+            break;
+        }
+        case ExprKind::TupleIndex:
+            collectExprCaptures(ctx, static_cast<const TupleIndexExpr *>(e)->tuple.get());
+            break;
+        case ExprKind::If: {
+            auto *ifExpr = static_cast<const IfExpr *>(e);
+            collectExprCaptures(ctx, ifExpr->condition.get());
+            collectExprCaptures(ctx, ifExpr->thenBranch.get());
+            collectExprCaptures(ctx, ifExpr->elseBranch.get());
+            break;
+        }
+        case ExprKind::Match: {
+            auto *match = static_cast<const MatchExpr *>(e);
+            collectExprCaptures(ctx, match->scrutinee.get());
+            for (const auto &arm : match->arms) {
+                ctx.localScopes.push_back({});
+                collectPatternBindings(ctx, arm.pattern);
+                collectExprCaptures(ctx, arm.pattern.guard.get());
+                collectExprCaptures(ctx, arm.body.get());
+                ctx.localScopes.pop_back();
+            }
+            break;
+        }
+        case ExprKind::Block: {
+            auto *block = static_cast<const BlockExpr *>(e);
+            ctx.localScopes.push_back({});
+            for (const auto &stmt : block->statements)
+                collectStmtCaptures(ctx, stmt.get());
+            collectExprCaptures(ctx, block->value.get());
+            ctx.localScopes.pop_back();
+            break;
+        }
+        default:
+            break;
+    }
 }
 
 } // namespace il::frontends::zia

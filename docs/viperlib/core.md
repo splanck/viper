@@ -127,7 +127,7 @@ Boxing helpers for storing primitive values in generic collections. Boxed values
 module BoxDemo;
 
 bind Viper.Terminal;
-bind Viper.Fmt as Fmt;
+bind Viper.Text.Fmt as Fmt;
 
 func start() {
     // Box an integer (type tag 0)
@@ -197,7 +197,7 @@ module DiagnosticsDemo;
 
 bind Viper.Terminal;
 bind Viper.Core.Diagnostics as Diag;
-bind Viper.Fmt as Fmt;
+bind Viper.Text.Fmt as Fmt;
 
 func divide(a: Integer, b: Integer) -> Integer {
     Diag.Assert(b != 0, "divide: divisor must be non-zero");
@@ -291,7 +291,7 @@ module ParseDemo;
 
 bind Viper.Terminal;
 bind Viper.Core.Parse as Parse;
-bind Viper.Fmt as Fmt;
+bind Viper.Text.Fmt as Fmt;
 
 func start() {
     // Safe integer parsing with default
@@ -475,7 +475,7 @@ module StringDemo;
 
 bind Viper.Terminal;
 bind Viper.String as Str;
-bind Viper.Fmt as Fmt;
+bind Viper.Text.Fmt as Fmt;
 
 func start() {
     var s = "  Hello, World!  ";
@@ -513,7 +513,7 @@ module StringExtDemo;
 
 bind Viper.Terminal;
 bind Viper.String as Str;
-bind Viper.Fmt as Fmt;
+bind Viper.Text.Fmt as Fmt;
 
 func start() {
     var s = "hello world";
@@ -616,7 +616,7 @@ module MessageBusDemo;
 
 bind Viper.Terminal;
 bind Viper.Core.MessageBus as MessageBus;
-bind Viper.Fmt as Fmt;
+bind Viper.Text.Fmt as Fmt;
 
 func start() {
     var bus = MessageBus.New();

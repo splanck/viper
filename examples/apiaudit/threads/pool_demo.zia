@@ -9,7 +9,7 @@
 module PoolDemo;
 bind Viper.Threads.Pool as Pool;
 bind Viper.Terminal;
-bind Viper.Fmt as Fmt;
+bind Viper.Text.Fmt as Fmt;
 
 func start() {
     Say("=== API Audit: Viper.Threads.Pool ===");

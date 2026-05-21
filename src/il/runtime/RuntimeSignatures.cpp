@@ -410,7 +410,7 @@ constexpr RuntimeLowering featureLowering(RuntimeFeature feature, bool ordered =
 }
 
 /// @brief VM-only handler that reports non-native execution.
-/// @details Used for Viper.Environment.IsNative so VM runs return false while
+/// @details Used for Viper.System.Environment.IsNative so VM runs return false while
 ///          native binaries link against the real rt_env_is_native helper.
 void vm_env_is_native(void ** /*args*/, void *result) {
     if (result)
@@ -2602,8 +2602,8 @@ const std::vector<RuntimeDescriptor> &runtimeRegistry() {
         // entries need hand-written adapters instead because the C ABI type
         // doesn't match the IL calling convention used by the VM:
         //
-        //  - Viper.Environment.IsNative: C function always returns 1 (native).
-        //    The VM must return 0.
+        //  - Viper.System.Environment.IsNative: C function always returns 1
+        //    (native).  The VM must return 0.
         //
         //  - Viper.Math.Pow: C function takes a hidden bool* parameter the VM
         //    doesn't pass.  The adapter manages it internally.
@@ -2612,7 +2612,7 @@ const std::vector<RuntimeDescriptor> &runtimeRegistry() {
         //    IL type is str (rt_string).  trapFromRuntimeString correctly
         //    extracts the C string from the rt_string struct.
         for (auto &entry : entries) {
-            if (entry.name == "Viper.Environment.IsNative") {
+            if (entry.name == "Viper.System.Environment.IsNative") {
                 entry.handler = &vm_env_is_native;
             } else if (entry.name == "Viper.Math.Pow") {
                 entry.handler = &vmInvokeRtPow;

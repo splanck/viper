@@ -29,6 +29,92 @@
 #include "rt_gui_internal.h"
 #include "rt_platform.h"
 
+/// @brief Count paths in the escaped semicolon list returned by `OpenMultiple`.
+int64_t rt_filedialog_path_list_count(rt_string escaped) {
+    if (!escaped)
+        return 0;
+    int64_t len64 = rt_str_len(escaped);
+    if (len64 <= 0)
+        return 0;
+    const char *bytes = rt_string_cstr(escaped);
+    if (!bytes)
+        return 0;
+
+    size_t len = (size_t)len64;
+    int64_t count = 1;
+    for (size_t i = 0; i < len; i++) {
+        if (bytes[i] == '\\' && i + 1 < len) {
+            i++;
+            continue;
+        }
+        if (bytes[i] == ';') {
+            if (count == INT64_MAX)
+                return INT64_MAX;
+            count++;
+        }
+    }
+    return count;
+}
+
+/// @brief Decode one path from the escaped semicolon list returned by `OpenMultiple`.
+rt_string rt_filedialog_path_list_get(rt_string escaped, int64_t index) {
+    if (!escaped || index < 0)
+        return rt_str_empty();
+    int64_t len64 = rt_str_len(escaped);
+    if (len64 <= 0)
+        return rt_str_empty();
+    const char *bytes = rt_string_cstr(escaped);
+    if (!bytes)
+        return rt_str_empty();
+
+    size_t len = (size_t)len64;
+    int64_t current = 0;
+    size_t segment_start = 0;
+    size_t segment_end = len;
+    int found = 0;
+    for (size_t i = 0; i <= len; i++) {
+        int at_separator = 0;
+        if (i == len) {
+            at_separator = 1;
+        } else if (bytes[i] == '\\' && i + 1 < len) {
+            i++;
+            continue;
+        } else if (bytes[i] == ';') {
+            at_separator = 1;
+        }
+        if (at_separator) {
+            if (current == index) {
+                segment_end = i;
+                found = 1;
+                break;
+            }
+            if (current == INT64_MAX)
+                return rt_str_empty();
+            current++;
+            segment_start = i + 1;
+        }
+    }
+    if (!found || segment_end < segment_start)
+        return rt_str_empty();
+
+    size_t encoded_len = segment_end - segment_start;
+    char *decoded = (char *)malloc(encoded_len + 1);
+    if (!decoded)
+        return rt_str_empty();
+    size_t out = 0;
+    for (size_t i = segment_start; i < segment_end; i++) {
+        if (bytes[i] == '\\' && i + 1 < segment_end) {
+            decoded[out++] = bytes[++i];
+        } else {
+            decoded[out++] = bytes[i];
+        }
+    }
+    decoded[out] = '\0';
+    rt_string result = rt_string_from_bytes(decoded, out);
+    free(decoded);
+    return result;
+}
+
 #ifdef VIPER_ENABLE_GRAPHICS
 
 //=============================================================================
@@ -143,7 +229,7 @@ static int rt_filedialog_show_modal(rt_gui_app_t *app, vg_filedialog_t *dialog) 
 /// empty string on cancel or when no modal GUI window is active.
 rt_string rt_filedialog_open(rt_string title, rt_string default_path, rt_string filter) {
     RT_ASSERT_MAIN_THREAD();
-    char *ctitle = rt_string_to_cstr(title);
+    char *ctitle = rt_string_to_gui_cstr(title);
     char *cfilter = rt_string_to_cstr(filter);
     char *cpath = rt_string_to_cstr(default_path);
 
@@ -184,11 +270,11 @@ rt_string rt_filedialog_open(rt_string title, rt_string default_path, rt_string 
     return rt_str_empty();
 }
 
-/// @brief Open dialog with multi-select. Returns paths as a single semicolon-separated string
-/// (caller can split on ';'), or empty on cancel/no active GUI window.
+/// @brief Open dialog with multi-select. Returns paths as an escaped semicolon-separated string.
+/// Use `rt_filedialog_path_list_count` and `rt_filedialog_path_list_get` to decode it.
 rt_string rt_filedialog_open_multiple(rt_string title, rt_string default_path, rt_string filter) {
     RT_ASSERT_MAIN_THREAD();
-    char *ctitle = rt_string_to_cstr(title);
+    char *ctitle = rt_string_to_gui_cstr(title);
     char *cpath = rt_string_to_cstr(default_path);
     char *cfilter = rt_string_to_cstr(filter);
 
@@ -268,9 +354,9 @@ rt_string rt_filedialog_save(rt_string title,
                              rt_string filter,
                              rt_string default_name) {
     RT_ASSERT_MAIN_THREAD();
-    char *ctitle = rt_string_to_cstr(title);
+    char *ctitle = rt_string_to_gui_cstr(title);
     char *cfilter = rt_string_to_cstr(filter);
-    char *cname = rt_string_to_cstr(default_name);
+    char *cname = rt_string_to_gui_cstr(default_name);
     char *cpath = rt_string_to_cstr(default_path);
 
 #ifdef __APPLE__
@@ -317,7 +403,7 @@ rt_string rt_filedialog_save(rt_string title,
 /// @brief One-shot folder-picker dialog. Returns the absolute folder path or empty on cancel.
 rt_string rt_filedialog_select_folder(rt_string title, rt_string default_path) {
     RT_ASSERT_MAIN_THREAD();
-    char *ctitle = rt_string_to_cstr(title);
+    char *ctitle = rt_string_to_gui_cstr(title);
     char *cpath = rt_string_to_cstr(default_path);
 
 #ifdef __APPLE__
@@ -365,12 +451,84 @@ typedef struct {
     int64_t result;
 } rt_filedialog_data_t;
 
-/// @brief Safe-cast an opaque handle to the file-dialog wrapper.
-/// @details Validates the magic tag and that the backing dialog widget is
-///          still live; returns NULL on any mismatch.
-static rt_filedialog_data_t *rt_filedialog_data_checked(void *dialog) {
+static void rt_filedialog_clear_selected_paths(rt_filedialog_data_t *data);
+
+static rt_filedialog_data_t **s_filedialog_wrappers = NULL;
+static size_t s_filedialog_wrapper_count = 0;
+static size_t s_filedialog_wrapper_cap = 0;
+
+static int rt_filedialog_register_wrapper(rt_filedialog_data_t *data) {
+    if (!data)
+        return 0;
+    for (size_t i = 0; i < s_filedialog_wrapper_count; i++) {
+        if (s_filedialog_wrappers[i] == data)
+            return 1;
+    }
+    if (s_filedialog_wrapper_count >= s_filedialog_wrapper_cap) {
+        size_t new_cap = s_filedialog_wrapper_cap ? s_filedialog_wrapper_cap * 2 : 8;
+        if (new_cap < s_filedialog_wrapper_cap ||
+            new_cap > SIZE_MAX / sizeof(*s_filedialog_wrappers))
+            return 0;
+        void *p = realloc(s_filedialog_wrappers, new_cap * sizeof(*s_filedialog_wrappers));
+        if (!p)
+            return 0;
+        s_filedialog_wrappers = (rt_filedialog_data_t **)p;
+        s_filedialog_wrapper_cap = new_cap;
+    }
+    s_filedialog_wrappers[s_filedialog_wrapper_count++] = data;
+    return 1;
+}
+
+static void rt_filedialog_unregister_wrapper(rt_filedialog_data_t *data) {
+    if (!data)
+        return;
+    for (size_t i = 0; i < s_filedialog_wrapper_count; i++) {
+        if (s_filedialog_wrappers[i] != data)
+            continue;
+        memmove(&s_filedialog_wrappers[i],
+                &s_filedialog_wrappers[i + 1],
+                (s_filedialog_wrapper_count - i - 1) * sizeof(*s_filedialog_wrappers));
+        s_filedialog_wrapper_count--;
+        return;
+    }
+}
+
+static int rt_filedialog_wrapper_is_registered(const rt_filedialog_data_t *data) {
+    if (!data)
+        return 0;
+    for (size_t i = 0; i < s_filedialog_wrapper_count; i++) {
+        if (s_filedialog_wrappers[i] == data)
+            return 1;
+    }
+    return 0;
+}
+
+void rt_filedialog_invalidate_dialog(vg_dialog_t *dialog) {
+    if (!dialog)
+        return;
+    for (size_t i = 0; i < s_filedialog_wrapper_count; i++) {
+        rt_filedialog_data_t *data = s_filedialog_wrappers[i];
+        if (data && data->dialog && &data->dialog->base == dialog) {
+            data->dialog = NULL;
+            data->owner_app = NULL;
+            data->result = 0;
+            rt_filedialog_clear_selected_paths(data);
+        }
+    }
+}
+
+/// @brief Safe-cast an opaque handle to the file-dialog wrapper by magic tag.
+static rt_filedialog_data_t *rt_filedialog_wrapper_checked(void *dialog) {
     rt_filedialog_data_t *data = (rt_filedialog_data_t *)dialog;
-    return data && data->magic == RT_FILEDIALOG_DATA_MAGIC && data->dialog &&
+    return rt_filedialog_wrapper_is_registered(data) && data->magic == RT_FILEDIALOG_DATA_MAGIC
+               ? data
+               : NULL;
+}
+
+/// @brief Safe-cast an opaque handle to a wrapper with a live backing dialog.
+static rt_filedialog_data_t *rt_filedialog_data_checked(void *dialog) {
+    rt_filedialog_data_t *data = rt_filedialog_wrapper_checked(dialog);
+    return data && data->dialog &&
                    vg_widget_is_live(&data->dialog->base.base)
                ? data
                : NULL;
@@ -402,6 +560,8 @@ static int rt_filedialog_copy_selected_paths(rt_filedialog_data_t *data) {
         rt_filedialog_clear_selected_paths(data);
         return 0;
     }
+    if (count > SIZE_MAX / sizeof(char *))
+        return 0;
 
     char **copy = (char **)calloc(count, sizeof(char *));
     if (!copy)
@@ -442,6 +602,7 @@ static void rt_filedialog_dispose(rt_filedialog_data_t *data) {
     data->owner_app = NULL;
     data->result = 0;
     data->magic = 0;
+    rt_filedialog_unregister_wrapper(data);
 }
 
 /// @brief GC finalizer — delegates to `rt_filedialog_dispose`.
@@ -466,13 +627,13 @@ void *rt_filedialog_new(int64_t type) {
             mode = VG_FILEDIALOG_SELECT_FOLDER;
             break;
         default:
-            mode = VG_FILEDIALOG_OPEN;
-            break;
+            return NULL;
     }
 
     vg_filedialog_t *dlg = vg_filedialog_create(mode);
     if (!dlg)
         return NULL;
+    vg_filedialog_add_default_bookmarks(dlg);
 
     rt_filedialog_data_t *data =
         (rt_filedialog_data_t *)rt_obj_new_i64(0, (int64_t)sizeof(rt_filedialog_data_t));
@@ -486,6 +647,10 @@ void *rt_filedialog_new(int64_t type) {
     data->selected_paths = NULL;
     data->selected_count = 0;
     data->result = 0;
+    if (!rt_filedialog_register_wrapper(data)) {
+        rt_filedialog_dispose(data);
+        return NULL;
+    }
     rt_obj_set_finalizer(data, rt_filedialog_finalize);
 
     return data;
@@ -515,7 +680,7 @@ void rt_filedialog_set_title(void *dialog, rt_string title) {
     rt_filedialog_data_t *data = rt_filedialog_data_checked(dialog);
     if (!data)
         return;
-    char *ctitle = rt_string_to_cstr(title);
+    char *ctitle = rt_string_to_gui_cstr(title);
     vg_filedialog_set_title(data->dialog, ctitle);
     if (ctitle)
         free(ctitle);
@@ -541,7 +706,7 @@ void rt_filedialog_set_filter(void *dialog, rt_string name, rt_string pattern) {
     rt_filedialog_data_t *data = rt_filedialog_data_checked(dialog);
     if (!data)
         return;
-    char *cname = name ? rt_string_to_cstr(name) : NULL;
+    char *cname = name ? rt_string_to_gui_cstr(name) : NULL;
     char *cpattern = pattern ? rt_string_to_cstr(pattern) : NULL;
     if ((name && !cname) || (pattern && !cpattern)) {
         free(cname);
@@ -563,7 +728,7 @@ void rt_filedialog_add_filter(void *dialog, rt_string name, rt_string pattern) {
     rt_filedialog_data_t *data = rt_filedialog_data_checked(dialog);
     if (!data)
         return;
-    char *cname = name ? rt_string_to_cstr(name) : NULL;
+    char *cname = name ? rt_string_to_gui_cstr(name) : NULL;
     char *cpattern = pattern ? rt_string_to_cstr(pattern) : NULL;
     if ((name && !cname) || (pattern && !cpattern)) {
         free(cname);
@@ -583,7 +748,7 @@ void rt_filedialog_set_default_name(void *dialog, rt_string name) {
     rt_filedialog_data_t *data = rt_filedialog_data_checked(dialog);
     if (!data)
         return;
-    char *cname = rt_string_to_cstr(name);
+    char *cname = rt_string_to_gui_cstr(name);
     vg_filedialog_set_filename(data->dialog, cname);
     if (cname)
         free(cname);
@@ -612,13 +777,13 @@ int64_t rt_filedialog_show(void *dialog) {
 
     // Replace any previous selection snapshot with the latest dialog result.
     rt_filedialog_clear_selected_paths(data);
-    rt_gui_app_t *app = rt_filedialog_app();
-    if (app)
-        data->owner_app = app;
+    rt_gui_app_t *app =
+        rt_gui_is_app_handle(data->owner_app) ? data->owner_app : rt_filedialog_app();
     if (!rt_filedialog_show_modal(app, data->dialog)) {
         data->result = 0;
         return 0;
     }
+    data->owner_app = app;
     if (!rt_filedialog_copy_selected_paths(data)) {
         data->result = 0;
         return 0;
@@ -646,6 +811,8 @@ int64_t rt_filedialog_get_path_count(void *dialog) {
     rt_filedialog_data_t *data = rt_filedialog_data_checked(dialog);
     if (!data)
         return 0;
+    if (data->selected_count > (size_t)INT64_MAX)
+        return INT64_MAX;
     return (int64_t)data->selected_count;
 }
 
@@ -656,9 +823,12 @@ rt_string rt_filedialog_get_path_at(void *dialog, int64_t index) {
     rt_filedialog_data_t *data = rt_filedialog_data_checked(dialog);
     if (!data)
         return rt_str_empty();
-    if (data->selected_paths && index >= 0 && (size_t)index < data->selected_count) {
-        return rt_string_from_bytes(data->selected_paths[index],
-                                    strlen(data->selected_paths[index]));
+    if (data->selected_paths && index >= 0 && (uintmax_t)index <= (uintmax_t)SIZE_MAX) {
+        size_t idx = (size_t)index;
+        if (idx < data->selected_count) {
+            return rt_string_from_bytes(data->selected_paths[idx],
+                                        strlen(data->selected_paths[idx]));
+        }
     }
     return rt_str_empty();
 }
@@ -667,7 +837,7 @@ rt_string rt_filedialog_get_path_at(void *dialog, int64_t index) {
 /// this, so explicit destruction is optional — useful for early cleanup before GC catches up.
 void rt_filedialog_destroy(void *dialog) {
     RT_ASSERT_MAIN_THREAD();
-    rt_filedialog_data_t *data = rt_filedialog_data_checked(dialog);
+    rt_filedialog_data_t *data = rt_filedialog_wrapper_checked(dialog);
     if (!data)
         return;
     rt_filedialog_dispose(data);

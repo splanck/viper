@@ -1519,7 +1519,7 @@ var response = Http.Get("https://api.example.com/data?key=sk_live_abc123xyz");
 // If someone sees your code, they have your key
 
 // GOOD: Load from environment or config
-var apiKey = Viper.Environment.Get("API_KEY");
+var apiKey = Viper.System.Environment.Get("API_KEY");
 var response = Http.Get("https://api.example.com/data?key=" + apiKey);
 ```
 

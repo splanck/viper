@@ -99,6 +99,16 @@ bool isMachOModInitTermSection(const std::string &name) {
            name.find("__mod_term_func") != std::string::npos;
 }
 
+/// @brief Detect Mach-O sections whose original segment is data-like.
+/// @details Some synthetic inputs carry Mach-O section names but not all reader
+///          metadata flags. The preserved name is still enough to keep them in
+///          the data segment when writing Mach-O executables.
+bool isMachODataSegmentSection(const std::string &name) {
+    return name.rfind("__DATA,", 0) == 0 || name.rfind("__DATA_CONST,", 0) == 0 ||
+           name.rfind("__DATA_DIRTY,", 0) == 0 || name.rfind("__AUTH,", 0) == 0 ||
+           name.rfind("__AUTH_CONST,", 0) == 0;
+}
+
 /// @brief Permission-bucket sort key — lower buckets land at lower addresses.
 /// @details Order: text (RX) → rodata (R) → data (RW) → tls_data → tls_bss → bss
 ///          → debug. This both produces sensible W^X segment groupings and
@@ -108,6 +118,8 @@ int permClass(const OutputSection &s) {
         return 6; // Non-alloc sections (debug) sort last.
     if (s.executable)
         return 0;
+    if (s.dataSegment && !s.writable && !s.zeroFill && !s.tls)
+        return 2;
     if (s.writable && !s.zeroFill && !s.tls)
         return 2;
     if (s.tls && !s.zeroFill)
@@ -137,6 +149,7 @@ int sectionClassOrder(SectionClass cls) {
         case SectionClass::Bss:
             return 5;
         case SectionClass::ObjC:
+        case SectionClass::Preserved:
             return 6;
         case SectionClass::Other:
             return 7;
@@ -147,7 +160,9 @@ int sectionClassOrder(SectionClass cls) {
 } // namespace
 
 bool assignSectionVirtualAddresses(LinkLayout &layout, LinkPlatform platform, std::ostream &err) {
-    const uint64_t imageBase = defaultImageBaseForPlatform(platform);
+    if (layout.imageBase == 0)
+        layout.imageBase = defaultImageBaseForPlatform(platform);
+    const uint64_t imageBase = layout.imageBase;
     if (imageBase > std::numeric_limits<uint64_t>::max() - layout.pageSize) {
         err << "error: image base plus page size exceeds 64-bit address range\n";
         return false;
@@ -173,11 +188,12 @@ bool assignSectionVirtualAddresses(LinkLayout &layout, LinkPlatform platform, st
             return false;
         }
         sec.virtualAddr = currentAddr;
-        if (sec.data.size() > std::numeric_limits<uint64_t>::max() - currentAddr) {
+        const size_t memSize = outputSectionMemSize(sec);
+        if (memSize > std::numeric_limits<uint64_t>::max() - currentAddr) {
             err << "error: section '" << sec.name << "' exceeds 64-bit address range\n";
             return false;
         }
-        currentAddr += sec.data.size();
+        currentAddr += memSize;
     }
     return true;
 }
@@ -222,7 +238,7 @@ bool mergeSections(const std::vector<ObjFile> &objects,
                 continue;
             if (!sec.alloc)
                 continue;
-            if (sec.data.empty() && sec.relocs.empty() && !sectionHasLiveSymbol(obj, si))
+            if (objSectionMemSize(sec) == 0 && sec.relocs.empty() && !sectionHasLiveSymbol(obj, si))
                 continue;
 
             SectionClass cls =
@@ -299,7 +315,67 @@ bool mergeSections(const std::vector<ObjFile> &objects,
         out.writable = write;
         out.tls = tls;
         out.zeroFill = zeroFill;
+        out.dataSegment = write || tls || zeroFill;
         return out;
+    };
+
+    auto appendChunk = [&](OutputSection &out,
+                           size_t objIdx,
+                           size_t secIdx,
+                           const ObjSection &sec,
+                           uint32_t requestedAlign) -> bool {
+        if (out.zeroFill != sec.zeroFill) {
+            err << "error: cannot merge zero-fill and file-backed input section '" << sec.name
+                << "' into output section '" << out.name << "'\n";
+            return false;
+        }
+
+        uint32_t align = std::max(requestedAlign, 1u);
+        if (align > out.alignment)
+            out.alignment = align;
+
+        const size_t logicalSize = outputSectionMemSize(out);
+        size_t padded = 0;
+        try {
+            padded = alignUp(logicalSize, align);
+        } catch (const std::exception &ex) {
+            err << "error: section merge alignment failed for '" << out.name
+                << "': " << ex.what() << "\n";
+            return false;
+        }
+        if (padded < logicalSize) {
+            err << "error: section merge alignment overflow for '" << out.name << "'\n";
+            return false;
+        }
+
+        if (out.zeroFill) {
+            out.memSize = padded;
+        } else if (padded > out.data.size()) {
+            out.data.resize(padded, 0);
+            out.memSize = out.data.size();
+        }
+
+        const size_t chunkSize = objSectionMemSize(sec);
+        const size_t currentSize = outputSectionMemSize(out);
+        if (chunkSize > std::numeric_limits<size_t>::max() - currentSize) {
+            err << "error: merged section '" << out.name << "' exceeds addressable size\n";
+            return false;
+        }
+
+        InputChunk chunk;
+        chunk.inputObjIndex = objIdx;
+        chunk.inputSecIndex = secIdx;
+        chunk.outputOffset = currentSize;
+        chunk.size = chunkSize;
+        out.chunks.push_back(chunk);
+
+        if (out.zeroFill) {
+            out.memSize = currentSize + chunkSize;
+        } else {
+            out.data.insert(out.data.end(), sec.data.begin(), sec.data.end());
+            out.memSize = out.data.size();
+        }
+        return true;
     };
 
     // Merge chunks into output sections.
@@ -309,34 +385,8 @@ bool mergeSections(const std::vector<ObjFile> &objects,
                 continue;
 
             const auto &sec = objects[pc.objIdx].sections[pc.secIdx];
-            // Align within output.
-            uint32_t align = std::max(pc.alignment, 1u);
-            if (align > out.alignment)
-                out.alignment = align;
-
-            size_t padded = 0;
-            try {
-                padded = alignUp(out.data.size(), align);
-            } catch (const std::exception &ex) {
-                err << "error: section merge alignment failed for '" << out.name
-                    << "': " << ex.what() << "\n";
+            if (!appendChunk(out, pc.objIdx, pc.secIdx, sec, pc.alignment))
                 return false;
-            }
-            if (padded > out.data.size())
-                out.data.resize(padded, 0);
-            if (sec.data.size() > std::numeric_limits<size_t>::max() - out.data.size()) {
-                err << "error: merged section '" << out.name << "' exceeds addressable size\n";
-                return false;
-            }
-
-            InputChunk chunk;
-            chunk.inputObjIndex = pc.objIdx;
-            chunk.inputSecIndex = pc.secIdx;
-            chunk.outputOffset = out.data.size();
-            chunk.size = sec.data.size();
-            out.chunks.push_back(chunk);
-
-            out.data.insert(out.data.end(), sec.data.begin(), sec.data.end());
         }
         return true;
     };
@@ -418,6 +468,7 @@ bool mergeSections(const std::vector<ObjFile> &objects,
         if (hasTlvDescriptors) {
             auto &tdata =
                 addOutputSection(SectionClass::TlsData, ".tdata", false, true, true, false);
+            tdata.tlvDescriptors = true;
             for (const auto &pc : pending) {
                 if (pc.cls != SectionClass::TlsData)
                     continue;
@@ -425,31 +476,8 @@ bool mergeSections(const std::vector<ObjFile> &objects,
                 if (sec.name.find("thread_vars") == std::string::npos)
                     continue;
 
-                uint32_t align = std::max(pc.alignment, 1u);
-                if (align > tdata.alignment)
-                    tdata.alignment = align;
-                size_t padded = 0;
-                try {
-                    padded = alignUp(tdata.data.size(), align);
-                } catch (const std::exception &ex) {
-                    err << "error: section merge alignment failed for '.tdata': "
-                        << ex.what() << "\n";
+                if (!appendChunk(tdata, pc.objIdx, pc.secIdx, sec, pc.alignment))
                     return false;
-                }
-                if (padded > tdata.data.size())
-                    tdata.data.resize(padded, 0);
-                if (sec.data.size() > std::numeric_limits<size_t>::max() - tdata.data.size()) {
-                    err << "error: merged section '.tdata' exceeds addressable size\n";
-                    return false;
-                }
-
-                InputChunk chunk;
-                chunk.inputObjIndex = pc.objIdx;
-                chunk.inputSecIndex = pc.secIdx;
-                chunk.outputOffset = tdata.data.size();
-                chunk.size = sec.data.size();
-                tdata.chunks.push_back(chunk);
-                tdata.data.insert(tdata.data.end(), sec.data.begin(), sec.data.end());
             }
         }
 
@@ -467,32 +495,8 @@ bool mergeSections(const std::vector<ObjFile> &objects,
                 if (sec.name.find("thread_vars") != std::string::npos)
                     continue;
 
-                uint32_t align = std::max(pc.alignment, 1u);
-                if (align > tmpl.alignment)
-                    tmpl.alignment = align;
-                size_t padded = 0;
-                try {
-                    padded = alignUp(tmpl.data.size(), align);
-                } catch (const std::exception &ex) {
-                    err << "error: section merge alignment failed for '" << tmplName
-                        << "': " << ex.what() << "\n";
+                if (!appendChunk(tmpl, pc.objIdx, pc.secIdx, sec, pc.alignment))
                     return false;
-                }
-                if (padded > tmpl.data.size())
-                    tmpl.data.resize(padded, 0);
-                if (sec.data.size() > std::numeric_limits<size_t>::max() - tmpl.data.size()) {
-                    err << "error: merged section '" << tmplName
-                        << "' exceeds addressable size\n";
-                    return false;
-                }
-
-                InputChunk chunk;
-                chunk.inputObjIndex = pc.objIdx;
-                chunk.inputSecIndex = pc.secIdx;
-                chunk.outputOffset = tmpl.data.size();
-                chunk.size = sec.data.size();
-                tmpl.chunks.push_back(chunk);
-                tmpl.data.insert(tmpl.data.end(), sec.data.begin(), sec.data.end());
             }
         }
     }
@@ -514,52 +518,50 @@ bool mergeSections(const std::vector<ObjFile> &objects,
     // section. This keeps ObjC metadata discoverable by name and preserves
     // Windows unwind tables (.pdata/.xdata) for the PE writer.
     {
-        std::map<std::string, std::vector<size_t>> objcGroups;
+        std::map<std::string, std::vector<size_t>> preservedGroups;
         for (size_t pi = 0; pi < pending.size(); ++pi) {
-            if (pending[pi].cls != SectionClass::ObjC)
+            if (pending[pi].cls != SectionClass::ObjC &&
+                pending[pi].cls != SectionClass::Preserved)
                 continue;
             const auto &sec = objects[pending[pi].objIdx].sections[pending[pi].secIdx];
-            objcGroups[sec.name].push_back(pi);
+            preservedGroups[sec.name].push_back(pi);
         }
-        for (auto &[name, indices] : objcGroups) {
+        for (auto &[name, indices] : preservedGroups) {
             const auto &firstPc = pending[indices[0]];
             const auto &firstSec = objects[firstPc.objIdx].sections[firstPc.secIdx];
+
+            bool executable = false;
+            bool writable = false;
+            bool dataSegment = isMachODataSegmentSection(name);
+            for (size_t pi : indices) {
+                const auto &pc = pending[pi];
+                const auto &sec = objects[pc.objIdx].sections[pc.secIdx];
+                if (sec.tls != firstSec.tls || sec.zeroFill != firstSec.zeroFill ||
+                    sec.alloc != firstSec.alloc) {
+                    err << "error: preserved section '" << name
+                        << "' has incompatible storage attributes across input objects\n";
+                    return false;
+                }
+                executable = executable || sec.executable;
+                writable = writable || sec.writable;
+                dataSegment = dataSegment || sec.dataSegment;
+            }
 
             layout.sections.push_back({});
             auto &out = layout.sections.back();
             out.name = name;
-            out.executable = firstSec.executable;
-            out.writable = firstSec.writable;
-            out.tls = false;
+            out.executable = executable;
+            out.writable = writable;
+            out.tls = firstSec.tls;
+            out.zeroFill = firstSec.zeroFill;
+            out.alloc = firstSec.alloc;
+            out.dataSegment = dataSegment || writable || firstSec.tls || firstSec.zeroFill;
 
             for (size_t pi : indices) {
                 const auto &pc = pending[pi];
                 const auto &sec = objects[pc.objIdx].sections[pc.secIdx];
-                uint32_t align = std::max(pc.alignment, 1u);
-                if (align > out.alignment)
-                    out.alignment = align;
-                size_t padded = 0;
-                try {
-                    padded = alignUp(out.data.size(), align);
-                } catch (const std::exception &ex) {
-                    err << "error: section merge alignment failed for '" << out.name
-                        << "': " << ex.what() << "\n";
+                if (!appendChunk(out, pc.objIdx, pc.secIdx, sec, pc.alignment))
                     return false;
-                }
-                if (padded > out.data.size())
-                    out.data.resize(padded, 0);
-                if (sec.data.size() > std::numeric_limits<size_t>::max() - out.data.size()) {
-                    err << "error: merged section '" << out.name << "' exceeds addressable size\n";
-                    return false;
-                }
-
-                InputChunk chunk;
-                chunk.inputObjIndex = pc.objIdx;
-                chunk.inputSecIndex = pc.secIdx;
-                chunk.outputOffset = out.data.size();
-                chunk.size = sec.data.size();
-                out.chunks.push_back(chunk);
-                out.data.insert(out.data.end(), sec.data.begin(), sec.data.end());
             }
         }
     }
@@ -616,6 +618,7 @@ bool mergeSections(const std::vector<ObjFile> &objects,
                 chunk.size = sec.data.size();
                 out.chunks.push_back(chunk);
                 out.data.insert(out.data.end(), sec.data.begin(), sec.data.end());
+                out.memSize = out.data.size();
             }
         }
     }

@@ -44,6 +44,7 @@ void emitLE32(std::vector<uint8_t> &buf, uint32_t v) {
 ObjFile generateObjcSelectorStubsAArch64(std::unordered_set<std::string> &dynamicSyms) {
     ObjFile stubObj;
     stubObj.name = "<objc-stubs>";
+    stubObj.synthetic = true;
     stubObj.format = ObjFileFormat::ELF;
     stubObj.is64bit = true;
     stubObj.isLittleEndian = true;
@@ -84,6 +85,7 @@ ObjFile generateObjcSelectorStubsAArch64(std::unordered_set<std::string> &dynami
     dataSec.executable = false;
     dataSec.writable = true;
     dataSec.alloc = true;
+    dataSec.dataSegment = true;
     dataSec.alignment = 8;
 
     // Section 3: .rodata (selector strings).
@@ -201,6 +203,7 @@ ObjFile generateObjcSelectorStubsAArch64(std::unordered_set<std::string> &dynami
 ObjFile generateDynStubsAArch64(const std::unordered_set<std::string> &dynamicSyms) {
     ObjFile stubObj;
     stubObj.name = "<dyld-stubs>";
+    stubObj.synthetic = true;
     stubObj.format = ObjFileFormat::ELF;
     stubObj.is64bit = true;
     stubObj.isLittleEndian = true;
@@ -217,9 +220,13 @@ ObjFile generateDynStubsAArch64(const std::unordered_set<std::string> &dynamicSy
     textSec.alloc = true;
     textSec.alignment = 4;
 
-    // Section 2: .got (GOT entries, writable).
+    // Section 2: .got.viper_stubs (synthetic dyld GOT slots, writable).
+    // Use a dedicated name so the slots stay distinguishable from the user's
+    // .data — section-merger still routes both into the data segment, but the
+    // chunk's identity in InputChunk::inputSecIndex/name maps it back to this
+    // synthetic origin for dead-strip, ICF, and debugger reporting.
     ObjSection gotSec;
-    gotSec.name = ".data";
+    gotSec.name = ".got.viper_stubs";
     gotSec.executable = false;
     gotSec.writable = true;
     gotSec.alloc = true;
@@ -287,6 +294,7 @@ ObjFile generateDynStubsAArch64(const std::unordered_set<std::string> &dynamicSy
 ObjFile generateDynStubsX8664(const std::unordered_set<std::string> &dynamicSyms) {
     ObjFile stubObj;
     stubObj.name = "<elf64-dyn-stubs>";
+    stubObj.synthetic = true;
     stubObj.format = ObjFileFormat::ELF;
     stubObj.is64bit = true;
     stubObj.isLittleEndian = true;
@@ -301,8 +309,11 @@ ObjFile generateDynStubsX8664(const std::unordered_set<std::string> &dynamicSyms
     textSec.alloc = true;
     textSec.alignment = 16;
 
+    // Same rationale as the AArch64 path above: keep the synthetic dyld GOT
+    // slots in a section named separately from the user's .data so their
+    // origin remains identifiable.
     ObjSection gotSec;
-    gotSec.name = ".data";
+    gotSec.name = ".got.viper_stubs";
     gotSec.executable = false;
     gotSec.writable = true;
     gotSec.alloc = true;

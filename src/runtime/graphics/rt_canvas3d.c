@@ -957,16 +957,22 @@ static int canvas3d_snapshot_mesh_geometry(rt_canvas3d *c,
     vertices = (vgfx3d_vertex_t *)malloc(vertex_bytes);
     if (!vertices)
         return 0;
-    memcpy(vertices, mesh->vertices, vertex_bytes);
-    if (!canvas3d_track_temp_buffer(c, vertices)) {
+    indices = (uint32_t *)malloc(index_bytes);
+    if (!indices) {
         free(vertices);
         return 0;
     }
-    indices = (uint32_t *)malloc(index_bytes);
-    if (!indices)
-        return 0;
+    memcpy(vertices, mesh->vertices, vertex_bytes);
     memcpy(indices, mesh->indices, index_bytes);
+    if (!canvas3d_track_temp_buffer(c, vertices)) {
+        free(vertices);
+        free(indices);
+        return 0;
+    }
     if (!canvas3d_track_temp_buffer(c, indices)) {
+        if (c->temp_buf_count > 0 && c->temp_buffers[c->temp_buf_count - 1] == vertices)
+            c->temp_buf_count--;
+        free(vertices);
         free(indices);
         return 0;
     }
@@ -2148,6 +2154,17 @@ static void rt_canvas3d_finalize(void *obj) {
     }
 }
 
+static void canvas3d_close_window(rt_canvas3d *c) {
+    if (!c)
+        return;
+    if (c->gfx_win) {
+        rt_canvas3d_detach_input(c->gfx_win);
+        vgfx_destroy_window(c->gfx_win);
+        c->gfx_win = NULL;
+    }
+    c->should_close = 1;
+}
+
 /// @brief Create a new 3D rendering canvas (window + backend context).
 /// @details Opens a platform window, selects the platform-default rendering backend
 ///          with software fallback if initialization fails, and initializes the framebuffer,
@@ -2160,13 +2177,13 @@ static void rt_canvas3d_finalize(void *obj) {
 /// @return Opaque canvas handle, or NULL on failure.
 void *rt_canvas3d_new(rt_string title, int64_t w, int64_t h) {
     vgfx_framebuffer_t fb;
-    int32_t initial_width = (int32_t)w;
-    int32_t initial_height = (int32_t)h;
 
     if (w <= 0 || h <= 0 || w > 8192 || h > 8192) {
         rt_trap("Canvas3D.New: dimensions must be 1-8192");
         return NULL;
     }
+    int32_t initial_width = (int32_t)w;
+    int32_t initial_height = (int32_t)h;
 
     rt_canvas3d *c = (rt_canvas3d *)rt_obj_new_i64(RT_G3D_CANVAS3D_CLASS_ID, (int64_t)sizeof(rt_canvas3d));
     if (!c) {
@@ -2962,6 +2979,10 @@ void rt_canvas3d_queue_instanced_batch(void *canvas_obj,
         return;
     if (!c->in_frame || !c->backend || mesh->vertex_count == 0 || mesh->index_count == 0)
         return;
+    if (has_prev_instance_matrices && !prev_instance_matrices) {
+        rt_trap("Canvas3D.DrawMeshInstanced: previous instance matrices pointer is required");
+        return;
+    }
 
     canvas3d_ensure_normal_map_tangents(mesh, mat);
     rt_mesh3d_refresh_bounds(mesh);
@@ -3089,23 +3110,25 @@ void rt_canvas3d_queue_instanced_batch(void *canvas_obj,
     base_cmd.prev_instance_matrices = queued_prev_instance_matrices;
     base_cmd.has_prev_instance_matrices =
         (int8_t)(queued_prev_instance_matrices != NULL);
-    (void)canvas3d_enqueue_draw(c,
-                                &base_cmd,
-                                DEFERRED_DRAW_INSTANCED,
-                                DEFERRED_PASS_MAIN,
-                                queued_instance_matrices,
-                                instance_count,
-                                1,
-                                c->wireframe,
-                                canvas3d_material_backface_cull(c, mat),
-                                canvas3d_compute_instanced_batch_sort_key(
-                                    c,
-                                    queued_instance_matrices,
-                                    instance_count,
-                                    mesh->aabb_min,
-                                    mesh->aabb_max),
-                                mesh->aabb_min,
-                                mesh->aabb_max);
+    if (!canvas3d_enqueue_draw(c,
+                               &base_cmd,
+                               DEFERRED_DRAW_INSTANCED,
+                               DEFERRED_PASS_MAIN,
+                               queued_instance_matrices,
+                               instance_count,
+                               1,
+                               c->wireframe,
+                               canvas3d_material_backface_cull(c, mat),
+                               canvas3d_compute_instanced_batch_sort_key(c,
+                                                                         queued_instance_matrices,
+                                                                         instance_count,
+                                                                         mesh->aabb_min,
+                                                                         mesh->aabb_max),
+                               mesh->aabb_min,
+                               mesh->aabb_max)) {
+        rt_trap("Canvas3D.DrawMeshInstanced: deferred draw queue allocation failed");
+        return;
+    }
 }
 
 /// @brief End-of-frame: flush all deferred passes, run postFX, present, and bookkeep.
@@ -3400,17 +3423,16 @@ void rt_canvas3d_flip(void *obj) {
     int64_t now_us = rt_clock_ticks_us();
     if (c->last_flip_us > 0) {
         int64_t delta_us = now_us - c->last_flip_us;
+        c->delta_time_us = delta_us > 0 ? delta_us : 0;
         c->delta_time_ms = delta_us > 0 ? delta_us / 1000 : 0;
-    } else
+    } else {
+        c->delta_time_us = 0;
         c->delta_time_ms = 0;
+    }
     c->last_flip_us = now_us;
 
-    if (vgfx_close_requested(c->gfx_win)) {
-        rt_canvas3d_detach_input(c->gfx_win);
-        vgfx_destroy_window(c->gfx_win);
-        c->gfx_win = NULL;
-        c->should_close = 1;
-    }
+    if (vgfx_close_requested(c->gfx_win))
+        canvas3d_close_window(c);
 }
 
 /// @brief Translate physical pixel coordinates to logical (HiDPI-scaled) and notify the mouse subsystem.
@@ -3449,7 +3471,7 @@ int64_t rt_canvas3d_poll(void *obj) {
     rt_pad_poll();
 
     if (!vgfx_pump_events(c->gfx_win)) {
-        c->should_close = 1;
+        canvas3d_close_window(c);
         rt_action_update();
         return VGFX_EVENT_NONE;
     }
@@ -3477,13 +3499,15 @@ int64_t rt_canvas3d_poll(void *obj) {
     while (vgfx_poll_event(c->gfx_win, &evt)) {
         last_event_type = (int64_t)evt.type;
         if (evt.type == VGFX_EVENT_KEY_DOWN)
-            rt_keyboard_on_key_down((int64_t)evt.data.key.key);
+            rt_keyboard_on_vgfx_key_down((int64_t)evt.data.key.key);
         else if (evt.type == VGFX_EVENT_KEY_UP)
-            rt_keyboard_on_key_up((int64_t)evt.data.key.key);
+            rt_keyboard_on_vgfx_key_up((int64_t)evt.data.key.key);
         else if (evt.type == VGFX_EVENT_TEXT_INPUT)
             rt_keyboard_text_input((int32_t)evt.data.text.codepoint);
-        else if (evt.type == VGFX_EVENT_CLOSE)
-            c->should_close = 1;
+        else if (evt.type == VGFX_EVENT_CLOSE) {
+            canvas3d_close_window(c);
+            break;
+        }
         else if (!captured && evt.type == VGFX_EVENT_MOUSE_MOVE) {
             rt_canvas3d_update_mouse_from_physical(
                 c->gfx_win, evt.data.mouse_move.x, evt.data.mouse_move.y);
@@ -3502,6 +3526,11 @@ int64_t rt_canvas3d_poll(void *obj) {
             rt_mouse_update_wheel((double)evt.data.scroll.delta_x,
                                   (double)evt.data.scroll.delta_y);
         }
+    }
+
+    if (!c->gfx_win) {
+        rt_action_update();
+        return last_event_type;
     }
 
     if (!captured) {
@@ -3533,14 +3562,14 @@ int8_t rt_canvas3d_should_close(void *obj) {
 void rt_canvas3d_set_wireframe(void *obj, int8_t enabled) {
     rt_canvas3d *c = rt_canvas3d_checked_or_stack(obj);
     if (c)
-        c->wireframe = enabled;
+        c->wireframe = enabled ? 1 : 0;
 }
 
 /// @brief Enable or disable backface culling (CCW winding = front face).
 void rt_canvas3d_set_backface_cull(void *obj, int8_t enabled) {
     rt_canvas3d *c = rt_canvas3d_checked_or_stack(obj);
     if (c)
-        c->backface_cull = enabled;
+        c->backface_cull = enabled ? 1 : 0;
 }
 
 /// @brief Park a `malloc`'d buffer for end-of-frame disposal.
@@ -3592,6 +3621,8 @@ int64_t rt_canvas3d_get_fps(void *obj) {
     rt_canvas3d *c = rt_canvas3d_checked_or_stack(obj);
     if (!c)
         return 0;
+    if (c->delta_time_us > 0)
+        return (1000000 + c->delta_time_us / 2) / c->delta_time_us;
     return c->delta_time_ms > 0 ? 1000 / c->delta_time_ms : 0;
 }
 
@@ -3614,6 +3645,15 @@ int64_t rt_canvas3d_get_delta_time(void *obj) {
 
 /// @brief Get the time elapsed since the last frame in seconds.
 double rt_canvas3d_get_delta_time_sec(void *obj) {
+    rt_canvas3d *c = rt_canvas3d_checked_or_stack(obj);
+    if (!c)
+        return 0.0;
+    if (c->delta_time_us > 0) {
+        int64_t dt_us = c->delta_time_us;
+        if (c->dt_max_ms > 0 && dt_us > c->dt_max_ms * 1000)
+            dt_us = c->dt_max_ms * 1000;
+        return (double)dt_us / 1000000.0;
+    }
     return (double)rt_canvas3d_get_delta_time(obj) / 1000.0;
 }
 

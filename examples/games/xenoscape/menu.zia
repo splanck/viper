@@ -63,7 +63,7 @@ module menu;
 
 bind Viper.Graphics;
 bind Viper.Input;
-bind Viper.Fmt;
+bind Viper.Text.Fmt;
 bind Viper.IO;
 bind Viper.Game;
 bind Viper.Game.UI;

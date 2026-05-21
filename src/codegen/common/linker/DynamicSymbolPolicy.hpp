@@ -76,15 +76,31 @@ inline bool isKnownCppRuntimeDynamicSymbol(const std::string &name) {
         "ZTINSt",
         "ZTSNSt",
         "ZTVNSt",
+        "ZTTNSt",
         "ZSt",
         "ZTISt",
         "ZTSSt",
         "ZTVSt",
+        "ZTTSt",
+        // libc++abi base RTTI vtables / type-infos (__cxxabiv1::*). Pulled in
+        // by C++ frontend code embedded via fe_zia; supplied by libc++abi,
+        // which libc++.1.dylib re-exports on macOS.
+        "ZTVN10__cxxabiv",
+        "ZTIN10__cxxabiv",
+        "ZTSN10__cxxabiv",
+        // Fundamental-type RTTI (typeinfo for void/int/double/...) emitted by
+        // C++ frontend code; supplied by libc++abi. The single trailing
+        // builtin-code letter keeps these from matching class type-infos
+        // (`ZTIN...` / `ZTI<len>...`), which fe_zia defines itself.
+        "ZTIv", "ZTIb", "ZTIc", "ZTIa", "ZTIh", "ZTIs", "ZTIt", "ZTIi",
+        "ZTIj", "ZTIl", "ZTIm", "ZTIx", "ZTIy", "ZTIf", "ZTId", "ZTIe",
+        "ZTIw", "ZTIn", "ZTIo", "ZTIDn", "ZTIPv", "ZTIPKc", "ZTIPc",
         "Zda",
         "Zdl",
         "Zna",
         "Znw",
         "cxa_",
+        "dynamic_cast",
         "gxx_personality_",
         nullptr,
     };
@@ -97,6 +113,22 @@ inline bool isKnownDynamicSymbol(const std::string &name, LinkPlatform platform)
     const std::string stripped = stripDynamicSymbolLeadingUnderscores(name);
 
     static const char *const kDynSymExact[] = {
+        // libSystem ctype data/helpers referenced by libc++ <locale>/<sstream>
+        // (pulled in by the embedded C++ frontend). Both raw and de-underscored
+        // forms are listed so the match holds regardless of Mach-O mangling.
+        "__maskrune",
+        "maskrune",
+        "_DefaultRuneLocale",
+        "DefaultRuneLocale",
+        // libm (<cmath>/<charconv>) referenced by the embedded C++ frontend's
+        // libc++ instantiations. All are libSystem/libm exports.
+        "modf", "frexp", "ldexp", "scalbn", "copysign", "fmod", "hypot", "fma",
+        "nearbyint", "rint", "trunc", "round", "lround", "llround", "fmin",
+        "fmax", "fdim", "remainder", "remquo", "cbrt", "expm1", "log1p",
+        "exp2", "log2", "tgamma", "lgamma", "sinh", "cosh", "tanh", "asinh",
+        "acosh", "atanh", "asin", "acos", "atan", "atan2", "sin", "cos",
+        "tan", "exp", "log", "log10", "pow", "sqrt", "ceil", "floor", "fabs",
+        "wmemchr", "wmemcmp", "wmemcpy", "wmemmove", "wmemset", "wcslen",
         "printf",
         "fprintf",
         "sprintf",

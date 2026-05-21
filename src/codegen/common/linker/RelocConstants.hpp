@@ -71,6 +71,7 @@ constexpr uint32_t kPage21 = 3;            // ARM64_RELOC_PAGE21
 constexpr uint32_t kPageOff12 = 4;         // ARM64_RELOC_PAGEOFF12
 constexpr uint32_t kGotLoadPage21 = 5;     // ARM64_RELOC_GOT_LOAD_PAGE21
 constexpr uint32_t kGotLoadPageOff12 = 6;  // ARM64_RELOC_GOT_LOAD_PAGEOFF12
+constexpr uint32_t kPointerToGot = 7;      // ARM64_RELOC_POINTER_TO_GOT
 constexpr uint32_t kTlvpLoadPage21 = 8;    // ARM64_RELOC_TLVP_LOAD_PAGE21
 constexpr uint32_t kTlvpLoadPageOff12 = 9; // ARM64_RELOC_TLVP_LOAD_PAGEOFF12
 } // namespace macho_a64

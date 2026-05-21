@@ -508,6 +508,8 @@ void *rt_collider3d_new_capsule(double radius, double height) {
         return NULL;
     collider->radius = collider3d_extent_or_zero(radius);
     collider->height = collider3d_extent_or_zero(height);
+    if (collider->height < collider->radius * 2.0)
+        collider->height = collider->radius * 2.0;
     collider3d_recompute_bounds(collider);
     return collider;
 }
@@ -807,7 +809,7 @@ double rt_collider3d_get_radius_raw(void *collider) {
     return shape->radius;
 }
 
-/// @brief Internal: capsule cylindrical height (excludes hemispherical caps). 0 for non-capsule.
+/// @brief Internal: capsule total height including hemispherical caps. 0 for non-capsule.
 double rt_collider3d_get_height_raw(void *collider) {
     rt_collider3d *shape = collider3d_checked(collider);
     if (!shape)

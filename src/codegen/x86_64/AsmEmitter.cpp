@@ -45,6 +45,22 @@ namespace viper::codegen::x64 {
 
 namespace {
 
+/// @brief AT&T register names indexed by [width][PhysReg index].
+/// @details Width slot 0 = 8-bit (byte), slot 1 = 32-bit (long). 64-bit names
+///          are produced by asmfmt::fmt_reg; this table covers only the GPR
+///          aliases that x86 exposes for narrower operand sizes. Entries
+///          beyond index 15 are unused (XMM regs are not aliased like GPRs).
+constexpr std::array<std::array<const char *, 16>, 2> kGprAliasNames = {{
+    // 8-bit  (lo byte): RAX..RSP then R8..R15
+    {"%al",  "%bl",  "%cl",   "%dl",   "%sil",  "%dil",
+     "%r8b", "%r9b", "%r10b", "%r11b", "%r12b", "%r13b",
+     "%r14b","%r15b","%bpl",  "%spl"},
+    // 32-bit (dword)
+    {"%eax", "%ebx", "%ecx",  "%edx",  "%esi",  "%edi",
+     "%r8d", "%r9d", "%r10d", "%r11d", "%r12d", "%r13d",
+     "%r14d","%r15d","%ebp",  "%esp"},
+}};
+
 /// @brief Build an @ref OperandPattern from up to three operand kind slots.
 /// @details Stops counting once a @c None slot is encountered, so the
 ///          resulting @c count field reflects the true arity. Used by the
@@ -891,44 +907,10 @@ std::string AsmEmitter::formatReg8(const OpReg &reg, const TargetInfo &target) {
         os << "%v" << static_cast<unsigned>(reg.idOrPhys) << ".b";
         return os.str();
     }
-
-    const auto phys = static_cast<PhysReg>(reg.idOrPhys);
-    switch (phys) {
-        case PhysReg::RAX:
-            return "%al";
-        case PhysReg::RBX:
-            return "%bl";
-        case PhysReg::RCX:
-            return "%cl";
-        case PhysReg::RDX:
-            return "%dl";
-        case PhysReg::RSI:
-            return "%sil";
-        case PhysReg::RDI:
-            return "%dil";
-        case PhysReg::RBP:
-            return "%bpl";
-        case PhysReg::RSP:
-            return "%spl";
-        case PhysReg::R8:
-            return "%r8b";
-        case PhysReg::R9:
-            return "%r9b";
-        case PhysReg::R10:
-            return "%r10b";
-        case PhysReg::R11:
-            return "%r11b";
-        case PhysReg::R12:
-            return "%r12b";
-        case PhysReg::R13:
-            return "%r13b";
-        case PhysReg::R14:
-            return "%r14b";
-        case PhysReg::R15:
-            return "%r15b";
-        default:
-            return formatReg(reg, target);
-    }
+    const auto idx = static_cast<std::size_t>(reg.idOrPhys);
+    if (idx < kGprAliasNames[0].size())
+        return kGprAliasNames[0][idx];
+    return formatReg(reg, target);
 }
 
 std::string AsmEmitter::formatReg32(const OpReg &reg, const TargetInfo &target) {
@@ -937,44 +919,10 @@ std::string AsmEmitter::formatReg32(const OpReg &reg, const TargetInfo &target) 
         os << "%v" << static_cast<unsigned>(reg.idOrPhys) << ".d";
         return os.str();
     }
-
-    const auto phys = static_cast<PhysReg>(reg.idOrPhys);
-    switch (phys) {
-        case PhysReg::RAX:
-            return "%eax";
-        case PhysReg::RBX:
-            return "%ebx";
-        case PhysReg::RCX:
-            return "%ecx";
-        case PhysReg::RDX:
-            return "%edx";
-        case PhysReg::RSI:
-            return "%esi";
-        case PhysReg::RDI:
-            return "%edi";
-        case PhysReg::RBP:
-            return "%ebp";
-        case PhysReg::RSP:
-            return "%esp";
-        case PhysReg::R8:
-            return "%r8d";
-        case PhysReg::R9:
-            return "%r9d";
-        case PhysReg::R10:
-            return "%r10d";
-        case PhysReg::R11:
-            return "%r11d";
-        case PhysReg::R12:
-            return "%r12d";
-        case PhysReg::R13:
-            return "%r13d";
-        case PhysReg::R14:
-            return "%r14d";
-        case PhysReg::R15:
-            return "%r15d";
-        default:
-            return formatReg(reg, target);
-    }
+    const auto idx = static_cast<std::size_t>(reg.idOrPhys);
+    if (idx < kGprAliasNames[1].size())
+        return kGprAliasNames[1][idx];
+    return formatReg(reg, target);
 }
 
 /// @brief Format an immediate operand using AT&T syntax.

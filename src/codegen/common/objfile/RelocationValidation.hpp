@@ -22,12 +22,34 @@
 
 #pragma once
 
+#include "codegen/common/AArch64RelocUtil.hpp"
 #include "codegen/common/objfile/ObjectFileWriter.hpp"
 
 #include <cstddef>
 #include <ostream>
 
 namespace viper::codegen::objfile {
+
+inline uint32_t readRelocLE32(const CodeSection &section, size_t logicalOffset) {
+    const size_t physicalOffset = logicalOffset - section.logicalOffsetBias();
+    const auto &bytes = section.bytes();
+    return static_cast<uint32_t>(bytes[physicalOffset]) |
+           (static_cast<uint32_t>(bytes[physicalOffset + 1]) << 8) |
+           (static_cast<uint32_t>(bytes[physicalOffset + 2]) << 16) |
+           (static_cast<uint32_t>(bytes[physicalOffset + 3]) << 24);
+}
+
+inline bool isA64AddImmediate(uint32_t insn) {
+    return viper::codegen::isA64AddImmediate(insn);
+}
+
+inline bool a64UnsignedLdStOffsetShift(uint32_t insn, uint32_t &shift) {
+    return viper::codegen::a64UnsignedLdStOffsetShift(insn, shift);
+}
+
+inline bool isA64UnsignedLdStOffsetWithShift(uint32_t insn, uint32_t expectedShift) {
+    return viper::codegen::isA64UnsignedLdStOffsetWithShift(insn, expectedShift);
+}
 
 /// @brief Return the canonical short name for a RelocKind enum value.
 /// @details Used in writer diagnostics so ELF/Mach-O/COFF print the same name
@@ -134,6 +156,53 @@ inline bool validateRelocationShape(const char *writerName,
         err << writerName << ": relocation kind " << relocKindName(rel.kind) << " at offset "
             << rel.offset << " extends beyond " << sectionName << " contents\n";
         return false;
+    }
+
+    if (arch == ObjArch::AArch64 && width == 4) {
+        const uint32_t insn = readRelocLE32(section, rel.offset);
+        auto badInstruction = [&]() {
+            err << writerName << ": relocation kind " << relocKindName(rel.kind)
+                << " at offset " << rel.offset << " does not match the AArch64 instruction in "
+                << sectionName << "\n";
+            return false;
+        };
+        switch (rel.kind) {
+            case RelocKind::A64Call26:
+                if ((insn & 0xFC000000u) != 0x94000000u)
+                    return badInstruction();
+                break;
+            case RelocKind::A64Jump26:
+                if ((insn & 0xFC000000u) != 0x14000000u)
+                    return badInstruction();
+                break;
+            case RelocKind::A64CondBr19:
+                if ((insn & 0xFF000010u) != 0x54000000u &&
+                    (insn & 0x7E000000u) != 0x34000000u)
+                    return badInstruction();
+                break;
+            case RelocKind::A64AdrpPage21:
+                if ((insn & 0x9F000000u) != 0x90000000u)
+                    return badInstruction();
+                break;
+            case RelocKind::A64AddPageOff12:
+                if (!isA64AddImmediate(insn))
+                    return badInstruction();
+                break;
+            case RelocKind::A64LdSt32Off12:
+                if (!isA64UnsignedLdStOffsetWithShift(insn, 2))
+                    return badInstruction();
+                break;
+            case RelocKind::A64LdSt64Off12:
+                if (!isA64UnsignedLdStOffsetWithShift(insn, 3))
+                    return badInstruction();
+                break;
+            case RelocKind::A64LdSt128Off12:
+                if (!isA64UnsignedLdStOffsetWithShift(insn, 4))
+                    return badInstruction();
+                break;
+            default:
+                break;
+        }
     }
 
     return true;

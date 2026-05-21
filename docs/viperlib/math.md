@@ -92,7 +92,7 @@ module BitsDemo;
 
 bind Viper.Terminal;
 bind Viper.Math.Bits as Bits;
-bind Viper.Fmt as Fmt;
+bind Viper.Text.Fmt as Fmt;
 
 func start() {
     Say("And: " + Fmt.Int(Bits.And(12, 10)));     // 8
@@ -238,7 +238,7 @@ module MathDemo;
 
 bind Viper.Terminal;
 bind Viper.Math as Math;
-bind Viper.Fmt as Fmt;
+bind Viper.Text.Fmt as Fmt;
 
 func start() {
     Say("Sqrt(144): " + Fmt.NumFixed(Math.Sqrt(144.0), 1));          // 12.0
@@ -328,7 +328,7 @@ module RandomDemo;
 
 bind Viper.Terminal;
 bind Viper.Math.Random as Random;
-bind Viper.Fmt as Fmt;
+bind Viper.Text.Fmt as Fmt;
 
 func start() {
     Say("Range(1,100): " + Fmt.Int(Random.Range(1, 100)));
@@ -461,7 +461,7 @@ module Vec2Demo;
 
 bind Viper.Terminal;
 bind Viper.Math.Vec2 as V2;
-bind Viper.Fmt as Fmt;
+bind Viper.Text.Fmt as Fmt;
 
 func start() {
     var a = V2.New(3.0, 4.0);
@@ -573,7 +573,7 @@ module Vec3Demo;
 
 bind Viper.Terminal;
 bind Viper.Math.Vec3 as V3;
-bind Viper.Fmt as Fmt;
+bind Viper.Text.Fmt as Fmt;
 
 func start() {
     var v = V3.New(1.0, 2.0, 3.0);
@@ -1006,7 +1006,7 @@ module PerlinDemo;
 
 bind Viper.Terminal;
 bind Viper.Math.PerlinNoise as PerlinNoise;
-bind Viper.Fmt as Fmt;
+bind Viper.Text.Fmt as Fmt;
 
 func start() {
     var p = PerlinNoise.New(42);
@@ -1145,7 +1145,7 @@ module BigIntDemo;
 
 bind Viper.Terminal;
 bind Viper.Math.BigInt as BigInt;
-bind Viper.Fmt as Fmt;
+bind Viper.Text.Fmt as Fmt;
 
 func start() {
     var a = BigInt.FromStr("123456789012345678901234567890");
@@ -1282,7 +1282,7 @@ module Mat3Demo;
 bind Viper.Terminal;
 bind Viper.Math.Mat3 as Mat3;
 bind Viper.Math.Vec2 as Vec2;
-bind Viper.Fmt as Fmt;
+bind Viper.Text.Fmt as Fmt;
 
 func start() {
     // Build a combined 2D transform: scale then translate
@@ -1418,7 +1418,7 @@ bind Viper.Terminal;
 bind Viper.Math.Mat4 as Mat4;
 bind Viper.Math.Vec3 as Vec3;
 bind Viper.Math as Math;
-bind Viper.Fmt as Fmt;
+bind Viper.Text.Fmt as Fmt;
 
 func start() {
     // Simple model matrix: scale → rotateY → translate

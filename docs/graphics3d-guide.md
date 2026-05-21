@@ -1076,6 +1076,11 @@ Playback controller for skeletal animation.
 | `Update(dt)` | `void(f64)` | Advance animation by dt seconds |
 | `GetBoneMatrix(boneIdx)` | `obj(i64)` | Get current Mat4 for a bone |
 
+Negative playback speeds play clips in reverse. Looping clips wrap in both directions; non-looping
+clips clamp at the start/end and stop when they hit the boundary. Player and animation handles are
+validated before playback, so wrong graphics object types are ignored instead of being sampled as
+animation memory.
+
 ### Zia Example
 
 ```zia
@@ -1538,6 +1543,10 @@ Effects are applied in chain order (first added = first applied). Chain storage 
 | `Capsule3D.SphereOverlaps(capA, capB, capR, center, radius)` | `i1(obj, obj, f64, obj, f64)` | Capsule vs sphere overlap |
 | `Capsule3D.AABBOverlaps(capA, capB, capR, min, max)` | `i1(obj, obj, f64, obj, obj)` | Capsule vs AABB overlap |
 
+Ray/AABB/capsule helpers validate `Vec3`, `Mat4`, mesh, and hit handles. Non-finite rays or
+dimensions return a miss or safe zero result. AABB helpers canonicalize inverted min/max bounds, and
+capsule-vs-AABB uses exact segment-to-box distance rather than only testing against the box center.
+
 ### Zia Example
 
 ```zia
@@ -1677,6 +1686,8 @@ Bound audio objects are explicit, just like physics/animation bindings:
 - `Audio3D.SyncBindings(dt)` updates all bound listeners and sources, recomputes velocities, and refreshes any live source voices.
 - `Scene3D.SyncBindings(dt)` calls `Audio3D.SyncBindings(dt)` after scene/body/anim synchronization, so most scene-driven games only need the scene call.
 - Property setters such as `source.Position = ...` update the cached spatial state immediately even when no scene binding is involved.
+- `BindNode` accepts only `SceneNode3D`, `BindCamera` accepts only `Camera3D`, and non-Vec3 position/velocity/forward values are ignored. Null vectors still collapse to origin for compatibility.
+- `AudioSource3D.MaxDistance` is finite and non-negative; invalid values become `0.0`.
 
 Recommended frame order for scene-driven audio:
 
@@ -2017,6 +2028,9 @@ Maintains a fixed distance between two body centers.
 |----------|------|--------|-------------|
 | `Distance` | Float | read/write | Target distance |
 
+Distance joints retain both body handles for the joint lifetime. Negative or non-finite target
+distances are sanitized to zero, and the solver skips bodies with non-finite motion state.
+
 ---
 
 ### SpringJoint3D
@@ -2032,6 +2046,10 @@ Hooke's law spring with configurable stiffness and damping.
 | `Stiffness` | Float | read/write | Spring constant |
 | `Damping` | Float | read/write | Velocity damping factor |
 | `RestLength` | Float | read | Equilibrium distance |
+
+Spring joints retain both body handles for the joint lifetime. Rest length, stiffness, and damping
+are non-negative finite values; invalid inputs become zero and very large values are clamped to keep
+solver impulses finite.
 
 ### Zia Example
 
@@ -2520,7 +2538,7 @@ Navigation mesh with A* pathfinding for AI characters.
 | `SetMaxSlope(degrees)` | `void(f64)` | Update walkability slope threshold |
 | `DebugDraw(canvas)` | `void(obj)` | Visualize navmesh wireframe on Canvas3D |
 
-`Build()` stores the source walkable geometry separately from the filtered navigation triangles. `SetMaxSlope()` therefore immediately refilters the existing mesh and rebuilds adjacency instead of requiring a full rebuild. Slope tests use upward-facing triangle planes, `SamplePosition()` snaps to the triangle plane height, and `FindPath()` works from the containing triangle rather than centroid height.
+`Build()` stores the source walkable geometry separately from the filtered navigation triangles. `SetMaxSlope()` therefore immediately refilters the existing mesh and rebuilds adjacency instead of requiring a full rebuild. Slope tests use upward-facing triangle planes. `SamplePosition()` projects to the closest point on the nearest walkable triangle instead of snapping to a centroid, while `FindPath()` and `IsWalkable()` require the query height to be near the triangle plane so stacked floors or points far above the mesh do not alias to the wrong layer.
 
 ### Zia Example
 
@@ -2710,6 +2728,11 @@ Weight-based animation blending for smooth transitions between clips.
 | `SetSpeed(stateIdx, speed)` | `void(i64, f64)` | Playback speed multiplier per state |
 | `Update(dt)` | `void(f64)` | Advance all active animations |
 
+Weights are clamped to `[0.0, 1.0]`, NaN weights become zero, and negative per-state speeds play the
+state in reverse using the same loop/clamp behavior as `AnimPlayer3D`. Blending decomposes sampled
+bone matrices into TRS and uses quaternion slerp for rotation, which avoids skewed matrices when
+rotations are mixed.
+
 Draw blended mesh via `Canvas3D.DrawMeshBlended(canvas, mesh, transform, material, blender)`. The `AnimBlend3D` already owns its `Skeleton3D`, so no extra skeleton argument is required.
 
 ### Zia Example
@@ -2788,6 +2811,11 @@ Stateful skeletal animation controller for gameplay code. `AnimController3D` bui
 | `CrossfadeLayer(layer, stateName, blendSeconds)` | `i1(i64,str,f64)` | Crossfade an overlay layer to a new state |
 | `StopLayer(layer)` | `void(i64)` | Stop one overlay layer |
 | `GetBoneMatrix(boneIdx)` | `obj(i64)` | Read the controller's final blended matrix for a bone |
+
+Event times are clamped into the owning clip's duration and are fired when playback crosses them in
+forward, reverse, exact-loop, or multi-loop updates. State speeds may be negative for reverse
+playback; non-finite speeds fall back to `1.0`. Overlay weights are finite and clamped, and overlay
+composition uses TRS/quaternion blending so masked layers do not introduce matrix skew.
 
 ### When To Use Which API
 

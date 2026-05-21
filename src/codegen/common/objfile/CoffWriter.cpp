@@ -457,6 +457,9 @@ struct PendingCoffReloc {
     uint32_t offset{0};
     std::string symbolName;
     uint16_t type{0};
+    bool hasSymbolRef{false};
+    uint64_t symbolSectionIdentity{0};
+    uint32_t symbolIndex{0};
 };
 
 static bool validatePdataRelocOffset(uint32_t offset,
@@ -661,8 +664,18 @@ static bool buildWin64UnwindSections(const CodeSection &text,
         if (!addU32Checked(pdataOffset, 4, ".pdata unwind end relocation offset", err, pdataEndOffset) ||
             !addU32Checked(pdataOffset, 8, ".pdata xdata relocation offset", err, pdataUnwindOffset))
             return false;
-        pdataRelocs.push_back({pdataOffset, funcSym.name, kImageRelAMD64_Addr32Nb});
-        pdataRelocs.push_back({pdataEndOffset, funcSym.name, kImageRelAMD64_Addr32Nb});
+        pdataRelocs.push_back({pdataOffset,
+                               funcSym.name,
+                               kImageRelAMD64_Addr32Nb,
+                               true,
+                               text.sectionIdentity(),
+                               entry.symbolIndex});
+        pdataRelocs.push_back({pdataEndOffset,
+                               funcSym.name,
+                               kImageRelAMD64_Addr32Nb,
+                               true,
+                               text.sectionIdentity(),
+                               entry.symbolIndex});
         pdataRelocs.push_back({pdataUnwindOffset, xdataName, kImageRelAMD64_Addr32Nb});
     }
     return true;
@@ -741,8 +754,54 @@ static bool buildWinArm64UnwindSections(const CodeSection &text,
         uint32_t pdataUnwindOffset = 0;
         if (!addU32Checked(pdataOffset, 4, ".pdata xdata relocation offset", err, pdataUnwindOffset))
             return false;
-        pdataRelocs.push_back({pdataOffset, funcSym.name, kImageRelARM64_Addr32Nb});
+        pdataRelocs.push_back({pdataOffset,
+                               funcSym.name,
+                               kImageRelARM64_Addr32Nb,
+                               true,
+                               text.sectionIdentity(),
+                               entry.symbolIndex});
         pdataRelocs.push_back({pdataUnwindOffset, xdataName, kImageRelARM64_Addr32Nb});
+    }
+    return true;
+}
+
+/// @brief Collect xdata/pdata for one text section, advancing @p xdataNameBase
+///        by the count of unwind entries emitted. No-op for sections with no
+///        unwind entries or for unsupported architectures.
+/// @details Shared between the single- and multi-section write() overloads so
+///          the per-section unwind iteration lives in one place. The arch is
+///          carried in rather than inferred so each overload can pass the same
+///          `arch_` value verbatim.
+static bool collectCoffUnwindForSection(const CodeSection &text,
+                                        ObjArch arch,
+                                        uint32_t &xdataNameBase,
+                                        std::vector<uint8_t> &xdataBytes,
+                                        std::vector<PendingCoffSymbol> &xdataSymbols,
+                                        std::vector<uint8_t> &pdataBytes,
+                                        std::vector<PendingCoffReloc> &pdataRelocs,
+                                        std::ostream &err) {
+    if (arch == ObjArch::X86_64 && !text.win64UnwindEntries().empty()) {
+        if (!buildWin64UnwindSections(
+                text, xdataNameBase, xdataBytes, xdataSymbols, pdataBytes, pdataRelocs, err))
+            return false;
+        uint32_t entryCount = 0;
+        if (!checkedU32(text.win64UnwindEntries().size(),
+                        ".xdata symbol count",
+                        err,
+                        entryCount) ||
+            !addU32Checked(xdataNameBase, entryCount, ".xdata symbol count", err, xdataNameBase))
+            return false;
+    } else if (arch == ObjArch::AArch64 && !text.winArm64UnwindEntries().empty()) {
+        if (!buildWinArm64UnwindSections(
+                text, xdataNameBase, xdataBytes, xdataSymbols, pdataBytes, pdataRelocs, err))
+            return false;
+        uint32_t entryCount = 0;
+        if (!checkedU32(text.winArm64UnwindEntries().size(),
+                        ".xdata symbol count",
+                        err,
+                        entryCount) ||
+            !addU32Checked(xdataNameBase, entryCount, ".xdata symbol count", err, xdataNameBase))
+            return false;
     }
     return true;
 }
@@ -756,15 +815,10 @@ bool CoffWriter::write(const std::string &path,
     std::vector<PendingCoffSymbol> xdataSymbols;
     std::vector<uint8_t> pdataBytes;
     std::vector<PendingCoffReloc> pdataRelocs;
-    if (arch_ == ObjArch::X86_64 && !text.win64UnwindEntries().empty()) {
-        if (!buildWin64UnwindSections(
-                text, 0, xdataBytes, xdataSymbols, pdataBytes, pdataRelocs, err))
-            return false;
-    } else if (arch_ == ObjArch::AArch64 && !text.winArm64UnwindEntries().empty()) {
-        if (!buildWinArm64UnwindSections(
-                text, 0, xdataBytes, xdataSymbols, pdataBytes, pdataRelocs, err))
-            return false;
-    }
+    uint32_t xdataNameBase = 0;
+    if (!collectCoffUnwindForSection(
+            text, arch_, xdataNameBase, xdataBytes, xdataSymbols, pdataBytes, pdataRelocs, err))
+        return false;
 
     const bool hasRodata = !rodata.empty();
     const bool hasXdata = !xdataBytes.empty();
@@ -1059,14 +1113,14 @@ bool CoffWriter::write(const std::string &path,
                         << rel.targetOffset << " beyond section contents\n";
                     return false;
                 }
-                if (rel.targetOffset > static_cast<size_t>(std::numeric_limits<int64_t>::max()) ||
-                    rel.addend > std::numeric_limits<int64_t>::max() -
-                                     static_cast<int64_t>(rel.targetOffset)) {
-                    err << "CoffWriter: relocation in " << sectionName
-                        << " has a section-offset addend outside int64 range\n";
+                if (!checkedSectionOffsetAddend(rel.addend,
+                                                rel.targetOffset,
+                                                "CoffWriter",
+                                                sectionName,
+                                                rel.offset,
+                                                err,
+                                                effectiveAddend))
                     return false;
-                }
-                effectiveAddend = rel.addend + static_cast<int64_t>(rel.targetOffset);
                 coffSymIdx = anchorIdx;
                 return true;
             }
@@ -1146,12 +1200,30 @@ bool CoffWriter::write(const std::string &path,
     for (const auto &rel : pdataRelocs) {
         if (!validatePdataRelocOffset(rel.offset, pdataBytes.size(), err))
             return false;
-        auto it = definedNameMap.find(rel.symbolName);
-        if (it == definedNameMap.end()) {
-            err << "CoffWriter: missing symbol '" << rel.symbolName << "' for .pdata relocation\n";
-            return false;
+        uint32_t targetIdx = 0;
+        if (rel.hasSymbolRef) {
+            if (!text.matchesSectionIdentity(rel.symbolSectionIdentity)) {
+                err << "CoffWriter: .pdata relocation for '" << rel.symbolName
+                    << "' references a different text section identity\n";
+                return false;
+            }
+            auto symIt = textSymMap.find(rel.symbolIndex);
+            if (symIt == textSymMap.end()) {
+                err << "CoffWriter: missing symbol '" << rel.symbolName
+                    << "' for .pdata relocation\n";
+                return false;
+            }
+            targetIdx = symIt->second;
+        } else {
+            auto it = definedNameMap.find(rel.symbolName);
+            if (it == definedNameMap.end()) {
+                err << "CoffWriter: missing symbol '" << rel.symbolName
+                    << "' for .pdata relocation\n";
+                return false;
+            }
+            targetIdx = it->second;
         }
-        writeReloc(pdataRelocBytes, rel.offset, it->second, rel.type);
+        writeReloc(pdataRelocBytes, rel.offset, targetIdx, rel.type);
     }
     uint32_t numPdataRelocs = 0;
     if (!checkedU32(pdataRelocs.size(), ".pdata relocation count", err, numPdataRelocs))
@@ -1359,12 +1431,8 @@ bool CoffWriter::write(const std::string &path,
         err << "CoffWriter: cannot open " << path << " for writing\n";
         return false;
     }
-    ofs.write(reinterpret_cast<const char *>(file.data()),
-              static_cast<std::streamsize>(file.size()));
-    if (!ofs) {
-        err << "CoffWriter: write failed for " << path << "\n";
+    if (!checkedWriteAll(ofs, file, "CoffWriter", path, err))
         return false;
-    }
     return true;
     } catch (const std::exception &ex) {
         err << "CoffWriter: " << ex.what() << "\n";
@@ -1401,39 +1469,18 @@ bool CoffWriter::write(const std::string &path,
     std::vector<PendingCoffSymbol> xdataSymbols;
     std::vector<uint8_t> pdataBytes;
     std::vector<PendingCoffReloc> pdataRelocs;
-    if (arch_ == ObjArch::X86_64) {
+    {
         uint32_t xdataNameBase = 0;
         for (const auto &text : textSections) {
-            if (!text.win64UnwindEntries().empty()) {
-                if (!buildWin64UnwindSections(
-                        text, xdataNameBase, xdataBytes, xdataSymbols, pdataBytes, pdataRelocs, err))
-                    return false;
-                uint32_t entryCount = 0;
-                if (!checkedU32(text.win64UnwindEntries().size(),
-                                ".xdata symbol count",
-                                err,
-                                entryCount) ||
-                    !addU32Checked(
-                        xdataNameBase, entryCount, ".xdata symbol count", err, xdataNameBase))
-                    return false;
-            }
-        }
-    } else if (arch_ == ObjArch::AArch64) {
-        uint32_t xdataNameBase = 0;
-        for (const auto &text : textSections) {
-            if (!text.winArm64UnwindEntries().empty()) {
-                if (!buildWinArm64UnwindSections(
-                        text, xdataNameBase, xdataBytes, xdataSymbols, pdataBytes, pdataRelocs, err))
-                    return false;
-                uint32_t entryCount = 0;
-                if (!checkedU32(text.winArm64UnwindEntries().size(),
-                                ".xdata symbol count",
-                                err,
-                                entryCount) ||
-                    !addU32Checked(
-                        xdataNameBase, entryCount, ".xdata symbol count", err, xdataNameBase))
-                    return false;
-            }
+            if (!collectCoffUnwindForSection(text,
+                                             arch_,
+                                             xdataNameBase,
+                                             xdataBytes,
+                                             xdataSymbols,
+                                             pdataBytes,
+                                             pdataRelocs,
+                                             err))
+                return false;
         }
     }
 
@@ -1735,14 +1782,14 @@ bool CoffWriter::write(const std::string &path,
         effectiveAddend = rel.addend;
         if (rel.targetSection != SymbolSection::Undefined) {
             if (rel.targetOffsetValid) {
-                if (rel.targetOffset > static_cast<size_t>(std::numeric_limits<int64_t>::max()) ||
-                    rel.addend > std::numeric_limits<int64_t>::max() -
-                                     static_cast<int64_t>(rel.targetOffset)) {
-                    err << "CoffWriter: relocation in " << sectionName
-                        << " has a section-offset addend outside int64 range\n";
+                if (!checkedSectionOffsetAddend(rel.addend,
+                                                rel.targetOffset,
+                                                "CoffWriter",
+                                                sectionName,
+                                                rel.offset,
+                                                err,
+                                                effectiveAddend))
                     return false;
-                }
-                effectiveAddend += static_cast<int64_t>(rel.targetOffset);
                 if (rel.targetSection == SymbolSection::Rodata) {
                     if (rodataAnchorIdx == UINT32_MAX) {
                         err << "CoffWriter: missing section anchor for .rdata\n";
@@ -1761,11 +1808,17 @@ bool CoffWriter::write(const std::string &path,
                 size_t textIdx = sourceTextIndex;
                 if (rel.targetSectionIdentityValid) {
                     textIdx = SIZE_MAX;
+                    size_t matches = 0;
                     for (size_t ti = 0; ti < textCount; ++ti) {
-                        if (textSections[ti].sectionIdentity() == rel.targetSectionIdentity) {
+                        if (textSections[ti].matchesSectionIdentity(rel.targetSectionIdentity)) {
                             textIdx = ti;
-                            break;
+                            ++matches;
                         }
+                    }
+                    if (matches > 1) {
+                        err << "CoffWriter: relocation in " << sectionName << " at offset "
+                            << rel.offset << " references duplicate .text section identity\n";
+                        return false;
                     }
                 } else if (textIdx == SIZE_MAX || textIdx >= textCount ||
                            rel.targetOffset > textSections[textIdx].bytes().size()) {
@@ -1882,12 +1935,43 @@ bool CoffWriter::write(const std::string &path,
     for (const auto &rel : pdataRelocs) {
         if (!validatePdataRelocOffset(rel.offset, pdataBytes.size(), err))
             return false;
-        auto it = definedNameMap.find(rel.symbolName);
-        if (it == definedNameMap.end()) {
-            err << "CoffWriter: missing symbol '" << rel.symbolName << "' for .pdata relocation\n";
-            return false;
+        uint32_t targetIdx = 0;
+        if (rel.hasSymbolRef) {
+            size_t textIdx = SIZE_MAX;
+            size_t matches = 0;
+            for (size_t ti = 0; ti < textCount; ++ti) {
+                if (textSections[ti].matchesSectionIdentity(rel.symbolSectionIdentity)) {
+                    textIdx = ti;
+                    ++matches;
+                }
+            }
+            if (matches > 1) {
+                err << "CoffWriter: .pdata relocation for '" << rel.symbolName
+                    << "' references duplicate text section identity\n";
+                return false;
+            }
+            if (textIdx == SIZE_MAX) {
+                err << "CoffWriter: .pdata relocation for '" << rel.symbolName
+                    << "' references missing text section identity\n";
+                return false;
+            }
+            auto symIt = textSymMaps[textIdx].find(rel.symbolIndex);
+            if (symIt == textSymMaps[textIdx].end()) {
+                err << "CoffWriter: missing symbol '" << rel.symbolName
+                    << "' for .pdata relocation\n";
+                return false;
+            }
+            targetIdx = symIt->second;
+        } else {
+            auto it = definedNameMap.find(rel.symbolName);
+            if (it == definedNameMap.end()) {
+                err << "CoffWriter: missing symbol '" << rel.symbolName
+                    << "' for .pdata relocation\n";
+                return false;
+            }
+            targetIdx = it->second;
         }
-        writeReloc(pdataRelocBytes, rel.offset, it->second, rel.type);
+        writeReloc(pdataRelocBytes, rel.offset, targetIdx, rel.type);
     }
     uint32_t numPdataRelocs = 0;
     if (!checkedU32(pdataRelocs.size(), ".pdata relocation count", err, numPdataRelocs))
@@ -2110,12 +2194,8 @@ bool CoffWriter::write(const std::string &path,
         err << "CoffWriter: cannot open " << path << " for writing\n";
         return false;
     }
-    ofs.write(reinterpret_cast<const char *>(file.data()),
-              static_cast<std::streamsize>(file.size()));
-    if (!ofs) {
-        err << "CoffWriter: write failed for " << path << "\n";
+    if (!checkedWriteAll(ofs, file, "CoffWriter", path, err))
         return false;
-    }
     return true;
     } catch (const std::exception &ex) {
         err << "CoffWriter: " << ex.what() << "\n";

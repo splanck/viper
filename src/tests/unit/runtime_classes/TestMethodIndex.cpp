@@ -234,7 +234,7 @@ TEST(RuntimeMethodIndexBasic, CollectionReturningMethodsPreserveConcreteClass) {
     EXPECT_EQ(toList->ret, BasicType::Object);
     EXPECT_EQ(toList->returnClassQName, std::string("Viper.Collections.List"));
 
-    auto lazyToSeqN = runtimeMethodIndex().find("Viper.LazySeq", "ToSeqN", 1);
+    auto lazyToSeqN = runtimeMethodIndex().find("Viper.Functional.LazySeq", "ToSeqN", 1);
     ASSERT_TRUE(lazyToSeqN.has_value());
     EXPECT_EQ(lazyToSeqN->ret, BasicType::Object);
     EXPECT_EQ(lazyToSeqN->returnClassQName, std::string("Viper.Collections.Seq"));

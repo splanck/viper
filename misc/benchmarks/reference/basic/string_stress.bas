@@ -6,5 +6,5 @@ FOR i = 0 TO 499999
     result = "Hello" + " " + "World" + "!"
     sum = sum + LEN(result)
 NEXT i
-Viper.Environment.EndProgram(sum)
+Viper.System.Environment.EndProgram(sum)
 END

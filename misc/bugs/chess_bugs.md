@@ -73,10 +73,10 @@ This marks the result dirty → eviction emits the spill store → reload is cor
 main.zia:19:29: error[V3000]: Undefined identifier: Int
 ```
 Triggered when trying to use `Int(x)` for integer-to-string conversion without a
-`bind Viper.Fmt;` import.
+`bind Viper.Text.Fmt;` import.
 
 **Root cause:**
-`Viper.Terminal` did not include the `Int(i64) -> str` method. Only `Viper.Fmt` had it
+`Viper.Terminal` did not include the `Int(i64) -> str` method. Only `Viper.Text.Fmt` had it
 (as `FmtInt`). The function already existed in the C runtime as `rt_fmt_int`; it was
 just missing from the `Terminal` class binding.
 
@@ -85,7 +85,7 @@ Added `RT_METHOD("Int", "str(i64)", FmtInt)` to the `Viper.Terminal` class block
 `src/il/runtime/runtime.def`.
 
 **Workaround in chess demo:**
-Added `bind Viper.Fmt;` to `main.zia` and used `Int(x)` via the `Fmt` namespace.
+Added `bind Viper.Text.Fmt;` to `main.zia` and used `Int(x)` via the `Fmt` namespace.
 Both the workaround and the direct `Int()` call now work.
 
 **Files changed:** `src/il/runtime/runtime.def`

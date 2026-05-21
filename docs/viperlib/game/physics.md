@@ -58,7 +58,7 @@ module Grid2DDemo;
 
 bind Viper.Terminal;
 bind Viper.Game.Grid2D as Grid;
-bind Viper.Fmt as Fmt;
+bind Viper.Text.Fmt as Fmt;
 
 func start() {
     var g = Grid.New(10, 8, 0);
@@ -208,7 +208,7 @@ module CollisionDemo;
 bind Viper.Terminal;
 bind Viper.Game.Collision as Coll;
 bind Viper.Game.CollisionRect as CR;
-bind Viper.Fmt as Fmt;
+bind Viper.Text.Fmt as Fmt;
 
 func start() {
     // Static collision checks
@@ -543,7 +543,7 @@ module QuadtreeDemo;
 
 bind Viper.Terminal;
 bind Viper.Game.Quadtree as QT;
-bind Viper.Fmt as Fmt;
+bind Viper.Text.Fmt as Fmt;
 
 func start() {
     var qt = QT.New(0, 0, 1000, 1000);

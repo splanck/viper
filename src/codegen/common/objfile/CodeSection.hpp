@@ -25,6 +25,7 @@
 #include "codegen/common/objfile/Relocation.hpp"
 #include "codegen/common/objfile/SymbolTable.hpp"
 
+#include <algorithm>
 #include <atomic>
 #include <cstddef>
 #include <cstdint>
@@ -91,10 +92,66 @@ struct WinArm64UnwindEntry {
 class CodeSection {
   public:
     CodeSection() : sectionIdentity_(allocateSectionIdentity()) {}
-    CodeSection(const CodeSection &) = default;
-    CodeSection(CodeSection &&) = default;
-    CodeSection &operator=(const CodeSection &) = default;
-    CodeSection &operator=(CodeSection &&) = default;
+    CodeSection(const CodeSection &other)
+        : bytes_(other.bytes_),
+          relocations_(other.relocations_),
+          symbols_(other.symbols_),
+          unwindEntries_(other.unwindEntries_),
+          win64UnwindEntries_(other.win64UnwindEntries_),
+          winArm64UnwindEntries_(other.winArm64UnwindEntries_),
+          offsetBias_(other.offsetBias_),
+          sectionIdentityAliases_(other.sectionIdentityAliases_),
+          sectionIdentity_(allocateSectionIdentity()) {
+        addSectionIdentityAlias(other.sectionIdentity_);
+        retargetSelfIdentity(other.sectionIdentity_, sectionIdentity_);
+    }
+    CodeSection(CodeSection &&other)
+        : bytes_(std::move(other.bytes_)),
+          relocations_(std::move(other.relocations_)),
+          symbols_(std::move(other.symbols_)),
+          unwindEntries_(std::move(other.unwindEntries_)),
+          win64UnwindEntries_(std::move(other.win64UnwindEntries_)),
+          winArm64UnwindEntries_(std::move(other.winArm64UnwindEntries_)),
+          offsetBias_(other.offsetBias_),
+          sectionIdentityAliases_(std::move(other.sectionIdentityAliases_)),
+          sectionIdentity_(other.sectionIdentity_) {
+        other.offsetBias_ = 0;
+        other.sectionIdentityAliases_.clear();
+        other.sectionIdentity_ = allocateSectionIdentity();
+    }
+    CodeSection &operator=(const CodeSection &other) {
+        if (this == &other)
+            return *this;
+        bytes_ = other.bytes_;
+        relocations_ = other.relocations_;
+        symbols_ = other.symbols_;
+        unwindEntries_ = other.unwindEntries_;
+        win64UnwindEntries_ = other.win64UnwindEntries_;
+        winArm64UnwindEntries_ = other.winArm64UnwindEntries_;
+        offsetBias_ = other.offsetBias_;
+        sectionIdentityAliases_ = other.sectionIdentityAliases_;
+        sectionIdentity_ = allocateSectionIdentity();
+        addSectionIdentityAlias(other.sectionIdentity_);
+        retargetSelfIdentity(other.sectionIdentity_, sectionIdentity_);
+        return *this;
+    }
+    CodeSection &operator=(CodeSection &&other) {
+        if (this == &other)
+            return *this;
+        bytes_ = std::move(other.bytes_);
+        relocations_ = std::move(other.relocations_);
+        symbols_ = std::move(other.symbols_);
+        unwindEntries_ = std::move(other.unwindEntries_);
+        win64UnwindEntries_ = std::move(other.win64UnwindEntries_);
+        winArm64UnwindEntries_ = std::move(other.winArm64UnwindEntries_);
+        offsetBias_ = other.offsetBias_;
+        sectionIdentityAliases_ = std::move(other.sectionIdentityAliases_);
+        sectionIdentity_ = other.sectionIdentity_;
+        other.offsetBias_ = 0;
+        other.sectionIdentityAliases_.clear();
+        other.sectionIdentity_ = allocateSectionIdentity();
+        return *this;
+    }
 
     // === Byte emission ===
 
@@ -353,9 +410,17 @@ class CodeSection {
         return offsetBias_;
     }
 
-    /// Stable logical section identity, preserved by copy/move.
+    /// Stable logical section identity for section-offset relocations.
     uint64_t sectionIdentity() const {
         return sectionIdentity_;
+    }
+
+    /// Return true when this section is, or was copied from, the requested identity.
+    bool matchesSectionIdentity(uint64_t identity) const {
+        if (identity == sectionIdentity_)
+            return true;
+        return std::find(sectionIdentityAliases_.begin(), sectionIdentityAliases_.end(), identity) !=
+               sectionIdentityAliases_.end();
     }
 
     /// Return true when [offset, offset + width) is within emitted bytes.
@@ -384,20 +449,14 @@ class CodeSection {
     /// Append another CodeSection, rebasing symbol offsets and relocation sites.
     void appendSection(const CodeSection &other) {
         const size_t offsetBias = currentOffset();
+        addSectionIdentityAlias(other.sectionIdentity());
+        for (uint64_t alias : other.sectionIdentityAliases_)
+            addSectionIdentityAlias(alias);
         reserveAdditionalBytes(other.bytes().size());
         if (other.relocations().size() > std::numeric_limits<size_t>::max() - relocations_.size())
             throw std::length_error("CodeSection relocation reservation exceeds addressable size");
         reserveRelocations(relocations_.size() + other.relocations().size());
         std::vector<uint32_t> symbolRemap(other.symbols().count(), 0);
-        SymbolSection legacyAppendedSection = SymbolSection::Undefined;
-        for (uint32_t i = 1; i < other.symbols().count(); ++i) {
-            const Symbol &sym = other.symbols().at(i);
-            if (sym.binding != SymbolBinding::External && sym.section != SymbolSection::Undefined) {
-                legacyAppendedSection = sym.section;
-                break;
-            }
-        }
-
         auto rebaseLogicalOffset = [&](size_t logicalOffset) -> size_t {
             if (logicalOffset < other.offsetBias_)
                 throw std::out_of_range("CodeSection append source offset is before logical bias");
@@ -441,11 +500,11 @@ class CodeSection {
             const bool targetsAppendedIdentity =
                 rebased.targetSectionIdentityValid &&
                 rebased.targetSectionIdentity == other.sectionIdentity();
-            const bool legacyTargetsAppendedSection =
-                !rebased.targetSectionIdentityValid && rebased.targetOffsetValid &&
-                rebased.targetSection == legacyAppendedSection;
-            if (rebased.targetOffsetValid &&
-                (targetsAppendedIdentity || legacyTargetsAppendedSection)) {
+            if (rebased.targetOffsetValid && !rebased.targetSectionIdentityValid) {
+                throw std::logic_error(
+                    "CodeSection append requires section identity for section-offset relocation");
+            }
+            if (rebased.targetOffsetValid && targetsAppendedIdentity) {
                 rebased.targetOffset = rebaseLogicalOffset(reloc.targetOffset);
                 rebased.targetSectionIdentityValid = true;
                 rebased.targetSectionIdentity = sectionIdentity_;
@@ -519,6 +578,21 @@ class CodeSection {
     }
 
   private:
+    void addSectionIdentityAlias(uint64_t identity) {
+        if (identity == 0 || identity == sectionIdentity_)
+            return;
+        if (std::find(sectionIdentityAliases_.begin(), sectionIdentityAliases_.end(), identity) ==
+            sectionIdentityAliases_.end())
+            sectionIdentityAliases_.push_back(identity);
+    }
+
+    void retargetSelfIdentity(uint64_t oldIdentity, uint64_t newIdentity) {
+        for (auto &rel : relocations_) {
+            if (rel.targetSectionIdentityValid && rel.targetSectionIdentity == oldIdentity)
+                rel.targetSectionIdentity = newIdentity;
+        }
+    }
+
     static uint64_t allocateSectionIdentity() {
         const uint64_t id = nextSectionIdentity_.fetch_add(1, std::memory_order_relaxed);
         if (id == 0)
@@ -533,6 +607,7 @@ class CodeSection {
     std::vector<Win64UnwindEntry> win64UnwindEntries_;
     std::vector<WinArm64UnwindEntry> winArm64UnwindEntries_;
     size_t offsetBias_ = 0;
+    std::vector<uint64_t> sectionIdentityAliases_;
     uint64_t sectionIdentity_ = 0;
     inline static std::atomic<uint64_t> nextSectionIdentity_{1};
 };

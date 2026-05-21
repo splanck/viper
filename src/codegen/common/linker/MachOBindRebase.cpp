@@ -99,12 +99,13 @@ static uint32_t lookupOrdinal(const std::string &symName,
     return (it != symOrdinals.end()) ? it->second : 1;
 }
 
-void buildBindOpcodes(std::vector<uint8_t> &bindData,
+bool buildBindOpcodes(std::vector<uint8_t> &bindData,
                       const std::vector<GotEntry> &gotEntries,
                       const LinkLayout &layout,
                       uint64_t dataSegVmAddr,
                       uint32_t dataSegIndex,
-                      const std::unordered_map<std::string, uint32_t> &symOrdinals) {
+                      const std::unordered_map<std::string, uint32_t> &symOrdinals,
+                      std::ostream &err) {
     // Bind GOT entries for dynamic symbols.
     for (const auto &ge : gotEntries) {
         uint64_t offset = ge.gotAddr - dataSegVmAddr;
@@ -115,14 +116,30 @@ void buildBindOpcodes(std::vector<uint8_t> &bindData,
     // Bind TLV descriptor thunk fields → _tlv_bootstrap.
     // dyld uses these bind events to discover TLV descriptors and initialize
     // per-image TLS metadata. Without this, _tlv_bootstrap (a fail-stub) aborts.
+    //
+    // Identify descriptor sections through the explicit `tlvDescriptors` flag
+    // set by SectionMerger when it merges `__thread_vars` input sections.
+    // Matching by name alone would be brittle: ELF `.tdata` holds TLS template
+    // bytes, not TLV descriptors, and the section merger reuses the name on
+    // Mach-O for descriptors while routing ELF/PE TLS template data through
+    // `.tdata_template` / `.tdata`. The flag pins the meaning to the role.
     for (const auto &sec : layout.sections) {
-        if (!sec.tls || sec.name != ".tdata")
+        if (!sec.tlvDescriptors)
             continue;
 
         // Each TLV descriptor is 24 bytes: {thunk(8), key(8), offset(8)}.
-        // The thunk at byte 0 of each descriptor must be bound to _tlv_bootstrap.
-        // _tlv_bootstrap is in libSystem (ordinal 1).
-        size_t numDescriptors = sec.data.size() / 24;
+        // A non-multiple-of-24 size means an upstream pass concatenated
+        // non-descriptor bytes into the descriptor section. Silently
+        // dropping the trailing partial descriptor leaves its thunk field
+        // pointing at uninitialized memory; dyld then aborts on first
+        // access. Fail loudly instead.
+        if (sec.data.size() % 24 != 0) {
+            err << "error: Mach-O TLV descriptor section '" << sec.name << "' has size "
+                << sec.data.size() << " bytes, which is not a multiple of 24\n";
+            return false;
+        }
+
+        const size_t numDescriptors = sec.data.size() / 24;
         for (size_t i = 0; i < numDescriptors; ++i) {
             uint64_t descVA = sec.virtualAddr + i * 24;
             uint64_t segOff = descVA - dataSegVmAddr;
@@ -144,6 +161,7 @@ void buildBindOpcodes(std::vector<uint8_t> &bindData,
     }
 
     bindData.push_back(BIND_OPCODE_DONE);
+    return true;
 }
 
 void buildRebaseOpcodes(std::vector<uint8_t> &rebaseData,

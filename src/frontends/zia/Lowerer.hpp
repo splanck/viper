@@ -479,6 +479,19 @@ class Lowerer {
     /// @param decl The function declaration.
     void lowerFunctionDecl(FunctionDecl &decl);
 
+    /// @brief Lower an `async func` declaration: emits an async worker
+    ///        trampoline (`name__async_worker`) plus a public wrapper that
+    ///        packages arguments into a heap env and starts the task.
+    /// @details Pre-computed signature info is passed in from lowerFunctionDecl
+    ///          to avoid re-resolving the function type.
+    void lowerAsyncFunctionDecl(FunctionDecl &decl,
+                                const std::string &mangledName,
+                                const std::vector<il::core::Param> &params,
+                                TypeRef returnType,
+                                il::core::Type ilReturnType,
+                                TypeRef declaredReturnType,
+                                const std::vector<TypeRef> &cachedParamTypes);
+
     /// @brief Get or create StructTypeInfo for a type.
     /// @param typeName The type name (may be mangled for generics).
     /// @return Pointer to StructTypeInfo, or nullptr if not found.
@@ -578,6 +591,20 @@ class Lowerer {
     ///      with function pointers, and binds it via rt_bind_interface
     void emitItableInit();
 
+    /// @brief Resolve the lowered name of an interface's default method body
+    ///        (returns "" when the interface method is abstract).
+    std::string defaultInterfaceMethodName(const InterfaceTypeInfo &ifaceInfo,
+                                           MethodDecl *ifaceMethod);
+
+    /// @brief Emit a small adapter function that translates an interface
+    ///        wrapper `self` pointer back to the inline struct payload and
+    ///        forwards to the struct's implementing method.
+    /// @return The adapter's lowered function name (cached/idempotent).
+    std::string emitStructInterfaceAdapter(const StructTypeInfo &structInfo,
+                                           const InterfaceTypeInfo &ifaceInfo,
+                                           MethodDecl *ifaceMethod,
+                                           MethodDecl *implMethod);
+
     /// @brief Emit the destructor dispatcher used by managed release paths.
     /// @details Generates `__zia_dtor_dispatch(self: Ptr) -> Void`, which
     ///          switches on `rt_obj_class_id(self)` and invokes the matching
@@ -656,9 +683,36 @@ class Lowerer {
     /// @param stmt The for statement.
     void lowerForStmt(ForStmt *stmt);
 
+    struct RangeModifierInfo;  // defined below
+
     /// @brief Lower a for-in statement.
     /// @param stmt The for-in statement.
     void lowerForInStmt(ForInStmt *stmt);
+
+    /// @brief Lower a for-in over an integer range (with optional step / reversed).
+    void lowerForInRange(ForInStmt *stmt, RangeExpr *rangeExpr,
+                         const RangeModifierInfo &rangeInfo);
+
+    /// @brief Lower a single-iteration tuple-destructuring for-in
+    ///        (`for (a, b) in twoElementTuple`).
+    void lowerForInTuple(ForInStmt *stmt, TypeRef iterableType);
+
+    /// @brief Lower a for-in over a List collection (with optional index binding).
+    void lowerForInList(ForInStmt *stmt, TypeRef iterableType);
+
+    /// @brief Lower a for-in over a Map collection (iterates `Map.Keys()`).
+    void lowerForInMap(ForInStmt *stmt, TypeRef iterableType);
+
+    /// @brief Lower a for-in over any sequence (typed runtime `Seq<T>` or a
+    ///        collection converted via `*.toSeq()`).
+    /// @param seqValue        The already-lowered sequence pointer.
+    /// @param elemType        Surface element type.
+    /// @param rawStringElements True when the sequence stores raw rt_string
+    ///        (e.g., from `Map.Keys()`) so kSeqGetStr is used instead of
+    ///        kSeqGet + unbox.
+    /// @param labelPrefix     Block-name prefix used for diagnostics.
+    void lowerForInSeq(LowerResult seqValue, ForInStmt *stmt, TypeRef elemType,
+                       bool rawStringElements, const std::string &labelPrefix);
 
     /// @brief Lower a return statement.
     /// @param stmt The return statement.
@@ -756,6 +810,21 @@ class Lowerer {
     ///          with type coercion and optional conversions.
     LowerResult lowerAssignment(BinaryExpr *expr);
 
+    /// @brief Lower an `ident = value` assignment — handles local slots,
+    ///        method-implicit fields (on `currentStructType_`/`currentClassType_`),
+    ///        and module-scoped globals.
+    LowerResult lowerIdentAssignment(BinaryExpr *expr, IdentExpr *ident,
+                                     LowerResult right, TypeRef rightType);
+
+    /// @brief Lower `base[index] = value` for List, Map, and FixedArray targets.
+    LowerResult lowerIndexAssignment(BinaryExpr *expr, IndexExpr *indexExpr,
+                                     LowerResult right, TypeRef rightType);
+
+    /// @brief Lower `base.field = value` for module-static, class, struct,
+    ///        and runtime-class property setters.
+    LowerResult lowerFieldAssignment(BinaryExpr *expr, FieldExpr *fieldExpr,
+                                     LowerResult right, TypeRef rightType);
+
     /// @brief Lower a binary expression.
     /// @return LowerResult with the operation result.
     LowerResult lowerBinary(BinaryExpr *expr);
@@ -795,6 +864,19 @@ class Lowerer {
     /// @return LowerResult with the call result.
     LowerResult lowerCall(CallExpr *expr);
 
+    /// @brief Emit a runtime call with type-aware return-value handling
+    ///        (specialised callee selection + unbox when the runtime returns
+    ///        a Ptr that needs to be a value type at the surface).
+    LowerResult emitRuntimeCallResult(const std::string &calleeName,
+                                      TypeRef surfaceType,
+                                      Type ilSurfaceType,
+                                      const std::vector<Value> &callArgs);
+
+    /// @brief Emit an explicit Memory.Release / heap-release call (matches
+    ///        the runtime API for the argument's actual type: String,
+    ///        user-defined class, or generic Ptr).
+    LowerResult emitExplicitMemoryRelease(Value argValue, TypeRef argType);
+
     /// @brief Lower a generic function call.
     /// @param mangledName The instantiated function name (e.g., "identity$Integer").
     /// @param expr The call expression.
@@ -813,6 +895,17 @@ class Lowerer {
     /// @brief Lower a new expression (object creation).
     /// @return LowerResult with pointer to new object.
     LowerResult lowerNew(NewExpr *expr);
+
+    /// @brief Lower `new T(...)` for a runtime (catalog) class — resolves the
+    ///        constructor from RuntimeRegistry and marshals arguments.
+    LowerResult lowerNewRuntimeClass(NewExpr *expr, TypeRef type);
+
+    /// @brief Lower `new T(...)` for a user struct (stack-allocated value type).
+    /// @return std::nullopt if @p type is not a known struct (fall through to class).
+    std::optional<LowerResult> lowerNewStruct(NewExpr *expr, TypeRef type);
+
+    /// @brief Lower `new T(...)` for a user class (heap object + vtable + ctor).
+    LowerResult lowerNewClass(NewExpr *expr, TypeRef type);
 
     /// @brief Lower a struct-literal expression (`TypeName { field = val, ... }`).
     /// @return LowerResult with pointer to the initialized struct type on stack.

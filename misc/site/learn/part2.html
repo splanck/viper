@@ -133,8 +133,8 @@
         <li><a href="#viper-math-mathematics">Viper.Math: Mathematics</a></li>
         <li><a href="#viper-math-random-randomness">Viper.Math.Random: Randomness</a></li>
         <li><a href="#viper-time-date-and-time">Viper.Time: Date and Time</a></li>
-        <li><a href="#viper-environment-system-information">Viper.Environment: System Information</a></li>
-        <li><a href="#viper-fmt-string-formatting">Viper.Fmt: String Formatting</a></li>
+        <li><a href="#viper-environment-system-information">Viper.System.Environment: System Information</a></li>
+        <li><a href="#viper-fmt-string-formatting">Viper.Text.Fmt: String Formatting</a></li>
         <li><a href="#viper-string-string-utilities">Viper.String: String Utilities</a></li>
         <li><a href="#viper-collections-data-structures">Viper.Collections: Data Structures</a></li>
         <li><a href="#viper-core-convert-parsing-values">Viper.Core.Convert: Parsing Values</a></li>
@@ -1158,7 +1158,7 @@ var result = builder.ToString();
 <pre><code data-lang="rust">
 bind Viper.Text.StringBuilder as SB;
 bind Viper.Time;
-bind Viper.Fmt as Fmt;
+bind Viper.Text.Fmt as Fmt;
 
 func generateReport(data: List[Record]) -&gt; String {
     var sb = new SB();
@@ -1216,7 +1216,7 @@ var pi = Convert.ToDouble(&quot;3.14&quot;);   // 3.14 (float)
 </code></pre>
 <p><strong>Number to string:</strong></p>
 <pre><code data-lang="rust">
-bind Viper.Fmt as Fmt;
+bind Viper.Text.Fmt as Fmt;
 
 var num = 42;
 var text = Fmt.Int(num);  // &quot;42&quot;
@@ -1347,10 +1347,10 @@ var message = &quot;Player &quot; + name + &quot; scored &quot; + Convert.ToStri
 </code></pre>
 <p>When mixing strings and numbers, the <code>+</code> operator automatically converts numbers. For explicit control, use <code>Convert.ToString()</code>.</p>
 <h3 id="padding-and-alignment">Padding and Alignment</h3>
-<p>For formatted number output, use <code>Viper.Fmt</code>:</p>
+<p>For formatted number output, use <code>Viper.Text.Fmt</code>:</p>
 <pre><code data-lang="rust">
 bind Viper.Terminal;
-bind Viper.Fmt;
+bind Viper.Text.Fmt;
 
 // Pad with zeros
 Say(Fmt.IntPad(42, 5, &quot;0&quot;));     // &quot;00042&quot;
@@ -1871,7 +1871,7 @@ if input.Trim() == &quot;yes&quot; {  // Works
 <li><code>split</code> breaks into arrays; <code>join</code> combines arrays</li>
 <li>String comparison is case-sensitive and uses character codes</li>
 <li><code>Viper.Core.Convert.ToInt64/ToDouble</code> convert strings to numbers</li>
-<li><code>Viper.Fmt.Int/IntPad</code> format numbers as strings</li>
+<li><code>Viper.Text.Fmt.Int/IntPad</code> format numbers as strings</li>
 <li>Always check for empty strings and off-by-one errors</li>
 <li>Use <code>trim()</code> on user input before processing</li>
 </ul>
@@ -2076,7 +2076,7 @@ var path = join(directory, filename);
 <p><strong>Case sensitivity matters!</strong> On Linux, <code>Report.txt</code> and <code>report.txt</code> are different files. On Windows, they&#x27;re the same. If you develop on Windows and deploy on Linux (common for web servers), this can cause surprising bugs.</p>
 <p>To get standard locations portably:</p>
 <pre><code data-lang="rust">
-bind Viper.Environment;
+bind Viper.System.Environment;
 
 var home = homeDir();           // User&#x27;s home directory
 var temp = tempDir();           // Temporary file directory
@@ -3323,7 +3323,7 @@ File.Append(&quot;log.txt&quot;, &quot;Entry 2\n&quot;);  // Both entries preser
 </code></pre>
 <p><strong>Hardcoding paths:</strong></p>
 <pre><code data-lang="rust">
-bind Viper.Environment;
+bind Viper.System.Environment;
 bind Viper.IO.Path;
 
 // Bad: only works on your machine
@@ -6510,7 +6510,7 @@ my_tool/
 bind Viper.Terminal;   // Terminal I/O (Say, Print, ReadLine, etc.)
 bind Viper.IO;         // File operations
 bind Viper.Math;       // Mathematical functions
-bind Viper.Fmt;        // Formatting
+bind Viper.Text.Fmt;        // Formatting
 bind Viper.Time;       // Date and time
 bind Viper.Random;     // Random numbers
 bind Viper.Graphics;   // 2D graphics (Canvas, Sprite, etc.)
@@ -6531,7 +6531,7 @@ func start() {
 bind Viper.Terminal as T;              // Alias: T.Say(&quot;Hello&quot;)
 bind Viper.Math { Sqrt, Sin, Cos };    // Selective: Sqrt(x) works, Tan(x) doesn&#x27;t
 </code></pre>
-<p>Understanding that these are namespaces helps you know where to look for functionality. Need to work with time? Check <code>Viper.Time</code>. Need to format numbers? Check <code>Viper.Fmt</code>.</p>
+<p>Understanding that these are namespaces helps you know where to look for functionality. Need to work with time? Check <code>Viper.Time</code>. Need to format numbers? Check <code>Viper.Text.Fmt</code>.</p>
 <p>---</p>
 <h2 id="module-dependencies">Module Dependencies</h2>
 <p>Modules can bind other modules, creating a dependency graph:</p>
@@ -7288,12 +7288,12 @@ export func divide(a: Integer, b: Integer) -&gt; Integer { return a / b; }
 <td>Security, verification</td>
 </tr>
 <tr>
-<td>`Viper.Environment`</td>
+<td>`Viper.System.Environment`</td>
 <td>System information</td>
 <td>Config, command-line args</td>
 </tr>
 <tr>
-<td>`Viper.Fmt`</td>
+<td>`Viper.Text.Fmt`</td>
 <td>String formatting</td>
 <td>Creating output messages</td>
 </tr>
@@ -7587,7 +7587,7 @@ func generatePassword(length: Integer) -&gt; String {
 <pre><code data-lang="rust">
 bind Viper.Time;
 bind Viper.Terminal;
-bind Viper.Fmt as Fmt;
+bind Viper.Text.Fmt as Fmt;
 
 var dt = Time.DateTime.Now();
 
@@ -7602,7 +7602,7 @@ Say(&quot;Second: &quot; + Fmt.Int(Time.DateTime.Second(dt)));
 <p>Dates need to be displayed in different formats depending on context:</p>
 <pre><code data-lang="rust">
 bind Viper.Time;
-bind Viper.Fmt as Fmt;
+bind Viper.Text.Fmt as Fmt;
 bind Viper.Terminal;
 
 var dt = Time.DateTime.Now();
@@ -7627,7 +7627,7 @@ Say(Fmt.IntPad(y, 4, &quot;0&quot;) + &quot;-&quot; + Fmt.IntPad(mo, 2, &quot;0&
 <pre><code data-lang="rust">
 bind Viper.Time;
 bind Viper.Terminal;
-bind Viper.Fmt as Fmt;
+bind Viper.Text.Fmt as Fmt;
 
 var start = Time.Clock.Ticks();
 
@@ -7650,7 +7650,7 @@ Say(&quot;Done!&quot;);
 <pre><code data-lang="rust">
 bind Viper.Terminal;
 bind Viper.Time;
-bind Viper.Fmt as Fmt;
+bind Viper.Text.Fmt as Fmt;
 
 func stopwatch() {
     Say(&quot;Press Enter to start...&quot;);
@@ -7676,8 +7676,8 @@ func stopwatch() {
 </ul>
 <p>The standard library has been battle-tested against these edge cases. Trust it.</p>
 <p>---</p>
-<h2 id="viper-environment-system-information">Viper.Environment: System Information</h2>
-<p>Your program doesn&#x27;t run in isolation. It runs on a specific computer, in a specific directory, perhaps launched with command-line arguments. <code>Viper.Environment</code> gives you access to this context.</p>
+<h2 id="viper-environment-system-information">Viper.System.Environment: System Information</h2>
+<p>Your program doesn&#x27;t run in isolation. It runs on a specific computer, in a specific directory, perhaps launched with command-line arguments. <code>Viper.System.Environment</code> gives you access to this context.</p>
 <h3 id="command-line-arguments">Command-Line Arguments</h3>
 <p>When someone runs your program from the terminal with arguments:</p>
 <pre><code data-lang="bash">
@@ -7685,7 +7685,7 @@ $ zia myprogram.zia input.txt --verbose
 </code></pre>
 <p>You can access those arguments:</p>
 <pre><code data-lang="rust">
-bind Viper.Environment;
+bind Viper.System.Environment;
 bind Viper.Terminal;
 
 var count = GetArgumentCount();
@@ -7700,7 +7700,7 @@ for i in 0..count {
 <h3 id="environment-variables">Environment Variables</h3>
 <p>Operating systems have configuration through environment variables:</p>
 <pre><code data-lang="rust">
-bind Env = Viper.Environment;
+bind Env = Viper.System.Environment;
 
 var home = Env.GetVariable(&quot;HOME&quot;);       // /Users/alice
 var path = Env.GetVariable(&quot;PATH&quot;);       // System PATH
@@ -7714,15 +7714,15 @@ if Env.HasVariable(&quot;DEBUG&quot;) {
 </code></pre>
 <h3 id="system-information">System Information</h3>
 <pre><code data-lang="rust">
-bind Env = Viper.Environment;
-bind Viper.Machine;
+bind Env = Viper.System.Environment;
+bind Viper.System.Machine;
 
 var osName = GetOS();         // &quot;windows&quot;, &quot;macos&quot;, or &quot;linux&quot;
 var home = Env.GetVariable(&quot;HOME&quot;);  // User&#x27;s home directory
 </code></pre>
 <h3 id="practical-example-cross-platform-configuration">Practical Example: Cross-Platform Configuration</h3>
 <pre><code data-lang="rust">
-bind Env = Viper.Environment;
+bind Env = Viper.System.Environment;
 bind Viper.IO.Path;
 
 func getConfigPath() -&gt; String {
@@ -7739,11 +7739,11 @@ func getConfigPath() -&gt; String {
 }
 </code></pre>
 <p>---</p>
-<h2 id="viper-fmt-string-formatting">Viper.Fmt: String Formatting</h2>
-<p>Concatenating strings with <code>+</code> gets messy when mixing numbers and text. <code>Viper.Fmt</code> makes formatting cleaner.</p>
+<h2 id="viper-fmt-string-formatting">Viper.Text.Fmt: String Formatting</h2>
+<p>Concatenating strings with <code>+</code> gets messy when mixing numbers and text. <code>Viper.Text.Fmt</code> makes formatting cleaner.</p>
 <h3 id="basic-formatting">Basic Formatting</h3>
 <pre><code data-lang="rust">
-bind Viper.Fmt as Fmt;
+bind Viper.Text.Fmt as Fmt;
 bind Viper.Terminal;
 
 var name = &quot;Alice&quot;;
@@ -7759,7 +7759,7 @@ Say(Fmt.NumFixed(3.14159, 4));   // &quot;3.1416&quot;
 </code></pre>
 <h3 id="number-formatting">Number Formatting</h3>
 <pre><code data-lang="rust">
-bind Viper.Fmt as Fmt;
+bind Viper.Text.Fmt as Fmt;
 
 // Decimal places
 Fmt.NumFixed(3.14159, 2);    // &quot;3.14&quot;
@@ -7777,7 +7777,7 @@ Fmt.Oct(8);                  // &quot;10&quot;
 <h3 id="practical-example-formatted-table">Practical Example: Formatted Table</h3>
 <pre><code data-lang="rust">
 bind Viper.Terminal;
-bind Viper.Fmt as Fmt;
+bind Viper.Text.Fmt as Fmt;
 
 func printScoreboard(players: List[Player]) {
     Say(&quot;Name            Score&quot;);
@@ -7851,7 +7851,7 @@ func isValidUsername(username: String) -&gt; Boolean {
 <pre><code data-lang="rust">
 bind Viper.Collections;
 bind Viper.Terminal;
-bind Viper.Fmt as Fmt;
+bind Viper.Text.Fmt as Fmt;
 
 var list = new List[String]();
 
@@ -7872,7 +7872,7 @@ list.Clear();                 // Remove all elements
 <pre><code data-lang="rust">
 bind Viper.Collections;
 bind Viper.Terminal;
-bind Viper.Fmt as Fmt;
+bind Viper.Text.Fmt as Fmt;
 
 var scores = new Map[String, Integer]();
 
@@ -7906,7 +7906,7 @@ scores.Remove(&quot;Bob&quot;);
 <pre><code data-lang="rust">
 bind Viper.Collections;
 bind Viper.Terminal;
-bind Viper.Fmt as Fmt;
+bind Viper.Text.Fmt as Fmt;
 
 var tags = new Bag();
 
@@ -7925,7 +7925,7 @@ tags.Remove(&quot;urgent&quot;);
 bind Viper.Collections;
 bind Convert = Viper.Core.Convert;
 bind Viper.Terminal;
-bind Viper.Fmt as Fmt;
+bind Viper.Text.Fmt as Fmt;
 
 func countWords(text: String) -&gt; Map {
     var frequency = new Map[String, Integer]();
@@ -8172,10 +8172,10 @@ if checkPassword(inputPassword, storedSalt, storedHash) {
 module StdlibDemo;
 
 bind Viper.Terminal;
-bind Env = Viper.Environment;
+bind Env = Viper.System.Environment;
 bind Viper.Time;
 bind Viper.Math as Math;
-bind Viper.Fmt as Fmt;
+bind Viper.Text.Fmt as Fmt;
 bind Viper.Math.Random as Random;
 bind Viper.Collections;
 bind Viper.Crypto.Hash as Hash;
@@ -8347,7 +8347,7 @@ module Test;
 
 bind Viper.Math as Math;
 bind Viper.Terminal;
-bind Viper.Fmt as Fmt;
+bind Viper.Text.Fmt as Fmt;
 
 func start() {
     // Experiment here
@@ -8390,7 +8390,7 @@ func getInt(prompt: String) -&gt; Integer {
 </code></pre>
 <h3 id="pattern-read-config-with-default">Pattern: Read Config with Default</h3>
 <pre><code data-lang="rust">
-bind Env = Viper.Environment;
+bind Env = Viper.System.Environment;
 
 func getConfig(key: String, defaultValue: String) -&gt; String {
     if Env.HasVariable(key) {
@@ -8424,7 +8424,7 @@ func readFileSafe(path: String) -&gt; String {
 <pre><code data-lang="rust">
 bind Viper.Time;
 bind Viper.Terminal;
-bind Viper.Fmt as Fmt;
+bind Viper.Text.Fmt as Fmt;
 
 func timed(name: String, operation: func()) {
     var start = Time.Clock.Ticks();
@@ -8441,9 +8441,9 @@ timed(&quot;Sort&quot;, func() {
 <h3 id="pattern-build-a-path">Pattern: Build a Path</h3>
 <pre><code data-lang="rust">
 bind Viper.IO.Path;
-bind Env = Viper.Environment;
+bind Env = Viper.System.Environment;
 bind Viper.Time;
-bind Viper.Fmt as Fmt;
+bind Viper.Text.Fmt as Fmt;
 
 var dt = Time.DateTime.Now();
 var dateStr = Fmt.IntPad(Time.DateTime.Year(dt), 4, &quot;0&quot;) + &quot;-&quot; +

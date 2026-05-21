@@ -17,7 +17,7 @@
 module series_demo;
 
 bind Viper.Terminal as Terminal;
-bind Viper.Fmt as Fmt;
+bind Viper.Text.Fmt as Fmt;
 bind "./src/model/constants";
 bind "./src/model/player";
 bind "./src/model/team";

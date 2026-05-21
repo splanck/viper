@@ -23,11 +23,13 @@
 #include "codegen/common/linker/ExeWriterUtil.hpp"
 #include "codegen/common/linker/LinkTypes.hpp"
 #include "codegen/common/linker/ObjFileReader.hpp"
+#include "codegen/common/linker/RelocApplier.hpp"
 #include "codegen/common/linker/SectionMerger.hpp"
 
 #include <cstdlib>
 #include <iostream>
 #include <sstream>
+#include <unordered_set>
 
 using namespace viper::codegen::linker;
 
@@ -345,6 +347,41 @@ int main() {
                 CHECK(sec.virtualAddr == 0);
             }
         }
+    }
+
+    // --- Test 10: non-alloc runtime PC-relative relocations are rejected ---
+    {
+        ObjSection text = makeAllocSection(".text", 4, true, false);
+        ObjSection debug = makeDebugSection(".debug_line", 4);
+        ObjReloc rel;
+        rel.offset = 0;
+        rel.type = 2; // R_X86_64_PC32
+        rel.symIndex = 1;
+        debug.relocs.push_back(rel);
+
+        ObjFile obj = makeObj("debug_reloc.o", {text, debug});
+        ObjSymbol sym;
+        sym.name = "target";
+        sym.binding = ObjSymbol::Global;
+        sym.sectionIndex = 1;
+        obj.symbols.push_back({});
+        obj.symbols.push_back(sym);
+
+        std::vector<ObjFile> objects = {obj};
+        LinkLayout layout;
+        std::ostringstream err;
+        CHECK(mergeSections(objects, LinkPlatform::Linux, LinkArch::X86_64, layout, err));
+        GlobalSymEntry entry;
+        entry.name = "target";
+        entry.binding = GlobalSymEntry::Global;
+        entry.objIndex = 0;
+        entry.secIndex = 1;
+        layout.globalSyms["target"] = entry;
+
+        std::unordered_set<std::string> dynSyms;
+        CHECK(!applyRelocations(
+            objects, layout, dynSyms, LinkPlatform::Linux, LinkArch::X86_64, err));
+        CHECK(err.str().find("non-alloc section") != std::string::npos);
     }
 
     if (gFail == 0)

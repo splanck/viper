@@ -3392,7 +3392,7 @@ canvas.Blit(sprite, frog.x - 20, frog.y);
 <p>Save the highest score to a file so players can compete with themselves:</p>
 <pre><code data-lang="rust">
 bind Convert = Viper.Core.Convert;
-bind Viper.Fmt as Fmt;
+bind Viper.Text.Fmt as Fmt;
 
 func loadHighScore() -&gt; Integer {
     var file = File.open(&quot;highscore.txt&quot;, &quot;r&quot;);
@@ -4963,7 +4963,7 @@ var response = Http.Get(&quot;https://api.example.com/data?key=sk_live_abc123xyz
 // If someone sees your code, they have your key
 
 // GOOD: Load from environment or config
-var apiKey = Viper.Environment.Get(&quot;API_KEY&quot;);
+var apiKey = Viper.System.Environment.Get(&quot;API_KEY&quot;);
 var response = Http.Get(&quot;https://api.example.com/data?key=&quot; + apiKey);
 </code></pre>
 <p>---</p>

@@ -114,6 +114,48 @@ static void test_source_follows_bound_node_in_world_space() {
     EXPECT_NEAR(rt_vec3_z(vel), 2.0, 0.05, "AudioSource3D computes bound-node Z velocity");
 }
 
+static void test_invalid_audio_handles_are_ignored() {
+    void *camera = rt_camera3d_new(60.0, 1.0, 0.1, 100.0);
+    void *node = rt_scene_node3d_new();
+    void *listener = rt_audiolistener3d_new();
+    void *source = rt_audiosource3d_new(NULL);
+    void *pos;
+
+    rt_audiosource3d_set_position(source, rt_vec3_new(2.0, 3.0, 4.0));
+    rt_audiosource3d_set_position(source, listener);
+    pos = rt_audiosource3d_get_position(source);
+    EXPECT_NEAR(rt_vec3_x(pos), 2.0, 0.001, "AudioSource3D ignores non-Vec3 position handles");
+    EXPECT_NEAR(rt_vec3_y(pos), 3.0, 0.001, "AudioSource3D keeps Y after bad position handle");
+
+    rt_scene_node3d_set_position(node, 5.0, 0.0, 0.0);
+    rt_audiosource3d_bind_node(source, node);
+    rt_audio3d_sync_bindings(0.25);
+    rt_audiosource3d_bind_node(source, listener);
+    rt_scene_node3d_set_position(node, 7.0, 0.0, 0.0);
+    rt_audio3d_sync_bindings(0.25);
+    pos = rt_audiosource3d_get_position(source);
+    EXPECT_NEAR(rt_vec3_x(pos), 7.0, 0.001, "AudioSource3D rejects bad node bind without clearing old bind");
+
+    rt_camera3d_look_at(
+        camera, rt_vec3_new(1.0, 0.0, 4.0), rt_vec3_new(1.0, 0.0, 3.0), rt_vec3_new(0.0, 1.0, 0.0));
+    rt_audiolistener3d_bind_camera(listener, camera);
+    rt_audio3d_sync_bindings(0.25);
+    rt_audiolistener3d_bind_camera(listener, source);
+    rt_camera3d_look_at(
+        camera, rt_vec3_new(3.0, 0.0, 4.0), rt_vec3_new(3.0, 0.0, 3.0), rt_vec3_new(0.0, 1.0, 0.0));
+    rt_audio3d_sync_bindings(0.25);
+    pos = rt_audiolistener3d_get_position(listener);
+    EXPECT_NEAR(rt_vec3_x(pos), 3.0, 0.001,
+                "AudioListener3D rejects bad camera bind without clearing old bind");
+
+    rt_audiolistener3d_set_position(source, rt_vec3_new(9.0, 0.0, 0.0));
+    EXPECT_TRUE(rt_audiolistener3d_get_is_active(source) == 0,
+                "AudioListener3D accessors reject source handles");
+    rt_audiosource3d_set_max_distance(source, INFINITY);
+    EXPECT_NEAR(rt_audiosource3d_get_max_distance(source), 0.0, 0.001,
+                "AudioSource3D rejects infinite max distance");
+}
+
 static void test_source_play_stop_when_audio_is_available() {
     if (!rt_audio_is_available()) {
         EXPECT_TRUE(true, "AudioSource3D playback skipped when audio backend is unavailable");
@@ -153,6 +195,7 @@ static void test_source_play_stop_when_audio_is_available() {
 int main() {
     test_listener_follows_bound_camera();
     test_source_follows_bound_node_in_world_space();
+    test_invalid_audio_handles_are_ignored();
     test_source_play_stop_when_audio_is_available();
 
     std::printf("Audio3D object tests: %d/%d passed\n", tests_passed, tests_run);

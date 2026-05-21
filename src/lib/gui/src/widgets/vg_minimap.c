@@ -43,6 +43,7 @@ static int minimap_document_line_count(const vg_minimap_t *minimap);
 static int minimap_line_from_local_y(vg_minimap_t *minimap, float local_y);
 static void minimap_scroll_editor_to_line(vg_minimap_t *minimap, int line);
 static int minimap_trimmed_line_bounds(const char *text, int *out_first, int *out_last);
+static vg_codeeditor_t *minimap_live_editor(vg_minimap_t *minimap);
 
 //=============================================================================
 // Minimap VTable
@@ -131,16 +132,28 @@ static void render_minimap_buffer(vg_minimap_t *minimap) {
     minimap->buffer_dirty = false;
 }
 
+static vg_codeeditor_t *minimap_live_editor(vg_minimap_t *minimap) {
+    if (!minimap || !minimap->editor)
+        return NULL;
+    vg_widget_t *widget = (vg_widget_t *)minimap->editor;
+    if (!vg_widget_is_live(widget) || widget->type != VG_WIDGET_CODEEDITOR) {
+        minimap->editor = NULL;
+        return NULL;
+    }
+    return minimap->editor;
+}
+
 /// @brief Returns the line count of the linked editor, or 1 if no editor is attached or the editor is empty.
 static int minimap_document_line_count(const vg_minimap_t *minimap) {
-    if (!minimap || !minimap->editor || minimap->editor->line_count <= 0)
+    vg_codeeditor_t *editor = minimap_live_editor((vg_minimap_t *)minimap);
+    if (!editor || editor->line_count <= 0)
         return 1;
-    return minimap->editor->line_count;
+    return editor->line_count;
 }
 
 /// @brief Converts widget-local @p local_y to a document line index proportional to the inner drawing area height.
 static int minimap_line_from_local_y(vg_minimap_t *minimap, float local_y) {
-    if (!minimap || !minimap->editor)
+    if (!minimap_live_editor(minimap))
         return 0;
 
     float inner_top = 6.0f;
@@ -165,10 +178,10 @@ static int minimap_line_from_local_y(vg_minimap_t *minimap, float local_y) {
 
 /// @brief Scrolls the linked editor so that @p line is centred in the visible area.
 static void minimap_scroll_editor_to_line(vg_minimap_t *minimap, int line) {
-    if (!minimap || !minimap->editor)
+    vg_codeeditor_t *editor = minimap_live_editor(minimap);
+    if (!editor)
         return;
 
-    vg_codeeditor_t *editor = minimap->editor;
     int line_count = editor->line_count > 0 ? editor->line_count : 1;
     int visible_lines = editor->visible_line_count > 0 ? editor->visible_line_count : 1;
     int target = line - visible_lines / 2;
@@ -216,7 +229,8 @@ static int minimap_trimmed_line_bounds(const char *text, int *out_first, int *ou
 /// @brief VTable paint: draws background, then proportional text bars for each document line, marker overlays, and the viewport highlight rectangle.
 static void minimap_paint(vg_widget_t *widget, void *canvas) {
     vg_minimap_t *minimap = (vg_minimap_t *)widget;
-    if (!minimap->editor)
+    vg_codeeditor_t *editor = minimap_live_editor(minimap);
+    if (!editor)
         return;
 
     if (minimap->buffer_dirty)
@@ -242,7 +256,6 @@ static void minimap_paint(vg_widget_t *widget, void *canvas) {
 
     vgfx_fill_rect(win, inner_x, inner_y, inner_w, inner_h, 0xFF0B1220);
 
-    vg_codeeditor_t *editor = minimap->editor;
     int line_count = minimap_document_line_count(minimap);
     float scale = minimap->scale;
     if (scale < 0.05f)
@@ -316,7 +329,7 @@ static void minimap_paint(vg_widget_t *widget, void *canvas) {
 /// @brief VTable handle_event: handles mouse-down to start a drag-scroll and mouse-move while dragging, translating Y to a document line.
 static bool minimap_handle_event(vg_widget_t *widget, vg_event_t *event) {
     vg_minimap_t *minimap = (vg_minimap_t *)widget;
-    if (!minimap->editor)
+    if (!minimap_live_editor(minimap))
         return false;
 
     switch (event->type) {

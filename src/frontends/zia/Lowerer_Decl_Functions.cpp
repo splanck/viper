@@ -209,6 +209,123 @@ void Lowerer::lowerFunctionDecl(FunctionDecl &decl) {
         decl.returnType ? sema_.resolveType(decl.returnType.get()) : types::voidType();
 
     if (decl.isAsync) {
+        lowerAsyncFunctionDecl(decl, mangledName, params, returnType, ilReturnType,
+                               declaredReturnType, cachedParamTypes);
+        return;
+    }
+
+    // Track this function as defined in this module
+    definedFunctions_.insert(mangledName);
+
+    // Create function
+    currentFunc_ = &builder_->startFunction(mangledName, ilReturnType, params);
+    currentReturnType_ = returnType;
+
+    // Set IL linkage from AST visibility/foreign flag.
+    if (decl.isForeign)
+        currentFunc_->linkage = il::core::Linkage::Import;
+    else if (decl.visibility == Visibility::Public)
+        currentFunc_->linkage = il::core::Linkage::Export;
+
+    // Foreign (import) functions have no body -- just a declaration.
+    if (decl.isForeign) {
+        currentFunc_ = nullptr;
+        currentReturnType_ = nullptr;
+        return;
+    }
+
+    blockMgr_.bind(builder_.get(), currentFunc_);
+    locals_.clear();
+    slots_.clear();
+    localTypes_.clear();
+    deferredTemps_.clear();
+
+    // Create entry block with the function's params as block params
+    // (required for proper VM argument passing)
+    builder_->createBlock(*currentFunc_, "entry_0", currentFunc_->params);
+    size_t entryIdx = currentFunc_->blocks.size() - 1;
+    setBlock(entryIdx);
+
+    // Define parameters using slot-based storage for cross-block SSA correctness
+    // This ensures parameters are accessible in all basic blocks (if, while, guard, etc.)
+    const auto &blockParams = currentFunc_->blocks[entryIdx].params;
+    for (size_t i = 0; i < decl.params.size() && i < blockParams.size(); ++i) {
+        TypeRef paramType =
+            i < cachedParamTypes.size()
+                ? cachedParamTypes[i]
+                : (decl.params[i].type ? sema_.resolveType(decl.params[i].type.get())
+                                       : types::unknown());
+        Type ilParamType = mapType(paramType);
+
+        // Create slot and store the parameter value
+        createSlot(decl.params[i].name, ilParamType);
+        storeToSlot(decl.params[i].name, Value::temp(blockParams[i].id), ilParamType);
+        localTypes_[decl.params[i].name] = paramType;
+    }
+
+    const bool isEntryPoint = decl.name == "start" || decl.name == "main";
+
+    // Emit interface itable init call at start of the entry point (before any user code).
+    // The __zia_iface_init function is emitted later by emitItableInit(); if no
+    // interfaces have implementors, it emits a trivial ret-void stub.
+    if (isEntryPoint && !interfaceTypes_.empty()) {
+        emitCall("__zia_iface_init", {});
+    }
+
+    // Emit global variable initializations at the entry point so both
+    // `start()` and `main()` programs observe the same module startup state.
+    if (isEntryPoint && !globalInitializers_.empty())
+        emitGlobalInitializers();
+
+    // Lower function body
+    if (decl.body) {
+        lowerStmt(decl.body.get());
+    }
+
+    // Add implicit return if needed (use the correct default value for each type).
+    if (!isTerminated()) {
+        if (ilReturnType.kind == Type::Kind::Void) {
+            emitRetVoid();
+        } else {
+            Value defaultValue;
+            switch (ilReturnType.kind) {
+                case Type::Kind::I1:
+                    defaultValue = Value::constBool(false);
+                    break;
+                case Type::Kind::I64:
+                case Type::Kind::I16:
+                case Type::Kind::I32:
+                    defaultValue = Value::constInt(0);
+                    break;
+                case Type::Kind::F64:
+                    defaultValue = Value::constFloat(0.0);
+                    break;
+                case Type::Kind::Str:
+                    defaultValue = Value::constStr("");
+                    break;
+                case Type::Kind::Ptr:
+                    defaultValue = Value::null();
+                    break;
+                default:
+                    defaultValue = Value::constInt(0);
+                    break;
+            }
+            emitRet(defaultValue);
+        }
+    }
+
+    currentFunc_ = nullptr;
+    currentReturnType_ = nullptr;
+}
+
+void Lowerer::lowerAsyncFunctionDecl(FunctionDecl &decl,
+                                     const std::string &mangledName,
+                                     const std::vector<il::core::Param> &params,
+                                     TypeRef returnType,
+                                     il::core::Type ilReturnType,
+                                     TypeRef declaredReturnType,
+                                     const std::vector<TypeRef> &cachedParamTypes) {
+    {
         auto resetLoweringState = [&]() {
             blockMgr_.reset(nullptr);
             locals_.clear();
@@ -370,112 +487,7 @@ void Lowerer::lowerFunctionDecl(FunctionDecl &decl) {
             emitCallRet(Type(Type::Kind::Ptr), kAsyncRun, {Value::global(workerName), wrapperEnv});
         emitRet(future);
         resetLoweringState();
-        return;
     }
-
-    // Track this function as defined in this module
-    definedFunctions_.insert(mangledName);
-
-    // Create function
-    currentFunc_ = &builder_->startFunction(mangledName, ilReturnType, params);
-    currentReturnType_ = returnType;
-
-    // Set IL linkage from AST visibility/foreign flag.
-    if (decl.isForeign)
-        currentFunc_->linkage = il::core::Linkage::Import;
-    else if (decl.visibility == Visibility::Public)
-        currentFunc_->linkage = il::core::Linkage::Export;
-
-    // Foreign (import) functions have no body -- just a declaration.
-    if (decl.isForeign) {
-        currentFunc_ = nullptr;
-        currentReturnType_ = nullptr;
-        return;
-    }
-
-    blockMgr_.bind(builder_.get(), currentFunc_);
-    locals_.clear();
-    slots_.clear();
-    localTypes_.clear();
-    deferredTemps_.clear();
-
-    // Create entry block with the function's params as block params
-    // (required for proper VM argument passing)
-    builder_->createBlock(*currentFunc_, "entry_0", currentFunc_->params);
-    size_t entryIdx = currentFunc_->blocks.size() - 1;
-    setBlock(entryIdx);
-
-    // Define parameters using slot-based storage for cross-block SSA correctness
-    // This ensures parameters are accessible in all basic blocks (if, while, guard, etc.)
-    const auto &blockParams = currentFunc_->blocks[entryIdx].params;
-    for (size_t i = 0; i < decl.params.size() && i < blockParams.size(); ++i) {
-        TypeRef paramType =
-            i < cachedParamTypes.size()
-                ? cachedParamTypes[i]
-                : (decl.params[i].type ? sema_.resolveType(decl.params[i].type.get())
-                                       : types::unknown());
-        Type ilParamType = mapType(paramType);
-
-        // Create slot and store the parameter value
-        createSlot(decl.params[i].name, ilParamType);
-        storeToSlot(decl.params[i].name, Value::temp(blockParams[i].id), ilParamType);
-        localTypes_[decl.params[i].name] = paramType;
-    }
-
-    const bool isEntryPoint = decl.name == "start" || decl.name == "main";
-
-    // Emit interface itable init call at start of the entry point (before any user code)
-    // The __zia_iface_init function is emitted later by emitItableInit(); if no
-    // interfaces have implementors, it emits a trivial ret-void stub.
-    if (isEntryPoint && !interfaceTypes_.empty()) {
-        emitCall("__zia_iface_init", {});
-    }
-
-    // Emit global variable initializations at the entry point so both
-    // `start()` and `main()` programs observe the same module startup state.
-    if (isEntryPoint && !globalInitializers_.empty())
-        emitGlobalInitializers();
-
-    // Lower function body
-    if (decl.body) {
-        lowerStmt(decl.body.get());
-    }
-
-    // Add implicit return if needed (Bug #5 fix: use correct default value for each type)
-    if (!isTerminated()) {
-        if (ilReturnType.kind == Type::Kind::Void) {
-            emitRetVoid();
-        } else {
-            // Emit correct default value based on return type
-            Value defaultValue;
-            switch (ilReturnType.kind) {
-                case Type::Kind::I1:
-                    defaultValue = Value::constBool(false);
-                    break;
-                case Type::Kind::I64:
-                case Type::Kind::I16:
-                case Type::Kind::I32:
-                    defaultValue = Value::constInt(0);
-                    break;
-                case Type::Kind::F64:
-                    defaultValue = Value::constFloat(0.0);
-                    break;
-                case Type::Kind::Str:
-                    defaultValue = Value::constStr("");
-                    break;
-                case Type::Kind::Ptr:
-                    defaultValue = Value::null();
-                    break;
-                default:
-                    defaultValue = Value::constInt(0);
-                    break;
-            }
-            emitRet(defaultValue);
-        }
-    }
-
-    currentFunc_ = nullptr;
-    currentReturnType_ = nullptr;
 }
 
 void Lowerer::lowerGenericFunctionInstantiation(const std::string &mangledName,

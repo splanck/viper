@@ -246,6 +246,55 @@ int main() {
         CHECK(patched == 0x401010);
     }
 
+    // --- Abs64 high-bit addend wraps in the 64-bit field ---
+    {
+        std::vector<uint8_t> code(16, 0);
+        auto caller = makeObj("test_abs64_high_bit.o",
+                              ObjFileFormat::MachO,
+                              code,
+                              "global_var",
+                              macho_a64::kUnsigned,
+                              /*relocOff=*/0,
+                              std::numeric_limits<int64_t>::min());
+
+        ObjFile dataObj;
+        dataObj.name = "data.o";
+        dataObj.format = ObjFileFormat::MachO;
+        dataObj.sections.push_back({});
+        ObjSection dataSec;
+        dataSec.name = "__DATA,__const";
+        dataSec.data.resize(8, 0x42);
+        dataSec.alloc = true;
+        dataSec.alignment = 8;
+        dataObj.sections.push_back(dataSec);
+        dataObj.symbols.push_back({});
+        ObjSymbol dataSym;
+        dataSym.name = "global_var";
+        dataSym.binding = ObjSymbol::Global;
+        dataSym.sectionIndex = 1;
+        dataSym.offset = 0;
+        dataObj.symbols.push_back(dataSym);
+
+        std::vector<ObjFile> objs = {caller, dataObj};
+        auto layout = makeLayout(objs, 0x401000);
+
+        GlobalSymEntry entry;
+        entry.name = "global_var";
+        entry.binding = GlobalSymEntry::Global;
+        entry.objIndex = 1;
+        entry.secIndex = 1;
+        entry.offset = 0;
+        layout.globalSyms["global_var"] = entry;
+
+        std::ostringstream err;
+        std::unordered_set<std::string> dynSyms;
+        bool ok =
+            applyRelocations(objs, layout, dynSyms, LinkPlatform::macOS, LinkArch::AArch64, err);
+        CHECK(ok);
+        uint64_t patched = readLE64(layout.sections[0].data.data());
+        CHECK(patched == (uint64_t{0x8000000000000000} + 0x401010));
+    }
+
     // --- Undefined symbol produces error (validates Phase 1A fix) ---
     {
         std::vector<uint8_t> code(8, 0);
@@ -456,6 +505,189 @@ int main() {
         std::unordered_set<std::string> dynSyms;
         CHECK(applyRelocations(objs, layout, dynSyms, LinkPlatform::Linux, LinkArch::X86_64, err));
         CHECK(readLE64(layout.sections[0].data.data()) == 0x401008);
+    }
+
+    // --- Weak undefined references may resolve to zero only for absolute data fixups ---
+    {
+        auto makeWeakRef = [](uint32_t relocType, size_t width) {
+            ObjFile obj;
+            obj.name = "weak_undef.o";
+            obj.format = ObjFileFormat::ELF;
+            obj.sections.push_back({});
+
+            ObjSection text;
+            text.name = ".text";
+            text.data.resize(width, 0);
+            text.executable = true;
+            text.alloc = true;
+            ObjReloc rel;
+            rel.offset = 0;
+            rel.type = relocType;
+            rel.symIndex = 1;
+            rel.addend = relocType == elf_x64::kPC32 ? -4 : 0;
+            text.relocs.push_back(rel);
+            obj.sections.push_back(text);
+
+            obj.symbols.push_back({});
+            ObjSymbol weak;
+            weak.name = "maybe_missing";
+            weak.binding = ObjSymbol::Undefined;
+            weak.weakExternal = true;
+            obj.symbols.push_back(weak);
+            return obj;
+        };
+
+        std::vector<ObjFile> absObjs = {makeWeakRef(elf_x64::kAbs64, 8)};
+        auto absLayout = makeLayout(absObjs, 0x401000);
+        std::ostringstream absErr;
+        std::unordered_set<std::string> dynSyms;
+        CHECK(applyRelocations(
+            absObjs, absLayout, dynSyms, LinkPlatform::Linux, LinkArch::X86_64, absErr));
+        CHECK(readLE64(absLayout.sections[0].data.data()) == 0);
+
+        std::vector<ObjFile> branchObjs = {makeWeakRef(elf_x64::kPC32, 4)};
+        auto branchLayout = makeLayout(branchObjs, 0x401000);
+        std::ostringstream branchErr;
+        CHECK(!applyRelocations(
+            branchObjs, branchLayout, dynSyms, LinkPlatform::Linux, LinkArch::X86_64, branchErr));
+        CHECK(branchErr.str().find("weak undefined symbol 'maybe_missing' cannot resolve to address zero") !=
+              std::string::npos);
+    }
+
+    // --- Mach-O TLV descriptor offsets must convert to TLS-relative values ---
+    {
+        ObjFile obj;
+        obj.name = "bad_tlv.o";
+        obj.format = ObjFileFormat::MachO;
+        obj.sections.push_back({});
+        ObjSection tdata;
+        tdata.name = ".tdata";
+        tdata.data.resize(8, 0);
+        tdata.alloc = true;
+        tdata.writable = true;
+        tdata.tls = true;
+        ObjReloc rel;
+        rel.offset = 0;
+        rel.type = macho_a64::kUnsigned;
+        rel.symIndex = 1;
+        rel.length = 3;
+        tdata.relocs.push_back(rel);
+        obj.sections.push_back(tdata);
+        obj.symbols.push_back({});
+        ObjSymbol sym;
+        sym.name = "tlv_init";
+        sym.binding = ObjSymbol::Local;
+        sym.absolute = true;
+        sym.offset = 0x1234;
+        obj.symbols.push_back(sym);
+
+        std::vector<ObjFile> objs = {obj};
+        LinkLayout layout;
+        OutputSection out;
+        out.name = ".tdata";
+        out.data.resize(8, 0);
+        out.virtualAddr = 0x100000000;
+        out.alloc = true;
+        out.writable = true;
+        out.tls = true;
+        out.chunks.push_back(InputChunk{0, 1, 0, 8});
+        layout.sections.push_back(out);
+
+        std::ostringstream err;
+        std::unordered_set<std::string> dynSyms;
+        CHECK(!applyRelocations(
+            objs, layout, dynSyms, LinkPlatform::macOS, LinkArch::AArch64, err));
+        CHECK(err.str().find("could not be converted to TLS-relative") != std::string::npos);
+    }
+
+    // --- Mach-O GOT pointer rebases include read-only data segments ---
+    {
+        ObjFile obj;
+        obj.name = "got_data_const.o";
+        obj.format = ObjFileFormat::MachO;
+        obj.sections.push_back({});
+        ObjSection data;
+        data.name = "__DATA_CONST,__got";
+        data.data.resize(8, 0);
+        data.alloc = true;
+        data.dataSegment = true;
+        ObjReloc rel;
+        rel.offset = 0;
+        rel.type = macho_a64::kPointerToGot;
+        rel.symIndex = 1;
+        rel.length = 3;
+        data.relocs.push_back(rel);
+        obj.sections.push_back(data);
+        obj.symbols.push_back({});
+        ObjSymbol sym;
+        sym.name = "target";
+        sym.binding = ObjSymbol::Undefined;
+        obj.symbols.push_back(sym);
+
+        std::vector<ObjFile> objs = {obj};
+        LinkLayout layout;
+        OutputSection out;
+        out.name = "__DATA_CONST,__got";
+        out.data.resize(8, 0);
+        out.virtualAddr = 0x100002000;
+        out.alloc = true;
+        out.dataSegment = true;
+        out.chunks.push_back(InputChunk{0, 1, 0, 8});
+        layout.sections.push_back(out);
+        GlobalSymEntry got;
+        got.name = "__got_target";
+        got.binding = GlobalSymEntry::Global;
+        got.resolvedAddr = 0x100003000;
+        got.resolvedAddrValid = true;
+        layout.globalSyms["__got_target"] = got;
+        GlobalSymEntry targetEntry;
+        targetEntry.name = "target";
+        targetEntry.binding = GlobalSymEntry::Global;
+        targetEntry.resolvedAddr = 0x100004000;
+        targetEntry.resolvedAddrValid = true;
+        layout.globalSyms["target"] = targetEntry;
+
+        std::ostringstream err;
+        std::unordered_set<std::string> dynSyms;
+        CHECK(applyRelocations(
+            objs, layout, dynSyms, LinkPlatform::macOS, LinkArch::AArch64, err));
+        CHECK(readLE64(layout.sections[0].data.data()) == 0x100003000);
+        CHECK(layout.rebaseEntries.size() == 1);
+    }
+
+    // --- Duplicate input-section chunks are rejected before relocation patching ---
+    {
+        ObjFile obj;
+        obj.name = "duplicate_chunk.o";
+        obj.format = ObjFileFormat::ELF;
+        obj.sections.push_back({});
+        ObjSection text;
+        text.name = ".text";
+        text.data = {0xC3};
+        text.executable = true;
+        text.alloc = true;
+        obj.sections.push_back(text);
+        obj.symbols.push_back({});
+
+        std::vector<ObjFile> objs = {obj};
+        LinkLayout layout;
+        OutputSection a;
+        a.name = ".text.a";
+        a.executable = true;
+        a.data = text.data;
+        a.chunks.push_back({0, 1, 0, text.data.size()});
+        layout.sections.push_back(a);
+        OutputSection b;
+        b.name = ".text.b";
+        b.executable = true;
+        b.data = text.data;
+        b.chunks.push_back({0, 1, 0, text.data.size()});
+        layout.sections.push_back(b);
+
+        std::ostringstream err;
+        std::unordered_set<std::string> dynSyms;
+        CHECK(!applyRelocations(objs, layout, dynSyms, LinkPlatform::Linux, LinkArch::X86_64, err));
+        CHECK(err.str().find("appears in multiple output chunks") != std::string::npos);
     }
 
     // --- COFF x86_64 ADDR32NB writes an RVA (S + A - ImageBase) ---
@@ -831,7 +1063,7 @@ int main() {
 
         ObjSection tbss;
         tbss.name = ".tbss";
-        tbss.data.resize(16, 0);
+        tbss.memSize = 16;
         tbss.writable = true;
         tbss.alloc = true;
         tbss.tls = true;
@@ -875,8 +1107,8 @@ int main() {
         outTbss.tls = true;
         outTbss.zeroFill = true;
         outTbss.virtualAddr = 0x403000;
-        outTbss.data = tbss.data;
-        outTbss.chunks.push_back({0, 3, 0, tbss.data.size()});
+        outTbss.memSize = tbss.memSize;
+        outTbss.chunks.push_back({0, 3, 0, tbss.memSize});
         layout.sections.push_back(outTbss);
 
         std::ostringstream err;
@@ -909,6 +1141,7 @@ int main() {
         gotEntry.name = "__got_stderr";
         gotEntry.binding = GlobalSymEntry::Global;
         gotEntry.resolvedAddr = 0x402000;
+        gotEntry.resolvedAddrValid = true;
         layout.globalSyms["__got_stderr"] = gotEntry;
 
         std::ostringstream err;
@@ -980,6 +1213,374 @@ int main() {
         CHECK(applyRelocations(objs, layout, dynSyms, LinkPlatform::Linux, LinkArch::X86_64, err));
         CHECK(layout.sections[0].data[1] == 0x8D);
         CHECK(readLE32(layout.sections[0].data.data() + 3) == 0x00000FF9);
+    }
+
+    // --- ELF x86_64 GOTPCRELX rejects non-RIP-relative MOV encodings ---
+    {
+        ObjFile obj;
+        obj.name = "test_bad_gotpcrelx_modrm.o";
+        obj.format = ObjFileFormat::ELF;
+        obj.sections.push_back({});
+
+        ObjSection text;
+        text.name = ".text";
+        text.data = {0x48, 0x8B, 0x04, 0x00, 0x00, 0x00, 0x00};
+        text.executable = true;
+        text.alloc = true;
+        ObjReloc rel;
+        rel.offset = 3;
+        rel.type = elf_x64::kRexGotPcRelX;
+        rel.symIndex = 1;
+        rel.addend = -4;
+        text.relocs.push_back(rel);
+        obj.sections.push_back(text);
+
+        ObjSection data;
+        data.name = ".data";
+        data.data.resize(8, 0xAA);
+        data.writable = true;
+        data.alloc = true;
+        obj.sections.push_back(data);
+
+        obj.symbols.push_back({});
+        ObjSymbol local;
+        local.name = "local_data";
+        local.binding = ObjSymbol::Local;
+        local.sectionIndex = 2;
+        obj.symbols.push_back(local);
+
+        std::vector<ObjFile> objs = {obj};
+        LinkLayout layout;
+        layout.pageSize = 0x1000;
+        OutputSection outText;
+        outText.name = ".text";
+        outText.executable = true;
+        outText.virtualAddr = 0x401000;
+        outText.data = text.data;
+        outText.chunks.push_back({0, 1, 0, text.data.size()});
+        layout.sections.push_back(outText);
+        OutputSection outData;
+        outData.name = ".data";
+        outData.writable = true;
+        outData.virtualAddr = 0x402000;
+        outData.data = data.data;
+        outData.chunks.push_back({0, 2, 0, data.data.size()});
+        layout.sections.push_back(outData);
+
+        std::ostringstream err;
+        std::unordered_set<std::string> dynSyms;
+        CHECK(!applyRelocations(
+            objs, layout, dynSyms, LinkPlatform::Linux, LinkArch::X86_64, err));
+        CHECK(err.str().find("requires MOV r*, disp32(%rip)") != std::string::npos);
+    }
+
+    // --- ELF x86_64 REX_GOTPCRELX rejects MOVs without a REX prefix ---
+    {
+        ObjFile obj;
+        obj.name = "test_bad_rex_gotpcrelx.o";
+        obj.format = ObjFileFormat::ELF;
+        obj.sections.push_back({});
+
+        ObjSection text;
+        text.name = ".text";
+        text.data = {0x8B, 0x05, 0x00, 0x00, 0x00, 0x00};
+        text.executable = true;
+        text.alloc = true;
+        ObjReloc rel;
+        rel.offset = 2;
+        rel.type = elf_x64::kRexGotPcRelX;
+        rel.symIndex = 1;
+        rel.addend = -4;
+        text.relocs.push_back(rel);
+        obj.sections.push_back(text);
+
+        ObjSection data;
+        data.name = ".data";
+        data.data.resize(8, 0xAA);
+        data.writable = true;
+        data.alloc = true;
+        obj.sections.push_back(data);
+
+        obj.symbols.push_back({});
+        ObjSymbol local;
+        local.name = "local_data";
+        local.binding = ObjSymbol::Local;
+        local.sectionIndex = 2;
+        obj.symbols.push_back(local);
+
+        std::vector<ObjFile> objs = {obj};
+        LinkLayout layout;
+        layout.pageSize = 0x1000;
+        OutputSection outText;
+        outText.name = ".text";
+        outText.executable = true;
+        outText.virtualAddr = 0x401000;
+        outText.data = text.data;
+        outText.chunks.push_back({0, 1, 0, text.data.size()});
+        layout.sections.push_back(outText);
+        OutputSection outData;
+        outData.name = ".data";
+        outData.writable = true;
+        outData.virtualAddr = 0x402000;
+        outData.data = data.data;
+        outData.chunks.push_back({0, 2, 0, data.data.size()});
+        layout.sections.push_back(outData);
+
+        std::ostringstream err;
+        std::unordered_set<std::string> dynSyms;
+        CHECK(!applyRelocations(
+            objs, layout, dynSyms, LinkPlatform::Linux, LinkArch::X86_64, err));
+        CHECK(err.str().find("requires a REX-prefixed MOV") != std::string::npos);
+    }
+
+    // --- ELF AArch64 local GOT relaxation rewrites a validated ADRP/LDR pair ---
+    {
+        ObjFile obj;
+        obj.name = "test_a64_local_got_pair.o";
+        obj.format = ObjFileFormat::ELF;
+        obj.sections.push_back({});
+
+        ObjSection text;
+        text.name = ".text";
+        text.data = {0x00, 0x00, 0x00, 0x90, 0x01, 0x00, 0x40, 0xF9}; // ADRP x0; LDR x1,[x0]
+        text.executable = true;
+        text.alloc = true;
+        ObjReloc page;
+        page.offset = 0;
+        page.type = elf_a64::kAdrGotPage;
+        page.symIndex = 1;
+        ObjReloc off;
+        off.offset = 4;
+        off.type = elf_a64::kLd64GotLo12Nc;
+        off.symIndex = 1;
+        text.relocs.push_back(page);
+        text.relocs.push_back(off);
+        obj.sections.push_back(text);
+
+        ObjSection data;
+        data.name = ".data";
+        data.data.resize(16, 0xAA);
+        data.writable = true;
+        data.alloc = true;
+        obj.sections.push_back(data);
+
+        obj.symbols.push_back({});
+        ObjSymbol local;
+        local.name = "local_data";
+        local.binding = ObjSymbol::Local;
+        local.sectionIndex = 2;
+        local.offset = 8;
+        obj.symbols.push_back(local);
+
+        std::vector<ObjFile> objs = {obj};
+        LinkLayout layout;
+        layout.pageSize = 0x1000;
+        OutputSection outText;
+        outText.name = ".text";
+        outText.executable = true;
+        outText.virtualAddr = 0x401000;
+        outText.data = text.data;
+        outText.chunks.push_back({0, 1, 0, text.data.size()});
+        layout.sections.push_back(outText);
+        OutputSection outData;
+        outData.name = ".data";
+        outData.writable = true;
+        outData.virtualAddr = 0x402000;
+        outData.data = data.data;
+        outData.chunks.push_back({0, 2, 0, data.data.size()});
+        layout.sections.push_back(outData);
+
+        std::ostringstream err;
+        std::unordered_set<std::string> dynSyms;
+        CHECK(applyRelocations(objs, layout, dynSyms, LinkPlatform::Linux, LinkArch::AArch64, err));
+        CHECK(readLE32(layout.sections[0].data.data() + 4) == 0x91002001u);
+    }
+
+    // --- ELF AArch64 local GOT relaxation requires the matching ADRP relocation ---
+    {
+        ObjFile obj;
+        obj.name = "test_a64_local_got_missing_adrp.o";
+        obj.format = ObjFileFormat::ELF;
+        obj.sections.push_back({});
+
+        ObjSection text;
+        text.name = ".text";
+        text.data = {0x00, 0x00, 0x40, 0xF9}; // LDR x0,[x0]
+        text.executable = true;
+        text.alloc = true;
+        ObjReloc rel;
+        rel.offset = 0;
+        rel.type = elf_a64::kLd64GotLo12Nc;
+        rel.symIndex = 1;
+        text.relocs.push_back(rel);
+        obj.sections.push_back(text);
+
+        ObjSection data;
+        data.name = ".data";
+        data.data.resize(8, 0xAA);
+        data.writable = true;
+        data.alloc = true;
+        obj.sections.push_back(data);
+
+        obj.symbols.push_back({});
+        ObjSymbol local;
+        local.name = "local_data";
+        local.binding = ObjSymbol::Local;
+        local.sectionIndex = 2;
+        obj.symbols.push_back(local);
+
+        std::vector<ObjFile> objs = {obj};
+        LinkLayout layout;
+        layout.pageSize = 0x1000;
+        OutputSection outText;
+        outText.name = ".text";
+        outText.executable = true;
+        outText.virtualAddr = 0x401000;
+        outText.data = text.data;
+        outText.chunks.push_back({0, 1, 0, text.data.size()});
+        layout.sections.push_back(outText);
+        OutputSection outData;
+        outData.name = ".data";
+        outData.writable = true;
+        outData.virtualAddr = 0x402000;
+        outData.data = data.data;
+        outData.chunks.push_back({0, 2, 0, data.data.size()});
+        layout.sections.push_back(outData);
+
+        std::ostringstream err;
+        std::unordered_set<std::string> dynSyms;
+        CHECK(!applyRelocations(
+            objs, layout, dynSyms, LinkPlatform::Linux, LinkArch::AArch64, err));
+        CHECK(err.str().find("requires an adjacent matching ADRP relocation") !=
+              std::string::npos);
+    }
+
+    // --- Mach-O AArch64 TLVP page-offset relaxation accepts its PAGE21 pair ---
+    {
+        ObjFile obj;
+        obj.name = "test_macho_tlvp_pair.o";
+        obj.format = ObjFileFormat::MachO;
+        obj.sections.push_back({});
+
+        ObjSection text;
+        text.name = "__TEXT,__text";
+        text.data = {0x00, 0x00, 0x00, 0x90, 0x01, 0x00, 0x40, 0xF9}; // ADRP x0; LDR x1,[x0]
+        text.executable = true;
+        text.alloc = true;
+        ObjReloc page;
+        page.offset = 0;
+        page.type = macho_a64::kTlvpLoadPage21;
+        page.symIndex = 1;
+        ObjReloc off;
+        off.offset = 4;
+        off.type = macho_a64::kTlvpLoadPageOff12;
+        off.symIndex = 1;
+        text.relocs.push_back(page);
+        text.relocs.push_back(off);
+        obj.sections.push_back(text);
+
+        ObjSection data;
+        data.name = "__DATA,__thread_vars";
+        data.data.resize(16, 0xAA);
+        data.writable = true;
+        data.alloc = true;
+        data.tls = true;
+        obj.sections.push_back(data);
+
+        obj.symbols.push_back({});
+        ObjSymbol local;
+        local.name = "tls_descriptor";
+        local.binding = ObjSymbol::Local;
+        local.sectionIndex = 2;
+        local.offset = 8;
+        obj.symbols.push_back(local);
+
+        std::vector<ObjFile> objs = {obj};
+        LinkLayout layout;
+        layout.pageSize = 0x4000;
+        OutputSection outText;
+        outText.name = ".text";
+        outText.executable = true;
+        outText.virtualAddr = 0x100004000ULL;
+        outText.data = text.data;
+        outText.chunks.push_back({0, 1, 0, text.data.size()});
+        layout.sections.push_back(outText);
+        OutputSection outData;
+        outData.name = ".tdata";
+        outData.writable = true;
+        outData.tls = true;
+        outData.virtualAddr = 0x100008000ULL;
+        outData.data = data.data;
+        outData.chunks.push_back({0, 2, 0, data.data.size()});
+        layout.sections.push_back(outData);
+
+        std::ostringstream err;
+        std::unordered_set<std::string> dynSyms;
+        CHECK(applyRelocations(objs, layout, dynSyms, LinkPlatform::macOS, LinkArch::AArch64, err));
+        CHECK(readLE32(layout.sections[0].data.data() + 4) == 0x91002001u);
+    }
+
+    // --- ELF AArch64 local GOT relaxation requires LDR base to match ADRP result ---
+    {
+        ObjFile obj;
+        obj.name = "test_a64_local_got_mismatched_regs.o";
+        obj.format = ObjFileFormat::ELF;
+        obj.sections.push_back({});
+
+        ObjSection text;
+        text.name = ".text";
+        text.data = {0x01, 0x00, 0x00, 0x90, 0x00, 0x00, 0x40, 0xF9}; // ADRP x1; LDR x0,[x0]
+        text.executable = true;
+        text.alloc = true;
+        ObjReloc page;
+        page.offset = 0;
+        page.type = elf_a64::kAdrGotPage;
+        page.symIndex = 1;
+        ObjReloc off;
+        off.offset = 4;
+        off.type = elf_a64::kLd64GotLo12Nc;
+        off.symIndex = 1;
+        text.relocs.push_back(page);
+        text.relocs.push_back(off);
+        obj.sections.push_back(text);
+
+        ObjSection data;
+        data.name = ".data";
+        data.data.resize(8, 0xAA);
+        data.writable = true;
+        data.alloc = true;
+        obj.sections.push_back(data);
+
+        obj.symbols.push_back({});
+        ObjSymbol local;
+        local.name = "local_data";
+        local.binding = ObjSymbol::Local;
+        local.sectionIndex = 2;
+        obj.symbols.push_back(local);
+
+        std::vector<ObjFile> objs = {obj};
+        LinkLayout layout;
+        layout.pageSize = 0x1000;
+        OutputSection outText;
+        outText.name = ".text";
+        outText.executable = true;
+        outText.virtualAddr = 0x401000;
+        outText.data = text.data;
+        outText.chunks.push_back({0, 1, 0, text.data.size()});
+        layout.sections.push_back(outText);
+        OutputSection outData;
+        outData.name = ".data";
+        outData.writable = true;
+        outData.virtualAddr = 0x402000;
+        outData.data = data.data;
+        outData.chunks.push_back({0, 2, 0, data.data.size()});
+        layout.sections.push_back(outData);
+
+        std::ostringstream err;
+        std::unordered_set<std::string> dynSyms;
+        CHECK(!applyRelocations(
+            objs, layout, dynSyms, LinkPlatform::Linux, LinkArch::AArch64, err));
+        CHECK(err.str().find("requires LDR base to match preceding ADRP") != std::string::npos);
     }
 
     // --- COFF AArch64 BRANCH26 patches BL/B using the Windows relocation kind ---
@@ -1193,6 +1794,54 @@ int main() {
         CHECK(((patched >> 10) & 0xFFFu) == 1u);
     }
 
+    // --- COFF AArch64 PAGEOFFSET_12L rejects add/sub opcodes ---
+    {
+        std::vector<uint8_t> code = {0x00, 0x00, 0x00, 0x91}; // add x0, x0, #0
+        auto caller = makeObj("test_bad_pageoff12l_add.obj",
+                              ObjFileFormat::COFF,
+                              code,
+                              "target_data",
+                              coff_a64::kPageOff12L,
+                              /*relocOff=*/0,
+                              /*addend=*/0);
+
+        std::vector<ObjFile> objs = {caller};
+        auto layout = makeLayout(objs, 0x140001000ULL);
+        layout.globalSyms["target_data"] =
+            {"target_data", GlobalSymEntry::Dynamic, 0, 0, 0, 0x140002008ULL};
+
+        std::ostringstream err;
+        std::unordered_set<std::string> dynSyms;
+        CHECK(!applyRelocations(
+            objs, layout, dynSyms, LinkPlatform::Windows, LinkArch::AArch64, err));
+        CHECK(err.str().find("PAGEOFFSET_12L relocation targets an ADD instruction") !=
+              std::string::npos);
+    }
+
+    // --- COFF AArch64 PAGEOFFSET_12A rejects load/store opcodes ---
+    {
+        std::vector<uint8_t> code = {0x00, 0x00, 0x40, 0xB9}; // ldr w0, [x0, #0]
+        auto caller = makeObj("test_bad_pageoff12a_ldr.obj",
+                              ObjFileFormat::COFF,
+                              code,
+                              "target_data",
+                              coff_a64::kPageOff12A,
+                              /*relocOff=*/0,
+                              /*addend=*/0);
+
+        std::vector<ObjFile> objs = {caller};
+        auto layout = makeLayout(objs, 0x140001000ULL);
+        layout.globalSyms["target_data"] =
+            {"target_data", GlobalSymEntry::Dynamic, 0, 0, 0, 0x140002008ULL};
+
+        std::ostringstream err;
+        std::unordered_set<std::string> dynSyms;
+        CHECK(!applyRelocations(
+            objs, layout, dynSyms, LinkPlatform::Windows, LinkArch::AArch64, err));
+        CHECK(err.str().find("PAGEOFFSET_12A relocation targets a load/store instruction") !=
+              std::string::npos);
+    }
+
     // --- COFF AArch64 SECREL_LOW12L rejects non-load/store opcodes ---
     {
         std::vector<uint8_t> code(4, 0);
@@ -1236,6 +1885,47 @@ int main() {
         CHECK(!applyRelocations(
             objs, layout, dynSyms, LinkPlatform::Windows, LinkArch::AArch64, err));
         CHECK(err.str().find("not applied to an AArch64 unsigned-offset load/store") !=
+              std::string::npos);
+    }
+
+    // --- COFF AArch64 SECREL_LOW12A rejects non-add/sub opcodes ---
+    {
+        std::vector<uint8_t> code = {0x00, 0x00, 0x40, 0xB9}; // ldr w0, [x0, #0]
+        auto caller = makeObj("test_bad_secrel_low12a.obj",
+                              ObjFileFormat::COFF,
+                              code,
+                              "target_data",
+                              coff_a64::kSecRelLow12A,
+                              /*relocOff=*/0,
+                              /*addend=*/0);
+
+        ObjFile target;
+        target.name = "target_data.obj";
+        target.format = ObjFileFormat::COFF;
+        target.sections.push_back({});
+        ObjSection targetData;
+        targetData.name = ".data";
+        targetData.data.resize(4, 0xAB);
+        targetData.writable = true;
+        targetData.alloc = true;
+        target.sections.push_back(targetData);
+        target.symbols.push_back({});
+        ObjSymbol targetSym;
+        targetSym.name = "target_data";
+        targetSym.binding = ObjSymbol::Global;
+        targetSym.sectionIndex = 1;
+        target.symbols.push_back(targetSym);
+
+        std::vector<ObjFile> objs = {caller, target};
+        auto layout = makeLayout(objs, 0x140001000ULL);
+        layout.globalSyms["target_data"] =
+            {"target_data", GlobalSymEntry::Global, 1, 1, 0, 0};
+
+        std::ostringstream err;
+        std::unordered_set<std::string> dynSyms;
+        CHECK(!applyRelocations(
+            objs, layout, dynSyms, LinkPlatform::Windows, LinkArch::AArch64, err));
+        CHECK(err.str().find("SECREL_LOW/HIGH12A relocation is not applied to an AArch64 ADD") !=
               std::string::npos);
     }
 
@@ -1336,6 +2026,80 @@ int main() {
             applyRelocations(objs, layout, dynSyms, LinkPlatform::Linux, LinkArch::X86_64, err);
         CHECK(!ok);
         CHECK(err.str().find("unknown reloc type") != std::string::npos);
+    }
+
+    // --- COFF ADDR32NB honors layout.imageBase override (P1 #3) ---
+    // Regression: applyRelocations used to subtract
+    // defaultImageBaseForPlatform(Windows) unconditionally. If a future
+    // configurable image base is wired through NativeLinkerOptions /
+    // LinkLayout, the applier must pick it up from the layout instead so
+    // RVAs in instruction bytes match the value the PE writer stamps into
+    // the optional header.
+    {
+        std::vector<uint8_t> code(8, 0);
+        auto obj = makeObj("test_addr32nb_basecfg.obj",
+                           ObjFileFormat::COFF,
+                           code,
+                           "unwind_info",
+                           /*IMAGE_REL_AMD64_ADDR32NB=*/3,
+                           /*relocOff=*/0,
+                           /*addend=*/0);
+
+        std::vector<ObjFile> objs = {obj};
+        // Use a custom (non-default) image base. The symbol VA is base+0x2000.
+        const uint64_t customBase = 0x180000000ULL;
+        auto layout = makeLayout(objs, customBase + 0x1000);
+        layout.imageBase = customBase;
+
+        GlobalSymEntry entry;
+        entry.name = "unwind_info";
+        entry.binding = GlobalSymEntry::Dynamic;
+        entry.resolvedAddr = customBase + 0x2000ULL;
+        layout.globalSyms["unwind_info"] = entry;
+
+        std::ostringstream err;
+        std::unordered_set<std::string> dynSyms;
+        bool ok =
+            applyRelocations(objs, layout, dynSyms, LinkPlatform::Windows, LinkArch::X86_64, err);
+        CHECK(ok);
+
+        // RVA = S - imageBase = 0x2000. If the applier had still subtracted
+        // 0x140000000 (the platform default), the result would be a different
+        // very large number that would also overflow checkedU32Value.
+        uint32_t patched = readLE32(layout.sections[0].data.data());
+        CHECK(patched == 0x2000);
+    }
+
+    // --- COFF AArch64 ADDR32NB honors layout.imageBase override (P1 #3) ---
+    {
+        std::vector<uint8_t> code(8, 0);
+        auto obj = makeObj("test_addr32nb_arm64_basecfg.obj",
+                           ObjFileFormat::COFF,
+                           code,
+                           "unwind_info_a64",
+                           /*IMAGE_REL_ARM64_ADDR32NB=*/2,
+                           /*relocOff=*/0,
+                           /*addend=*/0);
+
+        std::vector<ObjFile> objs = {obj};
+        const uint64_t customBase = 0x180000000ULL;
+        auto layout = makeLayout(objs, customBase + 0x1000);
+        layout.imageBase = customBase;
+
+        GlobalSymEntry entry;
+        entry.name = "unwind_info_a64";
+        entry.binding = GlobalSymEntry::Dynamic;
+        entry.resolvedAddr = customBase + 0x3000ULL;
+        layout.globalSyms["unwind_info_a64"] = entry;
+
+        std::ostringstream err;
+        std::unordered_set<std::string> dynSyms;
+        bool ok =
+            applyRelocations(objs, layout, dynSyms, LinkPlatform::Windows, LinkArch::AArch64, err);
+        CHECK(ok);
+
+        uint32_t patched = readLE32(layout.sections[0].data.data());
+        CHECK(patched == 0x3000);
     }
 
     // --- Result ---

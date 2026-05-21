@@ -255,7 +255,7 @@ The other form of polymorphism happens at compile time: *method overloading*.
 
 ```rust
 bind Viper.Terminal;
-bind Viper.Fmt as Fmt;
+bind Viper.Text.Fmt as Fmt;
 
 class Printer {
     expose func print(text: String) {

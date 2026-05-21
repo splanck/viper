@@ -523,6 +523,8 @@ typedef struct vg_listbox {
     vg_listbox_item_t *anchor_selected; ///< Range-selection anchor (non-virtual mode)
     vg_listbox_item_t *hovered;       ///< Currently hovered item
     vg_listbox_item_t *retired_items; ///< Detached stale handles freed when listbox is destroyed
+    uint64_t selection_revision;      ///< Incremented whenever logical selection changes
+    uint64_t reported_selection_revision; ///< Last selection revision reported to runtime callers
 
     vg_font_t *font;   ///< Font for rendering
     float font_size;   ///< Font size

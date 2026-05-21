@@ -76,7 +76,7 @@ bind Viper.Terminal;
 bind Viper.Sound.Audio as Audio;
 bind Viper.Sound.Sound as Sound;
 bind Viper.Sound.Voice as Voice;
-bind Viper.Fmt as Fmt;
+bind Viper.Text.Fmt as Fmt;
 
 func start() {
     Audio.Init();
@@ -185,7 +185,7 @@ bind Viper.Terminal;
 bind Viper.Sound.Audio as Audio;
 bind Viper.Sound.Music as Music;
 bind Viper.Graphics.Canvas as Canvas;
-bind Viper.Fmt as Fmt;
+bind Viper.Text.Fmt as Fmt;
 
 func start() {
     Audio.Init();
@@ -345,7 +345,7 @@ module AudioDemo;
 
 bind Viper.Terminal;
 bind Viper.Sound.Audio as Audio;
-bind Viper.Fmt as Fmt;
+bind Viper.Text.Fmt as Fmt;
 
 func start() {
     var ok = Audio.Init();

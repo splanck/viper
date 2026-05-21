@@ -210,6 +210,24 @@ static void test_ray_mesh_translated() {
     }
 }
 
+static void test_ray_mesh_and_hit_accessors_reject_wrong_handles() {
+    void *origin = rt_vec3_new(0, 0, 5);
+    void *dir = rt_vec3_new(0, 0, -1);
+    void *box = rt_mesh3d_new_box(2.0, 2.0, 2.0);
+    void *identity = rt_mat4_identity();
+    void *pt;
+
+    EXPECT_TRUE(rt_ray3d_intersect_mesh(origin, dir, box, box) == nullptr,
+                "Ray-mesh rejects non-Mat4 transform handles");
+    EXPECT_TRUE(rt_ray3d_intersect_mesh(origin, dir, identity, identity) == nullptr,
+                "Ray-mesh rejects non-Mesh3D handles");
+    EXPECT_NEAR(rt_ray3d_hit_distance(box), -1.0, 0.01,
+                "RayHit3D.Distance rejects non-hit handles");
+    EXPECT_TRUE(rt_ray3d_hit_triangle(box) == -1, "RayHit3D.Triangle rejects non-hit handles");
+    pt = rt_ray3d_hit_point(box);
+    EXPECT_NEAR(rt_vec3_x(pt), 0.0, 0.01, "RayHit3D.Point returns safe zero for bad handles");
+}
+
 static void test_aabb_closest_point_surface_inside() {
     void *mn = rt_vec3_new(-1, -1, -1);
     void *mx = rt_vec3_new(1, 1, 1);
@@ -226,6 +244,36 @@ static void test_aabb_sphere_overlap_inside_box() {
     void *center = rt_vec3_new(0, 0, 0);
     EXPECT_TRUE(rt_aabb3d_sphere_overlaps(mn, mx, center, 0.1) == 1,
                 "AABB-sphere overlap handles centers inside the box");
+}
+
+static void test_aabb_canonicalizes_inverted_bounds() {
+    void *a0 = rt_vec3_new(2, 2, 2), *a1 = rt_vec3_new(0, 0, 0);
+    void *b0 = rt_vec3_new(1, 1, 1), *b1 = rt_vec3_new(3, 3, 3);
+    void *closest;
+    void *pen;
+
+    EXPECT_TRUE(rt_aabb3d_overlaps(a0, a1, b0, b1) == 1,
+                "AABB overlap canonicalizes inverted min/max bounds");
+    pen = rt_aabb3d_penetration(a0, a1, b0, b1);
+    EXPECT_NEAR(fabs(rt_vec3_x(pen)) + fabs(rt_vec3_y(pen)) + fabs(rt_vec3_z(pen)),
+                1.0,
+                0.01,
+                "AABB penetration canonicalizes inverted min/max bounds");
+    closest = rt_aabb3d_closest_point(rt_vec3_new(1, 1, 1), rt_vec3_new(-1, -1, -1), rt_vec3_new(3, 0, 0));
+    EXPECT_NEAR(rt_vec3_x(closest), 1.0, 0.01,
+                "AABB closest-point canonicalizes inverted min/max bounds");
+    EXPECT_TRUE(rt_aabb3d_sphere_overlaps(a0, a1, rt_vec3_new(1, 1, 1), -1.0) == 0,
+                "AABB-sphere rejects negative radii");
+}
+
+static void test_capsule_aabb_uses_exact_segment_distance() {
+    void *aabb_min = rt_vec3_new(0.0, 0.0, 0.0);
+    void *aabb_max = rt_vec3_new(100.0, 1.0, 1.0);
+    void *cap_a = rt_vec3_new(0.0, 1.1, 0.5);
+    void *cap_b = rt_vec3_new(100.0, 10.0, 0.5);
+
+    EXPECT_TRUE(rt_capsule3d_aabb_overlaps(cap_a, cap_b, 0.2, aabb_min, aabb_max) == 1,
+                "Capsule-AABB tests distance to the box, not only the box center");
 }
 
 int main() {
@@ -245,8 +293,11 @@ int main() {
     test_sphere_penetration_coincident_centers();
     test_ray_mesh();
     test_ray_mesh_translated();
+    test_ray_mesh_and_hit_accessors_reject_wrong_handles();
     test_aabb_closest_point_surface_inside();
     test_aabb_sphere_overlap_inside_box();
+    test_aabb_canonicalizes_inverted_bounds();
+    test_capsule_aabb_uses_exact_segment_distance();
 
     printf("Raycast3D tests: %d/%d passed\n", tests_passed, tests_run);
     return tests_passed == tests_run ? 0 : 1;

@@ -21,6 +21,7 @@ Direct children are arranged as vertically stacked content items inside the scro
 Scrollbar thumb drags keep pointer capture until mouse-up, even if the cursor leaves the widget while dragging.
 Child overlay widgets such as dropdown popups and tooltips now render outside the viewport clip instead of being cut off by the scroll region.
 Mouse-wheel events bubble to parent widgets when the scroll position cannot change, which keeps nested scroll views usable. Changing the scroll direction also clears offsets on disabled axes, so vertical-only views cannot retain stale horizontal displacement.
+`ScrollView` also exposes the common widget layout, state, tooltip, and drag/drop methods directly, including `SetFlex`, `SetMargin`, geometry getters, and enabled/visible state.
 
 **Constructor:** `NEW Viper.GUI.ScrollView(parent)`
 
@@ -94,6 +95,7 @@ A floating overlay panel that appears above normal content. Floating panels are 
 | `SetSize(w, h)`         | `Void(Integer, Integer)`   | Set panel dimensions                       |
 | `SetVisible(flag)`      | `Void(Integer)`            | Show or hide the panel                     |
 | `AddChild(widget)`      | `Void(Object)`             | Add a child widget to the panel            |
+| `Destroy()`             | `Void()`                   | Destroy the panel and disconnect its runtime handle |
 
 ```rust
 // Zia
@@ -192,7 +194,7 @@ if tabs.WasCloseClicked() == 1 {
 
 Hierarchical tree view with expandable nodes.
 
-Mouse hit testing is widget-local, so nested trees continue to select the correct row after layout shifts. Removing a node also clears any selected or hovered state inside the removed subtree.
+Mouse hit testing is widget-local, so nested trees continue to select the correct row after layout shifts. Removing a node also clears any selected or hovered state inside the removed subtree, and `WasSelectionChanged()` reports removals and `Clear()` calls that actually change the selection.
 Node glyph icons are rendered when present, and lazy/loading nodes now show an inline loading indicator instead of a blank row. Long labels are ellipsized instead of hard-clipping mid-string, and drag-and-drop callbacks now fire with validated `before` / `after` / `into` targets.
 `node.SetData()` stores runtime strings with their explicit length, so embedded NUL bytes round-trip through `node.GetData()`. Runtime-owned node data is freed when the node or tree is removed.
 
@@ -270,7 +272,8 @@ When word wrap is enabled, the editor uses wrapped visual rows for painting, cur
 Hiding line numbers fully collapses the line-number gutter. `SetLineNumberWidth(width)` is measured in character cells, so the gutter scales with the active font metrics instead of staying pinned to stale pixels. Fold regions now render in the gutter and hide folded body lines from cursor movement, scrolling, and pixel-position helpers.
 Syntax-colored text now renders in contiguous same-color runs instead of issuing one draw call per byte, which keeps large highlighted files responsive.
 Keyboard text input and pasted text preserve valid multi-byte UTF-8 sequences as complete byte ranges. Document replacement builds the new line array before swapping it into the editor, so allocation failure leaves the previous document intact instead of installing partially initialized lines.
-Gutter icon slots are validated as `0..3`; invalid slots are ignored. Read `GetGutterClickLine()` and `GetGutterClickSlot()` before consuming the event with `WasGutterClicked()`.
+`SetText()` uses the runtime string byte length when replacing the document, so `GetText()` round-trips embedded NUL bytes instead of truncating at the first NUL.
+Gutter icon slots are validated as `0..3`; invalid slots are ignored. Read `GetGutterClickLine()` and `GetGutterClickSlot()` before consuming the event with `WasGutterClicked()`; consuming the event clears the stored line and slot back to `-1`.
 
 **Constructor:** `NEW Viper.GUI.CodeEditor(parent)`
 

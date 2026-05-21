@@ -8,38 +8,38 @@ func main() {
     var b = 3;
 
     Viper.Terminal.Say("Arithmetic:");
-    Viper.Terminal.Say("  10 + 3 = " + Viper.Fmt.Int(a + b));
-    Viper.Terminal.Say("  10 - 3 = " + Viper.Fmt.Int(a - b));
-    Viper.Terminal.Say("  10 * 3 = " + Viper.Fmt.Int(a * b));
-    Viper.Terminal.Say("  10 / 3 = " + Viper.Fmt.Int(a / b));
-    Viper.Terminal.Say("  10 % 3 = " + Viper.Fmt.Int(a % b));
+    Viper.Terminal.Say("  10 + 3 = " + Viper.Text.Fmt.Int(a + b));
+    Viper.Terminal.Say("  10 - 3 = " + Viper.Text.Fmt.Int(a - b));
+    Viper.Terminal.Say("  10 * 3 = " + Viper.Text.Fmt.Int(a * b));
+    Viper.Terminal.Say("  10 / 3 = " + Viper.Text.Fmt.Int(a / b));
+    Viper.Terminal.Say("  10 % 3 = " + Viper.Text.Fmt.Int(a % b));
     // Note: No integer division operator and no power operator in ViperLang
 
     // Comparison operators
     Viper.Terminal.Say("");
     Viper.Terminal.Say("Comparison (5 vs 3):");
-    Viper.Terminal.Say("  5 == 3: " + Viper.Fmt.Bool(5 == 3));
-    Viper.Terminal.Say("  5 != 3: " + Viper.Fmt.Bool(5 != 3));
-    Viper.Terminal.Say("  5 < 3: " + Viper.Fmt.Bool(5 < 3));
-    Viper.Terminal.Say("  5 > 3: " + Viper.Fmt.Bool(5 > 3));
-    Viper.Terminal.Say("  5 <= 3: " + Viper.Fmt.Bool(5 <= 3));
-    Viper.Terminal.Say("  5 >= 3: " + Viper.Fmt.Bool(5 >= 3));
-    Viper.Terminal.Say("  5 == 5: " + Viper.Fmt.Bool(5 == 5));
+    Viper.Terminal.Say("  5 == 3: " + Viper.Text.Fmt.Bool(5 == 3));
+    Viper.Terminal.Say("  5 != 3: " + Viper.Text.Fmt.Bool(5 != 3));
+    Viper.Terminal.Say("  5 < 3: " + Viper.Text.Fmt.Bool(5 < 3));
+    Viper.Terminal.Say("  5 > 3: " + Viper.Text.Fmt.Bool(5 > 3));
+    Viper.Terminal.Say("  5 <= 3: " + Viper.Text.Fmt.Bool(5 <= 3));
+    Viper.Terminal.Say("  5 >= 3: " + Viper.Text.Fmt.Bool(5 >= 3));
+    Viper.Terminal.Say("  5 == 5: " + Viper.Text.Fmt.Bool(5 == 5));
 
     // Logical operators
     Viper.Terminal.Say("");
     Viper.Terminal.Say("Logical:");
-    Viper.Terminal.Say("  true && false: " + Viper.Fmt.Bool(true && false));
-    Viper.Terminal.Say("  true || false: " + Viper.Fmt.Bool(true || false));
-    Viper.Terminal.Say("  !true: " + Viper.Fmt.Bool(!true));
-    Viper.Terminal.Say("  !false: " + Viper.Fmt.Bool(!false));
+    Viper.Terminal.Say("  true && false: " + Viper.Text.Fmt.Bool(true && false));
+    Viper.Terminal.Say("  true || false: " + Viper.Text.Fmt.Bool(true || false));
+    Viper.Terminal.Say("  !true: " + Viper.Text.Fmt.Bool(!true));
+    Viper.Terminal.Say("  !false: " + Viper.Text.Fmt.Bool(!false));
 
     // Bitwise operators
     Viper.Terminal.Say("");
     Viper.Terminal.Say("Bitwise:");
-    Viper.Terminal.Say("  12 & 10 = " + Viper.Fmt.Int(12 & 10));
-    Viper.Terminal.Say("  12 | 10 = " + Viper.Fmt.Int(12 | 10));
-    Viper.Terminal.Say("  12 ^ 10 = " + Viper.Fmt.Int(12 ^ 10));
+    Viper.Terminal.Say("  12 & 10 = " + Viper.Text.Fmt.Int(12 & 10));
+    Viper.Terminal.Say("  12 | 10 = " + Viper.Text.Fmt.Int(12 | 10));
+    Viper.Terminal.Say("  12 ^ 10 = " + Viper.Text.Fmt.Int(12 ^ 10));
 
     // String concatenation
     var s1 = "Hello";
@@ -54,20 +54,20 @@ func main() {
     var name = "Alice";
     var age = 30;
     // Test if interpolation works
-    var msg = "Hello " + name + ", age " + Viper.Fmt.Int(age);
+    var msg = "Hello " + name + ", age " + Viper.Text.Fmt.Int(age);
     Viper.Terminal.Say("  Using concat: " + msg);
 
     // Operator precedence
     Viper.Terminal.Say("");
     Viper.Terminal.Say("Precedence:");
-    Viper.Terminal.Say("  2 + 3 * 4 = " + Viper.Fmt.Int(2 + 3 * 4));
-    Viper.Terminal.Say("  (2 + 3) * 4 = " + Viper.Fmt.Int((2 + 3) * 4));
+    Viper.Terminal.Say("  2 + 3 * 4 = " + Viper.Text.Fmt.Int(2 + 3 * 4));
+    Viper.Terminal.Say("  (2 + 3) * 4 = " + Viper.Text.Fmt.Int((2 + 3) * 4));
 
     // Unary operators
     Viper.Terminal.Say("");
     Viper.Terminal.Say("Unary:");
     var x = 5;
-    Viper.Terminal.Say("  -5 = " + Viper.Fmt.Int(-x));
+    Viper.Terminal.Say("  -5 = " + Viper.Text.Fmt.Int(-x));
 
     // Null coalescing (ViperLang specific)
     Viper.Terminal.Say("");

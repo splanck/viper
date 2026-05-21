@@ -69,6 +69,9 @@ bool installSyntheticGlobal(const ObjSymbol &sym,
     e.objIndex = objIdx;
     e.secIndex = sym.sectionIndex;
     e.offset = sym.offset;
+    e.resolvedAddr = sym.absolute ? static_cast<uint64_t>(sym.offset) : 0;
+    e.resolvedAddrValid = sym.absolute;
+    e.absolute = sym.absolute;
     globalSyms[sym.name] = std::move(e);
     return true;
 }
@@ -131,6 +134,7 @@ void ensurePeImportFunction(std::vector<DllImport> &imports,
 ObjFile makeUndefinedRootObject(const ObjFile &userObj, const std::string &symbolName) {
     ObjFile root;
     root.name = "<entry-root>";
+    root.synthetic = true;
     root.format = userObj.format;
     root.is64bit = userObj.is64bit;
     root.isLittleEndian = userObj.isLittleEndian;
@@ -143,6 +147,49 @@ ObjFile makeUndefinedRootObject(const ObjFile &userObj, const std::string &symbo
     sym.binding = ObjSymbol::Undefined;
     root.symbols.push_back(std::move(sym));
     return root;
+}
+
+/// @brief Synthesize a definition of `__dso_handle` (a pointer-sized data
+///        symbol).
+/// @details Embedding C++ frontend code (fe_zia) drags in libc++'s atexit
+///          machinery, which references `__dso_handle` purely as a unique
+///          per-image identity cookie passed to `__cxa_atexit` — its contents
+///          are never read. A normal crt provides it, but Viper's crt-less
+///          native binaries do not, so we define an 8-byte zero-filled symbol
+///          ourselves. Both the C name and the Mach-O-mangled `_`-prefixed
+///          form are exported so the reference resolves on every format.
+ObjFile makeDsoHandleObject(const ObjFile &userObj) {
+    ObjFile obj;
+    obj.name = "<dso-handle>";
+    obj.synthetic = true;
+    obj.format = userObj.format;
+    obj.is64bit = userObj.is64bit;
+    obj.isLittleEndian = userObj.isLittleEndian;
+    obj.machine = userObj.machine;
+    obj.sections.push_back(ObjSection{});
+
+    ObjSection dataSec;
+    dataSec.name = ".data";
+    dataSec.alloc = true;
+    dataSec.writable = true;
+    dataSec.zeroFill = true;
+    dataSec.alignment = 8;
+    dataSec.memSize = 8;
+
+    // A single definition: the resolver's macOS underscore fallback treats
+    // `__dso_handle` / `___dso_handle` as the same symbol, so defining both
+    // here would be a self-collision.
+    obj.symbols.push_back(ObjSymbol{});
+    ObjSymbol sym;
+    sym.name = "__dso_handle";
+    sym.binding = ObjSymbol::Global;
+    sym.sectionIndex = 1;
+    sym.offset = 0;
+    sym.size = 8;
+    obj.symbols.push_back(std::move(sym));
+
+    obj.sections.push_back(std::move(dataSec));
+    return obj;
 }
 
 /// @brief Heuristically detect a debug-flavored Windows CRT in the archive list.
@@ -191,11 +238,12 @@ const char *archName(LinkArch arch) {
 
 bool addressInExecutableSection(const LinkLayout &layout, uint64_t addr) {
     for (const auto &sec : layout.sections) {
-        if (!sec.alloc || !sec.executable || sec.data.empty())
+        const size_t memSize = outputSectionMemSize(sec);
+        if (!sec.alloc || !sec.executable || memSize == 0)
             continue;
-        if (sec.data.size() > std::numeric_limits<uint64_t>::max() - sec.virtualAddr)
+        if (memSize > std::numeric_limits<uint64_t>::max() - sec.virtualAddr)
             continue;
-        const uint64_t end = sec.virtualAddr + sec.data.size();
+        const uint64_t end = sec.virtualAddr + memSize;
         if (addr >= sec.virtualAddr && addr < end)
             return true;
     }
@@ -241,8 +289,9 @@ const char *formatName(ObjFileFormat format) {
 }
 
 /// @brief Reject any input ObjFile whose format/machine does not match the target.
-/// @details Synthetic objects (whose name starts with `<`) are exempt from the
-///          check because they were minted with the target's format already.
+/// @details Synthetic objects are exempt from the check because they were minted
+///          with the target's format already. User/archive object names are not
+///          trusted for this decision.
 bool validateInputObjects(const std::vector<ObjFile> &objects,
                           LinkPlatform platform,
                           LinkArch arch,
@@ -250,7 +299,7 @@ bool validateInputObjects(const std::vector<ObjFile> &objects,
     const ObjFileFormat wantFormat = expectedFormat(platform);
     const uint16_t wantMachine = expectedMachine(platform, arch);
     for (const auto &obj : objects) {
-        if (obj.name.size() > 0 && obj.name[0] == '<')
+        if (obj.synthetic)
             continue;
         if (obj.format != wantFormat) {
             err << "error: " << obj.name << ": " << formatName(obj.format)
@@ -275,6 +324,47 @@ void appendArm64Insn(std::vector<uint8_t> &data, uint32_t insn) {
     data.push_back(static_cast<uint8_t>((insn >> 24) & 0xFF));
 }
 
+/// @brief Initialize a Windows COFF "helpers" ObjFile scaffold with the given
+///        synthetic name and machine code; shared by the x64 and arm64 builders.
+/// @details Both Windows-helpers generators want the same ObjFile flags
+///          (synthetic, 64-bit COFF, little-endian) with a placeholder section[0]
+///          / symbol[0] slot already pushed. Centralising the boilerplate here
+///          means a future third architecture only changes one place.
+static ObjFile makeWindowsHelpersObj(const char *name, uint16_t machine) {
+    ObjFile obj;
+    obj.name = name;
+    obj.synthetic = true;
+    obj.format = ObjFileFormat::COFF;
+    obj.is64bit = true;
+    obj.isLittleEndian = true;
+    obj.machine = machine;
+    obj.sections.push_back(ObjSection{});
+    obj.symbols.push_back(ObjSymbol{});
+    return obj;
+}
+
+/// @brief Construct the canonical executable `.text` ObjSection used by the
+///        Windows-helpers builders (16-byte aligned, allocated, executable).
+static ObjSection makeWindowsHelpersTextSec() {
+    ObjSection s;
+    s.name = ".text";
+    s.executable = true;
+    s.alloc = true;
+    s.alignment = 16;
+    return s;
+}
+
+/// @brief Construct the canonical writable `.data` ObjSection used by the
+///        Windows-helpers builders (8-byte aligned, allocated, writable).
+static ObjSection makeWindowsHelpersDataSec() {
+    ObjSection s;
+    s.name = ".data";
+    s.writable = true;
+    s.alloc = true;
+    s.alignment = 8;
+    return s;
+}
+
 /// @brief Synthesise a COFF object that supplies common Windows runtime stubs.
 /// @details Windows binaries normally pick up many tiny support routines (the
 ///          security cookie, TLS index, vm_trap, integer-divide helpers, etc.)
@@ -287,26 +377,9 @@ void appendArm64Insn(std::vector<uint8_t> &data, uint32_t insn) {
 ObjFile generateWindowsX64Helpers(const std::unordered_set<std::string> &dynamicSyms,
                                   bool haveVmTrapDefault,
                                   bool needTlsIndex) {
-    ObjFile obj;
-    obj.name = "<win64-helpers>";
-    obj.format = ObjFileFormat::COFF;
-    obj.is64bit = true;
-    obj.isLittleEndian = true;
-    obj.machine = 0x8664;
-    obj.sections.push_back(ObjSection{});
-    obj.symbols.push_back(ObjSymbol{});
-
-    ObjSection textSec;
-    textSec.name = ".text";
-    textSec.executable = true;
-    textSec.alloc = true;
-    textSec.alignment = 16;
-
-    ObjSection dataSec;
-    dataSec.name = ".data";
-    dataSec.writable = true;
-    dataSec.alloc = true;
-    dataSec.alignment = 8;
+    ObjFile obj = makeWindowsHelpersObj("<win64-helpers>", 0x8664);
+    ObjSection textSec = makeWindowsHelpersTextSec();
+    ObjSection dataSec = makeWindowsHelpersDataSec();
 
     auto needsHelper = [&](const std::string &name) {
         return dynamicSyms.count(name) || dynamicSyms.count("__imp_" + name);
@@ -612,26 +685,9 @@ ObjFile generateWindowsX64Helpers(const std::unordered_set<std::string> &dynamic
 ObjFile generateWindowsArm64Helpers(const std::unordered_set<std::string> &dynamicSyms,
                                     bool haveVmTrapDefault,
                                     bool needTlsIndex) {
-    ObjFile obj;
-    obj.name = "<winarm64-helpers>";
-    obj.format = ObjFileFormat::COFF;
-    obj.is64bit = true;
-    obj.isLittleEndian = true;
-    obj.machine = 0xAA64;
-    obj.sections.push_back(ObjSection{});
-    obj.symbols.push_back(ObjSymbol{});
-
-    ObjSection textSec;
-    textSec.name = ".text";
-    textSec.executable = true;
-    textSec.alloc = true;
-    textSec.alignment = 16;
-
-    ObjSection dataSec;
-    dataSec.name = ".data";
-    dataSec.writable = true;
-    dataSec.alloc = true;
-    dataSec.alignment = 8;
+    ObjFile obj = makeWindowsHelpersObj("<winarm64-helpers>", 0xAA64);
+    ObjSection textSec = makeWindowsHelpersTextSec();
+    ObjSection dataSec = makeWindowsHelpersDataSec();
 
     auto needsHelper = [&](const std::string &name) {
         return dynamicSyms.count(name) || dynamicSyms.count("__imp_" + name);
@@ -967,6 +1023,58 @@ ObjFile generateWindowsArm64Helpers(const std::unordered_set<std::string> &dynam
     return obj;
 }
 
+/// @brief Read every static archive at @p paths into @p outArchives.
+/// @details A discrete "read archives" pipeline stage extracted from
+///          @ref nativeLink so the driver can read as a sequence of named
+///          stages rather than inlining 10+ LOC of archive iteration. Writes
+///          an error to @p err and returns false on any per-archive failure.
+static bool readArchiveFiles(const std::vector<std::string> &paths,
+                             std::vector<Archive> &outArchives,
+                             std::ostream &err) {
+    for (const auto &arPath : paths) {
+        Archive ar;
+        if (!readArchive(arPath, ar, err)) {
+            err << "error: failed to read archive '" << arPath << "'\n";
+            return false;
+        }
+        outArchives.push_back(std::move(ar));
+    }
+    return true;
+}
+
+/// @brief Force-load every member of every archive at @p paths as an
+///        @ref ObjFile, appending the parsed members to @p extraObjects.
+/// @details Extracted from @ref nativeLink as a discrete pipeline stage so
+///          the strong-override-weak resolution rationale for force-loading
+///          archives has a single named entry point. Empty members are
+///          skipped silently; any read or parse failure returns false with
+///          an error message written to @p err.
+static bool loadForceLoadArchiveMembers(const std::vector<std::string> &paths,
+                                        std::vector<ObjFile> &extraObjects,
+                                        std::ostream &err) {
+    for (const auto &arPath : paths) {
+        Archive forceAr;
+        if (!readArchive(arPath, forceAr, err)) {
+            err << "error: failed to read force-load archive '" << arPath << "'\n";
+            return false;
+        }
+        for (const auto &member : forceAr.members) {
+            const ArchiveMemberView view = memberDataView(forceAr, member);
+            if (view.data == nullptr || view.size == 0)
+                continue;
+            ObjFile memberObj;
+            if (!readObjFile(
+                    view.data, view.size, arPath + "(" + member.name + ")", memberObj, err)) {
+                err << "error: failed to parse force-load member '" << member.name << "' in '"
+                    << arPath << "'\n";
+                return false;
+            }
+            extraObjects.push_back(std::move(memberObj));
+        }
+    }
+    return true;
+}
+
 } // namespace
 
 /// @brief Run the full native link pipeline: parse objects → resolve symbols →
@@ -995,16 +1103,21 @@ int nativeLink(const NativeLinkerOptions &opts, std::ostream & /*out*/, std::ost
         extraObjects.push_back(std::move(extraObj));
     }
 
+    // Step 1c: Force-load archives — materialize every member so its strong
+    // definitions participate in resolution unconditionally. Step 3's
+    // demand-driven extraction would otherwise let weak runtime stubs (e.g.
+    // rt_zia_* in viper_rt_base) satisfy the symbols first, so the strong
+    // frontend definitions in fe_zia would never be pulled. Loading them as
+    // initial objects lets SymbolResolver's "Strong overrides Weak" rule make
+    // them win. Special members (symbol/string tables) are already excluded
+    // from Archive::members by the archive reader.
+    if (!loadForceLoadArchiveMembers(opts.forceLoadArchivePaths, extraObjects, err))
+        return 1;
+
     // Step 2: Read all archive files.
     std::vector<Archive> archives;
-    for (const auto &arPath : opts.archivePaths) {
-        Archive ar;
-        if (!readArchive(arPath, ar, err)) {
-            err << "error: failed to read archive '" << arPath << "'\n";
-            return 1;
-        }
-        archives.push_back(std::move(ar));
-    }
+    if (!readArchiveFiles(opts.archivePaths, archives, err))
+        return 1;
 
     // Step 3: Symbol resolution (iterative archive extraction).
     std::vector<ObjFile> initialObjects = {userObj};
@@ -1012,6 +1125,11 @@ int nativeLink(const NativeLinkerOptions &opts, std::ostream & /*out*/, std::ost
         initialObjects.push_back(std::move(extra));
     if (!opts.entrySymbol.empty())
         initialObjects.push_back(makeUndefinedRootObject(userObj, opts.entrySymbol));
+    // Embedding the C++ frontend (force-loaded fe_zia) pulls in libc++ atexit
+    // code that references `__dso_handle`; crt-less Viper binaries must define
+    // it themselves.
+    if (!opts.forceLoadArchivePaths.empty())
+        initialObjects.push_back(makeDsoHandleObject(userObj));
     std::unordered_map<std::string, GlobalSymEntry> globalSyms;
     std::vector<ObjFile> allObjects;
     std::unordered_set<std::string> dynamicSyms;
@@ -1208,7 +1326,7 @@ int nativeLink(const NativeLinkerOptions &opts, std::ostream & /*out*/, std::ost
     // Step 6.25: Resolve the final entry point after symbol addresses are known.
     {
         auto it = findWithPlatformFallback(layout.globalSyms, opts.entrySymbol, opts.platform);
-        if (it == layout.globalSyms.end() || it->second.resolvedAddr == 0) {
+        if (it == layout.globalSyms.end() || !it->second.resolvedAddrValid) {
             err << "error: entry symbol '" << opts.entrySymbol << "' was not resolved\n";
             return 1;
         }

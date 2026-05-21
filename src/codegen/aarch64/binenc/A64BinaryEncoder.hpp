@@ -81,8 +81,27 @@ class A64BinaryEncoder {
   private:
     using LabelOffsetMap = std::unordered_map<std::string, size_t>;
 
-    /// Encode a single MIR instruction.
+    /// Encode a single MIR instruction. Dispatches to per-family helpers below.
     void encodeInstruction(const MInstr &mi, objfile::CodeSection &cs);
+
+    // === Per-family encoders (called from encodeInstruction switch) ===
+    // Each helper handles one logical group of opcodes that share an encoding
+    // strategy. The dispatcher in encodeInstruction routes each MOpcode to its
+    // family; the family encoders are deliberately small enough to read end-to-end.
+    void encodeAddSubImmInstr(const MInstr &mi, objfile::CodeSection &cs);
+    void encodeMoveInstr(const MInstr &mi, objfile::CodeSection &cs);
+    void encodeShiftImmInstr(const MInstr &mi, objfile::CodeSection &cs);
+    void encodeCompareInstr(const MInstr &mi, objfile::CodeSection &cs);
+    void encodeConditionalInstr(const MInstr &mi, objfile::CodeSection &cs);
+    void encodeFpRelLdStInstr(const MInstr &mi, objfile::CodeSection &cs);
+    void encodeBaseRelLdStInstr(const MInstr &mi, objfile::CodeSection &cs);
+    void encodeLdStPairInstr(const MInstr &mi, objfile::CodeSection &cs);
+    void encodeSpOpInstr(const MInstr &mi, objfile::CodeSection &cs);
+    void encodeAddFpImmInstr(const MInstr &mi, objfile::CodeSection &cs);
+    void encodeLogicalImmInstr(const MInstr &mi, objfile::CodeSection &cs);
+    void encodeFpSpecialInstr(const MInstr &mi, objfile::CodeSection &cs);
+    void encodeBranchInstr(const MInstr &mi, objfile::CodeSection &cs);
+    void encodeAddressInstr(const MInstr &mi, objfile::CodeSection &cs);
 
     /// Measure the fixed BTI/prologue prefix emitted before the first block label.
     size_t measurePreludeSize(const MFunction &fn);

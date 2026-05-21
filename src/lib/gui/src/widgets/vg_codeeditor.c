@@ -159,9 +159,17 @@ static bool ensure_text_capacity(vg_code_line_t *line, size_t needed) {
     return true;
 }
 
+static int codeeditor_line_length_i32(const vg_codeeditor_t *editor, int line) {
+    if (!editor || line < 0 || line >= editor->line_count)
+        return 0;
+    return editor->lines[line].length > (size_t)INT_MAX
+               ? INT_MAX
+               : (int)editor->lines[line].length;
+}
+
 /// @brief Allocates and copies @p len bytes from @p text into @p line, zero-initializing all other fields.
 static bool init_line_text(vg_code_line_t *line, const char *text, size_t len) {
-    if (!line || len > SIZE_MAX - 1)
+    if (!line || len > SIZE_MAX - 1 || len > (size_t)INT_MAX)
         return false;
     char *copy = (char *)malloc(len + 1);
     if (!copy)
@@ -497,8 +505,10 @@ static void update_gutter_width(vg_codeeditor_t *editor) {
 
 /// @brief Returns the number of characters that fit per wrap row given @p content_width; 0 if word_wrap is off.
 static int codeeditor_chars_per_row(const vg_codeeditor_t *editor, float content_width) {
-    if (!editor || !editor->word_wrap || editor->char_width <= 0.0f || content_width <= 0.0f)
+    if (!editor || !editor->word_wrap || editor->char_width <= 0.0f)
         return 0;
+    if (content_width <= 0.0f)
+        return 1;
     int chars = (int)(content_width / editor->char_width);
     return chars > 0 ? chars : 1;
 }
@@ -515,7 +525,8 @@ static int codeeditor_wrapped_rows_for_line(const vg_codeeditor_t *editor,
     size_t len = editor->lines[line].length;
     if (len == 0)
         return 1;
-    return (int)((len + (size_t)chars_per_row - 1) / (size_t)chars_per_row);
+    size_t rows = (len + (size_t)chars_per_row - 1) / (size_t)chars_per_row;
+    return rows > (size_t)INT_MAX ? INT_MAX : (int)rows;
 }
 
 /// @brief Returns the visual row count for @p line (0 if hidden, 1 if no word-wrap, else wrapped row count).
@@ -804,8 +815,9 @@ static void codeeditor_local_point_to_position(const vg_codeeditor_t *editor,
         if (col_in_row < 0)
             col_in_row = 0;
         int col = row_in_line * chars_per_row + col_in_row;
-        if (col > (int)editor->lines[line].length)
-            col = (int)editor->lines[line].length;
+        int line_len = codeeditor_line_length_i32(editor, line);
+        if (col > line_len)
+            col = line_len;
         if (out_line)
             *out_line = line;
         if (out_col)
@@ -822,8 +834,9 @@ static void codeeditor_local_point_to_position(const vg_codeeditor_t *editor,
     int col = editor->char_width > 0.0f ? (int)(content_local_x / editor->char_width + 0.5f) : 0;
     if (col < 0)
         col = 0;
-    if (col > (int)editor->lines[line].length)
-        col = (int)editor->lines[line].length;
+    int line_len = codeeditor_line_length_i32(editor, line);
+    if (col > line_len)
+        col = line_len;
     if (out_line)
         *out_line = line;
     if (out_col)
@@ -861,8 +874,9 @@ static void codeeditor_move_cursor_vertical(vg_codeeditor_t *editor,
 
     int chars_per_row = codeeditor_chars_per_row(editor, content_width);
     int target_col = target_row_in_line * chars_per_row + col_in_row;
-    if (target_col > (int)editor->lines[target_line].length)
-        target_col = (int)editor->lines[target_line].length;
+    int target_line_len = codeeditor_line_length_i32(editor, target_line);
+    if (target_col > target_line_len)
+        target_col = target_line_len;
 
     editor->cursor_line = target_line;
     editor->cursor_col = target_col;
@@ -1746,6 +1760,36 @@ static void codeeditor_draw_fold_ellipsis(vg_codeeditor_t *editor,
         canvas, editor->font, editor->font_size, ellipsis_x, baseline_y, "...", editor->line_number_color);
 }
 
+/// @brief Draws an editor highlight span as an underline so diagnostics do not obscure the text.
+static void codeeditor_draw_highlight_underline(void *canvas,
+                                                float x,
+                                                float y,
+                                                float width,
+                                                float line_height,
+                                                uint32_t color) {
+    if (!canvas || width <= 0.0f || line_height <= 0.0f)
+        return;
+
+    float underline_height = line_height >= 8.0f ? 2.0f : 1.0f;
+    float underline_y = y + line_height - underline_height - 1.0f;
+    if (underline_y < y)
+        underline_y = y;
+
+    int32_t draw_width = (int32_t)(width + 0.5f);
+    int32_t draw_height = (int32_t)(underline_height + 0.5f);
+    if (draw_width < 1)
+        draw_width = 1;
+    if (draw_height < 1)
+        draw_height = 1;
+
+    vgfx_fill_rect((vgfx_window_t)canvas,
+                   (int32_t)x,
+                   (int32_t)underline_y,
+                   draw_width,
+                   draw_height,
+                   (vgfx_color_t)color);
+}
+
 /// @brief VTable paint: renders background, gutter, current-line highlight, selection, syntax-coloured text, cursor, and scrollbar.
 static void codeeditor_paint(vg_widget_t *widget, void *canvas) {
     vg_codeeditor_t *editor = (vg_codeeditor_t *)widget;
@@ -1823,12 +1867,8 @@ static void codeeditor_paint(vg_widget_t *widget, void *canvas) {
                     col_end = col_start + 1;
                 float span_x = content_x + col_start * editor->char_width - editor->scroll_x;
                 float span_w = (col_end - col_start) * editor->char_width;
-                vgfx_fill_rect((vgfx_window_t)canvas,
-                               (int32_t)span_x,
-                               (int32_t)line_y,
-                               (int32_t)span_w,
-                               (int32_t)editor->line_height,
-                               (vgfx_color_t)span->color);
+                codeeditor_draw_highlight_underline(
+                    canvas, span_x, line_y, span_w, editor->line_height, span->color);
             }
 
             if (editor->has_selection && (widget->state & VG_STATE_FOCUSED)) {
@@ -1991,12 +2031,8 @@ static void codeeditor_paint(vg_widget_t *widget, void *canvas) {
                     float span_x =
                         content_x + (float)(overlap_start - seg_start) * editor->char_width;
                     float span_w = (float)(overlap_end - overlap_start) * editor->char_width;
-                    vgfx_fill_rect((vgfx_window_t)canvas,
-                                   (int32_t)span_x,
-                                   (int32_t)row_y,
-                                   (int32_t)span_w,
-                                   (int32_t)editor->line_height,
-                                   (vgfx_color_t)span->color);
+                    codeeditor_draw_highlight_underline(
+                        canvas, span_x, row_y, span_w, editor->line_height, span->color);
                 }
 
                 if (editor->has_selection && (widget->state & VG_STATE_FOCUSED)) {
@@ -2356,6 +2392,39 @@ static int encode_utf8(uint32_t cp, char *buf) {
     return 0; // Out-of-range
 }
 
+/// @brief True if a character event should insert literal text instead of being treated as a command shortcut.
+static bool codeeditor_key_char_allows_text(const vg_event_t *event) {
+    if (!event)
+        return false;
+
+    uint32_t mods = event->modifiers;
+    bool has_super = (mods & VG_MOD_SUPER) != 0;
+    bool has_ctrl = (mods & VG_MOD_CTRL) != 0;
+    bool has_alt = (mods & VG_MOD_ALT) != 0;
+
+    if (has_super)
+        return false;
+    if (has_ctrl && !has_alt)
+        return false;
+    if (has_alt && !has_ctrl)
+        return false;
+    return true;
+}
+
+static bool codeeditor_codepoint_is_text(uint32_t cp) {
+    if (cp < 0x20 || cp == 0x7F || cp > 0x10FFFF)
+        return false;
+    if (cp >= 0x80 && cp <= 0x9F)
+        return false;
+    if (cp >= 0xD800 && cp <= 0xDFFF)
+        return false;
+    if ((cp >= 0xE000 && cp <= 0xF8FF) ||
+        (cp >= 0xF0000 && cp <= 0xFFFFD) ||
+        (cp >= 0x100000 && cp <= 0x10FFFD))
+        return false;
+    return true;
+}
+
 // Insert n raw bytes at the current cursor position and advance cursor_col by n.
 VG_UNUSED static void insert_bytes(vg_codeeditor_t *editor, const char *bytes, size_t n) {
     if (!editor || !bytes || !n)
@@ -2363,7 +2432,8 @@ VG_UNUSED static void insert_bytes(vg_codeeditor_t *editor, const char *bytes, s
     codeeditor_clamp_cursor_to_visible(editor, &editor->cursor_line, &editor->cursor_col);
     vg_code_line_t *line = &editor->lines[editor->cursor_line];
 
-    if (line->length > SIZE_MAX - 1 || n > SIZE_MAX - line->length - 1)
+    if (line->length > SIZE_MAX - 1 || n > SIZE_MAX - line->length - 1 ||
+        line->length > (size_t)INT_MAX || n > (size_t)INT_MAX - line->length)
         return;
     if (!ensure_text_capacity(line, line->length + n + 1))
         return;
@@ -2374,7 +2444,7 @@ VG_UNUSED static void insert_bytes(vg_codeeditor_t *editor, const char *bytes, s
 
     memcpy(line->text + editor->cursor_col, bytes, n);
     line->length += n;
-    editor->cursor_col += n;
+    editor->cursor_col += (int)n;
     editor->modified = true;
     line->modified = true;
 }
@@ -2385,7 +2455,7 @@ VG_UNUSED static void insert_char(vg_codeeditor_t *editor, char c) {
     codeeditor_clamp_cursor_to_visible(editor, &editor->cursor_line, &editor->cursor_col);
     vg_code_line_t *line = &editor->lines[editor->cursor_line];
 
-    if (line->length > SIZE_MAX - 2)
+    if (line->length > SIZE_MAX - 2 || line->length >= (size_t)INT_MAX)
         return;
     if (!ensure_text_capacity(line, line->length + 2))
         return;
@@ -2416,10 +2486,12 @@ static bool codeeditor_insert_bytes_at(vg_codeeditor_t *editor,
         return false;
     if (*col < 0)
         *col = 0;
-    if (*col > (int)line->length)
-        *col = (int)line->length;
+    int line_len = line->length > (size_t)INT_MAX ? INT_MAX : (int)line->length;
+    if (*col > line_len)
+        *col = line_len;
 
-    if (line->length > SIZE_MAX - 1 || n > SIZE_MAX - line->length - 1)
+    if (line->length > SIZE_MAX - 1 || n > SIZE_MAX - line->length - 1 ||
+        line->length > (size_t)INT_MAX || n > (size_t)INT_MAX - line->length)
         return false;
     if (n > (size_t)(INT_MAX - *col))
         return false;
@@ -2446,8 +2518,9 @@ static bool codeeditor_split_line_at(vg_codeeditor_t *editor, int line_idx, int 
         return false;
     if (col < 0)
         col = 0;
-    if (col > (int)current->length)
-        col = (int)current->length;
+    int current_len = current->length > (size_t)INT_MAX ? INT_MAX : (int)current->length;
+    if (col > current_len)
+        col = current_len;
 
     size_t split_col = (size_t)col;
     size_t remaining = current->length - split_col;
@@ -2505,7 +2578,9 @@ VG_UNUSED static void delete_char_backward(vg_codeeditor_t *editor) {
 
         size_t new_col = prev->length;
 
-        if (!ensure_text_capacity(prev, prev->length + current->length + 1))
+        if (prev->length > (size_t)INT_MAX ||
+            current->length > (size_t)INT_MAX - prev->length ||
+            !ensure_text_capacity(prev, prev->length + current->length + 1))
             return;
 
         memcpy(prev->text + prev->length, current->text, current->length + 1);
@@ -2786,6 +2861,7 @@ static bool codeeditor_handle_event(vg_widget_t *widget, vg_event_t *event) {
 
             if (editor->read_only) {
                 // Navigation only
+                bool handled_key = true;
                 switch (event->key.key) {
                     case VG_KEY_UP:
                         codeeditor_move_cursor_vertical(editor, widget, -1);
@@ -2816,13 +2892,17 @@ static bool codeeditor_handle_event(vg_widget_t *widget, vg_event_t *event) {
                         break;
                     }
                     default:
+                        handled_key = false;
                         break;
                 }
+                if (!handled_key)
+                    return false;
                 ensure_cursor_visible(editor);
                 widget->needs_paint = true;
                 return true;
             }
 
+            bool handled_key = true;
             switch (event->key.key) {
                 case VG_KEY_UP:
                     codeeditor_move_cursor_vertical(editor, widget, -1);
@@ -2888,8 +2968,12 @@ static bool codeeditor_handle_event(vg_widget_t *widget, vg_event_t *event) {
                     }
                     break;
                 default:
+                    handled_key = false;
                     break;
             }
+
+            if (!handled_key)
+                return false;
 
             // Ensure cursor stays visible after movement
             ensure_cursor_visible(editor);
@@ -2902,9 +2986,10 @@ static bool codeeditor_handle_event(vg_widget_t *widget, vg_event_t *event) {
         }
 
         case VG_EVENT_KEY_CHAR: {
+            if (!codeeditor_key_char_allows_text(event))
+                return false;
             uint32_t cp = event->key.codepoint;
-            // Accept all printable codepoints: U+0020–U+10FFFF excluding surrogates.
-            bool printable = (cp >= 0x20 && !(cp >= 0xD800 && cp <= 0xDFFF) && cp <= 0x10FFFF);
+            bool printable = codeeditor_codepoint_is_text(cp);
             if (!editor->read_only && printable) {
                 if (cp < 0x80) {
                     char text[2] = {(char)cp, '\0'};
@@ -2973,16 +3058,18 @@ void vg_codeeditor_tick(vg_codeeditor_t *editor, float dt) {
     }
 }
 
-/// @brief Replace all editor content with the given text.
+/// @brief Replace all editor content with the given byte span.
 ///
 /// @details Splits text on newlines to populate the line array.  The cursor is
 ///          moved to (0,0), all selections and extra cursors are cleared, scroll
 ///          is reset to 0, and the modified flag is cleared.  NULL or empty text
-///          results in a single empty line.
+///          results in a single empty line. Embedded NUL bytes are preserved in
+///          the line buffers and returned by vg_codeeditor_get_text.
 ///
 /// @param editor The code editor to update.
-/// @param text   Null-terminated UTF-8 source text; may be NULL to clear.
-void vg_codeeditor_set_text(vg_codeeditor_t *editor, const char *text) {
+/// @param text   UTF-8 source bytes; may be NULL to clear.
+/// @param len    Number of bytes to read from @p text.
+void vg_codeeditor_set_text_bytes(vg_codeeditor_t *editor, const char *text, size_t len) {
     if (!editor)
         return;
 
@@ -2990,7 +3077,7 @@ void vg_codeeditor_set_text(vg_codeeditor_t *editor, const char *text) {
     int new_capacity = 0;
     int new_count = 0;
 
-    if (!text || !text[0]) {
+    if (!text || len == 0) {
         if (!ensure_line_array_capacity(&new_lines, &new_capacity, 1) ||
             !init_line_text(&new_lines[0], "", 0)) {
             free_line_array(new_lines, new_count);
@@ -2999,18 +3086,20 @@ void vg_codeeditor_set_text(vg_codeeditor_t *editor, const char *text) {
         new_count = 1;
     } else {
         const char *start = text;
-        for (;;) {
-            const char *end = strchr(start, '\n');
-            size_t len = end ? (size_t)(end - start) : strlen(start);
+        const char *limit = text + len;
+        while (start <= limit) {
+            const void *found = memchr(start, '\n', (size_t)(limit - start));
+            const char *end = found ? (const char *)found : limit;
+            size_t line_len = (size_t)(end - start);
 
             if (!ensure_line_array_capacity(&new_lines, &new_capacity, new_count + 1) ||
-                !init_line_text(&new_lines[new_count], start, len)) {
+                !init_line_text(&new_lines[new_count], start, line_len)) {
                 free_line_array(new_lines, new_count);
                 return;
             }
             new_count++;
 
-            if (!end)
+            if (!found)
                 break;
             start = end + 1;
         }
@@ -3042,6 +3131,10 @@ void vg_codeeditor_set_text(vg_codeeditor_t *editor, const char *text) {
 
     vg_codeeditor_refresh_layout_state(editor);
     editor->base.needs_paint = true;
+}
+
+void vg_codeeditor_set_text(vg_codeeditor_t *editor, const char *text) {
+    vg_codeeditor_set_text_bytes(editor, text, text ? strlen(text) : 0);
 }
 
 /// @brief Return the complete editor content as a heap-allocated newline-joined string.

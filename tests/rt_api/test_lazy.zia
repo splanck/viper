@@ -2,15 +2,15 @@
 module TestLazy;
 
 bind Viper.Terminal;
-bind Viper.Lazy;
-bind Viper.LazySeq;
+bind Viper.Functional.Lazy;
+bind Viper.Functional.LazySeq;
 
 func start() {
-    var lazy = Viper.Lazy.OfI64(42);
-    SayInt(Viper.Lazy.GetI64(lazy));
+    var lazy = Viper.Functional.Lazy.OfI64(42);
+    SayInt(Viper.Functional.Lazy.GetI64(lazy));
 
-    var seq = Viper.LazySeq.Range(1, 5, 1);
-    var out = Viper.LazySeq.ToSeqN(seq, 3);
+    var seq = Viper.Functional.LazySeq.Range(1, 5, 1);
+    var out = Viper.Functional.LazySeq.ToSeqN(seq, 3);
     SayInt(out.Length);
 
     Say("done");

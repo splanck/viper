@@ -15,5 +15,5 @@ FOR i = 0 TO 49999999
     t9 = t8 - 11
     sum = sum + t9
 NEXT i
-Viper.Environment.EndProgram(sum)
+Viper.System.Environment.EndProgram(sum)
 END

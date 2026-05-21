@@ -21,7 +21,7 @@
 // ============================================================================
 module play_by_play_writer;
 
-bind Viper.Fmt as Fmt;
+bind Viper.Text.Fmt as Fmt;
 bind "../model/constants";
 bind "../model/game_state";
 bind "../model/player";

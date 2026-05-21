@@ -858,7 +858,7 @@ bind Viper.Terminal;
 bind Viper.Input.Pad as Pad;
 bind Viper.Graphics.Canvas as Canvas;
 bind Viper.Graphics.Color as Color;
-bind Viper.Fmt as Fmt;
+bind Viper.Text.Fmt as Fmt;
 
 func start() {
     var c = Canvas.New("Controller", 800, 600);
@@ -1238,7 +1238,7 @@ bind Viper.Input.Keyboard as KB;
 bind Viper.Input.Pad as Pad;
 bind Viper.Graphics.Canvas as Canvas;
 bind Viper.Graphics.Color as Color;
-bind Viper.Fmt as Fmt;
+bind Viper.Text.Fmt as Fmt;
 
 func start() {
     var c = Canvas.New("Action Demo", 800, 600);
@@ -1519,7 +1519,7 @@ bind Viper.Terminal;
 bind Viper.Input.Manager as IM;
 bind Viper.Graphics.Canvas as Canvas;
 bind Viper.Graphics.Color as Color;
-bind Viper.Fmt as Fmt;
+bind Viper.Text.Fmt as Fmt;
 
 func start() {
     var c = Canvas.New("Menu", 800, 600);

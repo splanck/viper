@@ -329,6 +329,8 @@ RUNTIME_SURFACE_INTERNAL_SYMBOL("rt_keyboard_begin_frame")
 RUNTIME_SURFACE_INTERNAL_SYMBOL("rt_keyboard_init")
 RUNTIME_SURFACE_INTERNAL_SYMBOL("rt_keyboard_on_key_down")
 RUNTIME_SURFACE_INTERNAL_SYMBOL("rt_keyboard_on_key_up")
+RUNTIME_SURFACE_INTERNAL_SYMBOL("rt_keyboard_on_vgfx_key_down")
+RUNTIME_SURFACE_INTERNAL_SYMBOL("rt_keyboard_on_vgfx_key_up")
 RUNTIME_SURFACE_INTERNAL_SYMBOL("rt_keyboard_clear_canvas_if_matches")
 RUNTIME_SURFACE_INTERNAL_SYMBOL("rt_keyboard_set_canvas")
 RUNTIME_SURFACE_INTERNAL_SYMBOL("rt_keyboard_text_input")
@@ -632,9 +634,9 @@ RUNTIME_SURFACE_EXPECT_FUNCTION("Viper.Result.MapErr", "rt_result_map_err_wrappe
 RUNTIME_SURFACE_EXPECT_FUNCTION("Viper.Result.AndThen", "rt_result_and_then_wrapper")
 RUNTIME_SURFACE_EXPECT_FUNCTION("Viper.Result.OrElse", "rt_result_or_else_wrapper")
 
-RUNTIME_SURFACE_EXPECT_FUNCTION("Viper.Lazy.New", "rt_lazy_new_wrapper")
-RUNTIME_SURFACE_EXPECT_FUNCTION("Viper.Lazy.Map", "rt_lazy_map_wrapper")
-RUNTIME_SURFACE_EXPECT_FUNCTION("Viper.Lazy.FlatMap", "rt_lazy_flat_map_wrapper")
+RUNTIME_SURFACE_EXPECT_FUNCTION("Viper.Functional.Lazy.New", "rt_lazy_new_wrapper")
+RUNTIME_SURFACE_EXPECT_FUNCTION("Viper.Functional.Lazy.Map", "rt_lazy_map_wrapper")
+RUNTIME_SURFACE_EXPECT_FUNCTION("Viper.Functional.Lazy.FlatMap", "rt_lazy_flat_map_wrapper")
 
 RUNTIME_SURFACE_EXPECT_FUNCTION("Viper.Graphics.Sprite.DrawTransformed",
                                 "rt_sprite_draw_transformed")
@@ -693,16 +695,16 @@ RUNTIME_SURFACE_EXPECT_METHOD("Viper.Result", "MapErr", "obj(obj)")
 RUNTIME_SURFACE_EXPECT_METHOD("Viper.Result", "AndThen", "obj(obj)")
 RUNTIME_SURFACE_EXPECT_METHOD("Viper.Result", "OrElse", "obj(obj)")
 
-RUNTIME_SURFACE_EXPECT_METHOD("Viper.Lazy", "New", "obj<Viper.Lazy>(obj)")
-RUNTIME_SURFACE_EXPECT_METHOD("Viper.Lazy", "Map", "obj<Viper.Lazy>(obj)")
-RUNTIME_SURFACE_EXPECT_METHOD("Viper.Lazy", "FlatMap", "obj<Viper.Lazy>(obj)")
+RUNTIME_SURFACE_EXPECT_METHOD("Viper.Functional.Lazy", "New", "obj<Viper.Functional.Lazy>(obj)")
+RUNTIME_SURFACE_EXPECT_METHOD("Viper.Functional.Lazy", "Map", "obj<Viper.Functional.Lazy>(obj)")
+RUNTIME_SURFACE_EXPECT_METHOD("Viper.Functional.Lazy", "FlatMap", "obj<Viper.Functional.Lazy>(obj)")
 
 RUNTIME_SURFACE_EXPECT_METHOD("Viper.Text.Pattern", "FindAll", "seq<str>(str,str)")
 
-RUNTIME_SURFACE_EXPECT_METHOD("Viper.LazySeq", "Range", "obj<Viper.LazySeq>(i64,i64,i64)")
-RUNTIME_SURFACE_EXPECT_METHOD("Viper.LazySeq", "Take", "obj<Viper.LazySeq>(i64)")
-RUNTIME_SURFACE_EXPECT_METHOD("Viper.LazySeq", "ToSeq", "seq<obj>()")
-RUNTIME_SURFACE_EXPECT_METHOD("Viper.LazySeq", "ToSeqN", "seq<obj>(i64)")
+RUNTIME_SURFACE_EXPECT_METHOD("Viper.Functional.LazySeq", "Range", "obj<Viper.Functional.LazySeq>(i64,i64,i64)")
+RUNTIME_SURFACE_EXPECT_METHOD("Viper.Functional.LazySeq", "Take", "obj<Viper.Functional.LazySeq>(i64)")
+RUNTIME_SURFACE_EXPECT_METHOD("Viper.Functional.LazySeq", "ToSeq", "seq<obj>()")
+RUNTIME_SURFACE_EXPECT_METHOD("Viper.Functional.LazySeq", "ToSeqN", "seq<obj>(i64)")
 
 RUNTIME_SURFACE_EXPECT_METHOD("Viper.Graphics.Sprite",
                               "DrawTransformed",

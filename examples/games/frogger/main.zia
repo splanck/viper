@@ -3,7 +3,7 @@ module Main;
 // Namespace bindings for cleaner code
 bind Viper.String;
 bind Viper.Terminal;
-bind Viper.Fmt;
+bind Viper.Text.Fmt;
 bind Viper.Time;
 
 // Frogger - Classic Arcade Game

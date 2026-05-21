@@ -1169,7 +1169,7 @@ When comparing approaches, benchmark carefully. Computers are tricky; many thing
 ```rust
 bind Viper.Time;
 bind Viper.Terminal;
-bind Viper.Fmt as Fmt;
+bind Viper.Text.Fmt as Fmt;
 
 func benchmark(name: String, iterations: Integer, work: func()) {
     // Warm up: let JIT/caches stabilize

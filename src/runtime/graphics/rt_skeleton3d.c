@@ -95,10 +95,35 @@ static mat4_impl *skeleton3d_mat4_checked(void *obj) {
     return (mat4_impl *)obj;
 }
 
+static rt_anim_player3d *anim_player3d_checked(void *obj) {
+    return (rt_anim_player3d *)rt_g3d_checked_or_null(obj, RT_G3D_ANIMPLAYER3D_CLASS_ID);
+}
+
+static rt_anim_blend3d *anim_blend3d_checked(void *obj) {
+    return (rt_anim_blend3d *)rt_g3d_checked_or_null(obj, RT_G3D_ANIMBLEND3D_CLASS_ID);
+}
+
+static rt_animation3d *animation3d_checked(void *obj) {
+    return (rt_animation3d *)rt_g3d_checked_or_null(obj, RT_G3D_ANIMATION3D_CLASS_ID);
+}
+
 /// @brief Test whether @p value is finite and fits in float range (no NaN/Inf, no overflow on cast).
 static int skeleton3d_value_fits_float(double value) {
     return isfinite(value) && value >= -SKELETON3D_FLOAT_ABS_MAX &&
            value <= SKELETON3D_FLOAT_ABS_MAX;
+}
+
+static float animation3d_wrap_time(float time, float duration) {
+    if (!isfinite(time))
+        return 0.0f;
+    if (!isfinite(duration) || duration <= 0.0f)
+        return 0.0f;
+    time = fmodf(time, duration);
+    if (time < 0.0f)
+        time += duration;
+    if (time >= duration)
+        time = 0.0f;
+    return time;
 }
 
 /// @brief Drop one GC reference held in `*slot` and clear the slot. NULL-safe.
@@ -222,6 +247,111 @@ static void quat_slerp_float(const float *a, const float *b, float t, float *out
     if (len > 1e-8f)
         for (int i = 0; i < 4; i++)
             out[i] /= len;
+}
+
+static void quat_identity_float(float *out) {
+    out[0] = 0.0f;
+    out[1] = 0.0f;
+    out[2] = 0.0f;
+    out[3] = 1.0f;
+}
+
+static void quat_normalize_float(float *q) {
+    float len;
+    if (!q)
+        return;
+    if (!isfinite(q[0]) || !isfinite(q[1]) || !isfinite(q[2]) || !isfinite(q[3])) {
+        quat_identity_float(q);
+        return;
+    }
+    len = sqrtf(q[0] * q[0] + q[1] * q[1] + q[2] * q[2] + q[3] * q[3]);
+    if (!isfinite(len) || len <= 1e-8f) {
+        quat_identity_float(q);
+        return;
+    }
+    for (int i = 0; i < 4; i++)
+        q[i] /= len;
+}
+
+static void quat_from_matrix3_float(float r00,
+                                    float r01,
+                                    float r02,
+                                    float r10,
+                                    float r11,
+                                    float r12,
+                                    float r20,
+                                    float r21,
+                                    float r22,
+                                    float *out) {
+    float tr;
+    if (!out)
+        return;
+    if (!isfinite(r00) || !isfinite(r01) || !isfinite(r02) || !isfinite(r10) ||
+        !isfinite(r11) || !isfinite(r12) || !isfinite(r20) || !isfinite(r21) ||
+        !isfinite(r22)) {
+        quat_identity_float(out);
+        return;
+    }
+    tr = r00 + r11 + r22;
+    if (tr > 0.0f) {
+        float s = sqrtf(tr + 1.0f) * 2.0f;
+        out[3] = 0.25f * s;
+        out[0] = (r21 - r12) / s;
+        out[1] = (r02 - r20) / s;
+        out[2] = (r10 - r01) / s;
+    } else if (r00 > r11 && r00 > r22) {
+        float s = sqrtf(1.0f + r00 - r11 - r22) * 2.0f;
+        out[3] = (r21 - r12) / s;
+        out[0] = 0.25f * s;
+        out[1] = (r01 + r10) / s;
+        out[2] = (r02 + r20) / s;
+    } else if (r11 > r22) {
+        float s = sqrtf(1.0f + r11 - r00 - r22) * 2.0f;
+        out[3] = (r02 - r20) / s;
+        out[0] = (r01 + r10) / s;
+        out[1] = 0.25f * s;
+        out[2] = (r12 + r21) / s;
+    } else {
+        float s = sqrtf(1.0f + r22 - r00 - r11) * 2.0f;
+        out[3] = (r10 - r01) / s;
+        out[0] = (r02 + r20) / s;
+        out[1] = (r12 + r21) / s;
+        out[2] = 0.25f * s;
+    }
+    quat_normalize_float(out);
+}
+
+static void mat4f_decompose_trs(const float *m, float *out_pos, float *out_rot, float *out_scl) {
+    float sx;
+    float sy;
+    float sz;
+    float inv_sx;
+    float inv_sy;
+    float inv_sz;
+    if (!m || !out_pos || !out_rot || !out_scl)
+        return;
+    out_pos[0] = isfinite(m[3]) ? m[3] : 0.0f;
+    out_pos[1] = isfinite(m[7]) ? m[7] : 0.0f;
+    out_pos[2] = isfinite(m[11]) ? m[11] : 0.0f;
+    sx = sqrtf(m[0] * m[0] + m[4] * m[4] + m[8] * m[8]);
+    sy = sqrtf(m[1] * m[1] + m[5] * m[5] + m[9] * m[9]);
+    sz = sqrtf(m[2] * m[2] + m[6] * m[6] + m[10] * m[10]);
+    out_scl[0] = isfinite(sx) && sx > 1e-6f ? sx : 1.0f;
+    out_scl[1] = isfinite(sy) && sy > 1e-6f ? sy : 1.0f;
+    out_scl[2] = isfinite(sz) && sz > 1e-6f ? sz : 1.0f;
+    inv_sx = 1.0f / out_scl[0];
+    inv_sy = 1.0f / out_scl[1];
+    inv_sz = 1.0f / out_scl[2];
+    quat_from_matrix3_float(m[0] * inv_sx,
+                            m[1] * inv_sy,
+                            m[2] * inv_sz,
+                            m[4] * inv_sx,
+                            m[5] * inv_sy,
+                            m[6] * inv_sz,
+                            m[8] * inv_sx,
+                            m[9] * inv_sy,
+                            m[10] * inv_sz,
+                            out_rot);
 }
 
 /*==========================================================================
@@ -832,12 +962,13 @@ void *rt_anim_player3d_new(void *skeleton) {
 /// @brief Snap-cut to a new animation clip, resetting playback time to 0.
 /// For smooth transitions, prefer `rt_anim_player3d_crossfade`.
 void rt_anim_player3d_play(void *obj, void *animation) {
-    if (!obj)
+    rt_anim_player3d *p = anim_player3d_checked(obj);
+    rt_animation3d *anim = animation ? animation3d_checked(animation) : NULL;
+    if (!p || (animation && !anim))
         return;
-    rt_anim_player3d *p = (rt_anim_player3d *)obj;
-    animation3d_assign_ref((void **)&p->current, animation);
+    animation3d_assign_ref((void **)&p->current, anim);
     p->current_time = 0.0f;
-    p->playing = animation ? 1 : 0;
+    p->playing = anim ? 1 : 0;
     animation3d_assign_ref((void **)&p->crossfade_from, NULL);
     p->has_prev_motion_palette = 0;
     p->last_motion_frame = 0;
@@ -848,16 +979,17 @@ void rt_anim_player3d_play(void *obj, void *animation) {
 /// Both clips run in parallel during the fade; per-bone TRS is
 /// linearly blended (lerp + slerp) by the elapsed-fade ratio.
 void rt_anim_player3d_crossfade(void *obj, void *animation, double duration) {
-    if (!obj || !animation)
+    rt_anim_player3d *p = anim_player3d_checked(obj);
+    rt_animation3d *anim = animation3d_checked(animation);
+    if (!p || !anim)
         return;
-    rt_anim_player3d *p = (rt_anim_player3d *)obj;
     if (!isfinite(duration) || duration <= 0.0) {
-        rt_anim_player3d_play(obj, animation);
+        rt_anim_player3d_play(obj, anim);
         return;
     }
     animation3d_assign_ref((void **)&p->crossfade_from, p->current);
     p->crossfade_from_time = p->current_time;
-    animation3d_assign_ref((void **)&p->current, animation);
+    animation3d_assign_ref((void **)&p->current, anim);
     p->current_time = 0.0f;
     p->crossfade_time = 0.0f;
     p->crossfade_duration = (float)duration;
@@ -868,9 +1000,9 @@ void rt_anim_player3d_crossfade(void *obj, void *animation, double duration) {
 
 /// @brief Stop playback — bone palette stays at its current pose, but `update` becomes a no-op.
 void rt_anim_player3d_stop(void *obj) {
-    if (!obj)
+    rt_anim_player3d *p = anim_player3d_checked(obj);
+    if (!p)
         return;
-    rt_anim_player3d *p = (rt_anim_player3d *)obj;
     p->playing = 0;
     p->has_prev_motion_palette = 0;
     p->last_motion_frame = 0;
@@ -932,58 +1064,7 @@ static void compute_bone_palette(rt_anim_player3d *p) {
                 }
             }
             if (!found_to) {
-                /* No current channel for this bone — decompose bind pose TRS.
-                 * A row/column-major 4x4 laid out with the basis vectors in
-                 * columns 0..2 and translation in column 3 decomposes as:
-                 *   scale_i = length of column i
-                *   rotation basis = column_i / scale_i
-                *   translation = column 3
-                * Previously this fell back to (identity rot, unit scale),
-                * which collapsed any non-trivial bind pose toward the origin
-                * mid-crossfade. */
-                const float *bp = skel->bones[bone].bind_pose_local;
-                to_pos[0] = bp[3];
-                to_pos[1] = bp[7];
-                to_pos[2] = bp[11];
-                float sx = sqrtf(bp[0] * bp[0] + bp[4] * bp[4] + bp[8] * bp[8]);
-                float sy = sqrtf(bp[1] * bp[1] + bp[5] * bp[5] + bp[9] * bp[9]);
-                float sz = sqrtf(bp[2] * bp[2] + bp[6] * bp[6] + bp[10] * bp[10]);
-                to_scl[0] = sx > 1e-6f ? sx : 1.0f;
-                to_scl[1] = sy > 1e-6f ? sy : 1.0f;
-                to_scl[2] = sz > 1e-6f ? sz : 1.0f;
-                float inv_sx = 1.0f / to_scl[0];
-                float inv_sy = 1.0f / to_scl[1];
-                float inv_sz = 1.0f / to_scl[2];
-                float r00 = bp[0] * inv_sx, r01 = bp[1] * inv_sy, r02 = bp[2] * inv_sz;
-                float r10 = bp[4] * inv_sx, r11 = bp[5] * inv_sy, r12 = bp[6] * inv_sz;
-                float r20 = bp[8] * inv_sx, r21 = bp[9] * inv_sy, r22 = bp[10] * inv_sz;
-                /* Rotation matrix → quaternion (Shepperd's method) */
-                float tr = r00 + r11 + r22;
-                if (tr > 0.0f) {
-                    float s = sqrtf(tr + 1.0f) * 2.0f;
-                    to_rot[3] = 0.25f * s;
-                    to_rot[0] = (r21 - r12) / s;
-                    to_rot[1] = (r02 - r20) / s;
-                    to_rot[2] = (r10 - r01) / s;
-                } else if (r00 > r11 && r00 > r22) {
-                    float s = sqrtf(1.0f + r00 - r11 - r22) * 2.0f;
-                    to_rot[3] = (r21 - r12) / s;
-                    to_rot[0] = 0.25f * s;
-                    to_rot[1] = (r01 + r10) / s;
-                    to_rot[2] = (r02 + r20) / s;
-                } else if (r11 > r22) {
-                    float s = sqrtf(1.0f + r11 - r00 - r22) * 2.0f;
-                    to_rot[3] = (r02 - r20) / s;
-                    to_rot[0] = (r01 + r10) / s;
-                    to_rot[1] = 0.25f * s;
-                    to_rot[2] = (r12 + r21) / s;
-                } else {
-                    float s = sqrtf(1.0f + r22 - r00 - r11) * 2.0f;
-                    to_rot[3] = (r10 - r01) / s;
-                    to_rot[0] = (r02 + r20) / s;
-                    to_rot[1] = (r12 + r21) / s;
-                    to_rot[2] = 0.25f * s;
-                }
+                mat4f_decompose_trs(skel->bones[bone].bind_pose_local, to_pos, to_rot, to_scl);
             }
 
             /* Blend TRS components: lerp position/scale, SLERP rotation */
@@ -1042,9 +1123,9 @@ static int8_t anim_player_current_looping(const rt_anim_player3d *p) {
 /// active cross-fades, and copies the new bone palette into the
 /// motion-blur ring buffer for the next-frame previous-pose lookup.
 void rt_anim_player3d_update(void *obj, double delta_time) {
-    if (!obj)
+    rt_anim_player3d *p = anim_player3d_checked(obj);
+    if (!p)
         return;
-    rt_anim_player3d *p = (rt_anim_player3d *)obj;
     if (!p->playing || !p->current)
         return;
     if (!isfinite(delta_time))
@@ -1059,10 +1140,13 @@ void rt_anim_player3d_update(void *obj, double delta_time) {
     /* Handle looping / end */
     if (anim_player_current_looping(p)) {
         if (p->current->duration > 0.0f)
-            p->current_time = fmodf(p->current_time, p->current->duration);
+            p->current_time = animation3d_wrap_time(p->current_time, p->current->duration);
     } else {
         if (p->current_time >= p->current->duration) {
             p->current_time = p->current->duration;
+            p->playing = 0;
+        } else if (p->current_time <= 0.0f && p->speed < 0.0f) {
+            p->current_time = 0.0f;
             p->playing = 0;
         }
     }
@@ -1075,6 +1159,15 @@ void rt_anim_player3d_update(void *obj, double delta_time) {
             p->crossfade_time = 0.0f;
         if (!isfinite(p->crossfade_from_time))
             p->crossfade_from_time = 0.0f;
+        if (p->crossfade_from->duration > 0.0f) {
+            if (p->crossfade_from->looping)
+                p->crossfade_from_time =
+                    animation3d_wrap_time(p->crossfade_from_time, p->crossfade_from->duration);
+            else if (p->crossfade_from_time > p->crossfade_from->duration)
+                p->crossfade_from_time = p->crossfade_from->duration;
+            else if (p->crossfade_from_time < 0.0f)
+                p->crossfade_from_time = 0.0f;
+        }
         if (p->crossfade_time >= p->crossfade_duration)
             animation3d_assign_ref((void **)&p->crossfade_from, NULL);
     }
@@ -1084,33 +1177,37 @@ void rt_anim_player3d_update(void *obj, double delta_time) {
 
 /// @brief Time-scale factor applied per `update` call (1.0 = real time, 0.5 = slow-mo, etc.).
 void rt_anim_player3d_set_speed(void *obj, double speed) {
-    if (obj) {
+    rt_anim_player3d *p = anim_player3d_checked(obj);
+    if (p) {
         if (!isfinite(speed))
             speed = 1.0;
-        ((rt_anim_player3d *)obj)->speed = (float)speed;
+        p->speed = (float)speed;
     }
 }
 
 /// @brief Current speed multiplier (1.0 if `obj` is NULL).
 double rt_anim_player3d_get_speed(void *obj) {
-    return obj ? ((rt_anim_player3d *)obj)->speed : 1.0;
+    rt_anim_player3d *p = anim_player3d_checked(obj);
+    return p ? p->speed : 1.0;
 }
 
 /// @brief True if the player is currently advancing time on `update` calls.
 int8_t rt_anim_player3d_is_playing(void *obj) {
-    return obj ? ((rt_anim_player3d *)obj)->playing : 0;
+    rt_anim_player3d *p = anim_player3d_checked(obj);
+    return p ? p->playing : 0;
 }
 
 /// @brief Current playback time within the active clip (seconds).
 double rt_anim_player3d_get_time(void *obj) {
-    return obj ? ((rt_anim_player3d *)obj)->current_time : 0.0;
+    rt_anim_player3d *p = anim_player3d_checked(obj);
+    return p ? p->current_time : 0.0;
 }
 
 /// @brief Seek to an absolute time in the current clip.
 /// Resets the motion-blur previous-pose snapshot so blur doesn't span the discontinuity.
 void rt_anim_player3d_set_time(void *obj, double time) {
-    if (obj) {
-        rt_anim_player3d *p = (rt_anim_player3d *)obj;
+    rt_anim_player3d *p = anim_player3d_checked(obj);
+    if (p) {
         if (!isfinite(time))
             time = 0.0;
         if (time < 0.0)
@@ -1148,9 +1245,9 @@ static const float *anim_player_prepare_prev_palette(rt_anim_player3d *p, int64_
 
 /// @brief Read the current world matrix for one bone as a Mat4 (NULL on out-of-range).
 void *rt_anim_player3d_get_bone_matrix(void *obj, int64_t bone_index) {
-    if (!obj)
+    rt_anim_player3d *p = anim_player3d_checked(obj);
+    if (!p || !p->skeleton)
         return NULL;
-    rt_anim_player3d *p = (rt_anim_player3d *)obj;
     if (bone_index < 0 || bone_index >= p->skeleton->bone_count)
         return NULL;
     const float *m = &p->bone_palette[bone_index * 16];
@@ -1456,21 +1553,25 @@ int64_t rt_anim_blend3d_add_state(void *obj, rt_string name, void *anim_obj) {
 
 /// @brief Set state `state`'s blend weight; the blender renormalises across all states each frame.
 void rt_anim_blend3d_set_weight(void *obj, int64_t state, double weight) {
-    if (!obj)
+    rt_anim_blend3d *b = anim_blend3d_checked(obj);
+    if (!b)
         return;
-    rt_anim_blend3d *b = (rt_anim_blend3d *)obj;
     if (state < 0 || state >= b->state_count)
         return;
     if (!isfinite(weight))
         weight = 0.0;
+    if (weight < 0.0)
+        weight = 0.0;
+    if (weight > 1.0)
+        weight = 1.0;
     b->states[state].weight = (float)weight;
 }
 
 /// @brief Convenience: look the state up by name and call `set_weight`.
 void rt_anim_blend3d_set_weight_by_name(void *obj, rt_string name, double weight) {
-    if (!obj || !name)
+    rt_anim_blend3d *b = anim_blend3d_checked(obj);
+    if (!b || !name)
         return;
-    rt_anim_blend3d *b = (rt_anim_blend3d *)obj;
     const char *target = rt_string_cstr(name);
     if (!target)
         return;
@@ -1478,6 +1579,10 @@ void rt_anim_blend3d_set_weight_by_name(void *obj, rt_string name, double weight
         if (strcmp(b->states[i].name, target) == 0) {
             if (!isfinite(weight))
                 weight = 0.0;
+            if (weight < 0.0)
+                weight = 0.0;
+            if (weight > 1.0)
+                weight = 1.0;
             b->states[i].weight = (float)weight;
             return;
         }
@@ -1486,9 +1591,9 @@ void rt_anim_blend3d_set_weight_by_name(void *obj, rt_string name, double weight
 
 /// @brief Read a state's current blend weight (0.0 for out-of-range or NULL).
 double rt_anim_blend3d_get_weight(void *obj, int64_t state) {
-    if (!obj)
+    rt_anim_blend3d *b = anim_blend3d_checked(obj);
+    if (!b)
         return 0.0;
-    rt_anim_blend3d *b = (rt_anim_blend3d *)obj;
     if (state < 0 || state >= b->state_count)
         return 0.0;
     return (double)b->states[state].weight;
@@ -1496,9 +1601,9 @@ double rt_anim_blend3d_get_weight(void *obj, int64_t state) {
 
 /// @brief Set the per-state time-scale (independent of the others — each clip can run at its own rate).
 void rt_anim_blend3d_set_speed(void *obj, int64_t state, double speed) {
-    if (!obj)
+    rt_anim_blend3d *b = anim_blend3d_checked(obj);
+    if (!b)
         return;
-    rt_anim_blend3d *b = (rt_anim_blend3d *)obj;
     if (state < 0 || state >= b->state_count)
         return;
     if (!isfinite(speed))
@@ -1513,9 +1618,9 @@ void rt_anim_blend3d_set_speed(void *obj, int64_t state, double speed) {
 /// (positions / scales) and slerps (rotations) to produce the
 /// final pose. Output palette is then ready for skinning.
 void rt_anim_blend3d_update(void *obj, double dt) {
-    if (!obj || dt <= 0 || !isfinite(dt))
+    rt_anim_blend3d *b = anim_blend3d_checked(obj);
+    if (!b || dt <= 0 || !isfinite(dt))
         return;
-    rt_anim_blend3d *b = (rt_anim_blend3d *)obj;
     rt_skeleton3d *skel = b->skeleton;
     if (!skel || skel->bone_count == 0)
         return;
@@ -1532,9 +1637,13 @@ void rt_anim_blend3d_update(void *obj, double dt) {
         if (!isfinite(st->anim_time))
             st->anim_time = 0.0f;
         if (st->looping && st->animation->duration > 0)
-            st->anim_time = fmodf(st->anim_time, st->animation->duration);
-        else if (st->anim_time > st->animation->duration)
-            st->anim_time = st->animation->duration;
+            st->anim_time = animation3d_wrap_time(st->anim_time, st->animation->duration);
+        else {
+            if (st->anim_time > st->animation->duration)
+                st->anim_time = st->animation->duration;
+            else if (st->anim_time < 0.0f)
+                st->anim_time = 0.0f;
+        }
     }
 
     /* Start with bind pose */
@@ -1561,13 +1670,24 @@ void rt_anim_blend3d_update(void *obj, double dt) {
                 &st->animation->channels[c], st->anim_time, &b->temp_state_local[bone * 16]);
         }
 
-        /* Weighted blend into local_transforms */
+        /* Weighted TRS blend into local_transforms. */
         float w = st->weight;
         total_weight += w;
         float blend_t = (total_weight > 1e-6f) ? w / total_weight : 1.0f;
 
-        for (int32_t i = 0; i < bc * 16; i++)
-            b->local_transforms[i] += (b->temp_state_local[i] - b->local_transforms[i]) * blend_t;
+        for (int32_t bone = 0; bone < bc; bone++) {
+            float from_pos[3], from_rot[4], from_scl[3];
+            float to_pos[3], to_rot[4], to_scl[3];
+            float blend_pos[3], blend_rot[4], blend_scl[3];
+            mat4f_decompose_trs(&b->local_transforms[bone * 16], from_pos, from_rot, from_scl);
+            mat4f_decompose_trs(&b->temp_state_local[bone * 16], to_pos, to_rot, to_scl);
+            for (int32_t i = 0; i < 3; i++) {
+                blend_pos[i] = from_pos[i] + (to_pos[i] - from_pos[i]) * blend_t;
+                blend_scl[i] = from_scl[i] + (to_scl[i] - from_scl[i]) * blend_t;
+            }
+            quat_slerp_float(from_rot, to_rot, blend_t, blend_rot);
+            build_trs_float(blend_pos, blend_rot, blend_scl, &b->local_transforms[bone * 16]);
+        }
     }
 
     /* Two-phase: globals + inverse_bind → bone palette */
@@ -1589,7 +1709,8 @@ void rt_anim_blend3d_update(void *obj, double dt) {
 
 /// @brief Number of registered states (0 for NULL).
 int64_t rt_anim_blend3d_state_count(void *obj) {
-    return obj ? ((rt_anim_blend3d *)obj)->state_count : 0;
+    rt_anim_blend3d *b = anim_blend3d_checked(obj);
+    return b ? b->state_count : 0;
 }
 
 /// @brief Same role as `anim_player_prepare_prev_palette` but for the blender — see that function.

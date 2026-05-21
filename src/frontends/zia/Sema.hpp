@@ -1048,6 +1048,30 @@ class Sema {
     /// @return The result type based on operator and operands.
     TypeRef analyzeBinary(BinaryExpr *expr);
 
+    /// @brief Type-check an arithmetic binary operator (`+ - * / %`).
+    /// @details Also recognises `String + value` and `value + String` as
+    ///          concatenation, and emits W010 (division-by-zero) for literal
+    ///          zero divisors of `/` and `%`.
+    TypeRef checkArithmeticBinary(BinaryExpr *expr, TypeRef leftType, TypeRef rightType);
+
+    /// @brief Type-check a comparison binary operator
+    ///        (`== != < <= > >=`). Emits W005 for float equality and W011 for
+    ///        redundant boolean-literal comparisons.
+    TypeRef checkComparisonBinary(BinaryExpr *expr, TypeRef leftType, TypeRef rightType);
+
+    /// @brief Type-check a short-circuit logical operator (`and`, `or`).
+    TypeRef checkLogicalBinary(BinaryExpr *expr, TypeRef leftType, TypeRef rightType);
+
+    /// @brief Type-check a bitwise / shift operator
+    ///        (`<< >> & | ^`). Emits W017 for `^` (XOR vs `**`) and W018 for
+    ///        `&` (bitwise AND vs `+`-concatenation).
+    TypeRef checkBitwiseBinary(BinaryExpr *expr, TypeRef leftType, TypeRef rightType);
+
+    /// @brief Validate an assignment binary expression and record any setter
+    ///        / final-field / narrowing book-keeping the lowerer needs.
+    /// @return The assigned variable's type (or `unknown` on error).
+    TypeRef recordBinaryAssignment(BinaryExpr *expr, TypeRef leftType, TypeRef rightType);
+
     /// @brief Analyze a unary expression.
     /// @return The result type based on operator and operand.
     TypeRef analyzeUnary(UnaryExpr *expr);
@@ -1068,6 +1092,43 @@ class Sema {
     /// @return The return type of the called function.
     TypeRef analyzeCall(CallExpr *expr);
 
+    /// @brief Bind an extern (runtime) call's argument types against the symbol's
+    ///        parameter specs and record the binding on the call expression.
+    /// @return true if binding succeeded or if @p sym is not an extern; false on
+    ///         a binding error (a diagnostic will already have been emitted).
+    bool bindExternCallOnCall(CallExpr *expr,
+                              const std::string &calleeName,
+                              Symbol *sym,
+                              size_t skipLeadingParams = 0);
+
+    /// @brief Try to bind a single-argument call to a "terminal text" runtime
+    ///        function (i.e., one that auto-stringifies its argument).
+    /// @param outType Receives the (possibly normalized) return type on success.
+    /// @return true if the call was bound as a terminal-text call.
+    bool tryBindTerminalTextCall(CallExpr *expr,
+                                 const std::string &calleeName,
+                                 Symbol *sym,
+                                 TypeRef &outType);
+
+    /// @brief Whether a dotted callee (e.g., `Foo.bar()`) should defer to the
+    ///        qualified-name lookup path because its root names a module,
+    ///        imported namespace, or alias rather than a value.
+    bool shouldDeferDottedCalleeToQualifiedLookup(const CallExpr *expr) const;
+
+    /// @brief Refine a recognized runtime call's declared return type using
+    ///        the receiver / first-argument element type.
+    /// @details For runtime collection accessors (`Seq.Get`, `Map.Values`, …)
+    ///          the registry-declared return type is generic (opaque `Ptr` or
+    ///          `Seq<unknown>`). This helper specialises that fallback to the
+    ///          receiver's element / key / value type when known, so callers
+    ///          see typed results instead of opaque pointers.
+    /// @param expr        The call expression (used to look up arg/receiver types).
+    /// @param calleeName  Canonical runtime name (`Viper.Collections.Seq.Get`).
+    /// @param fallback    Return type to use when no specialisation applies.
+    TypeRef refineRuntimeCallReturnType(const CallExpr *expr,
+                                        const std::string &calleeName,
+                                        TypeRef fallback) const;
+
     /// @brief Validate call argument count and types against a function signature.
     /// @param expr The call expression (for argument values and locations).
     /// @param funcType The resolved function type with parameter types.
@@ -1081,6 +1142,20 @@ class Sema {
     /// @brief Analyze a field access expression.
     /// @return The type of the accessed field.
     TypeRef analyzeField(FieldExpr *expr);
+
+    /// @brief Look up a static field of @p ownerName for @p expr, enforcing
+    ///        visibility. Returns nullptr if @p ownerName has no such static
+    ///        field; returns `unknown` if visibility blocks access.
+    TypeRef resolveStaticField(FieldExpr *expr, const std::string &ownerName);
+
+    /// @brief Resolve a field access whose base is a Module type
+    ///        (e.g., `colors.initColors`, `Canvas.New`, `Viper.Graphics.X`).
+    /// @return The resolved member type, or `unknown` on error/not-found.
+    TypeRef resolveModuleFieldAccess(FieldExpr *expr, TypeRef baseType);
+
+    /// @brief Resolve a field/method/property access on a Class or Struct.
+    /// @return The resolved member type, or `unknown` on error/not-found.
+    TypeRef resolveClassStructFieldAccess(FieldExpr *expr, TypeRef baseType);
 
     /// @brief Analyze an optional chain expression.
     /// @return An optional type wrapping the field type.
@@ -1205,6 +1280,29 @@ class Sema {
     void collectCaptures(const Expr *expr,
                          const std::set<std::string> &lambdaLocals,
                          std::vector<CapturedVar> &captures);
+
+    /// @brief Per-call state for the capture walker. Holds the stack of
+    ///        local-binding scopes and the running set of already-captured
+    ///        names so we don't push duplicates.
+    struct CaptureContext {
+        std::set<std::string> captured;
+        std::vector<std::set<std::string>> localScopes;
+        std::vector<CapturedVar> &captures;
+    };
+
+    /// @brief If @p name is not shadowed by any local in @p ctx and resolves
+    ///        to a Variable/Parameter symbol, append it to `ctx.captures`.
+    void recordCapture(CaptureContext &ctx, const std::string &name);
+
+    /// @brief Add any bindings introduced by @p pattern to the innermost
+    ///        local scope of @p ctx (handles Tuple/Constructor/Or recursion).
+    void collectPatternBindings(CaptureContext &ctx, const MatchArm::Pattern &pattern);
+
+    /// @brief Walk @p stmt and append free-variable references to @p ctx.
+    void collectStmtCaptures(CaptureContext &ctx, const Stmt *stmt);
+
+    /// @brief Walk @p expr and append free-variable references to @p ctx.
+    void collectExprCaptures(CaptureContext &ctx, const Expr *expr);
 
     /// @brief Push a new type narrowing scope.
     /// @details Called when entering a branch where types may be narrowed.

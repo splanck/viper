@@ -77,7 +77,7 @@ module TimerDemo;
 
 bind Viper.Terminal;
 bind Viper.Game.Timer as Timer;
-bind Viper.Fmt as Fmt;
+bind Viper.Text.Fmt as Fmt;
 
 func start() {
     var t = Timer.New();
@@ -246,7 +246,7 @@ module StateMachineDemo;
 
 bind Viper.Terminal;
 bind Viper.Game.StateMachine as SM;
-bind Viper.Fmt as Fmt;
+bind Viper.Text.Fmt as Fmt;
 
 func start() {
     var sm = SM.New();
@@ -371,7 +371,7 @@ module SmoothValueDemo;
 
 bind Viper.Terminal;
 bind Viper.Game.SmoothValue as SV;
-bind Viper.Fmt as Fmt;
+bind Viper.Text.Fmt as Fmt;
 
 func start() {
     var sv = SV.New(0.0, 0.9);
@@ -454,7 +454,7 @@ module ObjectPoolDemo;
 
 bind Viper.Terminal;
 bind Viper.Game.ObjectPool as Pool;
-bind Viper.Fmt as Fmt;
+bind Viper.Text.Fmt as Fmt;
 
 func start() {
     var pool = Pool.New(10);

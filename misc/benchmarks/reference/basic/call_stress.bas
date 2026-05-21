@@ -22,5 +22,5 @@ FOR i = 0 TO 9999999
     r3 = MulPair(r2, 2)
     sum = sum + r3
 NEXT i
-Viper.Environment.EndProgram(sum)
+Viper.System.Environment.EndProgram(sum)
 END

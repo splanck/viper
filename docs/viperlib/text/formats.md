@@ -58,7 +58,7 @@ module JsonDemo;
 
 bind Viper.Terminal;
 bind Viper.Text.Json as Json;
-bind Viper.Fmt as Fmt;
+bind Viper.Text.Fmt as Fmt;
 
 func start() {
     var obj = Json.Parse("{\"name\":\"Viper\",\"version\":1}");
@@ -155,7 +155,7 @@ module JsonPathDemo;
 bind Viper.Terminal;
 bind Viper.Text.Json as Json;
 bind Viper.Text.JsonPath as JP;
-bind Viper.Fmt as Fmt;
+bind Viper.Text.Fmt as Fmt;
 
 func start() {
     var data = Json.Parse("{\"user\": {\"name\": \"Alice\", \"age\": 30}}");
@@ -390,7 +390,7 @@ module CsvDemo;
 
 bind Viper.Terminal;
 bind Viper.Text.Csv as Csv;
-bind Viper.Fmt as Fmt;
+bind Viper.Text.Fmt as Fmt;
 bind Viper.Collections.Seq as Seq;
 
 func start() {
@@ -484,7 +484,7 @@ module TomlDemo;
 
 bind Viper.Terminal;
 bind Viper.Text.Toml as Toml;
-bind Viper.Fmt as Fmt;
+bind Viper.Text.Fmt as Fmt;
 
 func start() {
     // Validate TOML strings
@@ -563,7 +563,7 @@ module IniDemo;
 
 bind Viper.Terminal;
 bind Viper.Text.Ini as Ini;
-bind Viper.Fmt as Fmt;
+bind Viper.Text.Fmt as Fmt;
 
 func start() {
     var text = "[app]\nname=MyApp\nversion=1.0\n[db]\nhost=localhost";
@@ -919,7 +919,7 @@ module YamlDemo;
 
 bind Viper.Terminal;
 bind Viper.Data.Yaml as Yaml;
-bind Viper.Fmt as Fmt;
+bind Viper.Text.Fmt as Fmt;
 
 func start() {
     var src = "name: Alice\nage: 30\nscores:\n  - 95\n  - 87\n  - 92\n";

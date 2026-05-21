@@ -314,7 +314,7 @@ module TextWrapDemo;
 
 bind Viper.Terminal;
 bind Viper.Text.TextWrapper as TW;
-bind Viper.Fmt as Fmt;
+bind Viper.Text.Fmt as Fmt;
 
 func start() {
     var text = "The quick brown fox jumps over the lazy dog near the riverbank";
@@ -622,7 +622,7 @@ module VersionDemo;
 
 bind Viper.Terminal;
 bind Viper.Text.Version as Version;
-bind Viper.Fmt as Fmt;
+bind Viper.Text.Fmt as Fmt;
 
 func start() {
     var v = Version.Parse("1.2.3-beta+build42");

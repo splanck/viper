@@ -4,6 +4,7 @@ bind "../editor/editor_engine";
 bind "../ui/app_shell";
 
 bind ZiaCompletion = Viper.Zia.Completion;
+bind "../editor/zia_query";
 bind Viper.GUI;
 bind Str = Viper.String;
 bind Seq = Viper.Collections.Seq;
@@ -98,7 +99,11 @@ class SymbolOutline {
 
         symbolList.Clear();
 
-        var raw = ZiaCompletion.SymbolsForFile(source, sourcePath);
+        // Synthetic-module prefix for buffers lacking a `module` line; symbol
+        // line numbers come back shifted and must be un-shifted below.
+        var qsource = zia_query.WrapForQuery(source);
+        var lineOff = zia_query.LineOffset(source);
+        var raw = ZiaCompletion.SymbolsForFile(qsource, sourcePath);
         if raw == "" { return; }
 
         var lines = Str.Split(raw, "\n");
@@ -118,9 +123,14 @@ class SymbolOutline {
             // Skip runtime symbols (line 0 = not from this file)
             if symLine == "0" { continue; }
 
+            // Un-shift the synthetic-module prefix; drop anything that maps
+            // onto (or above) the injected line.
+            var symLineNum = Convert.ToInt(symLine) - lineOff;
+            if symLineNum < 1 { continue; }
+
             var displayText = kind + "  " + name;
             var item = symbolList.AddItem(displayText);
-            GUI.ListBox.ItemSetData(item, symLine);
+            GUI.ListBox.ItemSetData(item, "" + symLineNum);
         }
     }
 

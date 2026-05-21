@@ -11,7 +11,7 @@
 module reporting_probe;
 
 bind Viper.Terminal as Terminal;
-bind Viper.Fmt as Fmt;
+bind Viper.Text.Fmt as Fmt;
 bind Viper.String as String;
 bind "./src/season/demo/default_franchise";
 bind "./src/season/season_engine";

@@ -13,7 +13,7 @@
 module persistence_probe;
 
 bind Viper.Terminal as Terminal;
-bind Viper.Fmt as Fmt;
+bind Viper.Text.Fmt as Fmt;
 bind Viper.IO.TempFile as TempFile;
 bind Viper.IO.Path as Path;
 bind "./src/season/demo/default_franchise";

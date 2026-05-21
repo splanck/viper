@@ -323,6 +323,7 @@ static int point_in_tri_xz(float px, float pz, const float *v0, const float *v1,
     float d1x = v1[0] - v0[0], d1z = v1[2] - v0[2];
     float d2x = v2[0] - v0[0], d2z = v2[2] - v0[2];
     float dpx = px - v0[0], dpz = pz - v0[2];
+    const float eps = 1e-5f;
 
     float det = d1x * d2z - d2x * d1z;
     if (fabsf(det) < 1e-8f)
@@ -330,7 +331,7 @@ static int point_in_tri_xz(float px, float pz, const float *v0, const float *v1,
     float inv = 1.0f / det;
     float u = (dpx * d2z - d2x * dpz) * inv;
     float v = (d1x * dpz - dpx * d1z) * inv;
-    return (u >= 0.0f && v >= 0.0f && (u + v) <= 1.0f) ? 1 : 0;
+    return (u >= -eps && v >= -eps && (u + v) <= 1.0f + eps) ? 1 : 0;
 }
 
 /// @brief Interpolate the world-space Y coordinate at `(px, pz)` on a triangle defined by
@@ -349,8 +350,76 @@ static float triangle_y_at_xz(float px, float pz, const float *v0, const float *
     return v0[1] + u * (v1[1] - v0[1]) + v * (v2[1] - v0[1]);
 }
 
-/// @brief Find triangle containing point (projected onto XZ).
-static int32_t find_tri(const rt_navmesh3d *nm, float px, float py, float pz) {
+static float navmesh3d_vertical_tolerance(const rt_navmesh3d *nm) {
+    double h = nm ? nm->agent_height : 0.0;
+    if (!isfinite(h) || h <= 0.0)
+        h = 0.0;
+    return (float)fmax(h * 0.5, 0.25);
+}
+
+static void closest_point_on_segment_xz(float px,
+                                        float pz,
+                                        const float *a,
+                                        const float *b,
+                                        float *out_x,
+                                        float *out_z,
+                                        float *out_d2) {
+    float abx = b[0] - a[0];
+    float abz = b[2] - a[2];
+    float len_sq = abx * abx + abz * abz;
+    float t = 0.0f;
+    if (len_sq > 1e-8f) {
+        t = ((px - a[0]) * abx + (pz - a[2]) * abz) / len_sq;
+        if (t < 0.0f)
+            t = 0.0f;
+        else if (t > 1.0f)
+            t = 1.0f;
+    }
+    float cx = a[0] + abx * t;
+    float cz = a[2] + abz * t;
+    float dx = px - cx;
+    float dz = pz - cz;
+    *out_x = cx;
+    *out_z = cz;
+    *out_d2 = dx * dx + dz * dz;
+}
+
+static void closest_point_on_tri_xz(float px,
+                                    float pz,
+                                    const float *v0,
+                                    const float *v1,
+                                    const float *v2,
+                                    float *out_x,
+                                    float *out_z) {
+    float best_x;
+    float best_z;
+    float best_d2;
+    float cx;
+    float cz;
+    float d2;
+    if (point_in_tri_xz(px, pz, v0, v1, v2)) {
+        *out_x = px;
+        *out_z = pz;
+        return;
+    }
+    closest_point_on_segment_xz(px, pz, v0, v1, &best_x, &best_z, &best_d2);
+    closest_point_on_segment_xz(px, pz, v1, v2, &cx, &cz, &d2);
+    if (d2 < best_d2) {
+        best_x = cx;
+        best_z = cz;
+        best_d2 = d2;
+    }
+    closest_point_on_segment_xz(px, pz, v2, v0, &cx, &cz, &d2);
+    if (d2 < best_d2) {
+        best_x = cx;
+        best_z = cz;
+    }
+    *out_x = best_x;
+    *out_z = best_z;
+}
+
+/// @brief Find triangle containing point (projected onto XZ), with optional vertical tolerance.
+static int32_t find_tri_with_max_dy(const rt_navmesh3d *nm, float px, float py, float pz, float max_dy) {
     float best_dy = FLT_MAX;
     int32_t best = -1;
     for (int32_t i = 0; i < nm->triangle_count; i++) {
@@ -361,6 +430,8 @@ static int32_t find_tri(const rt_navmesh3d *nm, float px, float py, float pz) {
         if (point_in_tri_xz(px, pz, v0, v1, v2)) {
             float surface_y = triangle_y_at_xz(px, pz, v0, v1, v2);
             float dy = fabsf(py - surface_y);
+            if (max_dy >= 0.0f && dy > max_dy)
+                continue;
             if (dy < best_dy) {
                 best_dy = dy;
                 best = i;
@@ -368,6 +439,11 @@ static int32_t find_tri(const rt_navmesh3d *nm, float px, float py, float pz) {
         }
     }
     return best;
+}
+
+/// @brief Find triangle containing point (projected onto XZ), ignoring vertical separation.
+static int32_t find_tri(const rt_navmesh3d *nm, float px, float py, float pz) {
+    return find_tri_with_max_dy(nm, px, py, pz, -1.0f);
 }
 
 /*==========================================================================
@@ -454,12 +530,13 @@ int64_t rt_navmesh3d_copy_path_points(void *obj, void *from_v, void *to_v, doubl
     double tdx = rt_vec3_x(to_v), tdy = rt_vec3_y(to_v), tdz = rt_vec3_z(to_v);
     float fx = (float)fdx, fy = (float)fdy, fz = (float)fdz;
     float tx = (float)tdx, ty = (float)tdy, tz = (float)tdz;
+    float max_dy = navmesh3d_vertical_tolerance(nm);
     if (!isfinite(fx) || !isfinite(fy) || !isfinite(fz) || !isfinite(tx) ||
         !isfinite(ty) || !isfinite(tz))
         return 0;
 
-    int32_t start = find_tri(nm, fx, fy, fz);
-    int32_t goal = find_tri(nm, tx, ty, tz);
+    int32_t start = find_tri_with_max_dy(nm, fx, fy, fz, max_dy);
+    int32_t goal = find_tri_with_max_dy(nm, tx, ty, tz, max_dy);
     if (start < 0 || goal < 0)
         return 0;
 
@@ -702,20 +779,39 @@ void *rt_navmesh3d_sample_position(void *obj, void *point) {
         return rt_vec3_new(px, triangle_y_at_xz(px, pz, v0, v1, v2), pz);
     }
 
-    /* Find nearest centroid */
+    /* Find nearest point on the triangle surface in XZ, not merely nearest centroid. */
     float best_d = FLT_MAX;
-    int32_t best = 0;
+    float best_dy = FLT_MAX;
+    float best_x = px;
+    float best_y = py;
+    float best_z = pz;
     for (int32_t i = 0; i < nm->triangle_count; i++) {
-        float *c = nm->triangles[i].centroid;
-        float dx = px - c[0], dz = pz - c[2];
-        float d = dx * dx + dz * dz;
-        if (d < best_d) {
+        nav_triangle_t *t = &nm->triangles[i];
+        const float *v0 = nm->vertices[t->v[0]].position;
+        const float *v1 = nm->vertices[t->v[1]].position;
+        const float *v2 = nm->vertices[t->v[2]].position;
+        float cx;
+        float cz;
+        float cy;
+        float dx;
+        float dz;
+        float dy;
+        float d;
+        closest_point_on_tri_xz(px, pz, v0, v1, v2, &cx, &cz);
+        cy = triangle_y_at_xz(cx, cz, v0, v1, v2);
+        dx = px - cx;
+        dz = pz - cz;
+        dy = fabsf(py - cy);
+        d = dx * dx + dz * dz;
+        if (d < best_d || (fabsf(d - best_d) <= 1e-6f && dy < best_dy)) {
             best_d = d;
-            best = i;
+            best_dy = dy;
+            best_x = cx;
+            best_y = cy;
+            best_z = cz;
         }
     }
-    float *c = nm->triangles[best].centroid;
-    return rt_vec3_new(c[0], c[1], c[2]);
+    return rt_vec3_new(best_x, best_y, best_z);
 }
 
 /// @brief Returns 1 if `point` (Vec3) lies within (or near) any walkable triangle.
@@ -730,7 +826,7 @@ int8_t rt_navmesh3d_is_walkable(void *obj, void *point) {
     if (!isfinite(pdx) || !isfinite(pdy) || !isfinite(pdz))
         return 0;
     float px = (float)pdx, py = (float)pdy, pz = (float)pdz;
-    return find_tri(nm, px, py, pz) >= 0 ? 1 : 0;
+    return find_tri_with_max_dy(nm, px, py, pz, navmesh3d_vertical_tolerance(nm)) >= 0 ? 1 : 0;
 }
 
 /// @brief Number of walkable triangles in the baked navmesh.

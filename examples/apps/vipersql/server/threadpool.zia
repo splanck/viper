@@ -53,7 +53,7 @@ module threadpool;
 
 bind Viper.Terminal as Terminal;
 bind Viper.Threads as Threads;
-bind Viper.Fmt as Fmt;
+bind Viper.Text.Fmt as Fmt;
 bind Viper.Threads.Gate as Gate;
 bind "./connection";
 

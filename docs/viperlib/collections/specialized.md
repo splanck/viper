@@ -57,7 +57,7 @@ module BagDemo;
 
 bind Viper.Terminal;
 bind Viper.Collections;
-bind Viper.Fmt as Fmt;
+bind Viper.Text.Fmt as Fmt;
 
 func start() {
     var fruits = new Bag();
@@ -186,7 +186,7 @@ module BloomFilterDemo;
 bind Viper.Collections;
 bind Viper.Core;
 bind Viper.Terminal;
-bind Viper.Fmt as Fmt;
+bind Viper.Text.Fmt as Fmt;
 
 func start() {
     // Create filter for 100 items with 1% false positive rate
@@ -308,7 +308,7 @@ module TrieDemo;
 bind Viper.Collections;
 bind Viper.Core;
 bind Viper.Terminal;
-bind Viper.Fmt as Fmt;
+bind Viper.Text.Fmt as Fmt;
 
 func start() {
     var t = Trie.New();
@@ -452,7 +452,7 @@ module UnionFindDemo;
 bind Viper.Collections;
 bind Viper.Core;
 bind Viper.Terminal;
-bind Viper.Fmt as Fmt;
+bind Viper.Text.Fmt as Fmt;
 
 func start() {
     var uf = UnionFind.New(6);
@@ -586,7 +586,7 @@ module BitSetDemo;
 bind Viper.Collections;
 bind Viper.Core;
 bind Viper.Terminal;
-bind Viper.Fmt as Fmt;
+bind Viper.Text.Fmt as Fmt;
 
 func start() {
     var bs = BitSet.New(8);
@@ -732,7 +732,7 @@ module BytesDemo;
 
 bind Viper.Terminal;
 bind Viper.Collections;
-bind Viper.Fmt as Fmt;
+bind Viper.Text.Fmt as Fmt;
 
 func start() {
     // Create from string

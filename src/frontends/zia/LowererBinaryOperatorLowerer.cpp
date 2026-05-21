@@ -76,7 +76,7 @@ LowerResult BinaryOperatorLowerer::lowerBinary(BinaryExpr *expr) {
                     rightStr =
                         lowerer_.emitCallRet(Type(Type::Kind::Str), kStringFromNum, {right.value});
                 else if (rightType && rightType->kind == TypeKindSem::Boolean)
-                    rightStr = lowerer_.emitCallRet(Type(Type::Kind::Str), kFmtBool, {right.value});
+                    rightStr = lowerer_.emitCallRet(Type(Type::Kind::Str), kTextFmtBool, {right.value});
 
                 Value result = lowerer_.emitCallRet(
                     Type(Type::Kind::Str), kStringConcat, {left.value, rightStr});
@@ -93,7 +93,7 @@ LowerResult BinaryOperatorLowerer::lowerBinary(BinaryExpr *expr) {
                     leftStr =
                         lowerer_.emitCallRet(Type(Type::Kind::Str), kStringFromNum, {left.value});
                 else if (leftType && leftType->kind == TypeKindSem::Boolean)
-                    leftStr = lowerer_.emitCallRet(Type(Type::Kind::Str), kFmtBool, {left.value});
+                    leftStr = lowerer_.emitCallRet(Type(Type::Kind::Str), kTextFmtBool, {left.value});
 
                 Value result = lowerer_.emitCallRet(
                     Type(Type::Kind::Str), kStringConcat, {leftStr, right.value});

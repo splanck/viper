@@ -33,6 +33,7 @@ extern void *rt_vec3_new(double x, double y, double z);
 extern double rt_vec3_x(void *v);
 extern double rt_vec3_y(void *v);
 extern double rt_vec3_z(void *v);
+extern int rt_obj_release_check0(void *obj);
 }
 
 static int tests_passed = 0;
@@ -1163,6 +1164,39 @@ static void test_distance_joint_create() {
     EXPECT_NEAR(rt_distance_joint3d_get_distance(j), 5.0, 0.01, "DistanceJoint3D distance = 5.0");
 }
 
+static void test_joints_retain_bodies_and_sanitize_parameters() {
+    void *a = rt_body3d_new_sphere(1.0, 1.0);
+    void *b = rt_body3d_new_sphere(1.0, 1.0);
+    void *distance = rt_distance_joint3d_new(a, b, INFINITY);
+    int a_reached_zero = rt_obj_release_check0(a);
+    int b_reached_zero = rt_obj_release_check0(b);
+
+    EXPECT_TRUE(a_reached_zero == 0, "DistanceJoint3D retains body A");
+    EXPECT_TRUE(b_reached_zero == 0, "DistanceJoint3D retains body B");
+    EXPECT_NEAR(rt_distance_joint3d_get_distance(distance), 0.0, 0.01,
+                "DistanceJoint3D converts infinite distances to zero");
+
+    void *c = rt_body3d_new_sphere(1.0, 1.0);
+    void *d = rt_body3d_new_sphere(1.0, 1.0);
+    void *spring = rt_spring_joint3d_new(c, d, NAN, INFINITY, -1.0);
+    int c_reached_zero = rt_obj_release_check0(c);
+    int d_reached_zero = rt_obj_release_check0(d);
+    EXPECT_TRUE(c_reached_zero == 0, "SpringJoint3D retains body A");
+    EXPECT_TRUE(d_reached_zero == 0, "SpringJoint3D retains body B");
+    EXPECT_NEAR(rt_spring_joint3d_get_rest_length(spring), 0.0, 0.01,
+                "SpringJoint3D converts NaN rest length to zero");
+    EXPECT_NEAR(rt_spring_joint3d_get_stiffness(spring), 0.0, 0.01,
+                "SpringJoint3D converts infinite stiffness to zero");
+    EXPECT_NEAR(rt_spring_joint3d_get_damping(spring), 0.0, 0.01,
+                "SpringJoint3D converts negative damping to zero");
+    rt_spring_joint3d_set_stiffness(spring, 1.0e100);
+    rt_spring_joint3d_set_damping(spring, 1.0e100);
+    EXPECT_NEAR(rt_spring_joint3d_get_stiffness(spring), 1.0e9, 1.0,
+                "SpringJoint3D clamps huge stiffness");
+    EXPECT_NEAR(rt_spring_joint3d_get_damping(spring), 1.0e9, 1.0,
+                "SpringJoint3D clamps huge damping");
+}
+
 static void test_distance_joint_constraint() {
     /* Two bodies separated by 10 units, connected by distance joint of 5 */
     void *world = rt_world3d_new(0, 0, 0);
@@ -1314,6 +1348,7 @@ int main() {
 
     /* Joint tests */
     test_distance_joint_create();
+    test_joints_retain_bodies_and_sanitize_parameters();
     test_distance_joint_constraint();
     test_spring_joint_create();
     test_spring_joint_force();

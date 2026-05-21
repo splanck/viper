@@ -10,7 +10,7 @@ module PromiseDemo;
 bind Viper.Threads.Promise as Promise;
 bind Viper.Threads.Future as Future;
 bind Viper.Terminal;
-bind Viper.Fmt as Fmt;
+bind Viper.Text.Fmt as Fmt;
 bind Viper.Core.Box as Box;
 func start() {
     Say("=== API Audit: Viper.Threads.Promise / Future ===");

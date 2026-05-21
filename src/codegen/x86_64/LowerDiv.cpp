@@ -161,6 +161,237 @@ namespace {
     return std::nullopt;
 }
 
+/// @brief Classification flags decoded from a division/remainder pseudo opcode.
+struct DivOpcodeKind {
+    bool isDiv{false};        ///< true ⇒ produce quotient (div), false ⇒ remainder.
+    bool isSigned{false};     ///< true ⇒ uses CQO/IDIV; false ⇒ XOR/DIV.
+    bool isCheckedSigned{false};   ///< true ⇒ emit INT_MIN / -1 overflow guard.
+    bool needsDiv0Check{false};    ///< true ⇒ emit divisor-is-zero trap branch.
+    bool matched{false};      ///< true ⇒ opcode was a div/rem pseudo we handle.
+};
+
+/// @brief Decode the opcode flags for a candidate instruction.
+/// @details Returns `matched == false` for any opcode that is not a div/rem
+///          pseudo so callers can quickly skip non-targets.
+[[nodiscard]] DivOpcodeKind classifyDivOpcode(MOpcode opcode) noexcept {
+    DivOpcodeKind k;
+    const bool isSignedDiv = opcode == MOpcode::DIVS64rr;
+    const bool isSignedRem = opcode == MOpcode::REMS64rr;
+    const bool isCheckedSignedDiv = opcode == MOpcode::DIVS64Chk0rr;
+    const bool isCheckedSignedRem = opcode == MOpcode::REMS64Chk0rr;
+    const bool isCheckedUnsignedDiv = opcode == MOpcode::DIVU64Chk0rr;
+    const bool isCheckedUnsignedRem = opcode == MOpcode::REMU64Chk0rr;
+    const bool isUnsignedDiv = opcode == MOpcode::DIVU64rr || isCheckedUnsignedDiv;
+    const bool isUnsignedRem = opcode == MOpcode::REMU64rr || isCheckedUnsignedRem;
+    k.matched = isSignedDiv || isSignedRem || isCheckedSignedDiv || isCheckedSignedRem ||
+                isUnsignedDiv || isUnsignedRem;
+    if (!k.matched)
+        return k;
+    k.isDiv = isSignedDiv || isCheckedSignedDiv || isUnsignedDiv;
+    k.isSigned = isSignedDiv || isSignedRem || isCheckedSignedDiv || isCheckedSignedRem;
+    k.isCheckedSigned = isCheckedSignedDiv || isCheckedSignedRem;
+    k.needsDiv0Check = k.isCheckedSigned || isCheckedUnsignedDiv || isCheckedUnsignedRem;
+    return k;
+}
+
+/// @brief Find or create a trap block (div0 / overflow) for the current function.
+/// @details Reuses an existing block matching @p label when present, patching in
+///          any missing CALL/UD2 to keep the trap shape canonical. Otherwise a
+///          fresh block is appended to @p fn. The resolved index is cached in
+///          @p trapIndex so subsequent calls return in O(1).
+[[nodiscard]] std::size_t ensureTrapBlock(MFunction &fn,
+                                          const std::string &label,
+                                          const char *callee,
+                                          std::optional<std::size_t> &trapIndex) {
+    if (trapIndex)
+        return *trapIndex;
+
+    if (auto existing = findBlockIndex(fn, label)) {
+        trapIndex = *existing;
+        auto &trapBlock = fn.blocks[*trapIndex];
+        const bool hasCall = std::any_of(
+            trapBlock.instructions.begin(), trapBlock.instructions.end(),
+            [&](const MInstr &instr) {
+                return instr.opcode == MOpcode::CALL && !instr.operands.empty() &&
+                       std::holds_alternative<OpLabel>(instr.operands[0]) &&
+                       std::get<OpLabel>(instr.operands[0]).name == callee;
+            });
+        if (!hasCall) {
+            trapBlock.append(MInstr::make(
+                MOpcode::CALL, std::vector<Operand>{makeLabelOperand(callee)}));
+        }
+        const bool hasTerminator = std::any_of(
+            trapBlock.instructions.begin(), trapBlock.instructions.end(),
+            [](const MInstr &instr) { return instr.opcode == MOpcode::UD2; });
+        if (!hasTerminator)
+            trapBlock.append(MInstr::make(MOpcode::UD2));
+        return *trapIndex;
+    }
+
+    MBasicBlock trapBlock{};
+    trapBlock.label = label;
+    trapBlock.append(MInstr::make(MOpcode::CALL,
+                                  std::vector<Operand>{makeLabelOperand(callee)}));
+    trapBlock.append(MInstr::make(MOpcode::UD2));
+    fn.blocks.push_back(std::move(trapBlock));
+    trapIndex = fn.blocks.size() - 1U;
+    return *trapIndex;
+}
+
+/// @brief Try replacing an unsigned div/rem by a power-of-2 constant with a
+///        shift/mask sequence in-place.
+/// @return true if the rewrite happened (and @p instrIdx was advanced past the
+///         emitted instruction(s)). false if the dispatcher must fall through
+///         to the generic IDIV/DIV expansion.
+[[nodiscard]] bool tryLowerDivByPowerOfTwo(MBasicBlock &block,
+                                           std::size_t &instrIdx,
+                                           const DivOpcodeKind &kind,
+                                           const MInstr &candidate,
+                                           const Operand &dividendOp,
+                                           const Operand &divisorOp) {
+    const bool isUnsigned = !kind.isSigned;
+    if (!isUnsigned)
+        return false;
+    auto constVal = findVRegConstant(block, instrIdx, divisorOp);
+    if (!constVal)
+        return false;
+    const int log = log2IfPowerOf2(*constVal);
+    if (log < 0 || log > 63)
+        return false;
+
+    const Operand destClone = cloneOperand(candidate.operands[0]);
+    const Operand dividendClone = cloneOperand(dividendOp);
+
+    // SHR/AND are in-place ⇒ first move dividend → dest.
+    if (std::holds_alternative<OpImm>(dividendClone)) {
+        block.instructions[instrIdx] = MInstr::make(
+            MOpcode::MOVri,
+            std::vector<Operand>{cloneOperand(destClone), cloneOperand(dividendClone)});
+    } else {
+        block.instructions[instrIdx] = MInstr::make(
+            MOpcode::MOVrr,
+            std::vector<Operand>{cloneOperand(destClone), cloneOperand(dividendClone)});
+    }
+
+    if (kind.isDiv) {
+        // udiv x, 2^k → shr x, k
+        block.instructions.insert(
+            block.instructions.begin() + static_cast<std::ptrdiff_t>(instrIdx + 1),
+            MInstr::make(MOpcode::SHRri,
+                         std::vector<Operand>{cloneOperand(destClone), makeImmOperand(log)}));
+        ++instrIdx; // skip the inserted SHR
+        return true;
+    }
+
+    // urem x, 2^k → and x, (2^k - 1)
+    const int64_t mask = *constVal - 1;
+    if (fitsSignedImm32(mask)) {
+        block.instructions.insert(
+            block.instructions.begin() + static_cast<std::ptrdiff_t>(instrIdx + 1),
+            MInstr::make(MOpcode::ANDri,
+                         std::vector<Operand>{cloneOperand(destClone), makeImmOperand(mask)}));
+        ++instrIdx;
+        return true;
+    }
+    const Operand scratchRegOp = makePhysRegOperand(PhysReg::R11);
+    block.instructions.insert(
+        block.instructions.begin() + static_cast<std::ptrdiff_t>(instrIdx + 1),
+        MInstr::make(MOpcode::MOVri,
+                     std::vector<Operand>{cloneOperand(scratchRegOp), makeImmOperand(mask)}));
+    block.instructions.insert(
+        block.instructions.begin() + static_cast<std::ptrdiff_t>(instrIdx + 2),
+        MInstr::make(MOpcode::ANDrr,
+                     std::vector<Operand>{cloneOperand(destClone), cloneOperand(scratchRegOp)}));
+    instrIdx += 2;
+    return true;
+}
+
+/// @brief Emit the INT_MIN / -1 overflow guard for a checked signed div/rem.
+/// @details For checked div the overflow path jumps to the trap label; for
+///          checked rem the result is forced to 0 and control jumps to
+///          @p afterLabel. On the non-overflow path control falls through to a
+///          @c LABEL marking the post-guard join point.
+void emitDivOverflowGuards(MBasicBlock &currentBlock,
+                           MFunction &fn,
+                           const Operand &raxOp,
+                           const Operand &divisorRegOp,
+                           const Operand &scratchRegOp,
+                           const Operand &destOp,
+                           const Operand &dividendClone,
+                           const DivOpcodeKind &kind,
+                           const std::string &ovfTrapLabel,
+                           const std::string &afterLabel) {
+    const std::string skipOverflowLabel =
+        fn.makeLocalLabel(currentBlock.label + ".divchk_skip");
+    const bool dividendIsImmediate = std::holds_alternative<OpImm>(dividendClone);
+    const bool dividendIsMin = dividendIsImmediate &&
+                               std::get<OpImm>(dividendClone).val ==
+                                   std::numeric_limits<int64_t>::min();
+
+    if (!dividendIsImmediate) {
+        currentBlock.append(MInstr::make(
+            MOpcode::MOVri,
+            std::vector<Operand>{cloneOperand(scratchRegOp),
+                                 makeImmOperand(std::numeric_limits<int64_t>::min())}));
+        currentBlock.append(MInstr::make(
+            MOpcode::CMPrr,
+            std::vector<Operand>{cloneOperand(raxOp), cloneOperand(scratchRegOp)}));
+        currentBlock.append(MInstr::make(
+            MOpcode::JCC,
+            std::vector<Operand>{makeImmOperand(1), makeLabelOperand(skipOverflowLabel)}));
+    } else if (!dividendIsMin) {
+        currentBlock.append(MInstr::make(
+            MOpcode::JMP, std::vector<Operand>{makeLabelOperand(skipOverflowLabel)}));
+    }
+
+    currentBlock.append(MInstr::make(
+        MOpcode::CMPri,
+        std::vector<Operand>{cloneOperand(divisorRegOp), makeImmOperand(-1)}));
+    currentBlock.append(MInstr::make(
+        MOpcode::JCC,
+        std::vector<Operand>{makeImmOperand(1), makeLabelOperand(skipOverflowLabel)}));
+
+    if (kind.isDiv) {
+        currentBlock.append(MInstr::make(
+            MOpcode::JMP, std::vector<Operand>{makeLabelOperand(ovfTrapLabel)}));
+    } else {
+        currentBlock.append(MInstr::make(
+            MOpcode::MOVri,
+            std::vector<Operand>{cloneOperand(destOp), makeImmOperand(0)}));
+        currentBlock.append(MInstr::make(
+            MOpcode::JMP, std::vector<Operand>{makeLabelOperand(afterLabel)}));
+    }
+
+    currentBlock.append(MInstr::make(
+        MOpcode::LABEL,
+        std::vector<Operand>{makeLabelOperand(skipOverflowLabel)}));
+}
+
+/// @brief Emit the canonical CQO/IDIV (signed) or XOR/DIV (unsigned) sequence
+///        and copy the quotient or remainder into @p destOp.
+void emitDivOrIdiv(MBasicBlock &currentBlock,
+                   const Operand &raxOp,
+                   const Operand &rdxOp,
+                   const Operand &divisorRegOp,
+                   const Operand &destOp,
+                   const DivOpcodeKind &kind) {
+    if (kind.isSigned) {
+        currentBlock.append(MInstr::make(MOpcode::CQO, {}));
+        currentBlock.append(MInstr::make(
+            MOpcode::IDIVrm, std::vector<Operand>{cloneOperand(divisorRegOp)}));
+    } else {
+        currentBlock.append(MInstr::make(
+            MOpcode::XORrr32,
+            std::vector<Operand>{cloneOperand(rdxOp), cloneOperand(rdxOp)}));
+        currentBlock.append(MInstr::make(
+            MOpcode::DIVrm, std::vector<Operand>{cloneOperand(divisorRegOp)}));
+    }
+    const Operand resultPhys = kind.isDiv ? raxOp : rdxOp;
+    currentBlock.append(MInstr::make(
+        MOpcode::MOVrr,
+        std::vector<Operand>{cloneOperand(destOp), cloneOperand(resultPhys)}));
+}
+
 } // namespace
 
 /// @brief Rewrite division and remainder pseudos into explicit guarded sequences.
@@ -178,172 +409,41 @@ namespace {
 ///
 /// @param fn Machine IR function being rewritten in place.
 void lowerSignedDivRem(MFunction &fn) {
-    // Make trap label unique per function to avoid conflicts when assembling
     const std::string trapLabel = ".Ltrap_div0_" + fn.name;
     const std::string ovfTrapLabel = ".Ltrap_ovf_" + fn.name;
     std::optional<std::size_t> div0TrapIndex{};
     std::optional<std::size_t> ovfTrapIndex{};
     unsigned sequenceId{0U};
 
-    auto ensureTrapBlock = [&](const std::string &label,
-                               const char *callee,
-                               std::optional<std::size_t> &trapIndex) -> std::size_t {
-        if (trapIndex) {
-            return *trapIndex;
-        }
-
-        if (auto existing = findBlockIndex(fn, label)) {
-            trapIndex = *existing;
-            auto &trapBlock = fn.blocks[*trapIndex];
-            const bool hasCall = std::any_of(
-                trapBlock.instructions.begin(),
-                trapBlock.instructions.end(),
-                [&](const MInstr &instr) {
-                    return instr.opcode == MOpcode::CALL && !instr.operands.empty() &&
-                           std::holds_alternative<OpLabel>(instr.operands[0]) &&
-                           std::get<OpLabel>(instr.operands[0]).name == callee;
-                });
-            if (!hasCall) {
-                trapBlock.append(MInstr::make(
-                    MOpcode::CALL, std::vector<Operand>{makeLabelOperand(callee)}));
-            }
-            const bool hasTerminator = std::any_of(
-                trapBlock.instructions.begin(),
-                trapBlock.instructions.end(),
-                [](const MInstr &instr) { return instr.opcode == MOpcode::UD2; });
-            if (!hasTerminator) {
-                trapBlock.append(MInstr::make(MOpcode::UD2));
-            }
-            return *trapIndex;
-        }
-
-        MBasicBlock trapBlock{};
-        trapBlock.label = label;
-        trapBlock.append(MInstr::make(MOpcode::CALL, std::vector<Operand>{makeLabelOperand(callee)}));
-        trapBlock.append(MInstr::make(MOpcode::UD2));
-        fn.blocks.push_back(std::move(trapBlock));
-        trapIndex = fn.blocks.size() - 1U;
-        return *trapIndex;
-    };
-
     for (std::size_t blockIdx = 0; blockIdx < fn.blocks.size(); ++blockIdx) {
         for (std::size_t instrIdx = 0; instrIdx < fn.blocks[blockIdx].instructions.size();
              ++instrIdx) {
             const MInstr &candidate = fn.blocks[blockIdx].instructions[instrIdx];
-            const bool isSignedDiv = candidate.opcode == MOpcode::DIVS64rr;
-            const bool isSignedRem = candidate.opcode == MOpcode::REMS64rr;
-            const bool isCheckedSignedDiv = candidate.opcode == MOpcode::DIVS64Chk0rr;
-            const bool isCheckedSignedRem = candidate.opcode == MOpcode::REMS64Chk0rr;
-            const bool isCheckedUnsignedDiv = candidate.opcode == MOpcode::DIVU64Chk0rr;
-            const bool isCheckedUnsignedRem = candidate.opcode == MOpcode::REMU64Chk0rr;
-            const bool isUnsignedDiv = candidate.opcode == MOpcode::DIVU64rr || isCheckedUnsignedDiv;
-            const bool isUnsignedRem = candidate.opcode == MOpcode::REMU64rr || isCheckedUnsignedRem;
-            if (!isSignedDiv && !isSignedRem && !isCheckedSignedDiv && !isCheckedSignedRem &&
-                !isUnsignedDiv && !isUnsignedRem) {
+            const DivOpcodeKind kind = classifyDivOpcode(candidate.opcode);
+            if (!kind.matched)
                 continue;
-            }
-
-            if (candidate.operands.size() < 3U) {
-                continue; // Phase A expectation: dest, dividend, divisor.
-            }
-
-            if (!std::holds_alternative<OpReg>(candidate.operands[0])) {
-                continue; // Destination must be a virtual register.
-            }
+            if (candidate.operands.size() < 3U)
+                continue;
+            if (!std::holds_alternative<OpReg>(candidate.operands[0]))
+                continue;
 
             const Operand &dividendOp = candidate.operands[1];
             const Operand &divisorOp = candidate.operands[2];
-
             const bool dividendSupported = std::holds_alternative<OpReg>(dividendOp) ||
                                            std::holds_alternative<OpImm>(dividendOp);
-            if (!dividendSupported) {
-                continue; // Phase A: expect register or immediate dividend.
-            }
+            if (!dividendSupported)
+                continue;
+            if (!std::holds_alternative<OpReg>(divisorOp))
+                continue;
 
-            if (!std::holds_alternative<OpReg>(divisorOp)) {
-                continue; // Phase A: divisor must be a register operand.
-            }
-
-            // ── Power-of-2 fast path for unsigned division/remainder ──────
-            // Unsigned div by constant power-of-2: replace IDIV with SHR.
-            // Unsigned rem by constant power-of-2: replace IDIV with AND mask.
-            // This avoids the expensive IDIV (20-40 cycle latency).
-            if (isUnsignedDiv || isUnsignedRem) {
-                auto constVal = findVRegConstant(fn.blocks[blockIdx], instrIdx, divisorOp);
-                if (constVal) {
-                    int log = log2IfPowerOf2(*constVal);
-                    if (log >= 0 && log <= 63) {
-                        const Operand destClone = cloneOperand(candidate.operands[0]);
-                        const Operand dividendClone = cloneOperand(dividendOp);
-
-                        // Move dividend to dest first (SHR/AND are in-place).
-                        if (std::holds_alternative<OpImm>(dividendClone)) {
-                            fn.blocks[blockIdx].instructions[instrIdx] =
-                                MInstr::make(MOpcode::MOVri,
-                                             std::vector<Operand>{cloneOperand(destClone),
-                                                                  cloneOperand(dividendClone)});
-                        } else {
-                            fn.blocks[blockIdx].instructions[instrIdx] =
-                                MInstr::make(MOpcode::MOVrr,
-                                             std::vector<Operand>{cloneOperand(destClone),
-                                                                  cloneOperand(dividendClone)});
-                        }
-
-                        if (isUnsignedDiv) {
-                            // udiv x, 2^k  ->  shr x, k
-                            fn.blocks[blockIdx].instructions.insert(
-                                fn.blocks[blockIdx].instructions.begin() +
-                                    static_cast<std::ptrdiff_t>(instrIdx + 1),
-                                MInstr::make(MOpcode::SHRri,
-                                             std::vector<Operand>{cloneOperand(destClone),
-                                                                  makeImmOperand(log)}));
-                        } else {
-                            // urem x, 2^k  ->  and x, (2^k - 1)
-                            const int64_t mask = *constVal - 1;
-                            if (fitsSignedImm32(mask)) {
-                                fn.blocks[blockIdx].instructions.insert(
-                                    fn.blocks[blockIdx].instructions.begin() +
-                                        static_cast<std::ptrdiff_t>(instrIdx + 1),
-                                    MInstr::make(
-                                        MOpcode::ANDri,
-                                        std::vector<Operand>{cloneOperand(destClone),
-                                                             makeImmOperand(mask)}));
-                            } else {
-                                const Operand scratchRegOp = makePhysRegOperand(PhysReg::R11);
-                                fn.blocks[blockIdx].instructions.insert(
-                                    fn.blocks[blockIdx].instructions.begin() +
-                                        static_cast<std::ptrdiff_t>(instrIdx + 1),
-                                    MInstr::make(
-                                        MOpcode::MOVri,
-                                        std::vector<Operand>{cloneOperand(scratchRegOp),
-                                                             makeImmOperand(mask)}));
-                                fn.blocks[blockIdx].instructions.insert(
-                                    fn.blocks[blockIdx].instructions.begin() +
-                                        static_cast<std::ptrdiff_t>(instrIdx + 2),
-                                    MInstr::make(
-                                        MOpcode::ANDrr,
-                                        std::vector<Operand>{cloneOperand(destClone),
-                                                             cloneOperand(scratchRegOp)}));
-                                ++instrIdx;
-                            }
-                        }
-                        instrIdx += 1; // skip the inserted instruction
-                        continue;
-                    }
-                }
-            }
+            if (tryLowerDivByPowerOfTwo(fn.blocks[blockIdx], instrIdx, kind, candidate,
+                                        dividendOp, divisorOp))
+                continue;
 
             MInstr pseudo = std::move(fn.blocks[blockIdx].instructions[instrIdx]);
-            const bool isDiv = isSignedDiv || isCheckedSignedDiv || isUnsignedDiv;
-            const bool isSigned =
-                isSignedDiv || isSignedRem || isCheckedSignedDiv || isCheckedSignedRem;
-            const bool isCheckedSigned = isCheckedSignedDiv || isCheckedSignedRem;
-            const bool needsDiv0Check =
-                isCheckedSigned || isCheckedUnsignedDiv || isCheckedUnsignedRem;
 
             MBasicBlock afterBlock{};
             afterBlock.label = makeContinuationLabel(fn, fn.blocks[blockIdx], sequenceId++);
-
             {
                 auto &block = fn.blocks[blockIdx];
                 const auto tailBegin =
@@ -355,38 +455,35 @@ void lowerSignedDivRem(MFunction &fn) {
                                          static_cast<std::ptrdiff_t>(instrIdx));
             }
 
-            if (needsDiv0Check) {
-                ensureTrapBlock(trapLabel, "rt_trap_div0", div0TrapIndex);
-            }
-            if (isCheckedSignedDiv) {
-                ensureTrapBlock(ovfTrapLabel, "rt_trap_ovf", ovfTrapIndex);
-            }
+            if (kind.needsDiv0Check)
+                (void)ensureTrapBlock(fn, trapLabel, "rt_trap_div0", div0TrapIndex);
+            if (kind.isCheckedSigned && kind.isDiv)
+                (void)ensureTrapBlock(fn, ovfTrapLabel, "rt_trap_ovf", ovfTrapIndex);
 
             auto &currentBlock = fn.blocks[blockIdx];
 
             const Operand destOp = cloneOperand(pseudo.operands[0]);
             const Operand dividendClone = cloneOperand(dividendOp);
             const Operand divisorClone = cloneOperand(divisorOp);
-
             const Operand raxOp = makePhysRegOperand(PhysReg::RAX);
             const Operand rdxOp = makePhysRegOperand(PhysReg::RDX);
             const Operand divisorRegOp = makePhysRegOperand(PhysReg::R10);
             const Operand scratchRegOp = makePhysRegOperand(PhysReg::R11);
 
-            // Materialise operands before any local branches.  The register
+            // Materialise operands before any local branches. The register
             // allocator tracks cached virtual-register locations linearly within
             // a MachineIR block; using vregs after the overflow-check labels can
             // otherwise reuse a register loaded only on one branch path.
             currentBlock.append(MInstr::make(
                 MOpcode::MOVrr,
                 std::vector<Operand>{cloneOperand(divisorRegOp), cloneOperand(divisorClone)}));
-            if (needsDiv0Check) {
+            if (kind.needsDiv0Check) {
                 currentBlock.append(MInstr::make(
                     MOpcode::TESTrr,
                     std::vector<Operand>{cloneOperand(divisorRegOp), cloneOperand(divisorRegOp)}));
-                currentBlock.append(
-                    MInstr::make(MOpcode::JCC,
-                                 std::vector<Operand>{makeImmOperand(0), makeLabelOperand(trapLabel)}));
+                currentBlock.append(MInstr::make(
+                    MOpcode::JCC,
+                    std::vector<Operand>{makeImmOperand(0), makeLabelOperand(trapLabel)}));
             }
 
             if (std::holds_alternative<OpImm>(dividendClone)) {
@@ -399,79 +496,22 @@ void lowerSignedDivRem(MFunction &fn) {
                     std::vector<Operand>{cloneOperand(raxOp), cloneOperand(dividendClone)}));
             }
 
-            if (isCheckedSigned) {
-                const std::string skipOverflowLabel =
-                    fn.makeLocalLabel(currentBlock.label + ".divchk_skip");
-                const bool dividendIsImmediate = std::holds_alternative<OpImm>(dividendClone);
-                const bool dividendIsMin = dividendIsImmediate &&
-                                          std::get<OpImm>(dividendClone).val ==
-                                              std::numeric_limits<int64_t>::min();
-
-                if (!dividendIsImmediate) {
-                    currentBlock.append(MInstr::make(
-                        MOpcode::MOVri,
-                        std::vector<Operand>{cloneOperand(scratchRegOp),
-                                             makeImmOperand(std::numeric_limits<int64_t>::min())}));
-                    currentBlock.append(MInstr::make(
-                        MOpcode::CMPrr,
-                        std::vector<Operand>{cloneOperand(raxOp), cloneOperand(scratchRegOp)}));
-                    currentBlock.append(MInstr::make(
-                        MOpcode::JCC,
-                        std::vector<Operand>{makeImmOperand(1), makeLabelOperand(skipOverflowLabel)}));
-                } else if (!dividendIsMin) {
-                    currentBlock.append(MInstr::make(
-                        MOpcode::JMP, std::vector<Operand>{makeLabelOperand(skipOverflowLabel)}));
-                }
-
-                currentBlock.append(MInstr::make(
-                    MOpcode::CMPri,
-                    std::vector<Operand>{cloneOperand(divisorRegOp), makeImmOperand(-1)}));
-                currentBlock.append(MInstr::make(
-                    MOpcode::JCC,
-                    std::vector<Operand>{makeImmOperand(1), makeLabelOperand(skipOverflowLabel)}));
-
-                if (isCheckedSignedDiv) {
-                    currentBlock.append(MInstr::make(
-                        MOpcode::JMP, std::vector<Operand>{makeLabelOperand(ovfTrapLabel)}));
-                } else {
-                    currentBlock.append(MInstr::make(
-                        MOpcode::MOVri, std::vector<Operand>{cloneOperand(destOp), makeImmOperand(0)}));
-                    currentBlock.append(MInstr::make(
-                        MOpcode::JMP, std::vector<Operand>{makeLabelOperand(afterBlock.label)}));
-                }
-
-                currentBlock.append(MInstr::make(
-                    MOpcode::LABEL,
-                    std::vector<Operand>{makeLabelOperand(skipOverflowLabel)}));
+            if (kind.isCheckedSigned) {
+                emitDivOverflowGuards(currentBlock, fn, raxOp, divisorRegOp, scratchRegOp,
+                                      destOp, dividendClone, kind, ovfTrapLabel,
+                                      afterBlock.label);
             }
 
-            // IDIV/DIV implicitly consume RDX:RAX, so the explicit divisor operand
-            // must not be allocated to either register.  Keep it in R10 so the
+            // IDIV/DIV implicitly consume RDX:RAX, so the explicit divisor must
+            // not be allocated to either register. Keep it in R10 so the
             // post-check division reads a value available on every non-trap path.
-
-            if (isSigned) {
-                currentBlock.append(MInstr::make(MOpcode::CQO, {}));
-                currentBlock.append(
-                    MInstr::make(MOpcode::IDIVrm, std::vector<Operand>{cloneOperand(divisorRegOp)}));
-            } else {
-                currentBlock.append(
-                    MInstr::make(MOpcode::XORrr32,
-                                 std::vector<Operand>{cloneOperand(rdxOp), cloneOperand(rdxOp)}));
-                currentBlock.append(
-                    MInstr::make(MOpcode::DIVrm, std::vector<Operand>{cloneOperand(divisorRegOp)}));
-            }
-
-            const Operand resultPhys = isDiv ? raxOp : rdxOp;
-            currentBlock.append(
-                MInstr::make(MOpcode::MOVrr,
-                             std::vector<Operand>{cloneOperand(destOp), cloneOperand(resultPhys)}));
+            emitDivOrIdiv(currentBlock, raxOp, rdxOp, divisorRegOp, destOp, kind);
 
             currentBlock.append(MInstr::make(
                 MOpcode::JMP, std::vector<Operand>{makeLabelOperand(afterBlock.label)}));
 
             const std::size_t nextInstrIdx = currentBlock.instructions.size();
             fn.blocks.push_back(std::move(afterBlock));
-
             instrIdx = nextInstrIdx;
         }
     }

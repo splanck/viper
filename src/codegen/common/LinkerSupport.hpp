@@ -90,6 +90,13 @@ std::filesystem::path runtimeArchivePath(const std::filesystem::path &buildDir,
 std::filesystem::path supportLibraryPath(const std::filesystem::path &buildDir,
                                          std::string_view libBaseName);
 
+/// @brief Static-archive closure pulled in when a codegen'd binary embeds the
+///        Zia completion bridge (fe_zia). These are demand-driven (added to the
+///        regular archive list, not force-loaded): only the members the
+///        force-loaded fe_zia objects actually reference get extracted. Names
+///        are both the CMake target names and `supportLibraryPath` base names.
+const std::vector<std::string> &ziaFrontendClosureLibs();
+
 // =========================================================================
 // Link context — shared linker preamble
 // =========================================================================
@@ -103,6 +110,10 @@ struct LinkContext {
     std::vector<RtComponent> requiredComponents; ///< Runtime components needed by the program.
     std::vector<std::pair<std::string, std::filesystem::path>>
         requiredArchives; ///< (lib name, archive path) pairs.
+    /// True when the program references the Zia completion bridge
+    /// (rt_zia_* / Viper.Zia.*). The frontend library (fe_zia) must then be
+    /// force-loaded so its strong symbols override the weak runtime stubs.
+    bool needsZiaFrontend = false;
 };
 
 /// @brief Check if a specific runtime component is required by the link context.

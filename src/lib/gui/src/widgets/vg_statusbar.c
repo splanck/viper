@@ -29,6 +29,7 @@
 #include "../../include/vg_event.h"
 #include "../../include/vg_ide_widgets.h"
 #include "../../include/vg_theme.h"
+#include <stdint.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -75,10 +76,14 @@ static bool ensure_item_capacity(vg_statusbar_item_t ***items, size_t *capacity,
     if (needed <= *capacity)
         return true;
 
-    size_t new_capacity = *capacity == 0 ? INITIAL_ITEM_CAPACITY : *capacity * 2;
+    size_t new_capacity = *capacity == 0 ? INITIAL_ITEM_CAPACITY : *capacity;
     while (new_capacity < needed) {
+        if (new_capacity > SIZE_MAX / 2)
+            return false;
         new_capacity *= 2;
     }
+    if (new_capacity > SIZE_MAX / sizeof(vg_statusbar_item_t *))
+        return false;
 
     vg_statusbar_item_t **new_items = realloc(*items, new_capacity * sizeof(vg_statusbar_item_t *));
     if (!new_items)
@@ -555,7 +560,7 @@ static vg_statusbar_item_t *add_item_to_zone(vg_statusbar_t *sb,
             return NULL;
     }
 
-    if (!ensure_item_capacity(items, capacity, *count + 1)) {
+    if (*count == SIZE_MAX || !ensure_item_capacity(items, capacity, *count + 1)) {
         free_item(item);
         return NULL;
     }
@@ -743,9 +748,11 @@ void vg_statusbar_item_set_text(vg_statusbar_item_t *item, const char *text) {
     if (!vg_statusbar_item_is_live(item))
         return;
 
-    if (item->text)
-        free(item->text);
-    item->text = text ? strdup(text) : NULL;
+    char *copy = text ? strdup(text) : NULL;
+    if (text && !copy)
+        return;
+    free(item->text);
+    item->text = copy;
     if (item->owner)
         vg_widget_invalidate_layout(&item->owner->base);
 }
@@ -758,9 +765,11 @@ void vg_statusbar_item_set_tooltip(vg_statusbar_item_t *item, const char *toolti
     if (!vg_statusbar_item_is_live(item))
         return;
 
-    if (item->tooltip)
-        free(item->tooltip);
-    item->tooltip = tooltip ? strdup(tooltip) : NULL;
+    char *copy = tooltip ? strdup(tooltip) : NULL;
+    if (tooltip && !copy)
+        return;
+    free(item->tooltip);
+    item->tooltip = copy;
     if (item->owner)
         item->owner->base.needs_paint = true;
 }

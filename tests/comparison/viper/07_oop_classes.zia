@@ -23,7 +23,7 @@ class Point {
     }
 
     expose func toString() -> String {
-        return "(" + Viper.Fmt.Num(x) + ", " + Viper.Fmt.Num(y) + ")";
+        return "(" + Viper.Text.Fmt.Num(x) + ", " + Viper.Text.Fmt.Num(y) + ")";
     }
 }
 

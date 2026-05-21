@@ -227,6 +227,14 @@ static void collectNativeLinkArchives(const common::LinkContext &ctx,
 
     if (common::hasComponent(ctx, RtComponent::Audio))
         appendIfExists(common::supportLibraryPath(ctx.buildDir, "viperaud"));
+
+    // Embedding the Zia frontend pulls in il_runtime's RuntimeRegistry, which
+    // references the entire rt_* catalog regardless of what the program itself
+    // uses. Link every runtime component so those references resolve.
+    if (ctx.needsZiaFrontend) {
+        for (int i = 0; i < static_cast<int>(RtComponent::Count); ++i)
+            appendComponent(static_cast<RtComponent>(i));
+    }
 }
 
 /// @brief Link a single .o file into a native executable using the Viper native linker.
@@ -271,6 +279,18 @@ static int linkObjToExe(const std::string &objPath,
     linkOpts.windowsDebugRuntime = windowsDebugRuntime;
     linkOpts.extraObjPaths = extraObjects;
     collectNativeLinkArchives(ctx, linkOpts.archivePaths);
+    if (ctx.needsZiaFrontend) {
+        const auto ziaLib = common::supportLibraryPath(ctx.buildDir, "fe_zia");
+        if (common::fileExists(ziaLib))
+            linkOpts.forceLoadArchivePaths.push_back(ziaLib.lexically_normal().string());
+        // fe_zia's static-link closure (IL build/verify/transform/runtime/core/
+        // support). Demand-driven: only referenced members are extracted.
+        for (const auto &lib : common::ziaFrontendClosureLibs()) {
+            const auto p = common::supportLibraryPath(ctx.buildDir, lib);
+            if (common::fileExists(p))
+                linkOpts.archivePaths.push_back(p.lexically_normal().string());
+        }
+    }
 
     return viper::codegen::linker::nativeLink(linkOpts, out, err);
 }
@@ -407,20 +427,21 @@ PipelineResult CodegenPipeline::run() {
     PipelineResult result{};
     std::ostringstream out;
     std::ostringstream err;
+    auto finish = [&]() -> PipelineResult {
+        result.stdout_text = out.str();
+        result.stderr_text = err.str();
+        return result;
+    };
 
     il::core::Module mod;
     const auto load = il::tools::common::loadModuleFromFile(opts_.input_il_path, mod, err);
     if (!load.succeeded()) {
         result.exit_code = 1;
-        result.stdout_text = out.str();
-        result.stderr_text = err.str();
-        return result;
+        return finish();
     }
     if (!il::tools::common::verifyModule(mod, err)) {
         result.exit_code = 1;
-        result.stdout_text = out.str();
-        result.stderr_text = err.str();
-        return result;
+        return finish();
     }
 
     return runWithModule(std::move(mod), opts_.input_il_path, true);
@@ -443,56 +464,49 @@ PipelineResult CodegenPipeline::runWithModule(il::core::Module mod,
     PipelineResult result{};
     std::ostringstream out;
     std::ostringstream err;
+    auto finish = [&]() -> PipelineResult {
+        result.stdout_text = out.str();
+        result.stderr_text = err.str();
+        return result;
+    };
 
     if (debugSourcePath.empty())
         debugSourcePath = opts_.input_il_path;
 
     if (!moduleAlreadyVerified && !il::tools::common::verifyModule(mod, err)) {
         result.exit_code = 1;
-        result.stdout_text = out.str();
-        result.stderr_text = err.str();
-        return result;
+        return finish();
     }
 
     viper::codegen::common::lowerNativeEh(mod);
     if (const auto residualEh = viper::codegen::common::findResidualStructuredEh(mod)) {
         err << "error: " << *residualEh << "\n";
         result.exit_code = 1;
-        result.stdout_text = out.str();
-        result.stderr_text = err.str();
-        return result;
+        return finish();
     }
 
     if (!opts_.skip_il_optimization && !runIlOptimizations(mod, opts_.optimize)) {
         err << "error: failed to run AArch64 IL optimization pipeline\n";
         result.exit_code = 1;
-        result.stdout_text = out.str();
-        result.stderr_text = err.str();
-        return result;
+        return finish();
     }
     if (!opts_.skip_il_optimization && opts_.optimize >= 1 &&
         !il::tools::common::verifyModule(mod, err)) {
         err << "error: IL verification failed after optimization\n";
         result.exit_code = 1;
-        result.stdout_text = out.str();
-        result.stderr_text = err.str();
-        return result;
+        return finish();
     }
 
     if (opts_.run_native) {
         if (opts_.target_platform != TargetPlatform::Host) {
             err << "error: --run-native requires --target-host on the AArch64 backend\n";
             result.exit_code = 1;
-            result.stdout_text = out.str();
-            result.stderr_text = err.str();
-            return result;
+            return finish();
         }
 #if !(defined(__APPLE__) && (defined(__aarch64__) || defined(__arm64__)))
         err << "error: --run-native is only supported on macOS arm64 hosts\n";
         result.exit_code = 1;
-        result.stdout_text = out.str();
-        result.stderr_text = err.str();
-        return result;
+        return finish();
 #endif
     }
 
@@ -516,9 +530,7 @@ PipelineResult CodegenPipeline::runWithModule(il::core::Module mod,
 
     if (!runCodegenPipeline(pipelineModule, pipeOpts, err)) {
         result.exit_code = 1;
-        result.stdout_text = out.str();
-        result.stderr_text = err.str();
-        return result;
+        return finish();
     }
 
     std::string asmText = pipelineModule.assembly;
@@ -532,22 +544,16 @@ PipelineResult CodegenPipeline::runWithModule(il::core::Module mod,
     if (opts_.emit_asm) {
         if (!common::writeTextFile(asmPath, asmText, err)) {
             result.exit_code = 1;
-            result.stdout_text = out.str();
-            result.stderr_text = err.str();
-            return result;
+            return finish();
         }
     }
 
     if (opts_.output_obj_path.empty() && !opts_.run_native) {
         if (!opts_.emit_asm && !common::writeTextFile(asmPath, asmText, err)) {
             result.exit_code = 1;
-            result.stdout_text = out.str();
-            result.stderr_text = err.str();
-            return result;
+            return finish();
         }
-        result.stdout_text = out.str();
-        result.stderr_text = err.str();
-        return result;
+        return finish();
     }
 
     // --- Inject asset blob into .rodata (if present) ---
@@ -591,9 +597,7 @@ PipelineResult CodegenPipeline::runWithModule(il::core::Module mod,
         if (!writer) {
             err << "error: no native object file writer for this platform\n";
             result.exit_code = 1;
-            result.stdout_text = out.str();
-            result.stderr_text = err.str();
-            return result;
+            return finish();
         }
         const bool hasDebugLine = !pipelineModule.debugLineData.empty();
         if (hasDebugLine)
@@ -611,15 +615,11 @@ PipelineResult CodegenPipeline::runWithModule(il::core::Module mod,
         if (!wroteObject) {
             err << "error: failed to write object file '" << objPath.string() << "'\n";
             result.exit_code = 1;
-            result.stdout_text = out.str();
-            result.stderr_text = err.str();
-            return result;
+            return finish();
         }
 
         if (outputIsObj) {
-            result.stdout_text = out.str();
-            result.stderr_text = err.str();
-            return result;
+            return finish();
         }
 
         std::unordered_set<std::string> extSymbols;
@@ -640,9 +640,7 @@ PipelineResult CodegenPipeline::runWithModule(il::core::Module mod,
                 viper::codegen::common::prepareLinkContextFromSymbols(extSymbols, ctx, out, err);
             rc != 0) {
             result.exit_code = 1;
-            result.stdout_text = out.str();
-            result.stderr_text = err.str();
-            return result;
+            return finish();
         }
 
         std::filesystem::path exe =
@@ -673,9 +671,7 @@ PipelineResult CodegenPipeline::runWithModule(il::core::Module mod,
 
         if (lrc != 0) {
             result.exit_code = 1;
-            result.stdout_text = out.str();
-            result.stderr_text = err.str();
-            return result;
+            return finish();
         }
 
         if (opts_.run_native) {
@@ -683,16 +679,12 @@ PipelineResult CodegenPipeline::runWithModule(il::core::Module mod,
             result.exit_code = rc == -1 ? 1 : rc;
         }
 
-        result.stdout_text = out.str();
-        result.stderr_text = err.str();
-        return result;
+        return finish();
     }
 
     if (!opts_.emit_asm && !common::writeTextFile(asmPath, asmText, err)) {
         result.exit_code = 1;
-        result.stdout_text = out.str();
-        result.stderr_text = err.str();
-        return result;
+        return finish();
     }
 
     if (!opts_.output_obj_path.empty() && !opts_.run_native) {
@@ -701,9 +693,7 @@ PipelineResult CodegenPipeline::runWithModule(il::core::Module mod,
             const int arc = viper::codegen::common::invokeAssembler(
                 systemAssemblerArgs(opts_.target_platform), asmPath, outPath, out, err);
             result.exit_code = arc == 0 ? 0 : 1;
-            result.stdout_text = out.str();
-            result.stderr_text = err.str();
-            return result;
+            return finish();
         }
 
         if (opts_.link_mode == LinkMode::System)
@@ -722,9 +712,7 @@ PipelineResult CodegenPipeline::runWithModule(il::core::Module mod,
             std::filesystem::remove(asmPath, ec);
         }
         result.exit_code = lrc == 0 ? 0 : 1;
-        result.stdout_text = out.str();
-        result.stderr_text = err.str();
-        return result;
+        return finish();
     }
 
     std::filesystem::path exe =
@@ -744,9 +732,7 @@ PipelineResult CodegenPipeline::runWithModule(il::core::Module mod,
                   out,
                   err) != 0) {
         result.exit_code = 1;
-        result.stdout_text = out.str();
-        result.stderr_text = err.str();
-        return result;
+        return finish();
     }
 
     if (!opts_.emit_asm) {
@@ -759,9 +745,7 @@ PipelineResult CodegenPipeline::runWithModule(il::core::Module mod,
         result.exit_code = rc == -1 ? 1 : rc;
     }
 
-    result.stdout_text = out.str();
-    result.stderr_text = err.str();
-    return result;
+    return finish();
 }
 
 } // namespace viper::codegen::aarch64

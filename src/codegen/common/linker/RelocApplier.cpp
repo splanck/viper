@@ -17,9 +17,11 @@
 //===----------------------------------------------------------------------===//
 
 #include "codegen/common/linker/RelocApplier.hpp"
+#include "codegen/common/AArch64RelocUtil.hpp"
 #include "codegen/common/linker/NameMangling.hpp"
 #include "codegen/common/linker/RelocClassify.hpp"
 #include "codegen/common/linker/RelocConstants.hpp"
+#include "codegen/common/objfile/ObjFileWriterUtil.hpp"
 
 #include <algorithm>
 #include <array>
@@ -28,27 +30,10 @@
 
 namespace viper::codegen::linker {
 
-static void writeLE32(uint8_t *p, uint32_t v) {
-    p[0] = static_cast<uint8_t>(v);
-    p[1] = static_cast<uint8_t>(v >> 8);
-    p[2] = static_cast<uint8_t>(v >> 16);
-    p[3] = static_cast<uint8_t>(v >> 24);
-}
-
-static void writeLE16(uint8_t *p, uint16_t v) {
-    p[0] = static_cast<uint8_t>(v);
-    p[1] = static_cast<uint8_t>(v >> 8);
-}
-
-static void writeLE64(uint8_t *p, uint64_t v) {
-    for (int i = 0; i < 8; ++i)
-        p[i] = static_cast<uint8_t>(v >> (i * 8));
-}
-
-static uint32_t readLE32(const uint8_t *p) {
-    return static_cast<uint32_t>(p[0]) | (static_cast<uint32_t>(p[1]) << 8) |
-           (static_cast<uint32_t>(p[2]) << 16) | (static_cast<uint32_t>(p[3]) << 24);
-}
+using viper::codegen::objfile::readLE32;
+using viper::codegen::objfile::writeLE16;
+using viper::codegen::objfile::writeLE32;
+using viper::codegen::objfile::writeLE64;
 
 static bool writeCheckedRel32(uint8_t *patch,
                               int64_t value,
@@ -95,16 +80,50 @@ static bool checkPageOffsetAlignment(uint32_t pageOff,
     return false;
 }
 
-static bool isAArch64UnsignedLdStOffset(uint32_t insn) {
-    return (insn & 0x3B000000u) == 0x39000000u;
+static bool aarch64UnsignedLdStOffsetShift(uint32_t insn, uint32_t &shift) {
+    return viper::codegen::a64UnsignedLdStOffsetShift(insn, shift);
 }
 
-static bool isAArch64AddSubImmediate(uint32_t insn) {
-    return (insn & 0x1F000000u) == 0x11000000u;
+static bool isAArch64UnsignedLdStOffset(uint32_t insn) {
+    uint32_t ignored = 0;
+    return aarch64UnsignedLdStOffsetShift(insn, ignored);
+}
+
+static bool isAArch64AddImmediate(uint32_t insn) {
+    return viper::codegen::isA64AddImmediate(insn);
 }
 
 static bool isAArch64LdrXUnsignedOffset(uint32_t insn) {
     return (insn & 0xFFC00000u) == 0xF9400000u;
+}
+
+static bool isX64RexPrefix(uint8_t byte) {
+    return (byte & 0xF0u) == 0x40u;
+}
+
+static bool validateGotPCRelXMov(const ObjFile &obj,
+                                 const ObjReloc &rel,
+                                 const uint8_t *patch,
+                                 size_t patchOff,
+                                 const std::string &symName,
+                                 std::ostream &err) {
+    if (patchOff < 2 || patch[-2] != 0x8B || (patch[-1] & 0xC7u) != 0x05u) {
+        err << "error: " << obj.name
+            << ": local GOTPCRELX relaxation requires MOV r*, disp32(%rip)";
+        if (!symName.empty())
+            err << " for '" << symName << "'";
+        err << "\n";
+        return false;
+    }
+    if (rel.type == elf_x64::kRexGotPcRelX && (patchOff < 3 || !isX64RexPrefix(patch[-3]))) {
+        err << "error: " << obj.name
+            << ": REX_GOTPCRELX relaxation requires a REX-prefixed MOV";
+        if (!symName.empty())
+            err << " for '" << symName << "'";
+        err << "\n";
+        return false;
+    }
+    return true;
 }
 
 static bool isAArch64Branch26Opcode(uint32_t insn) {
@@ -118,13 +137,6 @@ static bool isAArch64AdrpOpcode(uint32_t insn) {
 static bool isAArch64CondBr19Opcode(uint32_t insn) {
     return ((insn & 0xFF000010u) == 0x54000000u) || // B.cond.
            ((insn & 0x7E000000u) == 0x34000000u);  // CBZ/CBNZ.
-}
-
-static uint32_t aarch64LdStOffsetShift(uint32_t insn) {
-    uint32_t shift = insn >> 30;
-    if ((insn & 0x04800000u) == 0x04800000u)
-        shift = 4;
-    return shift;
 }
 
 static bool checkedAddU64(uint64_t lhs, uint64_t rhs, uint64_t &out) {
@@ -219,6 +231,46 @@ static bool checkedU32Value(int64_t value,
     return false;
 }
 
+/// @brief Validate the patch site for one relocation and compute the place address.
+/// @details Extracted from the per-relocation iteration in @ref applyRelocations so
+///          the format-dispatch core can read as "compute patch site, then dispatch"
+///          instead of inlining ~25 LOC of overflow + bounds + zero-fill checks per
+///          relocation. Outputs the place virtual address @p P and the patch file
+///          offset @p patchOff on success.
+static bool computeRelocPatchSite(const OutputSection &outSec,
+                                  const ObjFile &obj,
+                                  const ObjReloc &rel,
+                                  size_t chunkBase,
+                                  uint64_t secVA,
+                                  std::ostream &err,
+                                  uint64_t &P,
+                                  size_t &patchOff) {
+    uint64_t secChunkVA = 0;
+    if (!checkedAddU64(secVA, static_cast<uint64_t>(chunkBase), secChunkVA) ||
+        !checkedAddU64(secChunkVA, static_cast<uint64_t>(rel.offset), P)) {
+        err << "error: " << obj.name << ": relocation place address overflow in '"
+            << outSec.name << "'\n";
+        return false;
+    }
+    if (rel.offset > std::numeric_limits<size_t>::max() - chunkBase) {
+        err << "error: " << obj.name << ": relocation file offset overflow in '"
+            << outSec.name << "'\n";
+        return false;
+    }
+    patchOff = chunkBase + rel.offset;
+    if (outSec.zeroFill) {
+        err << "error: relocation in zero-fill output section '" << outSec.name
+            << "' has no file-backed bytes to patch\n";
+        return false;
+    }
+    if (patchOff > outSec.data.size()) {
+        err << "error: relocation at offset " << patchOff << " out of bounds in '"
+            << outSec.name << "' (size=" << outSec.data.size() << ")\n";
+        return false;
+    }
+    return true;
+}
+
 static bool sortWindowsPdata(LinkLayout &layout, LinkArch arch, std::ostream &err) {
     const size_t recordSize = (arch == LinkArch::AArch64) ? 8 : 12;
 
@@ -264,14 +316,44 @@ struct TlsImageInfo {
 };
 
 /// Build the reverse-index map from the link layout.
-static LocationMap buildLocationMap(const LinkLayout &layout) {
-    LocationMap map;
+static bool buildLocationMap(const LinkLayout &layout, LocationMap &map, std::ostream &err) {
     for (size_t si = 0; si < layout.sections.size(); ++si) {
-        for (const auto &chunk : layout.sections[si].chunks)
-            map[InputSectionKey{chunk.inputObjIndex, chunk.inputSecIndex}] =
-                OutputLocation{si, chunk.outputOffset, chunk.size};
+        for (const auto &chunk : layout.sections[si].chunks) {
+            if (chunk.synthetic)
+                continue;
+            InputSectionKey key{chunk.inputObjIndex, chunk.inputSecIndex};
+            if (map.find(key) != map.end()) {
+                err << "error: input section (" << chunk.inputObjIndex << ", "
+                    << chunk.inputSecIndex << ") appears in multiple output chunks\n";
+                return false;
+            }
+            map[key] = OutputLocation{si, chunk.outputOffset, chunk.size};
+        }
     }
-    return map;
+    return true;
+}
+
+static bool hasMatchingAArch64GotPageReloc(const ObjFile &obj,
+                                           LinkArch arch,
+                                           const ObjSection &sec,
+                                           const ObjReloc &pageOffRel) {
+    if (pageOffRel.offset < 4)
+        return false;
+    for (const auto &candidate : sec.relocs) {
+        if (candidate.offset > std::numeric_limits<size_t>::max() - 4)
+            continue;
+        if (candidate.offset + 4 != pageOffRel.offset)
+            continue;
+        if (candidate.symIndex != pageOffRel.symIndex || candidate.addend != pageOffRel.addend)
+            continue;
+        if (classifyReloc(obj.format, arch, candidate.type) == RelocAction::GotPage21)
+            return true;
+        if (obj.format == ObjFileFormat::MachO &&
+            pageOffRel.type == macho_a64::kTlvpLoadPageOff12 &&
+            candidate.type == macho_a64::kTlvpLoadPage21)
+            return true;
+    }
+    return false;
 }
 
 /// Look up the output section and offset for a given (objIndex, secIndex).
@@ -297,7 +379,7 @@ static bool computeTlsImageInfo(const LinkLayout &layout, TlsImageInfo &info, st
             continue;
 
         uint64_t secEnd = 0;
-        if (!checkedAddU64(sec.virtualAddr, static_cast<uint64_t>(sec.data.size()), secEnd)) {
+        if (!checkedAddU64(sec.virtualAddr, static_cast<uint64_t>(outputSectionMemSize(sec)), secEnd)) {
             err << "error: TLS section '" << sec.name << "' exceeds 64-bit address range\n";
             return false;
         }
@@ -337,7 +419,7 @@ static bool resolveLocalSymAddr(const ObjSymbol &sym,
     if (!findOutputLocation(locMap, objIdx, sym.sectionIndex, outSecIdx, chunkOff, &inputSize))
         return false;
     const auto &outSec = layout.sections[outSecIdx];
-    if (chunkOff > outSec.data.size() || sym.offset > inputSize)
+    if (chunkOff > outputSectionMemSize(outSec) || sym.offset > inputSize)
         return false; // Symbol offset exceeds section bounds (malformed .o).
     uint64_t withChunk = 0;
     if (!checkedAddU64(outSec.virtualAddr, static_cast<uint64_t>(chunkOff), withChunk) ||
@@ -371,7 +453,7 @@ static bool resolveGlobalSymLocation(const std::string &symName,
         size_t inputSize = 0;
         if (findOutputLocation(locMap, entry.objIndex, entry.secIndex, outSecIdx, chunkOff, &inputSize)) {
             const auto &outSec = layout.sections[outSecIdx];
-            if (chunkOff > outSec.data.size() || entry.offset > inputSize)
+            if (chunkOff > outputSectionMemSize(outSec) || entry.offset > inputSize)
                 return false;
             uint64_t withChunk = 0;
             if (!checkedAddU64(outSec.virtualAddr, static_cast<uint64_t>(chunkOff), withChunk) ||
@@ -383,34 +465,50 @@ static bool resolveGlobalSymLocation(const std::string &symName,
         }
     }
 
-    if (entry.resolvedAddr == 0 &&
+    if (!entry.resolvedAddrValid && entry.resolvedAddr == 0 &&
         (entry.binding == GlobalSymEntry::Undefined || entry.binding == GlobalSymEntry::Dynamic))
         return false;
     addr = entry.resolvedAddr;
     return true;
 }
 
+static auto findGotSymbol(std::unordered_map<std::string, GlobalSymEntry> &globalSyms,
+                          const std::string &symName,
+                          LinkPlatform platform) -> decltype(globalSyms.find(symName)) {
+    if (symName.empty())
+        return globalSyms.end();
+
+    auto it = globalSyms.find("__got_" + symName);
+    if (it != globalSyms.end() || platform != LinkPlatform::macOS)
+        return it;
+
+    if (symName[0] == '_')
+        it = globalSyms.find("__got_" + symName.substr(1));
+    else
+        it = globalSyms.find("__got_" + machoMangle(symName));
+    return it;
+}
+
+static bool hasResolvedGotSymbol(std::unordered_map<std::string, GlobalSymEntry> &globalSyms,
+                                 const std::string &symName,
+                                 LinkPlatform platform) {
+    auto it = findGotSymbol(globalSyms, symName, platform);
+    return it != globalSyms.end() && it->second.resolvedAddrValid;
+}
+
 // Relocation classification (RelocAction, classifyReloc) is in RelocClassify.hpp.
 
-bool applyRelocations(const std::vector<ObjFile> &objects,
-                      LinkLayout &layout,
-                      const std::unordered_set<std::string> &dynamicSyms,
-                      LinkPlatform platform,
-                      LinkArch arch,
-                      std::ostream &err) {
-    // Build reverse-index map once: (objIdx, secIdx) → (outSecIdx, outputOffset).
-    // This replaces the previous O(S×C) linear scan per lookup with O(1) amortized.
-    const LocationMap locMap = buildLocationMap(layout);
-    TlsImageInfo tlsImage;
-    if (!computeTlsImageInfo(layout, tlsImage, err))
-        return false;
-
-    // First pass: resolve all symbol addresses.
+// First pass of applyRelocations: resolve every defined global symbol's final
+// virtual address from its output-section placement. Returns false (with a
+// diagnostic) on address overflow.
+static bool resolveGlobalSymbolAddresses(LinkLayout &layout, const LocationMap &locMap,
+                                         std::ostream &err) {
     for (auto &[name, entry] : layout.globalSyms) {
         if (entry.binding == GlobalSymEntry::Undefined || entry.binding == GlobalSymEntry::Dynamic)
             continue;
         if (entry.absolute) {
             entry.resolvedAddr = static_cast<uint64_t>(entry.offset);
+            entry.resolvedAddrValid = true;
             continue;
         }
 
@@ -420,16 +518,38 @@ bool applyRelocations(const std::vector<ObjFile> &objects,
         if (findOutputLocation(
                 locMap, entry.objIndex, entry.secIndex, outSecIdx, chunkOffset, &inputSize)) {
             const auto &outSec = layout.sections[outSecIdx];
-            if (chunkOffset <= outSec.data.size() && entry.offset <= inputSize) {
+            if (chunkOffset <= outputSectionMemSize(outSec) && entry.offset <= inputSize) {
                 uint64_t withChunk = 0;
                 if (!checkedAddU64(outSec.virtualAddr, static_cast<uint64_t>(chunkOffset), withChunk) ||
                     !checkedAddU64(withChunk, static_cast<uint64_t>(entry.offset), entry.resolvedAddr)) {
                     err << "error: symbol address overflow while resolving '" << name << "'\n";
                     return false;
                 }
+                entry.resolvedAddrValid = true;
             }
         }
     }
+    return true;
+}
+
+bool applyRelocations(const std::vector<ObjFile> &objects,
+                      LinkLayout &layout,
+                      const std::unordered_set<std::string> &dynamicSyms,
+                      LinkPlatform platform,
+                      LinkArch arch,
+                      std::ostream &err) {
+    // Build reverse-index map once: (objIdx, secIdx) → (outSecIdx, outputOffset).
+    // This replaces the previous O(S×C) linear scan per lookup with O(1) amortized.
+    LocationMap locMap;
+    if (!buildLocationMap(layout, locMap, err))
+        return false;
+    TlsImageInfo tlsImage;
+    if (!computeTlsImageInfo(layout, tlsImage, err))
+        return false;
+
+    // First pass: resolve all symbol addresses.
+    if (!resolveGlobalSymbolAddresses(layout, locMap, err))
+        return false;
 
     // Second pass: apply relocations.
     for (size_t oi = 0; oi < objects.size(); ++oi) {
@@ -453,9 +573,9 @@ bool applyRelocations(const std::vector<ObjFile> &objects,
             const uint64_t secVA = outSec.virtualAddr;
 
             for (const auto &rel : sec.relocs) {
-                if (rel.offset >= sec.data.size()) {
+                if (rel.offset >= objSectionMemSize(sec)) {
                     err << "error: relocation offset " << rel.offset << " exceeds section size "
-                        << sec.data.size() << " in '" << obj.name << "'\n";
+                        << objSectionMemSize(sec) << " in '" << obj.name << "'\n";
                     return false;
                 }
 
@@ -472,6 +592,7 @@ bool applyRelocations(const std::vector<ObjFile> &objects,
 
                 uint64_t S = 0;
                 bool symResolved = false;
+                bool weakResolvedToZero = false;
                 size_t symOutSecIdx = SIZE_MAX;
                 bool hasSymOutputSection = false;
                 const bool preferGlobal = !symName.empty() && targetSym.binding != ObjSymbol::Local;
@@ -503,6 +624,7 @@ bool applyRelocations(const std::vector<ObjFile> &objects,
                     if (!symResolved) {
                         S = 0;
                         symResolved = true;
+                        weakResolvedToZero = true;
                     }
                 }
                 if (!symResolved && !symName.empty()) {
@@ -535,26 +657,9 @@ bool applyRelocations(const std::vector<ObjFile> &objects,
 
                 const int64_t A = rel.addend;
                 uint64_t P = 0;
-                uint64_t secChunkVA = 0;
-                if (!checkedAddU64(secVA, static_cast<uint64_t>(chunkBase), secChunkVA) ||
-                    !checkedAddU64(secChunkVA, static_cast<uint64_t>(rel.offset), P)) {
-                    err << "error: " << obj.name << ": relocation place address overflow in '"
-                        << outSec.name << "'\n";
+                size_t patchOff = 0;
+                if (!computeRelocPatchSite(outSec, obj, rel, chunkBase, secVA, err, P, patchOff))
                     return false;
-                }
-                if (rel.offset > std::numeric_limits<size_t>::max() - chunkBase) {
-                    err << "error: " << obj.name << ": relocation file offset overflow in '"
-                        << outSec.name << "'\n";
-                    return false;
-                }
-                const size_t patchOff = chunkBase + rel.offset;
-
-                if (patchOff > outSec.data.size()) {
-                    err << "error: relocation at offset " << patchOff << " out of bounds in '"
-                        << outSec.name << "' (size=" << outSec.data.size() << ")\n";
-                    return false;
-                }
-
                 uint8_t *patch = outSec.data.data() + patchOff;
                 auto requirePatchBytes = [&](size_t width, const char *kind) -> bool {
                     if (width <= outSec.data.size() - patchOff)
@@ -611,7 +716,15 @@ bool applyRelocations(const std::vector<ObjFile> &objects,
                     if (rel.type == coff_x64::kAddr32Nb) {
                         if (!requirePatchBytes(4, "ADDR32NB"))
                             return false;
-                        const uint64_t imageBase = defaultImageBaseForPlatform(LinkPlatform::Windows);
+                        // Pull the active image base from the layout, not the
+                        // platform default constant. The two agree today, but
+                        // if a configurable image base is ever wired through
+                        // NativeLinkerOptions, the writer-side RVA computation
+                        // and the applier here will only stay aligned if they
+                        // share the same source of truth.
+                        const uint64_t imageBase = layout.imageBase != 0
+                                                       ? layout.imageBase
+                                                       : defaultImageBaseForPlatform(platform);
                         uint64_t target = 0;
                         int64_t rva = 0;
                         uint32_t val = 0;
@@ -686,7 +799,11 @@ bool applyRelocations(const std::vector<ObjFile> &objects,
                     if (rel.type == coff_a64::kAddr32Nb) {
                         if (!requirePatchBytes(4, "ADDR32NB"))
                             return false;
-                        const uint64_t imageBase = defaultImageBaseForPlatform(LinkPlatform::Windows);
+                        // See the x86_64 ADDR32NB path above for why the
+                        // image base must come from the layout.
+                        const uint64_t imageBase = layout.imageBase != 0
+                                                       ? layout.imageBase
+                                                       : defaultImageBaseForPlatform(platform);
                         uint64_t target = 0;
                         int64_t rva = 0;
                         uint32_t val = 0;
@@ -732,8 +849,21 @@ bool applyRelocations(const std::vector<ObjFile> &objects,
                         }
 
                         uint32_t insn = readLE32(patch);
+                        if (rel.type == coff_a64::kSecRelLow12A ||
+                            rel.type == coff_a64::kSecRelHigh12A) {
+                            if (!isAArch64AddImmediate(insn)) {
+                                err << "error: " << obj.name
+                                    << ": SECREL_LOW/HIGH12A relocation is not applied to an "
+                                       "AArch64 ADD immediate instruction";
+                                if (!symName.empty())
+                                    err << " for '" << symName << "'";
+                                err << "\n";
+                                return false;
+                            }
+                        }
                         if (rel.type == coff_a64::kSecRelLow12L) {
-                            if (!isAArch64UnsignedLdStOffset(insn)) {
+                            uint32_t shift = 0;
+                            if (!aarch64UnsignedLdStOffsetShift(insn, shift)) {
                                 err << "error: " << obj.name
                                     << ": SECREL_LOW12L relocation is not applied to an "
                                        "AArch64 unsigned-offset load/store";
@@ -742,7 +872,6 @@ bool applyRelocations(const std::vector<ObjFile> &objects,
                                 err << "\n";
                                 return false;
                             }
-                            uint32_t shift = aarch64LdStOffsetShift(insn);
                             if (!checkPageOffsetAlignment(value, shift, obj, symName, err))
                                 return false;
                             value >>= shift;
@@ -751,6 +880,27 @@ bool applyRelocations(const std::vector<ObjFile> &objects,
                         writeLE32(patch, insn);
                         continue;
                     }
+                }
+
+                const RelocAction action = classifyReloc(obj.format, arch, rel.type);
+                if (!outSec.alloc && hasSymOutputSection && layout.sections[symOutSecIdx].alloc &&
+                    (action == RelocAction::PCRel32 || action == RelocAction::Branch26 ||
+                     action == RelocAction::Page21 || action == RelocAction::PageOff12 ||
+                     action == RelocAction::PageOff12A || action == RelocAction::PageOff12L ||
+                     action == RelocAction::LdSt32Off || action == RelocAction::LdSt64Off ||
+                     action == RelocAction::LdSt128Off || action == RelocAction::CondBr19 ||
+                     action == RelocAction::GotPCRel32 || action == RelocAction::GotPage21 ||
+                     action == RelocAction::GotPageOff12 || action == RelocAction::GotPointer)) {
+                    err << "error: " << obj.name << ": non-alloc section '" << outSec.name
+                        << "' contains runtime PC/page relocation against alloc symbol '"
+                        << targetDisplay << "'\n";
+                    return false;
+                }
+                if (weakResolvedToZero && action != RelocAction::Abs64 &&
+                    action != RelocAction::Abs32) {
+                    err << "error: " << obj.name << ": weak undefined symbol '"
+                        << targetDisplay << "' cannot resolve to address zero for this relocation\n";
+                    return false;
                 }
 
                 if (obj.format == ObjFileFormat::MachO && arch == LinkArch::X86_64) {
@@ -775,8 +925,6 @@ bool applyRelocations(const std::vector<ObjFile> &objects,
                     }
                 }
 
-                const RelocAction action = classifyReloc(obj.format, arch, rel.type);
-
                 switch (action) {
                     case RelocAction::PCRel32: {
                         if (!requirePatchBytes(4, "PC-relative"))
@@ -793,14 +941,18 @@ bool applyRelocations(const std::vector<ObjFile> &objects,
                     case RelocAction::Abs64: {
                         if (!requirePatchBytes(8, "64-bit absolute"))
                             return false;
-                        uint64_t val = 0;
-                        if (!checkedRelocTarget(S, A, obj, symName, "64-bit absolute", err, val))
-                            return false;
+                        // A 64-bit absolute relocation can represent the full wrapped
+                        // result. Mach-O arm64 also uses high bits in some relocated
+                        // pointer fields (for example RTTI name flags), so signed
+                        // overflow checks here reject valid object contents.
+                        uint64_t val = S + static_cast<uint64_t>(A);
 
                         const bool isDynamicSym =
-                            !symName.empty() && dynamicSyms.count(symName) != 0;
+                            !symName.empty() &&
+                            findWithPlatformFallback(dynamicSyms, symName, platform) !=
+                                dynamicSyms.end();
                         const bool hasDynamicGot =
-                            !symName.empty() && layout.globalSyms.count("__got_" + symName);
+                            hasResolvedGotSymbol(layout.globalSyms, symName, platform);
 
                         // Linux x86_64: imported data/function pointers are emitted as
                         // runtime-loader relocations instead of being resolved to the
@@ -813,7 +965,7 @@ bool applyRelocations(const std::vector<ObjFile> &objects,
 
                         // Mach-O: writable data pointers to imported symbols are left
                         // for dyld bind opcodes. Code branches use the synthetic stubs.
-                        if (outSec.writable && (isDynamicSym || hasDynamicGot)) {
+                        if ((outSec.writable || outSec.dataSegment) && (isDynamicSym || hasDynamicGot)) {
                             writeLE64(patch, 0);
                             layout.bindEntries.push_back({symName, outSecIdx, patchOff});
                             break;
@@ -849,7 +1001,7 @@ bool applyRelocations(const std::vector<ObjFile> &objects,
                                     continue; // Skip the descriptor section itself.
                                 uint64_t tlsEnd = 0;
                                 if (!checkedAddU64(ls.virtualAddr,
-                                                   static_cast<uint64_t>(ls.data.size()),
+                                                   static_cast<uint64_t>(outputSectionMemSize(ls)),
                                                    tlsEnd))
                                     return false;
                                 if (val >= ls.virtualAddr && val < tlsEnd) {
@@ -859,8 +1011,9 @@ bool applyRelocations(const std::vector<ObjFile> &objects,
                                 }
                             }
                             if (!tlvMatch && val != 0) {
-                                err << "warning: TLV offset for '" << symName
+                                err << "error: TLV offset for '" << symName
                                     << "' could not be converted to TLS-relative\n";
+                                return false;
                             }
                         }
 
@@ -873,7 +1026,7 @@ bool applyRelocations(const std::vector<ObjFile> &objects,
                         // entries use separate dyld mechanisms there.
                         if (platform == LinkPlatform::Windows && outSec.alloc && val != 0)
                             layout.rebaseEntries.push_back({outSecIdx, patchOff});
-                        else if (platform == LinkPlatform::macOS && outSec.writable &&
+                        else if (platform == LinkPlatform::macOS && (outSec.writable || outSec.dataSegment) &&
                                  !outSec.tls && val != 0)
                             layout.rebaseEntries.push_back({outSecIdx, patchOff});
 
@@ -929,20 +1082,18 @@ bool applyRelocations(const std::vector<ObjFile> &objects,
                             return false;
 
                         uint64_t base = S;
-                        auto git = symName.empty() ? layout.globalSyms.end()
-                                                   : layout.globalSyms.find("__got_" + symName);
+                        auto git = findGotSymbol(layout.globalSyms, symName, platform);
                         if (git != layout.globalSyms.end()) {
+                            if (!git->second.resolvedAddrValid) {
+                                err << "error: " << obj.name << ": unresolved GOT entry for '"
+                                    << targetDisplay << "'\n";
+                                return false;
+                            }
                             base = git->second.resolvedAddr;
                         } else if (rel.type == elf_x64::kGotPcRelX ||
                                    rel.type == elf_x64::kRexGotPcRelX) {
-                            if (patchOff < 2 || patch[-2] != 0x8B) {
-                                err << "error: " << obj.name
-                                    << ": local GOTPCRELX relaxation requires MOV r*, disp32(%rip)";
-                                if (!symName.empty())
-                                    err << " for '" << symName << "'";
-                                err << "\n";
+                            if (!validateGotPCRelXMov(obj, rel, patch, patchOff, symName, err))
                                 return false;
-                            }
                             patch[-2] = 0x8D; // Relax mov foo@GOTPCRELX(%rip), %reg -> lea foo(%rip), %reg
                         } else {
                             err << "error: " << obj.name << ": missing GOT entry for '" << targetDisplay
@@ -1020,7 +1171,9 @@ bool applyRelocations(const std::vector<ObjFile> &objects,
                         writeLE32(patch, insn);
                         break;
                     }
-                    case RelocAction::PageOff12: {
+                    case RelocAction::PageOff12:
+                    case RelocAction::PageOff12A:
+                    case RelocAction::PageOff12L: {
                         if (!requirePatchBytes(4, "page offset"))
                             return false;
                         uint32_t insn = readLE32(patch);
@@ -1028,6 +1181,8 @@ bool applyRelocations(const std::vector<ObjFile> &objects,
                         if (!checkedRelocTarget(S, A, obj, symName, "page offset", err, target))
                             return false;
                         uint32_t pageOff = static_cast<uint32_t>(target) & 0xFFF;
+                        const bool requireArithmetic = action == RelocAction::PageOff12A;
+                        const bool requireLdSt = action == RelocAction::PageOff12L;
 
                         // Mach-O ARM64_RELOC_PAGEOFF12 is used for both ADD (unscaled)
                         // and LDR/STR (scaled by access size). The linker must inspect the
@@ -1036,12 +1191,29 @@ bool applyRelocations(const std::vector<ObjFile> &objects,
                         // LDR/STR unsigned offset encoding: bits [31:30] = size,
                         // bits [29:24] = 11100x. Test: (insn & 0x3B000000) == 0x39000000.
                         // Scale = 1 << size, except 128-bit SIMD where scale = 16.
-                        if (isAArch64UnsignedLdStOffset(insn)) {
-                            uint32_t shift = aarch64LdStOffsetShift(insn);
-                            if (!checkPageOffsetAlignment(pageOff, shift, obj, symName, err))
+                        uint32_t ldStShift = 0;
+                        if (aarch64UnsignedLdStOffsetShift(insn, ldStShift)) {
+                            if (requireArithmetic) {
+                                err << "error: " << obj.name
+                                    << ": COFF PAGEOFFSET_12A relocation targets a load/store instruction";
+                                if (!symName.empty())
+                                    err << " for '" << symName << "'";
+                                err << "\n";
                                 return false;
-                            pageOff >>= shift;
-                        } else if (!isAArch64AddSubImmediate(insn)) {
+                            }
+                            if (!checkPageOffsetAlignment(pageOff, ldStShift, obj, symName, err))
+                                return false;
+                            pageOff >>= ldStShift;
+                        } else if (isAArch64AddImmediate(insn)) {
+                            if (requireLdSt) {
+                                err << "error: " << obj.name
+                                    << ": COFF PAGEOFFSET_12L relocation targets an ADD instruction";
+                                if (!symName.empty())
+                                    err << " for '" << symName << "'";
+                                err << "\n";
+                                return false;
+                            }
+                        } else {
                             err << "error: " << obj.name
                                 << ": AArch64 page offset relocation for '" << symName
                                 << "' targets an unsupported instruction\n";
@@ -1056,6 +1228,16 @@ bool applyRelocations(const std::vector<ObjFile> &objects,
                         if (!requirePatchBytes(4, "load/store page offset"))
                             return false;
                         uint32_t insn = readLE32(patch);
+                        uint32_t shift = 0;
+                        if (!aarch64UnsignedLdStOffsetShift(insn, shift) || shift != 3) {
+                            err << "error: " << obj.name
+                                << ": AArch64 64-bit load/store page offset relocation targets "
+                                   "an incompatible instruction";
+                            if (!symName.empty())
+                                err << " for '" << symName << "'";
+                            err << "\n";
+                            return false;
+                        }
                         uint64_t target = 0;
                         if (!checkedRelocTarget(S, A, obj, symName, "load/store page offset", err, target))
                             return false;
@@ -1071,6 +1253,16 @@ bool applyRelocations(const std::vector<ObjFile> &objects,
                         if (!requirePatchBytes(4, "load/store page offset"))
                             return false;
                         uint32_t insn = readLE32(patch);
+                        uint32_t shift = 0;
+                        if (!aarch64UnsignedLdStOffsetShift(insn, shift) || shift != 2) {
+                            err << "error: " << obj.name
+                                << ": AArch64 32-bit load/store page offset relocation targets "
+                                   "an incompatible instruction";
+                            if (!symName.empty())
+                                err << " for '" << symName << "'";
+                            err << "\n";
+                            return false;
+                        }
                         uint64_t target = 0;
                         if (!checkedRelocTarget(S, A, obj, symName, "load/store page offset", err, target))
                             return false;
@@ -1086,6 +1278,16 @@ bool applyRelocations(const std::vector<ObjFile> &objects,
                         if (!requirePatchBytes(4, "load/store page offset"))
                             return false;
                         uint32_t insn = readLE32(patch);
+                        uint32_t shift = 0;
+                        if (!aarch64UnsignedLdStOffsetShift(insn, shift) || shift != 4) {
+                            err << "error: " << obj.name
+                                << ": AArch64 128-bit load/store page offset relocation targets "
+                                   "an incompatible instruction";
+                            if (!symName.empty())
+                                err << " for '" << symName << "'";
+                            err << "\n";
+                            return false;
+                        }
                         uint64_t target = 0;
                         if (!checkedRelocTarget(S, A, obj, symName, "load/store page offset", err, target))
                             return false;
@@ -1135,9 +1337,15 @@ bool applyRelocations(const std::vector<ObjFile> &objects,
                         // GOT ADRP: if symbol is dynamic, point at its GOT entry;
                         // otherwise, GOT relaxation → point directly at symbol.
                         uint64_t target = S;
-                        auto git = layout.globalSyms.find("__got_" + symName);
-                        if (git != layout.globalSyms.end() && git->second.resolvedAddr != 0)
+                        auto git = findGotSymbol(layout.globalSyms, symName, platform);
+                        if (git != layout.globalSyms.end()) {
+                            if (!git->second.resolvedAddrValid) {
+                                err << "error: " << obj.name << ": unresolved GOT entry for '"
+                                    << targetDisplay << "'\n";
+                                return false;
+                            }
                             target = git->second.resolvedAddr; // Use GOT entry for dynamic sym.
+                        }
 
                         uint32_t insn = readLE32(patch);
                         if (!isAArch64AdrpOpcode(insn)) {
@@ -1173,8 +1381,13 @@ bool applyRelocations(const std::vector<ObjFile> &objects,
                             return false;
                         // GOT LDR pageoff: if symbol is dynamic, keep LDR with GOT entry offset;
                         // otherwise, GOT relaxation → rewrite LDR as ADD.
-                        auto git = layout.globalSyms.find("__got_" + symName);
-                        if (git != layout.globalSyms.end() && git->second.resolvedAddr != 0) {
+                        auto git = findGotSymbol(layout.globalSyms, symName, platform);
+                        if (git != layout.globalSyms.end() && !git->second.resolvedAddrValid) {
+                            err << "error: " << obj.name << ": unresolved GOT entry for '"
+                                << targetDisplay << "'\n";
+                            return false;
+                        }
+                        if (git != layout.globalSyms.end()) {
                             // Dynamic: LDR from GOT entry (8-byte scaled).
                             uint32_t insn = readLE32(patch);
                             if (!isAArch64LdrXUnsignedOffset(insn)) {
@@ -1213,6 +1426,24 @@ bool applyRelocations(const std::vector<ObjFile> &objects,
                             }
                             uint32_t rd = insn & 0x1F;
                             uint32_t rn = (insn >> 5) & 0x1F;
+                            if (!hasMatchingAArch64GotPageReloc(obj, arch, sec, rel) ||
+                                patchOff < 4) {
+                                err << "error: " << obj.name
+                                    << ": local GOT relaxation requires an adjacent matching ADRP relocation";
+                                if (!symName.empty())
+                                    err << " for '" << symName << "'";
+                                err << "\n";
+                                return false;
+                            }
+                            uint32_t adrpInsn = readLE32(outSec.data.data() + patchOff - 4);
+                            if (!isAArch64AdrpOpcode(adrpInsn) || (adrpInsn & 0x1F) != rn) {
+                                err << "error: " << obj.name
+                                    << ": local GOT relaxation requires LDR base to match preceding ADRP";
+                                if (!symName.empty())
+                                    err << " for '" << symName << "'";
+                                err << "\n";
+                                return false;
+                            }
                             uint64_t target = 0;
                             if (!checkedRelocTarget(S, A, obj, symName, "GOT page offset", err, target))
                                 return false;
@@ -1220,6 +1451,75 @@ bool applyRelocations(const std::vector<ObjFile> &objects,
                             // ADD Xd, Xn, #imm12 = 0x91000000 | (imm12 << 10) | (Rn << 5) | Rd
                             insn = 0x91000000 | (pageOff << 10) | (rn << 5) | rd;
                             writeLE32(patch, insn);
+                        }
+                        break;
+                    }
+                    case RelocAction::GotPointer: {
+                        auto git = findGotSymbol(layout.globalSyms, symName, platform);
+                        if (git == layout.globalSyms.end() || !git->second.resolvedAddrValid) {
+                            err << "error: " << obj.name << ": missing GOT entry for '"
+                                << targetDisplay << "'\n";
+                            return false;
+                        }
+
+                        uint64_t target = 0;
+                        if (!checkedRelocTarget(git->second.resolvedAddr,
+                                                A,
+                                                obj,
+                                                symName,
+                                                "GOT pointer",
+                                                err,
+                                                target))
+                            return false;
+
+                        if (rel.pcrel) {
+                            if (rel.length != 2) {
+                                err << "error: " << obj.name
+                                    << ": unsupported PC-relative GOT pointer relocation length "
+                                    << static_cast<unsigned>(rel.length);
+                                if (!symName.empty())
+                                    err << " for '" << symName << "'";
+                                err << "\n";
+                                return false;
+                            }
+                            if (!requirePatchBytes(4, "GOT pointer"))
+                                return false;
+                            int64_t delta = 0;
+                            if (!checkedRelocDelta(
+                                    target, P, obj, symName, "GOT pointer", err, delta))
+                                return false;
+                            if (!writeCheckedRel32(patch, delta, obj, symName, "GOT pointer", err))
+                                return false;
+                            break;
+                        }
+
+                        if (rel.length == 3) {
+                            if (!requirePatchBytes(8, "GOT pointer"))
+                                return false;
+                            writeLE64(patch, target);
+                            if (platform == LinkPlatform::macOS &&
+                                (outSec.writable || outSec.dataSegment) && target != 0)
+                                layout.rebaseEntries.push_back({outSecIdx, patchOff});
+                        } else if (rel.length == 2) {
+                            if (!requirePatchBytes(4, "GOT pointer"))
+                                return false;
+                            if (target > std::numeric_limits<uint32_t>::max()) {
+                                err << "error: " << obj.name
+                                    << ": GOT pointer relocation out of 32-bit range";
+                                if (!symName.empty())
+                                    err << " for '" << symName << "'";
+                                err << "\n";
+                                return false;
+                            }
+                            writeLE32(patch, static_cast<uint32_t>(target));
+                        } else {
+                            err << "error: " << obj.name
+                                << ": unsupported GOT pointer relocation length "
+                                << static_cast<unsigned>(rel.length);
+                            if (!symName.empty())
+                                err << " for '" << symName << "'";
+                            err << "\n";
+                            return false;
                         }
                         break;
                     }

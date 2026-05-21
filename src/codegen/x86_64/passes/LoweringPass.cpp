@@ -26,8 +26,10 @@
 #include "il/core/Opcode.hpp"
 #include "il/core/Type.hpp"
 
+#include <array>
 #include <cassert>
 #include <cstdint>
+#include <initializer_list>
 #include <limits>
 #include <optional>
 #include <stdexcept>
@@ -549,6 +551,123 @@ class ModuleAdapter {
     // Instruction Adaptation (by category)
     //-------------------------------------------------------------------------
 
+    /// @brief Table-driven adapter for binary arithmetic / shift / bitwise.
+    /// @details Each homogeneous cluster maps Opcode → fixed suffix string and
+    ///          uses one of three adapter calls. Returning false leaves @p out
+    ///          untouched and tells the dispatcher to keep matching.
+    bool tryAdaptArithLike(const il::core::Instr &source, ILInstr &out) {
+        struct Entry { il::core::Opcode op; const char *name; };
+        static constexpr std::array<Entry, 9> kArith = {{
+            {il::core::Opcode::Add,      "add"},
+            {il::core::Opcode::FAdd,     "add"},
+            {il::core::Opcode::IAddOvf,  "iadd.ovf"},
+            {il::core::Opcode::Sub,      "sub"},
+            {il::core::Opcode::FSub,     "sub"},
+            {il::core::Opcode::ISubOvf,  "isub.ovf"},
+            {il::core::Opcode::Mul,      "mul"},
+            {il::core::Opcode::FMul,     "mul"},
+            {il::core::Opcode::IMulOvf,  "imul.ovf"},
+        }};
+        for (const auto &e : kArith)
+            if (source.op == e.op) { adaptBinaryArithmetic(source, out, e.name); return true; }
+
+        static constexpr std::array<Entry, 8> kIntDiv = {{
+            {il::core::Opcode::SDiv,     "sdiv"},
+            {il::core::Opcode::SDivChk0, "sdiv.chk0"},
+            {il::core::Opcode::SRem,     "srem"},
+            {il::core::Opcode::SRemChk0, "srem.chk0"},
+            {il::core::Opcode::UDiv,     "udiv"},
+            {il::core::Opcode::UDivChk0, "udiv.chk0"},
+            {il::core::Opcode::URem,     "urem"},
+            {il::core::Opcode::URemChk0, "urem.chk0"},
+        }};
+        for (const auto &e : kIntDiv)
+            if (source.op == e.op) { adaptIntDiv(source, out, e.name); return true; }
+
+        static constexpr std::array<Entry, 3> kShift = {{
+            {il::core::Opcode::Shl,  "shl"},
+            {il::core::Opcode::LShr, "lshr"},
+            {il::core::Opcode::AShr, "ashr"},
+        }};
+        for (const auto &e : kShift)
+            if (source.op == e.op) { adaptShift(source, out, e.name); return true; }
+
+        static constexpr std::array<Entry, 3> kBitwise = {{
+            {il::core::Opcode::And, "and"},
+            {il::core::Opcode::Or,  "or"},
+            {il::core::Opcode::Xor, "xor"},
+        }};
+        for (const auto &e : kBitwise)
+            if (source.op == e.op) { adaptBitwise(source, out, e.name); return true; }
+
+        return false;
+    }
+
+    /// @brief Table-driven adapter for integer and float comparison clusters.
+    bool tryAdaptCompare(const il::core::Instr &source, ILInstr &out) {
+        static constexpr std::array<il::core::Opcode, 10> kIntCmp = {
+            il::core::Opcode::ICmpEq, il::core::Opcode::ICmpNe,
+            il::core::Opcode::SCmpLT, il::core::Opcode::SCmpLE,
+            il::core::Opcode::SCmpGT, il::core::Opcode::SCmpGE,
+            il::core::Opcode::UCmpGT, il::core::Opcode::UCmpGE,
+            il::core::Opcode::UCmpLT, il::core::Opcode::UCmpLE,
+        };
+        for (auto op : kIntCmp)
+            if (source.op == op) { adaptIntCompare(source, out); return true; }
+
+        struct FpEntry { il::core::Opcode op; const char *name; };
+        static constexpr std::array<FpEntry, 8> kFpCmp = {{
+            {il::core::Opcode::FCmpEQ,  "fcmp_eq"},
+            {il::core::Opcode::FCmpNE,  "fcmp_ne"},
+            {il::core::Opcode::FCmpLT,  "fcmp_lt"},
+            {il::core::Opcode::FCmpLE,  "fcmp_le"},
+            {il::core::Opcode::FCmpGT,  "fcmp_gt"},
+            {il::core::Opcode::FCmpGE,  "fcmp_ge"},
+            {il::core::Opcode::FCmpOrd, "fcmp_ord"},
+            {il::core::Opcode::FCmpUno, "fcmp_uno"},
+        }};
+        for (const auto &e : kFpCmp)
+            if (source.op == e.op) { adaptFloatCompareAs(source, out, e.name); return true; }
+
+        return false;
+    }
+
+    /// @brief Table-driven adapter for runtime-trampoline IL opcodes.
+    /// @details Most error-handling intrinsics lower to a simple call into a
+    ///          runtime helper. The optional @p paramKinds drives operand
+    ///          conversion hints when the helper expects typed arguments.
+    bool tryAdaptRuntimeCall(const il::core::Instr &source, ILInstr &out) {
+        using HintList = std::initializer_list<std::optional<ILValue::Kind>>;
+        switch (source.op) {
+            case il::core::Opcode::TrapKind:
+            case il::core::Opcode::ErrGetKind:
+                adaptRuntimeCall(source, out, "rt_trap_get_kind");
+                return true;
+            case il::core::Opcode::TrapErr:
+                adaptRuntimeCall(source, out, "rt_trap_error_make",
+                                 HintList{ILValue::Kind::I64, ILValue::Kind::STR});
+                return true;
+            case il::core::Opcode::ErrGetCode:
+                adaptRuntimeCall(source, out, "rt_trap_get_code");
+                return true;
+            case il::core::Opcode::ErrGetIp:
+                adaptRuntimeCall(source, out, "rt_trap_get_ip");
+                return true;
+            case il::core::Opcode::ErrGetLine:
+                adaptRuntimeCall(source, out, "rt_trap_get_line");
+                return true;
+            case il::core::Opcode::ErrGetMsg:
+                adaptRuntimeCall(source, out, "rt_throw_msg_get");
+                return true;
+            case il::core::Opcode::TrapFromErr:
+                adaptRuntimeCall(source, out, "rt_trap_raise_error",
+                                 HintList{ILValue::Kind::I64});
+                return true;
+            default:
+                return false;
+        }
+    }
+
     /// @brief Adapt a single instruction and append to block.
     void adaptInstruction(const il::core::Instr &instr, ILBlock &block) {
         il::core::Instr typedInstr = instr;
@@ -559,119 +678,17 @@ class ModuleAdapter {
         out.resultId = -1;
         out.loc = source.loc;
 
+        // Fast paths for homogeneous opcode clusters.
+        if (tryAdaptArithLike(source, out) ||
+            tryAdaptCompare(source, out) ||
+            tryAdaptRuntimeCall(source, out)) {
+            block.instrs.push_back(std::move(out));
+            return;
+        }
+
         switch (source.op) {
-            // Arithmetic operations
-            case il::core::Opcode::Add:
-            case il::core::Opcode::FAdd:
-                adaptBinaryArithmetic(source, out, "add");
-                break;
-            case il::core::Opcode::IAddOvf:
-                adaptBinaryArithmetic(source, out, "iadd.ovf");
-                break;
-            case il::core::Opcode::Sub:
-            case il::core::Opcode::FSub:
-                adaptBinaryArithmetic(source, out, "sub");
-                break;
-            case il::core::Opcode::ISubOvf:
-                adaptBinaryArithmetic(source, out, "isub.ovf");
-                break;
-            case il::core::Opcode::Mul:
-            case il::core::Opcode::FMul:
-                adaptBinaryArithmetic(source, out, "mul");
-                break;
-            case il::core::Opcode::IMulOvf:
-                adaptBinaryArithmetic(source, out, "imul.ovf");
-                break;
             case il::core::Opcode::FDiv:
                 adaptFDiv(source, out);
-                break;
-
-            // Division and remainder
-            case il::core::Opcode::SDiv:
-                adaptIntDiv(source, out, "sdiv");
-                break;
-            case il::core::Opcode::SDivChk0:
-                adaptIntDiv(source, out, "sdiv.chk0");
-                break;
-            case il::core::Opcode::SRem:
-                adaptIntDiv(source, out, "srem");
-                break;
-            case il::core::Opcode::SRemChk0:
-                adaptIntDiv(source, out, "srem.chk0");
-                break;
-            case il::core::Opcode::UDiv:
-                adaptIntDiv(source, out, "udiv");
-                break;
-            case il::core::Opcode::UDivChk0:
-                adaptIntDiv(source, out, "udiv.chk0");
-                break;
-            case il::core::Opcode::URem:
-                adaptIntDiv(source, out, "urem");
-                break;
-            case il::core::Opcode::URemChk0:
-                adaptIntDiv(source, out, "urem.chk0");
-                break;
-
-            // Shift operations
-            case il::core::Opcode::Shl:
-                adaptShift(source, out, "shl");
-                break;
-            case il::core::Opcode::LShr:
-                adaptShift(source, out, "lshr");
-                break;
-            case il::core::Opcode::AShr:
-                adaptShift(source, out, "ashr");
-                break;
-
-            // Bitwise operations
-            case il::core::Opcode::And:
-                adaptBitwise(source, out, "and");
-                break;
-            case il::core::Opcode::Or:
-                adaptBitwise(source, out, "or");
-                break;
-            case il::core::Opcode::Xor:
-                adaptBitwise(source, out, "xor");
-                break;
-
-            // Integer comparisons
-            case il::core::Opcode::ICmpEq:
-            case il::core::Opcode::ICmpNe:
-            case il::core::Opcode::SCmpLT:
-            case il::core::Opcode::SCmpLE:
-            case il::core::Opcode::SCmpGT:
-            case il::core::Opcode::SCmpGE:
-            case il::core::Opcode::UCmpGT:
-            case il::core::Opcode::UCmpGE:
-            case il::core::Opcode::UCmpLT:
-            case il::core::Opcode::UCmpLE:
-                adaptIntCompare(source, out);
-                break;
-
-            // Float comparisons — emit as fcmp_{suffix} for Phase B prefix matching
-            case il::core::Opcode::FCmpEQ:
-                adaptFloatCompareAs(source, out, "fcmp_eq");
-                break;
-            case il::core::Opcode::FCmpNE:
-                adaptFloatCompareAs(source, out, "fcmp_ne");
-                break;
-            case il::core::Opcode::FCmpLT:
-                adaptFloatCompareAs(source, out, "fcmp_lt");
-                break;
-            case il::core::Opcode::FCmpLE:
-                adaptFloatCompareAs(source, out, "fcmp_le");
-                break;
-            case il::core::Opcode::FCmpGT:
-                adaptFloatCompareAs(source, out, "fcmp_gt");
-                break;
-            case il::core::Opcode::FCmpGE:
-                adaptFloatCompareAs(source, out, "fcmp_ge");
-                break;
-            case il::core::Opcode::FCmpOrd:
-                adaptFloatCompareAs(source, out, "fcmp_ord");
-                break;
-            case il::core::Opcode::FCmpUno:
-                adaptFloatCompareAs(source, out, "fcmp_uno");
                 break;
 
             // Call
@@ -743,9 +760,6 @@ class ModuleAdapter {
                 out.opcode = "trap";
                 convertOperands(source, {std::nullopt}, out);
                 break;
-            case il::core::Opcode::TrapFromErr:
-                adaptRuntimeCall(source, out, "rt_trap_raise_error", {ILValue::Kind::I64});
-                break;
 
             // String operations
             case il::core::Opcode::ConstStr:
@@ -784,34 +798,12 @@ class ModuleAdapter {
                 adaptSwitchI32(source, out, block);
                 break;
 
-            // === Structured Error Handling ===
-            case il::core::Opcode::TrapKind:
-                adaptRuntimeCall(source, out, "rt_trap_get_kind");
-                break;
-            case il::core::Opcode::TrapErr:
-                adaptRuntimeCall(
-                    source, out, "rt_trap_error_make", {ILValue::Kind::I64, ILValue::Kind::STR});
-                break;
+            // resume.label is a branch to an explicit target label;
+            // the resume token operand is ignored in native codegen.
             case il::core::Opcode::ResumeLabel:
-                // resume.label is a branch to an explicit target label.
-                // The resume token operand is ignored in native codegen.
                 adaptBr(source, out, block);
                 break;
-            case il::core::Opcode::ErrGetKind:
-                adaptRuntimeCall(source, out, "rt_trap_get_kind");
-                break;
-            case il::core::Opcode::ErrGetCode:
-                adaptRuntimeCall(source, out, "rt_trap_get_code");
-                break;
-            case il::core::Opcode::ErrGetIp:
-                adaptRuntimeCall(source, out, "rt_trap_get_ip");
-                break;
-            case il::core::Opcode::ErrGetLine:
-                adaptRuntimeCall(source, out, "rt_trap_get_line");
-                break;
-            case il::core::Opcode::ErrGetMsg:
-                adaptRuntimeCall(source, out, "rt_throw_msg_get");
-                break;
+
             case il::core::Opcode::ResumeSame:
             case il::core::Opcode::ResumeNext:
                 reportUnsupported(std::string{"x86-64 lowering received raw "} +
