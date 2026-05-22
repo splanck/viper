@@ -43,7 +43,8 @@ Commands are disabled or show a clear no-op toast when the active language lacks
 
 Current state:
 
-- Completion, diagnostics, hover, and symbols call `Viper.Zia.Completion.*ForFile` directly.
+- Completion, hover, and symbols call `Viper.Zia.Completion.*ForFile` directly.
+- Live diagnostics call `Viper.Zia.Toolchain.CheckForFile` and consume structured `Seq`/`Map` diagnostic records.
 - BASIC buffers are treated as editor text but do not have equivalent semantic services.
 
 Change:
@@ -77,7 +78,7 @@ Acceptance:
 
 Current state:
 
-- Existing `CompleteForFile`, `CheckForFile`, `HoverForFile`, and `SymbolsForFile` APIs are path-aware but still source-driven single-file queries.
+- Existing `CompleteForFile`, `HoverForFile`, `SymbolsForFile`, and `Viper.Zia.Toolchain.CheckForFile` APIs are path-aware but still source-driven single-file queries.
 - `Sema::findSymbolAtPosition` is not by itself a references engine.
 
 Change:

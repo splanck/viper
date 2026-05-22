@@ -18,12 +18,18 @@
 
 #include "frontends/zia/ZiaAnalysis.hpp"
 #include "frontends/zia/ZiaCompletion.hpp"
+#include "il/io/Serializer.hpp"
+#include "runtime/collections/rt_map.h"
+#include "runtime/collections/rt_seq.h"
 #include "runtime/core/rt_string.h"
+#include "runtime/oop/rt_object.h"
 #include "support/source_manager.hpp"
 
 #include <cctype>
+#include <cstring>
 #include <sstream>
 #include <string>
+#include <string_view>
 
 using namespace il::frontends::zia;
 
@@ -44,6 +50,129 @@ std::string editorPathOrDefault(rt_string filePath) {
     std::string path = toStdString(filePath);
     return path.empty() ? std::string("<editor>") : path;
 }
+
+rt_string toRtString(std::string_view text) {
+    const char *data = text.empty() ? "" : text.data();
+    return rt_string_from_bytes(data, text.size());
+}
+
+void releaseRuntimeObject(void *obj) {
+    if (obj && rt_obj_release_check0(obj))
+        rt_obj_free(obj);
+}
+
+void mapSetObject(void *map, const char *keyName, void *value) {
+    rt_string key = toRtString(keyName);
+    rt_map_set(map, key, value);
+    rt_string_unref(key);
+}
+
+void mapSetInt(void *map, const char *keyName, int64_t value) {
+    rt_string key = toRtString(keyName);
+    rt_map_set_int(map, key, value);
+    rt_string_unref(key);
+}
+
+void mapSetBool(void *map, const char *keyName, bool value) {
+    rt_string key = toRtString(keyName);
+    rt_map_set_bool(map, key, value ? 1 : 0);
+    rt_string_unref(key);
+}
+
+void mapSetStr(void *map, const char *keyName, std::string_view value) {
+    rt_string key = toRtString(keyName);
+    rt_string text = toRtString(value);
+    rt_map_set_str(map, key, text);
+    rt_string_unref(text);
+    rt_string_unref(key);
+}
+
+int diagnosticSeverityCode(il::support::Severity severity) {
+    switch (severity) {
+        case il::support::Severity::Warning:
+            return 1;
+        case il::support::Severity::Note:
+            return 2;
+        case il::support::Severity::Error:
+        default:
+            return 0;
+    }
+}
+
+std::string_view diagnosticSeverityName(il::support::Severity severity) {
+    switch (severity) {
+        case il::support::Severity::Warning:
+            return "warning";
+        case il::support::Severity::Note:
+            return "note";
+        case il::support::Severity::Error:
+        default:
+            return "error";
+    }
+}
+
+std::string pathForLocation(const il::support::SourceLoc &loc,
+                            const il::support::SourceManager &sm,
+                            const std::string &fallbackPath) {
+    if (loc.file_id != 0) {
+        std::string_view path = sm.getPath(loc.file_id);
+        if (!path.empty())
+            return std::string(path);
+    }
+    return fallbackPath;
+}
+
+std::string sourcePathForFile(uint32_t fileId,
+                              const il::support::SourceManager &sm,
+                              const std::string &fallbackPath) {
+    if (fileId != 0) {
+        std::string_view path = sm.getPath(fileId);
+        if (!path.empty())
+            return std::string(path);
+    }
+    return fallbackPath;
+}
+
+void *diagnosticToMap(const il::support::Diagnostic &diagnostic,
+                      const il::support::SourceManager &sm,
+                      const std::string &fallbackPath) {
+    il::support::SourceLoc start = diagnostic.loc;
+    il::support::SourceLoc end = diagnostic.loc;
+    if (diagnostic.range.isValid()) {
+        if (!start.isValid())
+            start = diagnostic.range.begin;
+        end = diagnostic.range.end;
+    }
+
+    if (!end.isValid())
+        end = start;
+
+    void *map = rt_map_new();
+    mapSetStr(map, "file", pathForLocation(start, sm, fallbackPath));
+    mapSetInt(map, "line", start.line);
+    mapSetInt(map, "column", start.column);
+    mapSetInt(map, "endLine", end.line);
+    mapSetInt(map, "endColumn", end.column);
+    mapSetInt(map, "severity", diagnosticSeverityCode(diagnostic.severity));
+    mapSetStr(map, "severityName", diagnosticSeverityName(diagnostic.severity));
+    mapSetStr(map, "code", diagnostic.code);
+    mapSetStr(map, "message", diagnostic.message);
+    mapSetStr(map, "stage", diagnostic.stage);
+    mapSetStr(map, "help", diagnostic.help);
+    return map;
+}
+
+void *diagnosticsToSeq(const il::support::DiagnosticEngine &diagnostics,
+                       const il::support::SourceManager &sm,
+                       const std::string &fallbackPath) {
+    void *seq = rt_seq_new_owned();
+    for (const auto &diagnostic : diagnostics.diagnostics()) {
+        void *map = diagnosticToMap(diagnostic, sm, fallbackPath);
+        rt_seq_push(seq, map);
+        releaseRuntimeObject(map);
+    }
+    return seq;
+}
 } // namespace
 
 extern "C" {
@@ -53,6 +182,8 @@ rt_string rt_zia_signature_help_for_file(
 rt_string rt_zia_check_for_file(rt_string source, rt_string file_path);
 rt_string rt_zia_hover_for_file(rt_string source, rt_string file_path, int64_t line, int64_t col);
 rt_string rt_zia_symbols_for_file(rt_string source, rt_string file_path);
+void *rt_zia_toolchain_check_for_file(rt_string source, rt_string file_path);
+void *rt_zia_toolchain_compile_for_file(rt_string source, rt_string file_path);
 
 /// @brief Runtime entry point: code completion at (@p line, @p col) in
 ///        @p source. Returns the serialized completion item list as an
@@ -139,6 +270,70 @@ rt_string rt_zia_check_for_file(rt_string source, rt_string file_path) {
     }
     std::string s = out.str();
     return rt_string_from_bytes(s.c_str(), s.size());
+}
+
+// =========================================================================
+// Structured Toolchain - in-process diagnostics and compile results.
+// =========================================================================
+/// @brief Runtime entry point: return structured diagnostics for @p source.
+/// @details Each diagnostic is a Viper.Collections.Map with file, line,
+///          column, endLine, endColumn, severity, severityName, code, message,
+///          stage, and help fields.
+void *rt_zia_toolchain_check(rt_string source) {
+    return rt_zia_toolchain_check_for_file(source, nullptr);
+}
+
+/// @brief Runtime entry point: path-aware structured semantic diagnostics.
+void *rt_zia_toolchain_check_for_file(rt_string source, rt_string file_path) {
+    std::string sourceStr = toStdString(source);
+    std::string pathStr = editorPathOrDefault(file_path);
+
+    il::support::SourceManager sm;
+    CompilerInput input{.source = sourceStr, .path = pathStr};
+    CompilerOptions opts{};
+
+    auto result = parseAndAnalyze(input, opts, sm);
+    const std::string sourcePath =
+        result ? sourcePathForFile(result->fileId, sm, pathStr) : pathStr;
+    return result ? diagnosticsToSeq(result->diagnostics, sm, sourcePath) : rt_seq_new_owned();
+}
+
+/// @brief Runtime entry point: compile @p source to IL and return a structured
+///        result map.
+void *rt_zia_toolchain_compile(rt_string source) {
+    return rt_zia_toolchain_compile_for_file(source, nullptr);
+}
+
+/// @brief Runtime entry point: path-aware compile result for IDE tooling.
+/// @details Returns a Viper.Collections.Map with success, diagnostics,
+///          sourcePath, outputPath, and il fields. `diagnostics` is always a
+///          Seq of diagnostic maps, and invalid code returns the diagnostics
+///          without requiring string parsing.
+void *rt_zia_toolchain_compile_for_file(rt_string source, rt_string file_path) {
+    std::string sourceStr = toStdString(source);
+    std::string pathStr = editorPathOrDefault(file_path);
+
+    il::support::SourceManager sm;
+    CompilerInput input{.source = sourceStr, .path = pathStr};
+    CompilerOptions opts{};
+    CompilerResult result = compile(input, opts, sm);
+
+    const std::string sourcePath = sourcePathForFile(result.fileId, sm, pathStr);
+    void *diagnostics = diagnosticsToSeq(result.diagnostics, sm, sourcePath);
+
+    void *map = rt_map_new();
+    mapSetBool(map, "success", result.succeeded());
+    mapSetStr(map, "sourcePath", sourcePath);
+    mapSetStr(map, "outputPath", "");
+    mapSetObject(map, "diagnostics", diagnostics);
+    releaseRuntimeObject(diagnostics);
+
+    std::string ilText;
+    if (result.succeeded())
+        ilText = il::io::Serializer::toString(result.module);
+    mapSetStr(map, "il", ilText);
+
+    return map;
 }
 
 // =========================================================================

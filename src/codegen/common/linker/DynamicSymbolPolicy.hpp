@@ -321,6 +321,7 @@ inline bool isKnownDynamicSymbol(const std::string &name, LinkPlatform platform)
         "sysconf",
         "getpid",
         "getuid",
+        "kill",
         "signal",
         "sigaction",
         "sigaltstack",

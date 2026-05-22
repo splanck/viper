@@ -40,6 +40,7 @@ bind Convert = Viper.Core.Convert;
 
 final ERROR_MARKER_COLOR = 16711680;     // red    (0xFF0000)
 final WARNING_MARKER_COLOR = 16776960;   // yellow (0xFFFF00)
+final INFO_MARKER_COLOR = 10066329;      // grey   (0x999999)
 
 /// @brief Build the active file, refresh diagnostics, report status.
 func handleBuild(shell: app_shell.AppShell,
@@ -131,10 +132,13 @@ func UpdateDiagnostics(shell: app_shell.AppShell,
             if diag.severity == 1 {
                 sevLabel = "warning";
                 markerColor = WARNING_MARKER_COLOR;
+            } else if diag.severity == 2 {
+                sevLabel = "info";
+                markerColor = INFO_MARKER_COLOR;
             }
             var diagText = diag.filePath + ":" + diag.line + "  " + sevLabel + "[" + diag.code + "]: " + diag.message;
             var item = shell.diagListBox.AddItem(diagText);
-            GUI.ListBox.ItemSetData(item, "" + diag.line);
+            GUI.ListBox.ItemSetData(item, diag.filePath + "\t" + diag.line);
             shell.minimap.AddMarker(diag.line, 1, markerColor);
             i = i + 1;
         }

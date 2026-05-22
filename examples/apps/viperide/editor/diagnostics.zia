@@ -4,12 +4,10 @@ bind "../ui/app_shell";
 bind "../editor/editor_engine";
 bind "../build/diagnostic";
 
-bind ZiaCompletion = Viper.Zia.Completion;
+bind ZiaToolchain = Viper.Zia.Toolchain;
 bind "../editor/zia_query";
-bind Str = Viper.String;
 bind Seq = Viper.Collections.Seq;
-bind Obj = Viper.Core.Object;
-bind Convert = Viper.Core.Convert;
+bind Map = Viper.Collections.Map;
 bind Viper.GUI;
 
 // ============================================================================
@@ -20,7 +18,7 @@ bind Viper.GUI;
 //
 // WHERE-THIS-FITS: Editor controller invoked once per frame from
 //          main.zia. Reads the editor's text and consults
-//          `Viper.Zia.Completion.CheckForFile` for diagnostics.
+//          `Viper.Zia.Toolchain.CheckForFile` for structured diagnostics.
 //
 // KEY-DESIGN-CHOICES:
 //   * DEBOUNCED. Re-running the type-checker on every keystroke would
@@ -36,11 +34,10 @@ bind Viper.GUI;
 //   * PATH-AWARE CheckForFile. Same reason as completion — relative
 //     `bind` paths need the active file's directory for accurate
 //     resolution.
-//   * SERIALIZED FORMAT. The engine returns one diagnostic per line:
-//         severity \t line \t col \t code \t message
-//     severity: 0 = error, 1 = warning, 2 = note. We parse each line
-//     into the diagnostic listbox, the minimap marker, and an inline
-//     editor highlight span that underlines the error location.
+//   * STRUCTURED RESULTS. The engine returns a Seq of Map records with
+//     file/line/column/endLine/endColumn/severity/code/message fields.
+//     The editor consumes these records directly, so paths and locations
+//     are no longer recovered from display text.
 //   * THREE OUTPUT SURFACES IN LOCKSTEP. Diagnostics panel listbox,
 //     minimap markers, and editor inline highlights are all cleared
 //     and re-emitted together. They're conceptually one view of the
@@ -50,6 +47,7 @@ bind Viper.GUI;
 final DEBOUNCE_MS = 500;       // ms to wait after last edit before checking
 final ERROR_COLOR = 16711680;  // red    (0xFF0000)
 final WARN_COLOR  = 16776960;  // yellow (0xFFFF00)
+final INFO_COLOR  = 10066329;  // grey   (0x999999)
 
 /// @brief Live error/warning checker for the active document.
 class LiveDiagnostics {
@@ -119,8 +117,8 @@ class LiveDiagnostics {
         // diagnostic line numbers come back shifted and are un-shifted below.
         var qsource = zia_query.WrapForQuery(source);
         var lineOff = zia_query.LineOffset(source);
-        var raw = ZiaCompletion.CheckForFile(qsource, sourcePath);
-        if raw == "" {
+        var records = ZiaToolchain.CheckForFile(qsource, sourcePath);
+        if Seq.get_Length(records) == 0 {
             // Clean — clear all markers and highlights
             shell.diagListBox.Clear();
             shell.diagListBox.SetVisible(0);
@@ -129,50 +127,59 @@ class LiveDiagnostics {
             return 0;
         }
 
-        // Parse diagnostics
+        // Emit diagnostics
         var errorCount = 0;
+        var shownCount = 0;
         shell.diagListBox.Clear();
         shell.minimap.ClearMarkers();
         engine.editor.ClearHighlights();
 
-        var lines = Str.Split(raw, "\n");
         var i = 0;
-        while i < Seq.get_Length(lines) {
-            var line = Obj.ToString(Seq.Get(lines, i));
+        while i < Seq.get_Length(records) {
+            var record = Seq.Get(records, i);
             i = i + 1;
-            if Str.Length(line) == 0 { continue; }
 
-            var parts = Str.Split(line, "\t");
-            if Seq.get_Length(parts) < 5 { continue; }
-
-            var sev     = Convert.ToInt(Obj.ToString(Seq.Get(parts, 0)));
-            var diagLine = Convert.ToInt(Obj.ToString(Seq.Get(parts, 1))) - lineOff;
+            var sev = Map.GetInt(record, "severity");
+            var diagLine = Map.GetInt(record, "line") - lineOff;
             if diagLine < 1 { continue; }  // diagnostic on the synthetic prefix line
-            var code    = Obj.ToString(Seq.Get(parts, 3));
-            var msg     = Obj.ToString(Seq.Get(parts, 4));
+            var diagCol = Map.GetInt(record, "column");
+            var endLine = Map.GetIntOr(record, "endLine", diagLine + lineOff) - lineOff;
+            var endCol = Map.GetIntOr(record, "endColumn", diagCol + 1);
+            var diagPath = Map.GetStr(record, "file");
+            var code = Map.GetStr(record, "code");
+            var msg = Map.GetStr(record, "message");
 
             var sevLabel = "error";
             var markerColor = ERROR_COLOR;
             if sev == 1 {
                 sevLabel = "warning";
                 markerColor = WARN_COLOR;
+            } else if sev == 2 {
+                sevLabel = "note";
+                markerColor = INFO_COLOR;
             }
 
             if sev == 0 { errorCount = errorCount + 1; }
 
-            var diagText = diagLine + ":" + sevLabel + "[" + code + "]: " + msg;
+            var displayPath = diagPath;
+            if displayPath == "" { displayPath = sourcePath; }
+            var diagText = displayPath + ":" + diagLine + "  " + sevLabel + "[" + code + "]: " + msg;
             var item = shell.diagListBox.AddItem(diagText);
-            GUI.ListBox.ItemSetData(item, "" + diagLine);
+            shownCount = shownCount + 1;
+            GUI.ListBox.ItemSetData(item, displayPath + "\t" + diagLine);
             shell.minimap.AddMarker(diagLine, 1, markerColor);
 
             // Add inline highlight span (underline the error location)
-            var diagCol = Convert.ToInt(Obj.ToString(Seq.Get(parts, 2)));
             var diagCol0 = diagCol - 1;
             if diagCol0 < 0 { diagCol0 = 0; }
-            engine.editor.AddHighlight(diagLine - 1, diagCol0, diagLine - 1, diagCol0 + 1, markerColor);
+            var endLine0 = endLine - 1;
+            if endLine0 < diagLine - 1 { endLine0 = diagLine - 1; }
+            var endCol0 = endCol - 1;
+            if endCol0 <= diagCol0 { endCol0 = diagCol0 + 1; }
+            engine.editor.AddHighlight(diagLine - 1, diagCol0, endLine0, endCol0, markerColor);
         }
 
-        if errorCount > 0 or Seq.get_Length(lines) > 1 {
+        if shownCount > 0 {
             shell.diagListBox.SetVisible(1);
         } else {
             shell.diagListBox.SetVisible(0);

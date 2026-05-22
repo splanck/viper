@@ -85,7 +85,7 @@ Documentation for the Viper compiler toolchain: two language frontends ([Zia](zi
 
 **[System](viperlib/system.md)** · **[Text](viperlib/text/README.md)** — [Formats](viperlib/text/formats.md) · [Formatting](viperlib/text/formatting.md) · [Encoding](viperlib/text/encoding.md) · [Patterns](viperlib/text/patterns.md)
 
-**[Threads](viperlib/threads.md)** · **[Time](viperlib/time.md)** · **[Utilities](viperlib/utilities.md)**
+**[Threads](viperlib/threads.md)** · **[Time](viperlib/time.md)** · **[Utilities](viperlib/utilities.md)** · **[Zia Tooling](viperlib/zia.md)**
 
 **[Graphics Library (2D)](graphics-library.md)** — ViperGFX low-level 2D API
 

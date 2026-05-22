@@ -67,6 +67,20 @@ rt_string rt_zia_check(rt_string source);
 /// @brief Run semantic analysis with the real source file path for relative bind resolution.
 rt_string rt_zia_check_for_file(rt_string source, rt_string file_path);
 
+/// @brief Run semantic analysis and return structured diagnostic maps.
+/// @return Viper.Collections.Seq of Viper.Collections.Map diagnostics.
+void *rt_zia_toolchain_check(rt_string source);
+
+/// @brief Run path-aware semantic analysis and return structured diagnostic maps.
+void *rt_zia_toolchain_check_for_file(rt_string source, rt_string file_path);
+
+/// @brief Compile source to IL and return a structured result map.
+/// @return Viper.Collections.Map with success, diagnostics, sourcePath, outputPath, and il.
+void *rt_zia_toolchain_compile(rt_string source);
+
+/// @brief Compile source with a file path and return a structured result map.
+void *rt_zia_toolchain_compile_for_file(rt_string source, rt_string file_path);
+
 /// @brief Return hover information for the identifier at the given source location.
 /// @param source Zia source text (full file contents).
 /// @param line   1-based line number of the cursor.

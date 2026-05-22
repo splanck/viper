@@ -508,6 +508,9 @@ enum class RuntimeTypeId : std::size_t {
     RTCLS_CoreValueType,
     RTCLS_MemoryWeakRef,
     RTCLS_WorldToScreenProjection,
+    RTCLS_ZiaToolchain,
+    RTCLS_Process,
+    RTCLS_ProcessHandle,
 };
 
 /// @brief Describes a property on a runtime class.

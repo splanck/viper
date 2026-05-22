@@ -15,6 +15,7 @@ last-verified: 2026-05-15
 - [Viper.System.Environment](#viperenvironment)
 - [Viper.System.Clipboard](#vipersystemclipboard)
 - [Viper.System.Exec](#viperexec)
+- [Viper.System.Process](#vipersystemprocess)
 - [Viper.System.Machine](#vipermachine)
 - [Viper.Memory](#vipermemory)
 - [Viper.Memory.GC](#vipermemory-gc)
@@ -252,6 +253,80 @@ END IF
 - Exit codes: 0 typically indicates success. Negative values indicate the process was terminated by a signal (Unix) or
   failed to start.
 - Capture functions return empty string if the program fails to start.
+
+---
+
+## Viper.System.Process
+
+Streaming child-process control for tools, build jobs, and long-running IDE tasks.
+
+**Type:** Static utility class plus process handle object
+
+### Static Methods
+
+| Method                         | Signature                  | Description                                             |
+|--------------------------------|----------------------------|---------------------------------------------------------|
+| `Start(program, args)`         | `Process.Handle(String, Seq)` | Start a process with inherited cwd and environment   |
+| `StartIn(program, args, cwd)`  | `Process.Handle(String, Seq, String)` | Start a process in a working directory        |
+| `StartWithEnv(program, args, cwd, env)` | `Process.Handle(String, Seq, String, Seq)` | Start with explicit cwd and environment |
+
+`args` is a `Seq` of argument strings and does not include the program name. `env` is either `NULL` to inherit the
+current environment or a `Seq` of `KEY=value` strings. `cwd` may be `NULL` or empty to inherit the current working
+directory.
+
+### Handle Methods
+
+| Method         | Signature    | Description                                                  |
+|----------------|--------------|--------------------------------------------------------------|
+| `IsValid()`    | `Boolean()`  | Returns `TRUE` while the handle still owns process resources |
+| `Poll()`       | `Boolean()`  | Polls process state; returns `TRUE` while still running      |
+| `IsRunning()`  | `Boolean()`  | Alias for polling the current running state                  |
+| `ReadStdout()` | `String()`   | Returns buffered stdout bytes available now, then clears them |
+| `ReadStderr()` | `String()`   | Returns buffered stderr bytes available now, then clears them |
+| `ExitCode()`   | `Integer()`  | Returns exit code, or `-1` while running/invalid             |
+| `Kill()`       | `Boolean()`  | Requests process termination                                |
+| `Wait()`       | `Integer()`  | Blocks until process exit and returns the exit code          |
+| `Destroy()`    | `Void()`     | Closes process resources; terminates a still-running child   |
+
+### Zia Example
+
+```rust
+module ProcessDemo;
+
+bind Viper.Collections.Seq as Seq;
+bind Viper.System.Process as Process;
+bind Viper.Terminal;
+bind Viper.Text.Fmt as Fmt;
+
+func start() {
+    var args = Seq.New();
+    Seq.Push(args, "-c");
+    Seq.Push(args, "echo build-start; echo warning >&2; exit 7");
+
+    var proc = Process.Start("/bin/sh", args);
+    while proc.IsRunning() {
+        var out = proc.ReadStdout();
+        var err = proc.ReadStderr();
+        if out.Len() > 0 { Say(out); }
+        if err.Len() > 0 { Say(err); }
+    }
+
+    Say(proc.ReadStdout());
+    Say(proc.ReadStderr());
+    Say("Exit: " + Fmt.Int(proc.Wait()));
+    proc.Destroy();
+}
+```
+
+### Platform Notes
+
+- `Start*` executes the program directly; it does not invoke a shell. Use an explicit shell executable only when shell
+  syntax is required.
+- POSIX direct exec failures after a successful fork surface as process exit code `126` or `127`.
+- `ReadStdout()` and `ReadStderr()` are non-blocking incremental reads intended for GUI frame loops.
+- `Kill()` sends a termination request (`SIGTERM` on POSIX, `TerminateProcess` on Windows). `Destroy()` is idempotent
+  and force-cleans a still-running child.
+- Output buffers are capped at 16 MB per stream between reads.
 
 ---
 

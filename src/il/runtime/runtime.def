@@ -1276,6 +1276,19 @@ RT_FUNC(ExecShellCapture,rt_exec_shell_capture,"Viper.System.Exec.ShellCapture",
 RT_FUNC(ExecShellFull,   rt_exec_shell_full,   "Viper.System.Exec.ShellFull",    "str(str)")
 RT_FUNC(ExecLastExitCode,rt_exec_last_exit_code,"Viper.System.Exec.LastExitCode", "i64()")
 
+RT_FUNC(ProcessStart,        rt_process_start,         "Viper.System.Process.Start",                 "obj<Viper.System.Process.Handle>(str,obj)")
+RT_FUNC(ProcessStartIn,      rt_process_start_in,      "Viper.System.Process.StartIn",               "obj<Viper.System.Process.Handle>(str,obj,str)")
+RT_FUNC(ProcessStartWithEnv, rt_process_start_with_env,"Viper.System.Process.StartWithEnv",          "obj<Viper.System.Process.Handle>(str,obj,str,obj)")
+RT_FUNC(ProcessIsValid,      rt_process_is_valid,      "Viper.System.Process.Handle.IsValid",        "i1(obj)")
+RT_FUNC(ProcessPoll,         rt_process_poll,          "Viper.System.Process.Handle.Poll",           "i1(obj)")
+RT_FUNC(ProcessIsRunning,    rt_process_is_running,    "Viper.System.Process.Handle.IsRunning",      "i1(obj)")
+RT_FUNC(ProcessReadStdout,   rt_process_read_stdout,   "Viper.System.Process.Handle.ReadStdout",     "str(obj)")
+RT_FUNC(ProcessReadStderr,   rt_process_read_stderr,   "Viper.System.Process.Handle.ReadStderr",     "str(obj)")
+RT_FUNC(ProcessExitCode,     rt_process_exit_code,     "Viper.System.Process.Handle.ExitCode",       "i64(obj)")
+RT_FUNC(ProcessKill,         rt_process_kill,          "Viper.System.Process.Handle.Kill",           "i1(obj)")
+RT_FUNC(ProcessWait,         rt_process_wait,          "Viper.System.Process.Handle.Wait",           "i64(obj)")
+RT_FUNC(ProcessDestroy,      rt_process_destroy,       "Viper.System.Process.Handle.Destroy",        "void(obj)")
+
 //=============================================================================
 // GRAPHICS - CANVAS
 //=============================================================================
@@ -2646,6 +2659,10 @@ RT_FUNC(ZiaSignatureHelpForFile,     rt_zia_signature_help_for_file,    "Viper.Z
 RT_FUNC(ZiaCompletionClearCache,     rt_zia_completion_clear_cache,     "Viper.Zia.Completion.ClearCache","void()")
 RT_FUNC(ZiaCheck,                    rt_zia_check,                      "Viper.Zia.Completion.Check",     "str(str)")
 RT_FUNC(ZiaCheckForFile,             rt_zia_check_for_file,             "Viper.Zia.Completion.CheckForFile", "str(str,str)")
+RT_FUNC(ZiaToolchainCheck,           rt_zia_toolchain_check,            "Viper.Zia.Toolchain.Check", "obj<Viper.Collections.Seq>(str)")
+RT_FUNC(ZiaToolchainCheckForFile,    rt_zia_toolchain_check_for_file,   "Viper.Zia.Toolchain.CheckForFile", "obj<Viper.Collections.Seq>(str,str)")
+RT_FUNC(ZiaToolchainCompile,         rt_zia_toolchain_compile,          "Viper.Zia.Toolchain.Compile", "obj<Viper.Collections.Map>(str)")
+RT_FUNC(ZiaToolchainCompileForFile,  rt_zia_toolchain_compile_for_file, "Viper.Zia.Toolchain.CompileForFile", "obj<Viper.Collections.Map>(str,str)")
 RT_FUNC(ZiaHover,                    rt_zia_hover,                      "Viper.Zia.Completion.Hover",     "str(str,i64,i64)")
 RT_FUNC(ZiaHoverForFile,             rt_zia_hover_for_file,             "Viper.Zia.Completion.HoverForFile", "str(str,str,i64,i64)")
 RT_FUNC(ZiaSymbols,                  rt_zia_symbols,                    "Viper.Zia.Completion.Symbols",   "str(str)")
@@ -7355,6 +7372,25 @@ RT_CLASS_BEGIN("Viper.System.Exec", Exec, "obj", none)
     RT_METHOD("ShellCapture", "str(str)", ExecShellCapture)
     RT_METHOD("ShellFull", "str(str)", ExecShellFull)
     RT_METHOD("LastExitCode", "i64()", ExecLastExitCode)
+RT_CLASS_END()
+
+// Viper.System.Process - streaming external process handles
+RT_CLASS_BEGIN("Viper.System.Process", Process, "obj", none)
+    RT_METHOD("Start", "obj<Viper.System.Process.Handle>(str,obj)", ProcessStart)
+    RT_METHOD("StartIn", "obj<Viper.System.Process.Handle>(str,obj,str)", ProcessStartIn)
+    RT_METHOD("StartWithEnv", "obj<Viper.System.Process.Handle>(str,obj,str,obj)", ProcessStartWithEnv)
+RT_CLASS_END()
+
+RT_CLASS_BEGIN("Viper.System.Process.Handle", ProcessHandle, "obj", none)
+    RT_METHOD("IsValid", "i1()", ProcessIsValid)
+    RT_METHOD("Poll", "i1()", ProcessPoll)
+    RT_METHOD("IsRunning", "i1()", ProcessIsRunning)
+    RT_METHOD("ReadStdout", "str()", ProcessReadStdout)
+    RT_METHOD("ReadStderr", "str()", ProcessReadStderr)
+    RT_METHOD("ExitCode", "i64()", ProcessExitCode)
+    RT_METHOD("Kill", "i1()", ProcessKill)
+    RT_METHOD("Wait", "i64()", ProcessWait)
+    RT_METHOD("Destroy", "void()", ProcessDestroy)
 RT_CLASS_END()
 
 // Viper.Text.Fmt - value formatting utilities
@@ -12727,6 +12763,14 @@ RT_CLASS_BEGIN("Viper.Zia.Completion", ZiaCompletion, "none", none)
     RT_METHOD("Symbols",        "str(str)",             ZiaSymbols)
     RT_METHOD("SymbolsForFile", "str(str,str)",         ZiaSymbolsForFile)
     RT_METHOD("ClearCache",     "void()",               ZiaCompletionClearCache)
+RT_CLASS_END()
+
+// Viper.Zia.Toolchain - structured diagnostics and compile results
+RT_CLASS_BEGIN("Viper.Zia.Toolchain", ZiaToolchain, "none", none)
+    RT_METHOD("Check",          "obj<Viper.Collections.Seq>(str)",     ZiaToolchainCheck)
+    RT_METHOD("CheckForFile",   "obj<Viper.Collections.Seq>(str,str)", ZiaToolchainCheckForFile)
+    RT_METHOD("Compile",        "obj<Viper.Collections.Map>(str)",     ZiaToolchainCompile)
+    RT_METHOD("CompileForFile", "obj<Viper.Collections.Map>(str,str)", ZiaToolchainCompileForFile)
 RT_CLASS_END()
 
 // Viper.GUI.FloatingPanel - floating overlay panel for popups/IntelliSense

@@ -40,6 +40,7 @@ implemented in C and exposed through the IL runtime system.
 | [Time & Timing](time.md)        | `Clock`, `Countdown`, `DateOnly`, `DateRange`, `DateTime`, `Duration`, `RelativeTime`, `Stopwatch` |
 | [Localization](localization/README.md) | `Locale`, `LocaleInfo`, `LocaleManager`, `NumberFormat`, `DateFormat`, `RelativeTimeFormat`, `MessageBundle`, `PluralRules`, `Collator`, `ListFormat`, `TextDirection` |
 | [Utilities](utilities.md)       | `Convert`, `Fmt`, `Log`, `Parse`                                          |
+| [Zia Tooling](zia.md)           | `Viper.Zia.Toolchain` structured diagnostics and compile results          |
 
 ---
 

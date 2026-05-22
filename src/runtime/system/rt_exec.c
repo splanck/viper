@@ -110,10 +110,11 @@ static char *read_pipe_output(FILE *fp, size_t *out_len) {
 #if !defined(_WIN32)
 
 /// @brief Build argv array from program and Seq of arguments.
-/// Caller must free the returned array (but not individual strings).
-static char **build_argv(const char *program, void *args, int64_t *out_argc) {
+/// Caller must free the returned array and release owned argument strings.
+static char **build_argv(const char *program, void *args, rt_string **out_owned_args, int64_t *out_argc) {
     int64_t nargs = args ? rt_seq_len(args) : 0;
     int64_t total = 1 + nargs + 1; // program + args + NULL terminator
+    *out_owned_args = NULL;
 
     char **argv = (char **)malloc((size_t)total * sizeof(char *));
     if (!argv) {
@@ -121,9 +122,19 @@ static char **build_argv(const char *program, void *args, int64_t *out_argc) {
         return NULL;
     }
 
+    if (nargs > 0) {
+        *out_owned_args = (rt_string *)calloc((size_t)nargs, sizeof(rt_string));
+        if (!*out_owned_args) {
+            free(argv);
+            *out_argc = 0;
+            return NULL;
+        }
+    }
+
     argv[0] = (char *)(uintptr_t)program;
     for (int64_t i = 0; i < nargs; i++) {
-        rt_string arg_str = (rt_string)rt_seq_get(args, i);
+        rt_string arg_str = rt_seq_get_str(args, i);
+        (*out_owned_args)[i] = arg_str;
         argv[1 + i] = (char *)(uintptr_t)rt_string_cstr(arg_str);
     }
     argv[total - 1] = NULL;
@@ -132,10 +143,21 @@ static char **build_argv(const char *program, void *args, int64_t *out_argc) {
     return argv;
 }
 
+static void free_argv(char **argv, rt_string *owned_args, int64_t argc) {
+    int64_t nargs = argc > 0 ? argc - 1 : 0;
+    if (owned_args) {
+        for (int64_t i = 0; i < nargs; i++)
+            rt_str_release_maybe(owned_args[i]);
+        free(owned_args);
+    }
+    free(argv);
+}
+
 /// @brief Execute program with arguments using posix_spawn.
 static int64_t exec_spawn(const char *program, void *args) {
     int64_t argc;
-    char **argv = build_argv(program, args, &argc);
+    rt_string *owned_args = NULL;
+    char **argv = build_argv(program, args, &owned_args, &argc);
     if (!argv) {
         rt_trap("Exec: memory allocation failed");
         return -1;
@@ -145,7 +167,7 @@ static int64_t exec_spawn(const char *program, void *args) {
     int status = posix_spawn(&pid, program, NULL, NULL, argv, environ);
 
     if (status != 0) {
-        free(argv);
+        free_argv(argv, owned_args, argc);
         // Return -1 if spawn failed (program not found, etc.)
         return -1;
     }
@@ -153,11 +175,11 @@ static int64_t exec_spawn(const char *program, void *args) {
     // Wait for child to finish
     int exit_status;
     if (waitpid(pid, &exit_status, 0) == -1) {
-        free(argv);
+        free_argv(argv, owned_args, argc);
         return -1;
     }
 
-    free(argv);
+    free_argv(argv, owned_args, argc);
 
     if (WIFEXITED(exit_status)) {
         return WEXITSTATUS(exit_status);
@@ -170,7 +192,8 @@ static int64_t exec_spawn(const char *program, void *args) {
 /// @brief Execute program with arguments and capture stdout using fork/exec.
 static rt_string exec_capture_spawn(const char *program, void *args) {
     int64_t argc;
-    char **argv = build_argv(program, args, &argc);
+    rt_string *owned_args = NULL;
+    char **argv = build_argv(program, args, &owned_args, &argc);
     if (!argv) {
         rt_trap("Exec: memory allocation failed");
         return rt_string_from_bytes("", 0);
@@ -179,7 +202,7 @@ static rt_string exec_capture_spawn(const char *program, void *args) {
     // Create pipe for stdout
     int pipefd[2];
     if (pipe(pipefd) == -1) {
-        free(argv);
+        free_argv(argv, owned_args, argc);
         rt_trap("Exec: pipe creation failed");
         return rt_string_from_bytes("", 0);
     }
@@ -197,7 +220,7 @@ static rt_string exec_capture_spawn(const char *program, void *args) {
     if (status != 0) {
         close(pipefd[0]);
         close(pipefd[1]);
-        free(argv);
+        free_argv(argv, owned_args, argc);
         return rt_string_from_bytes("", 0);
     }
 
@@ -209,7 +232,7 @@ static rt_string exec_capture_spawn(const char *program, void *args) {
     if (!fp) {
         close(pipefd[0]);
         waitpid(pid, NULL, 0);
-        free(argv);
+        free_argv(argv, owned_args, argc);
         return rt_string_from_bytes("", 0);
     }
 
@@ -219,7 +242,7 @@ static rt_string exec_capture_spawn(const char *program, void *args) {
 
     // Wait for child
     waitpid(pid, NULL, 0);
-    free(argv);
+    free_argv(argv, owned_args, argc);
 
     if (!output) {
         return rt_string_from_bytes("", 0);
@@ -289,8 +312,9 @@ static char *build_cmdline(const char *program, void *args) {
     /* Calculate worst-case length using proper quoting rules */
     size_t len = cmdline_quoted_len(program);
     for (int64_t i = 0; i < nargs; i++) {
-        rt_string arg_str = (rt_string)rt_seq_get(args, i);
+        rt_string arg_str = rt_seq_get_str(args, i);
         len += 1 + cmdline_quoted_len(rt_string_cstr(arg_str)); /* space + quoted */
+        rt_str_release_maybe(arg_str);
     }
 
     char *cmdline = (char *)malloc(len + 1);
@@ -301,9 +325,10 @@ static char *build_cmdline(const char *program, void *args) {
     p = cmdline_append_quoted(p, program);
 
     for (int64_t i = 0; i < nargs; i++) {
-        rt_string arg_str = (rt_string)rt_seq_get(args, i);
+        rt_string arg_str = rt_seq_get_str(args, i);
         *p++ = ' ';
         p = cmdline_append_quoted(p, rt_string_cstr(arg_str));
+        rt_str_release_maybe(arg_str);
     }
 
     *p = '\0';

@@ -41,7 +41,7 @@ enum class RtComponent {
     Game,        ///< Game dev utilities (rt_grid2d_*, rt_timer_*, rt_achievement_*, etc.)
     Text,        ///< Text processing (rt_codec_*, rt_csv_*, etc.)
     IoFs,        ///< File I/O (rt_file_*, rt_dir_*, etc.)
-    Exec,        ///< Process execution (rt_exec_*, rt_machine_*)
+    Exec,        ///< Process execution (rt_exec_*, rt_process_*, rt_machine_*)
     Threads,     ///< Threading (rt_monitor_*, rt_thread_*, etc.)
     Graphics,    ///< Graphics (rt_canvas_*, rt_color_*, etc.)
     Audio,       ///< Audio (rt_audio_*, rt_playlist_*)
@@ -118,7 +118,7 @@ inline std::optional<RtComponent> componentForRuntimeSymbol(std::string_view sym
         return RtComponent::IoFs;
 
     // Exec component
-    if (starts("rt_exec_") || starts("rt_machine_"))
+    if (starts("rt_exec_") || starts("rt_process_") || starts("rt_machine_"))
         return RtComponent::Exec;
 
     // Threads component
@@ -201,7 +201,8 @@ inline std::optional<RtComponent> componentForRuntimeSymbol(std::string_view sym
         return RtComponent::Audio;
     if (starts("Viper.Thread.") || starts("Viper.Channel.") || starts("Viper.Future."))
         return RtComponent::Threads;
-    if (starts("Viper.System.Exec.") || starts("Viper.System.Machine."))
+    if (starts("Viper.System.Exec.") || starts("Viper.System.Machine.") ||
+        starts("Viper.System.Process."))
         return RtComponent::Exec;
     if (starts("Viper.Localization."))
         return RtComponent::Localization;

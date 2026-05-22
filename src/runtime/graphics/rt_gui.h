@@ -2861,6 +2861,18 @@ rt_string rt_zia_check(rt_string source);
 /// @brief Run semantic analysis with a source path for relative bind resolution.
 rt_string rt_zia_check_for_file(rt_string source, rt_string file_path);
 
+/// @brief Run semantic analysis and return structured diagnostic maps.
+void *rt_zia_toolchain_check(rt_string source);
+
+/// @brief Run semantic analysis with a source path and return structured diagnostic maps.
+void *rt_zia_toolchain_check_for_file(rt_string source, rt_string file_path);
+
+/// @brief Compile source to IL and return a structured result map.
+void *rt_zia_toolchain_compile(rt_string source);
+
+/// @brief Compile source with a source path and return a structured result map.
+void *rt_zia_toolchain_compile_for_file(rt_string source, rt_string file_path);
+
 /// @brief Return hover information for the identifier at the given source position.
 rt_string rt_zia_hover(rt_string source, int64_t line, int64_t col);
 

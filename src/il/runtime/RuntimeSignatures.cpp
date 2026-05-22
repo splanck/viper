@@ -111,6 +111,7 @@
 #include "rt_error.h"
 #include "rt_exc.h"
 #include "rt_exec.h"
+#include "rt_process.h"
 #include "rt_fbx_loader.h"
 #include "rt_file.h"
 #include "rt_file_ext.h"
