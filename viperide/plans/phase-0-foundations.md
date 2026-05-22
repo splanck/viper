@@ -1,5 +1,32 @@
 # Phase 0 - Foundations and Data Safety
 
+## Implementation Status
+
+Status: implemented in ViperIDE.
+
+Key landed pieces:
+
+- `commands/command_registry.zia` centralizes command ids, shortcuts, command
+  palette entries, and capability-aware command visibility.
+- `services/file_utils.zia` detects document language and kind for code, text,
+  scene, and unsupported binary files with case-insensitive extension matching.
+- `core/session.zia` persists and restores open files, active tab,
+  cursor/scroll state, last project root, and recent project root metadata in
+  `~/.viperide/settings.ini`.
+- `services/locations.zia` provides structured location ids for diagnostics,
+  build results, search results, definitions, and references.
+- File close, app exit, and OS-window close route through a shared unsaved
+  document confirmation path after saving active editor state.
+- Project search stores location ids in result item data and opens matches
+  through `LocationStore`, so paths with colons/spaces are not parsed as
+  `path:line` strings.
+- File filters now include `.zia`, `.bas`, `.vb`, `.txt`, `.md`, `.json`,
+  `.scene`, `.level`, and `.il`.
+
+Verification gate:
+
+- `ctest --test-dir build --output-on-failure -R '^(zia_viperide_phase0_phase1|zia_smoke_viperide_project_compile)$'`
+
 ## 1. Summary and Objective
 
 Make ViperIDE safe to extend. This phase fixes the architecture and data contracts that every later feature depends on: command dispatch, document kinds, close/save safety, cursor/session persistence, structured locations, project-search navigation, and file-kind recognition.

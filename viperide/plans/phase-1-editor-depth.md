@@ -1,5 +1,34 @@
 # Phase 1 - Code Editor and Project Intelligence
 
+## Implementation Status
+
+Status: implemented in ViperIDE.
+
+Key landed pieces:
+
+- `editor/language_service.zia` defines explicit capability records for Zia,
+  BASIC, text, and scene-source buffers. Zia-only tooling is disabled for
+  BASIC/text/scene documents.
+- `editor/project_index.zia` owns an explicit `Viper.Zia.ProjectIndex` handle,
+  indexes workspace `.zia` files through `Viper.Workspace.FileIndex`, and
+  updates dirty open buffers before semantic queries.
+- Go to Definition and Find References now consume structured project-index
+  maps and route navigation through `services/locations.zia`.
+- Rename validates identifiers, requests semantic rename edits from the project
+  index, and applies open-buffer edits in memory before applying closed-file
+  workspace edits.
+- Multi-cursor commands are wired for add next occurrence, skip occurrence,
+  select all occurrences, and clear extra cursors using the existing
+  `Viper.GUI.CodeEditor` cursor APIs.
+- `editor/signature.zia` owns signature-help display and nested-call active
+  parameter detection.
+- File-tree rename/delete update open documents, tab titles/tooltips, and the
+  project tree.
+
+Verification gate:
+
+- `ctest --test-dir build --output-on-failure -R '^(zia_viperide_phase0_phase1|zia_smoke_viperide_project_compile)$'`
+
 ## 1. Summary and Objective
 
 Make ViperIDE a serious project code editor. The goal is project-aware navigation, safe rename, references, signature help, multi-cursor UX, and file-tree operations, all behind explicit language-service capabilities.

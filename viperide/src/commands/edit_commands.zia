@@ -2,6 +2,12 @@ module edit_commands;
 
 bind "../ui/app_shell";
 bind "../editor/editor_engine";
+bind "../core/document_manager";
+bind "../editor/editor_tabs";
+bind "../editor/project_index";
+bind "../services/locations";
+bind "../services/workspace_edits";
+bind "../commands/file_commands";
 
 bind Viper.GUI;
 bind Convert = Viper.Core.Convert;
@@ -9,6 +15,7 @@ bind ZiaCompletion = Viper.Zia.Completion;
 bind Str = Viper.String;
 bind Seq = Viper.Collections.Seq;
 bind Obj = Viper.Core.Object;
+bind Map = Viper.Collections.Map;
 
 // ============================================================================
 // MODULE: edit_commands
@@ -105,12 +112,40 @@ func handleGoToLine(shell: app_shell.AppShell,
 ///          line. In-file only — multi-file definition lookup would
 ///          need a project-wide symbol index.
 func handleGoToDefinition(shell: app_shell.AppShell,
-                          engine: editor_engine.EditorEngine) {
+                          docMgr: document_manager.DocumentManager,
+                          engine: editor_engine.EditorEngine,
+                          tabs: editor_tabs.EditorTabs,
+                          indexer: project_index.ProjectIndexer,
+                          locStore: locations.LocationStore) {
     if engine == null or engine.editor == null { return; }
+    var doc = docMgr.GetActive();
+    if doc == null {
+        GUI.Toast.Info("Go to definition is unavailable for this file");
+        return;
+    }
+    var activeDoc = doc!;
+    if activeDoc.language != "zia" {
+        GUI.Toast.Info("Go to definition is unavailable for this file");
+        return;
+    }
 
     var source = engine.GetText();
     var curLine = engine.editor.CursorLine + 1;
     var curCol  = engine.editor.CursorCol;
+    indexer.SyncOpenDocuments(docMgr);
+    var def = indexer.Definition(activeDoc.filePath, source, curLine, curCol);
+    if def != null and Map.GetBool(def, "found") {
+        var file = Map.GetStr(def, "file");
+        var line = Map.GetInt(def, "line");
+        var col = Map.GetInt(def, "column");
+        var endLine = Map.GetIntOr(def, "endLine", line);
+        var endCol = Map.GetIntOr(def, "endColumn", col + 1);
+        var id = locStore.Add(file, line, col, endLine, endCol,
+                              locations.KIND_DEFINITION, Map.GetStr(def, "name"));
+        locStore.OpenLocation(shell, docMgr, engine, tabs, id);
+        shell.SetStatusLeft("Definition: " + Map.GetStr(def, "name"));
+        return;
+    }
 
     // Get symbol list and find the identifier at cursor via hover
     var hoverInfo = ZiaCompletion.Hover(source, curLine, curCol);
@@ -152,4 +187,234 @@ func handleGoToDefinition(shell: app_shell.AppShell,
     }
 
     GUI.Toast.Info("Definition not found for '" + symbolName + "'");
+}
+
+func handleFindReferences(shell: app_shell.AppShell,
+                          docMgr: document_manager.DocumentManager,
+                          engine: editor_engine.EditorEngine,
+                          indexer: project_index.ProjectIndexer,
+                          locStore: locations.LocationStore) {
+    if engine == null or engine.editor == null { return; }
+    var doc = docMgr.GetActive();
+    if doc == null {
+        GUI.Toast.Info("Find references is unavailable for this file");
+        return;
+    }
+    var activeDoc = doc!;
+    if activeDoc.language != "zia" {
+        GUI.Toast.Info("Find references is unavailable for this file");
+        return;
+    }
+    file_commands.SaveEditorState(docMgr, engine);
+    indexer.SyncOpenDocuments(docMgr);
+    var refs = indexer.References(activeDoc.filePath, activeDoc.content, engine.editor.CursorLine + 1, engine.editor.CursorCol);
+    shell.outputListBox.Clear();
+    if refs == null or Seq.get_Length(refs) == 0 {
+        shell.outputListBox.SetVisible(0);
+        GUI.Toast.Info("No references found");
+        return;
+    }
+    var i = 0;
+    while i < Seq.get_Length(refs) {
+        var ref = Seq.Get(refs, i);
+        var file = Map.GetStr(ref, "file");
+        var line = Map.GetInt(ref, "line");
+        var col = Map.GetInt(ref, "column");
+        var endLine = Map.GetIntOr(ref, "endLine", line);
+        var endCol = Map.GetIntOr(ref, "endColumn", col + 1);
+        var name = Map.GetStr(ref, "name");
+        var marker = "";
+        if Map.GetBool(ref, "isDefinition") {
+            marker = " definition";
+        }
+        var id = locStore.Add(file, line, col, endLine, endCol,
+                              locations.KIND_REFERENCE, name);
+        var item = shell.outputListBox.AddItem(file + ":" + line + ":" + col + marker + "  " + name);
+        GUI.ListBox.ItemSetData(item, id);
+        i = i + 1;
+    }
+    shell.outputListBox.SetVisible(1);
+    shell.SetStatusLeft("Found " + Seq.get_Length(refs) + " references");
+}
+
+func handleRenameSymbol(shell: app_shell.AppShell,
+                        docMgr: document_manager.DocumentManager,
+                        engine: editor_engine.EditorEngine,
+                        tabs: editor_tabs.EditorTabs,
+                        indexer: project_index.ProjectIndexer) {
+    if engine == null or engine.editor == null { return; }
+    var doc = docMgr.GetActive();
+    if doc == null {
+        GUI.Toast.Info("Rename is unavailable for this file");
+        return;
+    }
+    var activeDoc = doc!;
+    if activeDoc.language != "zia" {
+        GUI.Toast.Info("Rename is unavailable for this file");
+        return;
+    }
+    var newName = GUI.MessageBox.Prompt("Rename Symbol", "New name:");
+    if newName == "" { return; }
+    if IsValidIdentifier(newName) == false {
+        GUI.Toast.Warning("Invalid identifier");
+        return;
+    }
+    file_commands.SaveEditorState(docMgr, engine);
+    indexer.SyncOpenDocuments(docMgr);
+    var rename = indexer.RenameEdits(activeDoc.filePath, activeDoc.content,
+                                     engine.editor.CursorLine + 1,
+                                     engine.editor.CursorCol,
+                                     newName);
+    if rename == null or Map.GetBool(rename, "success") == false {
+        var reason = "";
+        if rename != null { reason = Map.GetStr(rename, "reason"); }
+        if reason == "" { reason = "not_found"; }
+        GUI.Toast.Warning("Rename failed: " + reason);
+        return;
+    }
+    var edits = Map.Get(rename, "edits");
+    var result = workspace_edits.ApplyRenameEdits(edits, docMgr);
+    if result.success == false {
+        GUI.Toast.Error(result.message);
+        return;
+    }
+    var active = docMgr.GetActive();
+    if active != null {
+        engine.LoadDocument(active);
+        tabs.SetModified(docMgr.activeIndex, active.isModified);
+    }
+    indexer.SyncOpenDocuments(docMgr);
+    shell.SetStatusLeft("Renamed to " + newName);
+    GUI.Toast.Success("Rename complete");
+}
+
+func handleAddNextOccurrence(shell: app_shell.AppShell,
+                             engine: editor_engine.EditorEngine) {
+    var word = engine.editor.GetWordAtCursor();
+    if word == "" {
+        GUI.Toast.Info("No word at cursor");
+        return;
+    }
+    var next = FindNextOccurrence(engine.GetText(), word, engine.GetCursorLine(), engine.GetCursorCol() + Str.Length(word));
+    if next == "" {
+        GUI.Toast.Info("No next occurrence");
+        return;
+    }
+    var parts = Str.Split(next, ":");
+    var line = Convert.ToInt(Obj.ToString(Seq.Get(parts, 0)));
+    var col = Convert.ToInt(Obj.ToString(Seq.Get(parts, 1)));
+    engine.editor.AddCursor(line - 1, col - 1);
+    shell.SetStatusLeft("Cursors: " + engine.editor.GetCursorCount());
+}
+
+func handleSkipOccurrence(shell: app_shell.AppShell,
+                          engine: editor_engine.EditorEngine) {
+    var word = engine.editor.GetWordAtCursor();
+    if word == "" { return; }
+    var next = FindNextOccurrence(engine.GetText(), word, engine.GetCursorLine(), engine.GetCursorCol() + Str.Length(word));
+    if next == "" { return; }
+    var parts = Str.Split(next, ":");
+    engine.editor.SetCursor(Convert.ToInt(Obj.ToString(Seq.Get(parts, 0))) - 1,
+                            Convert.ToInt(Obj.ToString(Seq.Get(parts, 1))) - 1);
+    shell.SetStatusLeft("Skipped occurrence");
+}
+
+func handleSelectAllOccurrences(shell: app_shell.AppShell,
+                                engine: editor_engine.EditorEngine) {
+    var word = engine.editor.GetWordAtCursor();
+    if word == "" { return; }
+    engine.editor.ClearCursors();
+    var lines = Str.Split(engine.GetText(), "\n");
+    var lineIdx = 0;
+    var firstSet = false;
+    while lineIdx < Seq.get_Length(lines) {
+        var line = Obj.ToString(Seq.Get(lines, lineIdx));
+        var searchFrom = 1;
+        var idx = Str.IndexOf(line, word);
+        while idx != 0 {
+            if search_commands_wordBoundary(line, idx, Str.Length(word)) {
+                if firstSet == false {
+                    engine.editor.SetCursor(lineIdx, idx - 1);
+                    engine.editor.SetCursorSelection(0, lineIdx, idx - 1, lineIdx, idx - 1 + Str.Length(word));
+                    firstSet = true;
+                } else {
+                    engine.editor.AddCursor(lineIdx, idx - 1);
+                    var cursorIdx = engine.editor.GetCursorCount() - 1;
+                    engine.editor.SetCursorSelection(cursorIdx, lineIdx, idx - 1, lineIdx, idx - 1 + Str.Length(word));
+                }
+            }
+            searchFrom = idx + Str.Length(word);
+            idx = Str.IndexOfFrom(line, searchFrom, word);
+        }
+        lineIdx = lineIdx + 1;
+    }
+    shell.SetStatusLeft("Cursors: " + engine.editor.GetCursorCount());
+}
+
+func handleClearCursors(shell: app_shell.AppShell,
+                        engine: editor_engine.EditorEngine) {
+    if engine != null and engine.editor != null {
+        engine.editor.ClearCursors();
+        shell.SetStatusLeft("Cursors cleared");
+    }
+}
+
+func FindNextOccurrence(source: String, word: String, startLine: Integer, startCol: Integer) -> String {
+    var lines = Str.Split(source, "\n");
+    var i = startLine - 1;
+    while i < Seq.get_Length(lines) {
+        var line = Obj.ToString(Seq.Get(lines, i));
+        var fromCol = 1;
+        if i == startLine - 1 {
+            fromCol = startCol;
+            if fromCol < 1 { fromCol = 1; }
+        }
+        var idx = Str.IndexOfFrom(line, fromCol, word);
+        while idx != 0 {
+            if search_commands_wordBoundary(line, idx, Str.Length(word)) {
+                return "" + (i + 1) + ":" + idx;
+            }
+            idx = Str.IndexOfFrom(line, idx + 1, word);
+        }
+        i = i + 1;
+    }
+    return "";
+}
+
+func IsValidIdentifier(name: String) -> Boolean {
+    if Str.Length(name) == 0 { return false; }
+    var first = Str.MidLen(name, 1, 1);
+    if IsIdentStart(first) == false { return false; }
+    var i = 2;
+    while i <= Str.Length(name) {
+        if IsIdentPart(Str.MidLen(name, i, 1)) == false { return false; }
+        i = i + 1;
+    }
+    return true;
+}
+
+func IsIdentStart(ch: String) -> Boolean {
+    if ch >= "a" and ch <= "z" { return true; }
+    if ch >= "A" and ch <= "Z" { return true; }
+    if ch == "_" { return true; }
+    return false;
+}
+
+func IsIdentPart(ch: String) -> Boolean {
+    if IsIdentStart(ch) { return true; }
+    if ch >= "0" and ch <= "9" { return true; }
+    return false;
+}
+
+func search_commands_wordBoundary(line: String, startCol: Integer, len: Integer) -> Boolean {
+    var beforeOk = true;
+    var afterOk = true;
+    if startCol > 1 {
+        beforeOk = IsIdentPart(Str.MidLen(line, startCol - 1, 1)) == false;
+    }
+    var afterCol = startCol + len;
+    if afterCol <= Str.Length(line) {
+        afterOk = IsIdentPart(Str.MidLen(line, afterCol, 1)) == false;
+    }
+    return beforeOk and afterOk;
 }

@@ -68,7 +68,7 @@ func handleOpen(shell: app_shell.AppShell,
                 docMgr: document_manager.DocumentManager,
                 engine: editor_engine.EditorEngine,
                 tabs: editor_tabs.EditorTabs) {
-    var path = FileDialog.Open("Open File", "", "*.zia;*.bas;*.txt");
+    var path = FileDialog.Open("Open File", "", file_utils.OpenDialogFilter());
     if path != "" {
         OpenFileAtPath(shell, docMgr, engine, tabs, path);
     }
@@ -94,8 +94,8 @@ func handleSave(shell: app_shell.AppShell,
     var saveDoc = docMgr.GetActive();
     if saveDoc != null {
         if saveDoc.isNew {
-            var savePath = FileDialog.Save(
-                "Save File", "", "*.zia", saveDoc.fileName);
+        var savePath = FileDialog.Save(
+                "Save File", "", file_utils.SaveDialogFilter(saveDoc.kind, saveDoc.language), saveDoc.fileName);
             if savePath != "" {
                 docMgr.SaveAs(savePath);
                 tabs.SetTitle(docMgr.activeIndex, saveDoc.fileName);
@@ -108,11 +108,13 @@ func handleSave(shell: app_shell.AppShell,
                 GUI.Toast.Success("Saved: " + saveDoc.fileName);
             }
         } else {
-            docMgr.SaveActive();
-            tabs.SetModified(docMgr.activeIndex, false);
-            engine.ClearModified();
-            shell.SetStatusLeft("Saved: " + saveDoc.fileName);
-            GUI.Toast.Success("Saved: " + saveDoc.fileName);
+            if confirmOverwriteExternal(shell, docMgr, docMgr.activeIndex) {
+                docMgr.SaveActive();
+                tabs.SetModified(docMgr.activeIndex, false);
+                engine.ClearModified();
+                shell.SetStatusLeft("Saved: " + saveDoc.fileName);
+                GUI.Toast.Success("Saved: " + saveDoc.fileName);
+            }
         }
     }
 }
@@ -126,7 +128,7 @@ func handleSaveAs(shell: app_shell.AppShell,
     var saveAsDoc = docMgr.GetActive();
     if saveAsDoc != null {
         var saveAsPath = FileDialog.Save(
-            "Save As", "", "*.zia", saveAsDoc.fileName);
+            "Save As", "", file_utils.SaveDialogFilter(saveAsDoc.kind, saveAsDoc.language), saveAsDoc.fileName);
         if saveAsPath != "" {
             docMgr.SaveAs(saveAsPath);
             tabs.SetTitle(docMgr.activeIndex, saveAsDoc.fileName);
@@ -146,13 +148,29 @@ func handleSaveAll(shell: app_shell.AppShell,
                    engine: editor_engine.EditorEngine,
                    tabs: editor_tabs.EditorTabs) {
     SaveEditorState(docMgr, engine);
-    var savedCount = docMgr.SaveAll();
+    var savedCount = 0;
 
     var i = 0;
     while i < docMgr.GetCount() {
         var doc = docMgr.documents.get(i);
-        if doc != null and doc.isModified == false {
-            tabs.SetModified(i, false);
+        if doc != null and doc.isModified {
+            if doc.isNew {
+                var savePath = FileDialog.Save(
+                    "Save " + doc.fileName, "", file_utils.SaveDialogFilter(doc.kind, doc.language), doc.fileName);
+                if savePath != "" {
+                    if docMgr.SaveDocumentAs(i, savePath) {
+                        tabs.SetTitle(i, doc.fileName);
+                        tabs.SetTooltip(i, doc.filePath);
+                        tabs.SetModified(i, false);
+                        savedCount = savedCount + 1;
+                    }
+                }
+            } else if confirmOverwriteExternal(shell, docMgr, i) {
+                if docMgr.SaveDocument(i) {
+                    tabs.SetModified(i, false);
+                    savedCount = savedCount + 1;
+                }
+            }
         }
         i = i + 1;
     }
@@ -169,6 +187,8 @@ func handleReload(shell: app_shell.AppShell,
         var doc = reloadDoc!;
         if doc.isNew == false {
             doc.content = IO.File.ReadAllText(doc.filePath);
+            doc.lastModifiedOnDisk = IO.File.Modified(doc.filePath);
+            doc.isModified = false;
             engine.LoadDocument(doc);
             engine.ClearModified();
             tabs.SetModified(docMgr.activeIndex, false);
@@ -208,6 +228,7 @@ func handleClose(shell: app_shell.AppShell,
     if nextDoc != null {
         tabs.SetActive(docMgr.activeIndex);
         engine.LoadDocument(nextDoc);
+        shell.SelectSurface(nextDoc.kind);
         shell.SetBreadcrumbPath(nextDoc.filePath);
         shell.SetStatusRight(DocStatusLabel(nextDoc));
     } else {
@@ -222,8 +243,14 @@ func handleClose(shell: app_shell.AppShell,
 
 /// @brief Tear down the AppShell — the main loop's `WindowOpen` check
 ///        then exits.
-func handleExit(shell: app_shell.AppShell) {
+func handleExit(shell: app_shell.AppShell,
+                docMgr: document_manager.DocumentManager,
+                engine: editor_engine.EditorEngine) -> Boolean {
+    if ConfirmCloseDocuments(shell, docMgr, engine, "Exit", -1) == false {
+        return false;
+    }
     shell.Destroy();
+    return true;
 }
 
 // ============================================================================
@@ -249,10 +276,63 @@ func OpenFileAtPath(shell: app_shell.AppShell,
     }
     tabs.SetActive(docMgr.activeIndex);
     engine.LoadDocument(openDoc);
+    shell.SelectSurface(openDoc.kind);
 
     shell.SetBreadcrumbPath(openDoc.filePath);
     shell.SetStatusLeft("Opened: " + openDoc.fileName);
     shell.SetStatusRight(DocStatusLabel(openDoc));
+}
+
+func ConfirmCloseDocuments(shell: app_shell.AppShell,
+                           docMgr: document_manager.DocumentManager,
+                           engine: editor_engine.EditorEngine,
+                           reason: String,
+                           targetIndex: Integer) -> Boolean {
+    if shell == null { return false; }
+    SaveEditorState(docMgr, engine);
+    var dirtyCount = 0;
+    var names = "";
+    var i = 0;
+    while i < docMgr.GetCount() {
+        if targetIndex < 0 or targetIndex == i {
+            var doc = docMgr.documents.get(i);
+            if doc.isModified {
+                dirtyCount = dirtyCount + 1;
+                if names == "" {
+                    names = doc.fileName;
+                } else if dirtyCount <= 5 {
+                    names = names + "\n" + doc.fileName;
+                }
+            }
+        }
+        i = i + 1;
+    }
+    if dirtyCount == 0 { return true; }
+
+    var msg = names;
+    if dirtyCount > 5 {
+        msg = msg + "\n...and " + (dirtyCount - 5) + " more";
+    }
+    msg = msg + "\n\nClose without saving?";
+    var confirmed = GUI.MessageBox.Confirm("Unsaved Changes - " + reason, msg);
+    return confirmed != 0;
+}
+
+func confirmOverwriteExternal(shell: app_shell.AppShell,
+                              docMgr: document_manager.DocumentManager,
+                              index: Integer) -> Boolean {
+    if docMgr.HasExternalChange(index) == false {
+        return true;
+    }
+    var doc = docMgr.documents.get(index);
+    var confirmed = GUI.MessageBox.Confirm(
+        "File Changed on Disk",
+        doc.fileName + " changed on disk since it was opened or saved.\nOverwrite it?");
+    if confirmed == 0 {
+        shell.SetStatusLeft("Save canceled: external change");
+        return false;
+    }
+    return true;
 }
 
 /// @brief Flush editor state (cursor, scroll, text) into the active

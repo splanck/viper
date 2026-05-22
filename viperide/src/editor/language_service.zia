@@ -1,0 +1,70 @@
+module language_service;
+
+bind "../core/document";
+bind "../services/file_utils";
+
+final LANGUAGE_ZIA = "zia";
+final LANGUAGE_BASIC = "basic";
+final LANGUAGE_TEXT = "text";
+final LANGUAGE_SCENE = "scene";
+
+class LanguageService {
+    expose String name;
+    expose Boolean canComplete;
+    expose Boolean canDiagnose;
+    expose Boolean canHover;
+    expose Boolean canDocumentSymbols;
+    expose Boolean canGoToDefinition;
+    expose Boolean canFindReferences;
+    expose Boolean canRename;
+    expose Boolean canSignatureHelp;
+
+    expose func init() {
+        name = LANGUAGE_TEXT;
+        canComplete = false;
+        canDiagnose = false;
+        canHover = false;
+        canDocumentSymbols = false;
+        canGoToDefinition = false;
+        canFindReferences = false;
+        canRename = false;
+        canSignatureHelp = false;
+    }
+}
+
+class LanguageServiceManager {
+    expose LanguageService ziaService;
+    expose LanguageService basicService;
+    expose LanguageService textService;
+    expose LanguageService sceneService;
+
+    expose func init() {
+        ziaService = new LanguageService();
+        ziaService.name = LANGUAGE_ZIA;
+        ziaService.canComplete = true;
+        ziaService.canDiagnose = true;
+        ziaService.canHover = true;
+        ziaService.canDocumentSymbols = true;
+        ziaService.canGoToDefinition = true;
+        ziaService.canFindReferences = true;
+        ziaService.canRename = true;
+        ziaService.canSignatureHelp = true;
+
+        basicService = new LanguageService();
+        basicService.name = LANGUAGE_BASIC;
+
+        textService = new LanguageService();
+        textService.name = LANGUAGE_TEXT;
+
+        sceneService = new LanguageService();
+        sceneService.name = LANGUAGE_SCENE;
+    }
+
+    expose func ForDocument(doc: document.Document) -> LanguageService {
+        if doc == null { return textService; }
+        if doc.language == "zia" { return ziaService; }
+        if doc.language == "basic" { return basicService; }
+        if doc.kind == file_utils.DOC_KIND_SCENE { return sceneService; }
+        return textService;
+    }
+}

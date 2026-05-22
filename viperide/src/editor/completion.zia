@@ -61,6 +61,7 @@ class CompletionController {
     expose Integer selectedIndex;
     expose Integer itemCount;
     expose String sourcePath;
+    expose Boolean enabled;
 
     // Track cursor position to detect line changes (auto-dismiss)
     expose Integer lastLine;
@@ -75,6 +76,7 @@ class CompletionController {
         selectedIndex  = 0;
         itemCount      = 0;
         sourcePath     = "";
+        enabled        = true;
         lastLine       = -1;
         lastCol        = -1;
         insertTexts    = new List();
@@ -109,6 +111,13 @@ class CompletionController {
         sourcePath = path;
     }
 
+    expose func SetEnabled(value: Boolean) {
+        enabled = value;
+        if enabled == false {
+            Hide();
+        }
+    }
+
     /// @brief Query the engine and show the popup.
     /// @note Reads cursor coords from `editor`, sends them through
     ///       `CompleteForFile` (path-aware), parses the tab-separated
@@ -116,7 +125,7 @@ class CompletionController {
     ///       under the caret, and focuses the listbox for arrow / Enter
     ///       navigation. Hides immediately if the engine returns empty.
     expose func TriggerCompletion() {
-        if editor == null {
+        if enabled == false or editor == null {
             return;
         }
 

@@ -1,0 +1,131 @@
+module locations;
+
+bind "../core/document_manager";
+bind "../editor/editor_engine";
+bind "../editor/editor_tabs";
+bind "../commands/file_commands";
+bind "../ui/app_shell";
+
+bind Viper.GUI;
+bind Convert = Viper.Core.Convert;
+bind Str = Viper.String;
+
+final KIND_SEARCH = 1;
+final KIND_DIAGNOSTIC = 2;
+final KIND_BUILD = 3;
+final KIND_DEFINITION = 4;
+final KIND_REFERENCE = 5;
+final KIND_SCENE = 6;
+
+class Location {
+    expose Integer id;
+    expose String filePath;
+    expose Integer line;
+    expose Integer column;
+    expose Integer endLine;
+    expose Integer endColumn;
+    expose Integer kind;
+    expose String message;
+
+    expose func init() {
+        id = 0;
+        filePath = "";
+        line = 1;
+        column = 1;
+        endLine = 1;
+        endColumn = 1;
+        kind = 0;
+        message = "";
+    }
+}
+
+class LocationStore {
+    expose List[Location] items;
+    expose Integer nextId;
+
+    expose func init() {
+        items = [];
+        nextId = 1;
+    }
+
+    expose func Clear() {
+        items = [];
+        nextId = 1;
+    }
+
+    expose func Add(filePath: String,
+                    line: Integer,
+                    column: Integer,
+                    endLine: Integer,
+                    endColumn: Integer,
+                    kind: Integer,
+                    message: String) -> String {
+        var loc = new Location();
+        loc.id = nextId;
+        loc.filePath = filePath;
+        loc.line = line;
+        loc.column = column;
+        loc.endLine = endLine;
+        loc.endColumn = endColumn;
+        loc.kind = kind;
+        loc.message = message;
+        items.add(loc);
+        nextId = nextId + 1;
+        return "" + loc.id;
+    }
+
+    expose func Get(idText: String) -> Location? {
+        var id = Convert.ToInt(idText);
+        var i = 0;
+        while i < items.count() {
+            var loc = items.get(i);
+            if loc.id == id {
+                return loc;
+            }
+            i = i + 1;
+        }
+        return null;
+    }
+
+    expose func OpenLocation(shell: app_shell.AppShell,
+                             docMgr: document_manager.DocumentManager,
+                             engine: editor_engine.EditorEngine,
+                             tabs: editor_tabs.EditorTabs,
+                             idText: String) -> Boolean {
+        var locOpt = Get(idText);
+        if locOpt == null { return false; }
+        return OpenResolvedLocation(shell, docMgr, engine, tabs, locOpt!);
+    }
+}
+
+func OpenResolvedLocation(shell: app_shell.AppShell,
+                          docMgr: document_manager.DocumentManager,
+                          engine: editor_engine.EditorEngine,
+                          tabs: editor_tabs.EditorTabs,
+                          loc: Location) -> Boolean {
+    if loc == null { return false; }
+    if loc.filePath != "" {
+        var activeDoc = docMgr.GetActive();
+        if activeDoc == null or activeDoc.filePath != loc.filePath {
+            file_commands.OpenFileAtPath(shell, docMgr, engine, tabs, loc.filePath);
+        }
+    }
+    if loc.line > 0 {
+        engine.GoToLine(loc.line);
+        if loc.column > 0 {
+            engine.editor.SetCursor(loc.line - 1, loc.column - 1);
+        }
+    }
+    return true;
+}
+
+func IsLocationData(data: String) -> Boolean {
+    if data == "" { return false; }
+    var i = 1;
+    while i <= Str.Length(data) {
+        var ch = Str.MidLen(data, i, 1);
+        if ch < "0" or ch > "9" { return false; }
+        i = i + 1;
+    }
+    return true;
+}

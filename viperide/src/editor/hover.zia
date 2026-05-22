@@ -50,6 +50,7 @@ class HoverController {
     expose Number lastMouseY;
     expose Boolean waiting;
     expose String sourcePath;
+    expose Boolean enabled;
 
     /// @brief Initialize as hidden, with no dwell in progress.
     expose func init() {
@@ -59,6 +60,7 @@ class HoverController {
         lastMouseY = -1.0;
         waiting = false;
         sourcePath = "";
+        enabled = true;
     }
 
     /// @brief Build the FloatingPanel + Label that render the tooltip.
@@ -80,8 +82,16 @@ class HoverController {
         sourcePath = path;
     }
 
+    expose func setEnabled(value: Boolean) {
+        enabled = value;
+        if enabled == false {
+            hideTooltip();
+        }
+    }
+
     /// @brief Per-frame mouse-hover state machine (see module header).
     expose func update(engine: editor_engine.EditorEngine) {
+        if enabled == false { return; }
         if engine == null or engine.editor == null { return; }
 
         var mx = Viper.Input.Mouse.X();

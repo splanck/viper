@@ -1,0 +1,119 @@
+module workspace_edits;
+
+bind "../core/document_manager";
+bind "../core/document";
+
+bind WorkspaceEdit = Viper.Workspace.Edit;
+bind File = Viper.IO.File;
+bind Seq = Viper.Collections.Seq;
+bind Map = Viper.Collections.Map;
+bind Str = Viper.String;
+bind Obj = Viper.Core.Object;
+
+class ApplyResult {
+    expose Boolean success;
+    expose String message;
+    expose Integer changedDocuments;
+
+    expose func init() {
+        success = false;
+        message = "";
+        changedDocuments = 0;
+    }
+}
+
+func ApplyRenameEdits(edits: Any,
+                      docMgr: document_manager.DocumentManager) -> ApplyResult {
+    var result = new ApplyResult();
+    if edits == null {
+        result.message = "No edits returned";
+        return result;
+    }
+
+    var closedEdits = Seq.New();
+    var i = 0;
+    while i < Seq.get_Length(edits) {
+        var edit = Seq.Get(edits, i);
+        var path = Map.GetStr(edit, "file");
+        var docIndex = docMgr.FindByPath(path);
+        if docIndex >= 0 {
+            // Open documents are edited in memory using reverse sequence order.
+        } else {
+            if File.Exists(path) {
+                Map.SetInt(edit, "expectedMtime", File.Modified(path));
+            }
+            Seq.Push(closedEdits, edit);
+        }
+        i = i + 1;
+    }
+
+    var j = Seq.get_Length(edits) - 1;
+    while j >= 0 {
+        var edit2 = Seq.Get(edits, j);
+        var path2 = Map.GetStr(edit2, "file");
+        var idx = docMgr.FindByPath(path2);
+        if idx >= 0 {
+            var doc = docMgr.documents.get(idx);
+            if ApplyEditToDocument(doc, edit2) == false {
+                result.message = "Could not apply edit to " + doc.fileName;
+                return result;
+            }
+            doc.isModified = true;
+            result.changedDocuments = result.changedDocuments + 1;
+        }
+        j = j - 1;
+    }
+
+    if Seq.get_Length(closedEdits) > 0 {
+        var diskResult = WorkspaceEdit.Apply(closedEdits);
+        if Map.GetBool(diskResult, "success") == false {
+            result.message = Map.GetStr(diskResult, "diagnostics");
+            if result.message == "" {
+                result.message = "Workspace edit failed";
+            }
+            return result;
+        }
+    }
+
+    result.success = true;
+    result.message = "Applied edits";
+    return result;
+}
+
+func ApplyEditToDocument(doc: document.Document, edit: Any) -> Boolean {
+    var startLine = Map.GetInt(edit, "startLine");
+    var startCol = Map.GetInt(edit, "startColumn");
+    var endLine = Map.GetInt(edit, "endLine");
+    var endCol = Map.GetInt(edit, "endColumn");
+    var newText = Map.GetStr(edit, "newText");
+    if startLine != endLine { return false; }
+    if startLine < 1 or startCol < 1 or endCol < startCol { return false; }
+
+    var lines = Str.Split(doc.content, "\n");
+    if startLine > Seq.get_Length(lines) { return false; }
+    var line = Obj.ToString(Seq.Get(lines, startLine - 1));
+    var prefix = "";
+    if startCol > 1 {
+        prefix = Str.Left(line, startCol - 1);
+    }
+    var suffix = "";
+    if endCol <= Str.Length(line) {
+        suffix = Str.Mid(line, endCol);
+    }
+    var replacement = prefix + newText + suffix;
+    var rebuilt = "";
+    var i = 0;
+    while i < Seq.get_Length(lines) {
+        if i > 0 {
+            rebuilt = rebuilt + "\n";
+        }
+        if i == startLine - 1 {
+            rebuilt = rebuilt + replacement;
+        } else {
+            rebuilt = rebuilt + Obj.ToString(Seq.Get(lines, i));
+        }
+        i = i + 1;
+    }
+    doc.content = rebuilt;
+    return true;
+}

@@ -6,6 +6,7 @@ bind "../editor/editor_engine";
 bind "../build/build_system";
 bind "../build/diagnostic";
 bind "../commands/file_commands";
+bind "../services/locations";
 
 bind Viper.GUI;
 bind Convert = Viper.Core.Convert;
@@ -46,7 +47,8 @@ final INFO_MARKER_COLOR = 10066329;      // grey   (0x999999)
 func handleBuild(shell: app_shell.AppShell,
                  docMgr: document_manager.DocumentManager,
                  engine: editor_engine.EditorEngine,
-                 buildSys: build_system.BuildSystem) {
+                 buildSys: build_system.BuildSystem,
+                 locStore: locations.LocationStore) {
     file_commands.SaveEditorState(docMgr, engine);
     var buildDoc = docMgr.GetActive();
     if buildDoc != null {
@@ -62,7 +64,7 @@ func handleBuild(shell: app_shell.AppShell,
                 shell.SetStatusLeft("Build failed: " + errCount + " errors");
                 GUI.Toast.Error("Build failed: " + errCount + " errors");
             }
-            UpdateDiagnostics(shell, buildSys, engine);
+            UpdateDiagnostics(shell, buildSys, locStore);
         } else {
             shell.SetStatusLeft("Save file before building");
         }
@@ -73,7 +75,8 @@ func handleBuild(shell: app_shell.AppShell,
 func handleBuildAndRun(shell: app_shell.AppShell,
                        docMgr: document_manager.DocumentManager,
                        engine: editor_engine.EditorEngine,
-                       buildSys: build_system.BuildSystem) {
+                       buildSys: build_system.BuildSystem,
+                       locStore: locations.LocationStore) {
     file_commands.SaveEditorState(docMgr, engine);
     var runDoc = docMgr.GetActive();
     if runDoc != null {
@@ -89,7 +92,7 @@ func handleBuildAndRun(shell: app_shell.AppShell,
                 shell.SetStatusLeft("Build failed: " + errCount + " errors");
                 GUI.Toast.Error("Build failed: " + errCount + " errors");
             }
-            UpdateDiagnostics(shell, buildSys, engine);
+            UpdateDiagnostics(shell, buildSys, locStore);
         } else {
             shell.SetStatusLeft("Save file before running");
         }
@@ -103,8 +106,9 @@ func handleBuildAndRun(shell: app_shell.AppShell,
 func handleRun(shell: app_shell.AppShell,
                docMgr: document_manager.DocumentManager,
                engine: editor_engine.EditorEngine,
-               buildSys: build_system.BuildSystem) {
-    handleBuildAndRun(shell, docMgr, engine, buildSys);
+               buildSys: build_system.BuildSystem,
+               locStore: locations.LocationStore) {
+    handleBuildAndRun(shell, docMgr, engine, buildSys, locStore);
 }
 
 /// @brief Repopulate the diagnostics listbox + minimap markers + build
@@ -113,7 +117,7 @@ func handleRun(shell: app_shell.AppShell,
 ///       diagnostics so it doesn't waste vertical space.
 func UpdateDiagnostics(shell: app_shell.AppShell,
                        buildSys: build_system.BuildSystem,
-                       engine: editor_engine.EditorEngine) {
+                       locStore: locations.LocationStore) {
     shell.diagListBox.Clear();
     shell.minimap.ClearMarkers();
 
@@ -138,7 +142,10 @@ func UpdateDiagnostics(shell: app_shell.AppShell,
             }
             var diagText = diag.filePath + ":" + diag.line + "  " + sevLabel + "[" + diag.code + "]: " + diag.message;
             var item = shell.diagListBox.AddItem(diagText);
-            GUI.ListBox.ItemSetData(item, diag.filePath + "\t" + diag.line);
+            var locId = locStore.Add(diag.filePath, diag.line, diag.column,
+                                     diag.line, diag.column + 1,
+                                     locations.KIND_BUILD, diag.message);
+            GUI.ListBox.ItemSetData(item, locId);
             shell.minimap.AddMarker(diag.line, 1, markerColor);
             i = i + 1;
         }

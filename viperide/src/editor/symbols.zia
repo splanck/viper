@@ -49,6 +49,7 @@ class SymbolOutline {
     expose String sourcePath;
     expose String lastPath;
     expose Boolean visible;
+    expose Boolean enabled;
 
     /// @brief Initialize hidden with empty caches.
     expose func init() {
@@ -56,6 +57,7 @@ class SymbolOutline {
         sourcePath = "";
         lastPath = "";
         visible = false;
+        enabled = true;
     }
 
     /// @brief Construct the listbox inside `parent`. Hidden by default.
@@ -74,6 +76,14 @@ class SymbolOutline {
         }
     }
 
+    expose func setEnabled(value: Boolean) {
+        enabled = value;
+        if enabled == false {
+            symbolList.SetVisible(0);
+            visible = false;
+        }
+    }
+
     /// @brief Toggle visibility. When showing, force a refresh so the
     ///        list reflects the current buffer.
     expose func toggle() {
@@ -89,7 +99,7 @@ class SymbolOutline {
     /// @brief Per-frame refresh. Re-queries `SymbolsForFile` when the
     ///        buffer text or active path changes; otherwise no-op.
     expose func update(engine: editor_engine.EditorEngine) {
-        if visible == false { return; }
+        if enabled == false or visible == false { return; }
         if engine == null or engine.editor == null { return; }
 
         var source = engine.GetText();

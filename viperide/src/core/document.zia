@@ -1,5 +1,7 @@
 module document;
 
+bind "../services/file_utils";
+
 // ============================================================================
 // MODULE: document
 // PURPOSE: Plain-data record representing a single open file in the IDE.
@@ -41,6 +43,7 @@ class Document {
     expose String fileName;            // Display name in the tab.
     expose String content;             // Full text buffer.
     expose String language;            // "zia", "basic", "text".
+    expose Integer kind;               // file_utils.KIND_* document surface kind.
     expose Boolean isModified;         // Has unsaved changes.
     expose Boolean isNew;              // Never saved to disk.
     expose Integer cursorLine;         // Last known cursor line (1-based).
@@ -54,6 +57,7 @@ class Document {
         fileName = "Untitled";
         content = "";
         language = "text";
+        kind = file_utils.DOC_KIND_TEXT;
         isModified = false;
         isNew = true;
         cursorLine = 1;

@@ -8,7 +8,18 @@ The current app is useful, but the hard work is not just adding panels. The gaps
 
 ## Current Assessment
 
-The IDE is a single-frame Zia app in `viperide/src/main.zia`. It registers shortcuts and command-palette entries near `viperide/src/main.zia:123-182`, dispatches commands through a linear if-chain around `viperide/src/main.zia:377-457`, tracks dirty state at `viperide/src/main.zia:553-565`, and watches only the active file at `viperide/src/main.zia:571-608`.
+**Implementation update:** Phase 0 and Phase 1 are now implemented in the IDE
+app. The current app has a command registry, document kinds, close-prevention
+flow, structured locations, session restore, language-service capability
+routing, project-index-backed Zia definition/reference/rename, multi-cursor
+commands, signature help, and file-tree rename/delete handling. Phase 2 and
+later items below remain future roadmap work.
+
+The IDE is still a single-frame Zia app in `viperide/src/main.zia`, but the
+Phase 0/1 work moved command metadata, session state, structured locations,
+language-service capability checks, and project-index ownership into dedicated
+modules under `viperide/src/commands`, `viperide/src/core`,
+`viperide/src/editor`, and `viperide/src/services`.
 
 Strong pieces already exist:
 
@@ -16,17 +27,14 @@ Strong pieces already exist:
 - Zia completion, hover, symbols, and signature help through `Viper.Zia.Completion.*ForFile`, plus live diagnostics through structured `Viper.Zia.Toolchain.CheckForFile` records.
 - A capable `CodeEditor` widget with existing runtime methods for multiple cursors (`runtime.def:8964-8976`).
 - Runtime prerequisites now available for IDE integration: `Viper.System.Process`, `Viper.Zia.ProjectIndex`, `Viper.Workspace.FileIndex`, `Viper.Project.Manifest`, `Viper.Workspace.Edit`, `Viper.Game.Scene`, scaled `Tilemap` draw/hit-test primitives, GUI test/virtual-list helpers, fuzzy match, and debug protocol shells.
-- Runtime file writes that already aim to replace files atomically (`rt_file_ext.c` documents this), though ViperIDE does not yet provide good save error handling or conflict UX.
+- Runtime file writes that already aim to replace files atomically (`rt_file_ext.c` documents this); ViperIDE now warns before overwriting files that changed on disk.
 
 High-risk gaps:
 
-- Exit and OS-window close do not sweep unsaved documents. `handleExit` destroys the shell directly, and the main loop exits on `shell.ShouldClose()` without using `App.SetPreventClose` / `WasCloseRequested`.
-- `Document` is text-only. There is no document kind, scene document state, raw-source fallback, or non-code save path.
-- Project search, references, and build output use display strings or line-only data instead of structured locations. Live diagnostics consume structured toolchain records, but ViperIDE still stores diagnostic navigation as a tab-separated `path + line` payload instead of using a shared `LocationStore`.
 - Build/run uses blocking shell strings (`Exec.ShellFull`) with a hard-coded `zia` command.
 - Project loading eagerly walks the tree, has hardcoded excludes, and has no workspace manifest beyond a small `viper.project` parser.
-- Zia language services inside ViperIDE are still mostly single-file oriented until `Viper.Zia.ProjectIndex` is integrated. BASIC has editor/build support in ViperIDE, while the separate `vbasic-server` IntelliSense surface is not yet integrated.
-- Scene editing still needs IDE integration work: document-kind routing, scene surface state, `SceneView`, asset-resolution UX, undo/redo, save/reload/conflict handling, and Play wiring. The underlying `Viper.Game.Scene`, tile ID convention, diagnostics, asset descriptors, atomic save, typed properties, and scaled tilemap primitives are available in the current runtime.
+- BASIC has editor/build support in ViperIDE, while the separate `vbasic-server` IntelliSense surface is not yet integrated.
+- Scene editing still needs IDE integration work beyond document-kind routing: scene surface state, `SceneView`, asset-resolution UX, undo/redo, save/reload/conflict handling, and Play wiring. The underlying `Viper.Game.Scene`, tile ID convention, diagnostics, asset descriptors, atomic save, typed properties, and scaled tilemap primitives are available in the current runtime.
 
 ## Corrected Decisions
 

@@ -1,0 +1,134 @@
+module signature;
+
+bind "../editor/editor_engine";
+bind "../editor/zia_query";
+
+bind Viper.GUI;
+bind ZiaCompletion = Viper.Zia.Completion;
+bind Str = Viper.String;
+bind Input = Viper.Input;
+bind Seq = Viper.Collections.Seq;
+bind Obj = Viper.Core.Object;
+
+class SignatureController {
+    expose GUI.FloatingPanel panel;
+    expose GUI.Label label;
+    expose Boolean visible;
+    expose String sourcePath;
+
+    expose func init() {
+        visible = false;
+        sourcePath = "";
+    }
+
+    expose func setup(appRoot: GUI.App) {
+        panel = GUI.FloatingPanel.New(appRoot);
+        panel.SetSize(520.0, 42.0);
+        panel.SetVisible(0);
+        label = GUI.Label.New(null, "");
+        panel.AddChild(label);
+    }
+
+    expose func setSourcePath(path: String) {
+        sourcePath = path;
+    }
+
+    expose func trigger(engine: editor_engine.EditorEngine) {
+        if engine == null or engine.editor == null { return; }
+        var source = engine.GetText();
+        if IsInsideCall(source, engine.GetCursorLine(), engine.editor.CursorCol) == false {
+            Hide();
+            return;
+        }
+        var qsource = zia_query.WrapForQuery(source);
+        var qline = engine.GetCursorLine() + zia_query.LineOffset(source);
+        var sigInfo = ZiaCompletion.SignatureHelpForFile(qsource, sourcePath, qline, engine.editor.CursorCol);
+        if sigInfo == "" {
+            Hide();
+            return;
+        }
+        var activeParam = ActiveParameter(source, engine.GetCursorLine(), engine.editor.CursorCol);
+        label.SetText(sigInfo + "  [" + (activeParam + 1) + "]");
+        panel.SetPosition(engine.editor.GetCursorPixelX(), engine.editor.GetCursorPixelY() - 28);
+        panel.SetVisible(1);
+        visible = true;
+    }
+
+    expose func update(engine: editor_engine.EditorEngine) {
+        if visible == false { return; }
+        if engine == null or engine.editor == null {
+            Hide();
+            return;
+        }
+        if IsInsideCall(engine.GetText(), engine.GetCursorLine(), engine.editor.CursorCol) == false {
+            Hide();
+        }
+        if Input.Keyboard.WasPressed(Input.Keyboard.get_KEY_ESCAPE()) {
+            Hide();
+        }
+    }
+
+    expose func Hide() {
+        if visible {
+            panel.SetVisible(0);
+        }
+        visible = false;
+    }
+}
+
+func ActiveParameter(source: String, line: Integer, col0: Integer) -> Integer {
+    var flat = TextBeforeCursor(source, line, col0);
+    var depth = 0;
+    var param = 0;
+    var i = Str.Length(flat);
+    while i >= 1 {
+        var ch = Str.MidLen(flat, i, 1);
+        if ch == ")" {
+            depth = depth + 1;
+        } else if ch == "(" {
+            if depth == 0 {
+                return param;
+            }
+            depth = depth - 1;
+        } else if ch == "," and depth == 0 {
+            param = param + 1;
+        }
+        i = i - 1;
+    }
+    return 0;
+}
+
+func IsInsideCall(source: String, line: Integer, col0: Integer) -> Boolean {
+    var flat = TextBeforeCursor(source, line, col0);
+    var depth = 0;
+    var i = Str.Length(flat);
+    while i >= 1 {
+        var ch = Str.MidLen(flat, i, 1);
+        if ch == ")" {
+            depth = depth + 1;
+        } else if ch == "(" {
+            if depth == 0 { return true; }
+            depth = depth - 1;
+        }
+        i = i - 1;
+    }
+    return false;
+}
+
+func TextBeforeCursor(source: String, line: Integer, col0: Integer) -> String {
+    var lines = Str.Split(source, "\n");
+    var text = "";
+    var i = 0;
+    while i < line and i < Seq.get_Length(lines) {
+        var part = Obj.ToString(Seq.Get(lines, i));
+        if i == line - 1 {
+            if col0 > 0 {
+                text = text + Str.Left(part, col0);
+            }
+        } else {
+            text = text + part + "\n";
+        }
+        i = i + 1;
+    }
+    return text;
+}

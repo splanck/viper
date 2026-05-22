@@ -58,6 +58,9 @@ class SettingsManager {
     expose Boolean minimapVisible; // Whether the minimap panel is shown.
     expose Boolean autoCheckOnSave;// Whether live diagnostics run on edit.
     expose Boolean codeFolding;    // Whether the editor offers code-folding regions.
+    expose Boolean restoreSession; // Restore open tabs and cursor state on startup.
+    expose Boolean restoreLastProject; // Restore last project tree on startup.
+    expose Boolean confirmOnExitWithUnsavedChanges; // Guard destructive close paths.
     expose Integer tabWidth;       // Tab width in spaces (2..8).
     expose String  settingsDir;    // ~/.viperide (resolved at SetupPath).
     expose String  settingsPath;   // settingsDir/settings.ini.
@@ -71,6 +74,9 @@ class SettingsManager {
         minimapVisible = true;
         autoCheckOnSave = true;
         codeFolding    = true;
+        restoreSession = true;
+        restoreLastProject = true;
+        confirmOnExitWithUnsavedChanges = true;
         tabWidth       = 4;
         settingsDir    = "";
         settingsPath   = "";
@@ -137,6 +143,21 @@ class SettingsManager {
             codeFolding = cfStr == "1";
         }
 
+        var rsStr = Ini.Get(ini, "settings", "restoreSession");
+        if rsStr != "" {
+            restoreSession = rsStr == "1";
+        }
+
+        var rpStr = Ini.Get(ini, "settings", "restoreLastProject");
+        if rpStr != "" {
+            restoreLastProject = rpStr == "1";
+        }
+
+        var ceStr = Ini.Get(ini, "settings", "confirmOnExitWithUnsavedChanges");
+        if ceStr != "" {
+            confirmOnExitWithUnsavedChanges = ceStr == "1";
+        }
+
         var twStr = Ini.Get(ini, "settings", "tabWidth");
         if twStr != "" {
             var tw = Convert.ToInt(twStr);
@@ -172,6 +193,21 @@ class SettingsManager {
             Ini.Set(ini, "settings", "codeFolding", "1");
         } else {
             Ini.Set(ini, "settings", "codeFolding", "0");
+        }
+        if restoreSession {
+            Ini.Set(ini, "settings", "restoreSession", "1");
+        } else {
+            Ini.Set(ini, "settings", "restoreSession", "0");
+        }
+        if restoreLastProject {
+            Ini.Set(ini, "settings", "restoreLastProject", "1");
+        } else {
+            Ini.Set(ini, "settings", "restoreLastProject", "0");
+        }
+        if confirmOnExitWithUnsavedChanges {
+            Ini.Set(ini, "settings", "confirmOnExitWithUnsavedChanges", "1");
+        } else {
+            Ini.Set(ini, "settings", "confirmOnExitWithUnsavedChanges", "0");
         }
         Ini.Set(ini, "settings", "tabWidth", "" + tabWidth);
         var content = Ini.Format(ini);

@@ -6,6 +6,8 @@ bind IO = Viper.IO;
 bind Viper.IO.Path as Path;
 bind Viper.IO.Dir as Dir;
 bind Viper.String as Str;
+bind FileIndex = Viper.Workspace.FileIndex;
+bind "../core/document_manager";
 
 // ============================================================================
 // MODULE: project_manager
@@ -113,8 +115,8 @@ class ProjectManager {
     ///          the full path back without re-walking the tree.
     func BuildTree(dirPath: String, parentNode: GUI.TreeNode) {
         for dirName in Dir.DirsSeq(dirPath) {
-            if ShouldExclude(dirName) == false {
-                var fullPath = Path.Join(dirPath, dirName);
+            var fullPath = Path.Join(dirPath, dirName);
+            if ShouldExcludePath(fullPath, true) == false {
                 var folderNode = treeView.AddNode(parentNode, dirName);
                 GUI.TreeView.Node.SetData(folderNode, fullPath);
 
@@ -123,8 +125,8 @@ class ProjectManager {
         }
 
         for fileName in Dir.FilesSeq(dirPath) {
-            if ShouldExcludeFile(fileName) == false {
-                var fullPath = Path.Join(dirPath, fileName);
+            var fullPath = Path.Join(dirPath, fileName);
+            if ShouldExcludePath(fullPath, false) == false {
                 var fileNode = treeView.AddNode(parentNode, fileName);
                 GUI.TreeView.Node.SetData(fileNode, fullPath);
             }
@@ -183,6 +185,97 @@ class ProjectManager {
         }
 
         return false;
+    }
+
+    func ShouldExcludePath(fullPath: String, isDir: Boolean) -> Boolean {
+        if project == null or project.rootPath == "" {
+            if isDir { return ShouldExclude(Path.Name(fullPath)); }
+            return ShouldExcludeFile(Path.Name(fullPath));
+        }
+        var rel = RelativePath(fullPath);
+        if isDir and Str.EndsWith(rel, "/") == false {
+            rel = rel + "/";
+        }
+        return FileIndex.ShouldIgnore(project.rootPath, rel, "");
+    }
+
+    expose func SelectedPath() -> String {
+        if treeView == null { return ""; }
+        var selected = treeView.GetSelected();
+        if selected == null { return ""; }
+        return GUI.TreeView.Node.GetData(selected);
+    }
+
+    expose func RenameSelected(newName: String,
+                               docMgr: document_manager.DocumentManager) -> String {
+        var oldPath = SelectedPath();
+        if oldPath == "" or newName == "" { return ""; }
+        var newPath = Path.Join(Path.Dir(oldPath), newName);
+        if IO.File.Exists(newPath) or Dir.Exists(newPath) {
+            return "";
+        }
+        if IO.File.Exists(oldPath) {
+            IO.File.Move(oldPath, newPath);
+            if docMgr != null {
+                docMgr.UpdatePath(oldPath, newPath);
+            }
+        } else if Dir.Exists(oldPath) {
+            IO.File.Move(oldPath, newPath);
+            if docMgr != null {
+                var i = 0;
+                while i < docMgr.GetCount() {
+                    var doc = docMgr.documents.get(i);
+                    if Str.StartsWith(doc.filePath, oldPath + Path.Sep()) {
+                        var suffix = Str.Mid(doc.filePath, Str.Length(oldPath + Path.Sep()) + 1);
+                        docMgr.UpdatePath(doc.filePath, Path.Join(newPath, suffix));
+                    }
+                    i = i + 1;
+                }
+            }
+        } else {
+            return "";
+        }
+        RefreshTree();
+        return newPath;
+    }
+
+    expose func DeleteSelected(docMgr: document_manager.DocumentManager) -> Boolean {
+        var path = SelectedPath();
+        if path == "" { return false; }
+        if IO.File.Exists(path) {
+            IO.File.Delete(path);
+            CloseOpenDocumentsUnder(path, docMgr);
+        } else if Dir.Exists(path) {
+            Dir.RemoveAll(path);
+            CloseOpenDocumentsUnder(path, docMgr);
+        } else {
+            return false;
+        }
+        RefreshTree();
+        return true;
+    }
+
+    func CloseOpenDocumentsUnder(path: String,
+                                 docMgr: document_manager.DocumentManager) {
+        if docMgr == null { return; }
+        var i = docMgr.GetCount() - 1;
+        while i >= 0 {
+            var doc = docMgr.documents.get(i);
+            if doc.filePath == path or Str.StartsWith(doc.filePath, path + Path.Sep()) {
+                docMgr.CloseDocument(i);
+            }
+            i = i - 1;
+        }
+    }
+
+    expose func RelativePath(fullPath: String) -> String {
+        if project == null or project.rootPath == "" { return fullPath; }
+        var root = project.rootPath;
+        var prefix = root + Path.Sep();
+        if Str.StartsWith(fullPath, prefix) {
+            return Str.Mid(fullPath, Str.Length(prefix) + 1);
+        }
+        return fullPath;
     }
 
     /// @brief Re-read the disk and rebuild the tree.

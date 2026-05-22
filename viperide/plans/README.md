@@ -32,4 +32,19 @@ Phase 0 is the first dependency because the current main loop, document model, c
 
 ## Status
 
-These are plans only. No implementation is implied by the presence of a plan file.
+- **Phase 0:** Implemented in the IDE app. The app now has a shared command
+  registry, document kinds, close prevention, structured location ids,
+  session restore, recent-project persistence, safer save/close paths,
+  project search navigation through `LocationStore`, and file-kind filters for
+  code, text, scene, and unsupported binary files.
+- **Phase 1:** Implemented in the IDE app on top of existing runtime
+  prerequisites. The editor now routes semantic features through explicit
+  language-service capabilities, owns a long-lived `Viper.Zia.ProjectIndex`,
+  uses structured definition/reference results, applies rename edits through a
+  workspace-edit helper, exposes multi-cursor commands, provides signature help,
+  and updates open documents during file-tree rename/delete.
+- **CTest:** `zia_viperide_phase0_phase1` is the focused regression gate for
+  these phases; `zia_smoke_viperide_project_compile` remains the project compile
+  smoke gate.
+
+Later phases remain plans until their phase documents say otherwise.

@@ -1,0 +1,160 @@
+module command_registry;
+
+bind "../editor/language_service";
+
+bind Viper.GUI;
+bind Str = Viper.String;
+
+class CommandEntry {
+    expose String id;
+    expose String label;
+    expose String description;
+    expose String shortcut;
+    expose String capability;
+    expose Boolean showInPalette;
+
+    expose func init() {
+        id = "";
+        label = "";
+        description = "";
+        shortcut = "";
+        capability = "";
+        showInPalette = true;
+    }
+}
+
+class CommandRegistry {
+    expose List[CommandEntry] commands;
+
+    expose func init() {
+        commands = [];
+        RegisterDefaults();
+    }
+
+    expose func Add(id: String,
+                    label: String,
+                    description: String,
+                    shortcut: String,
+                    capability: String,
+                    showInPalette: Boolean) {
+        var cmd = new CommandEntry();
+        cmd.id = id;
+        cmd.label = label;
+        cmd.description = description;
+        cmd.shortcut = shortcut;
+        cmd.capability = capability;
+        cmd.showInPalette = showInPalette;
+        commands.add(cmd);
+    }
+
+    expose func RegisterDefaults() {
+        Add("new", "New File", "Create a new untitled file", "Ctrl+N", "", true);
+        Add("open", "Open File...", "Open a file from disk", "Ctrl+O", "", true);
+        Add("save", "Save", "Save the current file", "Ctrl+S", "", true);
+        Add("saveall", "Save All", "Save all open files", "Ctrl+Shift+S", "", true);
+        Add("close", "Close File", "Close the current tab", "Ctrl+W", "", true);
+        Add("reload", "Reload File", "Reload file from disk", "Ctrl+Shift+R", "", true);
+        Add("find", "Find / Replace", "Open the find bar", "Ctrl+F", "", true);
+        Add("goto", "Go To Line", "Jump to a specific line number", "Ctrl+G", "", true);
+        Add("build", "Build", "Compile the current file or project", "Ctrl+Shift+B", "", true);
+        Add("buildrun", "Build and Run", "Build and run the current file or project", "F5", "", true);
+        Add("run", "Run without Build", "Run without compiling first", "Ctrl+F5", "", true);
+        Add("togglesidebar", "Toggle Sidebar", "Show or hide the file tree", "Ctrl+B", "", true);
+        Add("statusbar", "Toggle Status Bar", "Show or hide the status bar", "", "", true);
+        Add("zoomin", "Zoom In", "Increase editor font size", "Ctrl+=", "", true);
+        Add("zoomout", "Zoom Out", "Decrease editor font size", "Ctrl+-", "", true);
+        Add("zoomreset", "Reset Zoom", "Reset editor font size to default", "Ctrl+0", "", true);
+        Add("toggletheme", "Toggle Theme", "Switch between dark and light theme", "Ctrl+Shift+T", "", true);
+        Add("fullscreen", "Toggle Fullscreen", "Enter or exit fullscreen mode", "F11", "", true);
+        Add("minimap", "Toggle Minimap", "Show or hide the minimap panel", "Ctrl+Shift+M", "", true);
+        Add("settings", "Settings", "View and adjust IDE settings", "Ctrl+,", "", true);
+        Add("undo", "Undo", "Undo last action", "Ctrl+Z", "", true);
+        Add("redo", "Redo", "Redo last undone action", "Ctrl+Y", "", true);
+        Add("cut", "Cut", "Cut selection", "Ctrl+X", "", false);
+        Add("copy", "Copy", "Copy selection", "Ctrl+C", "", false);
+        Add("paste", "Paste", "Paste clipboard", "Ctrl+V", "", false);
+        Add("selectall", "Select All", "Select the full document", "Ctrl+A", "", true);
+        Add("gotodef", "Go To Definition", "Jump to symbol definition", "F12", "definition", true);
+        Add("findrefs", "Find References", "Find semantic references", "Shift+F12", "references", true);
+        Add("rename", "Rename Symbol", "Rename a semantic symbol", "F2", "rename", true);
+        Add("nexterror", "Next Error", "Jump to next diagnostic", "F8", "diagnostics", true);
+        Add("preverror", "Previous Error", "Jump to previous diagnostic", "Shift+F8", "diagnostics", true);
+        Add("searchproject", "Search in Project", "Find text across project files", "Ctrl+Shift+F", "", true);
+        Add("symboloutline", "Symbol Outline", "Toggle document symbol list", "Ctrl+Shift+O", "symbols", true);
+        Add("completion_trigger", "Trigger Completion", "Show completion suggestions", "Ctrl+Space", "completion", false);
+        Add("addnextoccurrence", "Add Next Occurrence", "Add a cursor at the next matching word", "Ctrl+D", "", true);
+        Add("skipoccurrence", "Skip Occurrence", "Move to the next matching word", "Ctrl+K Ctrl+D", "", true);
+        Add("selectalloccurrences", "Select All Occurrences", "Select every matching word", "Ctrl+Shift+L", "", true);
+        Add("clearcursors", "Clear Extra Cursors", "Remove secondary cursors", "Escape", "", true);
+    }
+
+    expose func InstallShortcuts() {
+        Shortcuts.Clear();
+        var i = 0;
+        while i < commands.count() {
+            var cmd = commands.get(i);
+            if cmd.shortcut != "" {
+                Shortcuts.Register(cmd.id, cmd.shortcut, cmd.label);
+            }
+            i = i + 1;
+        }
+    }
+
+    expose func PopulatePalette(palette: GUI.CommandPalette,
+                                service: language_service.LanguageService) {
+        if palette == null { return; }
+        palette.Clear();
+        var i = 0;
+        while i < commands.count() {
+            var cmd = commands.get(i);
+            if cmd.showInPalette and IsSupported(cmd, service) {
+                palette.AddCommandWithShortcut(cmd.id, cmd.label, cmd.description, cmd.shortcut);
+            }
+            i = i + 1;
+        }
+    }
+
+    expose func ApplyCapabilities(service: language_service.LanguageService) {
+        var i = 0;
+        while i < commands.count() {
+            var cmd = commands.get(i);
+            if cmd.shortcut != "" {
+                if IsSupported(cmd, service) {
+                    Shortcuts.SetEnabled(cmd.id, 1);
+                } else {
+                    Shortcuts.SetEnabled(cmd.id, 0);
+                }
+            }
+            i = i + 1;
+        }
+    }
+
+    expose func NormalizeId(id: String) -> String {
+        if id == "sidebar" { return "togglesidebar"; }
+        return id;
+    }
+
+    expose func IsKnown(id: String) -> Boolean {
+        var norm = NormalizeId(id);
+        var i = 0;
+        while i < commands.count() {
+            if commands.get(i).id == norm { return true; }
+            i = i + 1;
+        }
+        return false;
+    }
+
+    expose func IsSupported(cmd: CommandEntry,
+                            service: language_service.LanguageService) -> Boolean {
+        if cmd.capability == "" { return true; }
+        if service == null { return false; }
+        if cmd.capability == "completion" { return service.canComplete; }
+        if cmd.capability == "diagnostics" { return service.canDiagnose; }
+        if cmd.capability == "definition" { return service.canGoToDefinition; }
+        if cmd.capability == "references" { return service.canFindReferences; }
+        if cmd.capability == "rename" { return service.canRename; }
+        if cmd.capability == "signature" { return service.canSignatureHelp; }
+        if cmd.capability == "symbols" { return service.canDocumentSymbols; }
+        return true;
+    }
+}

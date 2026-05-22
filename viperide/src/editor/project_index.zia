@@ -1,0 +1,121 @@
+module project_index;
+
+bind "../core/document_manager";
+bind "../core/project_manager";
+
+bind ProjectIndex = Viper.Zia.ProjectIndex;
+bind FileIndex = Viper.Workspace.FileIndex;
+bind Seq = Viper.Collections.Seq;
+bind Map = Viper.Collections.Map;
+bind IO = Viper.IO;
+
+class ProjectIndexer {
+    expose Any handle;
+    expose String rootPath;
+    expose Boolean valid;
+
+    expose func init() {
+        handle = null;
+        rootPath = "";
+        valid = false;
+    }
+
+    expose func EnsureProject(projMgr: project_manager.ProjectManager,
+                              docMgr: document_manager.DocumentManager) {
+        var root = "";
+        if projMgr != null and projMgr.project != null and projMgr.project.isOpen {
+            root = projMgr.project.rootPath;
+        }
+        if root == "" {
+            var active = docMgr.GetActive();
+            if active != null {
+                var activeDoc = active!;
+                if activeDoc.filePath != "" {
+                    root = Viper.IO.Path.Dir(activeDoc.filePath);
+                }
+            }
+        }
+        if root == "" { return; }
+        if root != rootPath {
+            Open(root, docMgr);
+        } else {
+            SyncOpenDocuments(docMgr);
+        }
+    }
+
+    expose func Open(root: String, docMgr: document_manager.DocumentManager) {
+        Destroy();
+        rootPath = root;
+        handle = ProjectIndex.New(root);
+        valid = ProjectIndex.IsValid(handle);
+        if valid {
+            IndexWorkspace();
+            SyncOpenDocuments(docMgr);
+        }
+    }
+
+    expose func Destroy() {
+        if handle != null and valid {
+            ProjectIndex.Destroy(handle);
+        }
+        handle = null;
+        rootPath = "";
+        valid = false;
+    }
+
+    expose func IndexWorkspace() {
+        if valid == false { return; }
+        var files = FileIndex.Enumerate(rootPath, ".zia", "", false);
+        var i = 0;
+        while i < Seq.get_Length(files) {
+            var entry = Seq.Get(files, i);
+            var path = Map.GetStr(entry, "path");
+            if IO.File.Exists(path) {
+                ProjectIndex.UpdateFile(handle, path, IO.File.ReadAllText(path));
+            }
+            i = i + 1;
+        }
+    }
+
+    expose func SyncOpenDocuments(docMgr: document_manager.DocumentManager) {
+        if valid == false or docMgr == null { return; }
+        var i = 0;
+        while i < docMgr.GetCount() {
+            var doc = docMgr.documents.get(i);
+            if doc.language == "zia" and doc.filePath != "" {
+                ProjectIndex.UpdateFile(handle, doc.filePath, doc.content);
+            }
+            i = i + 1;
+        }
+    }
+
+    expose func RemoveFile(path: String) {
+        if valid == false { return; }
+        ProjectIndex.RemoveFile(handle, path);
+    }
+
+    expose func Definition(path: String,
+                           source: String,
+                           line: Integer,
+                           col: Integer) -> Any {
+        if valid == false { return null; }
+        return ProjectIndex.Definition(handle, path, source, line, col);
+    }
+
+    expose func References(path: String,
+                           source: String,
+                           line: Integer,
+                           col: Integer) -> Any {
+        if valid == false { return null; }
+        return ProjectIndex.References(handle, path, source, line, col);
+    }
+
+    expose func RenameEdits(path: String,
+                            source: String,
+                            line: Integer,
+                            col: Integer,
+                            newName: String) -> Any {
+        if valid == false { return null; }
+        return ProjectIndex.RenameEdits(handle, path, source, line, col, newName);
+    }
+}

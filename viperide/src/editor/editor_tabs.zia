@@ -1,6 +1,7 @@
 module editor_tabs;
 
 bind "../core/document";
+bind "../core/document_manager";
 bind Viper.GUI as GUI;
 
 // ============================================================================
@@ -106,5 +107,26 @@ class EditorTabs {
     /// @brief Number of open tabs.
     expose func GetCount() -> Integer {
         return tabBar.TabCount;
+    }
+
+    expose func RefreshFromDocuments(docMgr: document_manager.DocumentManager) {
+        while tabBar.TabCount > docMgr.GetCount() {
+            RemoveTab(tabBar.TabCount - 1);
+        }
+        var i = 0;
+        while i < docMgr.GetCount() and i < tabBar.TabCount {
+            var doc = docMgr.documents.get(i);
+            SetTitle(i, doc.fileName);
+            if doc.filePath != "" {
+                SetTooltip(i, doc.filePath);
+            } else {
+                SetTooltip(i, doc.fileName);
+            }
+            SetModified(i, doc.isModified);
+            i = i + 1;
+        }
+        if docMgr.activeIndex >= 0 {
+            SetActive(docMgr.activeIndex);
+        }
     }
 }

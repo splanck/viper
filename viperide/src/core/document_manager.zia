@@ -69,6 +69,7 @@ class DocumentManager {
         var doc = new document.Document();
         doc.fileName = "Untitled " + untitledCount;
         doc.language = "zia";
+        doc.kind = file_utils.DOC_KIND_CODE;
         doc.isNew = true;
         // Pre-populate with a `module` skeleton so the Zia completion engine
         // can parse the buffer as the user types. Without this, every cursor
@@ -98,6 +99,7 @@ class DocumentManager {
         doc.fileName = Path.Name(path);
         doc.content = IO.File.ReadAllText(path);
         doc.language = file_utils.DetectLanguage(path);
+        doc.kind = file_utils.DetectKind(path);
         doc.isNew = false;
         doc.isModified = false;
         if IO.File.Exists(path) {
@@ -114,7 +116,12 @@ class DocumentManager {
     ///         to save to — caller should fall back to SaveAs).
     expose func SaveActive() -> Boolean {
         if activeIndex < 0 { return false; }
-        var doc = documents.get(activeIndex);
+        return SaveDocument(activeIndex);
+    }
+
+    expose func SaveDocument(index: Integer) -> Boolean {
+        if index < 0 or index >= documents.count() { return false; }
+        var doc = documents.get(index);
         if doc.isNew { return false; }
         IO.File.WriteAllText(doc.filePath, doc.content);
         doc.isModified = false;
@@ -133,11 +140,21 @@ class DocumentManager {
         doc.filePath = path;
         doc.fileName = Path.Name(path);
         doc.language = file_utils.DetectLanguage(path);
+        doc.kind = file_utils.DetectKind(path);
         doc.isNew = false;
         IO.File.WriteAllText(path, doc.content);
         doc.isModified = false;
         doc.lastModifiedOnDisk = IO.File.Modified(path);
         return true;
+    }
+
+    expose func SaveDocumentAs(index: Integer, path: String) -> Boolean {
+        if index < 0 or index >= documents.count() { return false; }
+        var oldActive = activeIndex;
+        activeIndex = index;
+        var ok = SaveAs(path);
+        activeIndex = oldActive;
+        return ok;
     }
 
     /// @brief Save every modified, non-untitled document.
@@ -157,6 +174,29 @@ class DocumentManager {
             i = i + 1;
         }
         return count;
+    }
+
+    expose func HasExternalChange(index: Integer) -> Boolean {
+        if index < 0 or index >= documents.count() { return false; }
+        var doc = documents.get(index);
+        if doc.isNew { return false; }
+        if IO.File.Exists(doc.filePath) == false { return false; }
+        var current = IO.File.Modified(doc.filePath);
+        return doc.lastModifiedOnDisk > 0 and current > doc.lastModifiedOnDisk;
+    }
+
+    expose func UpdatePath(oldPath: String, newPath: String) -> Boolean {
+        var idx = FindByPath(oldPath);
+        if idx < 0 { return false; }
+        var doc = documents.get(idx);
+        doc.filePath = newPath;
+        doc.fileName = Path.Name(newPath);
+        doc.language = file_utils.DetectLanguage(newPath);
+        doc.kind = file_utils.DetectKind(newPath);
+        if IO.File.Exists(newPath) {
+            doc.lastModifiedOnDisk = IO.File.Modified(newPath);
+        }
+        return true;
     }
 
     /// @brief Close the document at the given index.

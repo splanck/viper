@@ -1,6 +1,12 @@
 module file_utils;
 
 bind Path = Viper.IO.Path;
+bind Str = Viper.String;
+
+final DOC_KIND_CODE: Integer = 1;
+final DOC_KIND_TEXT: Integer = 2;
+final DOC_KIND_SCENE: Integer = 3;
+final DOC_KIND_BINARY_UNSUPPORTED: Integer = 4;
 
 // ============================================================================
 // MODULE: file_utils
@@ -32,7 +38,7 @@ bind Path = Viper.IO.Path;
 /// @return Language tag suitable for `Document.language` and the
 ///         editor's `SetLanguage` call.
 func DetectLanguage(path: String) -> String {
-    var ext = Path.Ext(path);
+    var ext = Str.ToLower(Path.Ext(path));
     if ext == ".zia"  { return "zia"; }
     if ext == ".bas"  { return "basic"; }
     if ext == ".vb"   { return "basic"; }
@@ -40,5 +46,52 @@ func DetectLanguage(path: String) -> String {
     if ext == ".txt"  { return "text"; }
     if ext == ".md"   { return "text"; }
     if ext == ".json" { return "text"; }
+    if ext == ".scene" { return "text"; }
+    if ext == ".level" { return "text"; }
     return "text";
+}
+
+/// @brief Map a file path to an IDE document kind.
+func DetectKind(path: String) -> Integer {
+    var ext = Str.ToLower(Path.Ext(path));
+    if ext == ".zia" or ext == ".bas" or ext == ".vb" {
+        return DOC_KIND_CODE;
+    }
+    if ext == ".scene" or ext == ".level" {
+        return DOC_KIND_SCENE;
+    }
+    if ext == ".json" or ext == ".md" or ext == ".txt" or ext == ".il" {
+        return DOC_KIND_TEXT;
+    }
+    if ext == ".png" or ext == ".jpg" or ext == ".jpeg" or ext == ".gif" or ext == ".bmp" {
+        return DOC_KIND_BINARY_UNSUPPORTED;
+    }
+    return DOC_KIND_TEXT;
+}
+
+func KindName(kind: Integer) -> String {
+    if kind == DOC_KIND_CODE { return "code"; }
+    if kind == DOC_KIND_TEXT { return "text"; }
+    if kind == DOC_KIND_SCENE { return "scene"; }
+    if kind == DOC_KIND_BINARY_UNSUPPORTED { return "binary"; }
+    return "text";
+}
+
+func KindFromName(name: String) -> Integer {
+    if name == "code" { return DOC_KIND_CODE; }
+    if name == "text" { return DOC_KIND_TEXT; }
+    if name == "scene" { return DOC_KIND_SCENE; }
+    if name == "binary" { return DOC_KIND_BINARY_UNSUPPORTED; }
+    return DOC_KIND_TEXT;
+}
+
+func OpenDialogFilter() -> String {
+    return "*.zia;*.bas;*.vb;*.txt;*.md;*.json;*.scene;*.level;*.il";
+}
+
+func SaveDialogFilter(kind: Integer, language: String) -> String {
+    if kind == DOC_KIND_SCENE { return "*.scene;*.level;*.json"; }
+    if language == "basic" { return "*.bas;*.vb"; }
+    if language == "zia" { return "*.zia"; }
+    return "*.txt;*.md;*.json;*.scene;*.level;*.il";
 }

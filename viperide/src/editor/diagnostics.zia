@@ -3,6 +3,7 @@ module diagnostics;
 bind "../ui/app_shell";
 bind "../editor/editor_engine";
 bind "../build/diagnostic";
+bind "../services/locations";
 
 bind ZiaToolchain = Viper.Zia.Toolchain;
 bind "../editor/zia_query";
@@ -88,7 +89,8 @@ class LiveDiagnostics {
     /// @note On a clean check, all three output surfaces (listbox,
     ///       minimap, editor highlights) are cleared.
     expose func update(engine: editor_engine.EditorEngine,
-                       shell: app_shell.AppShell) -> Integer {
+                       shell: app_shell.AppShell,
+                       locStore: locations.LocationStore) -> Integer {
         if enabled == false { return 0; }
         if engine == null or engine.editor == null { return 0; }
 
@@ -166,7 +168,9 @@ class LiveDiagnostics {
             var diagText = displayPath + ":" + diagLine + "  " + sevLabel + "[" + code + "]: " + msg;
             var item = shell.diagListBox.AddItem(diagText);
             shownCount = shownCount + 1;
-            GUI.ListBox.ItemSetData(item, displayPath + "\t" + diagLine);
+            var locId = locStore.Add(displayPath, diagLine, diagCol, endLine, endCol,
+                                     locations.KIND_DIAGNOSTIC, msg);
+            GUI.ListBox.ItemSetData(item, locId);
             shell.minimap.AddMarker(diagLine, 1, markerColor);
 
             // Add inline highlight span (underline the error location)

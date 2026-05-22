@@ -1,0 +1,128 @@
+module session;
+
+bind "document_manager";
+bind "project_manager";
+bind "../editor/editor_tabs";
+bind "../services/file_utils";
+
+bind Ini = Viper.Text.Ini;
+bind IO = Viper.IO;
+bind Dir = Viper.IO.Dir;
+bind Path = Viper.IO.Path;
+bind Convert = Viper.Core.Convert;
+
+class SessionManager {
+    expose String settingsPath;
+
+    expose func init() {
+        settingsPath = "";
+    }
+
+    expose func Setup(path: String) {
+        settingsPath = path;
+    }
+
+    expose func Save(docMgr: document_manager.DocumentManager,
+                     projMgr: project_manager.ProjectManager) {
+        if settingsPath == "" { return; }
+        Dir.MakeAll(Path.Dir(settingsPath));
+
+        var content = "";
+        if IO.File.Exists(settingsPath) {
+            content = IO.File.ReadAllText(settingsPath);
+        }
+        var ini = Ini.Parse(content);
+        Ini.Set(ini, "settings", "restoreSession", "1");
+        Ini.Set(ini, "settings", "restoreLastProject", "1");
+
+        var projectRoot = "";
+        if projMgr != null and projMgr.project != null and projMgr.project.isOpen {
+            projectRoot = projMgr.project.rootPath;
+        }
+        Ini.Set(ini, "session", "projectRoot", projectRoot);
+        Ini.Set(ini, "session", "count", "" + docMgr.GetCount());
+
+        var activePath = "";
+        var active = docMgr.GetActive();
+        if active != null {
+            activePath = active.filePath;
+        }
+        Ini.Set(ini, "session", "activePath", activePath);
+        Ini.Set(ini, "session", "activeIndex", "" + docMgr.activeIndex);
+
+        var i = 0;
+        while i < docMgr.GetCount() {
+            var doc = docMgr.documents.get(i);
+            var section = "session.file." + i;
+            Ini.Set(ini, section, "path", doc.filePath);
+            Ini.Set(ini, section, "kind", file_utils.KindName(doc.kind));
+            Ini.Set(ini, section, "cursorLine", "" + doc.cursorLine);
+            Ini.Set(ini, section, "cursorCol", "" + doc.cursorCol);
+            Ini.Set(ini, section, "scrollLine", "" + doc.scrollLine);
+            i = i + 1;
+        }
+
+        if projectRoot != "" {
+            Ini.Set(ini, "recent", "count", "1");
+            Ini.Set(ini, "recent", "path.0", projectRoot);
+        }
+
+        IO.File.WriteAllText(settingsPath, Ini.Format(ini));
+    }
+
+    expose func Restore(docMgr: document_manager.DocumentManager,
+                        projMgr: project_manager.ProjectManager,
+                        tabs: editor_tabs.EditorTabs) -> Integer {
+        if settingsPath == "" { return 0; }
+        if IO.File.Exists(settingsPath) == false { return 0; }
+
+        var ini = Ini.Parse(IO.File.ReadAllText(settingsPath));
+        var restoreSession = Ini.Get(ini, "settings", "restoreSession");
+        if restoreSession == "0" { return 0; }
+
+        var restoreProject = Ini.Get(ini, "settings", "restoreLastProject");
+        var projectRoot = Ini.Get(ini, "session", "projectRoot");
+        if restoreProject != "0" and projectRoot != "" and Dir.Exists(projectRoot) {
+            projMgr.OpenFolder(projectRoot);
+        }
+
+        var count = Convert.ToInt(Ini.Get(ini, "session", "count"));
+        var restored = 0;
+        var i = 0;
+        while i < count {
+            var section = "session.file." + i;
+            var path = Ini.Get(ini, section, "path");
+            if path != "" and IO.File.Exists(path) {
+                var doc = docMgr.OpenFile(path);
+                doc.kind = file_utils.DetectKind(path);
+                doc.cursorLine = Convert.ToInt(Ini.Get(ini, section, "cursorLine"));
+                doc.cursorCol = Convert.ToInt(Ini.Get(ini, section, "cursorCol"));
+                doc.scrollLine = Convert.ToInt(Ini.Get(ini, section, "scrollLine"));
+                if doc.cursorLine <= 0 { doc.cursorLine = 1; }
+                if doc.cursorCol <= 0 { doc.cursorCol = 1; }
+                if doc.scrollLine <= 0 { doc.scrollLine = 1; }
+                tabs.AddTab(doc.fileName, 1);
+                tabs.SetTooltip(docMgr.activeIndex, doc.filePath);
+                restored = restored + 1;
+            }
+            i = i + 1;
+        }
+
+        if restored > 0 {
+            var activePath = Ini.Get(ini, "session", "activePath");
+            var activeIdx = -1;
+            if activePath != "" {
+                activeIdx = docMgr.FindByPath(activePath);
+            }
+            if activeIdx < 0 {
+                activeIdx = Convert.ToInt(Ini.Get(ini, "session", "activeIndex"));
+            }
+            if activeIdx < 0 or activeIdx >= docMgr.GetCount() {
+                activeIdx = 0;
+            }
+            docMgr.SetActive(activeIdx);
+            tabs.SetActive(activeIdx);
+        }
+        return restored;
+    }
+}

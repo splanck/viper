@@ -82,6 +82,8 @@ class AppShell {
     expose GUI.MenuItem miPaste;
     expose GUI.MenuItem miSelectAll;
     expose GUI.MenuItem miFind;
+    expose GUI.MenuItem miFindReferences;
+    expose GUI.MenuItem miRenameSymbol;
     expose GUI.MenuItem miPreferences;
 
     // View menu items
@@ -138,6 +140,8 @@ class AppShell {
     expose GUI.ContextMenu treeContextMenu;
     expose GUI.MenuItem ctxOpen;
     expose GUI.MenuItem ctxReveal;
+    expose GUI.MenuItem ctxRename;
+    expose GUI.MenuItem ctxDelete;
     expose GUI.MenuItem ctxNewFile;
     expose GUI.MenuItem ctxNewFolder;
 
@@ -150,10 +154,12 @@ class AppShell {
 
     // State
     expose Boolean sidebarVisible;
+    expose Integer activeSurfaceKind;
 
     /// @brief Initialize with sidebar visible. Build() must be called next.
     expose func init() {
         sidebarVisible = true;
+        activeSurfaceKind = 0;
     }
 
     /// @brief Construct the full IDE window and every chrome widget.
@@ -166,6 +172,7 @@ class AppShell {
     expose func Build(title: String, width: Integer, height: Integer) {
         // Create application window
         app = GUI.App.New(title, width, height);
+        app.SetPreventClose(true);
         GUI.Theme.SetDark();
 
         // Main vertical layout (fills entire window)
@@ -220,6 +227,10 @@ class AppShell {
         miSelectAll.SetShortcut("Ctrl+A");
         miFind = editMenu.AddItem("Find...");
         miFind.SetShortcut("Ctrl+F");
+        miFindReferences = editMenu.AddItem("Find References");
+        miFindReferences.SetShortcut("Shift+F12");
+        miRenameSymbol = editMenu.AddItem("Rename Symbol");
+        miRenameSymbol.SetShortcut("F2");
         editMenu.AddSeparator();
         miPreferences = editMenu.AddItem("Preferences...");
         miPreferences.SetShortcut("Ctrl+,");
@@ -334,6 +345,8 @@ class AppShell {
         ctxOpen = treeContextMenu.AddItem("Open File");
         treeContextMenu.AddSeparator();
         ctxReveal = treeContextMenu.AddItem("Reveal in Finder");
+        ctxRename = treeContextMenu.AddItem("Rename");
+        ctxDelete = treeContextMenu.AddItem("Delete");
         treeContextMenu.AddSeparator();
         ctxNewFile = treeContextMenu.AddItem("New File...");
         ctxNewFolder = treeContextMenu.AddItem("New Folder...");
@@ -356,6 +369,10 @@ class AppShell {
     /// @brief True if the user requested window close (clicked the X).
     expose func ShouldClose() -> Boolean {
         return app.ShouldClose;
+    }
+
+    expose func WasCloseRequested() -> Boolean {
+        return app.WasCloseRequested() != 0;
     }
 
     /// @brief Pump the event queue. Call once per frame before reading
@@ -431,6 +448,11 @@ class AppShell {
             sidebarVisible = true;
             splitPane.SetPosition(0.20);
         }
+    }
+
+    expose func SelectSurface(kind: Integer) {
+        activeSurfaceKind = kind;
+        editorRow.SetVisible(1);
     }
 
     /// @brief Resize to scalePct% of the monitor and center on screen.

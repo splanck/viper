@@ -1,0 +1,107 @@
+module phase0_phase1_probe;
+
+bind "commands/command_registry";
+bind "commands/edit_commands";
+bind "commands/search_commands";
+bind "core/document";
+bind "core/document_manager";
+bind "editor/language_service";
+bind "editor/project_index";
+bind "editor/signature";
+bind "services/file_utils";
+bind "services/locations";
+bind "services/workspace_edits";
+
+bind Terminal = Viper.Terminal;
+bind File = Viper.IO.File;
+bind Dir = Viper.IO.Dir;
+bind Path = Viper.IO.Path;
+bind TempFile = Viper.IO.TempFile;
+bind Seq = Viper.Collections.Seq;
+bind Map = Viper.Collections.Map;
+
+func fail(msg: String) {
+    Terminal.Say("RESULT: fail " + msg);
+}
+
+func assertTrue(cond: Boolean, msg: String) -> Boolean {
+    if cond == false {
+        fail(msg);
+        return false;
+    }
+    return true;
+}
+
+func main() {
+    if assertTrue(file_utils.DetectKind("LEVEL.Scene") == file_utils.DOC_KIND_SCENE,
+                  "scene kind case-insensitive") == false { return; }
+    if assertTrue(file_utils.DetectLanguage("game.BAS") == "basic",
+                  "basic language case-insensitive") == false { return; }
+
+    var registry = new command_registry.CommandRegistry();
+    if assertTrue(registry.NormalizeId("sidebar") == "togglesidebar",
+                  "sidebar command normalized") == false { return; }
+    if assertTrue(registry.IsKnown("rename"), "rename command registered") == false { return; }
+
+    var langMgr = new language_service.LanguageServiceManager();
+    var basicDoc = new document.Document();
+    basicDoc.language = "basic";
+    if assertTrue(langMgr.ForDocument(basicDoc).canGoToDefinition == false,
+                  "basic semantic commands disabled") == false { return; }
+    var ziaDoc = new document.Document();
+    ziaDoc.language = "zia";
+    ziaDoc.kind = file_utils.DOC_KIND_CODE;
+    if assertTrue(langMgr.ForDocument(ziaDoc).canRename,
+                  "zia rename capability enabled") == false { return; }
+
+    var locs = new locations.LocationStore();
+    var id = locs.Add("C:\\tmp\\a file.zia", 3, 4, 3, 8, locations.KIND_SEARCH, "hit");
+    var loc = locs.Get(id);
+    if assertTrue(loc != null and loc!.filePath == "C:\\tmp\\a file.zia",
+                  "location store preserves colon path") == false { return; }
+
+    if assertTrue(search_commands.LineMatches("foobar foo", "foo", false, true),
+                  "whole-word search finds later whole token") == false { return; }
+    if assertTrue(search_commands.LineMatches("Alpha", "alpha", false, false),
+                  "case-insensitive search") == false { return; }
+    if assertTrue(search_commands.LineMatches("Alpha", "alpha", true, false) == false,
+                  "case-sensitive search") == false { return; }
+
+    var sigSource = "module Demo;\nfunc f() { outer(inner(a, b), c); }\n";
+    if assertTrue(signature.ActiveParameter(sigSource, 2, 27) == 1,
+                  "nested signature active parameter") == false { return; }
+
+    if assertTrue(edit_commands.IsValidIdentifier("newName_1"),
+                  "valid rename identifier") == false { return; }
+    if assertTrue(edit_commands.IsValidIdentifier("1bad") == false,
+                  "invalid rename identifier") == false { return; }
+
+    var root = TempFile.CreateDirWithPrefix("viperide_phase_probe_");
+    var filePath = Path.Join(root, "main.zia");
+    File.WriteAllText(filePath, "module Main;\nfunc start() {\n    var oldName = 1;\n    var useName = oldName;\n}\n");
+    var docMgr = new document_manager.DocumentManager();
+    var doc = docMgr.OpenFile(filePath);
+
+    var edits = Seq.New();
+    var edit = Map.New();
+    Map.SetStr(edit, "file", filePath);
+    Map.SetInt(edit, "startLine", 4);
+    Map.SetInt(edit, "startColumn", 19);
+    Map.SetInt(edit, "endLine", 4);
+    Map.SetInt(edit, "endColumn", 26);
+    Map.SetStr(edit, "newText", "newName");
+    Seq.Push(edits, edit);
+    var applyResult = workspace_edits.ApplyRenameEdits(edits, docMgr);
+    if assertTrue(applyResult.success and doc.content != File.ReadAllText(filePath),
+                  "workspace edit updates open dirty document only") == false { return; }
+
+    var indexer = new project_index.ProjectIndexer();
+    indexer.Open(root, docMgr);
+    var refs = indexer.References(filePath, doc.content, 3, 8);
+    if assertTrue(refs != null and Seq.get_Length(refs) >= 1,
+                  "project index references from dirty buffer") == false { return; }
+    indexer.Destroy();
+
+    Dir.RemoveAll(root);
+    Terminal.Say("RESULT: ok");
+}

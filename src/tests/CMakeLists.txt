@@ -961,6 +961,14 @@ set_tests_properties(zia_smoke_viperide_project_compile PROPERTIES
         LABELS "zia;smoke"
         TIMEOUT 60)
 
+add_test(NAME zia_viperide_phase0_phase1
+        COMMAND $<TARGET_FILE:zia> "${CMAKE_SOURCE_DIR}/viperide/src/phase0_phase1_probe.zia"
+        WORKING_DIRECTORY "${CMAKE_SOURCE_DIR}/viperide/src")
+set_tests_properties(zia_viperide_phase0_phase1 PROPERTIES
+        PASS_REGULAR_EXPRESSION "RESULT: ok"
+        LABELS "zia;viperide;phase0;phase1"
+        TIMEOUT 60)
+
 add_test(NAME zia_smoke_vipersql
         COMMAND $<TARGET_FILE:zia> "${CMAKE_SOURCE_DIR}/examples/apps/vipersql/smoke_probe.zia"
         WORKING_DIRECTORY "${CMAKE_SOURCE_DIR}/examples/apps/vipersql")
