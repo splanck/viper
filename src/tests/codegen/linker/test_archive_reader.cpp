@@ -301,6 +301,55 @@ static std::vector<uint8_t> makeSyntheticBigObj() {
     return obj;
 }
 
+static std::vector<uint8_t> makeSyntheticCoffHighSectionSymbol() {
+    constexpr uint16_t kMachineAmd64 = 0x8664;
+    constexpr uint32_t kScnCntUninitializedData = 0x00000080;
+    constexpr uint32_t kScnMemRead = 0x40000000;
+    constexpr uint32_t kScnMemWrite = 0x80000000;
+    constexpr uint8_t kSymClassStatic = 3;
+    constexpr uint16_t kHighSection = 0x8001;
+    constexpr uint32_t sectionTableOff = 20;
+    constexpr uint32_t symbolTableOff = sectionTableOff + 40u * kHighSection;
+
+    std::vector<uint8_t> obj;
+    obj.reserve(symbolTableOff + 18 + 4);
+
+    appendLE16(obj, kMachineAmd64);
+    appendLE16(obj, kHighSection);
+    appendLE32(obj, 0);
+    appendLE32(obj, symbolTableOff);
+    appendLE32(obj, 1);
+    appendLE16(obj, 0);
+    appendLE16(obj, 0);
+
+    for (uint32_t i = 0; i < kHighSection; ++i) {
+        const std::string secName = ".bss";
+        for (size_t n = 0; n < 8; ++n)
+            obj.push_back(n < secName.size() ? static_cast<uint8_t>(secName[n]) : 0);
+        appendLE32(obj, 1);
+        appendLE32(obj, 0);
+        appendLE32(obj, 1);
+        appendLE32(obj, 0);
+        appendLE32(obj, 0);
+        appendLE32(obj, 0);
+        appendLE16(obj, 0);
+        appendLE16(obj, 0);
+        appendLE32(obj, kScnCntUninitializedData | kScnMemRead | kScnMemWrite);
+    }
+
+    const std::string symName = "guard";
+    for (size_t i = 0; i < 8; ++i)
+        obj.push_back(i < symName.size() ? static_cast<uint8_t>(symName[i]) : 0);
+    appendLE32(obj, 0);
+    appendLE16(obj, kHighSection);
+    appendLE16(obj, 0);
+    obj.push_back(kSymClassStatic);
+    obj.push_back(0);
+
+    appendLE32(obj, 4);
+    return obj;
+}
+
 static std::vector<uint8_t> makeSyntheticCoffComdat(uint8_t selection) {
     constexpr uint16_t kMachineAmd64 = 0x8664;
     constexpr uint32_t kScnCntCode = 0x00000020;
@@ -572,6 +621,21 @@ static void runPortableArchiveReaderTests() {
         CHECK(obj.symbols[1].sectionIndex == 1);
     }
 
+    // --- Standard COFF high-bit section numbers are real sections, not negative specials ---
+    {
+        const auto bytes = makeSyntheticCoffHighSectionSymbol();
+        ObjFile obj;
+        std::ostringstream err;
+        CHECK(readObjFile(bytes.data(), bytes.size(), "synthetic-high-section.obj", obj, err));
+        CHECK(err.str().empty());
+        CHECK(obj.format == ObjFileFormat::COFF);
+        CHECK(obj.sections.size() == 0x8002);
+        CHECK(obj.symbols.size() == 2);
+        CHECK(obj.symbols[1].name == "guard");
+        CHECK(obj.symbols[1].binding == ObjSymbol::Local);
+        CHECK(obj.symbols[1].sectionIndex == 0x8001);
+    }
+
     // --- COFF COMDAT section-definition aux records set duplicate policy ---
     {
         const auto bytes = makeSyntheticCoffComdat(/*IMAGE_COMDAT_SELECT_ANY=*/2);
@@ -798,10 +862,9 @@ int main() {
         CHECK(parseErr.str().empty());
         ASSERT(syntheticObj.sections.size() >= 2);
         CHECK(syntheticObj.sections[1].name == ".bss");
-        CHECK(syntheticObj.sections[1].data.size() == 8);
-        CHECK(std::all_of(syntheticObj.sections[1].data.begin(),
-                          syntheticObj.sections[1].data.end(),
-                          [](uint8_t b) { return b == 0; }));
+        CHECK(syntheticObj.sections[1].zeroFill);
+        CHECK(syntheticObj.sections[1].data.empty());
+        CHECK(objSectionMemSize(syntheticObj.sections[1]) == 8);
     }
 
     if (gFail == 0) {

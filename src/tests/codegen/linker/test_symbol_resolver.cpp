@@ -255,6 +255,26 @@ int main() {
         CHECK(globalSyms["inline_func"].objIndex == 0);
     }
 
+    // --- COMDAT ANY duplicate symbols may live in differently keyed sections ---
+    {
+        auto obj1 =
+            makeComdatObj("a.o", "rtti_descriptor", ComdatSelection::Any, {0x00}, "rtti-key-a");
+        auto obj2 =
+            makeComdatObj("b.o", "rtti_descriptor", ComdatSelection::Any, {0x01}, "rtti-key-b");
+
+        std::vector<ObjFile> initObjs = {obj1, obj2};
+        std::vector<Archive> archives;
+        std::unordered_map<std::string, GlobalSymEntry> globalSyms;
+        std::vector<ObjFile> allObjects;
+        std::unordered_set<std::string> dynamicSyms;
+        std::ostringstream err;
+
+        bool ok = resolveSymbols(initObjs, archives, globalSyms, allObjects, dynamicSyms, err);
+        CHECK(ok);
+        CHECK(err.str().empty());
+        CHECK(globalSyms["rtti_descriptor"].objIndex == 0);
+    }
+
     // --- COMDAT SAME_SIZE diagnoses mismatched section sizes ---
     {
         auto obj1 = makeComdatObj("a.o", "same_size_func", ComdatSelection::SameSize, {0xC3});
@@ -362,16 +382,20 @@ int main() {
     {
         const std::string printfOptions =
             "?_OptionsStorage@?1??__local_stdio_printf_options@@9@9";
+        const std::string printfOptionsAlt =
+            "?_OptionsStorage@?1??__local_stdio_printf_options@@9@4_KA";
         const std::string scanfOptions =
             "?_OptionsStorage@?1??__local_stdio_scanf_options@@9@9";
 
         auto obj1 = makeObj("a.obj", {".data"});
         addSymbol(obj1, printfOptions, 1, ObjSymbol::Global);
-        addSymbol(obj1, scanfOptions, 1, ObjSymbol::Global, 8);
+        addSymbol(obj1, printfOptionsAlt, 1, ObjSymbol::Global, 8);
+        addSymbol(obj1, scanfOptions, 1, ObjSymbol::Global, 16);
 
         auto obj2 = makeObj("b.obj", {".data"});
         addSymbol(obj2, printfOptions, 1, ObjSymbol::Global);
-        addSymbol(obj2, scanfOptions, 1, ObjSymbol::Global, 8);
+        addSymbol(obj2, printfOptionsAlt, 1, ObjSymbol::Global, 8);
+        addSymbol(obj2, scanfOptions, 1, ObjSymbol::Global, 16);
 
         std::vector<ObjFile> initObjs = {obj1, obj2};
         std::vector<Archive> archives;
@@ -386,8 +410,184 @@ int main() {
         CHECK(err.str().empty());
         CHECK(globalSyms[printfOptions].binding == GlobalSymEntry::Global);
         CHECK(globalSyms[printfOptions].objIndex == 0);
+        CHECK(globalSyms[printfOptionsAlt].binding == GlobalSymEntry::Global);
+        CHECK(globalSyms[printfOptionsAlt].objIndex == 0);
         CHECK(globalSyms[scanfOptions].binding == GlobalSymEntry::Global);
         CHECK(globalSyms[scanfOptions].objIndex == 0);
+    }
+
+    // --- MSVC STL comparison category inline constants are pick-any ---
+    {
+        const std::string strongLess = "?less@strong_ordering@std@@2U12@B";
+        const std::string nullopt = "?nullopt@std@@3Unullopt_t@1@B";
+
+        auto obj1 = makeObj("a.obj", {".rdata"});
+        addSymbol(obj1, strongLess, 1, ObjSymbol::Global);
+        addSymbol(obj1, nullopt, 1, ObjSymbol::Global, 8);
+
+        auto obj2 = makeObj("b.obj", {".rdata"});
+        addSymbol(obj2, strongLess, 1, ObjSymbol::Global);
+        addSymbol(obj2, nullopt, 1, ObjSymbol::Global, 8);
+
+        std::vector<ObjFile> initObjs = {obj1, obj2};
+        std::vector<Archive> archives;
+        std::unordered_map<std::string, GlobalSymEntry> globalSyms;
+        std::vector<ObjFile> allObjects;
+        std::unordered_set<std::string> dynamicSyms;
+        std::ostringstream err;
+
+        bool ok = resolveSymbols(
+            initObjs, archives, globalSyms, allObjects, dynamicSyms, err, LinkPlatform::Windows);
+        CHECK(ok);
+        CHECK(err.str().empty());
+        CHECK(globalSyms[strongLess].objIndex == 0);
+        CHECK(globalSyms[nullopt].objIndex == 0);
+    }
+
+    // --- MSVC STL RTTI/vftable duplicates are pick-any ---
+    {
+        const std::string exceptionVftable = "??_7exception@std@@6B@";
+        const std::string exceptionTypeInfo = "??_R0?AVexception@std@@@8";
+
+        auto obj1 = makeObj("a.obj", {".rdata"});
+        addSymbol(obj1, exceptionVftable, 1, ObjSymbol::Global);
+        addSymbol(obj1, exceptionTypeInfo, 1, ObjSymbol::Global, 8);
+
+        auto obj2 = makeObj("b.obj", {".rdata"});
+        addSymbol(obj2, exceptionVftable, 1, ObjSymbol::Global);
+        addSymbol(obj2, exceptionTypeInfo, 1, ObjSymbol::Global, 8);
+
+        std::vector<ObjFile> initObjs = {obj1, obj2};
+        std::vector<Archive> archives;
+        std::unordered_map<std::string, GlobalSymEntry> globalSyms;
+        std::vector<ObjFile> allObjects;
+        std::unordered_set<std::string> dynamicSyms;
+        std::ostringstream err;
+
+        bool ok = resolveSymbols(
+            initObjs, archives, globalSyms, allObjects, dynamicSyms, err, LinkPlatform::Windows);
+        CHECK(ok);
+        CHECK(err.str().empty());
+        CHECK(globalSyms[exceptionVftable].objIndex == 0);
+        CHECK(globalSyms[exceptionTypeInfo].objIndex == 0);
+    }
+
+    // --- MSVC decorated string literals are pick-any ---
+    {
+        const std::string literal = "??_C@_0BC@EOODALEL@Unknown?5exception@";
+
+        auto obj1 = makeObj("a.obj", {".rdata"});
+        addSymbol(obj1, literal, 1, ObjSymbol::Global);
+
+        auto obj2 = makeObj("b.obj", {".rdata"});
+        addSymbol(obj2, literal, 1, ObjSymbol::Global);
+
+        std::vector<ObjFile> initObjs = {obj1, obj2};
+        std::vector<Archive> archives;
+        std::unordered_map<std::string, GlobalSymEntry> globalSyms;
+        std::vector<ObjFile> allObjects;
+        std::unordered_set<std::string> dynamicSyms;
+        std::ostringstream err;
+
+        bool ok = resolveSymbols(
+            initObjs, archives, globalSyms, allObjects, dynamicSyms, err, LinkPlatform::Windows);
+        CHECK(ok);
+        CHECK(err.str().empty());
+        CHECK(globalSyms[literal].objIndex == 0);
+    }
+
+    // --- MSVC STL exception metadata is pick-any ---
+    {
+        const std::string catchableType =
+            "_CT??_R0?AVexception@std@@@8??0exception@std@@QEAA@AEBV01@@Z24";
+        const std::string throwInfo = "_TI1?AVexception@std@@";
+
+        auto obj1 = makeObj("a.obj", {".rdata"});
+        addSymbol(obj1, catchableType, 1, ObjSymbol::Global);
+        addSymbol(obj1, throwInfo, 1, ObjSymbol::Global, 8);
+
+        auto obj2 = makeObj("b.obj", {".rdata"});
+        addSymbol(obj2, catchableType, 1, ObjSymbol::Global);
+        addSymbol(obj2, throwInfo, 1, ObjSymbol::Global, 8);
+
+        std::vector<ObjFile> initObjs = {obj1, obj2};
+        std::vector<Archive> archives;
+        std::unordered_map<std::string, GlobalSymEntry> globalSyms;
+        std::vector<ObjFile> allObjects;
+        std::unordered_set<std::string> dynamicSyms;
+        std::ostringstream err;
+
+        bool ok = resolveSymbols(
+            initObjs, archives, globalSyms, allObjects, dynamicSyms, err, LinkPlatform::Windows);
+        CHECK(ok);
+        CHECK(err.str().empty());
+        CHECK(globalSyms[catchableType].objIndex == 0);
+        CHECK(globalSyms[throwInfo].objIndex == 0);
+    }
+
+    // --- MSVC generated numeric constants are pick-any ---
+    {
+        const std::string realOne = "__real@3f800000";
+        const std::string xmmMask = "__xmm@00000000000000000000000000000000";
+
+        auto obj1 = makeObj("a.obj", {".rdata"});
+        addSymbol(obj1, realOne, 1, ObjSymbol::Global);
+        addSymbol(obj1, xmmMask, 1, ObjSymbol::Global, 8);
+
+        auto obj2 = makeObj("b.obj", {".rdata"});
+        addSymbol(obj2, realOne, 1, ObjSymbol::Global);
+        addSymbol(obj2, xmmMask, 1, ObjSymbol::Global, 8);
+
+        std::vector<ObjFile> initObjs = {obj1, obj2};
+        std::vector<Archive> archives;
+        std::unordered_map<std::string, GlobalSymEntry> globalSyms;
+        std::vector<ObjFile> allObjects;
+        std::unordered_set<std::string> dynamicSyms;
+        std::ostringstream err;
+
+        bool ok = resolveSymbols(
+            initObjs, archives, globalSyms, allObjects, dynamicSyms, err, LinkPlatform::Windows);
+        CHECK(ok);
+        CHECK(err.str().empty());
+        CHECK(globalSyms[realOne].objIndex == 0);
+        CHECK(globalSyms[xmmMask].objIndex == 0);
+    }
+
+    // --- MSVC thread-safe static guards are linker-owned zero-fill storage ---
+    {
+        const std::string guard =
+            "?$TSS0@?1??runtimeRegistry@runtime@il@@YAAEBV?$vector@URuntimeDescriptor@runtime@il@@V?$allocator@URuntimeDescriptor@runtime@il@@@std@@@std@@XZ@4HA";
+
+        auto obj = makeObj("runtime.obj", {".text"});
+        obj.format = ObjFileFormat::COFF;
+        obj.machine = 0x8664;
+        addSymbol(obj, "main", 1, ObjSymbol::Global);
+        addSymbol(obj, guard, 0, ObjSymbol::Undefined);
+
+        std::vector<ObjFile> initObjs = {obj};
+        std::vector<Archive> archives;
+        std::unordered_map<std::string, GlobalSymEntry> globalSyms;
+        std::vector<ObjFile> allObjects;
+        std::unordered_set<std::string> dynamicSyms;
+        std::ostringstream err;
+
+        bool ok = resolveSymbols(
+            initObjs, archives, globalSyms, allObjects, dynamicSyms, err, LinkPlatform::Windows);
+        CHECK(ok);
+        CHECK(err.str().empty());
+        CHECK(dynamicSyms.count(guard) == 0);
+        CHECK(allObjects.size() == 2);
+        CHECK(allObjects.back().name == "common");
+        CHECK(allObjects.back().format == ObjFileFormat::COFF);
+        CHECK(allObjects.back().sections.size() == 2);
+        CHECK(allObjects.back().sections[1].name == ".common");
+        CHECK(objSectionMemSize(allObjects.back().sections[1]) == 4);
+        CHECK(allObjects.back().sections[1].alignment == 4);
+        CHECK(globalSyms[guard].binding == GlobalSymEntry::Global);
+        CHECK(globalSyms[guard].objIndex == 1);
+        CHECK(globalSyms[guard].secIndex == 1);
+        CHECK(globalSyms[guard].offset == 0);
+        CHECK(!globalSyms[guard].common);
     }
 
     // --- Undefined symbol resolved by second object ---

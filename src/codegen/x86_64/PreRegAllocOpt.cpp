@@ -62,6 +62,26 @@ struct UseSite {
         case MOpcode::JMP:
         case MOpcode::JCC:
         case MOpcode::LABEL:
+        case MOpcode::UD2:
+        case MOpcode::PUSH:
+        case MOpcode::POP:
+        case MOpcode::CQO:
+        case MOpcode::IDIVrm:
+        case MOpcode::DIVrm:
+        case MOpcode::PX_COPY:
+        case MOpcode::SELECT_GPR:
+        case MOpcode::SELECT_XMM:
+        case MOpcode::DIVS64rr:
+        case MOpcode::REMS64rr:
+        case MOpcode::DIVU64rr:
+        case MOpcode::REMU64rr:
+        case MOpcode::DIVS64Chk0rr:
+        case MOpcode::REMS64Chk0rr:
+        case MOpcode::DIVU64Chk0rr:
+        case MOpcode::REMU64Chk0rr:
+        case MOpcode::ADDOvfrr:
+        case MOpcode::SUBOvfrr:
+        case MOpcode::IMULOvfrr:
             return true;
         default:
             return false;

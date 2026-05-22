@@ -207,7 +207,7 @@ void lowerCall(MBasicBlock &block,
             const Operand src = makeVRegOperand(RegClass::GPR, arg.vreg);
             const Operand scratch = makePhysOperand(RegClass::GPR, kScratchGPR);
             if (isI1Value(block, currentIdx, arg.vreg)) {
-                insertInstr(MInstr::make(MOpcode::MOVZXrr32, {scratch, src}));
+                insertInstr(MInstr::make(MOpcode::MOVZXrr8, {scratch, src}));
             } else {
                 insertInstr(MInstr::make(MOpcode::MOVrr, {scratch, src}));
             }

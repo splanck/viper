@@ -562,8 +562,10 @@ inline bool isKnownDynamicSymbol(const std::string &name, LinkPlatform platform)
         "_CxxThrowException",
         "__CxxFrameHandler3",
         "__CxxFrameHandler4",
+        "__RTDynamicCast",
         "__std_exception_copy",
         "__std_exception_destroy",
+        "__std_type_info_compare",
         "__security_check_cookie",
         "__security_init_cookie",
         "__security_pop_cookie",
@@ -571,6 +573,8 @@ inline bool isKnownDynamicSymbol(const std::string &name, LinkPlatform platform)
         "__GSHandlerCheck",
         "__GSHandlerCheck_EH4",
         "__chkstk",
+        "_Avx2WmemEnabled",
+        "_purecall",
         "__RTC_memset",
         "_setjmpex",
         "_byteswap_uint64",
@@ -671,9 +675,12 @@ inline bool isKnownDynamicSymbol(const std::string &name, LinkPlatform platform)
         "__imp_",
         "__vcrt_",
         "_Cnd_",
+        "_Init_thread_",
         "_Mtx_",
         "_Query_perf_",
+        "_Smtx_",
         "_Thrd_",
+        "__std_",
     };
 
     for (const char *prefix : kCommonDynPrefixes) {
@@ -721,6 +728,8 @@ inline bool isKnownDynamicSymbol(const std::string &name, LinkPlatform platform)
         return true;
 
     if (platform == LinkPlatform::Windows) {
+        if (isMsvcThreadSafeStaticGuardSymbol(name) || isMsvcThreadSafeStaticGuardSymbol(stripped))
+            return false;
         if (name.find("@std@@") != std::string::npos ||
             stripped.find("@std@@") != std::string::npos ||
             name.rfind("??", 0) == 0 || stripped.rfind("??", 0) == 0 ||

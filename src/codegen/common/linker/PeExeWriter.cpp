@@ -793,7 +793,7 @@ bool writePeExe(const std::string &path,
         // Emitting them with RVA 0 makes Windows reject the executable.
         if (!sec.alloc)
             continue;
-        if (sec.data.empty())
+        if (outputSectionMemSize(sec) == 0)
             continue;
 
         PeSection ps;

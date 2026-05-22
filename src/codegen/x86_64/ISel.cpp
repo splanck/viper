@@ -75,9 +75,7 @@ void ensureMovzxAfterSetcc(MBasicBlock &block, std::size_t index) {
 
     if (index + 1 < block.instructions.size()) {
         auto &next = block.instructions[index + 1];
-        const bool alreadyZeroExtends =
-            next.opcode == MOpcode::MOVZXrr8 || next.opcode == MOpcode::MOVZXrr32;
-        if (alreadyZeroExtends && next.operands.size() >= 2 &&
+        if (next.opcode == MOpcode::MOVZXrr8 && next.operands.size() >= 2 &&
             sameRegister(next.operands[0], *destOperand) &&
             sameRegister(next.operands[1], *destOperand)) {
             return;

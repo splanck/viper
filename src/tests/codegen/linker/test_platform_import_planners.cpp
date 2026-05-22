@@ -198,6 +198,9 @@ TEST(PlatformImportPlanners, WindowsPlannerCreatesGroupedImportsAndThunks) {
     ASSERT_TRUE(generateWindowsImports(LinkArch::X86_64,
                                        {"ExitProcess", "CreateWindowExW", "CreateWaitableTimerExW",
                                         "SetWaitableTimer", "D3D11CreateDevice", "cbrtf", "cos",
+                                        "__RTDynamicCast", "_Init_thread_header",
+                                        "_Smtx_lock_exclusive", "__std_find_trivial_1",
+                                        "fsetpos", "_beginthreadex", "terminate",
                                         "__imp_ExitProcess"},
                                        false, plan, err));
 
@@ -205,6 +208,8 @@ TEST(PlatformImportPlanners, WindowsPlannerCreatesGroupedImportsAndThunks) {
     EXPECT_TRUE(importPlanHasDll(plan, "user32.dll"));
     EXPECT_TRUE(importPlanHasDll(plan, "d3d11.dll"));
     EXPECT_TRUE(importPlanHasDll(plan, "ucrtbase.dll"));
+    EXPECT_TRUE(importPlanHasDll(plan, "VCRUNTIME140.dll"));
+    EXPECT_TRUE(importPlanHasDll(plan, "MSVCP140.dll"));
     EXPECT_TRUE(objHasSymbol(plan.obj, "__imp_ExitProcess"));
     EXPECT_TRUE(objHasSymbol(plan.obj, "ExitProcess"));
     EXPECT_TRUE(plan.obj.sections.size() >= 2);

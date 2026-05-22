@@ -173,8 +173,12 @@ inline bool isPreservedNamedSection(const std::string &name) {
 /// Symbols synthesized by the Windows native linker rather than imported from
 /// a DLL or provided by a runtime archive.
 inline bool isWindowsStdioOptionsStorageSymbol(const std::string &name) {
-    return name == "?_OptionsStorage@?1??__local_stdio_printf_options@@9@9" ||
-           name == "?_OptionsStorage@?1??__local_stdio_scanf_options@@9@9";
+    return name.find("__local_stdio_printf_options") != std::string::npos ||
+           name.find("__local_stdio_scanf_options") != std::string::npos;
+}
+
+inline bool isMsvcThreadSafeStaticGuardSymbol(const std::string &name) {
+    return name.rfind("?$TSS", 0) == 0;
 }
 
 inline bool isWindowsLinkerHelperSymbol(const std::string &name) {

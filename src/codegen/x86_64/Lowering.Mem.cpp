@@ -277,7 +277,11 @@ void emitCallIndirect(const ILInstr &instr, MIRBuilder &builder) {
     if (const auto *reg = std::get_if<OpReg>(&calleeOp); reg && reg->cls != RegClass::GPR) {
         phaseAUnsupported("call.indirect: target register must be GPR");
     }
-    // The CALL instruction requires a register, memory, or label operand.
+    if (std::holds_alternative<OpLabel>(calleeOp)) {
+        calleeOp = EmitCommon(builder).materialiseGpr(std::move(calleeOp));
+    }
+    // The CALL instruction requires a register or memory operand here; labels
+    // name function addresses and are first materialized with LEA.
     // If the callee materialised as an immediate (e.g. null function pointer),
     // load it into a register so the encoder can emit an indirect call.
     if (std::holds_alternative<OpImm>(calleeOp)) {

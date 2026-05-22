@@ -566,6 +566,8 @@ void EmitCommon::emitCmp(const ILInstr &instr, RegClass cls, int defaultCond) {
     const Operand dest = makeVRegOperand(destReg.cls, destReg.id);
     builder().append(
         MInstr::make(MOpcode::SETcc, std::vector<Operand>{makeImmOperand(condCode), dest}));
+    builder().append(
+        MInstr::make(MOpcode::MOVZXrr8, std::vector<Operand>{clone(dest), clone(dest)}));
 }
 
 /// @brief Emit the Machine IR sequence that implements an IL select.
@@ -698,7 +700,7 @@ void EmitCommon::emitReturn(const ILInstr &instr) {
             const VReg zx = builder().makeTempVReg(RegClass::GPR);
             const Operand zxOp = makeVRegOperand(zx.cls, zx.id);
             builder().append(
-                MInstr::make(MOpcode::MOVZXrr32, std::vector<Operand>{clone(zxOp), clone(srcReg)}));
+                MInstr::make(MOpcode::MOVZXrr8, std::vector<Operand>{clone(zxOp), clone(srcReg)}));
             srcReg = zxOp;
         }
     }
@@ -984,14 +986,19 @@ void EmitCommon::emitFCmpNanSafe(const ILInstr &instr, std::string_view suffix) 
 
     const VReg destReg = builder().ensureVReg(instr.resultId, instr.resultKind);
     const Operand dest = makeVRegOperand(destReg.cls, destReg.id);
+    auto emitSetccBool = [&](int code, const Operand &target) {
+        builder().append(MInstr::make(MOpcode::SETcc,
+                                      std::vector<Operand>{makeImmOperand(code), clone(target)}));
+        builder().append(MInstr::make(MOpcode::MOVZXrr8,
+                                      std::vector<Operand>{clone(target), clone(target)}));
+    };
 
     if (suffix == "lt" || suffix == "le") {
         // Swap operands: UCOMISD(rhs, lhs) so that a<b → SETA, a<=b → SETAE.
         // NaN gives CF=1,ZF=1 regardless of order → SETA/SETAE → false.
         builder().append(MInstr::make(MOpcode::UCOMIS, std::vector<Operand>{clone(rhs), lhs}));
         const int code = (suffix == "lt") ? 6 : 7; // SETA / SETAE
-        builder().append(
-            MInstr::make(MOpcode::SETcc, std::vector<Operand>{makeImmOperand(code), dest}));
+        emitSetccBool(code, dest);
         return;
     }
 
@@ -1002,20 +1009,16 @@ void EmitCommon::emitFCmpNanSafe(const ILInstr &instr, std::string_view suffix) 
         // Ordered equal: (ZF=1) AND (PF=0) → SETE ∧ SETNP.
         const VReg tmp = builder().makeTempVReg(RegClass::GPR);
         const Operand tmpOp = makeVRegOperand(tmp.cls, tmp.id);
-        builder().append(
-            MInstr::make(MOpcode::SETcc, std::vector<Operand>{makeImmOperand(11), tmpOp})); // SETNP
-        builder().append(
-            MInstr::make(MOpcode::SETcc, std::vector<Operand>{makeImmOperand(0), dest})); // SETE
+        emitSetccBool(11, tmpOp); // SETNP
+        emitSetccBool(0, dest);   // SETE
         builder().append(MInstr::make(MOpcode::ANDrr, std::vector<Operand>{dest, tmpOp}));
     } else // "ne"
     {
         // Unordered not-equal: (ZF=0) OR (PF=1) → SETNE ∨ SETP.
         const VReg tmp = builder().makeTempVReg(RegClass::GPR);
         const Operand tmpOp = makeVRegOperand(tmp.cls, tmp.id);
-        builder().append(
-            MInstr::make(MOpcode::SETcc, std::vector<Operand>{makeImmOperand(10), tmpOp})); // SETP
-        builder().append(
-            MInstr::make(MOpcode::SETcc, std::vector<Operand>{makeImmOperand(1), dest})); // SETNE
+        emitSetccBool(10, tmpOp); // SETP
+        emitSetccBool(1, dest);   // SETNE
         builder().append(MInstr::make(MOpcode::ORrr, std::vector<Operand>{dest, tmpOp}));
     }
 }

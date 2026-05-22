@@ -241,7 +241,16 @@ static bool readCoffSymbolView(const uint8_t *data,
     out.longNameZeros = sym->Name.LongName.Zeros;
     out.longNameOffset = sym->Name.LongName.Offset;
     out.value = sym->Value;
-    out.sectionNumber = sym->SectionNumber;
+    // MSVC may emit standard COFF objects with section numbers above INT16_MAX.
+    // Only the two reserved bit-patterns are negative special section numbers.
+    const uint16_t rawSectionNumber = static_cast<uint16_t>(sym->SectionNumber);
+    if (rawSectionNumber == 0xFFFF) {
+        out.sectionNumber = coff::IMAGE_SYM_ABSOLUTE;
+    } else if (rawSectionNumber == 0xFFFE) {
+        out.sectionNumber = coff::IMAGE_SYM_DEBUG;
+    } else {
+        out.sectionNumber = static_cast<int32_t>(rawSectionNumber);
+    }
     out.type = sym->Type;
     out.storageClass = sym->StorageClass;
     out.auxCount = sym->NumberOfAuxSymbols;
