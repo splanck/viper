@@ -341,9 +341,13 @@ vg_tree_node_t *vg_treeview_add_node(vg_treeview_t *tree, vg_tree_node_t *parent
 /// @param node Node to remove (must belong to @p tree).
 void vg_treeview_remove_node(vg_treeview_t *tree, vg_tree_node_t *node);
 
-/// @brief Remove and free all nodes from the tree.
+/// @brief Remove all nodes from the tree, retiring stale handles until destroy or prune.
 /// @param tree Tree view widget.
 void vg_treeview_clear(vg_treeview_t *tree);
+
+/// @brief Free retired node tombstones after all stale node handles are discarded.
+/// @param tree Tree view widget.
+void vg_treeview_prune_retired_nodes(vg_treeview_t *tree);
 
 /// @brief Expand a node, showing its children.
 /// @param tree Tree view widget.

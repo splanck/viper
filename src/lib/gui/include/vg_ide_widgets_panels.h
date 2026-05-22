@@ -127,10 +127,14 @@ vg_tab_t *vg_tabbar_add_tab(vg_tabbar_t *tabbar, const char *title, bool closabl
 /// @return true when the handle points at a currently live tab.
 bool vg_tab_is_live(const vg_tab_t *tab);
 
-/// @brief Remove and destroy a tab.
+/// @brief Remove a tab, retiring the stale handle until destroy or prune.
 /// @param tabbar Tab bar widget.
 /// @param tab    Tab to remove (must belong to @p tabbar).
 void vg_tabbar_remove_tab(vg_tabbar_t *tabbar, vg_tab_t *tab);
+
+/// @brief Free retired tab tombstones after all stale tab handles are discarded.
+/// @param tabbar Tab bar widget.
+void vg_tabbar_prune_retired_tabs(vg_tabbar_t *tabbar);
 
 /// @brief Make a tab the active (foreground) tab.
 /// @param tabbar Tab bar widget.

@@ -623,6 +623,10 @@ vg_dialog_t *vg_dialog_create(const char *title) {
 
     // Title bar
     dlg->title = title ? strdup(title) : NULL;
+    if (title && !dlg->title) {
+        vg_widget_destroy(&dlg->base);
+        return NULL;
+    }
     dlg->show_close_button = true;
     dlg->draggable = true;
 
@@ -1357,8 +1361,11 @@ static bool dialog_handle_event(vg_widget_t *widget, vg_event_t *event) {
 void vg_dialog_set_title(vg_dialog_t *dialog, const char *title) {
     if (!dialog)
         return;
+    char *copy = title ? strdup(title) : NULL;
+    if (title && !copy)
+        return;
     free(dialog->title);
-    dialog->title = title ? strdup(title) : NULL;
+    dialog->title = copy;
     dialog->base.needs_layout = true;
     dialog->base.needs_paint = true;
 }
@@ -1393,8 +1400,11 @@ void vg_dialog_set_content(vg_dialog_t *dialog, vg_widget_t *content) {
 void vg_dialog_set_message(vg_dialog_t *dialog, const char *message) {
     if (!dialog)
         return;
+    char *copy = message ? strdup(message) : NULL;
+    if (message && !copy)
+        return;
     free(dialog->message);
-    dialog->message = message ? strdup(message) : NULL;
+    dialog->message = copy;
     dialog->base.needs_layout = true;
     dialog->base.needs_paint = true;
 }

@@ -393,6 +393,10 @@ void rt_treeview_remove_node(void *tree, void *node);
 /// @param tree TreeView widget handle.
 void rt_treeview_clear(void *tree);
 
+/// @brief Free retired tree-node tombstones after stale node handles are discarded.
+/// @param tree TreeView widget handle.
+void rt_treeview_prune_retired_nodes(void *tree);
+
 /// @brief Expand a tree node.
 /// @param tree TreeView widget handle.
 /// @param node Node handle.
@@ -466,6 +470,10 @@ void *rt_tabbar_add_tab(void *tabbar, rt_string title, int64_t closable);
 /// @param tabbar TabBar widget handle.
 /// @param tab Tab handle.
 void rt_tabbar_remove_tab(void *tabbar, void *tab);
+
+/// @brief Free retired tab tombstones after stale tab handles are discarded.
+/// @param tabbar TabBar widget handle.
+void rt_tabbar_prune_retired_tabs(void *tabbar);
 
 /// @brief Set the active tab.
 /// @param tabbar TabBar widget handle.

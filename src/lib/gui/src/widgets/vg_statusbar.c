@@ -151,6 +151,10 @@ static vg_statusbar_item_t *create_item(vg_statusbar_item_type_t type, const cha
     item->magic = VG_STATUSBAR_ITEM_MAGIC;
     item->owner = NULL;
     item->text = text ? strdup(text) : NULL;
+    if (text && !item->text) {
+        free(item);
+        return NULL;
+    }
     item->tooltip = NULL;
     item->min_width = 0;
     item->max_width = 0;

@@ -1,0 +1,34 @@
+# ViperIDE Implementation Plans
+
+These plans describe how to turn the current ViperIDE demo into a first-class code editor, IDE, and scene editor for Viper. They are intentionally critical: each phase must remove real product risk, not just add visible features.
+
+## Conventions
+
+- Each phase is implemented as one or more always-green increments. A sub-increment may land before the whole phase is complete, but every landed increment must build, test, and preserve existing behavior.
+- Runtime or GUI API work must update `runtime.def`, structured class bindings, graphics and non-graphics builds where applicable, and runtime-completeness checks.
+- IDE features must use structured state. Do not encode paths, line numbers, diagnostics, references, or session state as ad hoc `path:line` strings.
+- Data-loss prevention is a release gate for every phase. New document surfaces must participate in close prompts, dirty tracking, save, reload, session restore, and external-change handling.
+- Cross-platform behavior, accessibility, keyboard access, and dark-theme contrast are per-phase acceptance criteria, not Phase 6 cleanup.
+- UI smoke tests are not enough. Every phase needs at least one automated regression where practical plus a short manual interaction checklist.
+
+## Phase Map
+
+| # | Document | Goal | Depends on |
+|---|----------|------|------------|
+| 0 | [phase-0-foundations.md](phase-0-foundations.md) | IDE safety, command dispatch, document surfaces, structured session/results | none |
+| 1 | [phase-1-editor-depth.md](phase-1-editor-depth.md) | Project-aware code intelligence, multi-cursor UX, signature help, tree operations | 0 |
+| 2 | [phase-2-run-debug.md](phase-2-run-debug.md) | Safe run/build jobs, output console, launch configs, debugger protocol | 0 |
+| 3 | [phase-3-scene-data.md](phase-3-scene-data.md) | `Viper.Game.Scene` round-trip runtime data foundation | none |
+| 4 | [phase-4-scene-viewport.md](phase-4-scene-viewport.md) | `Viper.GUI.SceneView` rendering, hit testing, pan/zoom, markers | 3A for scene markers; tilemap-only work can start earlier |
+| 5 | [phase-5-scene-editor-ui.md](phase-5-scene-editor-ui.md) | Staged docked scene editor: viewer, document model, tile tools, objects, inspector, play | 0, 2A, 3B, 4 |
+| 6 | [phase-6-polish.md](phase-6-polish.md) | Final hardening, dogfood, docs, platform/accessibility audit | all |
+
+Supporting plan: [runtime-prerequisites.md](runtime-prerequisites.md) lists runtime/toolkit investments that can shrink the IDE phases when implemented first.
+
+## Sequencing
+
+Phase 0 is the first dependency because the current main loop, document model, close behavior, and stringly typed navigation data will not scale. Phase 1 and Phase 2 are the code-editor and IDE loop tracks. Phase 3 is runtime/data work and can proceed in parallel. Phase 4 can start with tilemap-only rendering, but marker and selection APIs should align with the `Viper.Game.Scene` ownership model. Phase 5 is not one large commit; it is a sequence of scene-editor increments.
+
+## Status
+
+These are plans only. No implementation is implied by the presence of a plan file.

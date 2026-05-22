@@ -2402,7 +2402,7 @@ TEST(findreplace_whole_word_does_not_match_inside_utf8_word) {
     vg_findreplacebar_find(bar, "t");
 
     ASSERT_EQ(bar->match_count, (size_t)1);
-    ASSERT_EQ(bar->matches[0].start_col, (uint32_t)6);
+    ASSERT_EQ(bar->matches[0].start_col, (uint32_t)4);
 
     vg_widget_destroy(&bar->base);
     vg_widget_destroy(&ed->base);
@@ -3933,6 +3933,259 @@ TEST(contextmenu_registry_grows_beyond_legacy_cap) {
     }
 }
 
+TEST(codeeditor_set_text_clears_undo_redo_history) {
+    vg_codeeditor_t *editor = vg_codeeditor_create(NULL);
+    ASSERT_NOT_NULL(editor);
+
+    vg_codeeditor_set_text(editor, "abc");
+    vg_codeeditor_set_cursor(editor, 0, 3);
+    vg_codeeditor_insert_text(editor, "d");
+    ASSERT_TRUE(editor->history && editor->history->current_index > 0);
+
+    vg_codeeditor_set_text(editor, "xyz");
+    ASSERT_TRUE(editor->history && editor->history->count == 0);
+    ASSERT_TRUE(editor->history->current_index == 0);
+
+    vg_codeeditor_undo(editor);
+    char *text = vg_codeeditor_get_text(editor);
+    ASSERT_NOT_NULL(text);
+    ASSERT(strcmp(text, "xyz") == 0);
+    free(text);
+
+    vg_widget_destroy(&editor->base);
+}
+
+TEST(codeeditor_readonly_blocks_direct_mutation_apis) {
+    vg_codeeditor_t *editor = vg_codeeditor_create(NULL);
+    ASSERT_NOT_NULL(editor);
+
+    vg_codeeditor_set_text(editor, "abc");
+    editor->read_only = true;
+    vg_codeeditor_set_cursor(editor, 0, 3);
+    vg_codeeditor_insert_text(editor, "d");
+    vg_codeeditor_set_selection(editor, 0, 0, 0, 1);
+    vg_codeeditor_delete_selection(editor);
+
+    char *text = vg_codeeditor_get_text(editor);
+    ASSERT_NOT_NULL(text);
+    ASSERT(strcmp(text, "abc") == 0);
+    free(text);
+
+    vg_widget_destroy(&editor->base);
+}
+
+TEST(codeeditor_zero_length_selection_is_not_active_or_modified) {
+    vg_codeeditor_t *editor = vg_codeeditor_create(NULL);
+    ASSERT_NOT_NULL(editor);
+
+    vg_codeeditor_set_text(editor, "abc");
+    vg_codeeditor_clear_modified(editor);
+    vg_codeeditor_set_selection(editor, 0, 1, 0, 1);
+    ASSERT_FALSE(editor->has_selection);
+    vg_codeeditor_delete_selection(editor);
+    ASSERT_FALSE(vg_codeeditor_is_modified(editor));
+
+    char *text = vg_codeeditor_get_text(editor);
+    ASSERT_NOT_NULL(text);
+    ASSERT(strcmp(text, "abc") == 0);
+    free(text);
+
+    vg_widget_destroy(&editor->base);
+}
+
+TEST(codeeditor_utf8_cursor_and_backspace_use_codepoint_boundaries) {
+    vg_codeeditor_t *editor = vg_codeeditor_create(NULL);
+    ASSERT_NOT_NULL(editor);
+
+    vg_codeeditor_set_text(editor, "\xC3\xA9x");
+    vg_codeeditor_set_cursor(editor, 0, 1);
+    ASSERT_EQ(editor->cursor_col, 2);
+
+    int line = -1;
+    int col = -1;
+    vg_codeeditor_get_cursor(editor, &line, &col);
+    ASSERT_EQ(line, 0);
+    ASSERT_EQ(col, 1);
+
+    vg_event_t left = vg_event_key(VG_EVENT_KEY_DOWN, VG_KEY_LEFT, 0, VG_MOD_NONE);
+    ASSERT_TRUE(vg_event_send(&editor->base, &left));
+    vg_codeeditor_get_cursor(editor, &line, &col);
+    ASSERT_EQ(col, 0);
+
+    vg_codeeditor_set_cursor(editor, 0, 1);
+    vg_event_t backspace = vg_event_key(VG_EVENT_KEY_DOWN, VG_KEY_BACKSPACE, 0, VG_MOD_NONE);
+    ASSERT_TRUE(vg_event_send(&editor->base, &backspace));
+    char *text = vg_codeeditor_get_text(editor);
+    ASSERT_NOT_NULL(text);
+    ASSERT(strcmp(text, "x") == 0);
+    free(text);
+
+    vg_widget_destroy(&editor->base);
+}
+
+TEST(listbox_ctrl_toggle_reports_selection_set_change_when_current_stays) {
+    vg_listbox_t *lb = vg_listbox_create(NULL);
+    ASSERT_NOT_NULL(lb);
+    lb->multi_select = true;
+    ASSERT_NOT_NULL(vg_listbox_add_item(lb, "A", NULL));
+    ASSERT_NOT_NULL(vg_listbox_add_item(lb, "B", NULL));
+
+    vg_listbox_select_index(lb, 0);
+    vg_event_t ev = {0};
+    ev.type = VG_EVENT_MOUSE_DOWN;
+    ev.modifiers = VG_MOD_CTRL;
+    ev.mouse.y = lb->item_height + 1.0f;
+    ASSERT_TRUE(lb->base.vtable->handle_event(&lb->base, &ev));
+    ASSERT_EQ(vg_listbox_get_selected_index(lb), (size_t)1);
+
+    uint64_t before = lb->selection_revision;
+    ev.mouse.y = 1.0f;
+    ASSERT_TRUE(lb->base.vtable->handle_event(&lb->base, &ev));
+    ASSERT_EQ(vg_listbox_get_selected_index(lb), (size_t)1);
+    ASSERT_TRUE(lb->selection_revision > before);
+
+    vg_widget_destroy(&lb->base);
+}
+
+TEST(listbox_virtual_ctrl_toggle_reports_selection_set_change_when_current_stays) {
+    vg_listbox_t *lb = vg_listbox_create(NULL);
+    ASSERT_NOT_NULL(lb);
+    lb->multi_select = true;
+    vg_listbox_set_virtual_mode(lb, true, 3, 20.0f);
+
+    vg_listbox_select_index(lb, 0);
+    vg_event_t ev = {0};
+    ev.type = VG_EVENT_MOUSE_DOWN;
+    ev.modifiers = VG_MOD_CTRL;
+    ev.mouse.y = 21.0f;
+    ASSERT_TRUE(lb->base.vtable->handle_event(&lb->base, &ev));
+    ASSERT_EQ(vg_listbox_get_selected_index(lb), (size_t)1);
+
+    uint64_t before = lb->selection_revision;
+    ev.mouse.y = 1.0f;
+    ASSERT_TRUE(lb->base.vtable->handle_event(&lb->base, &ev));
+    ASSERT_EQ(vg_listbox_get_selected_index(lb), (size_t)1);
+    ASSERT_TRUE(lb->selection_revision > before);
+
+    vg_widget_destroy(&lb->base);
+}
+
+TEST(listbox_select_null_clears_multi_select_flags) {
+    vg_listbox_t *lb = vg_listbox_create(NULL);
+    ASSERT_NOT_NULL(lb);
+    lb->multi_select = true;
+    vg_listbox_item_t *a = vg_listbox_add_item(lb, "A", NULL);
+    vg_listbox_item_t *b = vg_listbox_add_item(lb, "B", NULL);
+    ASSERT_NOT_NULL(a);
+    ASSERT_NOT_NULL(b);
+
+    vg_listbox_select(lb, a);
+    b->selected = true;
+    vg_listbox_select(lb, NULL);
+
+    ASSERT_NULL(vg_listbox_get_selected(lb));
+    ASSERT_FALSE(a->selected);
+    ASSERT_FALSE(b->selected);
+
+    vg_widget_destroy(&lb->base);
+}
+
+TEST(listbox_reselect_same_single_item_does_not_report_change) {
+    vg_listbox_t *lb = vg_listbox_create(NULL);
+    ASSERT_NOT_NULL(lb);
+    vg_listbox_item_t *a = vg_listbox_add_item(lb, "A", NULL);
+    vg_listbox_item_t *b = vg_listbox_add_item(lb, "B", NULL);
+    ASSERT_NOT_NULL(a);
+    ASSERT_NOT_NULL(b);
+
+    vg_listbox_select(lb, a);
+    uint64_t after_first_select = lb->selection_revision;
+    vg_listbox_select(lb, a);
+    ASSERT_EQ(lb->selection_revision, after_first_select);
+
+    b->selected = true;
+    vg_listbox_select(lb, a);
+    ASSERT_TRUE(lb->selection_revision > after_first_select);
+    ASSERT_TRUE(a->selected);
+    ASSERT_FALSE(b->selected);
+    ASSERT_EQ(vg_listbox_get_selected(lb), a);
+
+    vg_widget_destroy(&lb->base);
+}
+
+TEST(listbox_clear_resets_virtual_mode_state) {
+    vg_listbox_t *lb = vg_listbox_create(NULL);
+    ASSERT_NOT_NULL(lb);
+    vg_listbox_set_virtual_mode(lb, true, 5, 20.0f);
+    vg_listbox_select_index(lb, 2);
+
+    vg_listbox_clear(lb);
+
+    ASSERT_FALSE(lb->virtual_mode);
+    ASSERT_EQ(lb->total_item_count, (size_t)0);
+    ASSERT_NULL(lb->selection_bitmap);
+    ASSERT_EQ(lb->selection_bitmap_size, (size_t)0);
+    ASSERT_EQ(vg_listbox_get_selected_index(lb), SIZE_MAX);
+
+    vg_widget_destroy(&lb->base);
+}
+
+TEST(listbox_virtual_shrink_reports_truncated_secondary_selection) {
+    vg_listbox_t *lb = vg_listbox_create(NULL);
+    ASSERT_NOT_NULL(lb);
+    vg_listbox_set_virtual_mode(lb, true, 5, 20.0f);
+    lb->selection_bitmap[1] = true;
+    lb->selection_bitmap[4] = true;
+    lb->selected_index = 1;
+
+    uint64_t before = lb->selection_revision;
+    vg_listbox_set_total_count(lb, 3);
+    ASSERT_EQ(lb->selected_index, (size_t)1);
+    ASSERT_TRUE(lb->selection_revision > before);
+
+    vg_widget_destroy(&lb->base);
+}
+
+TEST(dropdown_invalid_set_selected_preserves_selection) {
+    vg_dropdown_t *dd = vg_dropdown_create(NULL);
+    ASSERT_NOT_NULL(dd);
+    ASSERT_TRUE(vg_dropdown_add_item(dd, "A") >= 0);
+    ASSERT_TRUE(vg_dropdown_add_item(dd, "B") >= 0);
+
+    vg_dropdown_set_selected(dd, 1);
+    ASSERT_EQ(vg_dropdown_get_selected(dd), 1);
+    vg_dropdown_set_selected(dd, 99);
+    ASSERT_EQ(vg_dropdown_get_selected(dd), 1);
+    vg_dropdown_set_selected(dd, -2);
+    ASSERT_EQ(vg_dropdown_get_selected(dd), 1);
+    vg_dropdown_set_selected(dd, -1);
+    ASSERT_EQ(vg_dropdown_get_selected(dd), -1);
+
+    vg_widget_destroy(&dd->base);
+}
+
+TEST(treeview_and_tabbar_prune_retired_tombstones_when_handles_discarded) {
+    vg_treeview_t *tree = vg_treeview_create(NULL);
+    ASSERT_NOT_NULL(tree);
+    vg_tree_node_t *node = vg_treeview_add_node(tree, NULL, "root");
+    ASSERT_NOT_NULL(node);
+    vg_treeview_remove_node(tree, node);
+    ASSERT_NOT_NULL(tree->retired_nodes);
+    vg_treeview_prune_retired_nodes(tree);
+    ASSERT_NULL(tree->retired_nodes);
+    vg_widget_destroy(&tree->base);
+
+    vg_tabbar_t *tabbar = vg_tabbar_create(NULL);
+    ASSERT_NOT_NULL(tabbar);
+    vg_tab_t *tab = vg_tabbar_add_tab(tabbar, "one", true);
+    ASSERT_NOT_NULL(tab);
+    vg_tabbar_remove_tab(tabbar, tab);
+    ASSERT_NOT_NULL(tabbar->retired_tabs);
+    vg_tabbar_prune_retired_tabs(tabbar);
+    ASSERT_NULL(tabbar->retired_tabs);
+    vg_widget_destroy(&tabbar->base);
+}
+
 //=============================================================================
 // Main
 //=============================================================================
@@ -4121,6 +4374,20 @@ int main(void) {
     RUN(filedialog_filter_capacity_overflow_is_rejected);
     RUN(icon_from_pixels_rejects_size_overflow);
     RUN(contextmenu_registry_grows_beyond_legacy_cap);
+
+    printf("\nRound 11 - Viper.GUI class bug-fix implementation coverage\n");
+    RUN(codeeditor_set_text_clears_undo_redo_history);
+    RUN(codeeditor_readonly_blocks_direct_mutation_apis);
+    RUN(codeeditor_zero_length_selection_is_not_active_or_modified);
+    RUN(codeeditor_utf8_cursor_and_backspace_use_codepoint_boundaries);
+    RUN(listbox_ctrl_toggle_reports_selection_set_change_when_current_stays);
+    RUN(listbox_virtual_ctrl_toggle_reports_selection_set_change_when_current_stays);
+    RUN(listbox_select_null_clears_multi_select_flags);
+    RUN(listbox_reselect_same_single_item_does_not_report_change);
+    RUN(listbox_clear_resets_virtual_mode_state);
+    RUN(listbox_virtual_shrink_reports_truncated_secondary_selection);
+    RUN(dropdown_invalid_set_selected_preserves_selection);
+    RUN(treeview_and_tabbar_prune_retired_tombstones_when_handles_discarded);
 
     printf("\n=== Results: %d passed, %d failed ===\n", g_passed, g_failed);
     return g_failed > 0 ? 1 : 0;

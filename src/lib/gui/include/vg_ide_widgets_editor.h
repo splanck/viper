@@ -240,12 +240,12 @@ void vg_codeeditor_tick(vg_codeeditor_t *editor, float dt);
 /// @return New code editor or NULL on failure.
 vg_codeeditor_t *vg_codeeditor_create(vg_widget_t *parent);
 
-/// @brief Replace the entire document with new text.
+/// @brief Replace the entire document with new text and clear undo/redo history.
 /// @param editor Code editor widget.
 /// @param text   Null-terminated UTF-8 string (copied internally).
 void vg_codeeditor_set_text(vg_codeeditor_t *editor, const char *text);
 
-/// @brief Replace the entire document with an explicit byte span.
+/// @brief Replace the entire document with an explicit byte span and clear undo/redo history.
 /// @param editor Code editor widget.
 /// @param text   UTF-8 byte buffer (copied internally, may contain embedded NUL).
 /// @param len    Number of bytes to read from @p text.
@@ -273,7 +273,7 @@ void vg_codeeditor_set_cursor(vg_codeeditor_t *editor, int line, int col);
 /// @param out_col  Receives the zero-based column index (may be NULL).
 void vg_codeeditor_get_cursor(vg_codeeditor_t *editor, int *out_line, int *out_col);
 
-/// @brief Set the selection range.
+/// @brief Set the selection range using UTF-8 codepoint columns.
 /// @param editor     Code editor widget.
 /// @param start_line Selection start line (zero-based, inclusive).
 /// @param start_col  Selection start column (zero-based, inclusive).
@@ -283,11 +283,13 @@ void vg_codeeditor_set_selection(
     vg_codeeditor_t *editor, int start_line, int start_col, int end_line, int end_col);
 
 /// @brief Insert text at the current cursor position, pushing it into undo history.
+/// @details No-op when the editor is read-only.
 /// @param editor Code editor widget.
 /// @param text   Null-terminated UTF-8 string to insert.
 void vg_codeeditor_insert_text(vg_codeeditor_t *editor, const char *text);
 
 /// @brief Delete the currently selected text, pushing the operation into undo history.
+/// @details No-op when the editor is read-only.
 /// @param editor Code editor widget.
 void vg_codeeditor_delete_selection(vg_codeeditor_t *editor);
 

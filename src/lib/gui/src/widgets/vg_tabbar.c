@@ -18,8 +18,9 @@
 //   - scroll_offset tracks horizontal scroll in pixels when tabs overflow.
 //   - dragging / drag_tab tracks an in-progress drag-to-reorder gesture.
 // Ownership/Lifetime:
-//   - Each vg_tab_t owns its title and tooltip strings; freed in
-//     vg_tabbar_remove_tab.
+//   - Each vg_tab_t owns its title and tooltip strings. Removed tabs are kept as
+//     inert tombstones until tabbar destroy or explicit retired-tab pruning so
+//     stale external handles fail vg_tab_is_live() safely.
 //   - The tabbar does not own any external user_data pointers stored on tabs.
 // Links: lib/gui/include/vg_ide_widgets.h,
 //        lib/gui/include/vg_theme.h,
@@ -1017,6 +1018,16 @@ void vg_tabbar_remove_tab(vg_tabbar_t *tabbar, vg_tab_t *tab) {
 
     tabbar->base.needs_layout = true;
     tabbar->base.needs_paint = true;
+}
+
+/// @brief Free retired tab tombstones once callers have released stale handles.
+///
+/// @details Removed tabs are normally retained as inert tombstones so
+///          vg_tab_is_live() can reject stale handles safely. This explicit
+///          pruning hook lets owners reclaim memory after they have discarded
+///          all tab handles returned before the corresponding remove calls.
+void vg_tabbar_prune_retired_tabs(vg_tabbar_t *tabbar) {
+    free_retired_tabs(tabbar);
 }
 
 /// @brief Set the active tab and fire the on_select callback.

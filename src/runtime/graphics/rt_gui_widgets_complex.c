@@ -368,6 +368,14 @@ void rt_tabbar_remove_tab(void *tabbar, void *tab) {
         vg_tabbar_remove_tab(tb, t);
 }
 
+/// @brief Free retired tab tombstones once callers have discarded stale handles.
+void rt_tabbar_prune_retired_tabs(void *tabbar) {
+    RT_ASSERT_MAIN_THREAD();
+    vg_tabbar_t *tb = rt_tabbar_checked(tabbar);
+    if (tb)
+        vg_tabbar_prune_retired_tabs(tb);
+}
+
 /// @brief Set the currently active (selected) tab in the tab bar.
 void rt_tabbar_set_active(void *tabbar, void *tab) {
     RT_ASSERT_MAIN_THREAD();
@@ -1672,6 +1680,11 @@ void *rt_tabbar_add_tab(void *tabbar, rt_string title, int64_t closable) {
 void rt_tabbar_remove_tab(void *tabbar, void *tab) {
     (void)tabbar;
     (void)tab;
+}
+
+/// @brief Stub: retired tab pruning is a no-op without graphics.
+void rt_tabbar_prune_retired_tabs(void *tabbar) {
+    (void)tabbar;
 }
 
 /// @brief Set the currently active (selected) tab in the tab bar.

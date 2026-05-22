@@ -1256,6 +1256,15 @@ void rt_treeview_clear(void *tree) {
         vg_treeview_clear(tv);
 }
 
+/// @brief Free retired node tombstones once callers have discarded stale handles.
+void rt_treeview_prune_retired_nodes(void *tree) {
+    RT_ASSERT_MAIN_THREAD();
+    vg_treeview_t *tv =
+        (vg_treeview_t *)rt_gui_widget_handle_checked_type(tree, VG_WIDGET_TREEVIEW);
+    if (tv)
+        vg_treeview_prune_retired_nodes(tv);
+}
+
 /// @brief Expand a tree node to show its children.
 void rt_treeview_expand(void *tree, void *node) {
     RT_ASSERT_MAIN_THREAD();
@@ -1690,6 +1699,11 @@ void rt_treeview_remove_node(void *tree, void *node) {
 
 /// @brief Remove all nodes from the tree view, leaving it empty.
 void rt_treeview_clear(void *tree) {
+    (void)tree;
+}
+
+/// @brief Stub: retired node pruning is a no-op without graphics.
+void rt_treeview_prune_retired_nodes(void *tree) {
     (void)tree;
 }
 

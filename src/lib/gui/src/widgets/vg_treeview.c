@@ -14,8 +14,9 @@
 //     Retired nodes carry VG_TREE_NODE_RETIRED_MAGIC with owner == NULL so that
 //     stale external handles fail vg_tree_node_is_live() safely.
 //   - Removed nodes are not freed immediately; they are placed on retired_nodes
-//     (via retired_next) and freed lazily in free_retired_nodes, which runs on
-//     vg_treeview_clear and in the vtable destroy.
+//     (via retired_next) so stale external handles fail vg_tree_node_is_live()
+//     safely. Call vg_treeview_prune_retired_nodes only when callers no longer
+//     retain removed node handles; destroy always drains the retired list.
 //   - scroll_y is always re-clamped after collapse and selection changes to
 //     prevent blank space at the bottom of the visible area.
 //   - drag-and-drop: drop position is classified as BEFORE/INTO/AFTER based on
@@ -1230,6 +1231,17 @@ void vg_treeview_clear(vg_treeview_t *tree) {
 
     tree->base.needs_layout = true;
     tree->base.needs_paint = true;
+}
+
+/// @brief Free retired node tombstones once callers have released stale handles.
+///
+/// @details Removed node handles are normally kept as inert tombstones until the
+///          tree is destroyed so vg_tree_node_is_live() can reject stale handles
+///          without dereferencing freed memory. This explicit pruning hook lets
+///          owners reclaim that memory after they have discarded all node handles
+///          returned before the corresponding remove/clear calls.
+void vg_treeview_prune_retired_nodes(vg_treeview_t *tree) {
+    free_retired_nodes(tree);
 }
 
 /// @brief Expand node to show its children, triggering lazy load if needed.

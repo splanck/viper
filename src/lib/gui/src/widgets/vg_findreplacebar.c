@@ -159,6 +159,25 @@ static const char *fr_utf8_next(const char *p) {
     return p;
 }
 
+/// @brief Count UTF-8 codepoint columns before @p byte_offset in @p text.
+static uint32_t fr_utf8_col_from_byte_offset(const char *text, size_t byte_offset) {
+    if (!text)
+        return 0;
+    const char *cursor = text;
+    const char *limit = text + byte_offset;
+    uint32_t col = 0;
+    while (*cursor && cursor < limit) {
+        const char *next = fr_utf8_next(cursor);
+        if (next <= cursor)
+            break;
+        if (next > limit)
+            break;
+        cursor = next;
+        col++;
+    }
+    return col;
+}
+
 /// @brief Walk back from @p p to the start of the previous UTF-8 codepoint
 ///        within @p text; returns NULL if @p p is already at the start.
 static const char *fr_utf8_prev_start(const char *text, const char *p) {
@@ -645,8 +664,10 @@ static void perform_search(vg_findreplacebar_t *bar) {
         while ((pos = regex_ready ? find_regex_in_line(text, pos, query, &bar->options, &match_len)
                                   : find_in_line(pos, query, &bar->options, &match_len)) != NULL) {
 #endif
-            uint32_t start_col = (uint32_t)(pos - text);
-            uint32_t end_col = start_col + (uint32_t)match_len;
+            size_t start_byte = (size_t)(pos - text);
+            size_t end_byte = start_byte + match_len;
+            uint32_t start_col = fr_utf8_col_from_byte_offset(text, start_byte);
+            uint32_t end_col = fr_utf8_col_from_byte_offset(text, end_byte);
             add_match(bar, (uint32_t)line, start_col, end_col);
             // Advance past the entire match (non-overlapping). This also keeps
             // the cursor on a UTF-8 codepoint boundary; the previous pos++ could

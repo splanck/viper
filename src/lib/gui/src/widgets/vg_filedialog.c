@@ -87,6 +87,16 @@ static bool filedialog_handle_event(vg_widget_t *widget, vg_event_t *event);
 static vg_filedialog_modal_runner_t g_modal_runner = NULL;
 static void *g_modal_runner_user_data = NULL;
 
+static char *filedialog_strdup(const char *text) {
+    if (!text)
+        return NULL;
+#ifdef _WIN32
+    return _strdup(text);
+#else
+    return strdup(text);
+#endif
+}
+
 //=============================================================================
 // FileDialog VTable
 //=============================================================================
@@ -330,12 +340,11 @@ static bool filedialog_filename_has_extension(const char *filename) {
 static void filedialog_set_default_filename(vg_filedialog_t *dialog, const char *filename) {
     if (!dialog)
         return;
+    char *copy = filedialog_strdup(filename);
+    if (filename && !copy)
+        return;
     free(dialog->default_filename);
-#ifdef _WIN32
-    dialog->default_filename = filename ? _strdup(filename) : NULL;
-#else
-    dialog->default_filename = filename ? strdup(filename) : NULL;
-#endif
+    dialog->default_filename = copy;
     dialog->filename_cursor_pos = dialog->default_filename ? strlen(dialog->default_filename) : 0;
 }
 
@@ -678,11 +687,10 @@ static void clear_entries(vg_filedialog_t *dialog) {
 
 /// @brief Load the directory at path into dialog->entries[], sorted and filtered.
 static void load_directory(vg_filedialog_t *dialog, const char *path) {
-#ifdef _WIN32
-    char *new_current_path = _strdup(path);
-#else
-    char *new_current_path = strdup(path);
-#endif
+    if (!dialog || !path)
+        return;
+
+    char *new_current_path = filedialog_strdup(path);
     if (!new_current_path)
         return;
 
@@ -1093,11 +1101,11 @@ vg_filedialog_t *vg_filedialog_create(vg_filedialog_mode_t mode) {
     vg_theme_t *theme = vg_theme_get_current();
 
     // Initialize dialog fields
-#ifdef _WIN32
-    dialog->base.title = _strdup(title);
-#else
-    dialog->base.title = strdup(title);
-#endif
+    dialog->base.title = filedialog_strdup(title);
+    if (!dialog->base.title) {
+        vg_widget_destroy(&dialog->base.base);
+        return NULL;
+    }
     dialog->base.show_close_button = true;
     dialog->base.draggable = true;
     dialog->base.modal = true;
@@ -2094,12 +2102,11 @@ void vg_filedialog_clear_filters(vg_filedialog_t *dialog) {
 void vg_filedialog_set_default_extension(vg_filedialog_t *dialog, const char *ext) {
     if (!dialog)
         return;
+    char *copy = filedialog_strdup(ext);
+    if (ext && !copy)
+        return;
     free(dialog->default_extension);
-#ifdef _WIN32
-    dialog->default_extension = ext ? _strdup(ext) : NULL;
-#else
-    dialog->default_extension = ext ? strdup(ext) : NULL;
-#endif
+    dialog->default_extension = copy;
 }
 
 /// @brief Append a named shortcut to the sidebar bookmark list.
@@ -2126,13 +2133,15 @@ void vg_filedialog_add_bookmark(vg_filedialog_t *dialog, const char *name, const
         dialog->bookmark_capacity = new_cap;
     }
 
-#ifdef _WIN32
-    dialog->bookmarks[dialog->bookmark_count].name = _strdup(name);
-    dialog->bookmarks[dialog->bookmark_count].path = _strdup(path);
-#else
-    dialog->bookmarks[dialog->bookmark_count].name = strdup(name);
-    dialog->bookmarks[dialog->bookmark_count].path = strdup(path);
-#endif
+    char *name_copy = filedialog_strdup(name);
+    char *path_copy = filedialog_strdup(path);
+    if (!name_copy || !path_copy) {
+        free(name_copy);
+        free(path_copy);
+        return;
+    }
+    dialog->bookmarks[dialog->bookmark_count].name = name_copy;
+    dialog->bookmarks[dialog->bookmark_count].path = path_copy;
     dialog->bookmarks[dialog->bookmark_count].icon.type = VG_ICON_NONE;
     dialog->bookmark_count++;
 }

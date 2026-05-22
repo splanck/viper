@@ -93,6 +93,57 @@ static int rt_codeeditor_line_length_i32(const vg_codeeditor_t *ce, int line) {
     return ce->lines[line].length > (size_t)INT_MAX ? INT_MAX : (int)ce->lines[line].length;
 }
 
+static size_t rt_codeeditor_utf8_span(const char *p, size_t remaining) {
+    if (!p || remaining == 0)
+        return 0;
+    if (*p == '\0')
+        return 1;
+    const unsigned char *s = (const unsigned char *)p;
+    if ((s[0] & 0x80u) == 0)
+        return 1;
+    if ((s[0] & 0xE0u) == 0xC0u && remaining >= 2 && (s[1] & 0xC0u) == 0x80u)
+        return 2;
+    if ((s[0] & 0xF0u) == 0xE0u && remaining >= 3 && (s[1] & 0xC0u) == 0x80u &&
+        (s[2] & 0xC0u) == 0x80u)
+        return 3;
+    if ((s[0] & 0xF8u) == 0xF0u && remaining >= 4 && (s[1] & 0xC0u) == 0x80u &&
+        (s[2] & 0xC0u) == 0x80u && (s[3] & 0xC0u) == 0x80u)
+        return 4;
+    return 1;
+}
+
+static int rt_codeeditor_byte_col_to_char_col(const vg_codeeditor_t *ce, int line, int byte_col) {
+    if (!ce || line < 0 || line >= ce->line_count || byte_col <= 0)
+        return 0;
+    const vg_code_line_t *code_line = &ce->lines[line];
+    if (byte_col > (int)code_line->length)
+        byte_col = (int)code_line->length;
+    int chars = 0;
+    size_t pos = 0;
+    while (pos < (size_t)byte_col) {
+        size_t span = rt_codeeditor_utf8_span(code_line->text + pos, code_line->length - pos);
+        if (pos + span > (size_t)byte_col)
+            break;
+        pos += span;
+        chars++;
+    }
+    return chars;
+}
+
+static int rt_codeeditor_char_col_to_byte_col(const vg_codeeditor_t *ce, int line, int char_col) {
+    if (!ce || line < 0 || line >= ce->line_count || char_col <= 0)
+        return 0;
+    const vg_code_line_t *code_line = &ce->lines[line];
+    int chars = 0;
+    size_t pos = 0;
+    while (pos < code_line->length && chars < char_col) {
+        size_t span = rt_codeeditor_utf8_span(code_line->text + pos, code_line->length - pos);
+        pos += span;
+        chars++;
+    }
+    return pos > (size_t)INT_MAX ? INT_MAX : (int)pos;
+}
+
 /// @brief Linear-scan the editor's user-supplied keyword list for an exact match.
 ///
 /// Custom keywords let scripts add domain-specific syntax (e.g., your
@@ -1291,12 +1342,13 @@ int64_t rt_codeeditor_get_cursor_col_at(void *editor, int64_t index) {
     if (!ce)
         return 0;
     if (index == 0)
-        return ce->cursor_col;
+        return rt_codeeditor_byte_col_to_char_col(ce, ce->cursor_line, ce->cursor_col);
     if (index < 0 || index > INT32_MAX)
         return 0;
     int extra_idx = (int)index - 1;
     if (extra_idx >= 0 && extra_idx < ce->extra_cursor_count)
-        return ce->extra_cursors[extra_idx].col;
+        return rt_codeeditor_byte_col_to_char_col(
+            ce, ce->extra_cursors[extra_idx].line, ce->extra_cursors[extra_idx].col);
     return 0;
 }
 
@@ -1330,10 +1382,10 @@ void rt_codeeditor_set_cursor_position_at(void *editor, int64_t index, int64_t l
     int extra_idx = (int)index - 1;
     if (extra_idx < 0 || extra_idx >= ce->extra_cursor_count)
         return;
+    rt_codeeditor_clamp_position(ce, &line_i, &col_i);
+    col_i = rt_codeeditor_char_col_to_byte_col(ce, line_i, col_i);
     ce->extra_cursors[extra_idx].line = line_i;
     ce->extra_cursors[extra_idx].col = col_i;
-    rt_codeeditor_clamp_position(
-        ce, &ce->extra_cursors[extra_idx].line, &ce->extra_cursors[extra_idx].col);
     ce->extra_cursors[extra_idx].has_selection = false;
     ce->base.needs_paint = true;
 }
@@ -1371,13 +1423,15 @@ void rt_codeeditor_set_cursor_selection(void *editor,
     if (extra_idx < 0 || extra_idx >= ce->extra_cursor_count)
         return;
 
+    s_col = rt_codeeditor_char_col_to_byte_col(ce, s_line, s_col);
+    e_col = rt_codeeditor_char_col_to_byte_col(ce, e_line, e_col);
     ce->extra_cursors[extra_idx].selection.start_line = s_line;
     ce->extra_cursors[extra_idx].selection.start_col = s_col;
     ce->extra_cursors[extra_idx].selection.end_line = e_line;
     ce->extra_cursors[extra_idx].selection.end_col = e_col;
     ce->extra_cursors[extra_idx].line = e_line;
     ce->extra_cursors[extra_idx].col = e_col;
-    ce->extra_cursors[extra_idx].has_selection = true;
+    ce->extra_cursors[extra_idx].has_selection = s_line != e_line || s_col != e_col;
     ce->base.needs_paint = true;
 }
 
@@ -1958,7 +2012,9 @@ void rt_codeeditor_replace_word_at_cursor(void *editor, rt_string new_text) {
     char *cstr = rt_string_to_gui_cstr(new_text);
     if (cstr) {
         /* select the word, then insert the replacement (replaces selection) */
-        vg_codeeditor_set_selection(ce, ce->cursor_line, start, ce->cursor_line, end);
+        int start_col = rt_codeeditor_byte_col_to_char_col(ce, ce->cursor_line, start);
+        int end_col = rt_codeeditor_byte_col_to_char_col(ce, ce->cursor_line, end);
+        vg_codeeditor_set_selection(ce, ce->cursor_line, start_col, ce->cursor_line, end_col);
         vg_codeeditor_insert_text(ce, cstr);
         free(cstr);
     }

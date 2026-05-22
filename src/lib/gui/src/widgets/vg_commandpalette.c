@@ -346,6 +346,10 @@ vg_commandpalette_t *vg_commandpalette_create(void) {
     palette->hovered_index = -1;
     palette->first_visible_index = 0;
     palette->placeholder_text = strdup("Type to search...");
+    if (!palette->placeholder_text) {
+        vg_widget_destroy(&palette->base);
+        return NULL;
+    }
 
     return palette;
 }
@@ -845,8 +849,11 @@ void vg_commandpalette_set_font(vg_commandpalette_t *palette, vg_font_t *font, f
 void vg_commandpalette_set_placeholder(vg_commandpalette_t *palette, const char *text) {
     if (!palette)
         return;
+    char *copy = text ? strdup(text) : NULL;
+    if (text && !copy)
+        return;
     free(palette->placeholder_text);
-    palette->placeholder_text = text ? strdup(text) : NULL;
+    palette->placeholder_text = copy;
     palette->base.needs_paint = true;
 }
 

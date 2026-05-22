@@ -588,11 +588,11 @@ vg_listbox_item_t *vg_listbox_add_item(vg_listbox_t *listbox, const char *text, 
 /// @param item    Item to remove (must belong to @p listbox).
 void vg_listbox_remove_item(vg_listbox_t *listbox, vg_listbox_item_t *item);
 
-/// @brief Remove and free all items in the listbox.
+/// @brief Remove all items and reset selection; virtual mode is disabled and cleared.
 /// @param listbox ListBox widget.
 void vg_listbox_clear(vg_listbox_t *listbox);
 
-/// @brief Select an item (deselects the current selection first).
+/// @brief Select an item; passing NULL clears all non-virtual selection flags.
 /// @param listbox ListBox widget.
 /// @param item    Item to select, or NULL to deselect all.
 void vg_listbox_select(vg_listbox_t *listbox, vg_listbox_item_t *item);
@@ -729,7 +729,8 @@ void vg_dropdown_clear(vg_dropdown_t *dropdown);
 
 /// @brief Set the currently selected item by index.
 /// @param dropdown Dropdown widget.
-/// @param index    Zero-based item index, or -1 to show the placeholder.
+/// @param index    Zero-based item index, or -1 to show the placeholder. Other invalid
+///                 indices are ignored.
 void vg_dropdown_set_selected(vg_dropdown_t *dropdown, int index);
 
 /// @brief Get the currently selected item index.

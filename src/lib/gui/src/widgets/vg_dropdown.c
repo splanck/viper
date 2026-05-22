@@ -860,7 +860,9 @@ void vg_dropdown_set_selected(vg_dropdown_t *dropdown, int index) {
         return;
 
     int old_index = dropdown->selected_index;
-    if (index < -1 || index >= dropdown->item_count) {
+    if (index < -1 || index >= dropdown->item_count)
+        return;
+    if (index == -1) {
         dropdown->selected_index = -1;
     } else {
         dropdown->selected_index = index;
