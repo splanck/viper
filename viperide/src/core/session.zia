@@ -10,6 +10,10 @@ bind IO = Viper.IO;
 bind Dir = Viper.IO.Dir;
 bind Path = Viper.IO.Path;
 bind Convert = Viper.Core.Convert;
+bind Seq = Viper.Collections.Seq;
+bind Obj = Viper.Core.Object;
+
+final MAX_RECENT_PROJECTS = 10;
 
 class SessionManager {
     expose String settingsPath;
@@ -32,8 +36,6 @@ class SessionManager {
             content = IO.File.ReadAllText(settingsPath);
         }
         var ini = Ini.Parse(content);
-        Ini.Set(ini, "settings", "restoreSession", "1");
-        Ini.Set(ini, "settings", "restoreLastProject", "1");
 
         var projectRoot = "";
         if projMgr != null and projMgr.project != null and projMgr.project.isOpen {
@@ -62,10 +64,7 @@ class SessionManager {
             i = i + 1;
         }
 
-        if projectRoot != "" {
-            Ini.Set(ini, "recent", "count", "1");
-            Ini.Set(ini, "recent", "path.0", projectRoot);
-        }
+        SaveRecentProjects(ini, projectRoot);
 
         IO.File.WriteAllText(settingsPath, Ini.Format(ini));
     }
@@ -124,5 +123,30 @@ class SessionManager {
             tabs.SetActive(activeIdx);
         }
         return restored;
+    }
+
+    hide func SaveRecentProjects(ini: Any, projectRoot: String) {
+        if projectRoot == "" { return; }
+
+        var oldCount = Convert.ToInt(Ini.Get(ini, "recent", "count"));
+        var oldPaths = Seq.New();
+        var i = 0;
+        while i < oldCount {
+            var oldPath = Ini.Get(ini, "recent", "path." + i);
+            if oldPath != "" and oldPath != projectRoot {
+                Seq.Push(oldPaths, oldPath);
+            }
+            i = i + 1;
+        }
+
+        Ini.Set(ini, "recent", "path.0", projectRoot);
+        var written = 1;
+        i = 0;
+        while i < Seq.get_Length(oldPaths) and written < MAX_RECENT_PROJECTS {
+            Ini.Set(ini, "recent", "path." + written, Obj.ToString(Seq.Get(oldPaths, i)));
+            written = written + 1;
+            i = i + 1;
+        }
+        Ini.Set(ini, "recent", "count", "" + written);
     }
 }

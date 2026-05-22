@@ -226,7 +226,7 @@ Acceptance:
 
 ### 5.6 Project Search
 
-Current state:
+Original state before Phase 0:
 
 - Search scans `.zia` and `.bas` synchronously.
 - It is substring-only and case-sensitive.
@@ -238,6 +238,10 @@ Change:
 - For Phase 0 it may remain synchronous, but it must route results through `LocationStore`.
 - Respect project excludes from `ProjectManager` as they exist today; richer ignore behavior is Phase 1.
 - Add a click handler on `shell.outputListBox` that resolves a location id and calls `OpenLocation`.
+
+Implementation update:
+
+- ViperIDE now prompts for query, case sensitivity, whole-word matching, and extension filters before scanning. Results store `LocationStore` ids and the output-panel click handler resolves those ids instead of parsing display strings.
 
 Acceptance:
 
@@ -257,6 +261,10 @@ Acceptance:
 
 - Relaunch after three open files restores those three files, active tab, cursor, and project tree.
 - Deleted files are skipped with one warning summary, not one modal per file.
+
+Implementation update:
+
+- Session saves preserve existing user settings in the shared INI file and keep a capped recent-project history with the current project prepended.
 
 ## 6. Error Handling
 

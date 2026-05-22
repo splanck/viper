@@ -5,18 +5,22 @@ bind "commands/edit_commands";
 bind "commands/search_commands";
 bind "core/document";
 bind "core/document_manager";
+bind "core/project";
 bind "editor/language_service";
 bind "editor/project_index";
 bind "editor/signature";
 bind "services/file_utils";
 bind "services/locations";
 bind "services/workspace_edits";
+bind "core/project_manager";
+bind "core/session";
 
 bind Terminal = Viper.Terminal;
 bind File = Viper.IO.File;
 bind Dir = Viper.IO.Dir;
 bind Path = Viper.IO.Path;
 bind TempFile = Viper.IO.TempFile;
+bind Ini = Viper.Text.Ini;
 bind Seq = Viper.Collections.Seq;
 bind Map = Viper.Collections.Map;
 
@@ -30,6 +34,23 @@ func assertTrue(cond: Boolean, msg: String) -> Boolean {
         return false;
     }
     return true;
+}
+
+func AddEdit(edits: Any,
+             filePath: String,
+             startLine: Integer,
+             startColumn: Integer,
+             endLine: Integer,
+             endColumn: Integer,
+             newText: String) {
+    var edit = Map.New();
+    Map.SetStr(edit, "file", filePath);
+    Map.SetInt(edit, "startLine", startLine);
+    Map.SetInt(edit, "startColumn", startColumn);
+    Map.SetInt(edit, "endLine", endLine);
+    Map.SetInt(edit, "endColumn", endColumn);
+    Map.SetStr(edit, "newText", newText);
+    Seq.Push(edits, edit);
 }
 
 func main() {
@@ -75,25 +96,82 @@ func main() {
                   "valid rename identifier") == false { return; }
     if assertTrue(edit_commands.IsValidIdentifier("1bad") == false,
                   "invalid rename identifier") == false { return; }
+    if assertTrue(edit_commands.IsValidIdentifier("while") == false,
+                  "keyword rename identifier rejected") == false { return; }
+
+    var closeMgr = new document_manager.DocumentManager();
+    var closeA = closeMgr.NewDocument();
+    closeA.fileName = "a.zia";
+    var closeB = closeMgr.NewDocument();
+    closeB.fileName = "b.zia";
+    var closeC = closeMgr.NewDocument();
+    closeC.fileName = "c.zia";
+    closeMgr.SetActive(2);
+    closeMgr.CloseDocument(0);
+    var stillActive = closeMgr.GetActive();
+    if assertTrue(closeMgr.activeIndex == 1 and stillActive != null and stillActive!.fileName == "c.zia",
+                  "closing tab left of active keeps same document active") == false { return; }
 
     var root = TempFile.CreateDirWithPrefix("viperide_phase_probe_");
     var filePath = Path.Join(root, "main.zia");
     File.WriteAllText(filePath, "module Main;\nfunc start() {\n    var oldName = 1;\n    var useName = oldName;\n}\n");
+
+    var settingsPath = Path.Join(root, "settings.ini");
+    File.WriteAllText(settingsPath,
+        "[settings]\nrestoreSession=0\nrestoreLastProject=0\nconfirmOnExitWithUnsavedChanges=0\n"
+        + "[recent]\ncount=2\npath.0=/old/project\npath.1=/older/project\n");
+    var projectRoot = Path.Join(root, "ProjectA");
+    Dir.MakeAll(projectRoot);
+    var sessMgr = new session.SessionManager();
+    sessMgr.Setup(settingsPath);
+    var sessionDocMgr = new document_manager.DocumentManager();
+    var sessionProjMgr = new project_manager.ProjectManager();
+    sessionProjMgr.project = new project.Project();
+    sessionProjMgr.project.Open(projectRoot);
+    sessMgr.Save(sessionDocMgr, sessionProjMgr);
+    var savedIni = Ini.Parse(File.ReadAllText(settingsPath));
+    if assertTrue(Ini.Get(savedIni, "settings", "restoreSession") == "0",
+                  "session save preserves disabled restoreSession") == false { return; }
+    if assertTrue(Ini.Get(savedIni, "settings", "restoreLastProject") == "0",
+                  "session save preserves disabled restoreLastProject") == false { return; }
+    if assertTrue(Ini.Get(savedIni, "settings", "confirmOnExitWithUnsavedChanges") == "0",
+                  "session save preserves close confirmation setting") == false { return; }
+    if assertTrue(Ini.Get(savedIni, "recent", "count") == "3"
+                  and Ini.Get(savedIni, "recent", "path.0") == projectRoot
+                  and Ini.Get(savedIni, "recent", "path.1") == "/old/project",
+                  "session save prepends recent project history") == false { return; }
+
     var docMgr = new document_manager.DocumentManager();
     var doc = docMgr.OpenFile(filePath);
 
     var edits = Seq.New();
-    var edit = Map.New();
-    Map.SetStr(edit, "file", filePath);
-    Map.SetInt(edit, "startLine", 4);
-    Map.SetInt(edit, "startColumn", 19);
-    Map.SetInt(edit, "endLine", 4);
-    Map.SetInt(edit, "endColumn", 26);
-    Map.SetStr(edit, "newText", "newName");
-    Seq.Push(edits, edit);
+    AddEdit(edits, filePath, 4, 19, 4, 26, "newName");
     var applyResult = workspace_edits.ApplyRenameEdits(edits, docMgr);
     if assertTrue(applyResult.success and doc.content != File.ReadAllText(filePath),
                   "workspace edit updates open dirty document only") == false { return; }
+
+    var rollbackPath = Path.Join(root, "rollback.zia");
+    File.WriteAllText(rollbackPath, "module Rollback;\nfunc run() {\n    var oldName = 1;\n}\n");
+    var rollbackMgr = new document_manager.DocumentManager();
+    var rollbackDoc = rollbackMgr.OpenFile(rollbackPath);
+    var beforeRollback = rollbackDoc.content;
+    var badEdits = Seq.New();
+    AddEdit(badEdits, rollbackPath, 3, 9, 3, 16, "newName");
+    AddEdit(badEdits, Path.Join(root, "missing.zia"), 1, 1, 1, 2, "x");
+    var badResult = workspace_edits.ApplyRenameEdits(badEdits, rollbackMgr);
+    if assertTrue(badResult.success == false
+                  and rollbackDoc.content == beforeRollback
+                  and rollbackDoc.isModified == false,
+                  "workspace edit failure leaves open buffers unchanged") == false { return; }
+
+    var overlapEdits = Seq.New();
+    AddEdit(overlapEdits, rollbackPath, 3, 9, 3, 16, "firstName");
+    AddEdit(overlapEdits, rollbackPath, 3, 12, 3, 16, "secondName");
+    var overlapResult = workspace_edits.ApplyRenameEdits(overlapEdits, rollbackMgr);
+    if assertTrue(overlapResult.success == false
+                  and rollbackDoc.content == beforeRollback
+                  and rollbackDoc.isModified == false,
+                  "overlapping workspace edits are rejected before mutation") == false { return; }
 
     var indexer = new project_index.ProjectIndexer();
     indexer.Open(root, docMgr);

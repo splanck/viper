@@ -30,14 +30,26 @@ func ApplyRenameEdits(edits: Any,
         return result;
     }
 
+    var validation = ValidateRenameEdits(edits, docMgr);
+    if validation != "" {
+        result.message = validation;
+        return result;
+    }
+
     var closedEdits = Seq.New();
+    var openPaths = Seq.New();
+    var newContentByPath = Map.New();
     var i = 0;
     while i < Seq.get_Length(edits) {
         var edit = Seq.Get(edits, i);
         var path = Map.GetStr(edit, "file");
         var docIndex = docMgr.FindByPath(path);
         if docIndex >= 0 {
-            // Open documents are edited in memory using reverse sequence order.
+            if SeqContainsString(openPaths, path) == false {
+                Seq.Push(openPaths, path);
+                var openDoc = docMgr.documents.get(docIndex);
+                Map.SetStr(newContentByPath, path, openDoc.content);
+            }
         } else {
             if File.Exists(path) {
                 Map.SetInt(edit, "expectedMtime", File.Modified(path));
@@ -53,18 +65,21 @@ func ApplyRenameEdits(edits: Any,
         var path2 = Map.GetStr(edit2, "file");
         var idx = docMgr.FindByPath(path2);
         if idx >= 0 {
-            var doc = docMgr.documents.get(idx);
-            if ApplyEditToDocument(doc, edit2) == false {
-                result.message = "Could not apply edit to " + doc.fileName;
-                return result;
-            }
-            doc.isModified = true;
-            result.changedDocuments = result.changedDocuments + 1;
+            var current = Map.GetStr(newContentByPath, path2);
+            Map.SetStr(newContentByPath, path2, ApplyEditToText(current, edit2));
         }
         j = j - 1;
     }
 
     if Seq.get_Length(closedEdits) > 0 {
+        var diskValidation = WorkspaceEdit.Validate(closedEdits);
+        if Map.GetBool(diskValidation, "success") == false {
+            result.message = Map.GetStr(diskValidation, "diagnostics");
+            if result.message == "" {
+                result.message = "Workspace edit validation failed";
+            }
+            return result;
+        }
         var diskResult = WorkspaceEdit.Apply(closedEdits);
         if Map.GetBool(diskResult, "success") == false {
             result.message = Map.GetStr(diskResult, "diagnostics");
@@ -75,22 +90,112 @@ func ApplyRenameEdits(edits: Any,
         }
     }
 
+    var p = 0;
+    while p < Seq.get_Length(openPaths) {
+        var openPath = Obj.ToString(Seq.Get(openPaths, p));
+        var openIdx = docMgr.FindByPath(openPath);
+        if openIdx >= 0 {
+            var doc = docMgr.documents.get(openIdx);
+            doc.content = Map.GetStr(newContentByPath, openPath);
+            doc.isModified = true;
+            result.changedDocuments = result.changedDocuments + 1;
+        }
+        p = p + 1;
+    }
+
     result.success = true;
     result.message = "Applied edits";
     return result;
 }
 
 func ApplyEditToDocument(doc: document.Document, edit: Any) -> Boolean {
+    if CanApplyEditToText(doc.content, edit) == false {
+        return false;
+    }
+    doc.content = ApplyEditToText(doc.content, edit);
+    return true;
+}
+
+func ValidateRenameEdits(edits: Any,
+                         docMgr: document_manager.DocumentManager) -> String {
+    var i = 0;
+    while i < Seq.get_Length(edits) {
+        var edit = Seq.Get(edits, i);
+        var path = Map.GetStr(edit, "file");
+        if path == "" {
+            return "Workspace edit has no file path";
+        }
+        var content = "";
+        var docIndex = docMgr.FindByPath(path);
+        if docIndex >= 0 {
+            content = docMgr.documents.get(docIndex).content;
+        } else {
+            if File.Exists(path) == false {
+                return "Workspace edit file not found: " + path;
+            }
+            content = File.ReadAllText(path);
+        }
+        if CanApplyEditToText(content, edit) == false {
+            return "Invalid workspace edit range in " + path;
+        }
+
+        var j = i + 1;
+        while j < Seq.get_Length(edits) {
+            var other = Seq.Get(edits, j);
+            if EditsOverlap(edit, other) {
+                return "Overlapping workspace edits in " + path;
+            }
+            j = j + 1;
+        }
+        i = i + 1;
+    }
+    return "";
+}
+
+func EditsOverlap(a: Any, b: Any) -> Boolean {
+    if Map.GetStr(a, "file") != Map.GetStr(b, "file") {
+        return false;
+    }
+    var aStartLine = Map.GetInt(a, "startLine");
+    var aEndLine = Map.GetInt(a, "endLine");
+    var bStartLine = Map.GetInt(b, "startLine");
+    var bEndLine = Map.GetInt(b, "endLine");
+    if aStartLine != aEndLine or bStartLine != bEndLine {
+        return true;
+    }
+    if aStartLine != bStartLine {
+        return false;
+    }
+    var aStart = Map.GetInt(a, "startColumn");
+    var aEnd = Map.GetInt(a, "endColumn");
+    var bStart = Map.GetInt(b, "startColumn");
+    var bEnd = Map.GetInt(b, "endColumn");
+    return aStart < bEnd and bStart < aEnd;
+}
+
+func CanApplyEditToText(content: String, edit: Any) -> Boolean {
     var startLine = Map.GetInt(edit, "startLine");
     var startCol = Map.GetInt(edit, "startColumn");
     var endLine = Map.GetInt(edit, "endLine");
     var endCol = Map.GetInt(edit, "endColumn");
-    var newText = Map.GetStr(edit, "newText");
     if startLine != endLine { return false; }
     if startLine < 1 or startCol < 1 or endCol < startCol { return false; }
 
-    var lines = Str.Split(doc.content, "\n");
+    var lines = Str.Split(content, "\n");
     if startLine > Seq.get_Length(lines) { return false; }
+    var line = Obj.ToString(Seq.Get(lines, startLine - 1));
+    if startCol > Str.Length(line) + 1 { return false; }
+    if endCol > Str.Length(line) + 1 { return false; }
+    return true;
+}
+
+func ApplyEditToText(content: String, edit: Any) -> String {
+    var startLine = Map.GetInt(edit, "startLine");
+    var startCol = Map.GetInt(edit, "startColumn");
+    var endCol = Map.GetInt(edit, "endColumn");
+    var newText = Map.GetStr(edit, "newText");
+
+    var lines = Str.Split(content, "\n");
     var line = Obj.ToString(Seq.Get(lines, startLine - 1));
     var prefix = "";
     if startCol > 1 {
@@ -114,6 +219,16 @@ func ApplyEditToDocument(doc: document.Document, edit: Any) -> Boolean {
         }
         i = i + 1;
     }
-    doc.content = rebuilt;
-    return true;
+    return rebuilt;
+}
+
+func SeqContainsString(items: Any, value: String) -> Boolean {
+    var i = 0;
+    while i < Seq.get_Length(items) {
+        if Obj.ToString(Seq.Get(items, i)) == value {
+            return true;
+        }
+        i = i + 1;
+    }
+    return false;
 }

@@ -11,7 +11,6 @@ bind "../commands/file_commands";
 
 bind Viper.GUI;
 bind Convert = Viper.Core.Convert;
-bind ZiaCompletion = Viper.Zia.Completion;
 bind Str = Viper.String;
 bind Seq = Viper.Collections.Seq;
 bind Obj = Viper.Core.Object;
@@ -20,8 +19,8 @@ bind Map = Viper.Collections.Map;
 // ============================================================================
 // MODULE: edit_commands
 // PURPOSE: Standard editor commands (undo/redo/cut/copy/paste/select-all)
-//          plus a find-bar toggle, go-to-line jump, and go-to-definition
-//          via the Zia completion engine's hover info.
+//          plus a find-bar toggle, go-to-line jump, project-index-backed
+//          go-to-definition, find references, rename, and multi-cursor helpers.
 //
 // WHERE-THIS-FITS: Command handlers wired into main.zia's command
 //          dispatcher. Each handler is a thin wrapper over the
@@ -31,11 +30,9 @@ bind Map = Viper.Collections.Map;
 //   * NULL-SAFE WRAPPERS. Every handler tests `engine != null and
 //     engine.editor != null` before dispatching. Lets the IDE survive
 //     bringing up commands before the editor is fully wired.
-//   * GO-TO-DEFINITION VIA HOVER + SYMBOLS. There's no dedicated
-//     "definition" API — we use Hover to extract the symbol name at
-//     the cursor, then scan the Symbols result for a matching name and
-//     jump to its line. Imperfect (it won't find symbols in other
-//     files), but enough for in-file navigation.
+//   * STRUCTURED SEMANTIC QUERIES. Definition, references, and rename use
+//     ProjectIndexer and LocationStore records instead of parsing display
+//     strings or hover text.
 //   * FIND TOGGLE. handleFind shows the find bar if hidden, hides it
 //     otherwise. The bar focuses itself on show so the user can start
 //     typing immediately.
@@ -107,10 +104,8 @@ func handleGoToLine(shell: app_shell.AppShell,
 }
 
 /// @brief Jump to the definition of the symbol at the cursor.
-/// @details Uses Hover to extract the symbol NAME at the cursor, then
-///          scans the Symbols result for that name and jumps to its
-///          line. In-file only — multi-file definition lookup would
-///          need a project-wide symbol index.
+/// @details Uses ProjectIndexer and LocationStore so cross-file definitions
+///          navigate through the same structured path as search/diagnostics.
 func handleGoToDefinition(shell: app_shell.AppShell,
                           docMgr: document_manager.DocumentManager,
                           engine: editor_engine.EditorEngine,
@@ -147,46 +142,7 @@ func handleGoToDefinition(shell: app_shell.AppShell,
         return;
     }
 
-    // Get symbol list and find the identifier at cursor via hover
-    var hoverInfo = ZiaCompletion.Hover(source, curLine, curCol);
-    if hoverInfo == "" {
-        GUI.Toast.Warning("No symbol found at cursor");
-        return;
-    }
-
-    // Extract the symbol name from hover (format: "kind name: type")
-    var spaceIdx = Str.IndexOf(hoverInfo, " ");
-    if spaceIdx == 0 { return; }
-    var rest = Str.Mid(hoverInfo, spaceIdx + 1);
-    var colonIdx = Str.IndexOf(rest, ":");
-    var symbolName = rest;
-    if colonIdx > 0 {
-        symbolName = Str.Left(rest, colonIdx - 1);
-    }
-
-    // Look up the symbol in the symbols list to get its definition line
-    var syms = ZiaCompletion.Symbols(source);
-    var symLines = Str.Split(syms, "\n");
-    var i = 0;
-    while i < Seq.get_Length(symLines) {
-        var symLine = Obj.ToString(Seq.Get(symLines, i));
-        i = i + 1;
-        if Str.Length(symLine) == 0 { continue; }
-
-        var parts = Str.Split(symLine, "\t");
-        if Seq.get_Length(parts) < 4 { continue; }
-        var name = Obj.ToString(Seq.Get(parts, 0));
-        if name == symbolName {
-            var defLine = Convert.ToInt(Obj.ToString(Seq.Get(parts, 3)));
-            if defLine > 0 {
-                engine.GoToLine(defLine);
-                shell.SetStatusLeft("Definition of '" + symbolName + "' at line " + defLine);
-                return;
-            }
-        }
-    }
-
-    GUI.Toast.Info("Definition not found for '" + symbolName + "'");
+    GUI.Toast.Info("Definition not found");
 }
 
 func handleFindReferences(shell: app_shell.AppShell,
@@ -332,7 +288,7 @@ func handleSelectAllOccurrences(shell: app_shell.AppShell,
         var searchFrom = 1;
         var idx = Str.IndexOf(line, word);
         while idx != 0 {
-            if search_commands_wordBoundary(line, idx, Str.Length(word)) {
+            if IsWordBoundaryMatch(line, idx, Str.Length(word)) {
                 if firstSet == false {
                     engine.editor.SetCursor(lineIdx, idx - 1);
                     engine.editor.SetCursorSelection(0, lineIdx, idx - 1, lineIdx, idx - 1 + Str.Length(word));
@@ -371,7 +327,7 @@ func FindNextOccurrence(source: String, word: String, startLine: Integer, startC
         }
         var idx = Str.IndexOfFrom(line, fromCol, word);
         while idx != 0 {
-            if search_commands_wordBoundary(line, idx, Str.Length(word)) {
+            if IsWordBoundaryMatch(line, idx, Str.Length(word)) {
                 return "" + (i + 1) + ":" + idx;
             }
             idx = Str.IndexOfFrom(line, idx + 1, word);
@@ -383,6 +339,7 @@ func FindNextOccurrence(source: String, word: String, startLine: Integer, startC
 
 func IsValidIdentifier(name: String) -> Boolean {
     if Str.Length(name) == 0 { return false; }
+    if IsKeyword(name) { return false; }
     var first = Str.MidLen(name, 1, 1);
     if IsIdentStart(first) == false { return false; }
     var i = 2;
@@ -406,7 +363,7 @@ func IsIdentPart(ch: String) -> Boolean {
     return false;
 }
 
-func search_commands_wordBoundary(line: String, startCol: Integer, len: Integer) -> Boolean {
+func IsWordBoundaryMatch(line: String, startCol: Integer, len: Integer) -> Boolean {
     var beforeOk = true;
     var afterOk = true;
     if startCol > 1 {
@@ -417,4 +374,31 @@ func search_commands_wordBoundary(line: String, startCol: Integer, len: Integer)
         afterOk = IsIdentPart(Str.MidLen(line, afterCol, 1)) == false;
     }
     return beforeOk and afterOk;
+}
+
+func IsKeyword(name: String) -> Boolean {
+    if name == "and" { return true; }
+    if name == "bind" { return true; }
+    if name == "break" { return true; }
+    if name == "class" { return true; }
+    if name == "continue" { return true; }
+    if name == "else" { return true; }
+    if name == "expose" { return true; }
+    if name == "false" { return true; }
+    if name == "final" { return true; }
+    if name == "for" { return true; }
+    if name == "func" { return true; }
+    if name == "hide" { return true; }
+    if name == "if" { return true; }
+    if name == "in" { return true; }
+    if name == "module" { return true; }
+    if name == "new" { return true; }
+    if name == "not" { return true; }
+    if name == "null" { return true; }
+    if name == "or" { return true; }
+    if name == "return" { return true; }
+    if name == "true" { return true; }
+    if name == "var" { return true; }
+    if name == "while" { return true; }
+    return false;
 }

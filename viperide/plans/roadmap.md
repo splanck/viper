@@ -12,8 +12,9 @@ The current app is useful, but the hard work is not just adding panels. The gaps
 app. The current app has a command registry, document kinds, close-prevention
 flow, structured locations, session restore, language-service capability
 routing, project-index-backed Zia definition/reference/rename, multi-cursor
-commands, signature help, and file-tree rename/delete handling. Phase 2 and
-later items below remain future roadmap work.
+commands, signature help, transactional workspace edits, configurable project
+search, and file-tree rename/delete handling. Phase 2 and later items below
+remain future roadmap work.
 
 The IDE is still a single-frame Zia app in `viperide/src/main.zia`, but the
 Phase 0/1 work moved command metadata, session state, structured locations,

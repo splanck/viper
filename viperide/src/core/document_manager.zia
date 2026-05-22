@@ -33,9 +33,10 @@ bind Path = Viper.IO.Path;
 //     "I have three tabs of foo.zia" anti-pattern.
 //   * SaveAll RETURNS COUNT. Lets the caller render "Saved N files" in
 //     the status bar without re-counting.
-//   * CloseDocument FIXES UP activeIndex. If you close the active tab,
-//     the manager picks a sensible new active (the previous tab if one
-//     existed, else -1). The caller doesn't have to manage this.
+//   * CloseDocument FIXES UP activeIndex. If you close a tab left of the
+//     active one, the active index shifts left to keep the same document
+//     visible. If you close the active tab, the manager keeps the same
+//     visual slot when possible or clamps to the last tab.
 //   * lastModifiedOnDisk SET ON SAVE TOO. So the file watcher doesn't
 //     see our own write as an external change.
 //
@@ -202,13 +203,21 @@ class DocumentManager {
     /// @brief Close the document at the given index.
     /// @param index 0-based index into `documents`.
     /// @return true if closed, false if index was out of range.
-    /// @note If the closed document was active, picks a new active:
-    ///       the next tab to the left, or -1 if none remain.
+    /// @note Keeps the same document active when closing tabs to its left.
+    ///       If the closed document was active, keeps the same visual slot
+    ///       when possible, or clamps to the last tab.
     expose func CloseDocument(index: Integer) -> Boolean {
         if index < 0 or index >= documents.count() { return false; }
+        var wasActive = index == activeIndex;
         documents.removeAt(index);
         if documents.count() == 0 {
             activeIndex = -1;
+        } else if wasActive {
+            if activeIndex >= documents.count() {
+                activeIndex = documents.count() - 1;
+            }
+        } else if index < activeIndex {
+            activeIndex = activeIndex - 1;
         } else if activeIndex >= documents.count() {
             activeIndex = documents.count() - 1;
         }

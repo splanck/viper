@@ -38,8 +38,6 @@ class ProjectIndexer {
         if root == "" { return; }
         if root != rootPath {
             Open(root, docMgr);
-        } else {
-            SyncOpenDocuments(docMgr);
         }
     }
 

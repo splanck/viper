@@ -15,8 +15,8 @@ Key landed pieces:
 - Go to Definition and Find References now consume structured project-index
   maps and route navigation through `services/locations.zia`.
 - Rename validates identifiers, requests semantic rename edits from the project
-  index, and applies open-buffer edits in memory before applying closed-file
-  workspace edits.
+  index, rejects overlapping edit ranges, validates closed-file edits, and only
+  commits open-buffer text after closed-file workspace edits succeed.
 - Multi-cursor commands are wired for add next occurrence, skip occurrence,
   select all occurrences, and clear extra cursors using the existing
   `Viper.GUI.CodeEditor` cursor APIs.

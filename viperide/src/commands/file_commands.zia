@@ -15,6 +15,8 @@ bind Dir = Viper.IO.Dir;
 bind Exec = Viper.System.Exec;
 bind Str = Viper.String;
 
+var confirmDirtyClose = true;
+
 // ============================================================================
 // MODULE: file_commands
 // PURPOSE: File-management command handlers (New, Open, Save, Save As,
@@ -36,8 +38,9 @@ bind Str = Viper.String;
 //     before fsync."
 //   * SAVE OF UNTITLED -> SAVE AS PROMPT. handleSave detects
 //     `doc.isNew` and routes to a SaveAs dialog rather than failing.
-//   * MODIFIED-PROMPT ON CLOSE. handleClose pops a confirmation if the
-//     document is dirty so accidental Ctrl+W doesn't lose work.
+//   * MODIFIED-PROMPT ON CLOSE. handleClose routes through the shared
+//     ConfirmCloseDocuments path so tab close, File > Close, project
+//     switch, and exit use the same dirty-document sweep.
 //   * BREADCRUMB AUTO-HIDE. SetBreadcrumbPath("") hides the breadcrumb
 //     when no path is meaningful (after closing the last document).
 //   * STATUS LABEL HELPER. DocStatusLabel renders "Zia | LF" / "Basic |
@@ -211,14 +214,8 @@ func handleClose(shell: app_shell.AppShell,
 
     SaveEditorState(docMgr, engine);
 
-    var closingDoc = docMgr.documents.get(closeIdx);
-    if closingDoc != null and closingDoc.isModified {
-        var confirmed = GUI.MessageBox.Confirm(
-            "Unsaved Changes",
-            closingDoc.fileName + " has unsaved changes.\nClose without saving?");
-        if confirmed == 0 {
-            return false;
-        }
+    if ConfirmCloseDocuments(shell, docMgr, engine, "Close File", closeIdx) == false {
+        return false;
     }
 
     docMgr.CloseDocument(closeIdx);
@@ -256,6 +253,10 @@ func handleExit(shell: app_shell.AppShell,
 // ============================================================================
 // Shared helpers
 // ============================================================================
+
+func SetConfirmDirtyClose(enabled: Boolean) {
+    confirmDirtyClose = enabled;
+}
 
 /// @brief Open `path` (deduping if already open), wire up the tab,
 ///        breadcrumb, and status bar. Used by handleOpen and the file
@@ -308,6 +309,7 @@ func ConfirmCloseDocuments(shell: app_shell.AppShell,
         i = i + 1;
     }
     if dirtyCount == 0 { return true; }
+    if confirmDirtyClose == false { return true; }
 
     var msg = names;
     if dirtyCount > 5 {

@@ -95,4 +95,5 @@ ViperIDE is organized as a small layered app:
 The Phase 0/1 regression probe is registered as `zia_viperide_phase0_phase1`.
 It covers document kind detection, command id consistency, structured locations,
 language-service capabilities, search matching, signature-call parsing,
-workspace edits for open dirty buffers, and project-index queries.
+session/recent-project persistence, active-tab close behavior, transactional
+workspace edits for open and closed files, and project-index queries.

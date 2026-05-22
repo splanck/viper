@@ -38,6 +38,9 @@ class IdeOverlays {
     expose GUI.Checkbox minimapCheck;
     expose GUI.Checkbox autoCheckCheck;
     expose GUI.Checkbox codeFoldingCheck;
+    expose GUI.Checkbox restoreSessionCheck;
+    expose GUI.Checkbox restoreLastProjectCheck;
+    expose GUI.Checkbox confirmCloseCheck;
     expose GUI.Button browseFontButton;
     expose GUI.Button useSystemFontButton;
     expose GUI.Button resetFontSizeButton;
@@ -129,6 +132,27 @@ class IdeOverlays {
                 codeFoldingCheck.SetChecked(0);
             }
         }
+        if restoreSessionCheck != null {
+            if appSettings.restoreSession {
+                restoreSessionCheck.SetChecked(1);
+            } else {
+                restoreSessionCheck.SetChecked(0);
+            }
+        }
+        if restoreLastProjectCheck != null {
+            if appSettings.restoreLastProject {
+                restoreLastProjectCheck.SetChecked(1);
+            } else {
+                restoreLastProjectCheck.SetChecked(0);
+            }
+        }
+        if confirmCloseCheck != null {
+            if appSettings.confirmOnExitWithUnsavedChanges {
+                confirmCloseCheck.SetChecked(1);
+            } else {
+                confirmCloseCheck.SetChecked(0);
+            }
+        }
     }
 
     expose func Pump(shell: app_shell.AppShell) -> Integer {
@@ -178,6 +202,18 @@ class IdeOverlays {
 
     expose func ReadCodeFolding() -> Boolean {
         return codeFoldingCheck.IsChecked();
+    }
+
+    expose func ReadRestoreSession() -> Boolean {
+        return restoreSessionCheck.IsChecked();
+    }
+
+    expose func ReadRestoreLastProject() -> Boolean {
+        return restoreLastProjectCheck.IsChecked();
+    }
+
+    expose func ReadConfirmClose() -> Boolean {
+        return confirmCloseCheck.IsChecked();
     }
 
     expose func UseSystemFont() {
@@ -315,6 +351,16 @@ class IdeOverlays {
         minimapCheck = GUI.Checkbox.New(body, "Show the minimap");
         autoCheckCheck = GUI.Checkbox.New(body, "Run diagnostics while typing");
         codeFoldingCheck = GUI.Checkbox.New(body, "Enable code folding");
+
+        var startupTitle = GUI.Label.New(body, "Startup and safety");
+        startupTitle.SetMargin(1);
+        GUI.Label.New(
+            body,
+            "These options control restore behavior and destructive close prompts.");
+
+        restoreSessionCheck = GUI.Checkbox.New(body, "Restore open files on launch");
+        restoreLastProjectCheck = GUI.Checkbox.New(body, "Restore the last project on launch");
+        confirmCloseCheck = GUI.Checkbox.New(body, "Confirm before closing unsaved files");
 
         var footer = GUI.HBox.New();
         footer.SetSpacing(10.0);

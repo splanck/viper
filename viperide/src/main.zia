@@ -139,6 +139,7 @@ func main() {
     var appSettings = new settings.SettingsManager();
     appSettings.Load();
     view_commands.applyPersistentSettings(shell, engine, liveDiag, appSettings);
+    file_commands.SetConfirmDirtyClose(appSettings.confirmOnExitWithUnsavedChanges);
 
     var sessionMgr = new session.SessionManager();
     sessionMgr.Setup(appSettings.settingsPath);
@@ -447,12 +448,12 @@ func main() {
         }
 
         // Edit commands
-        if shell.miUndo.WasClicked() != 0 or cpSelected == "undo"      { edit_commands.handleUndo(engine); }
-        if shell.miRedo.WasClicked() != 0 or cpSelected == "redo"      { edit_commands.handleRedo(engine); }
-        if shell.miCut.WasClicked() != 0                               { edit_commands.handleCut(engine); }
-        if shell.miCopy.WasClicked() != 0                              { edit_commands.handleCopy(engine); }
-        if shell.miPaste.WasClicked() != 0                             { edit_commands.handlePaste(engine); }
-        if shell.miSelectAll.WasClicked() != 0                         { edit_commands.handleSelectAll(engine); }
+        if triggered("undo", shell.miUndo, null, cpSelected)           { edit_commands.handleUndo(engine); }
+        if triggered("redo", shell.miRedo, null, cpSelected)           { edit_commands.handleRedo(engine); }
+        if triggered("cut", shell.miCut, null, cpSelected)             { edit_commands.handleCut(engine); }
+        if triggered("copy", shell.miCopy, null, cpSelected)           { edit_commands.handleCopy(engine); }
+        if triggered("paste", shell.miPaste, null, cpSelected)         { edit_commands.handlePaste(engine); }
+        if triggered("selectall", shell.miSelectAll, null, cpSelected) { edit_commands.handleSelectAll(engine); }
         if triggered("find", shell.miFind, shell.tbFind, cpSelected)    { edit_commands.handleFind(shell); }
         if triggeredNoMenu("goto", cpSelected)                          { edit_commands.handleGoToLine(shell, engine); }
         if triggeredNoMenu("gotodef", cpSelected)                       { edit_commands.handleGoToDefinition(shell, docMgr, engine, tabs, indexer, locStore); }
@@ -551,7 +552,11 @@ func main() {
                     appSettings.minimapVisible = overlays.ReadMinimapVisible();
                     appSettings.autoCheckOnSave = overlays.ReadAutoCheck();
                     appSettings.codeFolding = overlays.ReadCodeFolding();
+                    appSettings.restoreSession = overlays.ReadRestoreSession();
+                    appSettings.restoreLastProject = overlays.ReadRestoreLastProject();
+                    appSettings.confirmOnExitWithUnsavedChanges = overlays.ReadConfirmClose();
                     view_commands.applyPersistentSettings(shell, engine, liveDiag, appSettings);
+                    file_commands.SetConfirmDirtyClose(appSettings.confirmOnExitWithUnsavedChanges);
                     appSettings.Save();
                     liveDiag.invalidate();
                     minimapVisible = appSettings.minimapVisible;
@@ -566,7 +571,11 @@ func main() {
                 appSettings.minimapVisible = overlays.ReadMinimapVisible();
                 appSettings.autoCheckOnSave = overlays.ReadAutoCheck();
                 appSettings.codeFolding = overlays.ReadCodeFolding();
+                appSettings.restoreSession = overlays.ReadRestoreSession();
+                appSettings.restoreLastProject = overlays.ReadRestoreLastProject();
+                appSettings.confirmOnExitWithUnsavedChanges = overlays.ReadConfirmClose();
                 view_commands.applyPersistentSettings(shell, engine, liveDiag, appSettings);
+                file_commands.SetConfirmDirtyClose(appSettings.confirmOnExitWithUnsavedChanges);
                 appSettings.Save();
                 liveDiag.invalidate();
                 minimapVisible = appSettings.minimapVisible;
