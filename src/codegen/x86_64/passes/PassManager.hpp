@@ -47,7 +47,7 @@ struct Module {
     std::optional<CodegenResult> codegenResult; ///< Backend assembly emission artefacts.
 
     /// Binary emission artefacts (populated by BinaryEmitPass instead of EmitPass).
-    std::optional<objfile::CodeSection> binaryText;       ///< Machine code bytes + relocations.
+    std::optional<objfile::CodeSection> binaryText;       ///< Merged text, present for debug output.
     std::optional<objfile::CodeSection> binaryRodata;     ///< Read-only data section.
     std::vector<objfile::CodeSection> binaryTextSections; ///< Per-function text sections.
     std::vector<uint8_t> debugLineData;                   ///< Pre-encoded DWARF .debug_line bytes.

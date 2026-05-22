@@ -409,6 +409,174 @@ int main() {
         CHECK(!objs[1].sections[3].data.empty());
     }
 
+    // --- Windows unwind reachability also handles external symbol references ---
+    {
+        auto user = makeObj("user.o", {".text"});
+        addSymbol(user, "main", 1, ObjSymbol::Global);
+        addSymbol(user, "target", 0, ObjSymbol::Undefined);
+        addReloc(user, 1, 2);
+
+        ObjFile unwind;
+        unwind.name = "unwind-ext.obj";
+        unwind.format = ObjFileFormat::COFF;
+        unwind.sections.push_back({});
+
+        ObjSection text;
+        text.name = ".text$target";
+        text.data.resize(16, 0x90);
+        text.executable = true;
+        text.alloc = true;
+        unwind.sections.push_back(text);
+
+        ObjSection pdata;
+        pdata.name = ".pdata$target";
+        pdata.data.resize(12, 0);
+        pdata.alloc = true;
+        unwind.sections.push_back(pdata);
+
+        unwind.symbols.push_back({});
+        addSymbol(unwind, "target", 1, ObjSymbol::Global);
+        ObjSymbol externalTarget;
+        externalTarget.name = "target";
+        externalTarget.binding = ObjSymbol::Undefined;
+        unwind.symbols.push_back(externalTarget);
+        addReloc(unwind, 2, 2); // .pdata -> external symbol resolved to .text$target
+
+        std::vector<ObjFile> objs = {user, unwind};
+        std::unordered_map<std::string, GlobalSymEntry> globalSyms;
+        globalSyms["main"] = {"main", GlobalSymEntry::Global, 0, 1, 0, 0};
+        globalSyms["target"] = {"target", GlobalSymEntry::Global, 1, 1, 0, 0};
+        std::ostringstream err;
+
+        deadStrip(objs, 1, globalSyms, "main", LinkPlatform::Windows, err);
+
+        CHECK(!objs[1].sections[1].data.empty());
+        CHECK(!objs[1].sections[2].data.empty());
+    }
+
+    // --- COFF unwind fanout remains linear for many live functions ---
+    {
+        constexpr size_t kFunctionCount = 512;
+
+        auto user = makeObj("user.o", {".text"}, 4);
+        addSymbol(user, "main", 1, ObjSymbol::Global);
+
+        ObjFile coff;
+        coff.name = "many-unwind.obj";
+        coff.format = ObjFileFormat::COFF;
+        coff.sections.push_back({});
+        coff.symbols.push_back({});
+
+        std::vector<size_t> textSections;
+        std::vector<size_t> pdataSections;
+        std::vector<size_t> xdataSections;
+        textSections.reserve(kFunctionCount);
+        pdataSections.reserve(kFunctionCount);
+        xdataSections.reserve(kFunctionCount);
+
+        std::unordered_map<std::string, GlobalSymEntry> globalSyms;
+        globalSyms["main"] = {"main", GlobalSymEntry::Global, 0, 1, 0, 0};
+
+        for (size_t i = 0; i < kFunctionCount; ++i) {
+            const std::string name = "func_" + std::to_string(i);
+            const uint32_t userSymIdx = static_cast<uint32_t>(user.symbols.size());
+            addSymbol(user, name, 0, ObjSymbol::Undefined);
+            addReloc(user, 1, userSymIdx);
+
+            ObjSection text;
+            text.name = ".text$" + name;
+            text.data.resize(8, 0x90);
+            text.executable = true;
+            text.alloc = true;
+            const size_t textIdx = coff.sections.size();
+            coff.sections.push_back(text);
+            const uint32_t textSymIdx = static_cast<uint32_t>(coff.symbols.size());
+            addSymbol(coff, name, static_cast<uint32_t>(textIdx), ObjSymbol::Global);
+
+            ObjSection pdata;
+            pdata.name = ".pdata$" + name;
+            pdata.data.resize(12, 0);
+            pdata.alloc = true;
+            const size_t pdataIdx = coff.sections.size();
+            coff.sections.push_back(pdata);
+
+            ObjSection xdata;
+            xdata.name = ".xdata$" + name;
+            xdata.data.resize(8, 0);
+            xdata.alloc = true;
+            const size_t xdataIdx = coff.sections.size();
+            coff.sections.push_back(xdata);
+            const uint32_t xdataSymIdx = static_cast<uint32_t>(coff.symbols.size());
+            addSymbol(coff,
+                      "$unwind_" + std::to_string(i),
+                      static_cast<uint32_t>(xdataIdx),
+                      ObjSymbol::Local);
+
+            addReloc(coff, pdataIdx, textSymIdx);
+            addReloc(coff, pdataIdx, xdataSymIdx);
+
+            globalSyms[name] = {name,
+                                GlobalSymEntry::Global,
+                                1,
+                                static_cast<uint32_t>(textIdx),
+                                0,
+                                0};
+            textSections.push_back(textIdx);
+            pdataSections.push_back(pdataIdx);
+            xdataSections.push_back(xdataIdx);
+        }
+
+        ObjSection deadText;
+        deadText.name = ".text$dead";
+        deadText.data.resize(8, 0x90);
+        deadText.executable = true;
+        deadText.alloc = true;
+        const size_t deadTextIdx = coff.sections.size();
+        coff.sections.push_back(deadText);
+        const uint32_t deadTextSymIdx = static_cast<uint32_t>(coff.symbols.size());
+        addSymbol(coff, "dead_func", static_cast<uint32_t>(deadTextIdx), ObjSymbol::Global);
+
+        ObjSection deadPdata;
+        deadPdata.name = ".pdata$dead";
+        deadPdata.data.resize(12, 0);
+        deadPdata.alloc = true;
+        const size_t deadPdataIdx = coff.sections.size();
+        coff.sections.push_back(deadPdata);
+
+        ObjSection deadXdata;
+        deadXdata.name = ".xdata$dead";
+        deadXdata.data.resize(8, 0);
+        deadXdata.alloc = true;
+        const size_t deadXdataIdx = coff.sections.size();
+        coff.sections.push_back(deadXdata);
+        const uint32_t deadXdataSymIdx = static_cast<uint32_t>(coff.symbols.size());
+        addSymbol(coff,
+                  "$unwind_dead",
+                  static_cast<uint32_t>(deadXdataIdx),
+                  ObjSymbol::Local);
+        addReloc(coff, deadPdataIdx, deadTextSymIdx);
+        addReloc(coff, deadPdataIdx, deadXdataSymIdx);
+        globalSyms["dead_func"] = {"dead_func",
+                                   GlobalSymEntry::Global,
+                                   1,
+                                   static_cast<uint32_t>(deadTextIdx),
+                                   0,
+                                   0};
+
+        std::vector<ObjFile> objs = {user, coff};
+        std::ostringstream err;
+        deadStrip(objs, 1, globalSyms, "main", LinkPlatform::Windows, err);
+
+        for (size_t i = 0; i < kFunctionCount; ++i) {
+            CHECK(!objs[1].sections[textSections[i]].data.empty());
+            CHECK(!objs[1].sections[pdataSections[i]].data.empty());
+            CHECK(!objs[1].sections[xdataSections[i]].data.empty());
+        }
+        CHECK(objs[1].sections[deadTextIdx].data.empty());
+        CHECK(objs[1].sections[deadPdataIdx].data.empty());
+        CHECK(objs[1].sections[deadXdataIdx].data.empty());
+    }
+
     // --- EH/unwind metadata sections are always live ---
     {
         auto user = makeObj("user.o", {".text"});

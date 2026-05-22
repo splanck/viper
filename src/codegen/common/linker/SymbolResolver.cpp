@@ -231,7 +231,8 @@ static bool getComdatDefinition(const ObjFile &obj,
     out.objIdx = objIdx;
     out.secIdx = sym.sectionIndex;
     out.size = objSectionMemSize(sec);
-    out.hash = hashComdatSection(obj, sec);
+    out.hash =
+        sec.comdatSelection == ComdatSelection::ExactMatch ? hashComdatSection(obj, sec) : 0;
     return true;
 }
 
@@ -298,6 +299,7 @@ static bool addObjSymbols(const ObjFile &obj,
                           std::unordered_set<std::string> &undefined,
                           LinkPlatform platform,
                           bool allowArchiveDefinitionPreference,
+                          std::vector<std::string> *newUndefined,
                           std::ostream &err) {
     auto eraseUndefinedVariants = [&](const std::string &name) {
         undefined.erase(name);
@@ -317,8 +319,11 @@ static bool addObjSymbols(const ObjFile &obj,
         if (sym.binding == ObjSymbol::Undefined) {
             auto addUndefined = [&](const std::string &undefName) {
                 auto it = findWithPlatformFallback(globalSyms, undefName, platform);
-                if (it == globalSyms.end() || it->second.binding == GlobalSymEntry::Undefined)
-                    undefined.insert(undefName);
+                if (it == globalSyms.end() || it->second.binding == GlobalSymEntry::Undefined) {
+                    const bool inserted = undefined.insert(undefName).second;
+                    if (inserted && newUndefined)
+                        newUndefined->push_back(undefName);
+                }
                 if (it == globalSyms.end()) {
                     GlobalSymEntry e;
                     e.name = undefName;
@@ -535,9 +540,19 @@ bool resolveSymbols(const std::vector<ObjFile> &initialObjects,
     allObjects = initialObjects;
     std::unordered_set<std::string> undefined;
     std::unordered_map<std::string, ComdatDefinition> comdatDefs;
+    std::vector<std::string> pendingUndefined;
+    size_t pendingIndex = 0;
 
     for (size_t i = 0; i < allObjects.size(); ++i) {
-        if (!addObjSymbols(allObjects[i], i, globalSyms, comdatDefs, undefined, platform, false, err))
+        if (!addObjSymbols(allObjects[i],
+                           i,
+                           globalSyms,
+                           comdatDefs,
+                           undefined,
+                           platform,
+                           false,
+                           &pendingUndefined,
+                           err))
             return false;
     }
 
@@ -551,93 +566,90 @@ bool resolveSymbols(const std::vector<ObjFile> &initialObjects,
         }
         maxArchiveExtractions += ar.members.size();
     }
-    if (maxArchiveExtractions == std::numeric_limits<size_t>::max()) {
-        err << "error: archive member count exceeds addressable size\n";
-        return false;
-    }
-    const size_t maxResolveIterations = maxArchiveExtractions + 1;
-    size_t iteration = 0;
-    bool changed = true;
-    while (changed) {
-        if (++iteration > maxResolveIterations) {
-            err << "error: symbol resolution exceeded archive extraction bound\n";
-            return false;
-        }
-        changed = false;
-        // Snapshot undefined set — addObjSymbols modifies it, invalidating iterators.
-        std::vector<std::string> undefSnapshot(undefined.begin(), undefined.end());
+    size_t extractedCount = 0;
+    while (pendingIndex < pendingUndefined.size()) {
+        const std::string undef = pendingUndefined[pendingIndex++];
+        if (undefined.find(undef) == undefined.end())
+            continue;
+
+        bool extractedForUndef = false;
         for (size_t ai = 0; ai < archives.size(); ++ai) {
             auto &ar = archives[ai];
-            for (const auto &undef : undefSnapshot) {
-                if (undefined.find(undef) == undefined.end())
+            // Mach-O archives use underscore-prefixed symbol names.
+            auto candIt = findWithPlatformFallback(ar.symbolCandidates, undef, platform);
+            std::vector<size_t> legacyCandidate;
+            const std::vector<size_t> *candidates = nullptr;
+            if (candIt != ar.symbolCandidates.end()) {
+                candidates = &candIt->second;
+            } else {
+                auto symIt = findWithPlatformFallback(ar.symbolIndex, undef, platform);
+                if (symIt == ar.symbolIndex.end())
                     continue;
-                // Mach-O archives use underscore-prefixed symbol names.
-                auto candIt = findWithPlatformFallback(ar.symbolCandidates, undef, platform);
-                std::vector<size_t> legacyCandidate;
-                const std::vector<size_t> *candidates = nullptr;
-                if (candIt != ar.symbolCandidates.end()) {
-                    candidates = &candIt->second;
-                } else {
-                    auto symIt = findWithPlatformFallback(ar.symbolIndex, undef, platform);
-                    if (symIt == ar.symbolIndex.end())
-                        continue;
-                    legacyCandidate.push_back(symIt->second);
-                    candidates = &legacyCandidate;
-                }
-                if (candidates == nullptr || candidates->empty())
-                    continue;
-
-                for (size_t memberIdx : *candidates) {
-                    if (memberIdx >= ar.members.size()) {
-                        err << "error: archive symbol index references missing member "
-                            << memberIdx << "\n";
-                        return false;
-                    }
-
-                    InputSectionKey key{ai, memberIdx};
-                    if (extractedMembers.count(key))
-                        continue;
-
-                    // Extract and parse this member. Only mark it extracted after
-                    // it has been successfully materialized; otherwise a malformed
-                    // archive member could be skipped permanently for later symbols.
-                    auto memberData = memberDataView(ar, ar.members[memberIdx]);
-                    if (memberData.data == nullptr || memberData.size == 0) {
-                        err << "error: archive member '" << ar.members[memberIdx].name
-                            << "' has no object data\n";
-                        return false;
-                    }
-
-                    ObjFile memberObj;
-                    std::ostringstream memberErr;
-                    if (!readObjFile(memberData.data,
-                                     memberData.size,
-                                     ar.path + "(" + ar.members[memberIdx].name + ")",
-                                     memberObj,
-                                     memberErr)) {
-                        err << memberErr.str();
-                        return false;
-                    }
-                    extractedMembers.insert(key);
-
-                    size_t newIdx = allObjects.size();
-                    allObjects.push_back(std::move(memberObj));
-                    const bool allowArchiveDefinitionPreference =
-                        isPreferredArchiveDefinitionObject(allObjects[newIdx], platform);
-                    if (!addObjSymbols(allObjects[newIdx],
-                                       newIdx,
-                                       globalSyms,
-                                       comdatDefs,
-                                       undefined,
-                                       platform,
-                                       allowArchiveDefinitionPreference,
-                                       err))
-                        return false;
-                    changed = true;
-                    break;
-                }
+                legacyCandidate.push_back(symIt->second);
+                candidates = &legacyCandidate;
             }
+            if (candidates == nullptr || candidates->empty())
+                continue;
+
+            for (size_t memberIdx : *candidates) {
+                if (memberIdx >= ar.members.size()) {
+                    err << "error: archive symbol index references missing member " << memberIdx
+                        << "\n";
+                    return false;
+                }
+
+                InputSectionKey key{ai, memberIdx};
+                if (extractedMembers.count(key))
+                    continue;
+
+                // Extract and parse this member. Only mark it extracted after
+                // it has been successfully materialized; otherwise a malformed
+                // archive member could be skipped permanently for later symbols.
+                auto memberData = memberDataView(ar, ar.members[memberIdx]);
+                if (memberData.data == nullptr || memberData.size == 0) {
+                    err << "error: archive member '" << ar.members[memberIdx].name
+                        << "' has no object data\n";
+                    return false;
+                }
+
+                ObjFile memberObj;
+                std::ostringstream memberErr;
+                if (!readObjFile(memberData.data,
+                                 memberData.size,
+                                 ar.path + "(" + ar.members[memberIdx].name + ")",
+                                 memberObj,
+                                 memberErr)) {
+                    err << memberErr.str();
+                    return false;
+                }
+                extractedMembers.insert(key);
+                if (++extractedCount > maxArchiveExtractions) {
+                    err << "error: symbol resolution exceeded archive extraction bound\n";
+                    return false;
+                }
+
+                size_t newIdx = allObjects.size();
+                allObjects.push_back(std::move(memberObj));
+                const bool allowArchiveDefinitionPreference =
+                    isPreferredArchiveDefinitionObject(allObjects[newIdx], platform);
+                if (!addObjSymbols(allObjects[newIdx],
+                                   newIdx,
+                                   globalSyms,
+                                   comdatDefs,
+                                   undefined,
+                                   platform,
+                                   allowArchiveDefinitionPreference,
+                                   &pendingUndefined,
+                                   err))
+                    return false;
+                extractedForUndef = true;
+                break;
+            }
+            if (extractedForUndef)
+                break;
         }
+        if (extractedForUndef && undefined.find(undef) != undefined.end())
+            pendingUndefined.push_back(undef);
     }
 
     if (platform == LinkPlatform::Windows)

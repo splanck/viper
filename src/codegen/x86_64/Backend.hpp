@@ -70,7 +70,7 @@ struct CodegenResult {
 
 /// \brief Result of binary emission: machine code in CodeSections.
 struct BinaryEmitResult {
-    objfile::CodeSection text{};   ///< Machine code bytes + relocations (merged).
+    objfile::CodeSection text{};   ///< Merged machine code bytes, populated for debug-line output.
     objfile::CodeSection rodata{}; ///< Read-only data (.rodata / __TEXT,__const).
     std::string errors{};          ///< Diagnostics; empty on success.
 

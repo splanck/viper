@@ -10,7 +10,7 @@
 //          code bytes via the Backend::emitModuleToBinary entry point.
 // Key invariants:
 //   - Requires register allocation to have completed
-//   - Populates Module::binaryText and Module::binaryRodata
+//   - Populates Module::binaryTextSections and Module::binaryRodata
 // Ownership/Lifetime:
 //   - Pass borrows Module during run(), does not own any state beyond options_
 // Links: codegen/x86_64/passes/BinaryEmitPass.hpp,
@@ -34,8 +34,9 @@ BinaryEmitPass::BinaryEmitPass(CodegenOptions options) noexcept : options_(std::
 /// @details Mirrors @ref EmitPass::run but produces binary CodeSections instead
 ///          of assembly text. Validates that register allocation completed,
 ///          target/frame state are consistent, then forwards to the backend's
-///          @ref emitModuleToBinary which fills @p module.binaryText and
-///          @p module.binaryRodata.
+///          @ref emitMIRToBinary which fills @p module.binaryTextSections and
+///          @p module.binaryRodata. A merged @c binaryText is produced only
+///          when debug line emission needs one contiguous address space.
 /// @return true on success; otherwise records errors via @p diags.
 bool BinaryEmitPass::run(Module &module, Diagnostics &diags) {
     if (!module.registersAllocated) {
@@ -61,7 +62,10 @@ bool BinaryEmitPass::run(Module &module, Diagnostics &diags) {
         return false;
     }
 
-    module.binaryText = std::move(result.text);
+    if (!result.text.empty() || module.mir.empty() || !result.debugLineData.empty())
+        module.binaryText = std::move(result.text);
+    else
+        module.binaryText.reset();
     module.binaryRodata = std::move(result.rodata);
     module.binaryTextSections = std::move(result.textSections);
     module.debugLineData = std::move(result.debugLineData);

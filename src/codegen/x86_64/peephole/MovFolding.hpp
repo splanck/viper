@@ -43,4 +43,13 @@ namespace viper::codegen::x64::peephole {
                                            std::size_t idx,
                                            PeepholeStats &stats);
 
+/// @brief Fold all adjacent move pairs in @p instrs using one suffix liveness scan.
+/// @details Equivalent to applying @ref tryFoldConsecutiveMoves across the
+///          block, but avoids rescanning the tail of long blocks for each
+///          candidate pair.
+/// @param instrs Instruction list being scanned (mutated in place).
+/// @param stats  Peephole statistics counter (incremented on each fold).
+/// @return Number of folds applied.
+std::size_t foldConsecutiveMoves(std::vector<MInstr> &instrs, PeepholeStats &stats);
+
 } // namespace viper::codegen::x64::peephole

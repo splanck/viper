@@ -24,8 +24,10 @@
 #include "codegen/x86_64/OperandRoles.hpp"
 
 #include <algorithm>
+#include <cstddef>
 #include <optional>
 #include <unordered_map>
+#include <vector>
 
 namespace viper::codegen::x64::peephole {
 namespace {
@@ -67,19 +69,6 @@ std::optional<FrameAccess> frameStore(const MInstr &instr) {
         static_cast<PhysReg>(mem->base.idOrPhys) != PhysReg::RBP)
         return std::nullopt;
     return FrameAccess{mem->disp, instr.opcode == MOpcode::MOVSDrm ? RegClass::XMM : RegClass::GPR};
-}
-
-/// @brief Predicate: do two frame accesses refer to the same typed slot?
-/// @details Requires both the displacement and the register class to match.
-bool sameFrameSlot(const FrameAccess &a, const FrameAccess &b) {
-    return a.disp == b.disp && a.cls == b.cls;
-}
-
-/// @brief Predicate: do two frame accesses share the same byte address?
-/// @details Ignores register class — used when a GPR store and an XMM
-///          store would alias and the elder access becomes dead.
-bool sameFrameAddress(const FrameAccess &a, const FrameAccess &b) {
-    return a.disp == b.disp;
 }
 
 /// @brief Predicate: does @p instr re-define the physical register in @p regOperand?
@@ -124,6 +113,34 @@ bool isMemoryBarrier(const MInstr &instr) {
             return true;
     }
     return false;
+}
+
+/// @brief Value available for forwarding from a frame store.
+struct TrackedFrameStore {
+    Operand storedReg;
+};
+
+/// @brief Per-register-class frame forwarding state, keyed by RBP displacement.
+using FrameStoreMap = std::unordered_map<int32_t, TrackedFrameStore>;
+
+FrameStoreMap &trackedMapFor(RegClass cls,
+                             FrameStoreMap &gprStores,
+                             FrameStoreMap &xmmStores) noexcept {
+    return cls == RegClass::XMM ? xmmStores : gprStores;
+}
+
+void eraseTrackedAddress(int32_t disp, FrameStoreMap &gprStores, FrameStoreMap &xmmStores) {
+    gprStores.erase(disp);
+    xmmStores.erase(disp);
+}
+
+void eraseStoresClobberedBy(const MInstr &instr, FrameStoreMap &stores) {
+    for (auto it = stores.begin(); it != stores.end();) {
+        if (definesOperandReg(instr, it->second.storedReg))
+            it = stores.erase(it);
+        else
+            ++it;
+    }
 }
 
 } // namespace
@@ -198,34 +215,40 @@ std::size_t eliminateDeadFrameStores(std::vector<MInstr> &instrs, PeepholeStats 
 /// @return Number of loads eliminated through forwarding.
 std::size_t forwardFrameStoreLoads(std::vector<MInstr> &instrs, PeepholeStats &stats) {
     std::size_t forwarded = 0;
+    FrameStoreMap lastGprStore;
+    FrameStoreMap lastXmmStore;
 
     for (std::size_t i = 0; i < instrs.size(); ++i) {
-        auto store = frameStore(instrs[i]);
-        if (!store || instrs[i].operands.size() < 2)
+        auto &instr = instrs[i];
+
+        if (isMemoryBarrier(instr)) {
+            lastGprStore.clear();
+            lastXmmStore.clear();
+            continue;
+        }
+
+        eraseStoresClobberedBy(instr, lastGprStore);
+        eraseStoresClobberedBy(instr, lastXmmStore);
+
+        if (auto load = frameLoad(instr)) {
+            auto &stores = trackedMapFor(load->cls, lastGprStore, lastXmmStore);
+            auto it = stores.find(load->disp);
+            if (it == stores.end() || instr.operands.empty())
+                continue;
+
+            const MOpcode mov = load->cls == RegClass::XMM ? MOpcode::MOVSDrr : MOpcode::MOVrr;
+            instr = MInstr::make(mov, {instr.operands[0], it->second.storedReg});
+            ++forwarded;
+            continue;
+        }
+
+        auto store = frameStore(instr);
+        if (!store || instr.operands.size() < 2)
             continue;
 
-        const Operand storedReg = instrs[i].operands[1];
-        for (std::size_t j = i + 1; j < instrs.size(); ++j) {
-            if (isMemoryBarrier(instrs[j]))
-                break;
-
-            if (auto laterStore = frameStore(instrs[j]);
-                laterStore && sameFrameAddress(*store, *laterStore))
-                break;
-
-            if (definesOperandReg(instrs[j], storedReg))
-                break;
-
-            auto load = frameLoad(instrs[j]);
-            if (!load || !sameFrameSlot(*store, *load))
-                continue;
-            if (instrs[j].operands.empty())
-                continue;
-
-            const MOpcode mov = store->cls == RegClass::XMM ? MOpcode::MOVSDrr : MOpcode::MOVrr;
-            instrs[j] = MInstr::make(mov, {instrs[j].operands[0], storedReg});
-            ++forwarded;
-        }
+        eraseTrackedAddress(store->disp, lastGprStore, lastXmmStore);
+        auto &stores = trackedMapFor(store->cls, lastGprStore, lastXmmStore);
+        stores[store->disp] = TrackedFrameStore{instr.operands[1]};
     }
 
     stats.deadCodeEliminated += forwarded;

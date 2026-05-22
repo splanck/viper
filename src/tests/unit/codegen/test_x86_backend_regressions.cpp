@@ -146,6 +146,12 @@ BinaryEmitResult compileBinary(const ILFunction &fn, const CodegenOptions &optio
     return emitModuleToBinary(module, options);
 }
 
+const viper::codegen::objfile::CodeSection &primaryTextSection(const BinaryEmitResult &result) {
+    if (!result.textSections.empty())
+        return result.textSections.front();
+    return result.text;
+}
+
 void expectCompileRejects(std::string name,
                           std::vector<ILInstr> instrs,
                           std::vector<int> paramIds = {},
@@ -1095,8 +1101,9 @@ TEST(X86BackendRegressions, BinaryEmissionHonorsTargetPlatformSymbolMangling) {
     linuxOpts.targetPlatform = CodegenOptions::TargetPlatform::Linux;
     const BinaryEmitResult linux = compileBinary(fn, linuxOpts);
     ASSERT_TRUE(linux.errors.empty());
-    EXPECT_NE(linux.text.symbols().find("main"), 0U);
-    EXPECT_EQ(linux.text.symbols().find("_main"), 0U);
+    const auto &linuxText = primaryTextSection(linux);
+    EXPECT_NE(linuxText.symbols().find("main"), 0U);
+    EXPECT_EQ(linuxText.symbols().find("_main"), 0U);
 
     CodegenOptions darwinOpts{};
     darwinOpts.targetPlatform = CodegenOptions::TargetPlatform::Darwin;
@@ -1104,8 +1111,36 @@ TEST(X86BackendRegressions, BinaryEmissionHonorsTargetPlatformSymbolMangling) {
     ASSERT_TRUE(darwin.errors.empty());
     // Binary emission records canonical symbol names. Mach-O ABI underscores
     // are applied by the object writer, not stored in CodeSection.
-    EXPECT_NE(darwin.text.symbols().find("main"), 0U);
-    EXPECT_EQ(darwin.text.symbols().find("_main"), 0U);
+    const auto &darwinText = primaryTextSection(darwin);
+    EXPECT_NE(darwinText.symbols().find("main"), 0U);
+    EXPECT_EQ(darwinText.symbols().find("_main"), 0U);
+}
+
+TEST(X86BackendRegressions, BinaryEmissionSkipsMergedTextWhenDebugLinesAreDisabled) {
+    auto makeRetFn = [](std::string name, int64_t value) {
+        ILBlock entry{};
+        entry.name = "entry";
+        entry.instrs = {op("ret", {imm(value)})};
+
+        ILFunction fn{};
+        fn.name = std::move(name);
+        fn.blocks = {entry};
+        return fn;
+    };
+
+    ILModule module{};
+    module.funcs.push_back(makeRetFn("first_func", 1));
+    module.funcs.push_back(makeRetFn("second_func", 2));
+
+    CodegenOptions opts{};
+    opts.emitDebugLines = false;
+    const BinaryEmitResult result = emitModuleToBinary(module, opts);
+
+    ASSERT_TRUE(result.errors.empty());
+    EXPECT_TRUE(result.text.empty());
+    ASSERT_EQ(result.textSections.size(), 2u);
+    EXPECT_NE(result.textSections[0].symbols().find("first_func"), 0U);
+    EXPECT_NE(result.textSections[1].symbols().find("second_func"), 0U);
 }
 
 TEST(X86BackendRegressions, UnknownOpcodeFailsAssemblyEmission) {

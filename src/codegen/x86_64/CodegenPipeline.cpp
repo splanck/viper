@@ -512,7 +512,7 @@ PipelineResult CodegenPipeline::runWithModule(il::core::Module module,
 
     // --- Native assembler path: write .o directly via ObjectFileWriter ---
     if (useNativeAsm) {
-        if (!pipelineModule.binaryText) {
+        if (!pipelineModule.binaryText && pipelineModule.binaryTextSections.empty()) {
             err << "error: binary emit pass did not produce machine code\n";
             result.exit_code = 1;
             return finish();
@@ -560,6 +560,11 @@ PipelineResult CodegenPipeline::runWithModule(il::core::Module module,
 
         // Pass pre-encoded DWARF .debug_line data to the writer.
         const bool hasDebugLine = !pipelineModule.debugLineData.empty();
+        if (hasDebugLine && !pipelineModule.binaryText) {
+            err << "error: binary emit pass did not produce merged debug machine code\n";
+            result.exit_code = 1;
+            return finish();
+        }
         if (hasDebugLine)
             writer->setDebugLineData(std::move(pipelineModule.debugLineData));
 
@@ -591,9 +596,18 @@ PipelineResult CodegenPipeline::runWithModule(il::core::Module module,
                                                   : std::filesystem::path(opts_.output_obj_path);
 
         std::unordered_set<std::string> extSymbols;
-        for (const auto &sym : pipelineModule.binaryText->symbols()) {
-            if (sym.binding == objfile::SymbolBinding::External)
-                extSymbols.insert(sym.name);
+        if (!pipelineModule.binaryTextSections.empty()) {
+            for (const auto &section : pipelineModule.binaryTextSections) {
+                for (const auto &sym : section.symbols()) {
+                    if (sym.binding == objfile::SymbolBinding::External)
+                        extSymbols.insert(sym.name);
+                }
+            }
+        } else if (pipelineModule.binaryText) {
+            for (const auto &sym : pipelineModule.binaryText->symbols()) {
+                if (sym.binding == objfile::SymbolBinding::External)
+                    extSymbols.insert(sym.name);
+            }
         }
         if (pipelineModule.binaryRodata) {
             for (const auto &sym : pipelineModule.binaryRodata->symbols()) {

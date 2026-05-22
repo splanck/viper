@@ -141,10 +141,8 @@ static std::size_t runBlockRewrites(MFunction &fn,
             (void)ph::tryStrengthReduction(instrs, i, knownConsts, stats);
         }
 
-        // Pass 2: Try to fold consecutive moves
-        for (std::size_t i = 0; i + 1 < instrs.size(); ++i) {
-            (void)ph::tryFoldConsecutiveMoves(instrs, i, stats);
-        }
+        // Pass 2: Try to fold consecutive moves.
+        (void)ph::foldConsecutiveMoves(instrs, stats);
 
         // Pass 3: Mark identity moves for removal
         for (std::size_t i = 0; i < instrs.size(); ++i) {
@@ -182,22 +180,23 @@ std::size_t runPeepholes(MFunction &fn, const TargetInfo &target) {
             break;
     }
 
-    // Layout and branch passes can expose each other: chain elimination may
-    // create fallthrough jumps, and block layout can create branch-inversion
-    // opportunities. Try inversion before layout as well so an already-adjacent
-    // true edge is folded before trace layout follows an explicit false edge.
+    // Branch cleanup can expose itself; layout can also expose final fallthrough
+    // jumps. Keep layout single-shot so cold-block movement and trace layout
+    // cannot churn on large functions.
     for (std::size_t iter = 0; iter < kMaxIterations; ++iter) {
         const std::size_t before = stats.total();
-        ph::eliminateBranchChains(fn, stats);
-        ph::invertConditionalBranches(fn, stats);
-        ph::traceBlockLayout(fn, stats);
-        ph::moveColdBlocks(fn, stats);
         ph::eliminateBranchChains(fn, stats);
         ph::invertConditionalBranches(fn, stats);
         ph::removeFallthroughJumps(fn, stats);
         if (stats.total() == before)
             break;
     }
+
+    ph::traceBlockLayout(fn, stats);
+    ph::moveColdBlocks(fn, stats);
+    ph::eliminateBranchChains(fn, stats);
+    ph::invertConditionalBranches(fn, stats);
+    ph::removeFallthroughJumps(fn, stats);
 
     return stats.total();
 }

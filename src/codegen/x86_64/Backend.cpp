@@ -689,15 +689,12 @@ BinaryEmitResult emitMIRToBinary(const std::vector<MFunction> &mir,
         result.rodata.emit64LE(bits);
     }
 
-    for (std::size_t i = 0; i < mir.size(); ++i) {
-        objfile::CodeSection funcText;
-        DebugLineTable funcDebugLines;
-        if (emitDebugLines)
-            seedDebugFiles(funcDebugLines, mir[i], opt.debugSourcePath);
-
+    auto encodeOne = [&](std::size_t i,
+                         objfile::CodeSection &funcText,
+                         DebugLineTable *funcDebugLines) -> std::string {
         binenc::X64BinaryEncoder funcEncoder;
-        if (emitDebugLines)
-            funcEncoder.setDebugLineTable(&funcDebugLines);
+        if (funcDebugLines)
+            funcEncoder.setDebugLineTable(funcDebugLines);
         const auto traceStart = std::chrono::steady_clock::now();
         if (traceX64BinaryEmit()) {
             std::cerr << "[x64-binary] encode " << (i + 1) << "/" << mir.size() << " "
@@ -713,10 +710,8 @@ BinaryEmitResult emitMIRToBinary(const std::vector<MFunction> &mir,
                 &frames[i],
                 emitWin64Unwind);
         } catch (const std::exception &ex) {
-            BinaryEmitResult failure{};
-            failure.errors =
-                "x86-64 binary emission failed for function '" + mir[i].name + "': " + ex.what();
-            return failure;
+            return "x86-64 binary emission failed for function '" + mir[i].name +
+                   "': " + ex.what();
         }
         if (traceX64BinaryEmit()) {
             const auto elapsed = std::chrono::duration_cast<std::chrono::milliseconds>(
@@ -726,12 +721,36 @@ BinaryEmitResult emitMIRToBinary(const std::vector<MFunction> &mir,
                       << " bytes=" << funcText.bytes().size()
                       << " relocs=" << funcText.relocations().size() << "\n";
         }
+        return {};
+    };
 
-        const uint64_t debugBias = static_cast<uint64_t>(result.text.currentOffset());
-        if (emitDebugLines)
+    if (emitDebugLines) {
+        for (std::size_t i = 0; i < mir.size(); ++i) {
+            objfile::CodeSection funcText;
+            DebugLineTable funcDebugLines;
+            seedDebugFiles(funcDebugLines, mir[i], opt.debugSourcePath);
+
+            if (std::string error = encodeOne(i, funcText, &funcDebugLines); !error.empty()) {
+                BinaryEmitResult failure{};
+                failure.errors = std::move(error);
+                return failure;
+            }
+
+            const uint64_t debugBias = static_cast<uint64_t>(result.text.currentOffset());
             debugLines.append(funcDebugLines, debugBias);
-        result.text.appendSection(funcText);
-        result.textSections.push_back(std::move(funcText));
+            result.text.appendSection(funcText);
+            result.textSections.push_back(std::move(funcText));
+        }
+    } else {
+        for (std::size_t i = 0; i < mir.size(); ++i) {
+            objfile::CodeSection funcText;
+            if (std::string error = encodeOne(i, funcText, nullptr); !error.empty()) {
+                BinaryEmitResult failure{};
+                failure.errors = std::move(error);
+                return failure;
+            }
+            result.textSections.push_back(std::move(funcText));
+        }
     }
 
     if (emitDebugLines && !debugLines.empty())

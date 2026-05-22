@@ -31,8 +31,8 @@ namespace viper::codegen::x64 {
 /// \details Applies pattern-based local rewrites to the Machine IR, including
 ///          redundant move elimination, strength reduction (e.g., multiply-by-power-of-2
 ///          to shift), and dead instruction removal. Block-level rewrites iterate
-///          to a fixed point (bounded by kMaxIterations=100); layout/branch passes
-///          run once.
+///          to a fixed point (bounded by kMaxIterations=100); branch cleanup
+///          iterates to a fixed point and layout runs once.
 /// \param fn The MIR function to optimize in-place.
 /// \param target Target ABI metadata used by ABI-sensitive peepholes.
 /// \return Total number of transformations applied across all passes.

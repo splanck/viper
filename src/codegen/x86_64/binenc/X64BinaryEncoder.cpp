@@ -39,6 +39,7 @@
 #include <stdexcept>
 #include <string>
 #include <unordered_set>
+#include <utility>
 #include <variant>
 
 namespace viper::codegen::x64::binenc {
@@ -455,7 +456,7 @@ size_t X64BinaryEncoder::measureInstructionSize(const MInstr &instr,
     return text.currentOffset() - currentOffset;
 }
 
-/// @brief Resolve every label in @p fn to a stable byte offset.
+/// @brief Resolve every label in @p fn to a stable byte offset and final size.
 /// @details The encoder must know branch displacements before it emits
 ///          instructions because branch encodings depend on size (rel8 vs
 ///          rel32). This method iterates a measurement pass to a fixed
@@ -469,10 +470,11 @@ size_t X64BinaryEncoder::measureInstructionSize(const MInstr &instr,
 /// @param fn Function being encoded.
 /// @param isDarwin True when targeting Mach-O (affects symbol mangling
 ///        which can change instruction sizes through relocation choices).
-/// @return Map from label name to its byte offset within the function.
-X64BinaryEncoder::LabelOffsetMap X64BinaryEncoder::computeFunctionLabelOffsets(const MFunction &fn,
-                                                                               bool isDarwin) {
+/// @return Label offsets plus the predicted encoded function size.
+X64BinaryEncoder::LabelLayout X64BinaryEncoder::computeFunctionLabelLayout(const MFunction &fn,
+                                                                           bool isDarwin) {
     LabelOffsetMap estimated;
+    size_t estimatedSize = 0;
 
     if (!shortBranchRelaxationEnabled_) {
         size_t offset = 0;
@@ -496,7 +498,7 @@ X64BinaryEncoder::LabelOffsetMap X64BinaryEncoder::computeFunctionLabelOffsets(c
                 offset += measureInstructionSize(instr, offset, estimated, isDarwin);
             }
         }
-        return estimated;
+        return {std::move(estimated), offset};
     }
 
     size_t relaxCandidates = 0;
@@ -542,31 +544,16 @@ X64BinaryEncoder::LabelOffsetMap X64BinaryEncoder::computeFunctionLabelOffsets(c
             }
         }
 
+        if (offset != estimatedSize)
+            changed = true;
+
         if (!changed && next.size() == estimated.size())
-            return next;
+            return {std::move(next), offset};
         estimated = std::move(next);
+        estimatedSize = offset;
     }
 
-    return estimated;
-}
-
-/// @brief Predict the total byte size of @p fn given resolved label offsets.
-/// @details Walks every instruction and sums the result of
-///          @ref measureInstructionSize, skipping label markers. Used to
-///          pre-reserve CodeSection capacity and to detect drift during
-///          emission via @ref verifyPredictedLabelOffset.
-size_t X64BinaryEncoder::estimateFunctionSize(const MFunction &fn,
-                                              const LabelOffsetMap &knownLabelOffsets,
-                                              bool isDarwin) {
-    size_t size = 0;
-    for (const auto &block : fn.blocks) {
-        for (const auto &instr : block.instructions) {
-            if (instr.opcode == MOpcode::LABEL)
-                continue;
-            size += measureInstructionSize(instr, size, knownLabelOffsets, isDarwin);
-        }
-    }
-    return size;
+    return {std::move(estimated), estimatedSize};
 }
 
 /// @brief Assert that emission matches the pre-computed offset for @p label.
@@ -592,7 +579,7 @@ void X64BinaryEncoder::verifyPredictedLabelOffset(const std::string &label, size
 ///          are resolved using the pre-computed label-to-offset map.
 void X64BinaryEncoder::encodeFunction(const MFunction &fn,
                                       objfile::CodeSection &text,
-                                      objfile::CodeSection &rodata,
+                                      const objfile::CodeSection &rodata,
                                       bool isDarwin,
                                       const FrameInfo *frame,
                                       bool emitWin64Unwind) {
@@ -605,8 +592,9 @@ void X64BinaryEncoder::encodeFunction(const MFunction &fn,
 
     // Define the function symbol at the current text offset.
     const size_t funcStartOffset = text.currentOffset();
-    const auto relativeLabelOffsets = computeFunctionLabelOffsets(fn, isDarwin);
-    const size_t estimatedSize = estimateFunctionSize(fn, relativeLabelOffsets, isDarwin);
+    const auto layout = computeFunctionLabelLayout(fn, isDarwin);
+    const auto &relativeLabelOffsets = layout.offsets;
+    const size_t estimatedSize = layout.estimatedSize;
     text.reserveAdditionalBytes(estimatedSize);
     labelOffsets_.clear();
     labelOffsets_.reserve(relativeLabelOffsets.size());
@@ -688,7 +676,7 @@ void X64BinaryEncoder::encodeFunction(const MFunction &fn,
 /// @brief Encode a single MIR instruction into machine code (dispatches by operand form).
 void X64BinaryEncoder::encodeInstruction(const MInstr &instr,
                                          objfile::CodeSection &text,
-                                         objfile::CodeSection &rodata,
+                                         const objfile::CodeSection &rodata,
                                          bool isDarwin) {
     try {
         encodeInstructionImpl(instr, text, rodata, isDarwin);
@@ -705,7 +693,7 @@ void X64BinaryEncoder::encodeInstruction(const MInstr &instr,
 
 void X64BinaryEncoder::encodeInstructionImpl(const MInstr &instr,
                                              objfile::CodeSection &text,
-                                             objfile::CodeSection &rodata,
+                                             const objfile::CodeSection &rodata,
                                              bool isDarwin) {
     const auto &ops = instr.operands;
     const auto op = instr.opcode;
@@ -1305,7 +1293,7 @@ void X64BinaryEncoder::encodeLEA(PhysReg dst, const OpMem &mem, objfile::CodeSec
 void X64BinaryEncoder::encodeLEARip(PhysReg dst,
                                     const OpRipLabel &rip,
                                     objfile::CodeSection &text,
-                                    objfile::CodeSection &rodata,
+                                    const objfile::CodeSection &rodata,
                                     bool isDarwin) {
     const auto hwDst = hwEncode(dst);
     if (!isGPR(dst))
@@ -1347,7 +1335,7 @@ void X64BinaryEncoder::encodeLEARip(PhysReg dst,
 void X64BinaryEncoder::encodeSseRipLoad(PhysReg dst,
                                         const OpRipLabel &rip,
                                         objfile::CodeSection &text,
-                                        objfile::CodeSection &rodata,
+                                        const objfile::CodeSection &rodata,
                                         bool isDarwin) {
     const auto hwDst = hwEncode(dst);
     if (!isXMM(dst))
@@ -1609,7 +1597,7 @@ void X64BinaryEncoder::encodeBranchMem(MOpcode op, const OpMem &mem, objfile::Co
 void X64BinaryEncoder::encodeBranchRip(MOpcode op,
                                        const OpRipLabel &rip,
                                        objfile::CodeSection &text,
-                                       objfile::CodeSection &rodata,
+                                       const objfile::CodeSection &rodata,
                                        bool isDarwin) {
     if (op != MOpcode::CALL && op != MOpcode::JMP) {
         throw std::runtime_error("x86-64 binary encoder: RIP branch target requires CALL or JMP");

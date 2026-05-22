@@ -21,7 +21,112 @@
 
 #include "MovFolding.hpp"
 
+#include "codegen/x86_64/OperandRoles.hpp"
+
+#include <cstdint>
+#include <vector>
+
 namespace viper::codegen::x64::peephole {
+
+namespace {
+
+using RegMask = uint64_t;
+
+[[nodiscard]] RegMask regBit(uint16_t reg) noexcept {
+    return reg < 64 ? (RegMask{1} << reg) : RegMask{0};
+}
+
+void addOperandReg(RegMask &mask, const Operand &op) noexcept {
+    const auto *reg = std::get_if<OpReg>(&op);
+    if (reg && reg->isPhys)
+        mask |= regBit(reg->idOrPhys);
+}
+
+void addOperandMemRegs(RegMask &mask, const Operand &op) noexcept {
+    const auto *mem = std::get_if<OpMem>(&op);
+    if (!mem)
+        return;
+    if (mem->base.isPhys)
+        mask |= regBit(mem->base.idOrPhys);
+    if (mem->hasIndex && mem->index.isPhys)
+        mask |= regBit(mem->index.idOrPhys);
+}
+
+[[nodiscard]] RegMask usedRegMask(const MInstr &instr) {
+    RegMask mask = 0;
+    for (std::size_t idx = 0; idx < instr.operands.size(); ++idx) {
+        const auto [isUse, isDef] = operandRoles(instr, idx);
+        (void)isDef;
+        if (!isUse)
+            continue;
+        addOperandReg(mask, instr.operands[idx]);
+        addOperandMemRegs(mask, instr.operands[idx]);
+    }
+
+    switch (instr.opcode) {
+        case MOpcode::RET:
+            mask |= regBit(static_cast<uint16_t>(PhysReg::RAX));
+            mask |= regBit(static_cast<uint16_t>(PhysReg::XMM0));
+            mask |= regBit(static_cast<uint16_t>(PhysReg::RSP));
+            break;
+        case MOpcode::CQO:
+            mask |= regBit(static_cast<uint16_t>(PhysReg::RAX));
+            break;
+        case MOpcode::IDIVrm:
+        case MOpcode::DIVrm:
+            mask |= regBit(static_cast<uint16_t>(PhysReg::RAX));
+            mask |= regBit(static_cast<uint16_t>(PhysReg::RDX));
+            break;
+        default:
+            break;
+    }
+
+    return mask;
+}
+
+[[nodiscard]] RegMask defRegMask(const MInstr &instr) {
+    RegMask mask = 0;
+    for (std::size_t idx = 0; idx < instr.operands.size(); ++idx) {
+        const auto [isUse, isDef] = operandRoles(instr, idx);
+        (void)isUse;
+        if (!isDef)
+            continue;
+        addOperandReg(mask, instr.operands[idx]);
+    }
+
+    switch (instr.opcode) {
+        case MOpcode::CQO:
+            mask |= regBit(static_cast<uint16_t>(PhysReg::RDX));
+            break;
+        case MOpcode::IDIVrm:
+        case MOpcode::DIVrm:
+            mask |= regBit(static_cast<uint16_t>(PhysReg::RAX));
+            mask |= regBit(static_cast<uint16_t>(PhysReg::RDX));
+            break;
+        default:
+            break;
+    }
+
+    return mask;
+}
+
+[[nodiscard]] RegMask allArgRegMask() noexcept {
+    return regBit(static_cast<uint16_t>(PhysReg::RDI)) |
+           regBit(static_cast<uint16_t>(PhysReg::RSI)) |
+           regBit(static_cast<uint16_t>(PhysReg::RDX)) |
+           regBit(static_cast<uint16_t>(PhysReg::RCX)) |
+           regBit(static_cast<uint16_t>(PhysReg::R8)) |
+           regBit(static_cast<uint16_t>(PhysReg::R9));
+}
+
+[[nodiscard]] RegMask regOperandBit(const Operand &op) noexcept {
+    const auto *reg = std::get_if<OpReg>(&op);
+    if (!reg || !reg->isPhys)
+        return 0;
+    return regBit(reg->idOrPhys);
+}
+
+} // namespace
 
 /// @brief Coalesce two adjacent reg-to-reg moves when the intermediate is dead.
 /// @details Pattern: @c "MOV r1, r2; MOV r3, r1" — if @c r1 is not used past
@@ -80,6 +185,60 @@ bool tryFoldConsecutiveMoves(std::vector<MInstr> &instrs, std::size_t idx, Peeph
     first.operands[0] = first.operands[1];         // Make first identity (mov r2, r2)
     ++stats.consecutiveMovsFolded;
     return true;
+}
+
+std::size_t foldConsecutiveMoves(std::vector<MInstr> &instrs, PeepholeStats &stats) {
+    if (instrs.size() < 2)
+        return 0;
+
+    std::vector<RegMask> usedBeforeDefFrom(instrs.size() + 1, 0);
+    std::vector<RegMask> callBeforeDefFrom(instrs.size() + 1, 0);
+
+    RegMask usedBeforeDef = 0;
+    RegMask callBeforeDef = 0;
+    const RegMask argRegs = allArgRegMask();
+    for (std::size_t i = instrs.size(); i-- > 0;) {
+        const RegMask defs = defRegMask(instrs[i]);
+        usedBeforeDef = (usedBeforeDef & ~defs) | usedRegMask(instrs[i]);
+        callBeforeDef &= ~defs;
+        if (instrs[i].opcode == MOpcode::CALL)
+            callBeforeDef |= argRegs;
+        usedBeforeDefFrom[i] = usedBeforeDef;
+        callBeforeDefFrom[i] = callBeforeDef;
+    }
+
+    std::size_t folded = 0;
+    for (std::size_t idx = 0; idx + 1 < instrs.size(); ++idx) {
+        MInstr &first = instrs[idx];
+        MInstr &second = instrs[idx + 1];
+
+        const bool firstIsMovRR = (first.opcode == MOpcode::MOVrr && first.operands.size() == 2);
+        const bool secondIsMovRR =
+            (second.opcode == MOpcode::MOVrr && second.operands.size() == 2);
+        if (!firstIsMovRR || !secondIsMovRR)
+            continue;
+        if (!samePhysReg(second.operands[1], first.operands[0]))
+            continue;
+
+        const Operand &r1 = first.operands[0];
+        const RegMask r1Bit = regOperandBit(r1);
+        if (r1Bit == 0)
+            continue;
+
+        const std::size_t suffixIndex = idx + 2;
+        if ((usedBeforeDefFrom[suffixIndex] & r1Bit) != 0)
+            continue;
+        if (isArgReg(r1) && (callBeforeDefFrom[suffixIndex] & r1Bit) != 0)
+            continue;
+
+        const Operand originalSrc = first.operands[1];
+        second.operands[1] = originalSrc;
+        first.operands[0] = first.operands[1];
+        ++stats.consecutiveMovsFolded;
+        ++folded;
+    }
+
+    return folded;
 }
 
 } // namespace viper::codegen::x64::peephole

@@ -25,11 +25,25 @@
 
 #include "codegen/x86_64/OperandRoles.hpp"
 
+#include <cstdint>
 #include <optional>
-#include <unordered_set>
 
 namespace viper::codegen::x64::peephole {
 namespace {
+
+using RegMask = uint64_t;
+
+[[nodiscard]] RegMask regBit(uint16_t reg) noexcept {
+    return reg < 64 ? (RegMask{1} << reg) : RegMask{0};
+}
+
+void addReg(RegMask &mask, uint16_t reg) noexcept {
+    mask |= regBit(reg);
+}
+
+[[nodiscard]] bool containsReg(RegMask mask, uint16_t reg) noexcept {
+    return (mask & regBit(reg)) != 0;
+}
 
 /// @brief Check if an instruction modifies RSP (the stack pointer).
 [[nodiscard]] bool modifiesRSP(const MInstr &instr) noexcept {
@@ -70,12 +84,14 @@ namespace {
 }
 
 /// @brief Collect all physical registers used by an instruction.
-void collectUsedRegs(const MInstr &instr, std::unordered_set<uint16_t> &usedRegs) {
+[[nodiscard]] RegMask collectUsedRegs(const MInstr &instr) {
+    RegMask usedRegs = 0;
+
     // Helper to add a register if it's physical
     auto addIfPhysReg = [&usedRegs](const Operand &op) {
         const auto *reg = std::get_if<OpReg>(&op);
         if (reg && reg->isPhys)
-            usedRegs.insert(reg->idOrPhys);
+            addReg(usedRegs, reg->idOrPhys);
     };
 
     // Helper to add registers from memory operand
@@ -84,10 +100,10 @@ void collectUsedRegs(const MInstr &instr, std::unordered_set<uint16_t> &usedRegs
         if (mem) {
             // Base register is always valid in OpMem
             if (mem->base.isPhys)
-                usedRegs.insert(mem->base.idOrPhys);
+                addReg(usedRegs, mem->base.idOrPhys);
             // Index register is only valid when hasIndex is true
             if (mem->hasIndex && mem->index.isPhys)
-                usedRegs.insert(mem->index.idOrPhys);
+                addReg(usedRegs, mem->index.idOrPhys);
         }
     };
 
@@ -99,43 +115,50 @@ void collectUsedRegs(const MInstr &instr, std::unordered_set<uint16_t> &usedRegs
         addIfPhysReg(instr.operands[idx]);
         addMemRegs(instr.operands[idx]);
     }
+
+    return usedRegs;
 }
 
 /// @brief Mark all registers a CALL implicitly uses as live.
 /// @details Argument registers, plus RAX (vararg vector-arg count for SysV),
 ///          plus RSP must stay live across CALL points so DCE cannot drop
 ///          the instructions that populate them.
-void addCallUsedRegs(const TargetInfo &target, std::unordered_set<uint16_t> &usedRegs) {
+void addCallUsedRegs(const TargetInfo &target, RegMask &usedRegs) {
     for (std::size_t i = 0; i < target.maxGPRArgs && i < target.intArgOrder.size(); ++i)
-        usedRegs.insert(static_cast<uint16_t>(target.intArgOrder[i]));
+        addReg(usedRegs, static_cast<uint16_t>(target.intArgOrder[i]));
     for (std::size_t i = 0; i < target.maxFPArgs && i < target.f64ArgOrder.size(); ++i)
-        usedRegs.insert(static_cast<uint16_t>(target.f64ArgOrder[i]));
-    usedRegs.insert(static_cast<uint16_t>(PhysReg::RSP));
+        addReg(usedRegs, static_cast<uint16_t>(target.f64ArgOrder[i]));
+    addReg(usedRegs, static_cast<uint16_t>(PhysReg::RSP));
     // SysV varargs use AL to carry the number of vector arguments. Keeping RAX
     // live at calls is conservative for non-varargs and required for varargs.
-    usedRegs.insert(static_cast<uint16_t>(PhysReg::RAX));
+    addReg(usedRegs, static_cast<uint16_t>(PhysReg::RAX));
 }
 
 /// @brief Mark RET-implicit registers as live.
 /// @details Return value registers (int + fp), the stack pointer, and all
 ///          callee-saved registers must survive to the function epilogue.
-void addReturnUsedRegs(const TargetInfo &target, std::unordered_set<uint16_t> &usedRegs) {
-    usedRegs.insert(static_cast<uint16_t>(target.intReturnReg));
-    usedRegs.insert(static_cast<uint16_t>(target.f64ReturnReg));
-    usedRegs.insert(static_cast<uint16_t>(PhysReg::RSP));
+void addReturnUsedRegs(const TargetInfo &target, RegMask &usedRegs) {
+    addReg(usedRegs, static_cast<uint16_t>(target.intReturnReg));
+    addReg(usedRegs, static_cast<uint16_t>(target.f64ReturnReg));
+    addReg(usedRegs, static_cast<uint16_t>(PhysReg::RSP));
     for (PhysReg reg : target.calleeSavedGPR)
-        usedRegs.insert(static_cast<uint16_t>(reg));
+        addReg(usedRegs, static_cast<uint16_t>(reg));
     for (PhysReg reg : target.calleeSavedFPR)
-        usedRegs.insert(static_cast<uint16_t>(reg));
+        addReg(usedRegs, static_cast<uint16_t>(reg));
 }
 
 /// @brief Seed @p liveRegs with the registers conservatively live at block exit.
 /// @details Equivalent to @ref addReturnUsedRegs but also explicitly
 ///          re-adds @c RSP so frame-manipulating blocks always keep stack
 ///          accounting alive.
-void addExitLiveRegs(const TargetInfo &target, std::unordered_set<uint16_t> &liveRegs) {
+void addExitLiveRegs(const TargetInfo &target, RegMask &liveRegs) {
     addReturnUsedRegs(target, liveRegs);
-    liveRegs.insert(static_cast<uint16_t>(PhysReg::RSP));
+    addReg(liveRegs, static_cast<uint16_t>(PhysReg::RSP));
+}
+
+void addAllAllocatableRegs(RegMask &liveRegs) {
+    for (uint16_t reg : getAllAllocatableRegs())
+        addReg(liveRegs, reg);
 }
 
 /// @brief Add implicit register uses for @p instr to @p liveRegs / @p flagsLive.
@@ -145,7 +168,7 @@ void addExitLiveRegs(const TargetInfo &target, std::unordered_set<uint16_t> &liv
 ///          the EFLAGS-using set marks flags as live.
 void collectImplicitUses(const MInstr &instr,
                          const TargetInfo &target,
-                         std::unordered_set<uint16_t> &liveRegs,
+                         RegMask &liveRegs,
                          bool &flagsLive) {
     if (usesEFlags(instr.opcode))
         flagsLive = true;
@@ -158,12 +181,12 @@ void collectImplicitUses(const MInstr &instr,
             addReturnUsedRegs(target, liveRegs);
             break;
         case MOpcode::CQO:
-            liveRegs.insert(static_cast<uint16_t>(PhysReg::RAX));
+            addReg(liveRegs, static_cast<uint16_t>(PhysReg::RAX));
             break;
         case MOpcode::IDIVrm:
         case MOpcode::DIVrm:
-            liveRegs.insert(static_cast<uint16_t>(PhysReg::RAX));
-            liveRegs.insert(static_cast<uint16_t>(PhysReg::RDX));
+            addReg(liveRegs, static_cast<uint16_t>(PhysReg::RAX));
+            addReg(liveRegs, static_cast<uint16_t>(PhysReg::RDX));
             break;
         default:
             break;
@@ -193,64 +216,53 @@ std::size_t runBlockDCE(std::vector<MInstr> &instrs,
     if (instrs.empty())
         return 0;
 
-    constexpr std::size_t kMaxDCEIterations = 100;
     std::size_t eliminated = 0;
 
-    for (std::size_t iter = 0; iter < kMaxDCEIterations; ++iter) {
-        std::unordered_set<uint16_t> liveRegs;
-        if (preservePhysRegsAtExit) {
-            const auto &allRegs = getAllAllocatableRegs();
-            liveRegs.insert(allRegs.begin(), allRegs.end());
-            liveRegs.insert(static_cast<uint16_t>(PhysReg::RSP));
-        } else {
-            addExitLiveRegs(target, liveRegs);
-        }
-        bool flagsLive = false;
-
-        std::vector<bool> toRemove(instrs.size(), false);
-        std::size_t removedThisIter = 0;
-
-        for (std::size_t i = instrs.size(); i-- > 0;) {
-            const auto &instr = instrs[i];
-            if (instr.opcode == MOpcode::LABEL) {
-                const auto &allRegs = getAllAllocatableRegs();
-                liveRegs.insert(allRegs.begin(), allRegs.end());
-            }
-
-            std::unordered_set<uint16_t> explicitUses;
-            collectUsedRegs(instr, explicitUses);
-            bool explicitFlagsUse = usesEFlags(instr.opcode);
-
-            const auto defReg = getDefReg(instr);
-            const bool definesFlags = definesEFlags(instr.opcode);
-            const bool hasTrackedDef = defReg.has_value() || definesFlags;
-            const bool regResultLive = defReg && liveRegs.count(*defReg) != 0;
-            const bool flagsResultLive = definesFlags && flagsLive;
-            const bool anyResultLive = regResultLive || flagsResultLive;
-
-            if (hasTrackedDef && !dceHasSideEffects(instr) && !anyResultLive) {
-                toRemove[i] = true;
-                ++removedThisIter;
-                continue;
-            }
-
-            if (defReg)
-                liveRegs.erase(*defReg);
-            if (definesFlags)
-                flagsLive = false;
-
-            liveRegs.insert(explicitUses.begin(), explicitUses.end());
-            collectImplicitUses(instr, target, liveRegs, flagsLive);
-            if (explicitFlagsUse)
-                flagsLive = true;
-        }
-
-        if (removedThisIter == 0)
-            break;
-
-        removeMarkedInstructions(instrs, toRemove);
-        eliminated += removedThisIter;
+    RegMask liveRegs = 0;
+    if (preservePhysRegsAtExit) {
+        addAllAllocatableRegs(liveRegs);
+        addReg(liveRegs, static_cast<uint16_t>(PhysReg::RSP));
+    } else {
+        addExitLiveRegs(target, liveRegs);
     }
+    bool flagsLive = false;
+
+    std::vector<bool> toRemove(instrs.size(), false);
+
+    for (std::size_t i = instrs.size(); i-- > 0;) {
+        const auto &instr = instrs[i];
+        if (instr.opcode == MOpcode::LABEL)
+            addAllAllocatableRegs(liveRegs);
+
+        const RegMask explicitUses = collectUsedRegs(instr);
+        const bool explicitFlagsUse = usesEFlags(instr.opcode);
+
+        const auto defReg = getDefReg(instr);
+        const bool definesFlags = definesEFlags(instr.opcode);
+        const bool hasTrackedDef = defReg.has_value() || definesFlags;
+        const bool regResultLive = defReg && containsReg(liveRegs, *defReg);
+        const bool flagsResultLive = definesFlags && flagsLive;
+        const bool anyResultLive = regResultLive || flagsResultLive;
+
+        if (hasTrackedDef && !dceHasSideEffects(instr) && !anyResultLive) {
+            toRemove[i] = true;
+            ++eliminated;
+            continue;
+        }
+
+        if (defReg)
+            liveRegs &= ~regBit(*defReg);
+        if (definesFlags)
+            flagsLive = false;
+
+        liveRegs |= explicitUses;
+        collectImplicitUses(instr, target, liveRegs, flagsLive);
+        if (explicitFlagsUse)
+            flagsLive = true;
+    }
+
+    if (eliminated != 0)
+        removeMarkedInstructions(instrs, toRemove);
 
     stats.deadCodeEliminated += eliminated;
     return eliminated;

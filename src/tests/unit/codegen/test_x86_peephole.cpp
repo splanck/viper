@@ -29,6 +29,8 @@
 #include "codegen/x86_64/Peephole.hpp"
 #include "codegen/x86_64/Scheduler.hpp"
 #include "codegen/x86_64/TargetX64.hpp"
+#include "codegen/x86_64/peephole/MemoryOpt.hpp"
+#include "codegen/x86_64/peephole/MovFolding.hpp"
 
 using namespace viper::codegen::x64;
 
@@ -864,6 +866,50 @@ TEST(X86Scheduler, PrioritizesLoadUseChainWithinBlock) {
     EXPECT_TRUE(changed > 0U);
     ASSERT_FALSE(fn.blocks[0].instructions.empty());
     EXPECT_EQ(fn.blocks[0].instructions[0].opcode, MOpcode::MOVmr);
+}
+
+TEST(X86Peephole, DeadCodeEliminatesWholeUnusedMoveChainInOneRun) {
+    auto fn = makeFunc(".Lentry",
+                       {
+                           MInstr{MOpcode::MOVri, {gpr(PhysReg::R10), imm(1)}},
+                           MInstr{MOpcode::MOVrr, {gpr(PhysReg::R11), gpr(PhysReg::R10)}},
+                           MInstr{MOpcode::MOVrr, {gpr(PhysReg::RCX), gpr(PhysReg::R11)}},
+                           MInstr{MOpcode::RET, {}},
+                       });
+
+    const auto count = runPeepholes(fn);
+    EXPECT_GE(count, 3U);
+    ASSERT_EQ(fn.blocks[0].instructions.size(), 1U);
+    EXPECT_EQ(fn.blocks[0].instructions[0].opcode, MOpcode::RET);
+}
+
+TEST(X86Peephole, LinearMoveFoldingHandlesChainedAdjacentMoves) {
+    std::vector<MInstr> instrs = {
+        MInstr{MOpcode::MOVrr, {gpr(PhysReg::R10), gpr(PhysReg::RAX)}},
+        MInstr{MOpcode::MOVrr, {gpr(PhysReg::R11), gpr(PhysReg::R10)}},
+        MInstr{MOpcode::MOVrr, {gpr(PhysReg::RCX), gpr(PhysReg::R11)}},
+        MInstr{MOpcode::RET, {}},
+    };
+
+    peephole::PeepholeStats stats{};
+    EXPECT_EQ(peephole::foldConsecutiveMoves(instrs, stats), 2U);
+    EXPECT_EQ(stats.consecutiveMovsFolded, 2U);
+    ASSERT_EQ(instrs[2].operands.size(), 2U);
+    EXPECT_TRUE(sameRegOperand(instrs[2].operands[1], gpr(PhysReg::RAX)));
+}
+
+TEST(X86Peephole, FrameStoreForwardingInvalidatesWhenStoredRegisterIsClobbered) {
+    std::vector<MInstr> instrs = {
+        MInstr{MOpcode::MOVrm, {mem(PhysReg::RBP, -8), gpr(PhysReg::RAX)}},
+        MInstr{MOpcode::MOVmr, {gpr(PhysReg::RBX), mem(PhysReg::RBP, -8)}},
+        MInstr{MOpcode::MOVri, {gpr(PhysReg::RAX), imm(7)}},
+        MInstr{MOpcode::MOVmr, {gpr(PhysReg::RCX), mem(PhysReg::RBP, -8)}},
+    };
+
+    peephole::PeepholeStats stats{};
+    EXPECT_EQ(peephole::forwardFrameStoreLoads(instrs, stats), 1U);
+    EXPECT_EQ(instrs[1].opcode, MOpcode::MOVrr);
+    EXPECT_EQ(instrs[3].opcode, MOpcode::MOVmr);
 }
 
 // ---------------------------------------------------------------------------

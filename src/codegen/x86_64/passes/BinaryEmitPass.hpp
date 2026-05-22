@@ -11,7 +11,7 @@
 //          emitting text assembly.
 // Key invariants:
 //   - Requires register allocation to have completed before running
-//   - Populates Module::binaryText and Module::binaryRodata CodeSections
+//   - Populates Module::binaryTextSections and Module::binaryRodata CodeSections
 //   - Does NOT produce assembly text (Module::codegenResult remains empty)
 // Ownership/Lifetime:
 //   - Pass stores backend options by value; borrows Module during run()
@@ -39,9 +39,10 @@ class BinaryEmitPass final : public Pass {
     explicit BinaryEmitPass(CodegenOptions options) noexcept;
 
     /// @brief Encode the module's MIR into machine code sections.
-    /// @details Populates @c Module::binaryText / @c binaryRodata while
-    ///          leaving @c Module::codegenResult empty (text-assembly
-    ///          emission is the @ref EmitPass alternative).
+    /// @details Populates @c Module::binaryTextSections / @c binaryRodata
+    ///          while leaving @c Module::codegenResult empty (text-assembly
+    ///          emission is the @ref EmitPass alternative). @c binaryText is
+    ///          populated only when debug line emission needs merged code.
     /// @param module Pipeline state mutated in place.
     /// @param diags Diagnostic sink.
     /// @return True on success.

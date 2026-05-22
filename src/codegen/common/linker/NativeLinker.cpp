@@ -39,7 +39,9 @@
 #include "codegen/common/linker/SymbolResolver.hpp"
 
 #include <algorithm>
+#include <chrono>
 #include <cctype>
+#include <cstdlib>
 #include <cstdint>
 #include <iomanip>
 #include <limits>
@@ -50,6 +52,27 @@
 namespace viper::codegen::linker {
 
 namespace {
+
+class LinkTiming {
+  public:
+    explicit LinkTiming(std::ostream &err)
+        : err_(err), enabled_(std::getenv("VIPER_LINKER_STATS") != nullptr),
+          last_(std::chrono::steady_clock::now()) {}
+
+    void mark(const char *stage) {
+        if (!enabled_)
+            return;
+        const auto now = std::chrono::steady_clock::now();
+        const std::chrono::duration<double, std::milli> elapsed = now - last_;
+        err_ << "[link-time] " << stage << ' ' << elapsed.count() << "ms\n";
+        last_ = now;
+    }
+
+  private:
+    std::ostream &err_;
+    bool enabled_ = false;
+    std::chrono::steady_clock::time_point last_;
+};
 
 bool installSyntheticGlobal(const ObjSymbol &sym,
                             size_t objIdx,
@@ -1085,6 +1108,8 @@ static bool loadForceLoadArchiveMembers(const std::vector<std::string> &paths,
 ///          performs ICF, inserts branch trampolines, applies relocations, and
 ///          writes the final executable. Zero external tool dependencies.
 int nativeLink(const NativeLinkerOptions &opts, std::ostream & /*out*/, std::ostream &err) {
+    LinkTiming timing(err);
+
     // Step 1: Read the user's object file.
     ObjFile userObj;
     if (!readObjFile(opts.objPath, userObj, err)) {
@@ -1113,11 +1138,13 @@ int nativeLink(const NativeLinkerOptions &opts, std::ostream & /*out*/, std::ost
     // from Archive::members by the archive reader.
     if (!loadForceLoadArchiveMembers(opts.forceLoadArchivePaths, extraObjects, err))
         return 1;
+    timing.mark("read-input-objects");
 
     // Step 2: Read all archive files.
     std::vector<Archive> archives;
     if (!readArchiveFiles(opts.archivePaths, archives, err))
         return 1;
+    timing.mark("read-archives");
 
     // Step 3: Symbol resolution (iterative archive extraction).
     std::vector<ObjFile> initialObjects = {userObj};
@@ -1144,6 +1171,7 @@ int nativeLink(const NativeLinkerOptions &opts, std::ostream & /*out*/, std::ost
     }
     if (!validateInputObjects(allObjects, opts.platform, opts.arch, err))
         return 1;
+    timing.mark("resolve-symbols");
     // Step 3.5a: Generate ObjC selector stubs (macOS — objc_msgSend$selector symbols).
     // Must come before dynamic stubs since it moves symbols from dynamicSyms and
     // ensures objc_msgSend itself is in the dynamic set.
@@ -1268,6 +1296,7 @@ int nativeLink(const NativeLinkerOptions &opts, std::ostream & /*out*/, std::ost
         err << "\n";
         return 1;
     }
+    timing.mark("generate-stubs");
 
     // Step 3.5c: Dead-strip unused sections from all non-synthetic input
     // objects, rooting only entry points and always-live metadata.
@@ -1278,13 +1307,16 @@ int nativeLink(const NativeLinkerOptions &opts, std::ostream & /*out*/, std::ost
               opts.platform,
               opts.preserveDebugSections,
               err);
+    timing.mark("dead-strip");
 
     if (!opts.fastLink) {
         // Step 3.5d: Deduplicate identical rodata strings across object files.
         deduplicateStrings(allObjects, globalSyms);
+        timing.mark("string-dedup");
 
         // Step 3.5d2: Fold identical .text sections (Identical Code Folding).
         foldIdenticalCode(allObjects, globalSyms);
+        timing.mark("icf");
     }
 
     // Step 3.5e: Remove global symbols that reference explicitly stripped sections.
@@ -1302,6 +1334,7 @@ int nativeLink(const NativeLinkerOptions &opts, std::ostream & /*out*/, std::ost
         for (const auto &name : deadSyms)
             globalSyms.erase(name);
     }
+    timing.mark("dead-symbol-cleanup");
 
     // Step 4: Merge sections and compute layout.
     LinkLayout layout;
@@ -1310,18 +1343,21 @@ int nativeLink(const NativeLinkerOptions &opts, std::ostream & /*out*/, std::ost
         err << "error: section merging failed\n";
         return 1;
     }
+    timing.mark("merge-sections");
 
     // Step 5: Insert branch trampolines for out-of-range AArch64 B/BL instructions.
     if (!insertBranchTrampolines(allObjects, layout, opts.arch, opts.platform, err)) {
         err << "error: branch trampoline insertion failed\n";
         return 1;
     }
+    timing.mark("branch-trampolines");
 
     // Step 6: Apply relocations. This also resolves final symbol addresses.
     if (!applyRelocations(allObjects, layout, dynamicSyms, opts.platform, opts.arch, err)) {
         err << "error: relocation application failed\n";
         return 1;
     }
+    timing.mark("apply-relocations");
 
     // Step 6.25: Resolve the final entry point after symbol addresses are known.
     {
@@ -1350,6 +1386,7 @@ int nativeLink(const NativeLinkerOptions &opts, std::ostream & /*out*/, std::ost
     std::sort(layout.gotEntries.begin(),
               layout.gotEntries.end(),
               [](const GotEntry &a, const GotEntry &b) { return a.symbolName < b.symbolName; });
+    timing.mark("final-symbols");
 
     // Step 7: Write executable.
     bool writeOk = false;
@@ -1420,6 +1457,7 @@ int nativeLink(const NativeLinkerOptions &opts, std::ostream & /*out*/, std::ost
         err << "error: failed to write executable '" << opts.exePath << "'\n";
         return 1;
     }
+    timing.mark("write-exe");
 
     return 0;
 }

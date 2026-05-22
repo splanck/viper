@@ -114,6 +114,7 @@ bool PeepholePass::run(Module &module, Diagnostics &diags) {
     if (module.target == nullptr)
         module.target = &selectTarget(module.options.targetABI);
 
+    const bool collectStats = codegenStatsEnabled();
     std::atomic_size_t total{0};
     MirStats stats{};
     std::mutex statsMutex;
@@ -123,8 +124,11 @@ bool PeepholePass::run(Module &module, Diagnostics &diags) {
                      1, static_cast<std::size_t>(std::thread::hardware_concurrency())));
     if (workerCount <= 1) {
         for (auto &fn : module.mir) {
-            total.fetch_add(runPeepholes(fn, *module.target), std::memory_order_relaxed);
-            accumulateStats(fn, stats);
+            const std::size_t transformed = runPeepholes(fn, *module.target);
+            if (collectStats) {
+                total.fetch_add(transformed, std::memory_order_relaxed);
+                accumulateStats(fn, stats);
+            }
         }
     } else {
         std::atomic_size_t nextIndex{0};
@@ -139,25 +143,31 @@ bool PeepholePass::run(Module &module, Diagnostics &diags) {
                         nextIndex.fetch_add(1, std::memory_order_relaxed);
                     if (index >= module.mir.size())
                         break;
-                    localTotal += runPeepholes(module.mir[index], *module.target);
-                    accumulateStats(module.mir[index], localStats);
+                    const std::size_t transformed =
+                        runPeepholes(module.mir[index], *module.target);
+                    if (collectStats) {
+                        localTotal += transformed;
+                        accumulateStats(module.mir[index], localStats);
+                    }
                 }
-                total.fetch_add(localTotal, std::memory_order_relaxed);
-                std::lock_guard<std::mutex> lock(statsMutex);
-                stats.functions += localStats.functions;
-                stats.blocks += localStats.blocks;
-                stats.instructions += localStats.instructions;
-                stats.calls += localStats.calls;
-                stats.branches += localStats.branches;
-                stats.loads += localStats.loads;
-                stats.stores += localStats.stores;
+                if (collectStats) {
+                    total.fetch_add(localTotal, std::memory_order_relaxed);
+                    std::lock_guard<std::mutex> lock(statsMutex);
+                    stats.functions += localStats.functions;
+                    stats.blocks += localStats.blocks;
+                    stats.instructions += localStats.instructions;
+                    stats.calls += localStats.calls;
+                    stats.branches += localStats.branches;
+                    stats.loads += localStats.loads;
+                    stats.stores += localStats.stores;
+                }
             });
         }
         for (auto &worker : workers)
             worker.join();
     }
 
-    if (codegenStatsEnabled())
+    if (collectStats)
         diags.warning("x86-64 peephole: " + std::to_string(total.load()) + " transformations; mir " +
                       std::to_string(stats.functions) + " funcs, " +
                       std::to_string(stats.blocks) + " blocks, " +

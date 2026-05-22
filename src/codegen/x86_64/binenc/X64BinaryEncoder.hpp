@@ -67,18 +67,22 @@ class X64BinaryEncoder {
     /// @param emitWin64Unwind When true, emit PE/COFF unwind metadata regardless of host.
     void encodeFunction(const MFunction &fn,
                         objfile::CodeSection &text,
-                        objfile::CodeSection &rodata,
+                        const objfile::CodeSection &rodata,
                         bool isDarwin,
                         const FrameInfo *frame = nullptr,
                         bool emitWin64Unwind = false);
 
   private:
     using LabelOffsetMap = std::unordered_map<std::string, size_t>;
+    struct LabelLayout {
+        LabelOffsetMap offsets;
+        size_t estimatedSize{0};
+    };
 
     /// Encode a single MIR instruction.
     void encodeInstruction(const MInstr &instr,
                            objfile::CodeSection &text,
-                           objfile::CodeSection &rodata,
+                           const objfile::CodeSection &rodata,
                            bool isDarwin);
 
     // === Instruction encoding by category ===
@@ -86,7 +90,7 @@ class X64BinaryEncoder {
     /// Encode nullary instructions (RET, CQO, UD2).
     void encodeInstructionImpl(const MInstr &instr,
                                objfile::CodeSection &text,
-                               objfile::CodeSection &rodata,
+                               const objfile::CodeSection &rodata,
                                bool isDarwin);
 
     void encodeNullary(MOpcode op, objfile::CodeSection &cs);
@@ -119,7 +123,7 @@ class X64BinaryEncoder {
     void encodeLEARip(PhysReg dst,
                       const OpRipLabel &rip,
                       objfile::CodeSection &text,
-                      objfile::CodeSection &rodata,
+                      const objfile::CodeSection &rodata,
                       bool isDarwin);
 
     /// Encode SSE reg-reg instructions.
@@ -132,7 +136,7 @@ class X64BinaryEncoder {
     void encodeSseRipLoad(PhysReg dst,
                           const OpRipLabel &rip,
                           objfile::CodeSection &text,
-                          objfile::CodeSection &rodata,
+                          const objfile::CodeSection &rodata,
                           bool isDarwin);
 
     /// Encode SETcc instruction.
@@ -157,7 +161,7 @@ class X64BinaryEncoder {
     void encodeBranchRip(MOpcode op,
                          const OpRipLabel &rip,
                          objfile::CodeSection &text,
-                         objfile::CodeSection &rodata,
+                         const objfile::CodeSection &rodata,
                          bool isDarwin);
 
     /// @brief Dispatch a branch/call target by operand kind.
@@ -180,14 +184,8 @@ class X64BinaryEncoder {
                                   const LabelOffsetMap &knownLabelOffsets,
                                   bool isDarwin);
 
-    /// Compute a stable set of intra-function label offsets before emission so
-    /// short forward branches can be selected without rewriting section bytes.
-    LabelOffsetMap computeFunctionLabelOffsets(const MFunction &fn, bool isDarwin);
-
-    /// Compute the predicted byte size of a fully encoded function body.
-    size_t estimateFunctionSize(const MFunction &fn,
-                                const LabelOffsetMap &knownLabelOffsets,
-                                bool isDarwin);
+    /// Compute stable intra-function label offsets and final function size before emission.
+    LabelLayout computeFunctionLabelLayout(const MFunction &fn, bool isDarwin);
 
     /// Ensure precomputed label offsets match actual emission.
     void verifyPredictedLabelOffset(const std::string &label, size_t actualOffset) const;

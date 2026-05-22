@@ -120,10 +120,15 @@ namespace {
     manager.addPass(std::make_unique<viper::codegen::x64::passes::PeepholePass>());
     manager.addPass(std::make_unique<viper::codegen::x64::passes::BinaryEmitPass>(opts));
 
-    if (!manager.run(module, diags) || !module.binaryText) {
+    if (!manager.run(module, diags)) {
         return 0;
     }
-    return module.binaryText->bytes().size();
+    std::size_t size = 0;
+    for (const auto &section : module.binaryTextSections)
+        size += section.bytes().size();
+    if (size != 0 || !module.binaryTextSections.empty())
+        return size;
+    return module.binaryText ? module.binaryText->bytes().size() : 0;
 }
 
 } // namespace

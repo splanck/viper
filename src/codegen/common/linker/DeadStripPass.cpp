@@ -24,6 +24,7 @@
 #include "codegen/common/linker/NameMangling.hpp"
 #include "codegen/common/linker/ObjFileReader.hpp"
 
+#include <algorithm>
 #include <queue>
 #include <unordered_set>
 
@@ -83,6 +84,80 @@ static bool isDebugSection(const ObjSection &sec) {
            sec.name.find("__debug") != std::string::npos;
 }
 
+struct ObjectLivenessIndex {
+    std::vector<std::vector<size_t>> associativeChildren;
+    std::vector<std::vector<size_t>> coffUnwindByCodeSection;
+};
+
+static void addSectionEdge(std::vector<std::vector<size_t>> &edges,
+                           size_t fromSec,
+                           size_t toSec) {
+    if (fromSec == 0 || fromSec >= edges.size() || toSec == 0)
+        return;
+    edges[fromSec].push_back(toSec);
+}
+
+static std::vector<ObjectLivenessIndex>
+buildObjectLivenessIndexes(
+    const std::vector<ObjFile> &allObjects,
+    const std::unordered_map<std::string, GlobalSymEntry> &globalSyms,
+    LinkPlatform platform) {
+    std::vector<ObjectLivenessIndex> indexes(allObjects.size());
+
+    for (size_t oi = 0; oi < allObjects.size(); ++oi) {
+        const auto &obj = allObjects[oi];
+        auto &index = indexes[oi];
+        index.associativeChildren.resize(obj.sections.size());
+
+        for (size_t si = 1; si < obj.sections.size(); ++si) {
+            const uint32_t parent = obj.sections[si].associativeSection;
+            if (parent > 0 && parent < obj.sections.size())
+                index.associativeChildren[parent].push_back(si);
+        }
+
+        if (obj.format != ObjFileFormat::COFF)
+            continue;
+
+        // Windows x64 unwind tables are reverse-referenced: .pdata points at
+        // code labels, and .xdata is then pulled in from .pdata. Build that
+        // reverse map once per object instead of re-scanning every unwind
+        // section for every live code section.
+        index.coffUnwindByCodeSection.resize(obj.sections.size());
+        for (size_t unwindSi = 1; unwindSi < obj.sections.size(); ++unwindSi) {
+            const auto &unwind = obj.sections[unwindSi];
+            if (!isWindowsUnwindSection(unwind.name))
+                continue;
+
+            for (const auto &rel : unwind.relocs) {
+                if (rel.symIndex >= obj.symbols.size())
+                    continue;
+                const auto &targetSym = obj.symbols[rel.symIndex];
+                if (targetSym.sectionIndex > 0 &&
+                    targetSym.sectionIndex < obj.sections.size()) {
+                    addSectionEdge(index.coffUnwindByCodeSection,
+                                   targetSym.sectionIndex,
+                                   unwindSi);
+                }
+                if (!targetSym.name.empty()) {
+                    auto git = findWithPlatformFallback(globalSyms, targetSym.name, platform);
+                    if (git != globalSyms.end() && git->second.objIndex == oi &&
+                        git->second.secIndex > 0 && git->second.secIndex < obj.sections.size()) {
+                        addSectionEdge(index.coffUnwindByCodeSection,
+                                       git->second.secIndex,
+                                       unwindSi);
+                    }
+                }
+            }
+        }
+        for (auto &targets : index.coffUnwindByCodeSection) {
+            std::sort(targets.begin(), targets.end());
+            targets.erase(std::unique(targets.begin(), targets.end()), targets.end());
+        }
+    }
+
+    return indexes;
+}
+
 void deadStrip(std::vector<ObjFile> &allObjects,
                size_t userObjCount,
                const std::unordered_map<std::string, GlobalSymEntry> &globalSyms,
@@ -93,6 +168,7 @@ void deadStrip(std::vector<ObjFile> &allObjects,
     // Set of live (objIdx, secIdx) pairs.
     std::unordered_set<InputSectionKey, InputSectionKeyHash> live;
     std::queue<InputSectionKey> worklist;
+    const auto livenessIndexes = buildObjectLivenessIndexes(allObjects, globalSyms, platform);
 
     auto markLive = [&](size_t objIdx, size_t secIdx) {
         InputSectionKey key{objIdx, secIdx};
@@ -157,40 +233,17 @@ void deadStrip(std::vector<ObjFile> &allObjects,
 
         if (sec.associativeSection > 0 && sec.associativeSection < obj.sections.size())
             markLive(oi, sec.associativeSection);
-        for (size_t otherSi = 1; otherSi < obj.sections.size(); ++otherSi) {
-            if (obj.sections[otherSi].associativeSection == si)
-                markLive(oi, otherSi);
+        if (oi < livenessIndexes.size() &&
+            si < livenessIndexes[oi].associativeChildren.size()) {
+            for (size_t childSi : livenessIndexes[oi].associativeChildren[si])
+                markLive(oi, childSi);
         }
 
-        // Windows x64 unwind tables are reverse-referenced: .pdata points at
-        // code labels, and .xdata is then pulled in from .pdata. When a live
-        // code section is visited, mark sibling unwind sections whose
-        // relocations target that section.
-        if (obj.format == ObjFileFormat::COFF && sec.executable) {
-            for (size_t otherSi = 1; otherSi < obj.sections.size(); ++otherSi) {
-                if (otherSi == si)
-                    continue;
-                const auto &other = obj.sections[otherSi];
-                if (!isWindowsUnwindSection(other.name))
-                    continue;
-                for (const auto &rel : other.relocs) {
-                    if (rel.symIndex >= obj.symbols.size())
-                        continue;
-                    const auto &targetSym = obj.symbols[rel.symIndex];
-                    if (targetSym.sectionIndex == si) {
-                        markLive(oi, otherSi);
-                        break;
-                    }
-                    if (!targetSym.name.empty()) {
-                        auto git = findWithPlatformFallback(globalSyms, targetSym.name, platform);
-                        if (git != globalSyms.end() && git->second.objIndex == oi &&
-                            git->second.secIndex == si) {
-                            markLive(oi, otherSi);
-                            break;
-                        }
-                    }
-                }
-            }
+        if (obj.format == ObjFileFormat::COFF && sec.executable &&
+            oi < livenessIndexes.size() &&
+            si < livenessIndexes[oi].coffUnwindByCodeSection.size()) {
+            for (size_t unwindSi : livenessIndexes[oi].coffUnwindByCodeSection[si])
+                markLive(oi, unwindSi);
         }
 
         // Follow each relocation to its target symbol's section.
