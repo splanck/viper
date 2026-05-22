@@ -51,6 +51,7 @@ Out:
 ### 3.4 Cross-Platform
 
 - macOS, Linux, and Windows builds pass.
+- ViperIDE standalone builds pass through `./scripts/build_ide.sh` and `scripts/build_ide_win.cmd`, with generated binaries kept under `viperide/bin/`.
 - No macOS-only shell commands remain in core workflows without platform guards.
 - Path handling works for spaces, colons, backslashes, and case differences.
 - Graphics and non-graphics builds link after runtime GUI additions.

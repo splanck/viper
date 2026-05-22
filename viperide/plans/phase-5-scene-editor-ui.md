@@ -17,7 +17,7 @@ Required before any visual editing:
 
 Required before Play:
 
-- Phase 2 run configs and safe process/job model.
+- Phase 2 run configs and the IDE job model built on `Viper.System.Process`.
 
 ## 3. Scope by Sub-Phase
 
@@ -25,7 +25,7 @@ Required before Play:
 
 In:
 
-- `scene_editor` module mounted by `AppShell.SelectSurface(KIND_SCENE)`.
+- Scene-editor modules under `viperide/src/scene_editor/`, mounted by `AppShell.SelectSurface(KIND_SCENE)`.
 - Open `.scene`/`.level`/canonical scene files as scene documents.
 - Load through `Viper.Game.Scene.LoadFile`.
 - Show SceneView with a scene-owned tile view or `Scene.BuildTilemap()` render copy if load succeeds.

@@ -70,7 +70,7 @@ cursorCol=1
 scrollLine=1
 ```
 
-Use the existing `Viper.Text.Ini` pattern from `core/settings.zia`. Session restore must skip malformed sections and missing files without aborting startup.
+Use the existing `Viper.Text.Ini` pattern from `viperide/src/core/settings.zia`. Session restore must skip malformed sections and missing files without aborting startup.
 
 ## 5. Technical Requirements
 
@@ -78,18 +78,18 @@ Use the existing `Viper.Text.Ini` pattern from `core/settings.zia`. Session rest
 
 Current state:
 
-- Shortcuts are registered in `main.zia:123-150`.
-- Command-palette entries are registered in `main.zia:153-182`.
-- Commands dispatch through a long if-chain in `main.zia:377-457`.
+- Shortcuts are registered in `viperide/src/main.zia:123-150`.
+- Command-palette entries are registered in `viperide/src/main.zia:153-182`.
+- Commands dispatch through a long if-chain in `viperide/src/main.zia:377-457`.
 - There is already id drift: the palette registers `"sidebar"` while dispatch listens for `"togglesidebar"`.
 
 Change:
 
-- Add `commands/command_registry.zia`.
+- Add `viperide/src/commands/command_registry.zia`.
 - A command record has `id`, display label, shortcut, menu item, toolbar item, command-palette visibility, and trigger mode.
 - Startup registers each command once, then uses the registry to populate shortcuts and command-palette entries.
 - Per frame, `Dispatch(cpSelected) -> String` returns one command id or `""`.
-- Main-loop command handling remains explicit and frame-driven: dispatch returns an id, then `main.zia` calls the existing handler with current `shell`, `docMgr`, `engine`, and related state.
+- Main-loop command handling remains explicit and frame-driven: dispatch returns an id, then `viperide/src/main.zia` calls the existing handler with current `shell`, `docMgr`, `engine`, and related state.
 
 Acceptance:
 
@@ -101,7 +101,7 @@ Acceptance:
 
 Current state:
 
-- `Document` has text fields only (`core/document.zia`).
+- `Document` has text fields only (`viperide/src/core/document.zia`).
 - `DocumentManager.OpenFile` reads all file content and sets only `language`.
 - The shell has one code-editor area; there is no non-text surface.
 
@@ -113,7 +113,7 @@ Change:
   - `KIND_SCENE`
   - `KIND_BINARY_UNSUPPORTED`
 - Add `kind` to `Document`.
-- Add `services/file_utils.zia` helpers:
+- Add `viperide/src/services/file_utils.zia` helpers:
   - `DetectLanguage(path) -> String`
   - `DetectKind(path) -> Integer`
   - case-insensitive extension matching.
@@ -179,7 +179,7 @@ Current state:
 
 Change:
 
-- Add `services/locations.zia` with a `Location` record:
+- Add `viperide/src/services/locations.zia` with a `Location` record:
   - `id`
   - `filePath`
   - `line`

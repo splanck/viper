@@ -1,6 +1,6 @@
 # ViperIDE Implementation Plans
 
-These plans describe how to turn the current ViperIDE demo into a first-class code editor, IDE, and scene editor for Viper. They are intentionally critical: each phase must remove real product risk, not just add visible features.
+These plans describe how to turn ViperIDE into a first-class code editor, IDE, and scene editor for Viper. They are intentionally critical: each phase must remove real product risk, not just add visible features.
 
 ## Conventions
 
@@ -10,6 +10,7 @@ These plans describe how to turn the current ViperIDE demo into a first-class co
 - Data-loss prevention is a release gate for every phase. New document surfaces must participate in close prompts, dirty tracking, save, reload, session restore, and external-change handling.
 - Cross-platform behavior, accessibility, keyboard access, and dark-theme contrast are per-phase acceptance criteria, not Phase 6 cleanup.
 - UI smoke tests are not enough. Every phase needs at least one automated regression where practical plus a short manual interaction checklist.
+- ViperIDE app source lives under `viperide/src/`. New Zia and C source files for the IDE should be added under that tree; keep the root `viperide/` directory for project metadata, docs, plans, and generated `bin/` output.
 
 ## Phase Map
 

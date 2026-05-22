@@ -947,8 +947,8 @@ set_tests_properties(zia_smoke_paint_canvas_capture PROPERTIES
         TIMEOUT 30)
 
 add_test(NAME zia_smoke_viperide
-        COMMAND $<TARGET_FILE:zia> "${CMAKE_SOURCE_DIR}/examples/apps/viperide/smoke_probe.zia"
-        WORKING_DIRECTORY "${CMAKE_SOURCE_DIR}/examples/apps/viperide")
+        COMMAND $<TARGET_FILE:zia> "${CMAKE_SOURCE_DIR}/viperide/src/smoke_probe.zia"
+        WORKING_DIRECTORY "${CMAKE_SOURCE_DIR}/viperide/src")
 set_tests_properties(zia_smoke_viperide PROPERTIES
         PASS_REGULAR_EXPRESSION "RESULT: ok"
         FAIL_REGULAR_EXPRESSION "Framebuffer resize dimensions exceed maximum"
@@ -956,7 +956,7 @@ set_tests_properties(zia_smoke_viperide PROPERTIES
         TIMEOUT 30)
 
 add_test(NAME zia_smoke_viperide_project_compile
-        COMMAND $<TARGET_FILE:viper> build "${CMAKE_SOURCE_DIR}/examples/apps/viperide" -o "${CMAKE_BINARY_DIR}/viperide_smoke.il")
+        COMMAND $<TARGET_FILE:viper> build "${CMAKE_SOURCE_DIR}/viperide" -o "${CMAKE_BINARY_DIR}/viperide_smoke.il")
 set_tests_properties(zia_smoke_viperide_project_compile PROPERTIES
         LABELS "zia;smoke"
         TIMEOUT 60)

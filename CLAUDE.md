@@ -162,7 +162,7 @@ When responding to a task:
 .\scripts\build_viper.cmd
 
 # Build all demos on Windows
-.\scripts\build_demos.cmd
+.\scripts\build_demos_win.cmd
 
 # Build and test ViperDOS (NEVER use build_viper.sh for ViperDOS!)
 ./scripts/build_viperdos.sh

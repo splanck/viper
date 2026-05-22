@@ -49,7 +49,7 @@ Current state:
 
 Change:
 
-- Add `editor/language_service.zia`.
+- Add `viperide/src/editor/language_service.zia`.
 - Route active-document tooling through a language-service interface.
 - Zia service wraps existing and new Zia APIs.
 - BASIC service starts with honest capabilities based on what ViperIDE can actually call: syntax/text editing, build/run if project config supports it, and no semantic rename unless a BASIC backend is integrated.
@@ -168,7 +168,7 @@ Acceptance:
 
 Change:
 
-- Add `editor/signature.zia`.
+- Add `viperide/src/editor/signature.zia`.
 - Prefer structured signature data from the language service:
   - function name
   - ordered parameters

@@ -4,11 +4,11 @@
 
 ViperIDE should become the default way to build Viper projects: a credible code editor for Zia and BASIC, a project-aware IDE with build/run/debug workflows, and a visual scene editor for Viper's game runtime.
 
-The current app is a useful demo, but the hard work is not just adding panels. The gaps are document safety, structured workspace state, project-aware language services, async process control, scene data ownership, asset resolution, and interaction testing.
+The current app is useful, but the hard work is not just adding panels. The gaps are document safety, structured workspace state, project-aware language services, async process control, scene data ownership, asset resolution, and interaction testing.
 
 ## Current Assessment
 
-The IDE is a single-frame Zia app in `examples/apps/viperide/main.zia`. It registers shortcuts and command-palette entries near `main.zia:123-182`, dispatches commands through a linear if-chain around `main.zia:377-457`, tracks dirty state at `main.zia:553-565`, and watches only the active file at `main.zia:571-608`.
+The IDE is a single-frame Zia app in `viperide/src/main.zia`. It registers shortcuts and command-palette entries near `viperide/src/main.zia:123-182`, dispatches commands through a linear if-chain around `viperide/src/main.zia:377-457`, tracks dirty state at `viperide/src/main.zia:553-565`, and watches only the active file at `viperide/src/main.zia:571-608`.
 
 Strong pieces already exist:
 
@@ -25,7 +25,7 @@ High-risk gaps:
 - Project search, references, and build output use display strings or line-only data instead of structured locations. Live diagnostics consume structured toolchain records, but ViperIDE still stores diagnostic navigation as a tab-separated `path + line` payload instead of using a shared `LocationStore`.
 - Build/run uses blocking shell strings (`Exec.ShellFull`) with a hard-coded `zia` command.
 - Project loading eagerly walks the tree, has hardcoded excludes, and has no workspace manifest beyond a small `viper.project` parser.
-- Zia language services are single-file oriented. BASIC has editor/build support but not equivalent IntelliSense.
+- Zia language services inside ViperIDE are still mostly single-file oriented until `Viper.Zia.ProjectIndex` is integrated. BASIC has editor/build support in ViperIDE, while the separate `vbasic-server` IntelliSense surface is not yet integrated.
 - Scene editing still needs IDE integration work: document-kind routing, scene surface state, `SceneView`, asset-resolution UX, undo/redo, save/reload/conflict handling, and Play wiring. The underlying `Viper.Game.Scene`, tile ID convention, diagnostics, asset descriptors, atomic save, typed properties, and scaled tilemap primitives are available in the current runtime.
 
 ## Corrected Decisions
@@ -43,7 +43,7 @@ High-risk gaps:
 
 Prepare the app for new surfaces and long-lived work:
 
-- Command registry that fixes existing command id drift and removes the scaling risk in `main.zia`.
+- Command registry that fixes existing command id drift and removes the scaling risk in `viperide/src/main.zia`.
 - `DocumentKind` plus surface selection for code, scene, and future special documents.
 - Close prevention and unsaved-document sweeps for File > Exit, OS-window close, tab close, and future close-all commands.
 - Correct cursor/scroll persistence and active-document save state before every command that can switch, close, run, or save.
@@ -123,6 +123,7 @@ Final pass over the entire product:
 Every landed increment requires:
 
 - `./scripts/build_viper_mac.sh`, `./scripts/build_viper_linux.sh`, `./scripts/build_viper_unix.sh`, or `scripts/build_viper_win.cmd` as appropriate for the platform.
+- For ViperIDE app changes, `./scripts/build_ide.sh` or `scripts/build_ide_win.cmd`; generated IDE binaries should stay under ignored `viperide/bin/`.
 - Relevant `ctest` subset plus full `ctest --test-dir build --output-on-failure` before reporting a phase done.
 - `./scripts/check_runtime_completeness.sh` after runtime API changes.
 - Graphics-on and graphics-off builds for new graphics runtime bindings.

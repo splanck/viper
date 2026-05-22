@@ -2,7 +2,7 @@
 project viperide
 version 0.1.0
 lang zia
-entry main.zia
+entry src/main.zia
 
 # === Package Metadata ===
 package-name ViperIDE

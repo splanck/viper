@@ -10,7 +10,7 @@ Showcase programs demonstrating the Viper compiler toolchain, [runtime library](
 viper run examples/games/chess/       # Run a project directory
 viper build examples/apps/paint/ -o paint  # Compile to native binary
 ./scripts/build_demos.sh              # Build all demos (outputs to examples/bin/)
-scripts\build_demos.cmd               # Windows equivalent
+scripts\build_demos_win.cmd           # Windows equivalent
 ```
 
 ---
@@ -22,7 +22,6 @@ Full-featured applications built with [Zia](../docs/zia-reference.md).
 | Project | Description | Highlights |
 |---------|-------------|------------|
 | [ViperSQL](apps/vipersql/) | PostgreSQL-compatible SQL database server | MVCC, WAL, B-tree indexes, PG wire protocol, vsql client, 70K+ lines |
-| [ViperIDE](apps/viperide/) | Integrated development environment | [GUI](../docs/viperlib/gui/README.md) widgets, tabs, IntelliSense, project tree, build system |
 | [Paint](apps/paint/) | Drawing application (MS Paint-style) | 8 tools, runtime actions, file dialogs, zoomable canvas, undo/redo, layers |
 | [WebServer](apps/webserver/) | Multi-threaded HTTP server | Routing, static files, JSON API, [thread pool](../docs/viperlib/threads.md) |
 | [Varc](apps/varc/) | Archive utility | DEFLATE compression, AES [encryption](../docs/viperlib/crypto.md), checksums |
@@ -156,8 +155,8 @@ viper run examples/apps/paint/           # Zia app
 ./scripts/build_demos.sh --clean   # Clean rebuild
 
 # Windows
-scripts\build_demos.cmd
-scripts\build_demos.cmd --clean
+scripts\build_demos_win.cmd
+scripts\build_demos_win.cmd --clean
 ```
 
 Native binaries are output to `examples/bin/`.

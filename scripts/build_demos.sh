@@ -12,7 +12,7 @@ case "$(uname -s 2>/dev/null)" in
         ;;
     MINGW*|MSYS*|CYGWIN*)
         if command -v cmd.exe >/dev/null 2>&1; then
-            CMD_SCRIPT="$SCRIPT_DIR/build_demos.cmd"
+            CMD_SCRIPT="$SCRIPT_DIR/build_demos_win.cmd"
             if command -v cygpath >/dev/null 2>&1; then
                 CMD_SCRIPT="$(cygpath -aw "$CMD_SCRIPT")"
             fi
@@ -22,7 +22,7 @@ case "$(uname -s 2>/dev/null)" in
             fi
             exec cmd.exe //c "\"$CMD_SCRIPT\""
         fi
-        echo "Error: use scripts/build_demos.cmd on Windows"
+        echo "Error: use scripts/build_demos_win.cmd on Windows"
         exit 1
         ;;
     *)

@@ -105,6 +105,7 @@ lcov.info
 **/tests/**/output/
 **/tests/**/out/
 **/build/test-out/
+/viperide/bin/
 *.s
 # Baseball franchise shell save root (created on first interactive run).
 baseball_saves/

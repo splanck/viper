@@ -2,7 +2,7 @@
 setlocal enabledelayedexpansion
 
 REM Build native binaries for all demos using viper project format
-REM Usage: scripts\build_demos.cmd [--clean] [--arch arm64|x64]
+REM Usage: scripts\build_demos_win.cmd [--clean] [--arch arm64|x64]
 
 set "SCRIPT_DIR=%~dp0"
 set "ROOT_DIR=%SCRIPT_DIR%.."
@@ -143,7 +143,6 @@ echo.
 
 REM Build Zia demos
 call :build_demo paint "%APPS_DIR%\paint"
-call :build_demo viperide "%APPS_DIR%\viperide"
 call :build_demo 3dbowling "%GAMES_DIR%\3dbowling"
 call :build_demo crackman "%GAMES_DIR%\crackman"
 call :build_demo vipersql "%APPS_DIR%\vipersql"

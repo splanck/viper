@@ -131,7 +131,7 @@ Expect breaking changes. The IL specification, APIs, and tool interfaces are not
 
 | Demo | Description |
 |------|-------------|
-| [ViperIDE](examples/apps/viperide/) | Full-featured IDE for Zia and BASIC |
+| [ViperIDE](viperide/) | Full-featured IDE for Zia and BASIC |
 | [ViperSQL](examples/apps/vipersql/) | SQL database engine with an interactive client |
 | [Paint](examples/apps/paint/) | Drawing app with layers, undo/redo, and an expanded tool set |
 | [Chess](examples/games/chess/) | Chess with alpha-beta AI and a drag-and-drop GUI |
@@ -139,7 +139,7 @@ Expect breaking changes. The IL specification, APIs, and tool interfaces are not
 | [XENOSCAPE](examples/games/xenoscape/) | Metroid-style sidescroller with bosses, abilities, and saves |
 | [3D Bowling](examples/games/3dbowling/) | Physics-driven 3D bowling with multi-mode camera |
 
-> **[See all demos →](examples/README.md)** — 7 applications, 17 games, API coverage audits, IL examples, and C++ embedding demos.
+> **[See all demos →](examples/README.md)** — 6 applications, 17 games, API coverage audits, IL examples, and C++ embedding demos.
 
 ---
 

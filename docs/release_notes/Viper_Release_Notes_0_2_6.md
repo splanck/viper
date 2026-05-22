@@ -21,19 +21,19 @@ An alpha-quality hardening cycle, not a feature release. The Zia frontend reache
 - **Backends, bytecode VM & Windows HiDPI.** x86-64 cross-block fold liveness + AT&T operand-class validation; AArch64 sub-word transfers, terminator/CFG, def-operand fixes; bytecode-VM two's-complement wrapping arithmetic and checked float→int traps; Windows physical-pixel sizing via `AdjustWindowRectExForDpi` and waitable-timer frame pacing.
 - **GUI correctness audit.** Multi-round audit closing handle-validation, dialog-lifetime, focus-routing, and menubar/context-menu/toolbar/statusbar gaps; every public `Viper.GUI.*` entry routes through `rt_gui_widget_handle_checked`.
 - **Game-engine surface (plan 24).** New `Viper.Game.UI` widgets, `AnimTimeline` + multi-event `AnimStateMachine`, `Projectile2D`, rotated-texture `Renderer2D` draws, named audio mixer groups, and a `Viper.System.Clipboard` text surface.
-- **ViperIDE runtime prerequisites + build throughput.** A streaming `Viper.System.Process` / `Process.Handle` surface, a structured `Viper.Zia.Toolchain` (Check/Compile returning `Seq`/`Map` diagnostic and result records), and `Viper.Zia.ProjectIndex` semantic definition/reference/rename queries move the editor toward a real IDE workflow; an x86-64 codegen and COFF dead-strip rewrite cut the ViperIDE native x64 build from ~340s to ~35s.
+- **ViperIDE runtime prerequisites + build throughput.** A streaming `Viper.System.Process` / `Process.Handle` surface, a structured `Viper.Zia.Toolchain` (Check/Compile returning `Seq`/`Map` diagnostic and result records), `Viper.Zia.ProjectIndex` semantic definition/reference/rename queries, and an editable `Viper.Game.Scene` JSON scene document move the editor toward a real IDE workflow; an x86-64 codegen and COFF dead-strip rewrite cut the ViperIDE native x64 build from ~340s to ~35s.
 
 ### By the Numbers
 
 | Metric | v0.2.5 | v0.2.6 | Delta |
 |---|---|---|---|
-| Commits | — | 171 | +171 |
-| Source files | 2,996 | 3,039 | +43 |
-| Production SLOC | 552K | 606K | +54K |
-| Test SLOC | 228K | 258K | +30K |
+| Commits | — | 173 | +173 |
+| Source files | 2,996 | 3,054 | +58 |
+| Production SLOC | 552K | 611K | +59K |
+| Test SLOC | 228K | 259K | +31K |
 | Demo SLOC | 188K | 189K | +1K |
 
-Counts via `scripts/count_sloc.sh` (production 606,107 / test 257,922 / demo 189,358 / source files 3,039).
+Counts via `scripts/count_sloc.sh` (production 610,555 / test 258,699 / demo 189,487 / source files 3,054).
 
 ---
 
@@ -142,6 +142,7 @@ Counts via `scripts/count_sloc.sh` (production 606,107 / test 257,922 / demo 189
 - New `Viper.Zia.Toolchain` (`Check`/`CheckForFile`/`Compile`/`CompileForFile`) returns structured `Seq`/`Map` records — diagnostics carry normalized path, start/end location, severity, code, message, stage, and help; compile results carry success, diagnostics, source/output paths, and serialized IL. ViperIDE live diagnostics moved off tab-delimited parsing onto `CheckForFile`, and diagnostic navigation opens the owning file before jumping to the line; weak-stub parity keeps runtime-only links returning shape-compatible empties when `fe_zia` is absent.
 - New `Viper.Zia.ProjectIndex` adds an explicit-lifetime project language index with dirty-buffer import resolution, structured definition/reference results, semantic reference collection that excludes comments/strings and separates shadowed locals/imports/globals, and rename workspace-edit generation with visible-collision detection.
 - ViperIDE prerequisite runtime slice: `Viper.Workspace.FileIndex` / `Watcher.PollBatch`, `Viper.Assets.Resolver`, `Viper.Project.Manifest`, `Viper.Workspace.Edit`, `Viper.Game.Scene`, scaled `Tilemap` draw/count/hit testing, `Viper.GUI.TestHarness`, `VirtualList`, `VirtualTree`, `CommandState`, `Accessibility`, `Viper.Debug.Protocol`, and `Viper.Text.FuzzyMatch` now expose structured primitives for project trees, scene editing, GUI automation, command palettes, and debugger integration.
+- `Viper.Game.Scene` graduated from that primitive list into a full editable JSON scene document: non-trapping `LoadJson`/`LoadFile` that return structured diagnostics under enforced resource and integer-overflow limits, typed scalar scene/object properties, a deterministic canonical schema-v1 round-trip, an isolated `BuildTilemap` render/collision copy, and atomic same-directory save.
 
 ### Windows, MSVC, and HiDPI
 
@@ -171,10 +172,10 @@ Counts via `scripts/count_sloc.sh` (production 606,107 / test 257,922 / demo 189
 
 ---
 
-Demos and docs tracked the runtime work above; stale Windows debug/O0 pins for Chess, XENOSCAPE, and Baseball were removed after optimized x86-64 builds were restored, the XENOSCAPE Windows installer reached parity with the macOS path, the ViperIDE demo moved its live diagnostics onto the structured Zia toolchain surface, and `docs/viperlib/` (including `system.md` and `zia.md` for the Process, toolchain, and ProjectIndex APIs) plus the native-linker / native-assembler design docs were refreshed alongside.
+Demos and docs tracked the runtime work above; stale Windows debug/O0 pins for Chess, XENOSCAPE, and Baseball were removed after optimized x86-64 builds were restored, the XENOSCAPE Windows installer reached parity with the macOS path, the ViperIDE demo moved its live diagnostics onto the structured Zia toolchain surface, and `docs/viperlib/` (including `system.md`, `zia.md`, and a new `game/scene.md` for the Process, toolchain, ProjectIndex, and scene-document APIs) plus the native-linker / native-assembler design docs were refreshed alongside.
 
 ### Commits
 
-See `git log v0.2.5-dev..HEAD -- .` for the full 171-commit history since v0.2.5.
+See `git log v0.2.5-dev..HEAD -- .` for the full 173-commit history since v0.2.5.
 
 <!-- END DRAFT -->

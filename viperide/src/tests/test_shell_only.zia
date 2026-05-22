@@ -1,5 +1,5 @@
 module test_shell_only;
-bind "app_shell";
+bind "../ui/app_shell";
 
 // ============================================================================
 // MODULE: test_shell_only
