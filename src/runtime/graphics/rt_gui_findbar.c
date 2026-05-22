@@ -58,6 +58,11 @@ static size_t s_findbar_wrapper_cap = 0;
 static vg_codeeditor_t *rt_findbar_editor_checked(void *editor);
 static void rt_findbar_sync_options_from_widget(rt_findbar_data_t *data);
 
+/// @brief Record a wrapper in the global find-bar registry (idempotent).
+/// @details The registry is the source of truth for handle validation: a checked
+///          cast only trusts an opaque `void*` once it is found here, guarding
+///          against forged or freed handles. Capacity doubles from 8 on demand.
+/// @return 1 on success or if already present; 0 on overflow or realloc failure.
 static int rt_findbar_register_wrapper(rt_findbar_data_t *data) {
     if (!data)
         return 0;
@@ -79,6 +84,7 @@ static int rt_findbar_register_wrapper(rt_findbar_data_t *data) {
     return 1;
 }
 
+/// @brief Remove a wrapper from the find-bar registry, compacting the array. No-op if absent.
 static void rt_findbar_unregister_wrapper(rt_findbar_data_t *data) {
     if (!data)
         return;
@@ -93,6 +99,7 @@ static void rt_findbar_unregister_wrapper(rt_findbar_data_t *data) {
     }
 }
 
+/// @brief True if @p data is a currently-registered wrapper; backs handle validation.
 static int rt_findbar_wrapper_is_registered(const rt_findbar_data_t *data) {
     if (!data)
         return 0;
@@ -103,6 +110,7 @@ static int rt_findbar_wrapper_is_registered(const rt_findbar_data_t *data) {
     return 0;
 }
 
+/// @brief Clear the wrapper's bound editor and drop the bar's search target (if live).
 static void rt_findbar_unbind_data(rt_findbar_data_t *data) {
     if (!data)
         return;
@@ -111,6 +119,8 @@ static void rt_findbar_unbind_data(rt_findbar_data_t *data) {
         vg_findreplacebar_set_target(data->bar, NULL);
 }
 
+/// @brief True if the bar's bound editor is still a live code editor; lazily unbinds
+///        and returns 0 when the editor has been destroyed out from under the bar.
 static int rt_findbar_has_live_editor(rt_findbar_data_t *data) {
     if (!data || !data->bound_editor)
         return 0;
@@ -165,6 +175,8 @@ static void rt_findbar_widget_destroy(vg_widget_t *widget) {
         s_findbar_original_vtable->destroy(widget);
 }
 
+/// @brief Sever the two-way wrapper↔bar link: clear the bar's `user_data` back-pointer,
+///        drop its search target, and null the wrapper's bar/editor references.
 static void rt_findbar_detach_wrapper(rt_findbar_data_t *data) {
     if (!data)
         return;
@@ -407,6 +419,8 @@ static void rt_findbar_update_options(rt_findbar_data_t *data) {
     vg_findreplacebar_set_options(data->bar, &opts);
 }
 
+/// @brief Copy the bar widget's current search options (case/whole-word/regex/replace
+///        mode) back into the wrapper's cached flags after the user toggles them.
 static void rt_findbar_sync_options_from_widget(rt_findbar_data_t *data) {
     if (!data || !data->bar)
         return;

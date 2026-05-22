@@ -60,6 +60,8 @@ static vg_codeeditor_t *rt_codeeditor_checked(void *handle) {
     return (vg_codeeditor_t *)rt_gui_widget_handle_checked_type(handle, VG_WIDGET_CODEEDITOR);
 }
 
+/// @brief Order a (line,col) range in place so start precedes or equals end,
+///        swapping both coordinate pairs together when given backwards.
 static void rt_codeeditor_normalize_range(int *start_line,
                                           int *start_col,
                                           int *end_line,
@@ -75,6 +77,7 @@ static void rt_codeeditor_normalize_range(int *start_line,
     }
 }
 
+/// @brief Clamp a line index into the valid `[0, line_count-1]` range (0 if empty).
 static int rt_codeeditor_clamp_line_index(const vg_codeeditor_t *ce, int line) {
     if (!ce || ce->line_count <= 0)
         return 0;
@@ -85,6 +88,7 @@ static int rt_codeeditor_clamp_line_index(const vg_codeeditor_t *ce, int line) {
     return line;
 }
 
+/// @brief Clamp a byte column into `[0, line length]` for the given line (0 if line is invalid).
 static size_t rt_codeeditor_clamp_col_index(const vg_codeeditor_t *ce, int line, int col) {
     if (!ce || line < 0 || line >= ce->line_count)
         return 0;
@@ -94,6 +98,12 @@ static size_t rt_codeeditor_clamp_col_index(const vg_codeeditor_t *ce, int line,
     return (size_t)col > len ? len : (size_t)col;
 }
 
+/// @brief Extract the text spanning a (line,col) range as an rt_string, joining
+///        lines with '\n'.
+/// @details Two passes (measure, then copy) so the buffer is sized exactly, with
+///          overflow-guarded length accumulation. The range is normalized, its line
+///          indices clamped, then re-normalized — clamping can collapse endpoints and
+///          flip their order. Returns the empty string on bad input or allocation failure.
 static rt_string rt_codeeditor_range_to_rt_string(vg_codeeditor_t *ce,
                                                   int start_line,
                                                   int start_col,
@@ -153,6 +163,9 @@ static rt_string rt_codeeditor_range_to_rt_string(vg_codeeditor_t *ce,
     return result;
 }
 
+/// @brief Serialize the editor's entire buffer to an rt_string, '\n'-joining lines.
+/// @details Same overflow-guarded two-pass sizing as rt_codeeditor_range_to_rt_string;
+///          returns the empty string when empty or on allocation failure.
 static rt_string rt_codeeditor_all_text_to_rt_string(vg_codeeditor_t *ce) {
     if (!ce || ce->line_count <= 0)
         return rt_str_empty();
@@ -228,6 +241,11 @@ static vg_image_t *rt_image_checked(void *handle) {
     return (vg_image_t *)rt_gui_widget_handle_checked_type(handle, VG_WIDGET_IMAGE);
 }
 
+/// @brief Resolve a parent-container handle to its widget.
+/// @details Three-state contract: a NULL handle returns NULL (legitimate top-level
+///          placement); a valid handle returns its container widget; a non-NULL
+///          handle that fails to resolve also returns NULL — an error the caller
+///          must treat as "invalid parent", not "no parent".
 static vg_widget_t *rt_widget_parent_or_null_if_invalid(void *parent) {
     vg_widget_t *parent_widget = rt_gui_widget_parent_container_from_handle(parent);
     if (parent && !parent_widget)

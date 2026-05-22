@@ -8,24 +8,25 @@ The current app is a useful demo, but the hard work is not just adding panels. T
 
 ## Current Assessment
 
-The IDE is a single-frame Zia app in `examples/apps/viperide/main.zia`. It registers shortcuts and command-palette entries near `main.zia:123-180`, dispatches commands through a linear if-chain around `main.zia:375-455`, tracks dirty state at `main.zia:557-568`, and watches only the active file at `main.zia:573-610`.
+The IDE is a single-frame Zia app in `examples/apps/viperide/main.zia`. It registers shortcuts and command-palette entries near `main.zia:123-182`, dispatches commands through a linear if-chain around `main.zia:377-457`, tracks dirty state at `main.zia:553-565`, and watches only the active file at `main.zia:571-608`.
 
 Strong pieces already exist:
 
 - Multi-tab text documents, a file tree, tab bar, breadcrumb, find bar, minimap, settings, and status bar.
-- Zia completion, diagnostics, hover, and symbols through `Viper.Zia.Completion.*ForFile`.
-- A capable `CodeEditor` widget with existing runtime methods for multiple cursors (`runtime.def:8663-8671`).
+- Zia completion, hover, symbols, and signature help through `Viper.Zia.Completion.*ForFile`, plus live diagnostics through structured `Viper.Zia.Toolchain.CheckForFile` records.
+- A capable `CodeEditor` widget with existing runtime methods for multiple cursors (`runtime.def:8964-8976`).
+- Runtime prerequisites now available for IDE integration: `Viper.System.Process`, `Viper.Zia.ProjectIndex`, `Viper.Workspace.FileIndex`, `Viper.Project.Manifest`, `Viper.Workspace.Edit`, `Viper.Game.Scene`, scaled `Tilemap` draw/hit-test primitives, GUI test/virtual-list helpers, fuzzy match, and debug protocol shells.
 - Runtime file writes that already aim to replace files atomically (`rt_file_ext.c` documents this), though ViperIDE does not yet provide good save error handling or conflict UX.
 
 High-risk gaps:
 
 - Exit and OS-window close do not sweep unsaved documents. `handleExit` destroys the shell directly, and the main loop exits on `shell.ShouldClose()` without using `App.SetPreventClose` / `WasCloseRequested`.
 - `Document` is text-only. There is no document kind, scene document state, raw-source fallback, or non-code save path.
-- Search, diagnostics, references, and build output use display strings or line-only data instead of structured locations.
+- Project search, references, and build output use display strings or line-only data instead of structured locations. Live diagnostics consume structured toolchain records, but ViperIDE still stores diagnostic navigation as a tab-separated `path + line` payload instead of using a shared `LocationStore`.
 - Build/run uses blocking shell strings (`Exec.ShellFull`) with a hard-coded `zia` command.
 - Project loading eagerly walks the tree, has hardcoded excludes, and has no workspace manifest beyond a small `viper.project` parser.
 - Zia language services are single-file oriented. BASIC has editor/build support but not equivalent IntelliSense.
-- Scene editing depends on data and rendering contracts that are not yet settled: `Viper.Game.Scene` mutators, tile ID semantics, asset paths, diagnostics, scaled tilemap drawing, and save ownership.
+- Scene editing still needs IDE integration work: document-kind routing, scene surface state, `SceneView`, asset-resolution UX, undo/redo, save/reload/conflict handling, and Play wiring. The underlying `Viper.Game.Scene`, tile ID convention, diagnostics, asset descriptors, atomic save, typed properties, and scaled tilemap primitives are available in the current runtime.
 
 ## Corrected Decisions
 
@@ -55,7 +56,7 @@ Prepare the app for new surfaces and long-lived work:
 Turn the editor into a project-aware coding environment:
 
 - Add an IDE-side language-service abstraction so Zia, BASIC, text, and scene source modes have explicit capabilities.
-- Build a Zia project index with explicit root, source provider, dirty-buffer updates, reference ranges, and workspace-edit transactions.
+- Integrate the existing `Viper.Zia.ProjectIndex` runtime API with explicit root, source provider, dirty-buffer updates, reference ranges, and workspace-edit transactions.
 - Replace string-parsed go-to-definition with structured definition/reference results.
 - Add find references and rename only after reference-range and shadowing tests exist.
 - Wire existing multi-cursor runtime methods into real commands and UX.
@@ -68,7 +69,7 @@ Close the inner loop in stages:
 
 - Safe project-aware build/run commands using argument vectors, working directory, environment, run configs, and problem matchers.
 - A real output console with structured clickable locations.
-- A cancellable process/job model with streamed stdout/stderr if the runtime surface is not already sufficient.
+- IDE job ownership built on the existing `Viper.System.Process` runtime API, with streamed stdout/stderr, cancellation, and UI state.
 - Debug architecture based on an external debug protocol or adapter unless an in-process VM host is proven safe.
 - Debug UI only after launch configs, breakpoint persistence, source mapping, and process lifetime rules are defined.
 
@@ -77,13 +78,12 @@ Close the inner loop in stages:
 Implement the runtime scene model described by `misc/plans/game/scene-system.md`, with IDE-specific prerequisites called out in [phase-3-scene-data.md](phase-3-scene-data.md):
 
 - `Viper.Game.Scene` using the current `LoadJson` / `LoadFile` /
-  `SaveFile` / `ToJson` surface, with optional shorter aliases only after they
-  are registered.
+  `SaveFile` / `ToJson` surface.
 - Canonical `.scene` JSON round-trip, including legacy scene-shape import.
 - Live indexed object and tile/layer mutators that update scene-owned data, not
   a returned `Tilemap`.
 - Typed scene and object property APIs.
-- Optional `BuildTilemap()` render copy for viewport code.
+- `BuildTilemap()` render copy for viewport code.
 - `DiagnosticRecords()` structured diagnostics, compatibility diagnostic strings,
   and last-error reporting for editor integration.
 - Explicit extension and asset-path decisions.
@@ -92,7 +92,7 @@ Implement the runtime scene model described by `misc/plans/game/scene-system.md`
 
 Add a GUI widget for scene rendering and hit testing:
 
-- Tilemap rendering with a proven scale strategy; `rt_tilemap_draw` alone only supports offsets.
+- Tilemap rendering built on the existing scaled tilemap draw/count/hit-test primitives, or a proven equivalent inside `SceneView`.
 - Pan/zoom, grid, markers, selection overlays, and tile hit testing without packed integer hacks.
 - Runtime object lifetime checks appropriate for non-widget tilemap/scene pointers.
 - Pixel tests against the mock graphics backend at multiple zoom levels.
@@ -122,7 +122,7 @@ Final pass over the entire product:
 
 Every landed increment requires:
 
-- `./scripts/build_viper.sh` or the platform-equivalent build command.
+- `./scripts/build_viper_mac.sh`, `./scripts/build_viper_linux.sh`, `./scripts/build_viper_unix.sh`, or `scripts/build_viper_win.cmd` as appropriate for the platform.
 - Relevant `ctest` subset plus full `ctest --test-dir build --output-on-failure` before reporting a phase done.
 - `./scripts/check_runtime_completeness.sh` after runtime API changes.
 - Graphics-on and graphics-off builds for new graphics runtime bindings.

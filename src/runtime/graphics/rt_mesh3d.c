@@ -87,6 +87,7 @@ static int mesh_value_fits_float(double value) {
     return isfinite(value) && value >= -MESH3D_FLOAT_ABS_MAX && value <= MESH3D_FLOAT_ABS_MAX;
 }
 
+/// @brief True if all 16 lanes of a 4x4 float matrix are finite (no NaN/Inf).
 static int mesh_matrix4f_is_finite(const float *m) {
     if (!m)
         return 0;
@@ -1955,23 +1956,28 @@ static int stl_parse_double(const char **pp, const char *end, double *out) {
     return 1;
 }
 
+/// @brief Advance past spaces and tabs, returning the first non-blank pointer (≤ `end`).
 static const char *stl_skip_horizontal_ws(const char *p, const char *end) {
     while (p < end && (*p == ' ' || *p == '\t'))
         p++;
     return p;
 }
 
+/// @brief Trim trailing spaces, tabs and CR from a line span, returning the new end pointer.
 static const char *stl_trim_line_end(const char *start, const char *end) {
     while (end > start && (end[-1] == ' ' || end[-1] == '\t' || end[-1] == '\r'))
         end--;
     return end;
 }
 
+/// @brief True if the `[start,end)` span equals NUL-terminated `text` exactly.
 static int stl_line_equals(const char *start, const char *end, const char *text) {
     size_t len = strlen(text);
     return (size_t)(end - start) == len && strncmp(start, text, len) == 0;
 }
 
+/// @brief True if the span begins with `keyword` followed by end-of-span or whitespace.
+/// @details The trailing-boundary check stops "facetx" from matching keyword "facet".
 static int stl_line_starts_keyword(const char *start, const char *end, const char *keyword) {
     size_t len = strlen(keyword);
     if ((size_t)(end - start) < len || strncmp(start, keyword, len) != 0)
@@ -1979,6 +1985,9 @@ static int stl_line_starts_keyword(const char *start, const char *end, const cha
     return (size_t)(end - start) == len || start[len] == ' ' || start[len] == '\t';
 }
 
+/// @brief Parse an ASCII-STL `facet normal nx ny nz` line into `normal[3]`.
+/// @return 1 on a well-formed line with three finite, float-range components and
+///         no trailing junk; 0 otherwise.
 static int stl_parse_facet_normal_line(const char *start, const char *end, float *normal) {
     double nx;
     double ny;
@@ -2003,6 +2012,9 @@ static int stl_parse_facet_normal_line(const char *start, const char *end, float
     return 1;
 }
 
+/// @brief Parse an ASCII-STL `vertex x y z` line into `out_xyz[3]`.
+/// @return 1 on a well-formed line with three finite, float-range components and
+///         no trailing junk; 0 otherwise.
 static int stl_parse_vertex_line(const char *start, const char *end, float *out_xyz) {
     double x;
     double y;

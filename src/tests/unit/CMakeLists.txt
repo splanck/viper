@@ -1361,6 +1361,7 @@ function(viper_add_runtime_tests)
 
     viper_add_test(test_rt_scene_editor ${VIPER_TESTS_DIR}/runtime/RTSceneEditorTests.cpp)
     target_link_libraries(test_rt_scene_editor PRIVATE ${VIPER_RUNTIME_TEST_LIBS})
+    target_compile_definitions(test_rt_scene_editor PRIVATE VIPER_SOURCE_DIR="${CMAKE_SOURCE_DIR}")
     viper_add_ctest(test_rt_scene_editor test_rt_scene_editor)
 
     # Consolidated: RTSpriteBatchTests + RTSpriteSheetTests → test_rt_sprite_consolidated

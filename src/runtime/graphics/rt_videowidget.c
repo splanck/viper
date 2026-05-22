@@ -89,6 +89,11 @@ static rt_videowidget **s_videowidget_wrappers = NULL;
 static size_t s_videowidget_wrapper_count = 0;
 static size_t s_videowidget_wrapper_cap = 0;
 
+/// @brief Record a wrapper in the global VideoWidget registry (idempotent).
+/// @details The registry is the source of truth for handle validation: videowidget_checked
+///          only trusts an opaque `void*` once it is found here (then verifies the magic
+///          tag), guarding against forged/freed handles. Capacity doubles from 8.
+/// @return 1 on success or if already present; 0 on overflow or realloc failure.
 static int videowidget_register_wrapper(rt_videowidget *w) {
     if (!w)
         return 0;
@@ -115,6 +120,7 @@ static int videowidget_register_wrapper(rt_videowidget *w) {
     return 1;
 }
 
+/// @brief Remove a wrapper from the VideoWidget registry, compacting the array. No-op if absent.
 static void videowidget_unregister_wrapper(rt_videowidget *w) {
     if (!w)
         return;
@@ -129,6 +135,7 @@ static void videowidget_unregister_wrapper(rt_videowidget *w) {
     }
 }
 
+/// @brief True if @p w is a currently-registered wrapper; backs handle validation.
 static int videowidget_wrapper_is_registered(const rt_videowidget *w) {
     if (!w)
         return 0;
@@ -139,6 +146,8 @@ static int videowidget_wrapper_is_registered(const rt_videowidget *w) {
     return 0;
 }
 
+/// @brief Safe-cast an opaque handle to a VideoWidget: NULL unless it is a live
+///        registered wrapper carrying the expected magic tag.
 static rt_videowidget *videowidget_checked(void *obj) {
     rt_videowidget *w = (rt_videowidget *)obj;
     return videowidget_wrapper_is_registered(w) && w->magic == RT_VIDEOWIDGET_MAGIC ? w : NULL;

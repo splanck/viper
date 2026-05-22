@@ -32,9 +32,22 @@ extern "C" {
 /// @param text JSON text to parse.
 /// @return Parsed value: Map (object), Seq (array), String, or boxed number/bool/null.
 /// @details Parses any valid JSON value. Arrays become Seq, objects become Map,
-///          strings stay as String, numbers become boxed f64, bools become boxed i64.
+///          strings stay as String, numbers become boxed f64, bools become boxed i1.
 /// @note Traps on invalid JSON with descriptive error message.
 void *rt_json_parse(rt_string text);
+
+/// @brief Parse JSON without trapping on syntax errors.
+/// @param text JSON text to parse.
+/// @param out_value Receives the parsed value on success. Caller owns it.
+/// @param out_message Receives an owned diagnostic string on failure when non-null.
+/// @param out_line Receives 1-based source line on failure when non-null.
+/// @param out_column Receives 1-based source column on failure when non-null.
+/// @return 1 on success, 0 on invalid input or syntax error.
+int8_t rt_json_try_parse(rt_string text,
+                         void **out_value,
+                         rt_string *out_message,
+                         int64_t *out_line,
+                         int64_t *out_column);
 
 /// @brief Parse JSON expecting an object at the root.
 /// @param text JSON text to parse.

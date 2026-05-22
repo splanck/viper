@@ -150,6 +150,7 @@ static double clamp01(double value) {
     return value;
 }
 
+/// @brief Clamp `value` into `[min_value, max_value]`; non-finite input maps to `min_value`.
 static double clamp_range(double value, double min_value, double max_value) {
     if (!isfinite(value))
         return min_value;

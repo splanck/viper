@@ -1,0 +1,42 @@
+module TestScene;
+
+bind Viper.Terminal;
+
+func start() {
+    var scene = Viper.Game.Scene.New(3, 2, 16, 16);
+    scene.SetInt("playerStartX", 32);
+    scene.SetStr("theme", "cavern");
+    scene.SetBool("dark", true);
+    SayInt(scene.GetInt("playerStartX", -1));
+    Say(scene.GetStr("theme", ""));
+    SayBool(scene.GetBool("dark", false));
+
+    var layer = scene.AddLayer("fg");
+    scene.SetTile(layer, 1, 1, 7);
+    scene.SetLayerAsset(layer, "tiles/fg.png");
+
+    var obj = scene.AddObject("enemy", "slime-1", 64, 48);
+    scene.ObjectSetInt(obj, "hp", 3);
+    scene.ObjectSetStr(obj, "sprite", "sprites/slime.png");
+    SayInt(scene.ObjectGetInt(obj, "hp", -1));
+    SayInt(scene.FindObject("slime-1"));
+    SayInt(scene.CountOfType("enemy"));
+
+    var json = scene.ToJson();
+    SayBool(Viper.String.Has(json, "\"version\""));
+    var loaded = Viper.Game.Scene.LoadJson(json);
+    SayBool(loaded.HasErrors());
+    SayInt(loaded.GetInt("playerStartX", -1));
+    SayInt(loaded.ObjectGetInt(0, "hp", -1));
+
+    var bad = Viper.Game.Scene.LoadJson("{\"version\":1,");
+    SayBool(bad.HasErrors());
+    SayInt(bad.DiagnosticRecords().Length);
+
+    var tm = scene.BuildTilemap();
+    SayInt(tm.GetTileLayer(layer, 1, 1));
+    SayInt(scene.AssetPaths().Length);
+    SayInt(scene.AssetDescriptors().Length);
+
+    Say("done");
+}

@@ -120,6 +120,9 @@ static int rt_statusbar_zone_checked(int64_t zone, vg_statusbar_zone_t *out_zone
     return 1;
 }
 
+/// @brief Status-bar item click callback: record the clicked item for the next poll.
+/// @details Matches the GUI library's callback signature; @p user_data is unused
+///          because the clicked item is surfaced through global poll state instead.
 static void rt_statusbar_button_clicked(vg_statusbar_item_t *item, void *user_data) {
     (void)user_data;
     rt_gui_set_clicked_statusbar_item(item);

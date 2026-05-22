@@ -27,6 +27,9 @@ rt_string rt_game_scene_to_json(void *scene);
 int8_t rt_game_scene_save_file(void *scene, rt_string path);
 rt_string rt_game_scene_last_error(void *scene);
 void *rt_game_scene_diagnostics(void *scene);
+void *rt_game_scene_diagnostic_records(void *scene);
+int8_t rt_game_scene_has_errors(void *scene);
+void rt_game_scene_clear_diagnostics(void *scene);
 
 int64_t rt_game_scene_get_width(void *scene);
 int64_t rt_game_scene_get_height(void *scene);
@@ -71,11 +74,38 @@ void rt_game_scene_set_object_property(void *scene,
                                        rt_string value);
 rt_string rt_game_scene_get_object_property(void *scene, int64_t index, rt_string key);
 void rt_game_scene_delete_object_property(void *scene, int64_t index, rt_string key);
+int64_t rt_game_scene_object_get_int(void *scene, int64_t index, rt_string key, int64_t def);
+rt_string rt_game_scene_object_get_str(void *scene, int64_t index, rt_string key, rt_string def);
+double rt_game_scene_object_get_float(void *scene, int64_t index, rt_string key, double def);
+int8_t rt_game_scene_object_get_bool(void *scene, int64_t index, rt_string key, int8_t def);
+int8_t rt_game_scene_object_has(void *scene, int64_t index, rt_string key);
+void *rt_game_scene_object_keys(void *scene, int64_t index);
+void rt_game_scene_object_set_int(void *scene, int64_t index, rt_string key, int64_t value);
+void rt_game_scene_object_set_str(void *scene, int64_t index, rt_string key, rt_string value);
+void rt_game_scene_object_set_float(void *scene, int64_t index, rt_string key, double value);
+void rt_game_scene_object_set_bool(void *scene, int64_t index, rt_string key, int8_t value);
+void rt_game_scene_object_remove(void *scene, int64_t index, rt_string key);
+int64_t rt_game_scene_count_of_type(void *scene, rt_string type);
+int64_t rt_game_scene_object_of_type(void *scene, rt_string type, int64_t n);
+int64_t rt_game_scene_find_object(void *scene, rt_string id);
+void rt_game_scene_move_object(void *scene, int64_t from, int64_t to);
 
 void rt_game_scene_set_property(void *scene, rt_string key, rt_string value);
 rt_string rt_game_scene_get_property(void *scene, rt_string key);
 void rt_game_scene_delete_property(void *scene, rt_string key);
+int64_t rt_game_scene_get_int(void *scene, rt_string key, int64_t def);
+rt_string rt_game_scene_get_str(void *scene, rt_string key, rt_string def);
+double rt_game_scene_get_float(void *scene, rt_string key, double def);
+int8_t rt_game_scene_get_bool(void *scene, rt_string key, int8_t def);
+int8_t rt_game_scene_has(void *scene, rt_string key);
+void rt_game_scene_set_int(void *scene, rt_string key, int64_t value);
+void rt_game_scene_set_str(void *scene, rt_string key, rt_string value);
+void rt_game_scene_set_float(void *scene, rt_string key, double value);
+void rt_game_scene_set_bool(void *scene, rt_string key, int8_t value);
+void rt_game_scene_remove(void *scene, rt_string key);
 void *rt_game_scene_asset_paths(void *scene);
+void *rt_game_scene_asset_descriptors(void *scene);
+void *rt_game_scene_build_tilemap(void *scene);
 
 #ifdef __cplusplus
 }

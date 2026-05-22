@@ -88,6 +88,7 @@ static double transform3d_finite_or(double value, double fallback) {
     return isfinite(value) ? value : fallback;
 }
 
+/// @brief Clamp `value` into `[-TRANSFORM3D_ABS_MAX, TRANSFORM3D_ABS_MAX]`, substituting `fallback` when not finite.
 static double transform3d_clamp_abs_or(double value, double fallback) {
     value = transform3d_finite_or(value, fallback);
     if (value > TRANSFORM3D_ABS_MAX)

@@ -45,14 +45,14 @@ Current state:
 
 - Completion, hover, and symbols call `Viper.Zia.Completion.*ForFile` directly.
 - Live diagnostics call `Viper.Zia.Toolchain.CheckForFile` and consume structured `Seq`/`Map` diagnostic records.
-- BASIC buffers are treated as editor text but do not have equivalent semantic services.
+- BASIC buffers are treated as editor text inside ViperIDE. The repository has a separate `vbasic-server` LSP/MCP service with completion, hover, diagnostics, and document symbols, but ViperIDE does not yet integrate it or expose equivalent in-process semantic services.
 
 Change:
 
 - Add `editor/language_service.zia`.
 - Route active-document tooling through a language-service interface.
 - Zia service wraps existing and new Zia APIs.
-- BASIC service starts with honest capabilities: syntax/text editing, build/run if project config supports it, no semantic rename unless implemented.
+- BASIC service starts with honest capabilities based on what ViperIDE can actually call: syntax/text editing, build/run if project config supports it, and no semantic rename unless a BASIC backend is integrated.
 - Text and scene-source services disable semantic commands.
 
 Acceptance:
@@ -79,19 +79,22 @@ Acceptance:
 Current state:
 
 - Existing `CompleteForFile`, `HoverForFile`, `SymbolsForFile`, and `Viper.Zia.Toolchain.CheckForFile` APIs are path-aware but still source-driven single-file queries.
-- `Sema::findSymbolAtPosition` is not by itself a references engine.
+- `Viper.Zia.ProjectIndex` is already available as a runtime API with explicit handle lifetime, semantic definition/reference queries, rename edit generation, and dirty-buffer source updates.
+- ViperIDE does not yet own a long-lived project index or route go-to-definition/references/rename through it.
 
 Change:
 
-- Add a Zia project-index runtime API with explicit index lifetime. Preferred shape:
+- Integrate the existing Zia project-index runtime API with explicit index lifetime:
   - `Viper.Zia.ProjectIndex.New(root) -> obj`
   - `UpdateFile(index, path, source)`
   - `RemoveFile(index, path)`
   - `Clear(index)`
-  - `Definition(index, path, line, col) -> obj`
-  - `References(index, path, line, col) -> obj`
-  - `RenameEdits(index, path, line, col, newName) -> obj`
-- If runtime object returns are not practical yet, use stable serialized records only at the bridge boundary, then immediately parse into IDE-side structured records. Do not use display strings as storage.
+  - `Destroy(index)`
+  - `Definition(index, path, source, line, col) -> obj`
+  - `References(index, path, source, line, col) -> obj`
+  - `RenameEdits(index, path, source, line, col, newName) -> obj`
+- Query calls accept the current source text for the active file. ViperIDE must pass dirty buffer contents, not stale disk text.
+- Results are `Map`/`Seq` structures from the runtime. Convert them into IDE-side records or Phase 0 `LocationStore` entries immediately; do not use display strings as storage.
 - The index stores declarations and reference ranges with enough identity to distinguish shadowed locals, members, imports, and globals.
 - Reference collection must ignore comments and strings and must use parser/token/AST information rather than raw string search.
 

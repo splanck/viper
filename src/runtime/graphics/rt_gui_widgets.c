@@ -42,6 +42,11 @@
 
 #ifdef VIPER_ENABLE_GRAPHICS
 
+/// @brief Resolve a parent-container handle to its widget.
+/// @details Three-state contract: a NULL handle returns NULL (legitimate top-level
+///          placement); a valid handle returns its container widget; a non-NULL
+///          handle that fails to resolve also returns NULL — an error the caller
+///          must treat as "invalid parent", not "no parent".
 static vg_widget_t *rt_widget_parent_or_null_if_invalid(void *parent) {
     vg_widget_t *parent_widget = rt_gui_widget_parent_container_from_handle(parent);
     if (parent && !parent_widget)
@@ -83,6 +88,8 @@ typedef struct rt_gui_subhandle {
 
 static rt_gui_subhandle_t *s_gui_subhandles = NULL;
 
+/// @brief Detach a subhandle from the global intrusive list, fixing up neighbour
+///        links and the list head. Leaves the node's own next/prev nulled.
 static void rt_gui_subhandle_unlink(rt_gui_subhandle_t *handle) {
     if (!handle)
         return;
@@ -96,6 +103,8 @@ static void rt_gui_subhandle_unlink(rt_gui_subhandle_t *handle) {
     handle->prev = NULL;
 }
 
+/// @brief GC finalizer for a subhandle: unlink it from the list and clear its
+///        magic/ptr/owner so any lingering reference is recognized as dead.
 static void rt_gui_subhandle_finalize(void *obj) {
     rt_gui_subhandle_t *handle = (rt_gui_subhandle_t *)obj;
     if (!handle)
@@ -106,6 +115,8 @@ static void rt_gui_subhandle_finalize(void *obj) {
     handle->owner_widget = NULL;
 }
 
+/// @brief Safe-cast an opaque handle to a subhandle of the expected @p kind.
+/// @return The subhandle if it has the right object size, magic tag and kind; NULL otherwise.
 static rt_gui_subhandle_t *rt_gui_subhandle_checked(void *handle,
                                                     rt_gui_subhandle_kind_t kind) {
     if (!rt_obj_is_instance(handle, 0, sizeof(rt_gui_subhandle_t)))
@@ -116,6 +127,8 @@ static rt_gui_subhandle_t *rt_gui_subhandle_checked(void *handle,
     return sub;
 }
 
+/// @brief Mark a subhandle's target as gone by nulling its ptr/owner, while keeping
+///        the handle object itself alive so stale script references fail gracefully.
 static void rt_gui_subhandle_invalidate(rt_gui_subhandle_t *handle) {
     if (!handle || handle->magic != RT_GUI_SUBHANDLE_MAGIC)
         return;
@@ -123,6 +136,9 @@ static void rt_gui_subhandle_invalidate(rt_gui_subhandle_t *handle) {
     handle->owner_widget = NULL;
 }
 
+/// @brief True if the subhandle's owner widget is still alive (or it has no owner).
+/// @details A dead owner triggers invalidation (ptr/owner nulled) and a false return,
+///          so callers never dereference a sub-object whose widget has been destroyed.
 static bool rt_gui_subhandle_owner_is_live(rt_gui_subhandle_t *handle) {
     if (!handle)
         return false;
@@ -134,6 +150,8 @@ static bool rt_gui_subhandle_owner_is_live(rt_gui_subhandle_t *handle) {
     return false;
 }
 
+/// @brief Find the top-level widget that owns a menu item — its context menu, or
+///        the menubar reached through its parent menu. NULL if free-floating.
 static vg_widget_t *rt_gui_owner_widget_for_menu_item(vg_menu_item_t *item) {
     if (!item)
         return NULL;
@@ -144,10 +162,12 @@ static vg_widget_t *rt_gui_owner_widget_for_menu_item(vg_menu_item_t *item) {
     return NULL;
 }
 
+/// @brief The menubar widget that owns a menu, or NULL if the menu isn't in a menubar.
 static vg_widget_t *rt_gui_owner_widget_for_menu(vg_menu_t *menu) {
     return menu && menu->owner_menubar ? &menu->owner_menubar->base : NULL;
 }
 
+/// @brief Linear-search the global list for an existing subhandle wrapping (@p kind, @p ptr).
 static rt_gui_subhandle_t *rt_gui_find_subhandle(rt_gui_subhandle_kind_t kind, void *ptr) {
     if (!ptr)
         return NULL;
@@ -159,6 +179,11 @@ static rt_gui_subhandle_t *rt_gui_find_subhandle(rt_gui_subhandle_kind_t kind, v
     return NULL;
 }
 
+/// @brief Get-or-create the GC subhandle that wraps a widget sub-object.
+/// @details The entry point of the subhandle system: returns the existing handle for
+///          (@p kind, @p ptr) — refreshing its owner — or allocates a new one and links
+///          it into the global list. Reuse guarantees a stable identity per sub-object
+///          across calls. Returns NULL on NULL ptr or allocation failure.
 static void *rt_gui_wrap_subhandle(rt_gui_subhandle_kind_t kind,
                                    void *ptr,
                                    vg_widget_t *owner_widget) {

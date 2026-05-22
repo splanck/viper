@@ -1,0 +1,14 @@
+{
+  "version": 2,
+  "name": "future",
+  "width": 1,
+  "height": 1,
+  "tileWidth": 16,
+  "tileHeight": 16,
+  "layers": [
+    {
+      "name": "base",
+      "tiles": [0]
+    }
+  ]
+}

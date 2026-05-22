@@ -98,6 +98,7 @@ static void terrain_release_ref(void **slot) {
     *slot = NULL;
 }
 
+/// @brief Clamp `value` into `[-TERRAIN3D_ABS_MAX, TERRAIN3D_ABS_MAX]`, substituting `fallback` when not finite.
 static double terrain_clamp_abs_or(double value, double fallback) {
     if (!isfinite(value))
         return fallback;
@@ -108,6 +109,8 @@ static double terrain_clamp_abs_or(double value, double fallback) {
     return value;
 }
 
+/// @brief Floor a continuous heightfield coordinate to a grid index, clamped to
+///        `[0, max_index]`. Non-finite or non-positive input maps to 0.
 static int32_t terrain_coord_to_index(double coord, int32_t max_index) {
     if (!isfinite(coord))
         return 0;

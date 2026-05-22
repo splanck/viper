@@ -79,6 +79,8 @@ static vg_codeeditor_t *rt_codeeditor_handle_checked(void *editor) {
     return (vg_codeeditor_t *)rt_gui_widget_handle_checked_type(editor, VG_WIDGET_CODEEDITOR);
 }
 
+/// @brief Validate a gutter-marker slot index (0–3) and report it via @p out_type.
+/// @return 1 if the slot is in range; 0 otherwise (leaving `*out_type` untouched).
 static int rt_codeeditor_gutter_slot_checked(int64_t slot, int *out_type) {
     if (slot < 0 || slot > 3)
         return 0;
@@ -87,12 +89,17 @@ static int rt_codeeditor_gutter_slot_checked(int64_t slot, int *out_type) {
     return 1;
 }
 
+/// @brief Byte length of a line clamped to INT_MAX; 0 for an out-of-range line index.
 static int rt_codeeditor_line_length_i32(const vg_codeeditor_t *ce, int line) {
     if (!ce || line < 0 || line >= ce->line_count)
         return 0;
     return ce->lines[line].length > (size_t)INT_MAX ? INT_MAX : (int)ce->lines[line].length;
 }
 
+/// @brief Byte length (1–4) of the UTF-8 sequence beginning at @p p.
+/// @details Validates continuation bytes and respects @p remaining so a truncated
+///          multibyte sequence at the buffer end cannot over-read. Any malformed
+///          lead byte yields 1, guaranteeing forward progress in column-walk loops.
 static size_t rt_codeeditor_utf8_span(const char *p, size_t remaining) {
     if (!p || remaining == 0)
         return 0;
@@ -112,6 +119,11 @@ static size_t rt_codeeditor_utf8_span(const char *p, size_t remaining) {
     return 1;
 }
 
+/// @brief Convert a byte offset within a line to a character (codepoint) column.
+/// @details The editor stores text as UTF-8 bytes but the scripting API speaks in
+///          characters; this walks the line by UTF-8 spans so multibyte glyphs count
+///          as one column. @p byte_col is clamped to the line length and never splits
+///          a multibyte sequence (it stops at the last whole character that fits).
 static int rt_codeeditor_byte_col_to_char_col(const vg_codeeditor_t *ce, int line, int byte_col) {
     if (!ce || line < 0 || line >= ce->line_count || byte_col <= 0)
         return 0;
@@ -130,6 +142,10 @@ static int rt_codeeditor_byte_col_to_char_col(const vg_codeeditor_t *ce, int lin
     return chars;
 }
 
+/// @brief Convert a character (codepoint) column to a byte offset within a line.
+/// @details Inverse of rt_codeeditor_byte_col_to_char_col: advances @p char_col
+///          UTF-8 spans (or to end of line), then returns the byte position clamped
+///          to INT_MAX.
 static int rt_codeeditor_char_col_to_byte_col(const vg_codeeditor_t *ce, int line, int char_col) {
     if (!ce || line < 0 || line >= ce->line_count || char_col <= 0)
         return 0;
@@ -144,6 +160,8 @@ static int rt_codeeditor_char_col_to_byte_col(const vg_codeeditor_t *ce, int lin
     return pos > (size_t)INT_MAX ? INT_MAX : (int)pos;
 }
 
+/// @brief Lexicographic compare of two (line, col) caret positions.
+/// @return -1 if lhs precedes rhs, 1 if it follows, 0 if equal.
 static int rt_codeeditor_compare_positions(int lhs_line, int lhs_col, int rhs_line, int rhs_col) {
     if (lhs_line != rhs_line)
         return lhs_line < rhs_line ? -1 : 1;
@@ -152,6 +170,8 @@ static int rt_codeeditor_compare_positions(int lhs_line, int lhs_col, int rhs_li
     return 0;
 }
 
+/// @brief Order a selection so `start <= end`, swapping the endpoints if the user
+///        dragged backwards. Lets downstream range logic assume a forward span.
 static void rt_codeeditor_normalize_selection(vg_selection_t *selection) {
     if (!selection)
         return;
@@ -1494,6 +1514,9 @@ int64_t rt_codeeditor_cursor_has_selection(void *editor, int64_t index) {
     return ce->extra_cursors[extra_idx].has_selection ? 1 : 0;
 }
 
+/// @brief Fetch the selection range for cursor @p index (0 = primary caret,
+///        ≥1 = extra multi-cursor) into @p out.
+/// @return true if that cursor has an active selection; false otherwise.
 static bool rt_codeeditor_get_selection_at(void *editor, int64_t index, vg_selection_t *out) {
     vg_codeeditor_t *ce = rt_codeeditor_handle_checked(editor);
     if (!ce || !out)

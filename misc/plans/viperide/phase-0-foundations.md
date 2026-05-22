@@ -78,9 +78,9 @@ Use the existing `Viper.Text.Ini` pattern from `core/settings.zia`. Session rest
 
 Current state:
 
-- Shortcuts are registered in `main.zia:123-148`.
-- Command-palette entries are registered in `main.zia:153-180`.
-- Commands dispatch through a long if-chain in `main.zia:375-455`.
+- Shortcuts are registered in `main.zia:123-150`.
+- Command-palette entries are registered in `main.zia:153-182`.
+- Commands dispatch through a long if-chain in `main.zia:377-457`.
 - There is already id drift: the palette registers `"sidebar"` while dispatch listens for `"togglesidebar"`.
 
 Change:
@@ -156,14 +156,14 @@ Acceptance:
 
 Current state:
 
-- `EditorEngine.SaveToDocument` stores `lastCursorLine` and `lastCursorCol`.
-- Those fields are initialized but not updated by the current ViperIDE code.
+- `EditorEngine.SaveToDocument` now reads the live editor cursor and `ScrollTopLine` into the active `Document`.
+- Tab switching uses this path, but session restore, close prevention, project switching, and future non-code surfaces still need to participate in the same contract.
 
 Change:
 
-- Either update `lastCursorLine/lastCursorCol/scrollLine` every frame from the live editor, or make `SaveToDocument` read the live cursor/scroll directly.
-- Track scroll position if a public editor API exists; otherwise add a small follow-up runtime binding before claiming scroll restore.
-- Session restore and tab switching must use the same state path.
+- Keep `SaveToDocument` as the single code-surface state capture path, reading live cursor/scroll directly from the editor.
+- Add the equivalent `SaveStateToDocument` hook at the active-surface layer so future scene surfaces can persist pan/zoom/selection without pretending they are code-editor text.
+- Session restore, close handling, project switching, surface switching, and tab switching must use the same state path.
 
 Acceptance:
 

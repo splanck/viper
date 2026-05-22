@@ -70,6 +70,11 @@ typedef struct {
     size_t pos;
     int depth;          // Current nesting depth
     int depth_exceeded; // S-16: set when depth limit hit (unwinds without trap)
+    int trap_errors;
+    int has_error;
+    char error_message[160];
+    int64_t error_line;
+    int64_t error_column;
 } json_parser;
 
 // ---------------------------------------------------------------------------
@@ -85,15 +90,24 @@ static void parser_init(json_parser *p, const char *input, size_t len) {
     p->pos = 0;
     p->depth = 0;
     p->depth_exceeded = 0;
+    p->trap_errors = 1;
+    p->has_error = 0;
+    p->error_message[0] = '\0';
+    p->error_line = 0;
+    p->error_column = 0;
 }
 
 /// @brief True if the cursor has consumed all input bytes.
 static bool parser_eof(json_parser *p) {
+    if (p->has_error)
+        return true;
     return p->pos >= p->len;
 }
 
 /// @brief Look at the byte under the cursor; returns `\0` at EOF.
 static char parser_peek(json_parser *p) {
+    if (p->has_error)
+        return '\0';
     if (p->pos >= p->len)
         return '\0';
     return p->input[p->pos];
@@ -101,6 +115,8 @@ static char parser_peek(json_parser *p) {
 
 /// @brief Consume and return the byte under the cursor.
 static char parser_consume(json_parser *p) {
+    if (p->has_error)
+        return '\0';
     if (p->pos >= p->len)
         return '\0';
     return p->input[p->pos++];
@@ -137,6 +153,14 @@ static void parser_error(json_parser *p, const char *msg) {
 
     char buf[256];
     snprintf(buf, sizeof(buf), "Json.Parse: %s at line %zu, column %zu", msg, line, col);
+    if (!p->trap_errors) {
+        p->has_error = 1;
+        p->error_line = (int64_t)line;
+        p->error_column = (int64_t)col;
+        snprintf(p->error_message, sizeof(p->error_message), "%s", msg ? msg : "parse error");
+        p->pos = p->len;
+        return;
+    }
     rt_trap(buf);
 }
 
@@ -484,6 +508,8 @@ static void *parse_number(json_parser *p) {
 /// unwinds without trapping (S-16). Comma-separated values; empty
 /// array is allowed; trailing commas are not.
 static void *parse_array(json_parser *p) {
+    if (p->has_error)
+        return NULL;
     /* S-16: Reject deeply nested documents */
     if (p->depth >= JSON_MAX_DEPTH) {
         p->depth_exceeded = 1;
@@ -509,8 +535,14 @@ static void *parse_array(json_parser *p) {
 
     // Parse elements
     while (true) {
+        if (p->has_error)
+            break;
         parser_skip_whitespace(p);
         void *value = parse_value(p);
+        if (p->has_error) {
+            p->depth--;
+            return seq;
+        }
         /* S-16: depth limit hit inside nested value — bail out cleanly */
         if (p->depth_exceeded) {
             p->depth--;
@@ -548,6 +580,8 @@ static void *parse_array(json_parser *p) {
 /// `parse_array`. RFC 8259 doesn't require unique keys but we
 /// follow the convention of "last wins".
 static void *parse_object(json_parser *p) {
+    if (p->has_error)
+        return NULL;
     /* S-16: Reject deeply nested documents */
     if (p->depth >= JSON_MAX_DEPTH) {
         p->depth_exceeded = 1;
@@ -573,6 +607,8 @@ static void *parse_object(json_parser *p) {
 
     // Parse key-value pairs
     while (true) {
+        if (p->has_error)
+            break;
         parser_skip_whitespace(p);
 
         if (parser_peek(p) != '"') {
@@ -581,6 +617,11 @@ static void *parse_object(json_parser *p) {
         }
 
         rt_string key = parse_string(p);
+        if (p->has_error) {
+            rt_str_release_maybe(key);
+            p->depth--;
+            return map;
+        }
         parser_skip_whitespace(p);
 
         if (parser_consume(p) != ':') {
@@ -591,6 +632,11 @@ static void *parse_object(json_parser *p) {
 
         parser_skip_whitespace(p);
         void *value = parse_value(p);
+        if (p->has_error) {
+            rt_str_release_maybe(key);
+            p->depth--;
+            return map;
+        }
         /* S-16: depth limit hit inside nested value — bail out cleanly */
         if (p->depth_exceeded) {
             rt_str_release_maybe(key);
@@ -633,6 +679,8 @@ static void *parse_object(json_parser *p) {
 ///   - `t`, `f`, `n` → boolean / null literal (must match `true`/`false`/`null`)
 /// Traps on any other character.
 static void *parse_value(json_parser *p) {
+    if (p->has_error)
+        return NULL;
     /* S-16: Propagate depth-exceeded without trapping */
     if (p->depth_exceeded)
         return NULL;
@@ -1142,6 +1190,80 @@ void *rt_json_parse(rt_string text) {
     }
 
     return result;
+}
+
+int8_t rt_json_try_parse(rt_string text,
+                         void **out_value,
+                         rt_string *out_message,
+                         int64_t *out_line,
+                         int64_t *out_column) {
+    if (out_value)
+        *out_value = NULL;
+    if (out_message)
+        *out_message = NULL;
+    if (out_line)
+        *out_line = 0;
+    if (out_column)
+        *out_column = 0;
+
+    if (!text || rt_str_len(text) == 0) {
+        if (out_message)
+            *out_message = rt_string_from_bytes("empty input", strlen("empty input"));
+        if (out_line)
+            *out_line = 1;
+        if (out_column)
+            *out_column = 1;
+        return 0;
+    }
+
+    const char *input = rt_string_cstr(text);
+    size_t len = (size_t)rt_str_len(text);
+    json_parser p;
+    parser_init(&p, input, len);
+    p.trap_errors = 0;
+
+    void *result = parse_value(&p);
+
+    if (!p.has_error && p.depth_exceeded) {
+        p.has_error = 1;
+        snprintf(p.error_message, sizeof(p.error_message), "%s", "maximum nesting depth exceeded");
+        p.error_line = 0;
+        p.error_column = 0;
+    }
+
+    if (!p.has_error) {
+        parser_skip_whitespace(&p);
+        if (!parser_eof(&p))
+            parser_error(&p, "unexpected content after JSON value");
+    }
+
+    if (p.has_error) {
+        if (result) {
+            if (rt_string_is_handle(result))
+                rt_string_unref((rt_string)result);
+            else if (rt_obj_release_check0(result))
+                rt_obj_free(result);
+        }
+        if (out_message)
+            *out_message = rt_string_from_bytes(p.error_message[0] ? p.error_message : "parse error",
+                                                strlen(p.error_message[0] ? p.error_message
+                                                                          : "parse error"));
+        if (out_line)
+            *out_line = p.error_line;
+        if (out_column)
+            *out_column = p.error_column;
+        return 0;
+    }
+
+    if (out_value)
+        *out_value = result;
+    else if (result) {
+        if (rt_string_is_handle(result))
+            rt_string_unref((rt_string)result);
+        else if (rt_obj_release_check0(result))
+            rt_obj_free(result);
+    }
+    return 1;
 }
 
 /// @brief Parses a JSON string expecting an object at the root.

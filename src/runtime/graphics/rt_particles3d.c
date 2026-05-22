@@ -150,6 +150,7 @@ static double particles_finite_or(double value, double fallback) {
     return isfinite(value) ? value : fallback;
 }
 
+/// @brief Clamp `value` into `[-max_abs, max_abs]`, substituting `fallback` when not finite.
 static double particles_clamp_abs_or(double value, double fallback, double max_abs) {
     value = particles_finite_or(value, fallback);
     if (value > max_abs)
@@ -271,6 +272,8 @@ static void random_cone_dir(rt_particles3d *ps, const double *dir, double spread
     }
 }
 
+/// @brief True if a particle's position, velocity, color, alpha and (non-negative)
+///        size are all finite — used to drop corrupted particles before upload.
 static int particle_state_is_finite(const vgfx3d_particle_t *p) {
     if (!p)
         return 0;

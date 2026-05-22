@@ -720,6 +720,12 @@ foreach (test_file IN LISTS ZIA_RT_API_TEST_FILES)
             TIMEOUT 30)
 endforeach ()
 
+viper_add_ctest(basic_rt_api_test_scene
+        $<TARGET_FILE:viper> front basic -run "${ZIA_RT_API_TESTS_DIR}/test_scene.bas")
+set_tests_properties(basic_rt_api_test_scene PROPERTIES
+        LABELS "runtime;basic;rt_api"
+        TIMEOUT 30)
+
 set(ZIA_AUDIT_TESTS_DIR "${CMAKE_SOURCE_DIR}/tests/zia_audit")
 file(GLOB ZIA_AUDIT_TEST_FILES CONFIGURE_DEPENDS "${ZIA_AUDIT_TESTS_DIR}/*.zia")
 foreach (test_file IN LISTS ZIA_AUDIT_TEST_FILES)

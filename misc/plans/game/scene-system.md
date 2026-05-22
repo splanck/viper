@@ -1,10 +1,11 @@
 # Viper JSON Scene Documents (`Viper.Game.Scene`)
 
 Status: revised 2026-05-22 to match the current Viper tree and close the gaps
-found during review, and reconciled against source the same day: ownership
-guidance corrected to the signature-derived convention, resource-limit hardening
-sequenced into Phase 1, reference paths made absolute, and
-`Viper.Game.SceneManager` disambiguated.
+found during review. This revision makes the non-trapping parser work explicit,
+separates runtime type signatures from optimizer ownership metadata, tightens
+legacy schema migration, constrains tile/memory limits, specifies the Tilemap
+copy contract, fixes documentation/fixture/build-script mismatches, and
+disambiguates `Viper.Game.Scene` from `Viper.Game.SceneManager`.
 
 ## 1. Objective
 
@@ -103,7 +104,8 @@ Known baseline gaps:
 - There is no typed property access for scene or object data.
 - There is no `Tilemap` view/copy API.
 - `AssetPaths` is heuristic and loses source context.
-- Zia coverage is a narrow `Scene.New` smoke; BASIC coverage is missing.
+- Zia coverage is a narrow construction/layer/tile smoke; load/save and BASIC
+  coverage are missing.
 
 ## 4. Canonical Public API
 
@@ -187,10 +189,23 @@ Asset descriptors:
   - `layer`
   - `object`
   - `key`
+  - `section`
+  - `source`
+
+Initial `owner` values are:
+
+- `scene` for top-level explicit asset fields such as `tilesetAsset`
+- `layer` for layer assets
+- `object` for object property assets
+- `section` for preserved rich sections with known asset-bearing fields
 
 `AssetPaths()` remains as a compatibility helper returning unique strings, but
-it should be derived from explicit asset fields/descriptors rather than
-substring guessing over arbitrary property names.
+it should be derived from descriptor records. Guaranteed descriptors come from
+explicit schema fields such as `tilesetAsset` and `layers[].asset`. Until the
+schema has typed asset properties, string-valued scene/object properties and
+preserved rich sections may be scanned by asset-like key names as a documented
+compatibility heuristic; editors must treat those matches as best-effort rather
+than authoritative typing.
 
 Tilemap render copy:
 
@@ -200,6 +215,22 @@ Tilemap render copy:
 layers. It is not the serialization source of truth. Mutating the returned
 `Tilemap` must not be documented as saveable. If a future live view is needed,
 that is a separate design with invalidation, write-through, and ownership tests.
+
+Build contract:
+
+- Scene layer `0` populates the Tilemap base layer created by
+  `Viper.Graphics.Tilemap.New`.
+- Scene layers `1..N` are added with `Tilemap.AddLayer` up to `TM_MAX_LAYERS`.
+- Layer names must satisfy the current Tilemap name limit before the copy is
+  built; invalid names are load diagnostics, not late Tilemap failures.
+- Tile IDs are copied as-is using the canonical `0` empty, `N -> frame N - 1`
+  convention already used by Tilemap drawing.
+- Visibility is copied where the Tilemap API supports it.
+- Only Tilemap-supported collision/tile metadata is applied. Rich JSON
+  metadata that cannot be represented in `Tilemap` remains scene-only.
+- Tileset image assets are not loaded or bound by `BuildTilemap()`. Callers use
+  `AssetDescriptors()` and `Viper.Assets.Resolver.Resolve` to resolve and bind
+  pixels/tilesets separately.
 
 ### API Delta Table
 
@@ -218,8 +249,8 @@ that is a separate design with invalidation, write-through, and ownership tests.
 | typed object getters/setters | missing | add indexed `ObjectGet*`, `ObjectSet*`, `ObjectKeys` | type/default/persistence |
 | object search/reorder | partially missing | add `CountOfType`, `ObjectOfType`, `FindObject`, `MoveObject` | reorder/search persistence |
 | `AssetPaths()` | implemented heuristic | keep, derive from descriptors | compatibility and dedupe |
-| `AssetDescriptors()` | missing | add structured descriptor records | layer/object/key context |
-| `BuildTilemap()` | missing | add render/collision copy | layer data, mutation isolation |
+| `AssetDescriptors()` | missing | add structured descriptor records | owner/layer/object/key/section/source context |
+| `BuildTilemap()` | missing | add render/collision copy | layer mapping, Tilemap limits, mutation isolation |
 
 ## 5. Internal Data Model
 
@@ -271,7 +302,7 @@ struct SceneDiagnostic {
 
 struct PreservedJsonSection {
     std::string key;
-    void *jsonRoot;
+    std::string canonicalJson;
 };
 
 struct SceneState {
@@ -294,10 +325,9 @@ struct SceneState {
 Rules:
 
 - `SceneState` is the only serialization source of truth.
-- Preserve imported rich/unknown JSON sections by retaining or deep-copying their
-  parsed runtime JSON subtrees; release them in the scene finalizer.
-- If direct retained JSON subtrees are too risky, serialize those sections to
-  canonical JSON strings and store the strings instead.
+- Preserve imported rich/unknown JSON sections as canonical JSON strings. Do not
+  retain pointers into a parsed runtime JSON root unless a future implementation
+  also defines explicit retain/release ownership for every preserved subtree.
 - Do not store typed scalar properties as strings. Compatibility string getters
   can format typed scalars on read.
 - `ObjectType`, `ObjectId`, `ObjectX`, and `ObjectY` read object metadata, not
@@ -319,7 +349,8 @@ implemented, but this safety pass is still outstanding:
 | Limit | Initial value | Behavior on overflow |
 |---|---:|---|
 | scene JSON bytes | 16 MiB | invalid scene diagnostic |
-| scene width / height | enough that `width * height <= 4,194,304` | invalid scene diagnostic |
+| scene cells per layer | `width * height <= 1,048,576` | invalid scene diagnostic |
+| total stored tile cells | `sum(layer.tiles.size()) <= 4,194,304` | invalid scene diagnostic |
 | layers | `TM_MAX_LAYERS` | invalid scene diagnostic |
 | objects | 65,536 | invalid scene diagnostic |
 | scene properties | 16,384 | invalid scene diagnostic |
@@ -331,6 +362,11 @@ implemented, but this safety pass is still outstanding:
 
 These are editor/runtime safety defaults. They can be raised later after memory
 and performance tests.
+
+Every public tile mutation path must enforce the same limits and must guard
+integer arithmetic. In particular, `New`, `AddLayer`, `SetTile`, `FillTiles`,
+`LoadJson`, and `LoadFile` must reject or no-op before `width * height`,
+`x + w`, `y + h`, or vector sizes can overflow.
 
 ## 6. Scene JSON Schema v1
 
@@ -404,10 +440,16 @@ previous nested `tilemap` proposal.
 - top-level dimensions
 - `layers[].data` instead of `layers[].tiles`
 - `layers[].asset`
+- `layers[].visible` as either a JSON bool or legacy numeric `0`/`1`
 - flat `objects[]` with only `type`, `id`, `x`, and `y`
-- string-only top-level `properties`
+- string-only top-level `properties` from current Scene output
+- scalar typed top-level `properties` from LevelData-shaped JSON
 
 Legacy input is normalized in memory and `ToJson()` writes canonical v1.
+Legacy tile data count mismatches are compatibility warnings instead of silent
+truncation: short arrays are padded with `0`, long arrays ignore extras, and a
+`scene.schema.legacy_tile_count_mismatch` warning is retained. Canonical v1
+`layers[].tiles` mismatches remain hard schema errors.
 
 The loader may also accept the old nested draft shape:
 
@@ -428,6 +470,8 @@ v1.
 - In v1, `width`, `height`, `tileWidth`, and `tileHeight` are required positive
   integers. Legacy input may default missing tile dimensions to `16`.
 - `width * height` must not overflow and must be practical to allocate.
+- Total stored tile cells across all layers must stay within the Section 5
+  total tile budget.
 - `layers` is required to contain at least one layer after normalization.
 - `layers[*].tiles` length must equal `width * height`; mismatches are schema
   errors, not truncation.
@@ -459,9 +503,15 @@ APIs are exposed:
 - `autotiles`
 - unknown top-level JSON object sections
 
-Preservation may be opaque: retain the parsed JSON subtree and serialize it
-back in canonical order. Do not silently drop these sections during load-save
-round trips.
+Preservation is opaque in Phase 1: serialize the section back to canonical JSON
+text immediately after parse and keep that text in `SceneState`. Known rich
+sections are emitted in the fixed order from Section 8; unknown preserved
+sections are emitted sorted by key.
+
+Unknown top-level arrays/scalars are not preserved in v1 unless the key is
+explicitly added to the known rich-section list. They produce a warning and are
+dropped from canonical output. This keeps opaque preservation bounded and avoids
+accidentally turning arbitrary future scalar fields into a public contract.
 
 ## 7. Error Handling And Diagnostics
 
@@ -480,11 +530,20 @@ Rules:
 - out-of-range reads return safe defaults.
 - out-of-range writes are no-ops and may add diagnostics only in debug/editor
   validation modes.
+- rejected editor mutations, such as an over-long layer name or property key,
+  should use warning diagnostics such as `scene.edit.rejected` so
+  `HasErrors()` remains a load/save/schema validity signal.
 
 Implementation requirement:
 
-- Do not call `rt_json_parse` directly on user scene text unless it is guarded by
-  a non-trapping validation path or a trap recovery boundary.
+- Add a non-trapping parse boundary before replacing `LoadJson` internals.
+  Preferred implementation is a shared runtime helper such as
+  `rt_json_try_parse(text, &root, &error)` that returns parser diagnostics
+  without trapping. A scene-local trap recovery boundary is acceptable only if
+  it returns the same stable diagnostic shape.
+- Do not implement `LoadJson` as `rt_json_is_valid(text)` followed by
+  `rt_json_parse(text)`. That double-parses, loses line/column details, and
+  still leaves the real parser call exposed to drift.
 - `DiagnosticRecords()` returns `seq<map>` with stable fields:
   - `code`: machine-readable string such as `scene.parse.malformed_json`
   - `severity`: `error`, `warning`, or `info`
@@ -513,7 +572,9 @@ Suggested initial diagnostic codes:
 | `scene.schema.invalid_type` | field exists with the wrong JSON type |
 | `scene.schema.invalid_dimension` | width/height/tile size is invalid |
 | `scene.schema.tile_count_mismatch` | layer tile count differs from `width * height` |
+| `scene.schema.legacy_tile_count_mismatch` | legacy `layers[].data` was padded or truncated during import |
 | `scene.schema.limit_exceeded` | resource limit is exceeded |
+| `scene.schema.unknown_field_dropped` | unknown top-level array/scalar is dropped during v1 normalization |
 | `scene.save.write_failed` | temp write/flush/close/replace fails |
 
 ## 8. Deterministic Save
@@ -583,9 +644,21 @@ fix missing assets without guessing:
   "owner": "layer",
   "layer": 0,
   "object": -1,
-  "key": "asset"
+  "key": "asset",
+  "section": "",
+  "source": "levels/descent.scene"
 }
 ```
+
+Descriptor rules:
+
+- `path` is the scene-authored asset string, not a resolved filesystem path.
+- `source` is the scene file path for `LoadFile`, or empty for `LoadJson` and
+  newly-created scenes.
+- `layer` and `object` are `-1` when not applicable.
+- `section` is set for assets found in preserved rich sections such as
+  `camera.parallax` or `lighting`.
+- `kind` starts with `tileset`, `sprite`, `image`, `audio`, and `unknown`.
 
 ## 10. Runtime Metadata Requirements
 
@@ -595,24 +668,37 @@ Update all runtime metadata when the API changes:
 - `src/il/runtime/classes/RuntimeClasses.hpp`
 - `src/il/runtime/RuntimeOwnership.hpp`
 - `src/il/runtime/RuntimeSignatures.cpp`
+- `src/il/runtime/RuntimeSignaturesData.hpp`
+- `src/il/runtime/RuntimeSigs.def`
 - `src/runtime/CMakeLists.txt`
 - `src/tests/unit/CMakeLists.txt`
 
-Owned returns for class methods come from the typed `runtime.def` signatures:
-the frontend calling convention treats `str`, `obj<...>`, `seq`, and `map`
-returns as owned references the caller must release. The existing owned-returning
-Scene helpers (`rt_game_scene_to_json`, `rt_game_scene_diagnostics`,
-`rt_game_scene_asset_paths`, and the string getters) carry no
-`RuntimeOwnership.hpp` entries today and still pass the runtime-surface audit, so
-new owned returns (`DiagnosticRecords`, `AssetDescriptors`, `ObjectKeys`,
-`BuildTilemap`, and the typed string getters) do not require explicit
-`RuntimeOwnership.hpp` rows.
+Important ownership distinction:
 
-Add a `RuntimeOwnership.hpp` entry only when a helper has non-default ownership
-semantics the typed signature cannot express — for example an argument whose
-ownership is consumed or retained by the call. That table is scoped to low-level
-string/array/collection primitives (`rt_tilemap_*` and the current Scene helpers
-are intentionally absent), not routine class-method returns.
+- `runtime.def` is the public API source of truth and drives frontend-visible
+  method names, arity, and typed source signatures.
+- The Zia lowering path already has return-type handling for ordinary owned
+  string values, but optimizer/runtime metadata does not generally infer
+  `returnsOwned` for every `obj`, `seq`, or `map` return purely from the
+  `runtime.def` type string.
+- `RuntimeOwnership.hpp` is name-based metadata for low-level helper ownership
+  and effects. Existing Scene helpers are currently absent from that table, so
+  new Scene collection/object returns must be checked against actual generated
+  signature data and optimization behavior instead of assuming type-derived
+  ownership.
+
+Implementation rule:
+
+- Add new methods to `runtime.def` first.
+- Regenerate or update generated runtime-signature data using the repository's
+  normal runtime metadata flow. Do not hand-edit generated signature tables as a
+  substitute for changing `runtime.def`.
+- Add or adjust `RuntimeOwnership.hpp` rows only when audits or optimizer tests
+  show the default metadata is insufficient, or when a helper consumes/retains an
+  argument in a way the typed signature cannot express.
+- Add focused Zia tests that call and discard `DiagnosticRecords()`,
+  `AssetDescriptors()`, `ObjectKeys()`, and `BuildTilemap()` so dead-code,
+  ownership, and release behavior are exercised.
 
 Do not add `RTCLS_GameSceneObject` or `RT_GAME_SCENE_OBJECT_CLASS_ID` until
 `SceneObject` exists. If it is added later, object handles must remain valid
@@ -622,15 +708,15 @@ Run `./scripts/check_runtime_completeness.sh` after metadata edits.
 
 ### Runtime Registration Checklist
 
-Every new method or owned return needs a complete metadata pass:
+Every new method or ownership-affecting return needs a complete metadata pass:
 
 | Area | Required update |
 |---|---|
 | C entry point | add or update `rt_game_scene_*` symbol in `rt_scene_editor.h/.cpp` |
 | Runtime surface | add class/member signatures in `src/il/runtime/runtime.def` |
 | Class catalog | confirm `RTCLS_GameScene` and no premature `RTCLS_GameSceneObject` |
-| Ownership | owned `str`/`seq`/`map`/`obj` returns are derived from the typed signature; add `RuntimeOwnership.hpp` rows only for consumed/retained args |
-| Signatures | update runtime signature construction and arity/type checks |
+| Ownership | audit generated ownership/effect metadata; add `RuntimeOwnership.hpp` rows only when defaults are insufficient or args are consumed/retained |
+| Signatures | regenerate/update runtime signature data from `runtime.def`; do not treat generated tables as the API source of truth |
 | Build files | register new source/test files in CMake when added |
 | Zia smoke | compile use of new methods from Zia |
 | BASIC smoke | compile use of new methods from BASIC where syntax supports it |
@@ -652,6 +738,9 @@ ViperIDE should consume the runtime in this order:
 
 1. Recognize `.scene` as the canonical editable scene document kind. Keep `.json`
    and `.level` as import/compatibility candidates only.
+   Update project-manifest/default-scene documentation and examples so
+   `.scene` is the preferred extension while existing `.json` values still
+   import.
 2. Open files through `Viper.Game.Scene.LoadFile(path)` and display
    `DiagnosticRecords()` when `HasErrors()` is true.
 3. Save files only through `scene.SaveFile(path)` until conflict detection and
@@ -668,30 +757,35 @@ ViperIDE should consume the runtime in this order:
 
 ## 12. Schema Fixture Matrix
 
-Add fixtures under `tests/fixtures/game/scenes/` or the nearest existing runtime
-fixture directory. Each fixture should have a golden canonical output where the
-input is valid.
+Add fixtures under `src/tests/data/game/scenes/`. The repository does not
+currently have a top-level `tests/fixtures` tree, and `src/tests/data` is the
+nearest existing checked-in test-data root. Each valid fixture should have a
+golden canonical output beside it, and CMake/test code should refer to this
+path explicitly.
 
 | Fixture | Purpose | Required checks |
 |---|---|---|
 | `v1_minimal.scene` | smallest canonical document | load, save, reload, exact canonical output |
-| `v1_full.scene` | layers, typed properties, objects, assets, rich sections | round-trip preservation and descriptors |
-| `legacy_current.json` | current unversioned top-level shape with `layers[].data` | normalize to v1 output |
+| `v1_full.scene` | layers, typed properties, objects, assets, rich sections | round-trip preservation, `BuildTilemap` rich-section application, descriptors |
+| `legacy_current.json` | current unversioned top-level shape with `layers[].data` | normalize to v1 output if kept as a fixture |
+| `legacy_current_generated.json` | JSON emitted by today's `Scene.ToJson()` | loads and normalizes without data loss |
+| `legacy_leveldata.json` | LevelData-shaped top-level document with typed scalar properties | import compatibility or explicit diagnostic |
 | `legacy_flat_objects.json` | old flat object scalar keys | migrate keys into `objects[].properties` |
-| `legacy_nested.json` | old nested `tilemap` draft, if supported | import to v1 output |
+| `legacy_nested_tilemap.json` | old nested `tilemap` draft, if supported | import to v1 output |
 | `tile_ids.scene` | empty and non-empty tile IDs | `0` empty, `N > 0` maps to frame `N - 1` |
-| `assets.scene` | layer/object asset references | `AssetDescriptors()` owner/layer/object/key context |
+| `assets.scene` or `v1_full.scene` | layer/object/section asset references | `AssetDescriptors()` owner/layer/object/key/section context |
 | `invalid_malformed.scene` | parser failure | invalid scene, structured parse diagnostic |
 | `invalid_non_object.scene` | root array/scalar | invalid scene, root diagnostic |
 | `invalid_version.scene` | version greater than `1` | invalid scene, unsupported version diagnostic |
 | `invalid_tile_count.scene` | layer tile count mismatch | invalid scene, JSON path points to bad layer |
 | `invalid_limits.scene` | resource limit overflow | invalid scene, limit diagnostic |
-| `save_existing.scene` | save over an existing target | simulated write failure preserves target |
+| directory/blocked target save case | save over an unavailable target | simulated write failure preserves target |
 
 ## 13. Phases
 
 ### Phase 1 - Schema And Safe I/O
 
+- Add or expose the non-trapping JSON parse boundary required by Section 7.
 - Add canonical v1 schema read/write.
 - Accept current legacy unversioned scene JSON.
 - Accept old nested draft schema as import compatibility if feasible.
@@ -702,6 +796,9 @@ input is valid.
 - Make `SaveFile` atomic.
 - Preserve rich sections during round trip.
 - Document `.scene` as the canonical extension.
+- Correct existing `docs/viperlib/game.md` claims that are ahead of the current
+  implementation, or move the authoritative Scene docs to
+  `docs/viperlib/game/scene.md` in the same patch.
 
 Tests:
 
@@ -714,8 +811,11 @@ Tests:
 - unknown version
 - invalid dimensions
 - tile-count mismatch
+- legacy short/long `layers[].data` emits warning and deterministic normalized
+  output
 - resource-limit overflow (oversized dimensions, layer/object/property caps)
   returns an invalid scene without crashing or OOM
+- mutation overflow guards for `New`, `AddLayer`, `SetTile`, and `FillTiles`
 - temp-save failure does not truncate target
 - canonical load-save-load-save stability
 
@@ -740,8 +840,11 @@ Tests:
 ### Phase 3 - Rendering And Assets
 
 - Add `BuildTilemap()`.
-- Build all scene layers into the returned `Viper.Graphics.Tilemap`.
-- Preserve layer visibility and collision layer where available.
+- Build all scene layers into the returned `Viper.Graphics.Tilemap` using the
+  Section 4 build contract.
+- Preserve layer visibility where available.
+- Apply only collision/tile metadata that fits the actual Tilemap API and
+  limits; leave unsupported rich metadata scene-only.
 - Add structured `AssetDescriptors()`.
 - Keep `AssetPaths()` as a derived compatibility helper.
 - Ensure scene editor tools mutate scene-owned data, not a returned `Tilemap`.
@@ -749,6 +852,9 @@ Tests:
 Tests:
 
 - `BuildTilemap()` dimensions and layer tile values
+- layer `0` maps to the Tilemap base layer and additional layers respect
+  `TM_MAX_LAYERS`
+- overlong layer names are diagnosed before Tilemap construction
 - returned tilemap mutation does not alter scene save output
 - asset descriptors include layer/object/key context
 - resolver integration smoke with scene-relative and asset-root paths
@@ -770,10 +876,14 @@ Tests:
 
 ### Phase 5 - Dogfood And Docs
 
-- Add `docs/viperlib/game/scene.md`.
-- Update `docs/viperlib/game.md` to link to the scene document page.
+- If not already done in Phase 1, add `docs/viperlib/game/scene.md` as the
+  authoritative Scene page and update `docs/viperlib/game.md` plus
+  `docs/viperlib/game/README.md` to link to it.
 - Update tilemap docs to state the `0` empty, `N -> frame N - 1` convention.
 - Add Zia and BASIC smoke tests for load, typed reads, mutation, save, reload.
+- Add a Xenoscape scene profile before migration: object type names, property
+  keys and scalar types, checkpoint/boss/theme conventions, collision/tile
+  metadata mapping, and animation/autotile handling.
 - Add a small standalone probe scene first, then migrate
   `examples/games/xenoscape/level.zia`'s `buildDescent()` data to
   `examples/games/xenoscape/levels/descent.scene`.
@@ -793,6 +903,12 @@ After dogfood:
 
 Do not add new `LevelData` mutators.
 
+Before making that decision, keep at least one `legacy_leveldata.json` fixture
+and one LevelData-vs-Scene compatibility test. If Scene intentionally rejects a
+LevelData-shaped file, the diagnostic and migration path must be documented;
+otherwise Scene must preserve typed scalar properties and object metadata from
+that shape.
+
 ## 14. Critical Files
 
 Existing scene implementation:
@@ -807,6 +923,8 @@ Runtime metadata:
 - `src/il/runtime/classes/RuntimeClasses.hpp`
 - `src/il/runtime/RuntimeOwnership.hpp`
 - `src/il/runtime/RuntimeSignatures.cpp`
+- `src/il/runtime/RuntimeSignaturesData.hpp`
+- `src/il/runtime/RuntimeSigs.def`
 - `src/runtime/CMakeLists.txt`
 - `src/tests/unit/CMakeLists.txt`
 
@@ -816,7 +934,7 @@ Docs and smoke tests:
 - `docs/viperlib/game/scene.md`
 - `docs/viperlib/graphics/pixels.md`
 - `docs/viperlib/graphics/tilemaps2d.md`
-- `tests/fixtures/game/scenes/`
+- `src/tests/data/game/scenes/`
 - `tests/rt_api/test_viperide_primitives.zia`
 - new Zia scene runtime smoke
 - new BASIC scene runtime smoke
@@ -834,7 +952,8 @@ Useful reference implementations:
 Required commands after implementation changes:
 
 - `./scripts/check_runtime_completeness.sh`
-- `./scripts/build_viper.sh`
+- `./scripts/build_viper_unix.sh` on POSIX, or the platform-specific
+  `build_viper_mac.sh`, `build_viper_linux.sh`, or `build_viper_win.cmd`
 - `ctest --test-dir build --output-on-failure`
 - `./scripts/lint_platform_policy.sh`
 - `./scripts/run_cross_platform_smoke.sh`

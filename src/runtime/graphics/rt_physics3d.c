@@ -299,6 +299,7 @@ static int world3d_reserve_exit_events(rt_world3d *w, int32_t needed) {
     return world3d_reserve_contact_array(&w->exit_events, &w->exit_event_capacity, needed);
 }
 
+/// @brief Increment `value` into `*out`, returning 0 (no write) on INT32_MAX overflow or NULL out.
 static int world3d_checked_increment(int32_t value, int32_t *out) {
     if (!out || value == INT32_MAX)
         return 0;

@@ -70,6 +70,11 @@ static rt_commandpalette_data_t **s_commandpalette_wrappers = NULL;
 static size_t s_commandpalette_wrapper_count = 0;
 static size_t s_commandpalette_wrapper_cap = 0;
 
+/// @brief Record a wrapper in the global command-palette registry (idempotent).
+/// @details The registry is the source of truth for handle validation: a checked
+///          cast only trusts an opaque `void*` once it is found here (then verifies
+///          the magic tag), guarding against forged/freed handles. Capacity doubles from 8.
+/// @return 1 on success or if already present; 0 on overflow or realloc failure.
 static int rt_commandpalette_register_wrapper(rt_commandpalette_data_t *data) {
     if (!data)
         return 0;
@@ -96,6 +101,7 @@ static int rt_commandpalette_register_wrapper(rt_commandpalette_data_t *data) {
     return 1;
 }
 
+/// @brief Remove a wrapper from the command-palette registry, compacting the array. No-op if absent.
 static void rt_commandpalette_unregister_wrapper(rt_commandpalette_data_t *data) {
     if (!data)
         return;
@@ -110,6 +116,7 @@ static void rt_commandpalette_unregister_wrapper(rt_commandpalette_data_t *data)
     }
 }
 
+/// @brief True if @p data is a currently-registered wrapper; backs handle validation.
 static int rt_commandpalette_wrapper_is_registered(const rt_commandpalette_data_t *data) {
     if (!data)
         return 0;
@@ -120,6 +127,8 @@ static int rt_commandpalette_wrapper_is_registered(const rt_commandpalette_data_
     return 0;
 }
 
+/// @brief Free the cached selected-command string and reset the selection flag,
+///        so a fresh palette session starts with no pending choice.
 static void rt_commandpalette_clear_selection(rt_commandpalette_data_t *data) {
     if (!data)
         return;
@@ -241,6 +250,11 @@ void rt_commandpalette_destroy(void *palette) {
     rt_commandpalette_dispose(data);
 }
 
+/// @brief Build a heap "[category] label" display string for a palette entry.
+/// @details Length math is overflow-checked before the malloc. A NULL/empty
+///          category yields NULL (caller falls back to the bare label); a NULL
+///          label is treated as empty.
+/// @return Newly allocated string the caller must free, or NULL on bad input/OOM.
 static char *rt_commandpalette_format_display_label(const char *category, const char *label) {
     if (!category || !category[0])
         return NULL;
@@ -1003,6 +1017,8 @@ static void rt_breadcrumb_widget_destroy(vg_widget_t *widget) {
         s_breadcrumb_original_vtable->destroy(widget);
 }
 
+/// @brief Free the cached clicked-item string and reset the click index/flag,
+///        clearing any pending breadcrumb click for the next poll.
 static void rt_breadcrumb_clear_click_state(rt_breadcrumb_data_t *data) {
     if (!data)
         return;
@@ -1351,6 +1367,11 @@ static rt_minimap_data_t **s_minimap_wrappers = NULL;
 static size_t s_minimap_wrapper_count = 0;
 static size_t s_minimap_wrapper_cap = 0;
 
+/// @brief Record a wrapper in the global minimap registry (idempotent).
+/// @details The registry is the source of truth for handle validation: a checked
+///          cast only trusts an opaque `void*` once it is found here (then verifies
+///          the magic tag), guarding against forged/freed handles. Capacity doubles from 8.
+/// @return 1 on success or if already present; 0 on overflow or realloc failure.
 static int rt_minimap_register_wrapper(rt_minimap_data_t *data) {
     if (!data)
         return 0;
@@ -1372,6 +1393,7 @@ static int rt_minimap_register_wrapper(rt_minimap_data_t *data) {
     return 1;
 }
 
+/// @brief Remove a wrapper from the minimap registry, compacting the array. No-op if absent.
 static void rt_minimap_unregister_wrapper(rt_minimap_data_t *data) {
     if (!data)
         return;

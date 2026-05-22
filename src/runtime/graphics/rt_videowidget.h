@@ -58,15 +58,25 @@ double rt_videowidget_get_position(void *vw);
 double rt_videowidget_get_duration(void *vw);
 /// @brief Return the internal root widget so callers can compose or inspect layout.
 void *rt_videowidget_get_root(void *vw);
-/// @brief Proxy common Widget APIs to the internal root widget.
+// Proxy common Widget APIs through to the internal root widget so a VideoWidget
+// can be laid out like any other widget.
+/// @brief Show or hide the whole widget.
 void rt_videowidget_set_visible(void *vw, int64_t visible);
+/// @brief Enable or disable interaction with the widget.
 void rt_videowidget_set_enabled(void *vw, int64_t enabled);
+/// @brief Set the widget's fixed pixel size.
 void rt_videowidget_set_size(void *vw, int64_t width, int64_t height);
+/// @brief Set the preferred (natural) size used during flex layout.
 void rt_videowidget_set_preferred_size(void *vw, double width, double height);
+/// @brief Cap the widget's maximum size during layout.
 void rt_videowidget_set_max_size(void *vw, double width, double height);
+/// @brief Set the flex grow factor for distributing extra space in a flex container.
 void rt_videowidget_set_flex(void *vw, double flex);
+/// @brief Set the outer margin (in pixels) around the widget.
 void rt_videowidget_set_margin(void *vw, int64_t margin);
+/// @brief Set the widget's position relative to its parent.
 void rt_videowidget_set_position(void *vw, int64_t x, int64_t y);
+/// @brief Append a child widget to the internal root container.
 void rt_videowidget_add_child(void *vw, void *child);
 
 #ifdef __cplusplus

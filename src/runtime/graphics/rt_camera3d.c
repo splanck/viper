@@ -59,6 +59,7 @@ static double finite_or(double value, double fallback) {
     return isfinite(value) ? value : fallback;
 }
 
+/// @brief Clamp `value` into `[-max_abs, max_abs]`, substituting `fallback` when not finite.
 static double clamp_abs_or(double value, double fallback, double max_abs) {
     value = finite_or(value, fallback);
     if (value > max_abs)
@@ -68,6 +69,7 @@ static double clamp_abs_or(double value, double fallback, double max_abs) {
     return value;
 }
 
+/// @brief True if `value` is finite and within ±CAMERA3D_FLOAT_ABS_MAX (safe to narrow to float).
 static int camera_value_fits_float(double value) {
     return isfinite(value) && value >= -CAMERA3D_FLOAT_ABS_MAX && value <= CAMERA3D_FLOAT_ABS_MAX;
 }
@@ -146,6 +148,9 @@ static double sanitize_ortho_size(double size) {
     return size > CAMERA3D_ORTHO_SIZE_MAX ? CAMERA3D_ORTHO_SIZE_MAX : size;
 }
 
+/// @brief Normalize the (`*x`,`*y`,`*z`) triple in place, reverting to the
+///        fallback direction when any lane is non-finite or the vector length
+///        is ~zero. Keeps camera basis vectors unit-length and well-defined.
 static void camera_normalize_vec3_or(double *x,
                                      double *y,
                                      double *z,

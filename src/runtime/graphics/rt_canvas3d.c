@@ -151,6 +151,7 @@ static float canvas3d_sanitize_nonnegative_f64(double value, float fallback) {
     return (float)value;
 }
 
+/// @brief Narrow a double to float, returning `fallback` when out of float range or non-finite.
 static float canvas3d_sanitize_f64_to_float(double value, float fallback) {
     return canvas3d_double_fits_float(value) ? (float)value : fallback;
 }
@@ -676,6 +677,12 @@ static void canvas3d_resolve_previous_model(rt_canvas3d *c,
     entry->last_frame_seen = c->frame_serial;
 }
 
+/// @brief Derive a stable per-instance key for the motion-blur history table.
+/// @details Mixes the mesh, material, instance-matrix-array pointers and the
+///          instance index with a boost-style hash (golden-ratio 0x9e3779b9
+///          and friends) so distinct instances rarely collide across frames.
+///          Returns a non-zero value (folds in the index) since 0 is reserved
+///          as the empty-slot sentinel in the history map.
 static uintptr_t canvas3d_instance_motion_key(const void *mesh_obj,
                                               const void *material_obj,
                                               const float *instance_matrices,
@@ -2172,6 +2179,9 @@ static void rt_canvas3d_finalize(void *obj) {
     }
 }
 
+/// @brief Tear down the canvas's platform window and flag it closed.
+/// @details Detaches input, destroys the backing window, and sets `should_close`
+///          so the next poll reports the canvas as closed. Safe on a NULL canvas.
 static void canvas3d_close_window(rt_canvas3d *c) {
     if (!c)
         return;

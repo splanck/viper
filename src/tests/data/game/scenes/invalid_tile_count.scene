@@ -1,0 +1,19 @@
+{
+  "version": 1,
+  "name": "bad-count",
+  "width": 2,
+  "height": 2,
+  "tileWidth": 16,
+  "tileHeight": 16,
+  "tilesetAsset": "",
+  "properties": {},
+  "layers": [
+    {
+      "name": "base",
+      "visible": true,
+      "asset": "",
+      "tiles": [1, 2]
+    }
+  ],
+  "objects": []
+}

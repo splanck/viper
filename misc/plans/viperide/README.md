@@ -19,15 +19,15 @@ These plans describe how to turn the current ViperIDE demo into a first-class co
 | 1 | [phase-1-editor-depth.md](phase-1-editor-depth.md) | Project-aware code intelligence, multi-cursor UX, signature help, tree operations | 0 |
 | 2 | [phase-2-run-debug.md](phase-2-run-debug.md) | Safe run/build jobs, output console, launch configs, debugger protocol | 0 |
 | 3 | [phase-3-scene-data.md](phase-3-scene-data.md) | `Viper.Game.Scene` round-trip runtime data foundation | none |
-| 4 | [phase-4-scene-viewport.md](phase-4-scene-viewport.md) | `Viper.GUI.SceneView` rendering, hit testing, pan/zoom, markers | 3A for scene markers; tilemap-only work can start earlier |
-| 5 | [phase-5-scene-editor-ui.md](phase-5-scene-editor-ui.md) | Staged docked scene editor: viewer, document model, tile tools, objects, inspector, play | 0, 2A, 3B, 4 |
+| 4 | [phase-4-scene-viewport.md](phase-4-scene-viewport.md) | `Viper.GUI.SceneView` rendering, hit testing, pan/zoom, markers | Phase 3 scene runtime where scene handles are used; tilemap-only work can start from scaled tilemap primitives |
+| 5 | [phase-5-scene-editor-ui.md](phase-5-scene-editor-ui.md) | Staged docked scene editor: viewer, document model, tile tools, objects, inspector, play | 0, Phase 2 run-config/process integration for Play, Phase 3 acceptance criteria, 4 |
 | 6 | [phase-6-polish.md](phase-6-polish.md) | Final hardening, dogfood, docs, platform/accessibility audit | all |
 
 Supporting plan: [runtime-prerequisites.md](runtime-prerequisites.md) lists runtime/toolkit investments that can shrink the IDE phases when implemented first.
 
 ## Sequencing
 
-Phase 0 is the first dependency because the current main loop, document model, close behavior, and stringly typed navigation data will not scale. Phase 1 and Phase 2 are the code-editor and IDE loop tracks. Phase 3 is runtime/data work and can proceed in parallel. Phase 4 can start with tilemap-only rendering, but marker and selection APIs should align with the `Viper.Game.Scene` ownership model. Phase 5 is not one large commit; it is a sequence of scene-editor increments.
+Phase 0 is the first dependency because the current main loop, document model, close behavior, and stringly typed navigation data will not scale. Phase 1 and Phase 2 are the code-editor and IDE loop tracks. Phase 3 is runtime/data work and can proceed in parallel. Phase 4 can start with tilemap-only rendering from existing scaled tilemap primitives, but marker and selection APIs should align with the `Viper.Game.Scene` ownership model before scene handles are accepted. Phase 5 is not one large commit; it is a sequence of scene-editor increments.
 
 ## Status
 

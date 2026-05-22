@@ -98,11 +98,13 @@ static float instbatch_identity_at(int row, int col) {
     return row == col ? 1.0f : 0.0f;
 }
 
+/// @brief True if `value` is finite and within ±INSTBATCH3D_FLOAT_ABS_MAX (safe to narrow to float).
 static int instbatch_value_fits_float(double value) {
     return isfinite(value) && value >= -INSTBATCH3D_FLOAT_ABS_MAX &&
            value <= INSTBATCH3D_FLOAT_ABS_MAX;
 }
 
+/// @brief True if `transform` is a live Mat4 runtime instance of the expected size.
 static int instbatch_mat4_valid(void *transform) {
     return transform && rt_obj_is_instance(transform, RT_MAT4_CLASS_ID, sizeof(mat4_impl));
 }

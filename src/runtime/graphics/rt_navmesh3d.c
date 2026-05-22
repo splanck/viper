@@ -350,6 +350,9 @@ static float triangle_y_at_xz(float px, float pz, const float *v0, const float *
     return v0[1] + u * (v1[1] - v0[1]) + v * (v2[1] - v0[1]);
 }
 
+/// @brief Vertical snap tolerance for point-on-mesh tests: half the agent height,
+///        floored at 0.25 so a zero/degenerate agent height still tolerates small
+///        Y gaps between the query point and a triangle.
 static float navmesh3d_vertical_tolerance(const rt_navmesh3d *nm) {
     double h = nm ? nm->agent_height : 0.0;
     if (!isfinite(h) || h <= 0.0)
@@ -357,6 +360,10 @@ static float navmesh3d_vertical_tolerance(const rt_navmesh3d *nm) {
     return (float)fmax(h * 0.5, 0.25);
 }
 
+/// @brief Closest point to (`px`,`pz`) on segment a–b, projected onto the XZ plane.
+/// @details Y is ignored (navmesh queries are horizontal). The parametric `t` is
+///          clamped to `[0,1]` to stay on the segment; near-zero-length segments
+///          collapse to endpoint `a`. Outputs the point and its squared XZ distance.
 static void closest_point_on_segment_xz(float px,
                                         float pz,
                                         const float *a,
@@ -384,6 +391,9 @@ static void closest_point_on_segment_xz(float px,
     *out_d2 = dx * dx + dz * dz;
 }
 
+/// @brief Closest point to (`px`,`pz`) on triangle v0/v1/v2, projected onto XZ.
+/// @details Returns the query point unchanged when it lies inside the triangle;
+///          otherwise returns the nearest of the three edge projections.
 static void closest_point_on_tri_xz(float px,
                                     float pz,
                                     const float *v0,

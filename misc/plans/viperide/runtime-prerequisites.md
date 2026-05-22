@@ -257,23 +257,25 @@ Verification:
 ## R6 - Scene Runtime Editor Primitives
 
 Tier: 1.
-Status: Implemented for editable scene documents on 2026-05-22.
+Status: Implemented for editable scene documents on 2026-05-22; current tree includes the follow-up canonical scene/runtime hardening slice.
 
 Progress:
 
-- Added the first `Viper.Game.Scene` editable-document baseline: scene-owned tile layers, indexed object mutators, string custom properties, asset path extraction, diagnostics, and JSON load/save.
-- Added CTest coverage for the baseline tile/object/property mutation path, save/load, JSON round-trip, asset path extraction, and tile ID convention.
+- Added `Viper.Game.Scene` as an editable scene document with scene-owned tile layers, indexed object mutators, typed scene/object properties, canonical v1 JSON load/save, non-trapping structured diagnostics, atomic save, asset descriptors, `AssetPaths`, and `BuildTilemap`.
+- Added CTest coverage for baseline tile/object/property mutation, save/load, canonical fixture round-trip, malformed and invalid scene diagnostics, legacy input normalization, asset descriptors, tile ID convention, and render-copy isolation.
+- Added Zia and BASIC rt-api smoke coverage for scene load/mutate/save-related API usage.
 
 Remaining:
 
-- Align the baseline with `misc/plans/game/scene-system.md`: canonical v1 `.scene` schema, safe non-trapping `DiagnosticRecords()` load diagnostics, atomic save, typed scene/object properties, object-property persistence, structured asset descriptors, schema fixture coverage, and Zia/BASIC smoke coverage.
+- ViperIDE still needs to consume this surface: document-kind routing, load-error display, source/visual fallback, scene save/reload/conflict handling, asset-resolution UX, undo/redo, and viewport/editor integration.
+- Cross-platform validation for graphics-off, Windows, and Linux should still be run when scene-editor UI work starts touching GUI/graphics paths.
 
 Review:
 
 - This is mandatory for the scene editor.
 - The editor cannot safely mutate only a `Tilemap` render copy; scene-owned normalized data must remain the serialization source of truth.
 
-Add through `Viper.Game.Scene`:
+Available through `Viper.Game.Scene`:
 
 - scene-owned tile/layer get/set/fill APIs
 - layer visibility/name/order APIs if layers are editor-visible

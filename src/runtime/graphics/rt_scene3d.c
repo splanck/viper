@@ -97,6 +97,7 @@ static double scene3d_finite_or(double value, double fallback) {
     return isfinite(value) ? value : fallback;
 }
 
+/// @brief Clamp `value` into `[-SCENE3D_ABS_MAX, SCENE3D_ABS_MAX]`, substituting `fallback` when not finite.
 static double scene3d_clamp_abs_or(double value, double fallback) {
     value = scene3d_finite_or(value, fallback);
     if (value > SCENE3D_ABS_MAX)
@@ -106,6 +107,7 @@ static double scene3d_clamp_abs_or(double value, double fallback) {
     return value;
 }
 
+/// @brief Narrow a double to float, returning 0.0f when non-finite or outside ±SCENE3D_FLOAT_ABS_MAX.
 static float scene3d_float_or_zero(double value) {
     if (!isfinite(value) || value < -SCENE3D_FLOAT_ABS_MAX || value > SCENE3D_FLOAT_ABS_MAX)
         return 0.0f;
@@ -1752,6 +1754,12 @@ typedef struct {
     double node_to_root[16];
 } scene_bounds_stack_item_t;
 
+/// @brief Push (node, node→root matrix) onto a growable explicit traversal stack.
+/// @details Used instead of recursion so deep scene hierarchies cannot overflow
+///          the C stack. Capacity doubles on demand (seeded at 64) via an
+///          overflow-guarded realloc.
+/// @return 1 on success — and also on NULL/missing arguments, treated as a no-op;
+///         0 only when capacity growth overflows or realloc fails.
 static int scene_bounds_stack_push(scene_bounds_stack_item_t **stack,
                                    size_t *count,
                                    size_t *capacity,
@@ -1863,6 +1871,10 @@ typedef struct {
     void *inherited_animator;
 } scene_draw_stack_item_t;
 
+/// @brief Push (node, inherited animator) onto a growable draw-traversal stack.
+/// @details Same iterative-traversal rationale and growth/return contract as
+///          scene_bounds_stack_push: capacity doubles from 64; returns 1 on
+///          success or no-op, 0 on overflow/realloc failure.
 static int scene_draw_stack_push(scene_draw_stack_item_t **stack,
                                  size_t *count,
                                  size_t *capacity,

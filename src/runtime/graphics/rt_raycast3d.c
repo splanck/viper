@@ -61,6 +61,8 @@ static int vec3_is_finite_raw(const double *v) {
     return v && isfinite(v[0]) && isfinite(v[1]) && isfinite(v[2]);
 }
 
+/// @brief Read a boxed Vec3 handle into `out[3]`; returns 0 (and leaves caller to
+///        reject) when `obj` is not a Vec3 or any component is non-finite.
 static int vec3_read_finite(void *obj, double *out) {
     if (!out || !rt_g3d_is_vec3(obj))
         return 0;
@@ -70,6 +72,7 @@ static int vec3_read_finite(void *obj, double *out) {
     return vec3_is_finite_raw(out);
 }
 
+/// @brief Checked cast of an opaque handle to a Mat4 payload; NULL on class mismatch.
 static mat4_impl *raycast3d_mat4_checked(void *obj) {
     if (!obj)
         return NULL;
@@ -78,6 +81,7 @@ static mat4_impl *raycast3d_mat4_checked(void *obj) {
     return (mat4_impl *)obj;
 }
 
+/// @brief True if all 16 lanes of a 4x4 double matrix are finite (no NaN/Inf).
 static int mat4d_is_finite(const double *m) {
     if (!m)
         return 0;
@@ -88,6 +92,8 @@ static int mat4d_is_finite(const double *m) {
     return 1;
 }
 
+/// @brief Canonicalize an AABB in place by swapping any axis where min > max,
+///        so subsequent overlap/clamp tests can assume `mn[i] <= mx[i]`.
 static void aabb3d_canonicalize_raw(double *mn, double *mx) {
     for (int i = 0; i < 3; i++) {
         if (mn[i] > mx[i]) {
@@ -139,6 +145,7 @@ static void aabb3d_clamp_point_raw(const double *mn,
     closest[2] = clampd(point[2], mn[2], mx[2]);
 }
 
+/// @brief Squared distance from point `p` to AABB [mn,mx] (0 when `p` is inside).
 static double point_aabb_distance_sq_raw(const double *mn, const double *mx, const double *p) {
     double c[3];
     aabb3d_clamp_point_raw(mn, mx, p, c);
@@ -148,12 +155,19 @@ static double point_aabb_distance_sq_raw(const double *mn, const double *mx, con
     return dx * dx + dy * dy + dz * dz;
 }
 
+/// @brief Evaluate the parametric point `a + d*t` into `out[3]`.
 static void segment_point_at_raw(const double *a, const double *d, double t, double *out) {
     out[0] = a[0] + d[0] * t;
     out[1] = a[1] + d[1] * t;
     out[2] = a[2] + d[2] * t;
 }
 
+/// @brief Squared distance between segment a–b and AABB [mn,mx].
+/// @details Builds a candidate set of segment parameters — the endpoints plus
+///          each axis slab-boundary crossing in `(0,1)` — sorts them, then takes
+///          the minimum point-to-AABB distance over those samples and the
+///          midpoints between consecutive samples. A sampling approximation that
+///          is exact at the breakpoints where the nearest box feature changes.
 static double segment_aabb_distance_sq_raw(const double *a,
                                            const double *b,
                                            const double *mn,

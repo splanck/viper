@@ -58,12 +58,14 @@ typedef struct {
     double inv_mass;
 } rt_body3d_view;
 
+/// @brief Clamp a joint parameter to `[0, RT_JOINT3D_MAX_PARAM]`; non-finite maps to 0.
 static double joint3d_sanitize_nonnegative(double value) {
     if (!isfinite(value) || value < 0.0)
         return 0.0;
     return value > RT_JOINT3D_MAX_PARAM ? RT_JOINT3D_MAX_PARAM : value;
 }
 
+/// @brief Clamp a force/impulse magnitude to `±RT_JOINT3D_MAX_FORCE`; non-finite maps to 0.
 static double joint3d_clamp_force(double value) {
     if (!isfinite(value))
         return 0.0;
@@ -74,6 +76,8 @@ static double joint3d_clamp_force(double value) {
     return value;
 }
 
+/// @brief True if a body view is solvable: finite, non-negative inverse mass and
+///        finite position/velocity. Guards the joint solver against NaN bodies.
 static int joint3d_body_is_finite(const rt_body3d_view *body) {
     if (!body || !isfinite(body->inv_mass) || body->inv_mass < 0.0)
         return 0;
@@ -84,6 +88,7 @@ static int joint3d_body_is_finite(const rt_body3d_view *body) {
     return 1;
 }
 
+/// @brief Release the GC reference held in `*slot` (if any) and null the slot. Idempotent.
 static void joint3d_release_body_ref(rt_body3d_view **slot) {
     if (!slot || !*slot)
         return;

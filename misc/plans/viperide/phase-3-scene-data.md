@@ -2,7 +2,7 @@
 
 ## 1. Summary and Objective
 
-Provide the runtime data model that the visual scene editor can safely read and write. The authoritative implementation plan is `misc/plans/game/scene-system.md`; this file records the IDE-facing contract and the corrections required before ViperIDE depends on it.
+Provide the runtime data model that the visual scene editor can safely read and write. The authoritative implementation plan is `misc/plans/game/scene-system.md`; this file records the IDE-facing contract and the runtime gates ViperIDE must verify before depending on scene editing.
 
 The IDE must consume `Viper.Game.Scene`, not extend the old load-only `Viper.Game.LevelData` path.
 
@@ -34,7 +34,9 @@ Out:
 - Scene viewport widget.
 - Game example migration beyond the runtime plan's dogfood target.
 
-## 3. Required Corrections Before IDE Integration
+## 3. Runtime Contract to Verify Before IDE Integration
+
+The current tree already exposes the intended `Viper.Game.Scene` surface, including canonical v1 `.scene` JSON, non-trapping diagnostics, typed properties, atomic save, asset descriptors, and `BuildTilemap()`. Treat the sections below as integration gates: Phase 5 should verify the runtime behavior in the target build configuration before using it, and should not reintroduce legacy `LevelData` or `Tilemap` ownership shortcuts.
 
 ### 3.1 Scene, Not LevelData
 

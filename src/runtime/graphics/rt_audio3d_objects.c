@@ -94,11 +94,13 @@ static rt_audiolistener3d *s_listener_head = NULL;
 static rt_audiosource3d *s_source_head = NULL;
 static rt_audiolistener3d *s_active_listener_obj = NULL;
 
+/// @brief Checked cast of an opaque handle to AudioListener3D; NULL on class mismatch.
 static rt_audiolistener3d *audio3d_listener_checked(void *obj) {
     return (rt_audiolistener3d *)rt_g3d_checked_or_null(
         obj, RT_G3D_AUDIOLISTENER3D_CLASS_ID);
 }
 
+/// @brief Checked cast of an opaque handle to AudioSource3D; NULL on class mismatch.
 static rt_audiosource3d *audio3d_source_checked(void *obj) {
     return (rt_audiosource3d *)rt_g3d_checked_or_null(
         obj, RT_G3D_AUDIOSOURCE3D_CLASS_ID);

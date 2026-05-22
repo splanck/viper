@@ -246,6 +246,11 @@ static const vg_theme_t *rt_gui_theme_base(rt_gui_theme_kind_t kind) {
     return (kind == RT_GUI_THEME_LIGHT) ? vg_theme_light() : vg_theme_dark();
 }
 
+/// @brief Pre-order traversal step over the visible widget tree rooted at @p root.
+/// @details Returns the next widget after @p node: its first child when @p node is
+///          visible and has children, otherwise the nearest ancestor's next sibling,
+///          stopping (NULL) at @p root. Gating descent on visibility lets a hidden
+///          container's entire subtree be skipped in a single step.
 static vg_widget_t *rt_gui_next_visible_widget(vg_widget_t *root, vg_widget_t *node) {
     if (!root || !node)
         return NULL;
@@ -1514,6 +1519,10 @@ static int rt_gui_widget_accepts_drop_type(vg_widget_t *widget, const char *type
     return 0;
 }
 
+/// @brief Find the drag-drop target for a drop of @p type at widget @p hit.
+/// @details Walks from @p hit up through its ancestors and returns the first widget
+///          (other than the drag @p source) that accepts the payload type, so a drop
+///          on a child bubbles to an accepting container. NULL if none qualifies.
 static vg_widget_t *rt_gui_find_drop_target(vg_widget_t *hit,
                                             vg_widget_t *source,
                                             const char *type) {
@@ -2186,6 +2195,13 @@ typedef struct rt_gui_render_frame {
     float parent_abs_y;
 } rt_gui_render_frame_t;
 
+/// @brief Push a render frame (widget + accumulated parent absolute origin) onto the
+///        explicit paint stack, growing it as needed.
+/// @details Backs render_widget_tree's iterative (non-recursive) traversal so deeply
+///          nested layouts cannot overflow the C stack. Capacity doubles from 64 via
+///          an overflow-guarded realloc.
+/// @return true on success — and on a NULL widget, treated as a no-op; false on
+///         capacity overflow or realloc failure.
 static bool rt_gui_render_stack_push(rt_gui_render_frame_t **frames,
                                      size_t *count,
                                      size_t *cap,
@@ -2209,6 +2225,11 @@ static bool rt_gui_render_stack_push(rt_gui_render_frame_t **frames,
     return true;
 }
 
+/// @brief Paint a widget subtree into @p window, iteratively (no recursion).
+/// @details Uses an explicit stack of frames so deep layouts can't overflow the C
+///          stack. Each frame carries the parent's absolute origin; a widget's
+///          stored relative (x,y) is temporarily promoted to absolute for painting
+///          and its children pushed with the new origin. Invisible widgets are skipped.
 static void render_widget_tree(vgfx_window_t window,
                                vg_widget_t *widget,
                                float parent_abs_x,

@@ -463,6 +463,12 @@ static void controller_quat_from_matrix_rows(double m00,
                                              double m22,
                                              double *out);
 
+/// @brief Spherical-linear interpolate two unit quaternions (float lanes).
+/// @details Flips `b` when the dot product is negative so the shorter arc is
+///          taken, then falls back to a plain normalized lerp for nearly
+///          parallel inputs (dot > 0.9995) where the `sin(theta)` divisor would
+///          approach zero. The result is renormalized, with an identity-quaternion
+///          guard for the degenerate zero-length case.
 static void controller_quat_slerp_float(const float *a, const float *b, float t, float *out) {
     float dot = a[0] * b[0] + a[1] * b[1] + a[2] * b[2] + a[3] * b[3];
     float nb[4] = {b[0], b[1], b[2], b[3]};
@@ -496,6 +502,11 @@ static void controller_quat_slerp_float(const float *a, const float *b, float t,
         out[i] /= len;
 }
 
+/// @brief Compose a row-major 4x4 TRS matrix from translation, rotation
+///        (quaternion) and scale (all float lanes).
+/// @details Standard quaternion-to-basis expansion with each basis column
+///          pre-multiplied by its scale component and the translation written
+///          into the 4th column.
 static void controller_build_trs_float(const float *pos,
                                        const float *quat,
                                        const float *scl,
@@ -521,6 +532,11 @@ static void controller_build_trs_float(const float *pos,
     out[15] = 1.0f;
 }
 
+/// @brief Decompose a row-major 4x4 matrix into translation, rotation
+///        (quaternion) and scale (all float lanes).
+/// @details Scale per axis is the length of each basis column, guarded to 1.0
+///          when near-zero or non-finite so the subsequent divide that
+///          orthonormalizes the basis before quaternion extraction stays finite.
 static void controller_decompose_trs_float(const float *m,
                                            float *out_pos,
                                            float *out_rot,

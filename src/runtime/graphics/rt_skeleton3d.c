@@ -95,14 +95,17 @@ static mat4_impl *skeleton3d_mat4_checked(void *obj) {
     return (mat4_impl *)obj;
 }
 
+/// @brief Checked cast of an opaque handle to AnimPlayer3D; NULL on class mismatch.
 static rt_anim_player3d *anim_player3d_checked(void *obj) {
     return (rt_anim_player3d *)rt_g3d_checked_or_null(obj, RT_G3D_ANIMPLAYER3D_CLASS_ID);
 }
 
+/// @brief Checked cast of an opaque handle to AnimBlend3D; NULL on class mismatch.
 static rt_anim_blend3d *anim_blend3d_checked(void *obj) {
     return (rt_anim_blend3d *)rt_g3d_checked_or_null(obj, RT_G3D_ANIMBLEND3D_CLASS_ID);
 }
 
+/// @brief Checked cast of an opaque handle to Animation3D; NULL on class mismatch.
 static rt_animation3d *animation3d_checked(void *obj) {
     return (rt_animation3d *)rt_g3d_checked_or_null(obj, RT_G3D_ANIMATION3D_CLASS_ID);
 }
@@ -113,6 +116,8 @@ static int skeleton3d_value_fits_float(double value) {
            value <= SKELETON3D_FLOAT_ABS_MAX;
 }
 
+/// @brief Wrap a playback time into `[0, duration)` (looping). Non-finite time or a
+///        non-positive/non-finite duration yields 0.0f.
 static float animation3d_wrap_time(float time, float duration) {
     if (!isfinite(time))
         return 0.0f;
@@ -249,6 +254,7 @@ static void quat_slerp_float(const float *a, const float *b, float t, float *out
             out[i] /= len;
 }
 
+/// @brief Write the identity quaternion (0,0,0,1) into `out[4]`.
 static void quat_identity_float(float *out) {
     out[0] = 0.0f;
     out[1] = 0.0f;
@@ -256,6 +262,8 @@ static void quat_identity_float(float *out) {
     out[3] = 1.0f;
 }
 
+/// @brief Normalize a quaternion in place, falling back to identity when any lane
+///        is non-finite or the length underflows (≤ 1e-8).
 static void quat_normalize_float(float *q) {
     float len;
     if (!q)
@@ -273,6 +281,11 @@ static void quat_normalize_float(float *q) {
         q[i] /= len;
 }
 
+/// @brief Convert a 3x3 rotation matrix to a unit quaternion in `out[4]`.
+/// @details Shepperd's method: branches on the largest of trace/r00/r11/r22 to
+///          keep the `sqrt` argument well away from zero, avoiding the precision
+///          loss the naive `sqrt(1+trace)` form suffers near 180° rotations.
+///          Non-finite input yields identity; the result is normalized.
 static void quat_from_matrix3_float(float r00,
                                     float r01,
                                     float r02,
@@ -321,6 +334,11 @@ static void quat_from_matrix3_float(float r00,
     quat_normalize_float(out);
 }
 
+/// @brief Decompose a row-major 4x4 float matrix into translation, rotation
+///        (quaternion) and scale.
+/// @details Scale per axis is the length of each basis column; the basis is
+///          divided through by scale before quaternion extraction so the rotation
+///          is orthonormal. Non-finite entries degrade to 0/identity/unit.
 static void mat4f_decompose_trs(const float *m, float *out_pos, float *out_rot, float *out_scl) {
     float sx;
     float sy;

@@ -27,7 +27,9 @@ Out:
 
 - Current ViperIDE build system hard-codes `compilerPath = "zia"` and uses `Exec.ShellFull`.
 - Runtime has `Viper.System.Exec.CaptureArgs` and `RunArgs`, which are safer than shell strings but still blocking.
+- Runtime also has `Viper.System.Process` and `Viper.System.Process.Handle` with direct argument-vector process start, cwd/env support, non-blocking stdout/stderr reads, polling, exit-code retrieval, termination, wait, and destroy.
 - VM debug internals exist under `src/vm/debug/`, but the IDE does not have a live process/debug protocol.
+- A headless `Viper.Debug.Protocol` shell exists, but ViperIDE still needs launch/session integration with either a hosted VM or subprocess adapter.
 - Editor gutter breakpoint glyphs exist in the code editor widget model.
 
 ## 4. Stages
@@ -36,7 +38,7 @@ Out:
 
 Requirements:
 
-- Replace shell-string build/run commands with argument-vector execution where possible.
+- Replace shell-string build/run commands with argument-vector execution through `Viper.System.Process` for any command that may run long or produce streamed output.
 - Add a `RunConfig` model:
   - name
   - kind (`current-file`, `project-entry`, `custom`)
@@ -48,7 +50,7 @@ Requirements:
 - Read defaults from `viper.project` where possible, with project-root fallback.
 - Quote nothing manually when using args APIs.
 - Save dirty files before build/run through Phase 0 close/save contracts.
-- Parse diagnostics into structured `Location` records.
+- Prefer `Viper.Zia.Toolchain` structured diagnostics for Zia builds where possible; parse external tool output only through explicit problem matchers into structured `Location` records.
 
 Acceptance:
 
@@ -73,21 +75,26 @@ Acceptance:
 
 ### 4.3 Stage C - Cancellable Jobs and Streaming Output
 
-If current `Viper.System.Exec` remains blocking, add a runtime process/job API before shipping long-running run/debug features.
+Use the current `Viper.System.Process` API as the runtime process primitive before shipping long-running run/debug features.
 
-Preferred shape:
+Current runtime shape:
 
-- `Viper.System.Process.Start(program, args, cwd, env) -> Process`
-- `Process.Poll() -> status`
-- `Process.ReadStdout() -> str`
-- `Process.ReadStderr() -> str`
-- `Process.Kill()`
-- `Process.ExitCode`
+- `Viper.System.Process.Start(program, args) -> Process.Handle`
+- `Viper.System.Process.StartIn(program, args, cwd) -> Process.Handle`
+- `Viper.System.Process.StartWithEnv(program, args, cwd, env) -> Process.Handle`
+- `Process.Handle.Poll() -> bool`
+- `Process.Handle.IsRunning() -> bool`
+- `Process.Handle.ReadStdout() -> str`
+- `Process.Handle.ReadStderr() -> str`
+- `Process.Handle.Kill() -> bool`
+- `Process.Handle.ExitCode() -> i64`
+- `Process.Handle.Wait() -> i64`
+- `Process.Handle.Destroy()`
 
 Requirements:
 
 - Jobs are owned by the IDE and ticked in the frame loop.
-- Build, run, search, indexing, and future scene validation can share the job/progress model where practical.
+- Build, run, search, indexing, and future scene validation can share an IDE-side job/progress model where practical. This wrapper is product/UI state above the runtime process handle, not a replacement for child-process control.
 - Stopping a run must terminate the child process and update UI state.
 
 Acceptance:

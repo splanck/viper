@@ -457,6 +457,11 @@ static rt_filedialog_data_t **s_filedialog_wrappers = NULL;
 static size_t s_filedialog_wrapper_count = 0;
 static size_t s_filedialog_wrapper_cap = 0;
 
+/// @brief Record a wrapper in the global file-dialog registry (idempotent).
+/// @details The registry is the source of truth for handle validation: a checked
+///          cast only trusts an opaque `void*` once it is found here (then verifies
+///          the magic tag), guarding against forged/freed handles. Capacity doubles from 8.
+/// @return 1 on success or if already present; 0 on overflow or realloc failure.
 static int rt_filedialog_register_wrapper(rt_filedialog_data_t *data) {
     if (!data)
         return 0;
@@ -479,6 +484,7 @@ static int rt_filedialog_register_wrapper(rt_filedialog_data_t *data) {
     return 1;
 }
 
+/// @brief Remove a wrapper from the file-dialog registry, compacting the array. No-op if absent.
 static void rt_filedialog_unregister_wrapper(rt_filedialog_data_t *data) {
     if (!data)
         return;
@@ -493,6 +499,7 @@ static void rt_filedialog_unregister_wrapper(rt_filedialog_data_t *data) {
     }
 }
 
+/// @brief True if @p data is a currently-registered wrapper; backs handle validation.
 static int rt_filedialog_wrapper_is_registered(const rt_filedialog_data_t *data) {
     if (!data)
         return 0;

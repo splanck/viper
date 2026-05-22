@@ -138,6 +138,7 @@ static double water3d_clamp01(double value) {
     return value;
 }
 
+/// @brief Clamp a strictly-positive parameter to `(0, max_value]`; non-finite or ≤0 maps to `fallback`.
 static double water3d_clamp_positive_or(double value, double fallback, double max_value) {
     if (!isfinite(value) || value <= 0.0)
         return fallback;
@@ -146,6 +147,7 @@ static double water3d_clamp_positive_or(double value, double fallback, double ma
     return value;
 }
 
+/// @brief Clamp `value` into `[-max_abs, max_abs]`, substituting `fallback` when not finite.
 static double water3d_clamp_abs_or(double value, double fallback, double max_abs) {
     if (!isfinite(value))
         return fallback;
@@ -156,6 +158,7 @@ static double water3d_clamp_abs_or(double value, double fallback, double max_abs
     return value;
 }
 
+/// @brief Clamp `value` into `[0, max_value]`; non-finite or negative input maps to 0.
 static double water3d_clamp_nonnegative(double value, double max_value) {
     if (!isfinite(value) || value < 0.0)
         return 0.0;

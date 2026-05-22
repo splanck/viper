@@ -1,0 +1,70 @@
+{
+  "version": 1,
+  "name": "full",
+  "width": 3,
+  "height": 2,
+  "tileWidth": 16,
+  "tileHeight": 16,
+  "tilesetAsset": "tiles/world.png",
+  "properties": {
+    "gravity": 0.75,
+    "playerStartX": 32,
+    "playerStartY": 48,
+    "theme": "cavern"
+  },
+  "layers": [
+    {
+      "name": "base",
+      "visible": true,
+      "asset": "tiles/world.png",
+      "tiles": [1, 1, 1, 0, 2, 0]
+    },
+    {
+      "name": "fg",
+      "visible": false,
+      "asset": "tiles/fg.png",
+      "tiles": [0, 0, 0, 3, 0, 4]
+    }
+  ],
+  "objects": [
+    {
+      "type": "enemy",
+      "id": "slime-1",
+      "x": 64,
+      "y": 48,
+      "properties": {
+        "elite": false,
+        "hp": 3,
+        "sprite": "sprites/slime.png"
+      }
+    }
+  ],
+  "lighting": {
+    "textureAsset": "textures/light-mask.png",
+    "ambient": 0.5
+  },
+  "collision": {
+    "layer": 0,
+    "solid": [1, 2],
+    "oneWayUp": [3]
+  },
+  "tileProperties": {
+    "1": {
+      "solid": 1
+    }
+  },
+  "animations": [
+    {
+      "baseTile": 4,
+      "frameCount": 2,
+      "msPerFrame": 120,
+      "frames": [4, 5]
+    }
+  ],
+  "autotiles": [
+    {
+      "baseTile": 8,
+      "variants": [8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23]
+    }
+  ]
+}

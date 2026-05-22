@@ -1,0 +1,26 @@
+{
+  "width": 2,
+  "height": 2,
+  "tileWidth": 32,
+  "tileHeight": 32,
+  "properties": {
+    "playerStartX": 16,
+    "playerStartY": 32,
+    "theme": "legacy"
+  },
+  "layers": [
+    {
+      "name": "tiles",
+      "type": "tiles",
+      "data": [1, 0, 0, 2]
+    }
+  ],
+  "objects": [
+    {
+      "type": "checkpoint",
+      "id": "cp0",
+      "x": 64,
+      "y": 96
+    }
+  ]
+}
