@@ -13,6 +13,12 @@ This is not a mandatory phase. Each item should land only when it is the cheapes
 - **Tier 2 - Strong accelerators:** not strictly required, but they shrink IDE code and reduce future rework.
 - **Tier 3 - Nice accelerators:** useful after the core editor and scene editor are stable.
 
+## Implementation Progress
+
+- **2026-05-22 - R1 implementation landed.** Added `Viper.GUI.CodeEditor.ScrollTopLine` as a typed get/set property, including GUI widget helpers, runtime bridge functions, headless stubs, runtime catalog registration, and a runtime regression test. Added indexed selection range getters (`GetSelectionStartLineAt`, `GetSelectionStartColAt`, `GetSelectionEndLineAt`, `GetSelectionEndColAt`) with runtime regression coverage. Added widget-level `Shift`+click selection extension and `Ctrl`/`Cmd`+click secondary cursor placement with runtime regression coverage. ViperIDE now restores scroll using the property and saves live cursor/scroll state into the document instead of relying on stale cached cursor fields. The ViperIDE smoke CTest now probes Zia-facing hit-testing and cursor/scroll restoration across a simulated tab switch. Runtime docs were updated in `docs/viperlib/gui/containers.md` and `docs/bible/appendices/d-runtime-reference.md`.
+- **Verified:** `cmake --build build --target test_rt_gui_runtime -j`, `cmake --build build --target viper zia -j`, `./scripts/check_runtime_completeness.sh`, `ctest --test-dir build --output-on-failure -R '^test_rt_gui_runtime$'`, `ctest --test-dir build --output-on-failure -R '^test_runtime_classes_catalog$'`, `ctest --test-dir build --output-on-failure -R '^zia_smoke_viperide_project_compile$'`, `ctest --test-dir build --output-on-failure -R '^zia_smoke_viperide$'`, and `git diff --check`.
+- **R1 still open:** no known Phase 0/1 blockers. Future GUI automation should still add event-level interaction tests once the GUI test harness from R10 exists.
+
 ## R1 - CodeEditor API Audit
 
 Tier: 0.
@@ -25,12 +31,12 @@ Review:
 
 Audit and add only if missing:
 
-- live primary cursor line/column getters
-- scroll/top-line getter and setter
-- selection range enumeration
-- mouse coordinate to line/column hit testing
-- modifier-click state needed for extra cursor placement
-- stable scroll/cursor behavior across tab switches
+- live primary cursor line/column getters: **already present** as `CursorLine` and `CursorCol`.
+- scroll/top-line getter and setter: **implemented** as `ScrollTopLine`.
+- selection range enumeration: **implemented** through indexed selection range getters.
+- mouse coordinate to line/column hit testing: **covered** by runtime pixel helper tests and the ViperIDE Zia smoke probe.
+- modifier-click state needed for extra cursor placement: **implemented** for `Ctrl`/`Cmd`+click with `Shift`+click selection extension.
+- stable scroll/cursor behavior across tab switches: **covered** by the ViperIDE Zia smoke probe.
 
 Unblocks:
 

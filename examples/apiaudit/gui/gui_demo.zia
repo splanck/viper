@@ -27,7 +27,7 @@ func start() {
     Say("--- SplitPane ---");
     Say("New(parent,horizontal), SetPosition(ratio), First, Second");
     Say("--- CodeEditor ---");
-    Say("New(parent), SetText(s), Text, SetCursor(ln,col), ScrollToLine(n), LineCount, IsModified, ClearModified, SetFont(f,sz), CursorLine, CursorCol");
+    Say("New(parent), SetText(s), Text, SetCursor(ln,col), ScrollToLine(n), ScrollTopLine, LineCount, IsModified, ClearModified, SetFont(f,sz), CursorLine, CursorCol");
     Say("--- Dropdown ---");
     Say("New(parent), AddItem(s), RemoveItem(idx), Clear(), SetSelected(idx), Selected, SelectedText, SetPlaceholder(s)");
     Say("--- Slider ---");

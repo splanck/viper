@@ -602,6 +602,16 @@ void rt_codeeditor_set_cursor(void *editor, int64_t line, int64_t col);
 /// @param line Line number (0-based).
 void rt_codeeditor_scroll_to_line(void *editor, int64_t line);
 
+/// @brief Get the zero-based source line nearest the top of the editor viewport.
+/// @param editor CodeEditor widget handle.
+/// @return Zero-based line index, or 0 when unavailable.
+int64_t rt_codeeditor_get_scroll_top_line(void *editor);
+
+/// @brief Set the source line nearest the top of the editor viewport.
+/// @param editor CodeEditor widget handle.
+/// @param line Zero-based line index.
+void rt_codeeditor_set_scroll_top_line(void *editor, int64_t line);
+
 /// @brief Get line count.
 /// @param editor CodeEditor widget handle.
 /// @return Number of lines.
@@ -1960,6 +1970,30 @@ void rt_codeeditor_set_cursor_selection(void *editor,
 /// @param index Cursor index.
 /// @return 1 if has selection, 0 otherwise.
 int64_t rt_codeeditor_cursor_has_selection(void *editor, int64_t index);
+
+/// @brief Get normalized selection start line for a cursor.
+/// @param editor CodeEditor handle.
+/// @param index Cursor index.
+/// @return Zero-based start line, or 0 if the cursor has no selection.
+int64_t rt_codeeditor_get_selection_start_line_at(void *editor, int64_t index);
+
+/// @brief Get normalized selection start column for a cursor.
+/// @param editor CodeEditor handle.
+/// @param index Cursor index.
+/// @return Zero-based start column, or 0 if the cursor has no selection.
+int64_t rt_codeeditor_get_selection_start_col_at(void *editor, int64_t index);
+
+/// @brief Get normalized selection end line for a cursor.
+/// @param editor CodeEditor handle.
+/// @param index Cursor index.
+/// @return Zero-based end line, or 0 if the cursor has no selection.
+int64_t rt_codeeditor_get_selection_end_line_at(void *editor, int64_t index);
+
+/// @brief Get normalized selection end column for a cursor.
+/// @param editor CodeEditor handle.
+/// @param index Cursor index.
+/// @return Zero-based end column, or 0 if the cursor has no selection.
+int64_t rt_codeeditor_get_selection_end_col_at(void *editor, int64_t index);
 
 /// @brief Undo the last edit operation.
 /// @param editor CodeEditor handle.

@@ -26,13 +26,13 @@ An alpha-quality hardening cycle, not a feature release. The Zia frontend reache
 
 | Metric | v0.2.5 | v0.2.6 | Delta |
 |---|---|---|---|
-| Commits | — | 146 | +146 |
+| Commits | — | 167 | +167 |
 | Source files | 2,996 | 3,036 | +40 |
-| Production SLOC | 552K | 601K | +49K |
-| Test SLOC | 228K | 256K | +28K |
+| Production SLOC | 552K | 603K | +51K |
+| Test SLOC | 228K | 257K | +29K |
 | Demo SLOC | 188K | 189K | +1K |
 
-Counts via `scripts/count_sloc.sh` (production 601,884 / test 256,301 / demo 189,273 / source files 3,036).
+Counts via `scripts/count_sloc.sh` (production 603,746 / test 257,134 / demo 189,283 / source files 3,036).
 
 ---
 
@@ -167,6 +167,6 @@ Demos and docs tracked the runtime work above; stale Windows debug/O0 pins for C
 
 ### Commits
 
-See `git log v0.2.5-dev..HEAD -- .` for the full 146-commit history since v0.2.5.
+See `git log v0.2.5-dev..HEAD -- .` for the full 167-commit history since v0.2.5.
 
 <!-- END DRAFT -->

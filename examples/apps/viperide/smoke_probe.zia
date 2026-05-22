@@ -12,7 +12,8 @@ bind Viper.Terminal as Terminal;
 // MODULE: smoke_probe
 // PURPOSE: Headless smoke test for the IDE shell. Builds the window,
 //          sets up the editor + minimap + tab, loads a synthetic
-//          document, polls + renders ONE frame, then tears down and
+//          document, probes editor hit-testing and tab state restore,
+//          polls + renders ONE frame, then tears down and
 //          prints "RESULT: ok".
 //
 // WHERE-THIS-FITS: Run by the ctest target `zia_smoke_viperide` in CI
@@ -22,9 +23,9 @@ bind Viper.Terminal as Terminal;
 //          non-zero exit code.
 //
 // KEY-DESIGN-CHOICES:
-//   * SINGLE FRAME. We only Poll + Render once. The goal is "did
-//     construction work?", not "does interaction work?". An interactive
-//     test would be too long for CI.
+//   * SINGLE FRAME. We only Poll + Render once. The goal is construction
+//     plus cheap editor state probes; full interaction testing belongs in
+//     a dedicated GUI automation harness.
 //   * MINIMAP TOGGLE. The Off-then-On dance exercises the minimap's
 //     SetVisible runtime which was a source of regressions during the
 //     visibility-API rollout.
@@ -57,10 +58,51 @@ func main() {
     tabs.AddTab(doc.fileName, 1);
     tabs.SetActive(0);
     engine.LoadDocument(doc);
+    engine.SetSize(400, 40);
+
+    var failed = "";
+
+    engine.editor.SetCursor(1, 4);
+    var cursorX = engine.editor.GetCursorPixelX();
+    var cursorY = engine.editor.GetCursorPixelY();
+    if engine.editor.GetLineAtPixel(cursorY) != 1 {
+        failed = "hit-test line";
+    } else if engine.editor.GetColAtPixel(cursorX, cursorY) != 4 {
+        failed = "hit-test column";
+    }
+
+    doc.content = "line0\nline1\nline2\nline3\nline4\nline5\nline6\nline7\n";
+    engine.LoadDocument(doc);
+    engine.SetSize(400, 30);
+    engine.editor.SetCursor(3, 2);
+    engine.editor.ScrollTopLine = 3;
+    engine.SaveToDocument(doc);
+
+    var doc2 = docMgr.NewDocument();
+    doc2.content = "other\n";
+    tabs.AddTab(doc2.fileName, 1);
+    tabs.SetActive(1);
+    engine.LoadDocument(doc2);
+
+    tabs.SetActive(0);
+    engine.LoadDocument(doc);
+    if failed == "" and engine.GetCursorLine() != 4 {
+        failed = "tab cursor line restore";
+    } else if failed == "" and engine.GetCursorCol() != 3 {
+        failed = "tab cursor column restore";
+    } else if failed == "" and engine.GetScrollLine() != 4 {
+        failed = "tab scroll restore";
+    }
 
     shell.SetStatusLeft("Smoke");
     shell.SetStatusCenter("Ln 1, Col 1");
     shell.SetStatusRight(doc.fileName);
+
+    if failed != "" {
+        shell.Destroy();
+        Terminal.Say("RESULT: fail " + failed);
+        return;
+    }
 
     shell.Poll();
     shell.Render();

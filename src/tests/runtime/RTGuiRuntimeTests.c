@@ -545,11 +545,23 @@ static void test_codeeditor_runtime_supports_multicursor_editing(void) {
     assert(rt_codeeditor_get_cursor_line_at(editor, 1) == 1);
     assert(rt_codeeditor_get_cursor_col_at(editor, 1) == 3);
 
+    rt_codeeditor_set_cursor_selection(editor, 0, 1, 2, 0, 1);
+    assert(rt_codeeditor_cursor_has_selection(editor, 0) == 1);
+    assert(rt_codeeditor_get_selection_start_line_at(editor, 0) == 0);
+    assert(rt_codeeditor_get_selection_start_col_at(editor, 0) == 1);
+    assert(rt_codeeditor_get_selection_end_line_at(editor, 0) == 1);
+    assert(rt_codeeditor_get_selection_end_col_at(editor, 0) == 2);
+
     rt_codeeditor_set_cursor_selection(editor, 1, 1, 0, 1, 2);
     assert(rt_codeeditor_cursor_has_selection(editor, 1) == 1);
+    assert(rt_codeeditor_get_selection_start_line_at(editor, 1) == 1);
+    assert(rt_codeeditor_get_selection_start_col_at(editor, 1) == 0);
+    assert(rt_codeeditor_get_selection_end_line_at(editor, 1) == 1);
+    assert(rt_codeeditor_get_selection_end_col_at(editor, 1) == 2);
 
     rt_codeeditor_set_cursor_position_at(editor, 0, 0, 1);
     rt_codeeditor_set_cursor_position_at(editor, 1, 1, 1);
+    assert(rt_codeeditor_get_selection_end_col_at(editor, 99) == 0);
     assert(rt_codeeditor_cursor_has_selection(editor, 1) == 0);
 
     rt_codeeditor_insert_at_cursor(editor, rt_const_cstr("X"));
@@ -623,6 +635,74 @@ static void test_codeeditor_runtime_pixel_helpers_follow_scroll_and_wrap(void) {
 
     vg_widget_destroy(&editor->base);
     printf("test_codeeditor_runtime_pixel_helpers_follow_scroll_and_wrap: PASSED\n");
+}
+
+static void test_codeeditor_runtime_scroll_top_line_round_trips(void) {
+    vg_codeeditor_t *editor = vg_codeeditor_create(NULL);
+    assert(editor);
+
+    vg_codeeditor_set_text(editor, "one\ntwo\nthree\nfour\nfive\nsix\nseven\neight\nnine\nten");
+    editor->base.width = 240.0f;
+    editor->base.height = 30.0f;
+    editor->char_width = 10.0f;
+    editor->line_height = 10.0f;
+    editor->gutter_width = 20.0f;
+
+    rt_codeeditor_set_scroll_top_line(editor, 4);
+    assert(rt_codeeditor_get_scroll_top_line(editor) == 4);
+
+    rt_codeeditor_set_scroll_top_line(editor, -10);
+    assert(rt_codeeditor_get_scroll_top_line(editor) == 0);
+
+    rt_codeeditor_set_scroll_top_line(editor, 999);
+    assert(rt_codeeditor_get_scroll_top_line(editor) >= 0);
+    assert(rt_codeeditor_get_scroll_top_line(editor) < editor->line_count);
+
+    rt_codeeditor_set_word_wrap(editor, 1);
+    editor->base.width = editor->gutter_width + 35.0f;
+    rt_codeeditor_set_scroll_top_line(editor, 2);
+    assert(rt_codeeditor_get_scroll_top_line(editor) == 2);
+
+    vg_widget_destroy(&editor->base);
+    printf("test_codeeditor_runtime_scroll_top_line_round_trips: PASSED\n");
+}
+
+static void test_codeeditor_modifier_click_selection_and_extra_cursors(void) {
+    vg_codeeditor_t *editor = vg_codeeditor_create(NULL);
+    assert(editor);
+
+    vg_codeeditor_set_text(editor, "alpha\nbeta");
+    editor->base.width = 200.0f;
+    editor->base.height = 40.0f;
+    editor->char_width = 10.0f;
+    editor->line_height = 10.0f;
+    editor->gutter_width = 20.0f;
+    editor->cursor_line = 0;
+    editor->cursor_col = 0;
+
+    vg_event_t shift_down =
+        vg_event_mouse(VG_EVENT_MOUSE_DOWN, 40.0f, 15.0f, VG_MOUSE_LEFT, VG_MOD_SHIFT);
+    assert(editor->base.vtable->handle_event(&editor->base, &shift_down));
+    assert(editor->cursor_line == 1);
+    assert(editor->cursor_col == 2);
+    assert(editor->has_selection);
+    assert(editor->selection.start_line == 0);
+    assert(editor->selection.start_col == 0);
+    assert(editor->selection.end_line == 1);
+    assert(editor->selection.end_col == 2);
+
+    vg_event_t ctrl_down =
+        vg_event_mouse(VG_EVENT_MOUSE_DOWN, 50.0f, 5.0f, VG_MOUSE_LEFT, VG_MOD_CTRL);
+    assert(editor->base.vtable->handle_event(&editor->base, &ctrl_down));
+    assert(editor->extra_cursor_count == 1);
+    assert(editor->extra_cursors[0].line == 0);
+    assert(editor->extra_cursors[0].col == 3);
+
+    assert(editor->base.vtable->handle_event(&editor->base, &ctrl_down));
+    assert(editor->extra_cursor_count == 1);
+
+    vg_widget_destroy(&editor->base);
+    printf("test_codeeditor_modifier_click_selection_and_extra_cursors: PASSED\n");
 }
 
 static void test_codeeditor_runtime_fold_helpers_skip_hidden_lines(void) {
@@ -2546,6 +2626,8 @@ int main(void) {
     test_codeeditor_runtime_supports_multicursor_editing();
     test_codeeditor_set_text_round_trips_embedded_nuls();
     test_codeeditor_runtime_pixel_helpers_follow_scroll_and_wrap();
+    test_codeeditor_runtime_scroll_top_line_round_trips();
+    test_codeeditor_modifier_click_selection_and_extra_cursors();
     test_codeeditor_runtime_fold_helpers_skip_hidden_lines();
     test_codeeditor_line_number_width_override_tracks_character_width();
     test_zia_block_comment_highlighting_is_render_order_independent();

@@ -1313,6 +1313,34 @@ static void clamp_editor_position(vg_codeeditor_t *editor, int *line, int *col) 
     clamp_editor_col(editor, *line, col);
 }
 
+/// @brief Add a secondary cursor unless one already exists at the same position.
+static void codeeditor_add_extra_cursor_at(vg_codeeditor_t *editor, int line, int col) {
+    if (!editor || editor->line_count <= 0)
+        return;
+    clamp_editor_position(editor, &line, &col);
+    if (editor->cursor_line == line && editor->cursor_col == col)
+        return;
+    for (int i = 0; i < editor->extra_cursor_count; i++) {
+        if (editor->extra_cursors[i].line == line && editor->extra_cursors[i].col == col)
+            return;
+    }
+    if (editor->extra_cursor_count >= editor->extra_cursor_cap) {
+        if (editor->extra_cursor_cap > INT_MAX / 2)
+            return;
+        int new_cap = editor->extra_cursor_cap ? editor->extra_cursor_cap * 2 : 4;
+        void *p = realloc(editor->extra_cursors, (size_t)new_cap * sizeof(*editor->extra_cursors));
+        if (!p)
+            return;
+        editor->extra_cursors = p;
+        editor->extra_cursor_cap = new_cap;
+    }
+    struct vg_extra_cursor *cursor = &editor->extra_cursors[editor->extra_cursor_count++];
+    cursor->line = line;
+    cursor->col = col;
+    memset(&cursor->selection, 0, sizeof(cursor->selection));
+    cursor->has_selection = false;
+}
+
 /// @brief Clamps (line, col) to valid bounds and then snaps the line to its fold's visible anchor.
 static void codeeditor_clamp_cursor_to_visible(vg_codeeditor_t *editor, int *line, int *col) {
     if (!editor || !line || !col || editor->line_count <= 0)
@@ -2927,6 +2955,32 @@ static bool codeeditor_handle_event(vg_widget_t *widget, vg_event_t *event) {
             int line = 0;
             int col = 0;
             codeeditor_local_point_to_position(editor, widget, event->mouse.x, event->mouse.y, &line, &col);
+            uint32_t mods = event->modifiers;
+            bool additive_click = (mods & (VG_MOD_CTRL | VG_MOD_SUPER)) != 0;
+            bool range_click = (mods & VG_MOD_SHIFT) != 0;
+            if (additive_click) {
+                codeeditor_add_extra_cursor_at(editor, line, col);
+                editor->cursor_visible = true;
+                widget->needs_paint = true;
+                return true;
+            }
+            if (range_click) {
+                editor->selection.start_line = editor->cursor_line;
+                editor->selection.start_col = editor->cursor_col;
+                editor->selection.end_line = line;
+                editor->selection.end_col = col;
+                editor->cursor_line = line;
+                editor->cursor_col = col;
+                editor->has_selection =
+                    compare_positions(editor->selection.start_line,
+                                      editor->selection.start_col,
+                                      editor->selection.end_line,
+                                      editor->selection.end_col) != 0;
+                clear_extra_cursor_selections(editor);
+                editor->cursor_visible = true;
+                widget->needs_paint = true;
+                return true;
+            }
             editor->cursor_line = line;
             editor->cursor_col = col;
             editor->has_selection = false;
@@ -3547,6 +3601,38 @@ void vg_codeeditor_scroll_to_line(vg_codeeditor_t *editor, int line) {
         editor->scroll_y = target_y + editor->line_height - visible_height;
     }
 
+    codeeditor_clamp_scroll(editor, &editor->base);
+    editor->base.needs_paint = true;
+}
+
+int vg_codeeditor_get_scroll_top_line(vg_codeeditor_t *editor) {
+    if (!editor || editor->line_count <= 0 || editor->line_height <= 0.0f)
+        return 0;
+
+    int visual_row = (int)(editor->scroll_y / editor->line_height);
+    int line = 0;
+    codeeditor_locate_visual_row(
+        editor, codeeditor_content_draw_width(editor, &editor->base), visual_row, &line, NULL);
+    if (line < 0)
+        return 0;
+    if (line >= editor->line_count)
+        return editor->line_count - 1;
+    return line;
+}
+
+void vg_codeeditor_set_scroll_top_line(vg_codeeditor_t *editor, int line) {
+    if (!editor || editor->line_count <= 0)
+        return;
+
+    if (line < 0)
+        line = 0;
+    if (line >= editor->line_count)
+        line = editor->line_count - 1;
+    line = codeeditor_visible_anchor_line(editor, line);
+
+    float content_width = codeeditor_content_draw_width(editor, &editor->base);
+    int visual_row = codeeditor_visual_row_for_position(editor, content_width, line, 0);
+    editor->scroll_y = (float)visual_row * editor->line_height;
     codeeditor_clamp_scroll(editor, &editor->base);
     editor->base.needs_paint = true;
 }

@@ -298,6 +298,16 @@ void vg_codeeditor_delete_selection(vg_codeeditor_t *editor);
 /// @param line   Zero-based line index to scroll to.
 void vg_codeeditor_scroll_to_line(vg_codeeditor_t *editor, int line);
 
+/// @brief Return the source line currently nearest the top of the viewport.
+/// @param editor Code editor widget.
+/// @return Zero-based line index, or 0 when unavailable.
+int vg_codeeditor_get_scroll_top_line(vg_codeeditor_t *editor);
+
+/// @brief Scroll so that the given source line is nearest the top of the viewport.
+/// @param editor Code editor widget.
+/// @param line   Zero-based line index to place near the viewport top.
+void vg_codeeditor_set_scroll_top_line(vg_codeeditor_t *editor, int line);
+
 /// @brief Set the syntax highlighting callback invoked per visible line.
 /// @param editor    Code editor widget.
 /// @param callback  Function called with the line number, text, and a writable colour array.

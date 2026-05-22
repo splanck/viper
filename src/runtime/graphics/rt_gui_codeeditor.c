@@ -144,6 +144,30 @@ static int rt_codeeditor_char_col_to_byte_col(const vg_codeeditor_t *ce, int lin
     return pos > (size_t)INT_MAX ? INT_MAX : (int)pos;
 }
 
+static int rt_codeeditor_compare_positions(int lhs_line, int lhs_col, int rhs_line, int rhs_col) {
+    if (lhs_line != rhs_line)
+        return lhs_line < rhs_line ? -1 : 1;
+    if (lhs_col != rhs_col)
+        return lhs_col < rhs_col ? -1 : 1;
+    return 0;
+}
+
+static void rt_codeeditor_normalize_selection(vg_selection_t *selection) {
+    if (!selection)
+        return;
+    if (rt_codeeditor_compare_positions(selection->start_line,
+                                        selection->start_col,
+                                        selection->end_line,
+                                        selection->end_col) <= 0)
+        return;
+    int line = selection->start_line;
+    int col = selection->start_col;
+    selection->start_line = selection->end_line;
+    selection->start_col = selection->end_col;
+    selection->end_line = line;
+    selection->end_col = col;
+}
+
 /// @brief Linear-scan the editor's user-supplied keyword list for an exact match.
 ///
 /// Custom keywords let scripts add domain-specific syntax (e.g., your
@@ -1362,6 +1386,23 @@ int64_t rt_codeeditor_get_cursor_col(void *editor) {
     return rt_codeeditor_get_cursor_col_at(editor, 0);
 }
 
+/// @brief `CodeEditor.ScrollTopLine` — source line nearest the viewport top.
+int64_t rt_codeeditor_get_scroll_top_line(void *editor) {
+    vg_codeeditor_t *ce = rt_codeeditor_handle_checked(editor);
+    if (!ce)
+        return 0;
+    return vg_codeeditor_get_scroll_top_line(ce);
+}
+
+/// @brief Set `CodeEditor.ScrollTopLine`.
+void rt_codeeditor_set_scroll_top_line(void *editor, int64_t line) {
+    vg_codeeditor_t *ce = rt_codeeditor_handle_checked(editor);
+    if (!ce)
+        return;
+    int line_i = rt_gui_clamp_i64_to_i32(line, 0, INT32_MAX);
+    vg_codeeditor_set_scroll_top_line(ce, line_i);
+}
+
 /// @brief `CodeEditor.SetCursorPositionAt(index, line, col)` — move one cursor.
 ///
 /// Index 0 routes to the underlying widget's `set_cursor` (which also
@@ -1451,6 +1492,63 @@ int64_t rt_codeeditor_cursor_has_selection(void *editor, int64_t index) {
     if (extra_idx < 0 || extra_idx >= ce->extra_cursor_count)
         return 0;
     return ce->extra_cursors[extra_idx].has_selection ? 1 : 0;
+}
+
+static bool rt_codeeditor_get_selection_at(void *editor, int64_t index, vg_selection_t *out) {
+    vg_codeeditor_t *ce = rt_codeeditor_handle_checked(editor);
+    if (!ce || !out)
+        return false;
+
+    if (index == 0) {
+        if (!ce->has_selection)
+            return false;
+        *out = ce->selection;
+    } else {
+        if (index < 0 || index > INT32_MAX)
+            return false;
+        int extra_idx = (int)index - 1;
+        if (extra_idx < 0 || extra_idx >= ce->extra_cursor_count ||
+            !ce->extra_cursors[extra_idx].has_selection)
+            return false;
+        *out = ce->extra_cursors[extra_idx].selection;
+    }
+
+    rt_codeeditor_normalize_selection(out);
+    return true;
+}
+
+/// @brief `CodeEditor.GetSelectionStartLineAt(index)` — normalized selection start line.
+int64_t rt_codeeditor_get_selection_start_line_at(void *editor, int64_t index) {
+    vg_selection_t selection;
+    if (!rt_codeeditor_get_selection_at(editor, index, &selection))
+        return 0;
+    return selection.start_line;
+}
+
+/// @brief `CodeEditor.GetSelectionStartColAt(index)` — normalized selection start column.
+int64_t rt_codeeditor_get_selection_start_col_at(void *editor, int64_t index) {
+    vg_codeeditor_t *ce = rt_codeeditor_handle_checked(editor);
+    vg_selection_t selection;
+    if (!rt_codeeditor_get_selection_at(editor, index, &selection))
+        return 0;
+    return rt_codeeditor_byte_col_to_char_col(ce, selection.start_line, selection.start_col);
+}
+
+/// @brief `CodeEditor.GetSelectionEndLineAt(index)` — normalized selection end line.
+int64_t rt_codeeditor_get_selection_end_line_at(void *editor, int64_t index) {
+    vg_selection_t selection;
+    if (!rt_codeeditor_get_selection_at(editor, index, &selection))
+        return 0;
+    return selection.end_line;
+}
+
+/// @brief `CodeEditor.GetSelectionEndColAt(index)` — normalized selection end column.
+int64_t rt_codeeditor_get_selection_end_col_at(void *editor, int64_t index) {
+    vg_codeeditor_t *ce = rt_codeeditor_handle_checked(editor);
+    vg_selection_t selection;
+    if (!rt_codeeditor_get_selection_at(editor, index, &selection))
+        return 0;
+    return rt_codeeditor_byte_col_to_char_col(ce, selection.end_line, selection.end_col);
 }
 
 // Edit-history and clipboard ops — thin wrappers around the underlying
@@ -2272,6 +2370,18 @@ int64_t rt_codeeditor_get_cursor_col(void *editor) {
     return 0;
 }
 
+/// @brief Stub: returns 0 (no scroll state in headless builds).
+int64_t rt_codeeditor_get_scroll_top_line(void *editor) {
+    (void)editor;
+    return 0;
+}
+
+/// @brief Stub: `CodeEditor.ScrollTopLine` setter is a no-op without graphics.
+void rt_codeeditor_set_scroll_top_line(void *editor, int64_t line) {
+    (void)editor;
+    (void)line;
+}
+
 /// @brief Stub: `CodeEditor.SetCursorPositionAt` is a no-op without graphics.
 void rt_codeeditor_set_cursor_position_at(void *editor, int64_t index, int64_t line, int64_t col) {
     (void)editor;
@@ -2297,6 +2407,34 @@ void rt_codeeditor_set_cursor_selection(void *editor,
 
 /// @brief Stub: returns 0 (no selection exists in headless builds).
 int64_t rt_codeeditor_cursor_has_selection(void *editor, int64_t index) {
+    (void)editor;
+    (void)index;
+    return 0;
+}
+
+/// @brief Stub: returns 0 (no selection exists in headless builds).
+int64_t rt_codeeditor_get_selection_start_line_at(void *editor, int64_t index) {
+    (void)editor;
+    (void)index;
+    return 0;
+}
+
+/// @brief Stub: returns 0 (no selection exists in headless builds).
+int64_t rt_codeeditor_get_selection_start_col_at(void *editor, int64_t index) {
+    (void)editor;
+    (void)index;
+    return 0;
+}
+
+/// @brief Stub: returns 0 (no selection exists in headless builds).
+int64_t rt_codeeditor_get_selection_end_line_at(void *editor, int64_t index) {
+    (void)editor;
+    (void)index;
+    return 0;
+}
+
+/// @brief Stub: returns 0 (no selection exists in headless builds).
+int64_t rt_codeeditor_get_selection_end_col_at(void *editor, int64_t index) {
     (void)editor;
     (void)index;
     return 0;

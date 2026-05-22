@@ -2870,6 +2870,9 @@ var editor = new CodeEditor(parent: Widget) -> CodeEditor
 
 editor.Text -> String             // Read-only: current content
 editor.LineCount -> Integer           // Read-only: number of lines
+editor.CursorLine -> Integer          // Read-only: zero-based primary cursor line
+editor.CursorCol -> Integer           // Read-only: zero-based primary cursor column
+editor.ScrollTopLine -> Integer       // Read/write: zero-based source line nearest viewport top
 editor.SetText(text: String) -> void
 editor.SetCursor(line: Integer, col: Integer) -> void
 editor.ScrollToLine(line: Integer) -> void
@@ -2882,6 +2885,10 @@ editor.Unfold(line: Integer) -> void
 editor.ToggleFold(line: Integer) -> void
 editor.GetLineAtPixel(y: Integer) -> Integer
 editor.GetColAtPixel(x: Integer, y: Integer) -> Integer
+editor.GetSelectionStartLineAt(cursor: Integer) -> Integer
+editor.GetSelectionStartColAt(cursor: Integer) -> Integer
+editor.GetSelectionEndLineAt(cursor: Integer) -> Integer
+editor.GetSelectionEndColAt(cursor: Integer) -> Integer
 editor.CanUndo() -> Boolean
 editor.CanRedo() -> Boolean
 editor.IsModified() -> Boolean

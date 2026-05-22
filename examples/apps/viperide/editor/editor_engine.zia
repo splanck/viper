@@ -80,21 +80,21 @@ class EditorEngine {
         if doc.scrollLine > 1 {
             var scrollLine0 = doc.scrollLine - 1;
             if scrollLine0 < 0 { scrollLine0 = 0; }
-            editor.ScrollToLine(scrollLine0);
+            editor.ScrollTopLine = scrollLine0;
         }
     }
 
     /// @brief Capture editor state into `doc` for later restore.
-    /// @note Stores the LAST KNOWN cursor coords (updated each frame by
-    ///       the main loop), not the live cursor — the live cursor would
-    ///       fight with focus changes mid-frame.
+    /// @note Reads the live widget state so command handlers, tab switching,
+    ///       and session persistence cannot depend on stale cached cursor fields.
     expose func SaveToDocument(doc: document.Document) {
         if doc == null {
             return;
         }
         doc.content = editor.Text;
-        doc.cursorLine = lastCursorLine;
-        doc.cursorCol = lastCursorCol;
+        doc.cursorLine = GetCursorLine();
+        doc.cursorCol = GetCursorCol();
+        doc.scrollLine = GetScrollLine();
     }
 
     /// @brief Move cursor and scroll to the given 1-based line.
@@ -155,7 +155,8 @@ class EditorEngine {
         if editor == null {
             return 1;
         }
-        return editor.CursorLine + 1;
+        lastCursorLine = editor.CursorLine + 1;
+        return lastCursorLine;
     }
 
     /// @brief Current cursor column (1-based for display).
@@ -163,6 +164,15 @@ class EditorEngine {
         if editor == null {
             return 1;
         }
-        return editor.CursorCol + 1;
+        lastCursorCol = editor.CursorCol + 1;
+        return lastCursorCol;
+    }
+
+    /// @brief Current top-of-viewport line (1-based for document state).
+    expose func GetScrollLine() -> Integer {
+        if editor == null {
+            return 1;
+        }
+        return editor.ScrollTopLine + 1;
     }
 }

@@ -276,6 +276,9 @@ Syntax-colored text now renders in contiguous same-color runs instead of issuing
 Keyboard text input and pasted text preserve valid multi-byte UTF-8 sequences as complete byte ranges. Document replacement builds the new line array before swapping it into the editor, so allocation failure leaves the previous document intact instead of installing partially initialized lines.
 `SetText()` uses the runtime string byte length when replacing the document, so `GetText()` round-trips embedded NUL bytes instead of truncating at the first NUL.
 Gutter icon slots are validated as `0..3`; invalid slots are ignored. Read `GetGutterClickLine()` and `GetGutterClickSlot()` before consuming the event with `WasGutterClicked()`; consuming the event clears the stored line and slot back to `-1`.
+`ScrollTopLine` exposes the zero-based source line nearest the top of the viewport, so applications can persist and restore editor scroll state without inferring it from pixels.
+Selection range getters return normalized zero-based source coordinates for the requested cursor; if the cursor has no active selection or the cursor index is invalid, they return `0`.
+Mouse editing supports `Shift` + click to extend the primary selection and `Ctrl`/`Cmd` + click to add a secondary cursor at the clicked text position.
 
 **Constructor:** `NEW Viper.GUI.CodeEditor(parent)`
 
@@ -285,6 +288,7 @@ Gutter icon slots are validated as `0..3`; invalid slots are ignored. Read `GetG
 | `LineCount`  | Integer | Read   | Number of lines                                                |
 | `CursorLine` | Integer | Read   | Current cursor line                                            |
 | `CursorCol`  | Integer | Read   | Current cursor column                                          |
+| `ScrollTopLine` | Integer | R/W | Source line nearest the top of the viewport                    |
 | `WordWrap`   | Boolean | R/W    | Enable visual word-wrap — long lines are split at the viewport edge without changing the underlying text buffer |
 
 | Method                                     | Signature                        | Description                              |
@@ -307,6 +311,10 @@ Gutter icon slots are validated as `0..3`; invalid slots are ignored. Read `GetG
 | `GetGutterClickLine()`                     | `Integer()`                      | Get line of gutter click                 |
 | `GetGutterClickSlot()`                     | `Integer()`                      | Get gutter icon slot of the current click |
 | `GetLineAtPixel(y)`                       | `Integer(Integer)`               | Map a screen-space pixel to a logical line using the current wrap/scroll geometry |
+| `GetSelectionStartLineAt(cursorIdx)`       | `Integer(Integer)`               | Get normalized selection start line for a cursor |
+| `GetSelectionStartColAt(cursorIdx)`        | `Integer(Integer)`               | Get normalized selection start column for a cursor |
+| `GetSelectionEndLineAt(cursorIdx)`         | `Integer(Integer)`               | Get normalized selection end line for a cursor |
+| `GetSelectionEndColAt(cursorIdx)`          | `Integer(Integer)`               | Get normalized selection end column for a cursor |
 | `GetSelectedText()`                        | `String()`                       | Get currently selected text (empty string if no selection) |
 | `IsFolded(line)`                           | `Integer(Integer)`               | Check if line is folded                  |
 | `IsModified()`                             | `Boolean()`                      | Check if modified                        |
