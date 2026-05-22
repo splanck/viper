@@ -140,6 +140,25 @@ Verification:
 
 Tier: 1.
 
+Status: Implemented as a runtime/tooling prerequisite on 2026-05-22.
+
+Progress:
+
+- Added `Viper.Zia.ProjectIndex` and opaque `Viper.Zia.ProjectIndex.Handle`.
+- Added explicit lifecycle calls: `New`, `IsValid`, `UpdateFile`, `RemoveFile`, `Clear`, and `Destroy`.
+- Added semantic `Definition`, `References`, and `RenameEdits` queries returning `Map`/`Seq` structures.
+- Added an import source-provider hook to the Zia analyzer so indexed dirty buffers can satisfy relative `bind` imports without stale disk reads.
+- Reference collection now lexes identifiers, excluding comments and string literals, and resolves symbols through Sema before reporting a match.
+- Rename returns workspace edit maps and detects visible-name collisions before reporting success.
+- Added `test_zia_project_index` coverage for two-file definition, shadowed references, rename collision, and dirty-buffer replacement.
+- Documented the runtime API in `docs/viperlib/zia.md`.
+
+Remaining IDE integration:
+
+- ViperIDE still needs to own a long-lived project index, update it from document-open/save/edit events, and replace the old hover-plus-symbols go-to-definition fallback.
+- Rename application UX is still pending: preview, conflict reporting, multi-file buffer edits, undo grouping, and save prompts.
+- This is intentionally in-process and synchronous; larger workspaces may need batching/caching once the workspace file index lands.
+
 Review:
 
 - This is required for real go-to-definition, references, and rename.

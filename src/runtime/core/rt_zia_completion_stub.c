@@ -181,6 +181,127 @@ RT_WEAK void *rt_zia_toolchain_compile_for_file(rt_string source, rt_string file
     return rt_zia_toolchain_compile(source);
 }
 
+static void zia_stub_map_set_bool(void *map, const char *key_text, int8_t value) {
+    rt_string key = rt_string_from_bytes(key_text, strlen(key_text));
+    rt_map_set_bool(map, key, value);
+    rt_string_unref(key);
+}
+
+static void zia_stub_map_set_str(void *map, const char *key_text, const char *value_text) {
+    rt_string key = rt_string_from_bytes(key_text, strlen(key_text));
+    rt_string value = rt_string_from_bytes(value_text, strlen(value_text));
+    rt_map_set_str(map, key, value);
+    rt_string_unref(value);
+    rt_string_unref(key);
+}
+
+static void zia_stub_map_set_obj(void *map, const char *key_text, void *value) {
+    rt_string key = rt_string_from_bytes(key_text, strlen(key_text));
+    rt_map_set(map, key, value);
+    rt_string_unref(key);
+}
+
+static void *zia_stub_not_found_map(const char *reason) {
+    void *result = rt_map_new();
+    zia_stub_map_set_bool(result, "found", 0);
+    zia_stub_map_set_str(result, "reason", reason);
+    return result;
+}
+
+static void *zia_stub_rename_failure_map(const char *reason) {
+    void *edits = rt_seq_new_owned();
+    void *result = rt_map_new();
+    zia_stub_map_set_bool(result, "success", 0);
+    zia_stub_map_set_str(result, "reason", reason);
+    zia_stub_map_set_obj(result, "edits", edits);
+    if (edits && rt_obj_release_check0(edits))
+        rt_obj_free(edits);
+    return result;
+}
+
+/// @brief Weak stub: project indexes require fe_zia.
+RT_WEAK void *rt_zia_project_index_new(rt_string root) {
+    (void)root;
+    return NULL;
+}
+
+/// @brief Weak stub: no project index handle is valid without fe_zia.
+RT_WEAK int8_t rt_zia_project_index_is_valid(void *handle) {
+    (void)handle;
+    return 0;
+}
+
+/// @brief Weak stub: cannot update a missing project index.
+RT_WEAK int8_t rt_zia_project_index_update_file(void *handle,
+                                                rt_string file_path,
+                                                rt_string source) {
+    (void)handle;
+    (void)file_path;
+    (void)source;
+    return 0;
+}
+
+/// @brief Weak stub: cannot remove from a missing project index.
+RT_WEAK int8_t rt_zia_project_index_remove_file(void *handle, rt_string file_path) {
+    (void)handle;
+    (void)file_path;
+    return 0;
+}
+
+/// @brief Weak stub: no-op without fe_zia.
+RT_WEAK void rt_zia_project_index_clear(void *handle) {
+    (void)handle;
+}
+
+/// @brief Weak stub: no-op without fe_zia.
+RT_WEAK void rt_zia_project_index_destroy(void *handle) {
+    (void)handle;
+}
+
+/// @brief Weak stub: definition lookup unavailable.
+RT_WEAK void *rt_zia_project_index_definition(void *handle,
+                                              rt_string file_path,
+                                              rt_string source,
+                                              int64_t line,
+                                              int64_t col) {
+    (void)handle;
+    (void)file_path;
+    (void)source;
+    (void)line;
+    (void)col;
+    return zia_stub_not_found_map("unavailable");
+}
+
+/// @brief Weak stub: reference lookup unavailable.
+RT_WEAK void *rt_zia_project_index_references(void *handle,
+                                              rt_string file_path,
+                                              rt_string source,
+                                              int64_t line,
+                                              int64_t col) {
+    (void)handle;
+    (void)file_path;
+    (void)source;
+    (void)line;
+    (void)col;
+    return rt_seq_new_owned();
+}
+
+/// @brief Weak stub: rename unavailable.
+RT_WEAK void *rt_zia_project_index_rename_edits(void *handle,
+                                                rt_string file_path,
+                                                rt_string source,
+                                                int64_t line,
+                                                int64_t col,
+                                                rt_string new_name) {
+    (void)handle;
+    (void)file_path;
+    (void)source;
+    (void)line;
+    (void)col;
+    (void)new_name;
+    return zia_stub_rename_failure_map("unavailable");
+}
+
 /// @brief Weak stub: returns an unavailable hover payload.
 RT_WEAK rt_string rt_zia_hover(rt_string source, int64_t line, int64_t col) {
     (void)source;

@@ -21,13 +21,17 @@
 #include <mutex>
 #include <unordered_map>
 #include <unordered_set>
+#include <utility>
 
 namespace il::frontends::zia {
 
 ImportResolver::ImportResolver(il::support::DiagnosticEngine &diag,
                                il::support::SourceManager &sm,
-                               WarningSuppressions *warningSuppressions)
-    : diag_(diag), sm_(sm), warningSuppressions_(warningSuppressions) {}
+                               WarningSuppressions *warningSuppressions,
+                               std::function<std::optional<std::string>(std::string_view)>
+                                   sourceProvider)
+    : diag_(diag), sm_(sm), warningSuppressions_(warningSuppressions),
+      sourceProvider_(std::move(sourceProvider)) {}
 
 bool ImportResolver::resolve(ModuleDecl &module, const std::string &modulePath) {
     processedFiles_.clear();
@@ -81,7 +85,14 @@ std::unique_ptr<ModuleDecl> ImportResolver::parseFile(const std::string &path,
 
     std::string source;
     bool cacheHit = false;
-    if (canCache) {
+    if (sourceProvider_) {
+        if (auto provided = sourceProvider_(normalized)) {
+            source = std::move(*provided);
+            cacheHit = true;
+        }
+    }
+
+    if (!cacheHit && canCache) {
         std::lock_guard<std::mutex> lock(sourceCacheMutex);
         auto it = sourceCache.find(normalized);
         if (it != sourceCache.end() && it->second.stamp == stamp && it->second.size == fileSize) {

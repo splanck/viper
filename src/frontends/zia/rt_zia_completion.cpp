@@ -17,6 +17,8 @@
 //===----------------------------------------------------------------------===//
 
 #include "frontends/zia/ZiaAnalysis.hpp"
+#include "frontends/zia/Lexer.hpp"
+#include "frontends/zia/Token.hpp"
 #include "frontends/zia/ZiaCompletion.hpp"
 #include "il/io/Serializer.hpp"
 #include "runtime/collections/rt_map.h"
@@ -25,11 +27,16 @@
 #include "runtime/oop/rt_object.h"
 #include "support/source_manager.hpp"
 
+#include <algorithm>
 #include <cctype>
 #include <cstring>
+#include <filesystem>
+#include <optional>
 #include <sstream>
 #include <string>
 #include <string_view>
+#include <unordered_map>
+#include <vector>
 
 using namespace il::frontends::zia;
 
@@ -173,6 +180,525 @@ void *diagnosticsToSeq(const il::support::DiagnosticEngine &diagnostics,
     }
     return seq;
 }
+
+constexpr int64_t kProjectIndexClassId = INT64_C(-0x460101);
+
+struct IndexedSource {
+    std::string path;
+    std::string source;
+};
+
+struct ProjectIndex {
+    explicit ProjectIndex(std::string rootPath) : root(std::move(rootPath)) {}
+
+    std::string root;
+    std::unordered_map<std::string, IndexedSource> sources;
+};
+
+struct ProjectIndexHandle {
+    ProjectIndex *index{nullptr};
+};
+
+struct IdentifierToken {
+    std::string text;
+    il::support::SourceLoc loc{};
+    uint32_t endColumn{0};
+};
+
+struct SymbolKey {
+    bool valid{false};
+    std::string semanticName;
+    std::string displayName;
+    std::string kind;
+    std::string typeDisplay;
+    std::string ownerType;
+    std::string file;
+    uint32_t line{0};
+    uint32_t column{0};
+};
+
+struct SymbolRange {
+    bool valid{false};
+    std::string file;
+    uint32_t line{0};
+    uint32_t column{0};
+    uint32_t endLine{0};
+    uint32_t endColumn{0};
+};
+
+std::string normalizeProjectRoot(std::string root) {
+    if (root.empty())
+        root = ".";
+    if (root == "<editor>")
+        return root;
+    std::error_code ec;
+    std::filesystem::path path(root);
+    path = std::filesystem::absolute(path, ec);
+    if (ec)
+        path = std::filesystem::path(root);
+    return path.lexically_normal().string();
+}
+
+std::string normalizeProjectPath(const ProjectIndex &index, std::string path) {
+    if (path.empty())
+        return "<editor>";
+    if (path == "<editor>")
+        return path;
+
+    std::filesystem::path fsPath(path);
+    if (fsPath.is_relative() && !index.root.empty() && index.root != "<editor>")
+        fsPath = std::filesystem::path(index.root) / fsPath;
+
+    std::error_code ec;
+    fsPath = std::filesystem::absolute(fsPath, ec);
+    if (ec)
+        fsPath = std::filesystem::path(path);
+    return fsPath.lexically_normal().string();
+}
+
+ProjectIndexHandle *asProjectIndexHandle(void *handle) {
+    if (!rt_obj_is_instance(handle, kProjectIndexClassId, sizeof(ProjectIndexHandle)))
+        return nullptr;
+    return static_cast<ProjectIndexHandle *>(handle);
+}
+
+ProjectIndex *asProjectIndex(void *handle) {
+    ProjectIndexHandle *typed = asProjectIndexHandle(handle);
+    return typed ? typed->index : nullptr;
+}
+
+void projectIndexFinalize(void *obj) {
+    ProjectIndexHandle *handle = asProjectIndexHandle(obj);
+    if (!handle)
+        return;
+    delete handle->index;
+    handle->index = nullptr;
+}
+
+std::string symbolKindName(Symbol::Kind kind) {
+    switch (kind) {
+        case Symbol::Kind::Variable:
+            return "variable";
+        case Symbol::Kind::Parameter:
+            return "parameter";
+        case Symbol::Kind::Function:
+            return "function";
+        case Symbol::Kind::Method:
+            return "method";
+        case Symbol::Kind::Field:
+            return "field";
+        case Symbol::Kind::Type:
+            return "type";
+        case Symbol::Kind::Module:
+            return "module";
+    }
+    return "symbol";
+}
+
+std::string baseSymbolName(std::string_view name) {
+    size_t pos = name.rfind('.');
+    if (pos == std::string_view::npos)
+        return std::string(name);
+    return std::string(name.substr(pos + 1));
+}
+
+std::vector<IdentifierToken> lexIdentifierTokens(const std::string &source, uint32_t fileId) {
+    il::support::DiagnosticEngine diagnostics;
+    Lexer lexer(source, fileId, diagnostics);
+
+    std::vector<IdentifierToken> result;
+    while (true) {
+        Token token = lexer.next();
+        if (token.kind == TokenKind::Eof)
+            break;
+        if (token.kind != TokenKind::Identifier)
+            continue;
+        IdentifierToken ident;
+        ident.text = token.text;
+        ident.loc = token.loc;
+        ident.endColumn = token.loc.column + static_cast<uint32_t>(token.text.size());
+        result.push_back(std::move(ident));
+    }
+    return result;
+}
+
+std::optional<IdentifierToken> tokenAtPosition(const std::string &source,
+                                               uint32_t fileId,
+                                               int64_t line,
+                                               int64_t col) {
+    if (line <= 0 || col < 0)
+        return std::nullopt;
+    const uint32_t targetLine = static_cast<uint32_t>(line);
+    const uint32_t targetColumn = static_cast<uint32_t>(col + 1);
+    for (const auto &token : lexIdentifierTokens(source, fileId)) {
+        if (token.loc.line != targetLine)
+            continue;
+        if (targetColumn < token.loc.column || targetColumn > token.endColumn)
+            continue;
+        return token;
+    }
+    return std::nullopt;
+}
+
+il::support::SourceLoc symbolDefinitionLoc(const Symbol &symbol,
+                                           const il::support::SourceLoc &fallback) {
+    if (fallback.isValid())
+        return fallback;
+    if (symbol.loc.isValid())
+        return symbol.loc;
+    if (symbol.decl && symbol.decl->loc.isValid())
+        return symbol.decl->loc;
+    return {};
+}
+
+SymbolKey keyForSymbol(const Symbol &symbol,
+                       const il::support::SourceLoc &fallbackLoc,
+                       std::string_view ownerType,
+                       const il::support::SourceManager &sm,
+                       const std::string &fallbackPath) {
+    il::support::SourceLoc loc = symbolDefinitionLoc(symbol, fallbackLoc);
+    if (!loc.isValid())
+        return {};
+
+    SymbolKey key;
+    key.valid = true;
+    key.semanticName = symbol.name;
+    key.displayName = baseSymbolName(symbol.name);
+    key.kind = symbolKindName(symbol.kind);
+    key.typeDisplay = symbol.type ? symbol.type->toDisplayString() : "";
+    key.ownerType = std::string(ownerType);
+    key.file = pathForLocation(loc, sm, fallbackPath);
+    key.line = loc.line;
+    key.column = loc.column;
+    return key;
+}
+
+bool sameSymbolKey(const SymbolKey &lhs, const SymbolKey &rhs) {
+    return lhs.valid && rhs.valid && lhs.semanticName == rhs.semanticName &&
+           lhs.kind == rhs.kind && lhs.file == rhs.file && lhs.line == rhs.line &&
+           lhs.column == rhs.column;
+}
+
+std::unique_ptr<AnalysisResult> analyzeIndexedSource(ProjectIndex &index,
+                                                     const std::string &path,
+                                                     const std::string &source,
+                                                     il::support::SourceManager &sm) {
+    CompilerInput input{.source = source, .path = path};
+    input.sourceProvider = [&index](std::string_view normalizedPath)
+        -> std::optional<std::string> {
+        auto it = index.sources.find(std::string(normalizedPath));
+        if (it == index.sources.end())
+            return std::nullopt;
+        return it->second.source;
+    };
+    CompilerOptions opts{};
+    return parseAndAnalyze(input, opts, sm);
+}
+
+std::optional<SymbolKey> findGlobalSymbolKey(const AnalysisResult &analysis,
+                                             const IdentifierToken &token,
+                                             const il::support::SourceManager &sm,
+                                             const std::string &fallbackPath) {
+    std::optional<SymbolKey> importedCandidate;
+    for (const auto &symbol : analysis.sema->getGlobalSymbols()) {
+        if (symbol.name != token.text && baseSymbolName(symbol.name) != token.text)
+            continue;
+        SymbolKey key = keyForSymbol(symbol, {}, "", sm, fallbackPath);
+        if (!key.valid)
+            continue;
+        if (symbolDefinitionLoc(symbol, {}).file_id == analysis.fileId)
+            return key;
+        if (!importedCandidate)
+            importedCandidate = std::move(key);
+    }
+    return importedCandidate;
+}
+
+std::optional<SymbolKey> resolveToken(ProjectIndex &index,
+                                      const std::string &path,
+                                      const std::string &source,
+                                      const IdentifierToken &token) {
+    il::support::SourceManager sm;
+    auto analysis = analyzeIndexedSource(index, path, source, sm);
+    if (!analysis || !analysis->sema)
+        return std::nullopt;
+
+    const ScopedSymbol *scoped = analysis->sema->findSymbolAtPosition(
+        token.text,
+        analysis->fileId,
+        token.loc.line,
+        token.loc.column);
+    const std::string sourcePath = sourcePathForFile(analysis->fileId, sm, path);
+    if (scoped) {
+        SymbolKey key =
+            keyForSymbol(scoped->symbol, scoped->loc, scoped->ownerType, sm, sourcePath);
+        if (key.valid)
+            return key;
+    }
+    return findGlobalSymbolKey(*analysis, token, sm, sourcePath);
+}
+
+std::optional<SymbolKey> resolveAtPosition(ProjectIndex &index,
+                                           const std::string &path,
+                                           const std::string &source,
+                                           int64_t line,
+                                           int64_t col) {
+    il::support::SourceManager sm;
+    auto analysis = analyzeIndexedSource(index, path, source, sm);
+    if (!analysis || !analysis->sema)
+        return std::nullopt;
+
+    auto token = tokenAtPosition(source, analysis->fileId, line, col);
+    if (!token)
+        return std::nullopt;
+
+    const ScopedSymbol *scoped = analysis->sema->findSymbolAtPosition(
+        token->text,
+        analysis->fileId,
+        token->loc.line,
+        token->loc.column);
+    const std::string sourcePath = sourcePathForFile(analysis->fileId, sm, path);
+    if (scoped) {
+        SymbolKey key =
+            keyForSymbol(scoped->symbol, scoped->loc, scoped->ownerType, sm, sourcePath);
+        if (key.valid)
+            return key;
+    }
+    return findGlobalSymbolKey(*analysis, *token, sm, sourcePath);
+}
+
+SymbolRange definitionRangeForKey(const ProjectIndex &index, const SymbolKey &key) {
+    if (!key.valid)
+        return {};
+
+    SymbolRange range;
+    range.valid = true;
+    range.file = key.file;
+    range.line = key.line;
+    range.column = key.column;
+    range.endLine = key.line;
+    range.endColumn = key.column + static_cast<uint32_t>(key.displayName.size());
+
+    auto sourceIt = index.sources.find(key.file);
+    if (sourceIt == index.sources.end())
+        return range;
+
+    il::support::SourceManager sm;
+    uint32_t fileId = sm.addFile(key.file);
+    sm.setSource(fileId, sourceIt->second.source);
+    for (const auto &token : lexIdentifierTokens(sourceIt->second.source, fileId)) {
+        if (token.loc.line != key.line)
+            continue;
+        if (token.text != key.displayName)
+            continue;
+        if (token.loc.column < key.column)
+            continue;
+        range.column = token.loc.column;
+        range.endColumn = token.endColumn;
+        return range;
+    }
+
+    for (const auto &token : lexIdentifierTokens(sourceIt->second.source, fileId)) {
+        if (token.loc.line != key.line)
+            continue;
+        if (token.text != key.displayName)
+            continue;
+        range.column = token.loc.column;
+        range.endColumn = token.endColumn;
+        return range;
+    }
+    return range;
+}
+
+void *notFoundMap(std::string_view reason) {
+    void *map = rt_map_new();
+    mapSetBool(map, "found", false);
+    mapSetStr(map, "reason", reason);
+    return map;
+}
+
+void setRangeFields(void *map, const SymbolRange &range) {
+    mapSetStr(map, "file", range.file);
+    mapSetInt(map, "line", range.line);
+    mapSetInt(map, "column", range.column);
+    mapSetInt(map, "endLine", range.endLine);
+    mapSetInt(map, "endColumn", range.endColumn);
+    mapSetInt(map, "editorLine", range.line > 0 ? range.line - 1 : 0);
+    mapSetInt(map, "editorColumn", range.column > 0 ? range.column - 1 : 0);
+    mapSetInt(map, "editorEndLine", range.endLine > 0 ? range.endLine - 1 : 0);
+    mapSetInt(map, "editorEndColumn", range.endColumn > 0 ? range.endColumn - 1 : 0);
+}
+
+void *definitionMapForKey(const ProjectIndex &index, const SymbolKey &key) {
+    SymbolRange range = definitionRangeForKey(index, key);
+    if (!range.valid)
+        return notFoundMap("not_found");
+
+    void *map = rt_map_new();
+    mapSetBool(map, "found", true);
+    setRangeFields(map, range);
+    mapSetStr(map, "name", key.displayName);
+    mapSetStr(map, "semanticName", key.semanticName);
+    mapSetStr(map, "kind", key.kind);
+    mapSetStr(map, "type", key.typeDisplay);
+    mapSetStr(map, "ownerType", key.ownerType);
+    return map;
+}
+
+void *referenceMapForToken(const IdentifierToken &token,
+                           const std::string &path,
+                           const SymbolRange &definitionRange,
+                           const SymbolKey &key) {
+    void *map = rt_map_new();
+    mapSetStr(map, "file", path);
+    mapSetInt(map, "line", token.loc.line);
+    mapSetInt(map, "column", token.loc.column);
+    mapSetInt(map, "endLine", token.loc.line);
+    mapSetInt(map, "endColumn", token.endColumn);
+    mapSetInt(map, "editorLine", token.loc.line > 0 ? token.loc.line - 1 : 0);
+    mapSetInt(map, "editorColumn", token.loc.column > 0 ? token.loc.column - 1 : 0);
+    mapSetInt(map, "editorEndLine", token.loc.line > 0 ? token.loc.line - 1 : 0);
+    mapSetInt(map, "editorEndColumn", token.endColumn > 0 ? token.endColumn - 1 : 0);
+    mapSetStr(map, "name", key.displayName);
+    mapSetStr(map, "semanticName", key.semanticName);
+    mapSetStr(map, "kind", key.kind);
+    const bool isDefinition = definitionRange.valid && path == definitionRange.file &&
+                              token.loc.line == definitionRange.line &&
+                              token.loc.column == definitionRange.column;
+    mapSetBool(map, "isDefinition", isDefinition);
+    return map;
+}
+
+std::vector<std::string> sortedIndexPaths(const ProjectIndex &index) {
+    std::vector<std::string> paths;
+    paths.reserve(index.sources.size());
+    for (const auto &[path, _] : index.sources)
+        paths.push_back(path);
+    std::sort(paths.begin(), paths.end());
+    return paths;
+}
+
+void *referencesForKey(ProjectIndex &index, const SymbolKey &targetKey) {
+    void *seq = rt_seq_new_owned();
+    if (!targetKey.valid)
+        return seq;
+
+    SymbolRange definitionRange = definitionRangeForKey(index, targetKey);
+    for (const std::string &path : sortedIndexPaths(index)) {
+        auto sourceIt = index.sources.find(path);
+        if (sourceIt == index.sources.end())
+            continue;
+
+        il::support::SourceManager sm;
+        auto analysis = analyzeIndexedSource(index, path, sourceIt->second.source, sm);
+        if (!analysis || !analysis->sema)
+            continue;
+
+        for (const auto &token : lexIdentifierTokens(sourceIt->second.source, analysis->fileId)) {
+            if (token.text != targetKey.displayName)
+                continue;
+
+            const ScopedSymbol *scoped = analysis->sema->findSymbolAtPosition(
+                token.text, analysis->fileId, token.loc.line, token.loc.column);
+            const std::string sourcePath = sourcePathForFile(analysis->fileId, sm, path);
+            std::optional<SymbolKey> refKey;
+            if (scoped) {
+                refKey =
+                    keyForSymbol(scoped->symbol, scoped->loc, scoped->ownerType, sm, sourcePath);
+            } else {
+                refKey = findGlobalSymbolKey(*analysis, token, sm, sourcePath);
+            }
+            if (!refKey || !sameSymbolKey(*refKey, targetKey))
+                continue;
+
+            void *map = referenceMapForToken(token, path, definitionRange, targetKey);
+            rt_seq_push(seq, map);
+            releaseRuntimeObject(map);
+        }
+    }
+    return seq;
+}
+
+bool isIdentifierText(std::string_view text) {
+    if (text.empty())
+        return false;
+    auto isStart = [](char ch) {
+        unsigned char c = static_cast<unsigned char>(ch);
+        return std::isalpha(c) || ch == '_';
+    };
+    auto isContinue = [](char ch) {
+        unsigned char c = static_cast<unsigned char>(ch);
+        return std::isalnum(c) || ch == '_';
+    };
+    if (!isStart(text.front()))
+        return false;
+    for (char ch : text.substr(1)) {
+        if (!isContinue(ch))
+            return false;
+    }
+    return !Lexer::lookupKeyword(std::string(text)).has_value();
+}
+
+bool renameWouldCollide(ProjectIndex &index,
+                        const SymbolKey &targetKey,
+                        void *references,
+                        std::string_view newName) {
+    const int64_t count = rt_seq_len(references);
+    for (int64_t i = 0; i < count; ++i) {
+        void *refMap = rt_seq_get(references, i);
+        rt_string fileKey = toRtString("file");
+        rt_string lineKey = toRtString("line");
+        rt_string columnKey = toRtString("column");
+        rt_string fileValue = rt_map_get_str(refMap, fileKey);
+        int64_t line = rt_map_get_int(refMap, lineKey);
+        int64_t column = rt_map_get_int(refMap, columnKey);
+        std::string path = toStdString(fileValue);
+        rt_string_unref(fileValue);
+        rt_string_unref(columnKey);
+        rt_string_unref(lineKey);
+        rt_string_unref(fileKey);
+
+        auto sourceIt = index.sources.find(path);
+        if (sourceIt == index.sources.end())
+            continue;
+
+        IdentifierToken probe;
+        probe.text = std::string(newName);
+        probe.loc = il::support::SourceLoc{
+            0, static_cast<uint32_t>(line), static_cast<uint32_t>(column)};
+        probe.endColumn = static_cast<uint32_t>(column + newName.size());
+
+        il::support::SourceManager sm;
+        auto analysis = analyzeIndexedSource(index, path, sourceIt->second.source, sm);
+        if (!analysis || !analysis->sema)
+            continue;
+        probe.loc.file_id = analysis->fileId;
+
+        const ScopedSymbol *scoped = analysis->sema->findSymbolAtPosition(
+            probe.text, analysis->fileId, probe.loc.line, probe.loc.column);
+        const std::string sourcePath = sourcePathForFile(analysis->fileId, sm, path);
+        std::optional<SymbolKey> collisionKey;
+        if (scoped)
+            collisionKey =
+                keyForSymbol(scoped->symbol, scoped->loc, scoped->ownerType, sm, sourcePath);
+        else
+            collisionKey = findGlobalSymbolKey(*analysis, probe, sm, sourcePath);
+
+        if (collisionKey && !sameSymbolKey(*collisionKey, targetKey))
+            return true;
+    }
+    return false;
+}
+
+void *renameFailureMap(std::string_view reason) {
+    void *map = rt_map_new();
+    mapSetBool(map, "success", false);
+    mapSetStr(map, "reason", reason);
+    void *edits = rt_seq_new_owned();
+    mapSetObject(map, "edits", edits);
+    releaseRuntimeObject(edits);
+    return map;
+}
 } // namespace
 
 extern "C" {
@@ -184,6 +710,22 @@ rt_string rt_zia_hover_for_file(rt_string source, rt_string file_path, int64_t l
 rt_string rt_zia_symbols_for_file(rt_string source, rt_string file_path);
 void *rt_zia_toolchain_check_for_file(rt_string source, rt_string file_path);
 void *rt_zia_toolchain_compile_for_file(rt_string source, rt_string file_path);
+void *rt_zia_project_index_new(rt_string root);
+int8_t rt_zia_project_index_is_valid(void *handle);
+int8_t rt_zia_project_index_update_file(void *handle, rt_string file_path, rt_string source);
+int8_t rt_zia_project_index_remove_file(void *handle, rt_string file_path);
+void rt_zia_project_index_clear(void *handle);
+void rt_zia_project_index_destroy(void *handle);
+void *rt_zia_project_index_definition(
+    void *handle, rt_string file_path, rt_string source, int64_t line, int64_t col);
+void *rt_zia_project_index_references(
+    void *handle, rt_string file_path, rt_string source, int64_t line, int64_t col);
+void *rt_zia_project_index_rename_edits(void *handle,
+                                        rt_string file_path,
+                                        rt_string source,
+                                        int64_t line,
+                                        int64_t col,
+                                        rt_string new_name);
 
 /// @brief Runtime entry point: code completion at (@p line, @p col) in
 ///        @p source. Returns the serialized completion item list as an
@@ -334,6 +876,166 @@ void *rt_zia_toolchain_compile_for_file(rt_string source, rt_string file_path) {
     mapSetStr(map, "il", ilText);
 
     return map;
+}
+
+// =========================================================================
+// ProjectIndex — project-wide semantic definition/reference/rename queries.
+// =========================================================================
+void *rt_zia_project_index_new(rt_string root) {
+    std::string rootPath = normalizeProjectRoot(toStdString(root));
+    auto *handle = static_cast<ProjectIndexHandle *>(
+        rt_obj_new_i64(kProjectIndexClassId, sizeof(ProjectIndexHandle)));
+    if (!handle)
+        return nullptr;
+    handle->index = new ProjectIndex(std::move(rootPath));
+    rt_obj_set_finalizer(handle, projectIndexFinalize);
+    return handle;
+}
+
+int8_t rt_zia_project_index_is_valid(void *handle) {
+    return asProjectIndex(handle) ? 1 : 0;
+}
+
+int8_t rt_zia_project_index_update_file(void *handle, rt_string file_path, rt_string source) {
+    ProjectIndex *index = asProjectIndex(handle);
+    if (!index)
+        return 0;
+    std::string normalizedPath = normalizeProjectPath(*index, editorPathOrDefault(file_path));
+    index->sources[normalizedPath] = IndexedSource{normalizedPath, toStdString(source)};
+    return 1;
+}
+
+int8_t rt_zia_project_index_remove_file(void *handle, rt_string file_path) {
+    ProjectIndex *index = asProjectIndex(handle);
+    if (!index)
+        return 0;
+    std::string normalizedPath = normalizeProjectPath(*index, editorPathOrDefault(file_path));
+    return index->sources.erase(normalizedPath) != 0 ? 1 : 0;
+}
+
+void rt_zia_project_index_clear(void *handle) {
+    ProjectIndex *index = asProjectIndex(handle);
+    if (!index)
+        return;
+    index->sources.clear();
+}
+
+void rt_zia_project_index_destroy(void *handle) {
+    ProjectIndexHandle *typed = asProjectIndexHandle(handle);
+    if (!typed)
+        return;
+    delete typed->index;
+    typed->index = nullptr;
+}
+
+void *rt_zia_project_index_definition(
+    void *handle, rt_string file_path, rt_string source, int64_t line, int64_t col) {
+    ProjectIndex *index = asProjectIndex(handle);
+    if (!index)
+        return notFoundMap("invalid_index");
+
+    std::string path = normalizeProjectPath(*index, editorPathOrDefault(file_path));
+    std::string sourceStr = toStdString(source);
+    index->sources[path] = IndexedSource{path, sourceStr};
+
+    auto key = resolveAtPosition(*index, path, sourceStr, line, col);
+    if (!key)
+        return notFoundMap("not_found");
+    return definitionMapForKey(*index, *key);
+}
+
+void *rt_zia_project_index_references(
+    void *handle, rt_string file_path, rt_string source, int64_t line, int64_t col) {
+    ProjectIndex *index = asProjectIndex(handle);
+    if (!index)
+        return rt_seq_new_owned();
+
+    std::string path = normalizeProjectPath(*index, editorPathOrDefault(file_path));
+    std::string sourceStr = toStdString(source);
+    index->sources[path] = IndexedSource{path, sourceStr};
+
+    auto key = resolveAtPosition(*index, path, sourceStr, line, col);
+    if (!key)
+        return rt_seq_new_owned();
+    return referencesForKey(*index, *key);
+}
+
+void *rt_zia_project_index_rename_edits(void *handle,
+                                        rt_string file_path,
+                                        rt_string source,
+                                        int64_t line,
+                                        int64_t col,
+                                        rt_string new_name) {
+    ProjectIndex *index = asProjectIndex(handle);
+    if (!index)
+        return renameFailureMap("invalid_index");
+
+    const std::string newName = toStdString(new_name);
+    if (!isIdentifierText(newName))
+        return renameFailureMap("invalid_name");
+
+    std::string path = normalizeProjectPath(*index, editorPathOrDefault(file_path));
+    std::string sourceStr = toStdString(source);
+    index->sources[path] = IndexedSource{path, sourceStr};
+
+    auto key = resolveAtPosition(*index, path, sourceStr, line, col);
+    if (!key)
+        return renameFailureMap("not_found");
+
+    void *references = referencesForKey(*index, *key);
+    if (renameWouldCollide(*index, *key, references, newName)) {
+        releaseRuntimeObject(references);
+        return renameFailureMap("collision");
+    }
+
+    void *edits = rt_seq_new_owned();
+    const int64_t count = rt_seq_len(references);
+    for (int64_t i = 0; i < count; ++i) {
+        void *refMap = rt_seq_get(references, i);
+        rt_string fileKey = toRtString("file");
+        rt_string lineKey = toRtString("line");
+        rt_string columnKey = toRtString("column");
+        rt_string endLineKey = toRtString("endLine");
+        rt_string endColumnKey = toRtString("endColumn");
+
+        rt_string fileValue = rt_map_get_str(refMap, fileKey);
+        const int64_t startLine = rt_map_get_int(refMap, lineKey);
+        const int64_t startColumn = rt_map_get_int(refMap, columnKey);
+        const int64_t endLine = rt_map_get_int(refMap, endLineKey);
+        const int64_t endColumn = rt_map_get_int(refMap, endColumnKey);
+
+        void *edit = rt_map_new();
+        mapSetStr(edit, "file", toStdString(fileValue));
+        mapSetInt(edit, "startLine", startLine);
+        mapSetInt(edit, "startColumn", startColumn);
+        mapSetInt(edit, "endLine", endLine);
+        mapSetInt(edit, "endColumn", endColumn);
+        mapSetInt(edit, "editorStartLine", startLine > 0 ? startLine - 1 : 0);
+        mapSetInt(edit, "editorStartColumn", startColumn > 0 ? startColumn - 1 : 0);
+        mapSetInt(edit, "editorEndLine", endLine > 0 ? endLine - 1 : 0);
+        mapSetInt(edit, "editorEndColumn", endColumn > 0 ? endColumn - 1 : 0);
+        mapSetStr(edit, "newText", newName);
+        rt_seq_push(edits, edit);
+        releaseRuntimeObject(edit);
+
+        rt_string_unref(fileValue);
+        rt_string_unref(endColumnKey);
+        rt_string_unref(endLineKey);
+        rt_string_unref(columnKey);
+        rt_string_unref(lineKey);
+        rt_string_unref(fileKey);
+    }
+
+    void *result = rt_map_new();
+    mapSetBool(result, "success", true);
+    mapSetStr(result, "reason", "");
+    mapSetStr(result, "name", key->displayName);
+    mapSetStr(result, "newName", newName);
+    mapSetObject(result, "references", references);
+    mapSetObject(result, "edits", edits);
+    releaseRuntimeObject(edits);
+    releaseRuntimeObject(references);
+    return result;
 }
 
 // =========================================================================

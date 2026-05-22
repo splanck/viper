@@ -48,9 +48,12 @@
 #include "frontends/zia/WarningSuppressions.hpp"
 #include "support/diagnostics.hpp"
 #include "support/source_manager.hpp"
+#include <functional>
 #include <memory>
+#include <optional>
 #include <set>
 #include <string>
+#include <string_view>
 #include <unordered_map>
 #include <vector>
 
@@ -75,7 +78,9 @@ class ImportResolver {
     ///             available for error reporting and source location mapping.
     ImportResolver(il::support::DiagnosticEngine &diag,
                    il::support::SourceManager &sm,
-                   WarningSuppressions *warningSuppressions = nullptr);
+                   WarningSuppressions *warningSuppressions = nullptr,
+                   std::function<std::optional<std::string>(std::string_view)> sourceProvider =
+                       {});
 
     /// @brief Resolve all imports for @p module.
     /// @details Scans the module's declaration list for import statements, resolves
@@ -164,6 +169,9 @@ class ImportResolver {
 
     /// @brief Optional warning suppression accumulator for imported files.
     WarningSuppressions *warningSuppressions_{nullptr};
+
+    /// @brief Optional dirty-buffer provider used by IDE project indexes.
+    std::function<std::optional<std::string>(std::string_view)> sourceProvider_{};
 
     /// @brief Set of fully-processed file paths (normalized).
     /// @details Files in this set have been completely parsed and their declarations

@@ -13,6 +13,7 @@ last-verified: 2026-05-22
 ## Contents
 
 - [Viper.Zia.Toolchain](#viperziatoolchain)
+- [Viper.Zia.ProjectIndex](#viperziaprojectindex)
 
 ---
 
@@ -92,6 +93,124 @@ func start() {
 - Use `CheckForFile` and `CompileForFile` from editors so relative `bind` paths resolve against the active document.
 - The legacy `Viper.Zia.Completion.CheckForFile` API still returns tab-delimited text for compatibility. New IDE surfaces should consume `Viper.Zia.Toolchain` instead.
 - The weak runtime stub returns empty diagnostics and a failed compile result when `fe_zia` is not linked. Native IDE builds must force-load `fe_zia` to get real compiler services.
+
+---
+
+## Viper.Zia.ProjectIndex
+
+Project-wide semantic navigation for Zia source buffers. The index stores
+editor-supplied source text, including unsaved dirty buffers, and uses that text
+when resolving `bind` imports.
+
+**Type:** Static utility class returning an opaque `ProjectIndex.Handle`
+
+### Methods
+
+| Method | Signature | Description |
+|--------|-----------|-------------|
+| `New` | `Object(String)` | Create a project index rooted at the supplied project directory. |
+| `IsValid` | `Boolean(Object)` | Return true when the handle still owns a native index. |
+| `UpdateFile` | `Boolean(Object, String, String)` | Store current source text for a file path. This may be unsaved editor text. |
+| `RemoveFile` | `Boolean(Object, String)` | Remove one file from the index. |
+| `Clear` | `Void(Object)` | Remove every indexed file. |
+| `Destroy` | `Void(Object)` | Dispose the native index payload. The handle becomes inert. |
+| `Definition` | `Object(Object, String, String, Integer, Integer)` | Return a definition map for the identifier at `line`, `col`. |
+| `References` | `Object(Object, String, String, Integer, Integer)` | Return a `Seq` of semantic reference maps. |
+| `RenameEdits` | `Object(Object, String, String, Integer, Integer, String)` | Return workspace edits for a semantic rename without changing files. |
+
+`Definition`, `References`, and `RenameEdits` also update the queried file with
+the supplied source text before analysis. Cursor `line` is 1-based and cursor
+`col` is 0-based, matching the existing completion APIs.
+
+### Definition Map
+
+`Definition` returns a `Viper.Collections.Map`.
+
+| Key | Type | Description |
+|-----|------|-------------|
+| `found` | Boolean | True when a semantic definition was found. |
+| `reason` | String | Present for misses such as `not_found` or `invalid_index`. |
+| `file` | String | Normalized source path for the definition. |
+| `line` | Integer | 1-based definition start line. |
+| `column` | Integer | 1-based definition start column. |
+| `endLine` | Integer | 1-based definition end line. |
+| `endColumn` | Integer | 1-based exclusive definition end column. |
+| `editorLine` | Integer | 0-based start line for `CodeEditor`. |
+| `editorColumn` | Integer | 0-based start column for `CodeEditor`. |
+| `editorEndLine` | Integer | 0-based end line for `CodeEditor`. |
+| `editorEndColumn` | Integer | 0-based exclusive end column for `CodeEditor`. |
+| `name` | String | Source-visible symbol name. |
+| `semanticName` | String | Internal semantic name used for comparison. |
+| `kind` | String | `variable`, `parameter`, `function`, `method`, `field`, `type`, or `module`. |
+| `type` | String | Display type when known. |
+| `ownerType` | String | Enclosing type for members when known. |
+
+### Reference Map
+
+`References` returns a `Seq` of maps with:
+
+| Key | Type | Description |
+|-----|------|-------------|
+| `file` | String | Normalized source path containing the reference. |
+| `line` / `column` | Integer | 1-based reference start. |
+| `endLine` / `endColumn` | Integer | 1-based exclusive reference end. |
+| `editorLine` / `editorColumn` | Integer | 0-based reference start for editor operations. |
+| `editorEndLine` / `editorEndColumn` | Integer | 0-based exclusive reference end for editor operations. |
+| `name` | String | Source-visible symbol name. |
+| `semanticName` | String | Internal semantic name. |
+| `kind` | String | Symbol kind. |
+| `isDefinition` | Boolean | True when the reference is the declaration token. |
+
+Reference lookup is semantic, not string search: it resolves identifiers through
+the Zia analyzer, ignores comments and string literals, and separates shadowed
+locals from globals/imports.
+
+### Rename Result Map
+
+`RenameEdits` returns a `Viper.Collections.Map`.
+
+| Key | Type | Description |
+|-----|------|-------------|
+| `success` | Boolean | True when edits were produced. |
+| `reason` | String | Empty on success; otherwise `invalid_index`, `invalid_name`, `not_found`, or `collision`. |
+| `name` | String | Original source-visible name on success. |
+| `newName` | String | Requested replacement on success. |
+| `references` | Object | `Seq` of reference maps used to build the edit set. |
+| `edits` | Object | `Seq` of workspace edit maps. |
+
+Each edit map contains `file`, `startLine`, `startColumn`, `endLine`,
+`endColumn`, `editorStartLine`, `editorStartColumn`, `editorEndLine`,
+`editorEndColumn`, and `newText`. Rename only returns edits; callers must apply
+them to editor buffers or files themselves.
+
+### ProjectIndex Example
+
+```rust
+module ProjectIndexDemo;
+
+bind Viper.Zia.ProjectIndex as ProjectIndex;
+bind Viper.Collections.Map as Map;
+bind Viper.Terminal as Terminal;
+
+func start() {
+    var index = ProjectIndex.New(".");
+    var source = "module Demo;\nfunc start() { var answer = 42; answer; }\n";
+    ProjectIndex.UpdateFile(index, "demo.zia", source);
+
+    var definition = ProjectIndex.Definition(index, "demo.zia", source, 2, 37);
+    if Map.GetBool(definition, "found") {
+        Terminal.Say(Map.GetStr(definition, "file") + ":" + Map.GetInt(definition, "line"));
+    }
+
+    ProjectIndex.Destroy(index);
+}
+```
+
+### Notes
+
+- Always call `UpdateFile` when a buffer changes. Query calls also accept current source to cover the active dirty buffer.
+- Add all open project files to the index for best reference and rename results. Files absent from the index can still be resolved from disk through normal `bind` loading, but they are not scanned for references.
+- Native IDE builds must link `fe_zia`; the weak runtime stub returns an invalid handle and empty results.
 
 ---
 

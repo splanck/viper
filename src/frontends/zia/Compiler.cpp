@@ -178,7 +178,8 @@ CompilerResult compile(const CompilerInput &input,
     debugTime("Phase 2.5: Import resolution");
     // Phase 2.5: Process binds (load and merge bound files)
     if (!module->binds.empty()) {
-        ImportResolver resolver(result.diagnostics, sm, &sema.warningSuppressions());
+        ImportResolver resolver(
+            result.diagnostics, sm, &sema.warningSuppressions(), input.sourceProvider);
         if (!resolver.resolve(*module, std::string(input.path))) {
             // Import processing failed
             return result;
@@ -374,7 +375,8 @@ std::unique_ptr<AnalysisResult> parseAndAnalyze(const CompilerInput &input,
     // Phase 2.5: Import resolution (best-effort).
     // Failures are accumulated in diagnostics but do not abort analysis.
     if (!result->ast->binds.empty()) {
-        ImportResolver resolver(result->diagnostics, sm, &result->sema->warningSuppressions());
+        ImportResolver resolver(
+            result->diagnostics, sm, &result->sema->warningSuppressions(), input.sourceProvider);
         resolver.resolve(*result->ast, std::string(input.path));
     }
 

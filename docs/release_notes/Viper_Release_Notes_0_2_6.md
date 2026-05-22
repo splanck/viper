@@ -8,7 +8,7 @@
 
 ### What this release is about
 
-An alpha-quality hardening cycle, not a feature release. The Zia frontend reached alpha quality, raw pointers were removed from both source languages, the native linker became real enough to consume optimized C++ object input and ship ViperIDE's IntelliSense end-to-end, and a broad runtime correctness/ownership pass landed across memory, threads, crypto, IO, graphics, the bytecode VM, packaging, and toolchain installers. The one additive surface is a targeted set of game-engine helpers (plan 24).
+An alpha-quality hardening cycle, not a feature release. The Zia frontend reached alpha quality, raw pointers were removed from both source languages, the native linker became real enough to consume optimized C++ object input and ship ViperIDE's IntelliSense end-to-end, and a broad runtime correctness/ownership pass landed across memory, threads, crypto, IO, graphics, the bytecode VM, packaging, and toolchain installers. The additive surfaces are a targeted set of game-engine helpers (plan 24) and the first ViperIDE runtime prerequisites — a streaming `Viper.System.Process` API, a structured `Viper.Zia.Toolchain` query surface, and a semantic `Viper.Zia.ProjectIndex`. A late x86-64/linker throughput pass also cut the ViperIDE native x64 build from ~340s to ~35s.
 
 - **Zia frontend → alpha quality.** `defer`; structured `try`/`catch`/`finally`, multi-catch, bare rethrow; `Result[T]` with `?` propagation; weak fields, function references, constrained generics, default interface methods; declaration-order independence; module-scoped name-collision disambiguation.
 - **Pointer-safety gate (the biggest user-visible change).** Zia and BASIC reject raw `Ptr` types and pointer-signature runtime APIs; the `--unsafe-pointers` escape hatch was added then removed — the typed surface is now the only surface.
@@ -20,19 +20,20 @@ An alpha-quality hardening cycle, not a feature release. The Zia frontend reache
 - **Standard-library namespace de-clutter (breaking).** Seven root modules re-home under their documented taxonomy: `Lazy`/`LazySeq` → `Viper.Functional`, `Machine`/`Environment`/`Exec` → `Viper.System`, `Log` → `Viper.Diagnostics`, `Fmt` → `Viper.Text`. No back-compat aliases; `Math`, `String`, `Terminal`, and the intrinsic `Option`/`Result`/`Error` stay at root.
 - **Backends, bytecode VM & Windows HiDPI.** x86-64 cross-block fold liveness + AT&T operand-class validation; AArch64 sub-word transfers, terminator/CFG, def-operand fixes; bytecode-VM two's-complement wrapping arithmetic and checked float→int traps; Windows physical-pixel sizing via `AdjustWindowRectExForDpi` and waitable-timer frame pacing.
 - **GUI correctness audit.** Multi-round audit closing handle-validation, dialog-lifetime, focus-routing, and menubar/context-menu/toolbar/statusbar gaps; every public `Viper.GUI.*` entry routes through `rt_gui_widget_handle_checked`.
-- **Game-engine surface (plan 24, the one additive piece).** New `Viper.Game.UI` widgets, `AnimTimeline` + multi-event `AnimStateMachine`, `Projectile2D`, rotated-texture `Renderer2D` draws, named audio mixer groups, and a `Viper.System.Clipboard` text surface.
+- **Game-engine surface (plan 24).** New `Viper.Game.UI` widgets, `AnimTimeline` + multi-event `AnimStateMachine`, `Projectile2D`, rotated-texture `Renderer2D` draws, named audio mixer groups, and a `Viper.System.Clipboard` text surface.
+- **ViperIDE runtime prerequisites + build throughput.** A streaming `Viper.System.Process` / `Process.Handle` surface, a structured `Viper.Zia.Toolchain` (Check/Compile returning `Seq`/`Map` diagnostic and result records), and `Viper.Zia.ProjectIndex` semantic definition/reference/rename queries move the editor toward a real IDE workflow; an x86-64 codegen and COFF dead-strip rewrite cut the ViperIDE native x64 build from ~340s to ~35s.
 
 ### By the Numbers
 
 | Metric | v0.2.5 | v0.2.6 | Delta |
 |---|---|---|---|
-| Commits | — | 167 | +167 |
-| Source files | 2,996 | 3,036 | +40 |
-| Production SLOC | 552K | 603K | +51K |
-| Test SLOC | 228K | 257K | +29K |
+| Commits | — | 170 | +170 |
+| Source files | 2,996 | 3,038 | +42 |
+| Production SLOC | 552K | 605K | +53K |
+| Test SLOC | 228K | 258K | +30K |
 | Demo SLOC | 188K | 189K | +1K |
 
-Counts via `scripts/count_sloc.sh` (production 603,746 / test 257,134 / demo 189,283 / source files 3,036).
+Counts via `scripts/count_sloc.sh` (production 605,221 / test 257,651 / demo 189,358 / source files 3,038).
 
 ---
 
@@ -87,7 +88,7 @@ Counts via `scripts/count_sloc.sh` (production 603,746 / test 257,134 / demo 189
 
 ### Game runtime
 
-- **Plan-24 additions (the one additive surface).** New `Viper.Game.UI` widgets — TextInput, Table, Modal, Slider, Dropdown, Tooltip — with GC-managed handles; `AnimTimeline` plus multi-event `AnimStateMachine`; `Projectile2D` ballistic helpers; `Renderer2D.DrawTextureRotated`/`DrawTextureRotatedAt`; string-keyed named audio mixer groups (legacy Music/SFX IDs preserved); a `Viper.System.Clipboard` UTF-8 text surface.
+- **Plan-24 additions.** New `Viper.Game.UI` widgets — TextInput, Table, Modal, Slider, Dropdown, Tooltip — with GC-managed handles; `AnimTimeline` plus multi-event `AnimStateMachine`; `Projectile2D` ballistic helpers; `Renderer2D.DrawTextureRotated`/`DrawTextureRotatedAt`; string-keyed named audio mixer groups (legacy Music/SFX IDs preserved); a `Viper.System.Clipboard` UTF-8 text surface.
 - Behavior gravity/patrol/chase/animation, Entity gravity and collision sweeps, Lighting2D glow/fade, Game-UI hit-testing, and ScreenFX shake all saturate at int64 limits instead of wrapping; tilemap raycast DDA checks both side-touched tiles so corner-crossing rays cannot skip solids.
 - `Config`/`LevelData` release input text and parsed JSON roots across every success/failure path; Quadtree, Pathfinder, ButtonGroup, AchievementTracker, and SpriteAnimation receive dedicated class IDs and destroy-time release. Timer one-shot expiry uses an explicit latch; Typewriter reveals by UTF-8 codepoint and completes immediately on empty/NULL text.
 
@@ -102,6 +103,7 @@ Counts via `scripts/count_sloc.sh` (production 603,746 / test 257,134 / demo 189
 
 - AArch64 protection set in `Allocator.cpp` covers both *use* and *def* operands (fixing a class of register-reuse clobbers); `i1`/`i16`/`i32` loads/stores use byte/halfword/word transfer opcodes in both assembly and native-object emission; `cbz`/`cbnz` are treated as real terminators after their register operand is allocated; X29 is no longer allocator-managed callee-saved state.
 - x86-64: cross-block fold-liveness guards on SIB and IMUL→LEA prevent address-strength reductions from erasing virtual registers still consumed in another block; IMUL→LEA refusal under live flags; block-DCE preserves physical registers at exits; AT&T `AsmEmitter` rejects invalid `CALL`/`JMP`/`JCC`/`LEA`/`SETcc`/`MOVZX` operand classes and non-`RCX` shift counts before printing.
+- x86-64 throughput for large native targets: the iterative unordered-set peephole DCE became a single-pass register-liveness sweep, frame-store forwarding is dataflow-driven, consecutive moves fold under suffix liveness and call-clobber masks, and non-debug emission keeps per-function text sections the object writer consumes directly — reusing the encoder's label-offset and size estimates instead of measuring the instruction stream twice (peephole stats now gate behind `VIPER_CODEGEN_STATS`).
 - Bytecode VM: arithmetic uses explicit two's-complement wrapping helpers (add/sub/mul, shifts, local inc/dec) instead of host signed-overflow behaviour; checked float→int conversions raise consistent `InvalidCast`/`Overflow` traps; local indexes, memory pointers, and alloca sizes are validated before host state is touched.
 - Optimizer ownership-effect model gains `ownedOutArgMask` for pointer args that receive owned references, plumbed through `RuntimeOwnership.hpp`; the retain-on-return contract is captured via `returnsOwned` on every collection accessor so optimizer-side defensive retains are eliminated.
 - Structural cleanup across both backends and the Zia/BASIC frontends: the largest hot functions (AArch64 `encodeInstruction` / `materializeValueToVReg` / `lowerFunction` / `lowerTerminators` / `runPeephole` / `scheduleBlock`, the x86-64 pipeline and opcode dispatch, and the heaviest frontend Sema/Lowerer/Parser routines) decompose into named per-family / per-phase helpers; three duplicate dominator implementations unify into one shared bit-vector pass; the AArch64 binary-encoder dispatch is now table-driven over the homogeneous opcode families.
@@ -116,6 +118,7 @@ Counts via `scripts/count_sloc.sh` (production 603,746 / test 257,134 / demo 189
 - Section identity is preserved across reader-to-writer copies via shared `CodeSection` aliases so multi-section COFF and ELF writers resolve section-offset relocations even when sections are passed by value; AArch64 reloc decoding is shared between the Mach-O reader and the binary encoder so load/store page-offset relocations agree across paths.
 - A round of targeted P1 fixes across the linker: Mach-O TLV descriptor validation, ADDR32NB RVAs sourced from `LinkLayout::imageBase`, Mach-O `n_sect` out-of-range hard error, `BranchTrampoline` out-of-bounds detection, `DynStubGen` GOT slots namespaced under `.got.viper_stubs`, and ICF arch detection that skips rather than misclassifies unknown machine codes.
 - ELF emits `PT_TLS` for TLS segments; TLS and `.bss`/`.tbss` use logical memory sizes without serializing zero-fill bytes. Mach-O `MH_SUBSECTIONS_VIA_SYMBOLS` splits `__TEXT,__text` per atom and merges same-named ObjC metadata from reader-created and linker-synthetic inputs. PE writer narrows through `checkedU32`/`checkedRva` overflow-checked helpers; dead-strip preserves EH / unwind and `.debug*` roots.
+- Dead-strip now scales with the relocation graph rather than the section count: `DeadStripPass` indexes associative-COMDAT children and reverse Windows unwind maps (code → `.pdata`/`.xdata`) once per object instead of rescanning every sibling section per live function, which is what made the ViperIDE x64 link unbounded. `SymbolResolver` is driven from newly discovered undefined symbols, and COMDAT content hashing is skipped unless an `ExactMatch` duplicate actually needs byte-and-relocation identity (`VIPER_LINKER_STATS` gates per-stage timing).
 
 ### Standard-library namespace de-clutter
 
@@ -134,7 +137,10 @@ Counts via `scripts/count_sloc.sh` (production 603,746 / test 257,134 / demo 189
 - The `zia` binary force-loads `fe_zia` (`-force_load` on macOS, `--whole-archive` on Linux) so IntelliSense / hover / diagnostics / symbols are no longer satisfied by the weak stubs in `rt_zia_completion_stub.c`. A new `rt_zia_highlight.cpp` bridge exposes `rt_zia_is_keyword`; the GUI tokenizer reads the live 52-keyword set from `Lexer::lookupKeyword`.
 - The `rt_zia_*` completion bridge and its `ZiaCompletion.cpp` public query surface were broadened so the editor can ask the live semantic engine for symbol lookups, kind/signature metadata, and dotted-path completions. Matching weak-stub parity and `RuntimeSurfacePolicy.inc` registration ensure the frontend resolves the surface the IDE calls.
 - A text-input enable path and broadened keyboard handling landed in the input runtime (`rt_input.c`, `rt_gui_app.c`, `rt_gui.h`) so the editor receives text-entry events distinct from raw key events; the editor wires text input on setup and clamps diagnostic highlight columns to a valid 1-based span.
-- Editor surface: `codeeditor_max_scroll_y` uses half-viewport `scrollBeyondLastLine` padding; mouse-wheel drops to 0.3 lines per delta on macOS trackpads; toolbar uses BMP-only Geometric Shapes / Arrows glyphs. Untitled and welcome buffers begin with `module UntitledN;` / `module Welcome;` so the completion engine parses them on the first keystroke.
+- Editor surface: `codeeditor_max_scroll_y` uses half-viewport `scrollBeyondLastLine` padding; mouse-wheel drops to 0.3 lines per delta on macOS trackpads; toolbar uses BMP-only Geometric Shapes / Arrows glyphs. Untitled and welcome buffers begin with `module UntitledN;` / `module Welcome;` so the completion engine parses them on the first keystroke. CodeEditor state APIs were exposed so commands can read and drive editor selection/scroll.
+- New `Viper.System.Process` / `Process.Handle` streaming surface: args-based startup with cwd/env, non-blocking stdout/stderr reads, poll, running-state and exit-code queries, kill, wait, destroy, and GC finalization. `Viper.System.Exec` now accepts boxed Zia/Object-ABI strings in its argument sequence rather than only raw C strings.
+- New `Viper.Zia.Toolchain` (`Check`/`CheckForFile`/`Compile`/`CompileForFile`) returns structured `Seq`/`Map` records — diagnostics carry normalized path, start/end location, severity, code, message, stage, and help; compile results carry success, diagnostics, source/output paths, and serialized IL. ViperIDE live diagnostics moved off tab-delimited parsing onto `CheckForFile`, and diagnostic navigation opens the owning file before jumping to the line; weak-stub parity keeps runtime-only links returning shape-compatible empties when `fe_zia` is absent.
+- New `Viper.Zia.ProjectIndex` adds an explicit-lifetime project language index with dirty-buffer import resolution, structured definition/reference results, semantic reference collection that excludes comments/strings and separates shadowed locals/imports/globals, and rename workspace-edit generation with visible-collision detection.
 
 ### Windows, MSVC, and HiDPI
 
@@ -156,17 +162,18 @@ Counts via `scripts/count_sloc.sh` (production 603,746 / test 257,134 / demo 189
 
 - **Memory / GC / MessageBus / Box / Parse** — contract suites for the validated `Memory.*` surface, weak-ref CAS retain and resurrected-cycle finalizers, `Box.ValueType` alignment + tag validation, `rt_trap_string` control-byte escaping, MessageBus payload retain through publish and lock-held CAS traversal, and `Parse.*Option` typed-string ABI with NaN/Inf round-trip.
 - **Collections** — `RTCollectionsCorrectnessTests` for class-ID distinctness, retain-on-return, and owning value snapshots; extended Bytes (negative signed reads), Queue/Stack (`owns_elements` + finalize-while-owning), Seq (slice/keep/reject/apply ownership), and Convert.* suites.
-- **Codegen / bytecode VM** — cross-block SIB and IMUL→LEA fold-liveness MIR cases, `AsmEmitter` operand-class diagnostics for the rejected `CALL`/`JMP`/`JCC`/`LEA`/`SETcc`/`MOVZX` and non-`RCX` shift-count forms, plus direct-bytecode regressions covering wrapping arithmetic, conversion traps, negative alloca, invalid locals, and null memory loads.
-- **Native linker** — coverage for `parseSize`, archive symbol-candidate ordering, `CodeSection` identity, ELF symbol-size preservation, COFF reloc-overflow records and the new addend convention, AArch64 reloc instruction-class validators, COFF weak-external `SEARCH_NOLIBRARY` paths, Mach-O `SIGNED_4` bias, PE 32-bit overflow guards, and branch-trampoline overflow.
+- **Codegen / bytecode VM** — cross-block SIB and IMUL→LEA fold-liveness MIR cases, `AsmEmitter` operand-class diagnostics for the rejected `CALL`/`JMP`/`JCC`/`LEA`/`SETcc`/`MOVZX` and non-`RCX` shift-count forms, x86-64 move-folding / store-forwarding / per-function binary-section pipeline-equivalence cases, plus direct-bytecode regressions covering wrapping arithmetic, conversion traps, negative alloca, invalid locals, and null memory loads.
+- **Native linker** — coverage for `parseSize`, archive symbol-candidate ordering, `CodeSection` identity, ELF symbol-size preservation, COFF reloc-overflow records and the new addend convention, AArch64 reloc instruction-class validators, COFF weak-external `SEARCH_NOLIBRARY` paths, Mach-O `SIGNED_4` bias, PE 32-bit overflow guards, branch-trampoline overflow, and external COFF unwind references with large-unwind-fanout dead-strip.
+- **Process / Zia tooling** — `RTExecTests` cover boxed-string args, streaming stdout/stderr before exit, cwd/env propagation, empty non-blocking reads, termination, and cleanup; the stub and native completion smokes prove structured diagnostics and compile records resolve through the strong `fe_zia` bridge and stay shape-compatible under weak-stub links; ProjectIndex CTests cover two-file definition, shadowed references, rename collision, and dirty-buffer replacement.
 - **Zia alpha hardening** — `42_try_catch_promises`, `43_alpha_hardening`, and `44_language_promises` cover interpreted, optimized `viper run`, and native paths for structured catch bindings, multi-typed catches, bare rethrow, branchy catch/finally, namespace globals, struct interface dispatch, constrained generics, tuple destructuring, `Result[T]`, weak fields, and function references.
 - **Graphics, GUI, crypto, packaging** — alias type identity, texture-region sampler isolation, raw-vs-Color pixel APIs, animation replay/stop; stale tab/menu/context/toolbar/statusbar handles, file-dialog modal-stack removal, app-font inheritance; null-vs-empty string handling, AES-CBC empty plaintext, SAN matching beyond the public extraction cap; PE VERSIONINFO, Windows thumbprint normalisation, ZIP manifest duplicate / uncovered-entry, and the non-elevated `windows_installer_user_smoke` end-to-end.
 
 ---
 
-Demos and docs tracked the runtime work above; stale Windows debug/O0 pins for Chess, XENOSCAPE, and Baseball were removed after optimized x86-64 builds were restored, the XENOSCAPE Windows installer reached parity with the macOS path, and `docs/viperlib/` plus the native-linker / native-assembler design docs were refreshed alongside.
+Demos and docs tracked the runtime work above; stale Windows debug/O0 pins for Chess, XENOSCAPE, and Baseball were removed after optimized x86-64 builds were restored, the XENOSCAPE Windows installer reached parity with the macOS path, the ViperIDE demo moved its live diagnostics onto the structured Zia toolchain surface, and `docs/viperlib/` (including `system.md` and `zia.md` for the Process, toolchain, and ProjectIndex APIs) plus the native-linker / native-assembler design docs were refreshed alongside.
 
 ### Commits
 
-See `git log v0.2.5-dev..HEAD -- .` for the full 167-commit history since v0.2.5.
+See `git log v0.2.5-dev..HEAD -- .` for the full 170-commit history since v0.2.5.
 
 <!-- END DRAFT -->

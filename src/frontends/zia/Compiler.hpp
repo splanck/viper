@@ -77,6 +77,7 @@
 #include "il/core/Module.hpp"
 #include "support/diagnostics.hpp"
 #include "support/source_manager.hpp"
+#include <functional>
 #include <optional>
 #include <string>
 #include <string_view>
@@ -93,6 +94,11 @@ struct CompilerInput {
 
     /// @brief Existing file id within the supplied source manager, if any.
     std::optional<uint32_t> fileId{};
+
+    /// @brief Optional source provider for imported files.
+    /// @details IDE tooling can supply dirty open-buffer text here so bind
+    ///          resolution does not fall back to stale disk contents.
+    std::function<std::optional<std::string>(std::string_view)> sourceProvider{};
 };
 
 /// @brief Aggregated result of compiling Zia source.

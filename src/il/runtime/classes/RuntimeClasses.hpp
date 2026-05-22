@@ -381,6 +381,8 @@ enum class RuntimeTypeId : std::size_t {
     RTCLS_ThreadsChannel,
     RTCLS_ThreadsPool,
     RTCLS_ZiaCompletion,
+    RTCLS_ZiaProjectIndex,
+    RTCLS_ZiaProjectIndexHandle,
     RTCLS_GuiFloatingPanel,
     // Game UI widgets
     RTCLS_Pathfinder,

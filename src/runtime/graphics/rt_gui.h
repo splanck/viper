@@ -2873,6 +2873,40 @@ void *rt_zia_toolchain_compile(rt_string source);
 /// @brief Compile source with a source path and return a structured result map.
 void *rt_zia_toolchain_compile_for_file(rt_string source, rt_string file_path);
 
+/// @brief Create a project language index rooted at @p root.
+void *rt_zia_project_index_new(rt_string root);
+
+/// @brief Check whether @p handle is a live ProjectIndex handle.
+int8_t rt_zia_project_index_is_valid(void *handle);
+
+/// @brief Store dirty/current source for @p file_path in the project index.
+int8_t rt_zia_project_index_update_file(void *handle, rt_string file_path, rt_string source);
+
+/// @brief Remove @p file_path from the project index.
+int8_t rt_zia_project_index_remove_file(void *handle, rt_string file_path);
+
+/// @brief Remove all files from the project index.
+void rt_zia_project_index_clear(void *handle);
+
+/// @brief Dispose the native project index payload. The handle object remains inert.
+void rt_zia_project_index_destroy(void *handle);
+
+/// @brief Return a structured definition map for the identifier at @p line/@p col.
+void *rt_zia_project_index_definition(
+    void *handle, rt_string file_path, rt_string source, int64_t line, int64_t col);
+
+/// @brief Return structured semantic references for the identifier at @p line/@p col.
+void *rt_zia_project_index_references(
+    void *handle, rt_string file_path, rt_string source, int64_t line, int64_t col);
+
+/// @brief Return workspace edits for a semantic rename without applying them.
+void *rt_zia_project_index_rename_edits(void *handle,
+                                        rt_string file_path,
+                                        rt_string source,
+                                        int64_t line,
+                                        int64_t col,
+                                        rt_string new_name);
+
 /// @brief Return hover information for the identifier at the given source position.
 rt_string rt_zia_hover(rt_string source, int64_t line, int64_t col);
 
