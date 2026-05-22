@@ -13,8 +13,9 @@
 // Key invariants:
 //   - Class id constants are permanent ABI; never renumber an existing id.
 //   - Ids are negative sentinels distinct from user/runtime object class ids.
-//   - With RT_G3D_INTERNAL_ASSUME_STRUCT_HANDLE the checks degrade to a
-//     non-NULL test (fast path for trusted internal call sites).
+//   - With RT_G3D_INTERNAL_ASSUME_STRUCT_HANDLE plus the explicit unsafe opt-in
+//     RT_G3D_TRUSTED_STRUCT_HANDLES, checks degrade to a non-NULL test for
+//     trusted internal call sites only.
 //
 // Ownership/Lifetime:
 //   - Header-only; no allocation. Helpers never take ownership of @p obj.
@@ -81,11 +82,16 @@ extern int64_t rt_obj_class_id(void *p);
 #define RT_G3D_VEGETATION3D_CLASS_ID INT64_C(-0x60302E)
 #define RT_G3D_TEXTUREATLAS3D_CLASS_ID INT64_C(-0x60302F)
 
+#if defined(RT_G3D_INTERNAL_ASSUME_STRUCT_HANDLE) && RT_G3D_INTERNAL_ASSUME_STRUCT_HANDLE && \
+    !defined(RT_G3D_TRUSTED_STRUCT_HANDLES)
+#error "RT_G3D_INTERNAL_ASSUME_STRUCT_HANDLE disables public Graphics3D class checks; define RT_G3D_TRUSTED_STRUCT_HANDLES only for private trusted fixtures."
+#endif
+
 /// @brief True if @p obj is a live object of runtime class @p class_id.
 /// @details Under RT_G3D_INTERNAL_ASSUME_STRUCT_HANDLE this only checks for
 ///          non-NULL (trusted-handle fast path).
 static inline int32_t rt_g3d_has_class(void *obj, int64_t class_id) {
-#ifdef RT_G3D_INTERNAL_ASSUME_STRUCT_HANDLE
+#if defined(RT_G3D_INTERNAL_ASSUME_STRUCT_HANDLE) && RT_G3D_INTERNAL_ASSUME_STRUCT_HANDLE
     (void)class_id;
     return obj != NULL;
 #else

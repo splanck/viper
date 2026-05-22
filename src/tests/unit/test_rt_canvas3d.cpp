@@ -567,6 +567,27 @@ static void test_mesh_obj_loader_rejects_invalid_numeric_tokens() {
     PASS();
 }
 
+static void test_mesh_obj_loader_rejects_empty_geometry() {
+    TEST("Mesh3D.FromOBJ — rejects files without faces");
+    const char *path = "/tmp/viper_obj_empty_geometry_test.obj";
+    FILE *f = fopen(path, "w");
+    assert(f);
+    fputs("v 0 0 0\n"
+          "v 1 0 0\n"
+          "v 0 1 0\n",
+          f);
+    fclose(f);
+
+    EXPECT_TRUE(expect_trap_contains(
+                    [path] {
+                        rt_string obj_path = rt_string_from_bytes(path, (int64_t)strlen(path));
+                        rt_mesh3d_from_obj(obj_path);
+                    },
+                    "FromOBJ"),
+                "FromOBJ traps when no triangles were emitted");
+    PASS();
+}
+
 namespace {
 struct BackendEnvGuard {
     bool had_value = false;
@@ -2000,6 +2021,23 @@ static void test_rendertarget_as_pixels_syncs_gpu_color_on_demand() {
     PASS();
 }
 
+static void test_rendertarget_clear_sync_detaches_backend_callback() {
+    TEST("RenderTarget3D clear sync detaches backend callback");
+    rt_rendertarget3d *rt = (rt_rendertarget3d *)rt_rendertarget3d_new_hdr(1, 1);
+    assert(rt != NULL && rt->target != NULL);
+    rt->target->color_dirty = 1;
+    rt->target->hdr_color_valid = 1;
+    rt->target->sync_color = tracked_render_target_sync;
+    rt->target->sync_color_userdata = rt;
+
+    vgfx3d_rendertarget_clear_sync(rt->target);
+    EXPECT_TRUE(rt->target->color_dirty == 0, "clear sync clears dirty color state");
+    EXPECT_TRUE(rt->target->hdr_color_valid == 0, "clear sync clears HDR mirror state");
+    EXPECT_TRUE(rt->target->sync_color == nullptr, "clear sync clears callback");
+    EXPECT_TRUE(rt->target->sync_color_userdata == nullptr, "clear sync clears callback userdata");
+    PASS();
+}
+
 static void test_canvas_screenshot_syncs_render_target_on_demand() {
     TEST("Canvas3D.Screenshot syncs render targets on demand without a window");
     rt_canvas3d canvas;
@@ -3066,6 +3104,7 @@ int main() {
     test_mesh_obj_loader_deduplicates_vertices_and_handles_ngons();
     test_mesh_obj_loader_rejects_invalid_indices();
     test_mesh_obj_loader_rejects_invalid_numeric_tokens();
+    test_mesh_obj_loader_rejects_empty_geometry();
 
     /* Mesh3D — extended */
     test_mesh_many_vertices();
@@ -3164,6 +3203,7 @@ int main() {
     test_rendertarget_as_pixels();
     test_rendertarget_null_safety();
     test_rendertarget_as_pixels_syncs_gpu_color_on_demand();
+    test_rendertarget_clear_sync_detaches_backend_callback();
     test_canvas_screenshot_syncs_render_target_on_demand();
     test_canvas_screenshot_returns_null_when_sync_fails();
     test_canvas_dimensions_follow_active_render_target();

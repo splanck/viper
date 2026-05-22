@@ -39,6 +39,7 @@ extern double rt_vec3_y(void *v);
 extern double rt_vec3_z(void *v);
 
 #define PATH3D_INIT_CAP 16
+#define PATH3D_MAX_LENGTH_STEPS 1000000
 
 typedef struct {
     void *vptr;
@@ -309,8 +310,9 @@ void *rt_path3d_get_direction_at(void *obj, double t) {
 }
 
 /// @brief Compute the total arc length of the path (cached, recomputed when dirty).
-/// @details Numerically integrates distance along the spline using 20 samples
-///          per control point. The result is cached until points are added/removed.
+/// @details Numerically integrates distance along the spline using up to 20 samples
+///          per control point, capped to avoid integer overflow and runaway work.
+///          The result is cached until points are added/removed.
 double rt_path3d_get_length(void *obj) {
     rt_path3d *p = (rt_path3d *)rt_g3d_checked_or_null(obj, RT_G3D_PATH3D_CLASS_ID);
     if (!p)
@@ -320,9 +322,11 @@ double rt_path3d_get_length(void *obj) {
     if (!p->length_dirty)
         return p->cached_length;
 
-    int steps = p->point_count * 20;
+    int64_t steps = (int64_t)p->point_count * 20;
+    if (steps > PATH3D_MAX_LENGTH_STEPS)
+        steps = PATH3D_MAX_LENGTH_STEPS;
     double total = 0.0, prev_x = 0, prev_y = 0, prev_z = 0;
-    for (int i = 0; i <= steps; i++) {
+    for (int64_t i = 0; i <= steps; i++) {
         double t = (double)i / (double)steps;
         void *pt = rt_path3d_get_position_at(obj, t);
         if (!pt)

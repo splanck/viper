@@ -2115,6 +2115,8 @@ static void canvas3d_blit_skybox_cpu_cache(rt_canvas3d *c,
 /// double-free if the GC sweeps the canvas twice during shutdown.
 static void rt_canvas3d_finalize(void *obj) {
     rt_canvas3d *c = (rt_canvas3d *)obj;
+    if (c->backend && c->backend_ctx && c->render_target && c->backend->set_render_target)
+        c->backend->set_render_target(c->backend_ctx, NULL);
     /* Destroy the backend context */
     if (c->backend && c->backend_ctx) {
         c->backend->destroy_ctx(c->backend_ctx);

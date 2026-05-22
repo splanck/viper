@@ -31,6 +31,7 @@
 #include "rt_canvas3d.h"
 #include "rt_canvas3d_internal.h"
 #include "rt_pixels.h"
+#include "rt_pixels_internal.h"
 
 #include <math.h>
 #include <stdint.h>
@@ -110,7 +111,7 @@ static rt_material3d *material_checked(void *obj) {
 
 /// @brief Validate that @p pixels is a live `Viper.Graphics.Pixels` handle.
 static int material_pixels_handle_valid(void *pixels) {
-    return pixels && rt_obj_class_id(pixels) == RT_PIXELS_CLASS_ID;
+    return rt_pixels_checked_impl_or_null(pixels) != NULL;
 }
 
 /// @brief Validate that @p cubemap is a live `Viper.Graphics3D.Cubemap3D` handle.

@@ -1,7 +1,7 @@
 ---
 status: active
 audience: public
-last-verified: 2026-05-07
+last-verified: 2026-05-21
 ---
 
 # 3D Rendering, Animation, and Environment
@@ -45,6 +45,9 @@ This page documents the `Viper.Graphics3D` runtime surface for classes not cover
 | `SmoothFollow(target, speed, minDist, maxDist, height)` | `Void(Object, Double, Double, Double, Double)` | Lerp toward a target with distance clamping |
 | `SmoothLookAt(target, speed, roll)` | `Void(Object, Double, Double)` | Slerp the camera orientation toward a target |
 
+Camera positions and FPS-style movement inputs are clamped to the runtime's safe world range before
+view/projection matrices are generated. Non-finite position components fall back to `0.0`.
+
 ```rust
 bind Viper.Graphics3D.Camera3D as Camera3D;
 bind Viper.Math.Vec3 as Vec3;
@@ -86,6 +89,10 @@ Offscreen color buffer for 3D scenes, optionally in HDR format.
 |--------|-----------|-------------|
 | `NewHdr(width, height)` | `Object(Integer, Integer)` | Create an HDR floating-point render target |
 | `AsPixels()` | `Object()` | Download the color buffer into a `Pixels` object |
+
+GPU-backed render targets synchronize their CPU `Pixels` mirror lazily when `AsPixels()` or a
+screenshot requests it. Resetting a render target or destroying its owning `Canvas3D` detaches the
+backend sync callback, so later CPU readback cannot call into a stale GPU context.
 
 ---
 
@@ -769,6 +776,9 @@ World-space transform (position, rotation quaternion, scale) with matrix output.
 | `SetScale(x, y, z)` | `Void(Double, Double, Double)` | Set scale |
 | `Translate(delta)` | `Void(Object)` | Move by a `Vec3` offset |
 
+Very large Euler angles and incremental rotation angles are reduced before trigonometry runs, and
+the stored quaternion is kept normalized.
+
 ---
 
 ### Viper.Graphics3D.Path3D
@@ -795,6 +805,9 @@ World-space spline path for camera tracks, patrols, or procedural animation.
 | `GetDirectionAt(t)` | `Object(Double)` | Tangent direction `Vec3` at normalized `t` |
 | `Clear()` | `Void()` | Remove all control points |
 
+Length sampling is capped internally, so very large point counts cannot overflow the subdivision step
+calculation.
+
 ---
 
 ### Viper.Graphics3D.InstanceBatch3D
@@ -818,6 +831,9 @@ Efficient GPU-instanced rendering of many copies of the same mesh.
 | `Remove(index)` | `Void(Integer)` | Remove instance at `index` |
 | `Set(index, transform)` | `Void(Integer, Object)` | Replace the transform at `index` |
 | `Clear()` | `Void()` | Remove all instances |
+
+`Add` and `Set` require a valid runtime `Mat4` object with a complete matrix payload; foreign or
+undersized objects are ignored.
 
 ---
 

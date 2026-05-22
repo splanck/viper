@@ -106,6 +106,10 @@ extern "C" int64_t rt_obj_class_id(void *) {
     return RT_G3D_PARTICLES3D_CLASS_ID;
 }
 
+extern "C" int8_t rt_obj_is_instance(void *obj, int64_t class_id, size_t) {
+    return obj && rt_obj_class_id(obj) == class_id;
+}
+
 extern "C" int8_t rt_heap_is_payload(void *) {
     return 0;
 }

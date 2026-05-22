@@ -299,6 +299,13 @@ static int world3d_reserve_exit_events(rt_world3d *w, int32_t needed) {
     return world3d_reserve_contact_array(&w->exit_events, &w->exit_event_capacity, needed);
 }
 
+static int world3d_checked_increment(int32_t value, int32_t *out) {
+    if (!out || value == INT32_MAX)
+        return 0;
+    *out = value + 1;
+    return 1;
+}
+
 /// @brief Grow the joint table — the one reserve helper that has to allocate two
 ///        parallel arrays atomically (joint pointers + joint type tags).
 /// @details The two new arrays are allocated before the world is mutated. On failure,
@@ -2591,7 +2598,9 @@ static int world3d_process_collision_pair(rt_world3d *w, rt_body3d *a, rt_body3d
     if (!test_collision(a, b, normal, &depth, point, &leaf_a, &leaf_b))
         return 1;
 
-    if (!world3d_reserve_contacts(w, w->contact_count + 1)) {
+    int32_t next_contact_count;
+    if (!world3d_checked_increment(w->contact_count, &next_contact_count) ||
+        !world3d_reserve_contacts(w, next_contact_count)) {
         rt_trap("Physics3D.World.Step: contact allocation failed");
         return 0;
     }
@@ -2789,16 +2798,24 @@ static void *physics_hit_list3d_new(const rt_query_hit3d *hits, int32_t count) {
         return NULL;
     }
     memset(list, 0, sizeof(*list));
+    rt_obj_set_finalizer(list, physics_hit_list3d_finalizer);
     list->items = (void **)calloc((size_t)count, sizeof(void *));
     if (!list->items) {
+        if (rt_obj_release_check0(list))
+            rt_obj_free(list);
         rt_trap("PhysicsHitList3D: allocation failed");
         return NULL;
     }
     list->count = count;
     for (int32_t i = 0; i < count; ++i) {
         list->items[i] = physics_hit3d_new(&hits[i]);
+        if (!list->items[i]) {
+            if (rt_obj_release_check0(list))
+                rt_obj_free(list);
+            rt_trap("PhysicsHitList3D: allocation failed");
+            return NULL;
+        }
     }
-    rt_obj_set_finalizer(list, physics_hit_list3d_finalizer);
     return list;
 }
 
@@ -2885,13 +2902,17 @@ static void world3d_build_event_buffers(rt_world3d *w) {
             }
         }
         if (found) {
-            if (!world3d_reserve_stay_events(w, w->stay_event_count + 1)) {
+            int32_t next_stay_count;
+            if (!world3d_checked_increment(w->stay_event_count, &next_stay_count) ||
+                !world3d_reserve_stay_events(w, next_stay_count)) {
                 rt_trap("Physics3D.World.Step: stay-event allocation failed");
                 return;
             }
             contact_snapshot_copy(&w->stay_events[w->stay_event_count++], &w->contacts[i]);
         } else {
-            if (!world3d_reserve_enter_events(w, w->enter_event_count + 1)) {
+            int32_t next_enter_count;
+            if (!world3d_checked_increment(w->enter_event_count, &next_enter_count) ||
+                !world3d_reserve_enter_events(w, next_enter_count)) {
                 rt_trap("Physics3D.World.Step: enter-event allocation failed");
                 return;
             }
@@ -2908,7 +2929,9 @@ static void world3d_build_event_buffers(rt_world3d *w) {
             }
         }
         if (!found) {
-            if (!world3d_reserve_exit_events(w, w->exit_event_count + 1)) {
+            int32_t next_exit_count;
+            if (!world3d_checked_increment(w->exit_event_count, &next_exit_count) ||
+                !world3d_reserve_exit_events(w, next_exit_count)) {
                 rt_trap("Physics3D.World.Step: exit-event allocation failed");
                 return;
             }

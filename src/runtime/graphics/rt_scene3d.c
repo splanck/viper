@@ -1397,9 +1397,18 @@ static void scene_node_apply_root_motion(rt_scene_node3d *node) {
         scene3d_release_ref(&delta_rot);
         return;
     }
-    node->position[0] += rt_vec3_x(delta);
-    node->position[1] += rt_vec3_y(delta);
-    node->position[2] += rt_vec3_z(delta);
+    node->position[0] = scene3d_clamp_abs_or(
+        scene3d_clamp_abs_or(node->position[0], 0.0) +
+            scene3d_clamp_abs_or(rt_vec3_x(delta), 0.0),
+        0.0);
+    node->position[1] = scene3d_clamp_abs_or(
+        scene3d_clamp_abs_or(node->position[1], 0.0) +
+            scene3d_clamp_abs_or(rt_vec3_y(delta), 0.0),
+        0.0);
+    node->position[2] = scene3d_clamp_abs_or(
+        scene3d_clamp_abs_or(node->position[2], 0.0) +
+            scene3d_clamp_abs_or(rt_vec3_z(delta), 0.0),
+        0.0);
     if (delta_rot) {
         node_rot =
             rt_quat_new(node->rotation[0], node->rotation[1], node->rotation[2], node->rotation[3]);
@@ -2215,12 +2224,22 @@ void rt_scene_node3d_add_child(void *obj, void *child_obj) {
 
     /* Grow children array if needed */
     if (parent->child_count >= parent->child_capacity) {
-        int32_t new_cap =
-            parent->child_capacity == 0 ? NODE_INIT_CHILDREN : parent->child_capacity * 2;
+        int32_t new_cap;
+        if (parent->child_capacity < 0 || parent->child_capacity > INT32_MAX / 2) {
+            rt_trap("SceneNode3D.AddChild: too many children");
+            return;
+        }
+        new_cap = parent->child_capacity == 0 ? NODE_INIT_CHILDREN : parent->child_capacity * 2;
+        if ((size_t)new_cap > SIZE_MAX / sizeof(rt_scene_node3d *)) {
+            rt_trap("SceneNode3D.AddChild: too many children");
+            return;
+        }
         rt_scene_node3d **nc = (rt_scene_node3d **)realloc(
             parent->children, (size_t)new_cap * sizeof(rt_scene_node3d *));
-        if (!nc)
+        if (!nc) {
+            rt_trap("SceneNode3D.AddChild: allocation failed");
             return;
+        }
         parent->children = nc;
         parent->child_capacity = new_cap;
     }
@@ -2533,11 +2552,18 @@ void rt_scene_node3d_bind_node_animator(void *obj, void *animator) {
     if (node->bound_node_animator == animator)
         return;
     rt_obj_retain_maybe(animator);
+    node_animator = (rt_node_animator3d *)animator;
+    if (node_animator && node_animator->root && node_animator->root != node) {
+        rt_scene_node3d *old_root = node_animator->root;
+        if (old_root->bound_node_animator == animator)
+            scene3d_release_ref(&old_root->bound_node_animator);
+        else
+            node_animator->root = NULL;
+    }
     if (node->bound_node_animator)
         ((rt_node_animator3d *)node->bound_node_animator)->root = NULL;
     scene3d_release_ref(&node->bound_node_animator);
     node->bound_node_animator = animator;
-    node_animator = (rt_node_animator3d *)animator;
     if (node_animator)
         node_animator->root = node;
 }

@@ -1,7 +1,7 @@
 ---
 status: active
 audience: public
-last-verified: 2026-04-09
+last-verified: 2026-05-21
 ---
 
 # 3D Physics
@@ -197,6 +197,9 @@ content; bodies now own a collider instead of baking all shape state directly in
 ### Notes
 
 - `NewMesh()` and `NewHeightfield()` are static-only in v1 and must be attached to static bodies.
+- Primitive collider constructors substitute a positive unit extent/radius for zero, negative-zero,
+  or non-finite inputs; capsule height is still clamped to at least its diameter.
+- `NewHeightfield()` requires a valid `Pixels` object, not just a matching class ID.
 - `NewConvexHull()` expects convex source geometry and uses the mesh surface as the hull shape.
 - Compound colliders are the preferred way to build richer dynamic bodies from simple children.
 

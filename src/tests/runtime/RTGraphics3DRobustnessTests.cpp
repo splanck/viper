@@ -32,6 +32,7 @@ extern "C" {
 #include "rt_perlin.h"
 #include "rt_pixels.h"
 #include "rt_physics3d.h"
+#include "rt_quat.h"
 #include "rt_scene3d.h"
 #include "rt_skeleton3d.h"
 #include "rt_sprite3d.h"
@@ -309,6 +310,7 @@ static void test_texture_atlas_copies_pixels_and_reports_uvs() {
 
 static void test_material_rejects_non_pixels_texture_handles() {
     void *fake = rt_obj_new_i64(0, 8);
+    void *undersized_pixels = rt_obj_new_i64(RT_PIXELS_CLASS_ID, 8);
     void *pixels = rt_pixels_new(1, 1);
     void *mat_obj = rt_material3d_new_textured(fake);
     auto *mat = static_cast<MaterialView *>(mat_obj);
@@ -317,6 +319,7 @@ static void test_material_rejects_non_pixels_texture_handles() {
     rt_material3d_set_texture(mat_obj, pixels);
     assert(mat->texture == pixels);
     rt_material3d_set_texture(mat_obj, fake);
+    rt_material3d_set_texture(mat_obj, undersized_pixels);
     assert(mat->texture == pixels);
 }
 
@@ -324,6 +327,7 @@ static void test_mesh_apis_reject_wrong_class_handles() {
     void *fake = rt_obj_new_i64(0, 8);
     void *mesh = rt_mesh3d_new();
     void *bad_mat4 = rt_obj_new_i64(0, 8);
+    void *undersized_mat4 = rt_obj_new_i64(RT_MAT4_CLASS_ID, 8);
 
     rt_mesh3d_add_vertex(fake, 1.0, 2.0, 3.0, 0.0, 1.0, 0.0, 0.0, 0.0);
     assert(rt_mesh3d_get_vertex_count(fake) == 0);
@@ -331,6 +335,7 @@ static void test_mesh_apis_reject_wrong_class_handles() {
     rt_mesh3d_add_vertex(mesh, 0.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0);
     assert(rt_mesh3d_get_vertex_count(mesh) == 1);
     rt_mesh3d_transform(mesh, bad_mat4);
+    rt_mesh3d_transform(mesh, undersized_mat4);
     assert(rt_mesh3d_get_vertex_count(mesh) == 1);
 }
 
@@ -429,9 +434,11 @@ static void test_scene_particles_water_and_render_targets_reject_wrong_handles()
     void *particles_obj = rt_particles3d_new(4);
     auto *particles = static_cast<ParticleView *>(particles_obj);
     void *pixels = rt_pixels_new(1, 1);
+    void *undersized_pixels = rt_obj_new_i64(RT_PIXELS_CLASS_ID, 8);
     rt_particles3d_set_texture(particles_obj, pixels);
     assert(particles->texture == pixels);
     rt_particles3d_set_texture(particles_obj, fake);
+    rt_particles3d_set_texture(particles_obj, undersized_pixels);
     assert(particles->texture == pixels);
 
     void *water_obj = rt_water3d_new(2.0, 2.0);
@@ -442,6 +449,8 @@ static void test_scene_particles_water_and_render_targets_reject_wrong_handles()
     assert(water->normal_map == pixels);
     rt_water3d_set_texture(water_obj, fake);
     rt_water3d_set_normal_map(water_obj, fake);
+    rt_water3d_set_texture(water_obj, undersized_pixels);
+    rt_water3d_set_normal_map(water_obj, undersized_pixels);
     assert(water->texture == pixels);
     assert(water->normal_map == pixels);
 
@@ -872,6 +881,9 @@ static void test_transform_and_instance_batch_sanitize_extreme_matrices() {
     void *mesh = rt_mesh3d_new_box(1.0, 1.0, 1.0);
     void *mat = rt_material3d_new();
     auto *batch = static_cast<InstBatchView *>(rt_instbatch3d_new(mesh, mat));
+    void *undersized_mat4 = rt_obj_new_i64(RT_MAT4_CLASS_ID, 8);
+    rt_instbatch3d_add(batch, undersized_mat4);
+    assert(rt_instbatch3d_count(batch) == 0);
     void *bad_matrix = rt_mat4_new(1.0e300,
                                    -1.0e300,
                                    1.0e300,
@@ -896,6 +908,62 @@ static void test_transform_and_instance_batch_sanitize_extreme_matrices() {
     assert(batch->transforms[5] == 1.0f);
     assert(batch->transforms[10] == 1.0f);
     assert(batch->transforms[15] == 1.0f);
+}
+
+static void test_camera_and_transform_reduce_extreme_motion_inputs() {
+    void *camera = rt_camera3d_new(60.0, 1.0, 0.1, 1000.0);
+    rt_camera3d_set_position(
+        camera, rt_vec3_new(1.0e300, -1.0e300, std::numeric_limits<double>::infinity()));
+    void *cam_pos = rt_camera3d_get_position(camera);
+    assert(std::isfinite(rt_vec3_x(cam_pos)) &&
+           std::fabs(rt_vec3_x(cam_pos)) <= 1000000000000.0);
+    assert(std::isfinite(rt_vec3_y(cam_pos)) &&
+           std::fabs(rt_vec3_y(cam_pos)) <= 1000000000000.0);
+    assert(rt_vec3_z(cam_pos) == 0.0);
+
+    rt_camera3d_fps_update(camera,
+                           1.0e300,
+                           1.0e300,
+                           1.0e300,
+                           -1.0e300,
+                           1.0e300,
+                           1.0e300,
+                           1.0e300);
+    cam_pos = rt_camera3d_get_position(camera);
+    assert(std::isfinite(rt_vec3_x(cam_pos)) &&
+           std::fabs(rt_vec3_x(cam_pos)) <= 1000000000000.0);
+    assert(std::isfinite(rt_vec3_y(cam_pos)) &&
+           std::fabs(rt_vec3_y(cam_pos)) <= 1000000000000.0);
+    assert(std::isfinite(rt_vec3_z(cam_pos)) &&
+           std::fabs(rt_vec3_z(cam_pos)) <= 1000000000000.0);
+
+    void *xf = rt_transform3d_new();
+    rt_transform3d_set_euler(xf, 1.0e300, -1.0e300, 1.0e300);
+    rt_transform3d_rotate(xf, rt_vec3_new(0.0, 1.0, 0.0), 1.0e300);
+    void *rot = rt_transform3d_get_rotation(xf);
+    double len = std::sqrt(rt_quat_x(rot) * rt_quat_x(rot) + rt_quat_y(rot) * rt_quat_y(rot) +
+                           rt_quat_z(rot) * rt_quat_z(rot) + rt_quat_w(rot) * rt_quat_w(rot));
+    assert(std::isfinite(len) && std::fabs(len - 1.0) < 1e-6);
+}
+
+static void test_zero_size_colliders_fallback_to_positive_extents() {
+    void *box = rt_collider3d_new_box(0.0, std::numeric_limits<double>::quiet_NaN(), -0.0);
+    double min_v[3];
+    double max_v[3];
+    rt_collider3d_get_local_bounds_raw(box, min_v, max_v);
+    assert(std::fabs(min_v[0] + 1.0) < 1e-9);
+    assert(std::fabs(min_v[1] + 1.0) < 1e-9);
+    assert(std::fabs(min_v[2] + 1.0) < 1e-9);
+    assert(std::fabs(max_v[0] - 1.0) < 1e-9);
+    assert(std::fabs(max_v[1] - 1.0) < 1e-9);
+    assert(std::fabs(max_v[2] - 1.0) < 1e-9);
+
+    void *sphere = rt_collider3d_new_sphere(0.0);
+    assert(std::fabs(rt_collider3d_get_radius_raw(sphere) - 1.0) < 1e-9);
+
+    void *capsule = rt_collider3d_new_capsule(0.0, 0.0);
+    assert(std::fabs(rt_collider3d_get_radius_raw(capsule) - 1.0) < 1e-9);
+    assert(std::fabs(rt_collider3d_get_height_raw(capsule) - 2.0) < 1e-9);
 }
 
 static void test_obj_loader_recalculates_mixed_missing_normals() {
@@ -1096,6 +1164,8 @@ int main() {
     test_scene_deep_hierarchy_traversal_and_transform_clamps();
     test_mesh_bone_weights_are_validated_and_dirty_geometry();
     test_transform_and_instance_batch_sanitize_extreme_matrices();
+    test_camera_and_transform_reduce_extreme_motion_inputs();
+    test_zero_size_colliders_fallback_to_positive_extents();
     test_obj_loader_recalculates_mixed_missing_normals();
     test_skeleton_bind_pose_and_animation_duration_sanitize();
     test_light_and_material_boolean_state_is_initialized();

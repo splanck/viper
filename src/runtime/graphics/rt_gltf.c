@@ -110,6 +110,10 @@ typedef struct {
     int32_t node_count;
 } rt_gltf_asset;
 
+static rt_gltf_asset *gltf_asset_checked(void *obj) {
+    return (rt_gltf_asset *)rt_g3d_checked_or_null(obj, RT_G3D_GLTF_ASSET_CLASS_ID);
+}
+
 typedef struct {
     void *skeleton;
     int32_t *joint_nodes;
@@ -3827,6 +3831,7 @@ void *rt_gltf_load(rt_string path) {
 
                     // Create mesh and populate vertices
                     void *mesh = rt_mesh3d_new();
+                    int primitive_failed = 0;
                     if (!mesh)
                         continue;
 
@@ -3893,6 +3898,11 @@ void *rt_gltf_load(rt_string path) {
 
                         rt_mesh3d_add_vertex(
                             mesh, pos[0], pos[1], pos[2], nrm[0], nrm[1], nrm[2], uv[0], uv[1]);
+                        if (((rt_mesh3d *)mesh)->build_failed ||
+                            ((rt_mesh3d *)mesh)->vertex_count <= (uint32_t)vi) {
+                            primitive_failed = 1;
+                            break;
+                        }
                         vgfx3d_vertex_t *vertex = &((rt_mesh3d *)mesh)->vertices[vi];
                         vertex->uv1[0] = uv1[0];
                         vertex->uv1[1] = uv1[1];
@@ -3916,6 +3926,10 @@ void *rt_gltf_load(rt_string path) {
                                 }
                             }
                         }
+                    }
+                    if (primitive_failed) {
+                        gltf_release_local(mesh);
+                        continue;
                     }
 
                     if (!gltf_append_primitive_indices(
@@ -4225,14 +4239,15 @@ void *rt_gltf_load(rt_string path) {
 
 /// @brief Get the number of meshes extracted from the GLTF file.
 int64_t rt_gltf_mesh_count(void *obj) {
-    return obj ? ((rt_gltf_asset *)obj)->mesh_count : 0;
+    rt_gltf_asset *a = gltf_asset_checked(obj);
+    return a ? a->mesh_count : 0;
 }
 
 /// @brief Get a mesh by index from the loaded GLTF asset.
 void *rt_gltf_get_mesh(void *obj, int64_t index) {
-    if (!obj)
+    rt_gltf_asset *a = gltf_asset_checked(obj);
+    if (!a)
         return NULL;
-    rt_gltf_asset *a = (rt_gltf_asset *)obj;
     if (index < 0 || index >= a->mesh_count)
         return NULL;
     return a->meshes[index];
@@ -4240,14 +4255,15 @@ void *rt_gltf_get_mesh(void *obj, int64_t index) {
 
 /// @brief Get the number of materials extracted from the GLTF file.
 int64_t rt_gltf_material_count(void *obj) {
-    return obj ? ((rt_gltf_asset *)obj)->material_count : 0;
+    rt_gltf_asset *a = gltf_asset_checked(obj);
+    return a ? a->material_count : 0;
 }
 
 /// @brief Get a material by index from the loaded GLTF asset.
 void *rt_gltf_get_material(void *obj, int64_t index) {
-    if (!obj)
+    rt_gltf_asset *a = gltf_asset_checked(obj);
+    if (!a)
         return NULL;
-    rt_gltf_asset *a = (rt_gltf_asset *)obj;
     if (index < 0 || index >= a->material_count)
         return NULL;
     return a->materials[index];
@@ -4255,14 +4271,15 @@ void *rt_gltf_get_material(void *obj, int64_t index) {
 
 /// @brief Number of skeletons extracted from the loaded glTF asset.
 int64_t rt_gltf_skeleton_count(void *obj) {
-    return obj ? ((rt_gltf_asset *)obj)->skeleton_count : 0;
+    rt_gltf_asset *a = gltf_asset_checked(obj);
+    return a ? a->skeleton_count : 0;
 }
 
 /// @brief Get a skeleton by index from the loaded glTF asset.
 void *rt_gltf_get_skeleton(void *obj, int64_t index) {
-    if (!obj)
+    rt_gltf_asset *a = gltf_asset_checked(obj);
+    if (!a)
         return NULL;
-    rt_gltf_asset *a = (rt_gltf_asset *)obj;
     if (index < 0 || index >= a->skeleton_count)
         return NULL;
     return a->skeletons[index];
@@ -4270,14 +4287,15 @@ void *rt_gltf_get_skeleton(void *obj, int64_t index) {
 
 /// @brief Number of animation clips extracted from the loaded glTF asset.
 int64_t rt_gltf_animation_count(void *obj) {
-    return obj ? ((rt_gltf_asset *)obj)->animation_count : 0;
+    rt_gltf_asset *a = gltf_asset_checked(obj);
+    return a ? a->animation_count : 0;
 }
 
 /// @brief Get an Animation3D clip by index from the loaded glTF asset.
 void *rt_gltf_get_animation(void *obj, int64_t index) {
-    if (!obj)
+    rt_gltf_asset *a = gltf_asset_checked(obj);
+    if (!a)
         return NULL;
-    rt_gltf_asset *a = (rt_gltf_asset *)obj;
     if (index < 0 || index >= a->animation_count)
         return NULL;
     return a->animations[index];
@@ -4285,14 +4303,15 @@ void *rt_gltf_get_animation(void *obj, int64_t index) {
 
 /// @brief Return the number of node animations (AnimationClip-style tracks) in the glTF asset.
 int64_t rt_gltf_node_animation_count(void *obj) {
-    return obj ? ((rt_gltf_asset *)obj)->node_animation_count : 0;
+    rt_gltf_asset *a = gltf_asset_checked(obj);
+    return a ? a->node_animation_count : 0;
 }
 
 /// @brief Get a node-animation track by index from the loaded glTF asset.
 void *rt_gltf_get_node_animation(void *obj, int64_t index) {
-    if (!obj)
+    rt_gltf_asset *a = gltf_asset_checked(obj);
+    if (!a)
         return NULL;
-    rt_gltf_asset *a = (rt_gltf_asset *)obj;
     if (index < 0 || index >= a->node_animation_count)
         return NULL;
     return a->node_animations[index];
@@ -4300,12 +4319,14 @@ void *rt_gltf_get_node_animation(void *obj, int64_t index) {
 
 /// @brief Number of nodes in the loaded glTF scene tree (0 for NULL).
 int64_t rt_gltf_node_count(void *obj) {
-    return obj ? ((rt_gltf_asset *)obj)->node_count : 0;
+    rt_gltf_asset *a = gltf_asset_checked(obj);
+    return a ? a->node_count : 0;
 }
 
 /// @brief Return the scene-root SceneNode of the loaded asset (NULL if not loaded / NULL).
 void *rt_gltf_get_scene_root(void *obj) {
-    return obj ? ((rt_gltf_asset *)obj)->scene_root : NULL;
+    rt_gltf_asset *a = gltf_asset_checked(obj);
+    return a ? a->scene_root : NULL;
 }
 
 #else

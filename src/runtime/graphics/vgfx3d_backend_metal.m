@@ -1576,6 +1576,33 @@ static void metal_commit_pending(VGFXMetalContext *ctx, BOOL waitUntilCompleted)
     }
 }
 
+static void metal_detach_render_target(VGFXMetalContext *ctx, BOOL syncColor) {
+    vgfx3d_rendertarget_t *target;
+    BOOL hadPendingFrame;
+    if (!ctx)
+        return;
+    target = ctx.rttTarget;
+    hadPendingFrame = ctx.inFrame || ctx.encoder || ctx.cmdBuf;
+    if (hadPendingFrame) {
+        metal_commit_pending(ctx, syncColor);
+        ctx.inFrame = NO;
+        if (target && syncColor)
+            target->color_dirty = 1;
+    }
+    if (target) {
+        if (syncColor && target->color_dirty)
+            (void)metal_sync_render_target_color((__bridge void *)ctx, target);
+        vgfx3d_rendertarget_clear_sync(target);
+    }
+    ctx.rttActive = NO;
+    ctx.rttColorTexture = nil;
+    ctx.rttMotionTexture = nil;
+    ctx.rttDepthTexture = nil;
+    ctx.rttTarget = NULL;
+    ctx.displayTexture = nil;
+    ctx.postfxEncodedThisFrame = 0;
+}
+
 static void metal_present_texture_to_framebuffer(VGFXMetalContext *ctx, id<MTLTexture> texture) {
     vgfx_framebuffer_t fb;
     if (!ctx || !texture || !ctx.vgfxWin)
@@ -2524,6 +2551,7 @@ static void metal_destroy_ctx(void *ctx_ptr) {
         return;
     @autoreleasepool {
         VGFXMetalContext *ctx = (__bridge_transfer VGFXMetalContext *)ctx_ptr;
+        metal_detach_render_target(ctx, YES);
         metal_free_gpu_postfx_chain(ctx);
         [ctx.metalLayer removeFromSuperlayer];
         ctx.metalLayer = nil;
@@ -3275,15 +3303,11 @@ static void metal_set_render_target(void *ctx_ptr, vgfx3d_rendertarget_t *rt) {
 
         if (!rt) {
             /* Disable RTT — revert to on-screen rendering */
-            ctx.rttActive = NO;
-            ctx.rttColorTexture = nil;
-            ctx.rttMotionTexture = nil;
-            ctx.rttDepthTexture = nil;
-            ctx.rttTarget = NULL;
-            ctx.displayTexture = nil;
-            ctx.postfxEncodedThisFrame = 0;
+            metal_detach_render_target(ctx, YES);
             return;
         }
+        if (ctx.rttTarget && ctx.rttTarget != rt)
+            metal_detach_render_target(ctx, YES);
 
         entry = metal_ensure_render_target_entry(ctx, rt);
         if (!entry)

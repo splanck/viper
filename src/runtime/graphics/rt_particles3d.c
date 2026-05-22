@@ -35,6 +35,7 @@
 #include "rt_canvas3d.h"
 #include "rt_canvas3d_internal.h"
 #include "rt_pixels.h"
+#include "rt_pixels_internal.h"
 
 #include <float.h>
 #include <math.h>
@@ -511,7 +512,7 @@ void rt_particles3d_set_texture(void *o, void *tex) {
     rt_particles3d *ps = particles3d_checked(o);
     if (!ps)
         return;
-    if (tex && rt_obj_class_id(tex) != RT_PIXELS_CLASS_ID)
+    if (tex && !rt_pixels_checked_impl_or_null(tex))
         return;
     if (ps->texture == tex)
         return;

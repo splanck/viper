@@ -39,6 +39,7 @@
 
 #include "rt_canvas3d_internal.h"
 #include "rt_pixels.h"
+#include "rt_pixels_internal.h"
 #include "rt_trap.h"
 
 #include <float.h>
@@ -119,9 +120,12 @@ static double clampd(double value, double lo, double hi) {
     return value;
 }
 
-/// @brief Return the absolute value of a finite double, or 0.0 for non-finite (NaN/inf) input.
-static double collider3d_extent_or_zero(double value) {
-    return isfinite(value) ? fabs(value) : 0.0;
+/// @brief Return a positive finite extent; invalid or near-zero values fall back to 1.0.
+static double collider3d_extent_or_unit(double value) {
+    if (!isfinite(value))
+        return 1.0;
+    value = fabs(value);
+    return value > 1e-12 ? value : 1.0;
 }
 
 /// @brief Return the absolute value of a finite scale, clamped to 1.0 for near-zero or non-finite values.
@@ -483,9 +487,9 @@ void *rt_collider3d_new_box(double hx, double hy, double hz) {
     rt_collider3d *collider = collider3d_alloc(RT_COLLIDER3D_TYPE_BOX);
     if (!collider)
         return NULL;
-    collider->half_extents[0] = collider3d_extent_or_zero(hx);
-    collider->half_extents[1] = collider3d_extent_or_zero(hy);
-    collider->half_extents[2] = collider3d_extent_or_zero(hz);
+    collider->half_extents[0] = collider3d_extent_or_unit(hx);
+    collider->half_extents[1] = collider3d_extent_or_unit(hy);
+    collider->half_extents[2] = collider3d_extent_or_unit(hz);
     collider3d_recompute_bounds(collider);
     return collider;
 }
@@ -495,7 +499,7 @@ void *rt_collider3d_new_sphere(double radius) {
     rt_collider3d *collider = collider3d_alloc(RT_COLLIDER3D_TYPE_SPHERE);
     if (!collider)
         return NULL;
-    collider->radius = collider3d_extent_or_zero(radius);
+    collider->radius = collider3d_extent_or_unit(radius);
     collider3d_recompute_bounds(collider);
     return collider;
 }
@@ -506,8 +510,8 @@ void *rt_collider3d_new_capsule(double radius, double height) {
     rt_collider3d *collider = collider3d_alloc(RT_COLLIDER3D_TYPE_CAPSULE);
     if (!collider)
         return NULL;
-    collider->radius = collider3d_extent_or_zero(radius);
-    collider->height = collider3d_extent_or_zero(height);
+    collider->radius = collider3d_extent_or_unit(radius);
+    collider->height = collider3d_extent_or_unit(height);
     if (collider->height < collider->radius * 2.0)
         collider->height = collider->radius * 2.0;
     collider3d_recompute_bounds(collider);
@@ -567,7 +571,7 @@ void *rt_collider3d_new_heightfield(
         rt_trap("Collider3D.NewHeightfield: heightmap must be non-null");
         return NULL;
     }
-    if (rt_obj_class_id(heightmap) != RT_PIXELS_CLASS_ID) {
+    if (!rt_pixels_checked_impl_or_null(heightmap)) {
         rt_trap("Collider3D.NewHeightfield: heightmap must be a valid Pixels object");
         return NULL;
     }

@@ -20,6 +20,7 @@
 #include "rt_canvas3d_internal.h"
 #include "rt_physics3d.h"
 #include "rt_scene3d.h"
+#include "rt_scene3d_internal.h"
 #include "rt_skeleton3d.h"
 #include "rt_string.h"
 #include "vgfx3d_backend.h"
@@ -466,6 +467,26 @@ static void test_scene_draw_preserves_large_bound_animator_palettes_on_gpu_backe
                 "Scene3D.Draw preserves expanded animator palettes on GPU backends");
 }
 
+static void test_node_animator_rebind_clears_previous_node_owner() {
+    void *node_a = rt_scene_node3d_new();
+    void *node_b = rt_scene_node3d_new();
+    void *clip = rt_node_animation3d_new(rt_const_cstr("Idle"), 1.0);
+    void *clips[1] = {clip};
+    auto *animator = static_cast<rt_node_animator3d *>(rt_node_animator3d_new_from_clips(clips, 1));
+
+    rt_scene_node3d_bind_node_animator(node_a, animator);
+    EXPECT_TRUE(animator->root == node_a, "NodeAnimator initially roots to the first node");
+    EXPECT_TRUE(static_cast<rt_scene_node3d *>(node_a)->bound_node_animator == animator,
+                "First node retains the bound NodeAnimator");
+
+    rt_scene_node3d_bind_node_animator(node_b, animator);
+    EXPECT_TRUE(animator->root == node_b, "NodeAnimator rebind moves root to the second node");
+    EXPECT_TRUE(static_cast<rt_scene_node3d *>(node_a)->bound_node_animator == nullptr,
+                "NodeAnimator rebind clears the previous node owner");
+    EXPECT_TRUE(static_cast<rt_scene_node3d *>(node_b)->bound_node_animator == animator,
+                "Second node retains the rebound NodeAnimator");
+}
+
 int main() {
     test_node_from_body_resolves_child_local_space();
     test_body_from_node_uses_world_space();
@@ -476,6 +497,7 @@ int main() {
     test_scene_draw_uses_bound_animator_palette();
     test_scene_draw_cpu_skins_bound_animators_for_software_backend();
     test_scene_draw_preserves_large_bound_animator_palettes_on_gpu_backends();
+    test_node_animator_rebind_clears_previous_node_owner();
 
     std::printf("Scene3D binding tests: %d/%d passed\n", tests_passed, tests_run);
     return tests_passed == tests_run ? 0 : 1;

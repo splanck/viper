@@ -148,16 +148,16 @@ static void test_collider_constructors_sanitize_nonfinite_dimensions() {
     double mn[3], mx[3];
     void *box = rt_collider3d_new_box(NAN, -2.0, INFINITY);
     rt_collider3d_get_box_half_extents_raw(box, half_extents);
-    EXPECT_NEAR(half_extents[0], 0.0, 0.001, "Box collider NaN half extent becomes zero");
+    EXPECT_NEAR(half_extents[0], 1.0, 0.001, "Box collider NaN half extent falls back to unit extent");
     EXPECT_NEAR(half_extents[1], 2.0, 0.001, "Box collider negative half extent becomes positive");
-    EXPECT_NEAR(half_extents[2], 0.0, 0.001, "Box collider infinite half extent becomes zero");
+    EXPECT_NEAR(half_extents[2], 1.0, 0.001, "Box collider infinite half extent falls back to unit extent");
 
     void *sphere = rt_collider3d_new_sphere(NAN);
-    EXPECT_NEAR(rt_collider3d_get_radius_raw(sphere), 0.0, 0.001, "Sphere collider NaN radius becomes zero");
+    EXPECT_NEAR(rt_collider3d_get_radius_raw(sphere), 1.0, 0.001, "Sphere collider NaN radius falls back to unit radius");
 
     void *capsule = rt_collider3d_new_capsule(INFINITY, NAN);
-    EXPECT_NEAR(rt_collider3d_get_radius_raw(capsule), 0.0, 0.001, "Capsule infinite radius becomes zero");
-    EXPECT_NEAR(rt_collider3d_get_height_raw(capsule), 0.0, 0.001, "Capsule NaN height becomes zero");
+    EXPECT_NEAR(rt_collider3d_get_radius_raw(capsule), 1.0, 0.001, "Capsule infinite radius falls back to unit radius");
+    EXPECT_NEAR(rt_collider3d_get_height_raw(capsule), 2.0, 0.001, "Capsule NaN height falls back to diameter");
 
     void *pixels = rt_pixels_new(2, 2);
     rt_pixels_set(pixels, 0, 0, encode_height16(0));

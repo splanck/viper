@@ -26,13 +26,13 @@ An alpha-quality hardening cycle, not a feature release. The Zia frontend reache
 
 | Metric | v0.2.5 | v0.2.6 | Delta |
 |---|---|---|---|
-| Commits | — | 154 | +154 |
+| Commits | — | 146 | +146 |
 | Source files | 2,996 | 3,036 | +40 |
 | Production SLOC | 552K | 601K | +49K |
 | Test SLOC | 228K | 256K | +28K |
 | Demo SLOC | 188K | 189K | +1K |
 
-Counts via `scripts/count_sloc.sh` (production 601,404 / test 256,206 / demo 189,273 / source files 3,036).
+Counts via `scripts/count_sloc.sh` (production 601,884 / test 256,301 / demo 189,273 / source files 3,036).
 
 ---
 
@@ -82,6 +82,8 @@ Counts via `scripts/count_sloc.sh` (production 601,404 / test 256,206 / demo 189
 - Image IO hardening: PNG chunk validation; BMP pixel-offset/size checks (no partial save on failure); JPEG table/orientation handling; GIF normalized per-frame delays; Canvas titles round-trip embedded NULs via independent byte length.
 - Graphics3D: `Canvas3D` gains `DrawMeshSkinned`/`DrawMeshMorphed`/`DrawMeshBlended` plus HUD/overlay draws; `Mesh3D.SetSkeleton` retain/release integration; `Physics3D` deduplicates joints and surfaces `started_penetrating`; `Scene3D` reparent is atomic; `Terrain3D.GeneratePerlin` clamps NaN/inf inputs; new `Viper.Graphics3D.GLTF` runtime class plus `Scene3D.Load`.
 - Graphics3D correctness round: `Skeleton3D` and `AnimController3D` interpolate via quaternion slerp plus TRS decompose/recompose with finite-matrix/vector validation; `Raycast3D` adds checked `Mat4` handles and robust segment/point-to-AABB distance math; `Mesh3D.Transform` validates a finite normal matrix; `NavMesh3D` snaps to nearest-triangle points and accepts shared-edge path starts (preserving `NavAgent3D` movement to parented targets); the row-major `Mat4` inverse fix repairs world-to-local for parented `SceneNode3D` bindings.
+- Graphics3D numeric and traversal hardening: world-space setters across `Scene3D`/`Transform3D`/`Camera3D`/`Particles3D`/`Terrain3D`/`Water3D`/`Decal3D` clamp finite-but-extreme inputs to safe magnitudes (and scales away from zero) so accumulated view/projection/model matrices stay representable; deep imported `Scene3D` hierarchies traverse via explicit heap stacks instead of C-stack recursion; `Mesh3D`, glTF, and OBJ import reject collinear and malformed-token triangles and accumulate normals/tangents in double before narrowing; `Canvas3D.Begin` traps on non-finite camera state; `RenderTarget3D` guards stride/pixel-count overflow; looping `Path3D` includes its closing segment.
+- Graphics3D follow-up hardening: public `Pixels`/`Mat4` resource slots now validate payload size as well as class ID; glTF accessors reject foreign handles; empty OBJ imports fail instead of producing drawable zero-triangle meshes; `Camera3D` FPS motion, `Transform3D` rotations, collider primitive extents, physics event buffers, terrain chunk builds, and Metal render-target detach/readback cleanup received overflow and stale-callback guards.
 
 ### Game runtime
 
@@ -139,6 +141,7 @@ Counts via `scripts/count_sloc.sh` (production 601,404 / test 256,206 / demo 189
 - Top-level CMake opts into CMP0141 and requests embedded MSVC debug info; expanded Windows import policy for `GetFullPathNameA`, `DragQueryFileW`, `CoTaskMemFree`, `__CxxFrameHandler4`, `_open_osfhandle`, `rand_s`, `_wcsnicmp`, `_wchmod`, and `CreateWaitableTimerExW`/`SetWaitableTimer`. The Windows CRT import flavour is threaded through both backends; hidden `viper run`/`package` plumbing forces release-runtime CRT imports for packaged payloads even when invoked from a Debug tool build.
 - Win32 HiDPI: client, resize, mouse, and presentation dimensions are physical pixels; native window client area is sized from the already-scaled framebuffer via `AdjustWindowRectExForDpi`; public `Canvas` sizing stays behind `coord_scale` so Windows matches macOS Retina semantics. Frame limiting moved from `Sleep`-based to a thread-local high-resolution waitable timer.
 - D3D11 bone-palette cbuffer sized from the shared 256-bone constant (the old 128-bone hard-coded buffer let a 16 KiB upload overrun an 8 KiB mapping under the Windows debug UCRT).
+- Portable runtime helpers: MSVC-guarded format-diagnostic pragmas, `_stat64i32`/`_fstat64i32` UTF-8 file-stat aliases, MSVC bit-scan leading-zero counting for the P-256 bigint path, and a platform-specific TLS invalid-socket sentinel so SOCKET handles close and reset correctly on both Windows and POSIX; 3D raycast/sweep hit records are zero-initialized before best-hit selection so missed queries can't read stale stack data.
 
 ### Packaging
 
@@ -164,6 +167,6 @@ Demos and docs tracked the runtime work above; stale Windows debug/O0 pins for C
 
 ### Commits
 
-See `git log v0.2.5-dev..HEAD -- .` for the full 154-commit history since v0.2.5.
+See `git log v0.2.5-dev..HEAD -- .` for the full 146-commit history since v0.2.5.
 
 <!-- END DRAFT -->

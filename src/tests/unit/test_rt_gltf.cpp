@@ -25,6 +25,7 @@
 #include <vector>
 
 extern "C" {
+extern void *rt_obj_new_i64(int64_t class_id, int64_t byte_size);
 extern rt_string rt_const_cstr(const char *s);
 extern double rt_vec3_x(void *v);
 extern double rt_vec3_y(void *v);
@@ -100,6 +101,28 @@ static bool write_text_file(const char *path, const std::string &text) {
     bool ok = std::fwrite(text.data(), 1, text.size(), f) == text.size();
     std::fclose(f);
     return ok;
+}
+
+static void test_gltf_accessors_reject_wrong_handles() {
+    void *fake = rt_obj_new_i64(0, 8);
+    EXPECT_TRUE(rt_gltf_mesh_count(fake) == 0, "GLTF mesh count rejects wrong handles");
+    EXPECT_TRUE(rt_gltf_material_count(fake) == 0, "GLTF material count rejects wrong handles");
+    EXPECT_TRUE(rt_gltf_skeleton_count(fake) == 0, "GLTF skeleton count rejects wrong handles");
+    EXPECT_TRUE(rt_gltf_animation_count(fake) == 0, "GLTF animation count rejects wrong handles");
+    EXPECT_TRUE(rt_gltf_node_animation_count(fake) == 0,
+                "GLTF node-animation count rejects wrong handles");
+    EXPECT_TRUE(rt_gltf_node_count(fake) == 0, "GLTF node count rejects wrong handles");
+    EXPECT_TRUE(rt_gltf_get_mesh(fake, 0) == nullptr, "GLTF mesh getter rejects wrong handles");
+    EXPECT_TRUE(rt_gltf_get_material(fake, 0) == nullptr,
+                "GLTF material getter rejects wrong handles");
+    EXPECT_TRUE(rt_gltf_get_skeleton(fake, 0) == nullptr,
+                "GLTF skeleton getter rejects wrong handles");
+    EXPECT_TRUE(rt_gltf_get_animation(fake, 0) == nullptr,
+                "GLTF animation getter rejects wrong handles");
+    EXPECT_TRUE(rt_gltf_get_node_animation(fake, 0) == nullptr,
+                "GLTF node-animation getter rejects wrong handles");
+    EXPECT_TRUE(rt_gltf_get_scene_root(fake) == nullptr,
+                "GLTF scene-root getter rejects wrong handles");
 }
 
 template <typename T> static void append_bytes(std::vector<uint8_t> &buf, const T &value) {
@@ -1610,6 +1633,7 @@ static void test_gltf_rejects_invalid_scene_graph_links() {
 }
 
 int main() {
+    test_gltf_accessors_reject_wrong_handles();
     test_gltf_loads_data_uri_buffers_and_embedded_textures();
     test_gltf_resolves_percent_encoded_external_buffers();
     test_gltf_rejects_out_of_range_indices();

@@ -79,21 +79,27 @@ packing draw commands, and stores stable motion-history keys for single and inst
 Mesh, skinned, morphed, blended, and instanced draw entry points validate finite model matrices before
 they reach culling, terrain splat capture, or backend command queues.
 `Camera3D` clamps clip planes, aspect, ortho size, positions, orbit/follow distances, and projection
-narrowing so view/projection matrices and picking rays stay finite. `SceneNode3D` and `Transform3D`
-sanitize TRS components, normalize quaternions, keep LOD distances non-negative, and use iterative
+narrowing so view/projection matrices and picking rays stay finite; FPS camera motion also bounds
+per-frame movement and wraps yaw before computing direction vectors. `SceneNode3D` and `Transform3D`
+sanitize TRS components, reduce very large Euler/axis rotations before trig, normalize quaternions,
+keep LOD distances non-negative, and use iterative
 subtree traversals for sync, search, bounds, lights, and draw collection so deep imported hierarchies
 do not depend on C stack depth. Node animation clips reject
 non-finite samples and non-increasing key times before they reach the sampler. `Collider3D` sanitizes
-primitive dimensions and heightfield scales, rejects compound-child cycles, and guards heightfield
+primitive dimensions, substitutes positive fallback extents for zero/non-finite primitive sizes,
+validates heightfield `Pixels` handles, rejects compound-child cycles, and guards heightfield
 allocation sizes. `Physics3D` keeps world gravity, time steps, body motion state, damping, impulses,
 and character-controller settings finite before they feed integration and broadphase code; capsule
 primitive narrow-phase uses the body's quaternion orientation when deriving its world-space axis, and
-ray queries use analytic sphere/capsule/box tests with AABB fallback for complex colliders.
+ray queries use analytic sphere/capsule/box tests with AABB fallback for complex colliders. Contact
+and query result buffers use checked reserve-count arithmetic so a pathological broadphase cannot
+wrap allocation sizes.
 `Mesh3D` rejects invalid procedural dimensions, non-finite OBJ/STL attributes, malformed OBJ face
 tokens, collinear triangles, and overflowing OBJ face indices; generated planes face +Y, generated UV
 spheres avoid zero-area pole triangles, importers skip isolated degenerate faces, normals/tangents skip
 overflowing intermediate vectors, bone weights are filtered and renormalized, and failed mesh builds
-are not cloned as drawable meshes.
+are not cloned as drawable meshes. Empty or unsupported OBJ files are rejected instead of returning
+drawable zero-triangle meshes.
 `Particles3D` bounds emitter ranges,
 rates, alpha, spread, shape, update time, positions, gravity, and emitter extents. `InstanceBatch3D`
 stores only finite float-range matrix elements for culling and backend submission. `Light3D` clamps colors, intensities, attenuations, spot angles,
@@ -109,12 +115,15 @@ of individual backends so software, Metal, D3D11, and OpenGL receive the same cl
 Graphics3D object handles use stable internal class IDs from `rt_graphics3d_ids.h`. Public APIs that
 store or dereference opaque Graphics3D handles validate those IDs before casting, which prevents a
 Mesh3D/Path3D/Terrain3D-style handle mix-up from being interpreted as another runtime struct. The
-IDs are negative and module-scoped so they do not collide with legacy class-id `0` objects.
+IDs are negative and module-scoped so they do not collide with legacy class-id `0` objects, and
+trusted struct-handle shortcuts are gated behind an explicit internal build flag.
 The handle guard policy covers render targets, cubemaps, scene nodes, physics worlds/bodies/joints,
 colliders, particles, and water resources: wrong-class handles no-op or return safe defaults before
 any retained reference or struct dereference happens. Resource setters such as `Particles3D.Texture`
 and `Water3D.Texture`/`NormalMap`/`EnvMap` keep the previous valid binding when given a foreign
-object. Physics triggers also treat tracked bodies as weak world membership: a body removed from the
+object. Pixel and matrix resource slots validate both class ID and payload size before reading the
+underlying runtime storage, so undersized same-ID objects are rejected as invalid handles. Physics
+triggers also treat tracked bodies as weak world membership: a body removed from the
 world emits one exit transition and is then forgotten.
 Renderer-internal stack fixtures are available only when the graphics runtime is built with
 `RT_G3D_ALLOW_STACK_FIXTURES=1` for tests. Production builds validate `Canvas3D` and `Camera3D`
@@ -177,6 +186,7 @@ GPU backends now treat `RenderTarget3D` color buffers as lazily synchronized CPU
 - while a render target is bound, Canvas3D overlay sizing, screenshots, and `Width`/`Height` queries follow the active target dimensions instead of the window dimensions
 - `SetRenderTarget` validates the Canvas3D and RenderTarget3D handles and ensures color/depth backing storage before changing canvas/backend state
 - `SetRenderTarget` and `ResetRenderTarget` are rejected while `Canvas3D` is inside `Begin`/`End`, so all queued draws in a frame flush to one consistent output
+- `ResetRenderTarget` and `Canvas3D` teardown ask the backend to detach the active RTT binding before destroying backend state; render-target sync callbacks are cleared with the binding so later CPU readback cannot call into stale GPU context
 - `RenderTarget3D.NewHdr()` keeps the GPU color attachment in `RGBA16F` on GPU backends; backend sync hooks now fill both a `Pixels`-compatible tonemapped RGBA8 mirror and a linear RGBA32F CPU mirror so CPU-supported render-target postfx can operate before final `AsPixels()` conversion
 - this avoids unconditional GPU stalls on RTT-heavy frames while preserving the `RenderTarget3D.AsPixels()` contract
 

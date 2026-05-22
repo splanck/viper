@@ -77,7 +77,7 @@ static int mesh3d_has_bone_weights(const rt_mesh3d *mesh) {
 
 /// @brief Validate @p obj is a live Mat4 heap object.
 static mat4_impl *mesh3d_mat4_checked(void *obj) {
-    if (!obj || rt_obj_class_id(obj) != RT_MAT4_CLASS_ID)
+    if (!obj || !rt_obj_is_instance(obj, RT_MAT4_CLASS_ID, sizeof(mat4_impl)))
         return NULL;
     return (mat4_impl *)obj;
 }
@@ -324,6 +324,12 @@ void rt_mesh3d_add_vertex(
         return;
     }
 
+    if (m->vertex_count == UINT32_MAX) {
+        mesh_mark_build_failed(m);
+        rt_trap("Mesh3D.AddVertex: vertex capacity overflow");
+        return;
+    }
+
     if (m->vertex_count >= m->vertex_capacity) {
         uint32_t new_cap;
         if (m->vertex_capacity > UINT32_MAX / 2u) {
@@ -332,6 +338,13 @@ void rt_mesh3d_add_vertex(
             return;
         }
         new_cap = m->vertex_capacity * 2u;
+        if (new_cap <= m->vertex_count)
+            new_cap = m->vertex_count + 1u;
+        if ((size_t)new_cap > SIZE_MAX / sizeof(vgfx3d_vertex_t)) {
+            mesh_mark_build_failed(m);
+            rt_trap("Mesh3D.AddVertex: vertex allocation overflow");
+            return;
+        }
         vgfx3d_vertex_t *nv =
             (vgfx3d_vertex_t *)realloc(m->vertices, (size_t)new_cap * sizeof(vgfx3d_vertex_t));
         if (!nv) {
@@ -393,7 +406,14 @@ void rt_mesh3d_add_triangle(void *obj, int64_t v0, int64_t v1, int64_t v2) {
         return;
     }
 
-    if (m->index_count + 3 > m->index_capacity) {
+    if (m->index_count > UINT32_MAX - 3u) {
+        mesh_mark_build_failed(m);
+        rt_trap("Mesh3D.AddTriangle: index capacity overflow");
+        return;
+    }
+
+    uint32_t needed = m->index_count + 3u;
+    if (needed > m->index_capacity) {
         uint32_t new_cap;
         if (m->index_capacity > UINT32_MAX / 2u) {
             mesh_mark_build_failed(m);
@@ -401,6 +421,13 @@ void rt_mesh3d_add_triangle(void *obj, int64_t v0, int64_t v1, int64_t v2) {
             return;
         }
         new_cap = m->index_capacity * 2u;
+        if (new_cap < needed)
+            new_cap = needed;
+        if ((size_t)new_cap > SIZE_MAX / sizeof(uint32_t)) {
+            mesh_mark_build_failed(m);
+            rt_trap("Mesh3D.AddTriangle: index allocation overflow");
+            return;
+        }
         uint32_t *ni = (uint32_t *)realloc(m->indices, (size_t)new_cap * sizeof(uint32_t));
         if (!ni) {
             mesh_mark_build_failed(m);
@@ -531,6 +558,7 @@ void *rt_mesh3d_clone(void *obj) {
     if (!dst->vertices || !dst->indices) {
         if (rt_obj_release_check0(dst))
             rt_obj_free(dst);
+        rt_trap("Mesh3D.Clone: memory allocation failed");
         return NULL;
     }
 
@@ -1746,6 +1774,13 @@ void *rt_mesh3d_from_obj(rt_string path) {
     obj_vertex_cache_free(&vertex_cache);
 
     if (parse_failed || ((rt_mesh3d *)mesh)->build_failed) {
+        if (rt_obj_release_check0(mesh))
+            rt_obj_free(mesh);
+        rt_trap("Mesh3D.FromOBJ: invalid or unsupported geometry");
+        return NULL;
+    }
+
+    if (((rt_mesh3d *)mesh)->index_count < 3) {
         if (rt_obj_release_check0(mesh))
             rt_obj_free(mesh);
         rt_trap("Mesh3D.FromOBJ: invalid or unsupported geometry");

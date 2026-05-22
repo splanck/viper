@@ -35,6 +35,7 @@
 #endif
 
 #define TRANSFORM3D_ABS_MAX 1000000000000.0
+#define TRANSFORM3D_TWO_PI 6.28318530717958647692
 
 extern void *rt_obj_new_i64(int64_t class_id, int64_t byte_size);
 extern void rt_obj_set_finalizer(void *obj, void (*fn)(void *));
@@ -279,6 +280,11 @@ void rt_transform3d_set_euler(void *obj, double pitch, double yaw, double roll) 
     pitch = transform3d_finite_or(pitch, 0.0);
     yaw = transform3d_finite_or(yaw, 0.0);
     roll = transform3d_finite_or(roll, 0.0);
+    pitch = fmod(pitch, 360.0);
+    yaw = fmod(yaw, 360.0);
+    roll = fmod(roll, 360.0);
+    if (!isfinite(pitch) || !isfinite(yaw) || !isfinite(roll))
+        return;
     double hp = pitch * (M_PI / 180.0) * 0.5;
     double hy = yaw * (M_PI / 180.0) * 0.5;
     double hr = roll * (M_PI / 180.0) * 0.5;
@@ -372,6 +378,9 @@ void rt_transform3d_rotate(void *obj, void *axis, double angle) {
     ay /= len;
     az /= len;
 
+    angle = fmod(angle, TRANSFORM3D_TWO_PI);
+    if (!isfinite(angle))
+        return;
     double ha = angle * 0.5;
     double sa = sin(ha), ca = cos(ha);
     double qx = ax * sa, qy = ay * sa, qz = az * sa, qw = ca;

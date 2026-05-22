@@ -723,6 +723,8 @@ static void *build_chunk(rt_terrain3d *t, int32_t cx, int32_t cz, int32_t step, 
     void *mesh = rt_mesh3d_new();
     int32_t x0 = cx * TERRAIN_CHUNK_SIZE;
     int32_t z0 = cz * TERRAIN_CHUNK_SIZE;
+    if (!mesh)
+        return NULL;
 
     /* Determine actual chunk extents (may be smaller at edges) */
     int32_t xend = x0 + TERRAIN_CHUNK_SIZE;
@@ -886,6 +888,16 @@ static void *build_chunk(rt_terrain3d *t, int32_t cx, int32_t cz, int32_t step, 
             rt_mesh3d_add_triangle(
                 mesh, (int64_t)((rz + 1) * vert_cols + vert_cols - 1), bot + 1, bot);
         }
+    }
+
+    if (((rt_mesh3d *)mesh)->build_failed) {
+        if (rt_obj_release_check0(mesh))
+            rt_obj_free(mesh);
+        if (aabb_out) {
+            for (int i = 0; i < 6; i++)
+                aabb_out[i] = 0.0f;
+        }
+        return NULL;
     }
 
     /* Output AABB */

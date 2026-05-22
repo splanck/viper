@@ -32,6 +32,7 @@
 #include "rt_canvas3d.h"
 #include "rt_canvas3d_internal.h"
 #include "rt_mat4.h"
+#include "rt_object.h"
 #include "vgfx3d_backend.h"
 
 #include <math.h>
@@ -100,6 +101,10 @@ static float instbatch_identity_at(int row, int col) {
 static int instbatch_value_fits_float(double value) {
     return isfinite(value) && value >= -INSTBATCH3D_FLOAT_ABS_MAX &&
            value <= INSTBATCH3D_FLOAT_ABS_MAX;
+}
+
+static int instbatch_mat4_valid(void *transform) {
+    return transform && rt_obj_is_instance(transform, RT_MAT4_CLASS_ID, sizeof(mat4_impl));
 }
 
 /// @brief Copy a Mat4 object into a float[16] slot, replacing any NaN/Inf with
@@ -247,7 +252,7 @@ void *rt_instbatch3d_new(void *mesh, void *material) {
 void rt_instbatch3d_add(void *obj, void *transform) {
     rt_instbatch3d *b =
         (rt_instbatch3d *)rt_g3d_checked_or_null(obj, RT_G3D_INSTANCEBATCH3D_CLASS_ID);
-    if (!b || !transform || rt_obj_class_id(transform) != RT_MAT4_CLASS_ID)
+    if (!b || !instbatch_mat4_valid(transform))
         return;
 
     if (b->instance_count >= b->instance_capacity) {
@@ -324,7 +329,7 @@ void rt_instbatch3d_remove(void *obj, int64_t index) {
 void rt_instbatch3d_set(void *obj, int64_t index, void *transform) {
     rt_instbatch3d *b =
         (rt_instbatch3d *)rt_g3d_checked_or_null(obj, RT_G3D_INSTANCEBATCH3D_CLASS_ID);
-    if (!b || !transform || rt_obj_class_id(transform) != RT_MAT4_CLASS_ID)
+    if (!b || !instbatch_mat4_valid(transform))
         return;
     if (index < 0 || index >= b->instance_count)
         return;

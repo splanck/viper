@@ -685,9 +685,9 @@ void rt_camera3d_set_position(void *obj, void *pos) {
     up[0] = finite_or(cam->view[4], 0.0);
     up[1] = finite_or(cam->view[5], 1.0);
     up[2] = finite_or(cam->view[6], 0.0);
-    cam->eye[0] = finite_or(rt_vec3_x(pos), 0.0);
-    cam->eye[1] = finite_or(rt_vec3_y(pos), 0.0);
-    cam->eye[2] = finite_or(rt_vec3_z(pos), 0.0);
+    cam->eye[0] = clamp_abs_or(rt_vec3_x(pos), 0.0, CAMERA3D_WORLD_ABS_MAX);
+    cam->eye[1] = clamp_abs_or(rt_vec3_y(pos), 0.0, CAMERA3D_WORLD_ABS_MAX);
+    cam->eye[2] = clamp_abs_or(rt_vec3_z(pos), 0.0, CAMERA3D_WORLD_ABS_MAX);
     target[0] = cam->eye[0] + forward[0];
     target[1] = cam->eye[1] + forward[1];
     target[2] = cam->eye[2] + forward[2];
@@ -895,16 +895,18 @@ void rt_camera3d_fps_update(void *obj,
 
     yaw_delta = finite_or(yaw_delta, 0.0);
     pitch_delta = finite_or(pitch_delta, 0.0);
-    move_fwd = finite_or(move_fwd, 0.0);
-    move_right = finite_or(move_right, 0.0);
-    move_up = finite_or(move_up, 0.0);
+    move_fwd = clamp_abs_or(move_fwd, 0.0, CAMERA3D_WORLD_ABS_MAX);
+    move_right = clamp_abs_or(move_right, 0.0, CAMERA3D_WORLD_ABS_MAX);
+    move_up = clamp_abs_or(move_up, 0.0, CAMERA3D_WORLD_ABS_MAX);
     speed = sanitize_nonnegative(speed, 0.0);
     dt = sanitize_nonnegative(dt, 0.0);
     cam->fps_yaw = finite_or(cam->fps_yaw, 0.0);
     cam->fps_pitch = finite_or(cam->fps_pitch, 0.0);
 
     /* Accumulate yaw/pitch from mouse deltas */
-    cam->fps_yaw += yaw_delta;
+    cam->fps_yaw = fmod(cam->fps_yaw + yaw_delta, 360.0);
+    if (!isfinite(cam->fps_yaw))
+        cam->fps_yaw = 0.0;
     cam->fps_pitch += pitch_delta;
     if (cam->fps_pitch > 89.0)
         cam->fps_pitch = 89.0;
@@ -926,9 +928,19 @@ void rt_camera3d_fps_update(void *obj,
 
     /* Apply movement */
     double move_scale = speed * dt;
-    cam->eye[0] += fwd_x * move_fwd * move_scale + right_x * move_right * move_scale;
-    cam->eye[1] += fwd_y * move_fwd * move_scale + move_up * move_scale;
-    cam->eye[2] += fwd_z * move_fwd * move_scale + right_z * move_right * move_scale;
+    if (!isfinite(move_scale) || move_scale > CAMERA3D_WORLD_ABS_MAX)
+        move_scale = CAMERA3D_WORLD_ABS_MAX;
+    cam->eye[0] = clamp_abs_or(cam->eye[0] + fwd_x * move_fwd * move_scale +
+                                   right_x * move_right * move_scale,
+                               0.0,
+                               CAMERA3D_WORLD_ABS_MAX);
+    cam->eye[1] = clamp_abs_or(cam->eye[1] + fwd_y * move_fwd * move_scale + move_up * move_scale,
+                               0.0,
+                               CAMERA3D_WORLD_ABS_MAX);
+    cam->eye[2] = clamp_abs_or(cam->eye[2] + fwd_z * move_fwd * move_scale +
+                                   right_z * move_right * move_scale,
+                               0.0,
+                               CAMERA3D_WORLD_ABS_MAX);
 
     /* Rebuild view matrix via LookAt */
     double target[3] = {cam->eye[0] + fwd_x, cam->eye[1] + fwd_y, cam->eye[2] + fwd_z};
