@@ -116,6 +116,22 @@ var bg = Assets.Load("backgrounds/sky.png");
 Assets.Unmount("level2.vpa");
 ```
 
+## Editor Resolver
+
+`Viper.Assets.Resolver.Resolve(scenePath, projectRoot, assetRootsCsv, assetPath)` returns a structured lookup record for editor and scene workflows that need to explain where an asset was found.
+
+The returned `Map` includes:
+
+| Field | Description |
+|-------|-------------|
+| `found` / `exists` | True when the asset resolved to an existing file or mounted asset |
+| `path` | Canonical resolved path, or the mounted asset name |
+| `displayPath` | Project-relative display path when available |
+| `source` | `absolute`, `scene`, `project`, `assetRoot`, `mounted`, or `missing` |
+| `diagnostic` | Human-readable missing-asset message when unresolved |
+
+Resolution checks absolute paths first, then the scene's directory, then `projectRoot`, then each comma-separated asset root. If no filesystem candidate exists, the resolver checks mounted assets through `Viper.IO.Assets`.
+
 ## See Also
 
 - [Files & Directories](files.md) — Lower-level file I/O

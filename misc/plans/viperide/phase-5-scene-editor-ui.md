@@ -4,14 +4,15 @@
 
 Build the docked visual scene editor inside ViperIDE. This is a staged program, not one oversized increment. Each sub-phase must preserve document safety, save/reload behavior, keyboard access, and cross-platform behavior.
 
-The scene editor works with `Viper.Game.Scene` as the source of truth. The cached `Tilemap` is only a render view unless Phase 3 deliberately changes that ownership model.
+The scene editor works with `Viper.Game.Scene` as the source of truth. Any `Tilemap` returned by `BuildTilemap()` is a render copy unless Phase 3 deliberately adds a tested live-view ownership model.
 
 ## 2. Dependencies
 
 Required before any visual editing:
 
 - Phase 0 document kinds, surface switching, close/save safety, structured locations, session restore.
-- Phase 3 scene load/save, diagnostics, and mutators required by the specific tool.
+- Phase 3 scene load/save, `DiagnosticRecords()` diagnostics, and mutators
+  required by the specific tool.
 - Phase 4 SceneView rendering, hit testing, and marker/selection APIs.
 
 Required before Play:
@@ -26,9 +27,9 @@ In:
 
 - `scene_editor` module mounted by `AppShell.SelectSurface(KIND_SCENE)`.
 - Open `.scene`/`.level`/canonical scene files as scene documents.
-- Load through `Viper.Game.Scene.Load`.
-- Show SceneView with tilemap if load succeeds.
-- Show an in-surface error with diagnostics if load fails.
+- Load through `Viper.Game.Scene.LoadFile`.
+- Show SceneView with a scene-owned tile view or `Scene.BuildTilemap()` render copy if load succeeds.
+- Show an in-surface error from `scene.DiagnosticRecords()` if load fails.
 - Provide "Open as Source" or source/visual toggle.
 
 Out:
@@ -47,7 +48,7 @@ In:
 
 - `SceneDocumentState` owned by the IDE document or a side table keyed by document id.
 - Dirty tracking for scene changes separate from raw text editor dirty state.
-- Save via `scene.Save(doc.filePath)`.
+- Save via `scene.SaveFile(doc.filePath)`.
 - Save As with canonical scene extension.
 - Reload from disk with dirty conflict prompt.
 - External-change handling for active and inactive scene docs.
@@ -63,7 +64,7 @@ Acceptance:
 
 In:
 
-- Asset resolution for tileset descriptors using project root and `Viper.IO.Assets.Load`.
+- Asset resolution for scene asset descriptors using project root, scene path, asset roots, and `Viper.Assets.Resolver.Resolve`.
 - Missing asset placeholder.
 - Tile palette grid with selected tile id.
 - Layer list with active layer and visibility.
@@ -91,7 +92,7 @@ In:
 - Place, select, move, duplicate, and delete objects.
 - Selection markers and gizmos via SceneView overlay APIs.
 - Inspector for scene, layer, tile, and object scalar properties.
-- Property edits use live scene-backed `SceneObject` handles or scene mutators.
+- Property edits use indexed scene-owned object/property mutators from `Viper.Game.Scene`.
 - Undo/redo for object/property edits.
 
 Acceptance:
@@ -131,7 +132,8 @@ Scene files remain text files. The editor must support at least one of:
 - source/visual toggle in the same tab, or
 - "Open as Source" command that opens a code/text view of the same file.
 
-Load diagnostics should point to source line/column when available.
+Load diagnostics should point to source line/column and JSON path when
+available.
 
 ### 4.3 Asset Resolution
 
@@ -166,7 +168,8 @@ Do not build a polished inspector that has no source of truth for valid object t
 
 ## 5. Error Handling
 
-- Scene load fails: show diagnostic surface and source fallback.
+- Scene load fails: show `DiagnosticRecords()` diagnostic surface and source
+  fallback.
 - Scene save fails: keep dirty flag and show path/reason.
 - Missing tileset: placeholder palette and warning.
 - Asset decode fails: placeholder and warning.

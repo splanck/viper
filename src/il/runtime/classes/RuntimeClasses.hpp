@@ -513,6 +513,20 @@ enum class RuntimeTypeId : std::size_t {
     RTCLS_ZiaToolchain,
     RTCLS_Process,
     RTCLS_ProcessHandle,
+    RTCLS_GuiTestHarness,
+    RTCLS_GuiVirtualList,
+    RTCLS_GuiVirtualTree,
+    RTCLS_GuiCommandState,
+    RTCLS_GuiAccessibility,
+    RTCLS_AssetResolver,
+    RTCLS_WorkspaceFileIndex,
+    RTCLS_WorkspaceWatcher,
+    RTCLS_ProjectManifest,
+    RTCLS_WorkspaceEdit,
+    RTCLS_DebugProtocol,
+    RTCLS_DebugProtocolSession,
+    RTCLS_FuzzyMatch,
+    RTCLS_GameScene,
 };
 
 /// @brief Describes a property on a runtime class.

@@ -92,7 +92,8 @@ inline std::optional<RtComponent> componentForRuntimeSymbol(std::string_view sym
         starts("rt_gameui_") || starts("rt_uilabel_") || starts("rt_uibar_") ||
         starts("rt_uipanel_") || starts("rt_uinineslice_") || starts("rt_uimenulist_") ||
         starts("rt_pathfinder_") || starts("rt_dialogue_") || starts("rt_lighting2d_") ||
-        starts("rt_platformer_ctrl_") || starts("rt_achievement_") || starts("rt_typewriter_"))
+        starts("rt_platformer_ctrl_") || starts("rt_achievement_") ||
+        starts("rt_typewriter_") || starts("rt_game_scene_"))
         return RtComponent::Game;
 
     // Text component
@@ -103,7 +104,7 @@ inline std::optional<RtComponent> componentForRuntimeSymbol(std::string_view sym
         starts("rt_template_") || starts("rt_textwrap_") || starts("rt_diff_") ||
         starts("rt_numfmt_") || starts("rt_pluralize_") || starts("rt_version_") ||
         starts("rt_keyderive_") || starts("rt_aes_") || starts("rt_cipher_") ||
-        starts("rt_password_") || starts("rt_rand_"))
+        starts("rt_password_") || starts("rt_rand_") || starts("rt_fuzzy_match_"))
         return RtComponent::Text;
 
     // I/O and filesystem component
@@ -111,7 +112,8 @@ inline std::optional<RtComponent> componentForRuntimeSymbol(std::string_view sym
         starts("rt_linereader_") || starts("rt_linewriter_") || starts("rt_io_file_") ||
         starts("rt_memstream_") || starts("rt_stream_") || starts("rt_watcher_") ||
         starts("rt_compress_") || starts("rt_archive_") || starts("rt_glob_") ||
-        starts("rt_tempfile_") || starts("rt_savedata_") || sym == "rt_eof_ch" ||
+        starts("rt_tempfile_") || starts("rt_savedata_") || starts("rt_workspace_") ||
+        starts("rt_asset_resolver_") || starts("rt_project_manifest_") || sym == "rt_eof_ch" ||
         sym == "rt_lof_ch" || sym == "rt_loc_ch" || sym == "rt_close_err" ||
         sym == "rt_seek_ch_err" || sym == "rt_write_ch_err" || sym == "rt_println_ch_err" ||
         sym == "rt_line_input_ch_err" || sym == "rt_open_err_vstr")
@@ -134,6 +136,7 @@ inline std::optional<RtComponent> componentForRuntimeSymbol(std::string_view sym
         starts("rt_tilemap_") || starts("rt_camera_") || starts("rt_scene_") ||
         starts("rt_font_") || starts("rt_gui_") || starts("rt_checkbox_") ||
         starts("rt_codeeditor_") || starts("rt_widget_") || starts("rt_treeview_") ||
+        starts("rt_virtual_") || starts("rt_command_state_") || starts("rt_accessibility_") ||
         starts("rt_radiobutton_") || starts("rt_menuitem_") || starts("rt_contextmenu_") ||
         starts("rt_statusbar_") || starts("rt_toolbar_") || starts("rt_findbar_") ||
         starts("rt_commandpalette_") || starts("rt_scrollview_") || starts("rt_action_") ||
@@ -169,6 +172,7 @@ inline std::optional<RtComponent> componentForRuntimeSymbol(std::string_view sym
         starts("rt_numeric_") || starts("rt_bigint_") || starts("rt_debug_") || starts("rt_fmt_") ||
         starts("rt_format_") || starts("rt_int_format_") || starts("rt_printf_") ||
         starts("rt_term_") || starts("rt_time_") || starts("rt_datetime_") ||
+        starts("rt_debug_protocol_") ||
         starts("rt_dateonly_") || starts("rt_daterange_") || starts("rt_duration_") ||
         starts("rt_reltime_") || starts("rt_stopwatch_") || starts("rt_countdown_") ||
         starts("rt_easing_") || starts("rt_modvar_") || starts("rt_args_") || starts("rt_log_") ||
@@ -190,7 +194,8 @@ inline std::optional<RtComponent> componentForRuntimeSymbol(std::string_view sym
     if (starts("Viper.Text."))
         return RtComponent::Text;
     if (starts("Viper.IO.") || starts("Viper.File.") || starts("Viper.Dir.") ||
-        starts("Viper.Path."))
+        starts("Viper.Path.") || starts("Viper.Workspace.") || starts("Viper.Assets.") ||
+        starts("Viper.Project."))
         return RtComponent::IoFs;
     if (starts("Viper.Net.") || starts("Viper.Http.") || starts("Viper.WebSocket."))
         return RtComponent::Network;
@@ -204,6 +209,8 @@ inline std::optional<RtComponent> componentForRuntimeSymbol(std::string_view sym
     if (starts("Viper.System.Exec.") || starts("Viper.System.Machine.") ||
         starts("Viper.System.Process."))
         return RtComponent::Exec;
+    if (starts("Viper.Debug."))
+        return RtComponent::Base;
     if (starts("Viper.Localization."))
         return RtComponent::Localization;
 
@@ -248,8 +255,10 @@ inline std::vector<RtComponent> resolveRequiredComponents(const SymbolRange &sym
     if (has(RtComponent::Text) || has(RtComponent::IoFs) || has(RtComponent::Exec) ||
         has(RtComponent::Network))
         add(RtComponent::Collections);
-    if (has(RtComponent::Game))
+    if (has(RtComponent::Game)) {
         add(RtComponent::Collections); // Game depends on Collections + OOP
+        add(RtComponent::Text);        // LevelData/scene editor use JSON helpers
+    }
     if (has(RtComponent::IoFs))
         add(RtComponent::Text); // SaveData depends on rt_json_stream_*
     if (has(RtComponent::Collections))

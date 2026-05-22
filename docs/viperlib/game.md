@@ -112,21 +112,53 @@ if cam.IsDirty() {
 
 ## Viper.Game.Scene
 
-A hierarchical object tree for organizing game objects. Objects can be nested into a
-parent-child structure; transforms propagate to children.
+Editable scene document for IDE scene tools, tile layers, placed objects, custom properties, and canonical JSON save/load.
 
 **Type:** Instance (obj)
-**Constructor:** `Scene.New()`
+**Constructor:** `Scene.New(width, height, tileWidth, tileHeight)`
 
-### Methods
+### Properties
+
+| Property | Type | Description |
+|----------|------|-------------|
+| `Width` | Integer | Scene width in tiles |
+| `Height` | Integer | Scene height in tiles |
+| `TileWidth` | Integer | Tile width in pixels |
+| `TileHeight` | Integer | Tile height in pixels |
+
+### Static Methods
 
 | Method | Signature | Description |
 |---|---|---|
-| `Add(obj)` | `none(obj)` | Add an object to the root |
-| `Remove(obj)` | `none(obj)` | Remove an object |
-| `FindByName(name)` | `obj(String)` | Find first object with exact name match |
-| `Update(dt)` | `none(Integer)` | Propagate update tick to all objects |
-| `Draw(canvas, camera)` | `none(obj, obj)` | Draw all objects using camera transform |
+| `New(width, height, tileWidth, tileHeight)` | `Scene(Integer...)` | Create a new scene with one default layer |
+| `LoadJson(text)` | `Scene(String)` | Parse a scene JSON document |
+| `LoadFile(path)` | `Scene(String)` | Read and parse a scene JSON file |
+
+### Instance Methods
+
+| Method | Signature | Description |
+|---|---|---|
+| `ToJson()` | `String()` | Serialize the scene as canonical JSON |
+| `SaveFile(path)` | `Boolean(String)` | Write canonical JSON to disk |
+| `LastError()` | `String()` | Return the last load/save diagnostic text |
+| `Diagnostics()` | `Seq()` | Return structured diagnostics |
+| `AddLayer(name)` | `Integer(String)` | Add a tile layer and return its index |
+| `LayerCount()` | `Integer()` | Return the number of tile layers |
+| `LayerName(layer)` / `SetLayerName(layer, name)` | `String(Integer)` / `Void(Integer, String)` | Read or update layer names |
+| `LayerVisible(layer)` / `SetLayerVisible(layer, visible)` | `Boolean(Integer)` / `Void(Integer, Boolean)` | Read or update layer visibility |
+| `MoveLayer(from, to)` / `RemoveLayer(layer)` | `Void(Integer, Integer)` / `Void(Integer)` | Reorder or remove layers |
+| `GetTile(layer, x, y)` / `SetTile(layer, x, y, tile)` | `Integer(Integer...)` / `Void(Integer...)` | Read or mutate scene-owned tile IDs |
+| `FillTiles(layer, x, y, w, h, tile)` | `Void(Integer...)` | Fill a rectangular tile region |
+| `SetLayerAsset(layer, path)` / `LayerAsset(layer)` | `Void(Integer, String)` / `String(Integer)` | Attach a tileset or source asset path to a layer |
+| `AddObject(type, id, x, y)` | `Integer(String, String, Integer, Integer)` | Add a placed object and return its index |
+| `ObjectCount()` / `RemoveObject(index)` | `Integer()` / `Void(Integer)` | Count or remove placed objects |
+| `ObjectType(index)` / `ObjectId(index)` | `String(Integer)` | Read object metadata |
+| `ObjectX(index)` / `ObjectY(index)` / `SetObjectPosition(index, x, y)` | `Integer(Integer)` / `Void(Integer, Integer, Integer)` | Read or update object position |
+| `SetObjectProperty(index, key, value)` / `GetObjectProperty(index, key)` / `DeleteObjectProperty(index, key)` | `Void(...)` / `String(...)` / `Void(...)` | Manage object properties |
+| `SetProperty(key, value)` / `GetProperty(key)` / `DeleteProperty(key)` | `Void(String, String)` / `String(String)` / `Void(String)` | Manage scene-level properties |
+| `AssetPaths()` | `Seq()` | Return asset path descriptors discovered from layers and asset-like properties |
+
+Tile ID `0` is reserved for empty space. Out-of-bounds tile reads return `0`; out-of-bounds writes are ignored. The scene document is the serialization source of truth for editor mutations.
 
 ---
 

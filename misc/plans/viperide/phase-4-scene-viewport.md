@@ -4,7 +4,7 @@
 
 Add the GUI viewport that the scene editor uses to display tilemaps, grid overlays, object markers, selection, and pan/zoom. This phase must prove rendering and hit testing, not just create a widget shell.
 
-The previous plan assumed `rt_tilemap_draw` solved zoom. It does not: the current binding accepts a tilemap, canvas, and x/y offsets only. This phase must choose and test a real scale strategy.
+The runtime prerequisite plan now exposes scaled tilemap draw/count/hit-test primitives. Phase 4 should build on those primitives or prove an equivalent SceneView-internal strategy with pixel and hit-test coverage.
 
 ## 2. Scope
 
@@ -30,11 +30,11 @@ Out:
 
 Before implementation, choose one:
 
-1. Add scaled tilemap draw APIs, for example `Tilemap.DrawScaled` or SceneView-internal scaled tile blitting.
+1. Use the existing scaled `Tilemap.DrawScaled` / hit-test primitives.
 2. Render the tilemap to an intermediate pixel buffer and scale/blit it into the widget.
 3. Use an existing canvas transform only if one exists and is proven with tests.
 
-`rt_tilemap_draw(tilemap, canvas, offsetX, offsetY)` alone is insufficient for zoom.
+`rt_tilemap_draw(tilemap, canvas, offsetX, offsetY)` alone is still insufficient for zoom.
 
 Acceptance:
 
@@ -117,7 +117,7 @@ Add the stub in the same pattern used by other graphics runtime bindings.
 
 ### 4.5 Scene Integration
 
-Phase 4 can be tested with a plain `Tilemap`. If a `Scene` handle is accepted for markers, it must respect the Phase 3 ownership model. SceneView does not own scene data and does not mutate it.
+Phase 4 can be tested with a plain `Tilemap` or a `Scene.BuildTilemap()` render copy. If a `Scene` handle is accepted for markers, it must respect the Phase 3 ownership model. SceneView does not own scene data and does not mutate it.
 
 ## 5. Error Handling
 

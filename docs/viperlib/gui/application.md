@@ -819,6 +819,41 @@ All `VideoWidget` layout, visibility, child, and playback methods are GUI main-t
 
 ---
 
+### IDE Test, Virtualization, And Accessibility Helpers
+
+These helpers are runtime-side primitives for editor applications that need deterministic tests, large result views, command state snapshots, and contrast checks.
+
+#### TestHarness
+
+`Viper.GUI.TestHarness.New()` creates a headless registry for named widget regions. It is not a replacement for a real `App`; it is a compact automation model for CTests and Zia probes.
+
+| Method | Signature | Description |
+|--------|-----------|-------------|
+| `RegisterWidget(id, type, name, x, y, w, h)` | `Void(String, String, String, Integer...)` | Register a focusable test region |
+| `FindById(id)` / `FindByName(name)` / `FindByType(type)` | `Map(String)` | Return a structured lookup record |
+| `SendKey(key, modifiers)` | `Void(String, Integer)` | Queue a key event and update focus traversal for `Tab` |
+| `SendMouse(eventType, x, y, button)` | `Void(String, Integer, Integer, Integer)` | Queue a mouse event and focus the hit widget on `down` |
+| `Tick(frames)` | `Integer(Integer)` | Advance the harness frame counter |
+| `GetFocus()` | `String()` | Return the focused widget id |
+| `FocusOrder()` | `Seq()` | Return registered widget ids in traversal order |
+| `CaptureRegion(x, y, w, h)` | `Map(Integer...)` | Return a deterministic pixel snapshot map |
+
+`Viper.GUI.TestHarness.AssertNonBlank(snapshot)` is a static helper that checks a captured snapshot map.
+
+#### VirtualList and VirtualTree
+
+`Viper.GUI.VirtualList.New(rowCount, rowHeight, viewportHeight)` tracks visible row ranges and stable selection by id for large lists. `VisibleRange(scrollY)` returns a map with `first`, `last`, and `count`; `SetRowId(row, id)`, `SelectId(id)`, `GetSelectedId()`, and `GetSelectedIndex()` keep selection stable across rebuilds.
+
+`Viper.GUI.VirtualTree.New()` supports lazy tree models. `AddNode(parentId, id, text)`, `Expand(id)`, `Collapse(id)`, `VisibleRows()`, `SelectId(id)`, and `RefreshSubtree(id)` let a project tree preserve expansion/selection while requesting repopulation only for dirty subtrees.
+
+#### CommandState and Accessibility
+
+`Viper.GUI.CommandState.New(id, label)` stores command enabled/checked state plus accessible label and description metadata. `Snapshot()` returns a map suitable for command palettes, menus, toolbar buttons, and tests.
+
+`Viper.GUI.Accessibility.ContrastRatio(fgRgb, bgRgb)`, `MeetsContrast(fgRgb, bgRgb, minRatio)`, and `HighContrastTokens()` provide shared contrast checks and a small high-contrast color token set for editor overlays.
+
+---
+
 
 ## See Also
 

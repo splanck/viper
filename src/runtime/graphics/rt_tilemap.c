@@ -46,6 +46,7 @@
 #include "rt_graphics.h"
 #include "rt_heap.h"
 #include "rt_internal.h"
+#include "rt_map.h"
 #include "rt_object.h"
 #include "rt_physics2d.h"
 #include "rt_physics2d_internal.h"
@@ -670,6 +671,89 @@ void rt_tilemap_draw_region(void *tilemap_ptr,
     }
 }
 
+/// @brief Release a temporary runtime object after a retained handoff.
+static void tilemap_release_temp(void *obj) {
+    if (obj && rt_obj_release_check0(obj))
+        rt_obj_free(obj);
+}
+
+/// @brief Draw the tilemap using scaled destination tile cells.
+/// @details This editor-oriented path preserves tile IDs and viewport culling
+///          while scaling each visible source tile through Pixels.Scale before
+///          blitting it to the canvas. Scale 100 delegates to the native fast
+///          path. The implementation is intentionally simple and deterministic;
+///          renderers that need batching should use TilemapRenderer2D.
+void rt_tilemap_draw_scaled(void *tilemap_ptr,
+                            void *canvas_ptr,
+                            int64_t offset_x,
+                            int64_t offset_y,
+                            int64_t scale_percent) {
+    if (scale_percent <= 0 || !tilemap_ptr || !canvas_ptr)
+        return;
+    if (scale_percent == 100) {
+        rt_tilemap_draw(tilemap_ptr, canvas_ptr, offset_x, offset_y);
+        return;
+    }
+
+    rt_tilemap_impl *tilemap = tilemap_checked(tilemap_ptr, NULL);
+    if (!tilemap)
+        return;
+
+    int64_t dst_w = tilemap->tile_width * scale_percent / 100;
+    int64_t dst_h = tilemap->tile_height * scale_percent / 100;
+    if (dst_w <= 0)
+        dst_w = 1;
+    if (dst_h <= 0)
+        dst_h = 1;
+
+    int64_t first_x = 0;
+    int64_t first_y = 0;
+    int64_t vis_w = 0;
+    int64_t vis_h = 0;
+    if (!tilemap_visible_span(rt_canvas_width(canvas_ptr), offset_x, dst_w, tilemap->width,
+                              &first_x, &vis_w) ||
+        !tilemap_visible_span(rt_canvas_height(canvas_ptr), offset_y, dst_h, tilemap->height,
+                              &first_y, &vis_h))
+        return;
+
+    int64_t end_y = first_y + vis_h;
+    int64_t end_x = first_x + vis_w;
+    for (int32_t li = 0; li < tilemap->layer_count; li++) {
+        tm_layer *layer = &tilemap->layers[li];
+        if (!layer->visible || !layer->tiles)
+            continue;
+        void *tileset = layer->tileset ? layer->tileset : tilemap->tileset;
+        int64_t tileset_cols = layer->tileset ? layer->tileset_cols : tilemap->tileset_cols;
+        int64_t tile_count = layer->tileset ? layer->tile_count : tilemap->tile_count;
+        if (!tileset || tile_count <= 0 || tileset_cols <= 0)
+            continue;
+
+        for (int64_t ty = first_y; ty < end_y; ty++) {
+            for (int64_t tx = first_x; tx < end_x; tx++) {
+                int64_t tile_index = rt_tilemap_resolve_anim_tile(
+                    tilemap_ptr, layer->tiles[ty * tilemap->width + tx]);
+                if (tile_index <= 0 || tile_index > tile_count)
+                    continue;
+                int64_t ti = tile_index - 1;
+                int64_t sx = (ti % tileset_cols) * tilemap->tile_width;
+                int64_t sy = (ti / tileset_cols) * tilemap->tile_height;
+                void *tile = rt_pixels_new(tilemap->tile_width, tilemap->tile_height);
+                if (!tile)
+                    continue;
+                rt_pixels_copy(tile, 0, 0, tileset, sx, sy, tilemap->tile_width,
+                               tilemap->tile_height);
+                void *scaled = rt_pixels_scale(tile, dst_w, dst_h);
+                if (scaled) {
+                    rt_canvas_blit(canvas_ptr, tx * dst_w + offset_x, ty * dst_h + offset_y,
+                                   scaled);
+                    tilemap_release_temp(scaled);
+                }
+                tilemap_release_temp(tile);
+            }
+        }
+    }
+}
+
 /// @brief Count non-empty, drawable tiles in a tile-coordinate sub-region.
 int64_t rt_tilemap_count_drawn_region(void *tilemap_ptr,
                                       int64_t view_x,
@@ -718,6 +802,68 @@ int64_t rt_tilemap_count_drawn_visible(
         !tilemap_visible_span(canvas_h, offset_y, th, tilemap->height, &first_y, &vis_h))
         return 0;
     return rt_tilemap_count_drawn_region(tilemap_ptr, first_x, first_y, vis_w, vis_h);
+}
+
+/// @brief Count drawable tiles visible in a scaled canvas viewport.
+int64_t rt_tilemap_count_drawn_visible_scaled(
+    void *tilemap_ptr, void *canvas_ptr, int64_t offset_x, int64_t offset_y, int64_t scale_percent) {
+    if (!tilemap_ptr || !canvas_ptr || scale_percent <= 0)
+        return 0;
+    if (scale_percent == 100)
+        return rt_tilemap_count_drawn_visible(tilemap_ptr, canvas_ptr, offset_x, offset_y);
+    rt_tilemap_impl *tilemap = tilemap_checked(tilemap_ptr, NULL);
+    if (!tilemap)
+        return 0;
+    int64_t dst_w = tilemap->tile_width * scale_percent / 100;
+    int64_t dst_h = tilemap->tile_height * scale_percent / 100;
+    if (dst_w <= 0)
+        dst_w = 1;
+    if (dst_h <= 0)
+        dst_h = 1;
+    int64_t first_x = 0;
+    int64_t first_y = 0;
+    int64_t vis_w = 0;
+    int64_t vis_h = 0;
+    if (!tilemap_visible_span(rt_canvas_width(canvas_ptr), offset_x, dst_w, tilemap->width,
+                              &first_x, &vis_w) ||
+        !tilemap_visible_span(rt_canvas_height(canvas_ptr), offset_y, dst_h, tilemap->height,
+                              &first_y, &vis_h))
+        return 0;
+    return rt_tilemap_count_drawn_region(tilemap_ptr, first_x, first_y, vis_w, vis_h);
+}
+
+/// @brief Convert scaled screen coordinates to tile coordinates and return a result map.
+void *rt_tilemap_hit_test_scaled(void *tilemap_ptr,
+                                 int64_t screen_x,
+                                 int64_t screen_y,
+                                 int64_t offset_x,
+                                 int64_t offset_y,
+                                 int64_t scale_percent) {
+    void *result = rt_map_new();
+    rt_tilemap_impl *tilemap = tilemap_checked(tilemap_ptr, NULL);
+    int64_t tx = 0;
+    int64_t ty = 0;
+    int8_t in_bounds = 0;
+    int64_t tile = 0;
+    if (tilemap && scale_percent > 0) {
+        int64_t dst_w = tilemap->tile_width * scale_percent / 100;
+        int64_t dst_h = tilemap->tile_height * scale_percent / 100;
+        if (dst_w <= 0)
+            dst_w = 1;
+        if (dst_h <= 0)
+            dst_h = 1;
+        tx = tilemap_floor_div(screen_x - offset_x, dst_w);
+        ty = tilemap_floor_div(screen_y - offset_y, dst_h);
+        in_bounds = (tx >= 0 && ty >= 0 && tx < tilemap->width && ty < tilemap->height) ? 1 : 0;
+        if (in_bounds)
+            tile = rt_tilemap_get_tile(tilemap_ptr, tx, ty);
+    }
+    rt_map_set_int(result, rt_const_cstr("tileX"), tx);
+    rt_map_set_int(result, rt_const_cstr("tileY"), ty);
+    rt_map_set_int(result, rt_const_cstr("tile"), tile);
+    rt_map_set_int(result, rt_const_cstr("scalePercent"), scale_percent);
+    rt_map_set_bool(result, rt_const_cstr("inBounds"), in_bounds);
+    return result;
 }
 
 //=============================================================================

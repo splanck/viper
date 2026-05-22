@@ -633,6 +633,43 @@ PRINT "file_name".Like("file\_name")  ' Output: 1 (literal _)
 
 ---
 
+## Viper.Text.FuzzyMatch
+
+Reusable scoring and highlight ranges for command palettes, quick-open, and symbol search.
+
+**Type:** Static utility class
+
+### Methods
+
+| Method | Signature | Description |
+|--------|-----------|-------------|
+| `Score(query, candidate)` | `Integer(String, String)` | Return a deterministic match score, or `-1` when the query does not match |
+| `Match(query, candidate)` | `Map(String, String)` | Return `matched`, `score`, `query`, `candidate`, and matched `ranges` |
+
+`Match` returns ranges as a `Seq` of maps with `start`, `end`, and `length` fields. Ranges are candidate string offsets and can be used directly for UI highlight spans.
+
+### Notes
+
+- Empty queries match with score `0`.
+- Matching is case-insensitive, but acronym, separator, camel-case, and consecutive-character hits score higher.
+- Tie-breaking is stable for a given query and candidate string.
+
+### Zia Example
+
+```rust
+module FuzzyDemo;
+
+bind Viper.Terminal;
+
+func start() {
+    var m = Viper.Text.FuzzyMatch.Match("VS", "ViperScene.zia");
+    SayBool(m.GetBool("matched"));
+    SayInt(m.GetInt("score"));
+}
+```
+
+---
+
 
 ## See Also
 

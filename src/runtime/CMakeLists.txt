@@ -44,6 +44,7 @@ set(RT_BASE_SOURCES
         core/rt_log.c
         core/rt_msgbus.c
         core/rt_gc.c
+        core/rt_debug_protocol.cpp
         core/rt_zia_completion_stub.c
         core/rt_zia_highlight_stub.c
 )
@@ -137,6 +138,7 @@ set(RT_GAME_SOURCES
         game/rt_raycast2d.c
         game/rt_scenemanager.c
         game/rt_config.c
+        game/rt_scene_editor.cpp
 )
 
 set(RT_TEXT_SOURCES
@@ -170,6 +172,7 @@ set(RT_TEXT_SOURCES
         text/rt_jsonpath.c
         text/rt_html.c
         text/rt_serialize.c
+        text/rt_fuzzy_match.cpp
 )
 
 set(RT_IO_FS_SOURCES
@@ -194,6 +197,7 @@ set(RT_IO_FS_SOURCES
         io/rt_path_exe.c
         io/rt_asset.c
         io/rt_asset_decode.c
+        io/rt_ide_primitives.cpp
 )
 
 set(RT_EXEC_SOURCES
@@ -218,6 +222,7 @@ set(RT_GRAPHICS_SOURCES
         graphics/rt_gui_system.c
         graphics/rt_gui_widgets.c
         graphics/rt_gui_widgets_complex.c
+        graphics/rt_gui_ide.cpp
         graphics/rt_input.c
         graphics/rt_input_pad.c
         graphics/rt_inputmgr.c
@@ -480,9 +485,11 @@ set(RT_PUBLIC_HEADERS
         ${CMAKE_CURRENT_SOURCE_DIR}/core/rt_modvar.h
         ${CMAKE_CURRENT_SOURCE_DIR}/core/rt_args.h
         ${CMAKE_CURRENT_SOURCE_DIR}/oop/rt_sb_bridge.h
+        ${CMAKE_CURRENT_SOURCE_DIR}/core/rt_debug_protocol.h
         ${CMAKE_CURRENT_SOURCE_DIR}/graphics/rt_font.h
         ${CMAKE_CURRENT_SOURCE_DIR}/graphics/rt_graphics.h
         ${CMAKE_CURRENT_SOURCE_DIR}/graphics/rt_gui.h
+        ${CMAKE_CURRENT_SOURCE_DIR}/graphics/rt_gui_ide.h
         ${CMAKE_CURRENT_SOURCE_DIR}/graphics/rt_input.h
         ${CMAKE_CURRENT_SOURCE_DIR}/graphics/rt_inputmgr.h
         ${CMAKE_CURRENT_SOURCE_DIR}/game/rt_grid2d.h
@@ -503,6 +510,7 @@ set(RT_PUBLIC_HEADERS
         ${CMAKE_CURRENT_SOURCE_DIR}/game/rt_quadtree.h
         ${CMAKE_CURRENT_SOURCE_DIR}/game/rt_debugoverlay.h
         ${CMAKE_CURRENT_SOURCE_DIR}/game/rt_gameui.h
+        ${CMAKE_CURRENT_SOURCE_DIR}/game/rt_scene_editor.h
         ${CMAKE_CURRENT_SOURCE_DIR}/game/rt_pathfinder.h
         ${CMAKE_CURRENT_SOURCE_DIR}/game/rt_dialogue.h
         ${CMAKE_CURRENT_SOURCE_DIR}/game/rt_lighting2d.h
@@ -513,6 +521,8 @@ set(RT_PUBLIC_HEADERS
         ${CMAKE_CURRENT_SOURCE_DIR}/collections/rt_map.h
         ${CMAKE_CURRENT_SOURCE_DIR}/collections/rt_binbuf.h
         ${CMAKE_CURRENT_SOURCE_DIR}/text/rt_parse.h
+        ${CMAKE_CURRENT_SOURCE_DIR}/text/rt_fuzzy_match.h
+        ${CMAKE_CURRENT_SOURCE_DIR}/io/rt_ide_primitives.h
         ${CMAKE_CURRENT_SOURCE_DIR}/io/rt_path.h
         ${CMAKE_CURRENT_SOURCE_DIR}/io/rt_dir.h
         ${CMAKE_CURRENT_SOURCE_DIR}/graphics/rt_pixels.h

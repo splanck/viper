@@ -49,7 +49,8 @@ auto.Apply(ground, 10, 12, 5)
 
 - `TexturePackerAtlas`, `AsepriteImporter`, and `TiledMapLoader` are runtime-side helpers for common 2D asset layouts.
 - `TilemapRenderer2D.DrawCount` reports the number of non-empty, valid tiles drawn by the last `Draw` or `DrawRegion` call, not the number of renderer method calls.
-- `Tilemap.CountDrawnRegion(x, y, width, height)` and `Tilemap.CountDrawnVisible(canvas, offsetX, offsetY)` expose the same drawable-tile counting logic for tests, debug overlays, and editor diagnostics.
+- `Tilemap.CountDrawnRegion(x, y, width, height)`, `Tilemap.CountDrawnVisible(canvas, offsetX, offsetY)`, and `Tilemap.CountDrawnVisibleScaled(canvas, offsetX, offsetY, scalePercent)` expose drawable-tile counting logic for tests, debug overlays, and editor diagnostics.
+- `Tilemap.DrawScaled` and `Tilemap.HitTestScaled` are intended for scene-editor viewports that need pan/zoom rendering and local mouse-to-tile conversion without duplicating tile math in UI code.
 - Import helpers currently provide atlas/tilemap construction primitives rather than full external JSON or `.aseprite` file parsing.
 - Atlas regions are validated against their backing `Pixels` buffer before registration.
 - `AsepriteImporter.SetGrid(width, height)` treats non-positive dimensions as an unset grid. `ToAtlas(pixels)` returns `null` until both frame dimensions are positive.

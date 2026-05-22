@@ -13,6 +13,7 @@ last-verified: 2026-04-09
 ## Contents
 
 - [Viper.Core.Diagnostics](#vipercorediagnostics)
+- [Viper.Debug.Protocol](#viperdebugprotocol)
 - [Viper.Time.Stopwatch](time.md#vipertimestopwatch)
 
 ---
@@ -74,6 +75,50 @@ Viper.Core.Diagnostics.AssertEq(value, 5, "value mismatch")
 
 ' Force a trap
 ' Viper.Core.Diagnostics.AssertFail("not implemented")
+```
+
+---
+
+## Viper.Debug.Protocol
+
+Headless debug-session model for IDE debugger integration. The current runtime surface provides a deterministic protocol boundary for launch, breakpoints, stepping, locals, stack frames, events, termination, and crash reporting. It is intentionally separate from the host IDE process so a target crash is represented as an event instead of crashing the IDE.
+
+**Type:** Static utility class plus `Viper.Debug.Protocol.Session` handles
+
+### Methods
+
+| Method | Signature | Description |
+|--------|-----------|-------------|
+| `New()` | `Session()` | Create a debug protocol session |
+| `SetBreakpoint(session, path, line)` | `Void(Object, String, Integer)` | Add a source breakpoint |
+| `ClearBreakpoints(session, path)` | `Void(Object, String)` | Remove breakpoints for one source path |
+| `Launch(session, path, source)` | `Map(Object, String, String)` | Start a headless source session and return the first event |
+| `Continue(session)` | `Map(Object)` | Run until the next breakpoint, exit, or crash |
+| `StepOver(session)` | `Map(Object)` | Advance one source line |
+| `Pause(session)` | `Map(Object)` | Emit a pause event at the current line |
+| `Terminate(session)` | `Map(Object)` | End the session |
+| `StackFrames(session)` | `Seq(Object)` | Return current stack-frame maps |
+| `Locals(session)` | `Seq(Object)` | Return current local-variable maps |
+| `Events(session)` | `Seq(Object)` | Return session event history |
+| `IsRunning(session)` | `Boolean(Object)` | True while the target is running |
+
+Event maps include `type`, `reason`, `path`, and `line` where relevant. Locals currently report parsed `var`/`let` assignments from the deterministic headless model; future VM-hosted adapters can keep the same command/event shape.
+
+### Zia Example
+
+```rust
+module DebugProtocolDemo;
+
+bind Viper.Terminal;
+
+func start() {
+    var session = Viper.Debug.Protocol.New();
+    Viper.Debug.Protocol.SetBreakpoint(session, "main.zia", 2);
+    var event = Viper.Debug.Protocol.Launch(
+        session, "main.zia", "var a = 1;\nvar b = 2;\n");
+    Say(event.GetStr("type"));
+    Say(event.GetStr("reason"));
+}
 ```
 
 ---

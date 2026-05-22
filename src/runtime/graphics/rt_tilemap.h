@@ -147,6 +147,14 @@ void rt_tilemap_draw_region(void *tilemap,
                             int64_t view_w,
                             int64_t view_h);
 
+/// @brief Draw the tilemap with nearest-neighbor scaled tile cells.
+/// @param scale_percent Scale percentage; 100 draws at native tile size.
+void rt_tilemap_draw_scaled(void *tilemap,
+                            void *canvas,
+                            int64_t offset_x,
+                            int64_t offset_y,
+                            int64_t scale_percent);
+
 /// @brief Count non-empty, drawable tiles in a tile-coordinate sub-region.
 int64_t rt_tilemap_count_drawn_region(void *tilemap,
                                       int64_t view_x,
@@ -157,6 +165,18 @@ int64_t rt_tilemap_count_drawn_region(void *tilemap,
 /// @brief Count non-empty, drawable tiles visible in the canvas viewport.
 int64_t rt_tilemap_count_drawn_visible(
     void *tilemap, void *canvas, int64_t offset_x, int64_t offset_y);
+
+/// @brief Count drawable tiles visible in a scaled canvas viewport.
+int64_t rt_tilemap_count_drawn_visible_scaled(
+    void *tilemap, void *canvas, int64_t offset_x, int64_t offset_y, int64_t scale_percent);
+
+/// @brief Convert scaled screen coordinates to tile coordinates and return a result map.
+void *rt_tilemap_hit_test_scaled(void *tilemap,
+                                 int64_t screen_x,
+                                 int64_t screen_y,
+                                 int64_t offset_x,
+                                 int64_t offset_y,
+                                 int64_t scale_percent);
 
 //=========================================================================
 // Utility

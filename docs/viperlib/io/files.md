@@ -788,6 +788,103 @@ NEXT i
 
 ---
 
+## Viper.Workspace.FileIndex
+
+Workspace file inventory helper for IDEs and editor tools.
+
+**Type:** Static utility class
+
+### Methods
+
+| Method | Signature | Description |
+|--------|-----------|-------------|
+| `Enumerate(root, extensionsCsv, excludesCsv, includeDirs)` | `Seq(String, String, String, Boolean)` | Recursively enumerate workspace entries under `root` |
+| `ShouldIgnore(root, relativePath, patternsCsv)` | `Boolean(String, String, String)` | Return whether a relative path is ignored by hard excludes, `.gitignore`, or explicit patterns |
+
+`Enumerate` returns a `Seq` of `Map` records. Each record includes `path`, `relativePath`, `name`, `extension`, `kind`, `isDirectory`, `id`, `size`, and `modified`.
+
+### Notes
+
+- Hard excludes include `.git`, `.hg`, `.svn`, `.viper`, `.viper-cache`, `build`, `cmake-build-*`, `node_modules`, and `.DS_Store`.
+- `.gitignore` support is intentionally a documented subset: blank/comment lines, directory suffixes, `*`, `?`, `**`, and `!` negation are supported.
+- `extensionsCsv` may contain values such as `.zia,.json,.png`; an empty list includes all regular files.
+- The `id` field is a stable 63-bit hash of the canonical path for quick UI identity, not a persistent filesystem inode.
+
+---
+
+## Viper.Workspace.Watcher
+
+Batch wrapper over `Viper.IO.Watcher` for per-frame IDE polling.
+
+**Type:** Static utility class
+
+### Methods
+
+| Method | Signature | Description |
+|--------|-----------|-------------|
+| `PollBatch(watcher, maxEvents)` | `Seq(Object, Integer)` | Drain up to `maxEvents` queued watcher events into structured maps |
+
+Each event map includes `path`, `typeName`, `type`, and `requiresRescan`. `requiresRescan` is true for overflow events so an IDE can discard incremental state and re-enumerate the workspace.
+
+`Viper.IO.Watcher` remains non-recursive; use one watcher per watched directory or pair this helper with a workspace index rescan policy.
+
+---
+
+## Viper.Project.Manifest
+
+Parser for `viper.project` and editor-expanded project manifests.
+
+**Type:** Static utility class
+
+### Methods
+
+| Method | Signature | Description |
+|--------|-----------|-------------|
+| `ParseText(text)` | `Map(String)` | Parse manifest text into a structured map |
+| `ParseFile(path)` | `Map(String)` | Read and parse a manifest file |
+
+The returned map includes `valid`, `name`, `version`, `language`, `entry`, `defaultScene`, `sourceGlobs`, `excludes`, `assetRoots`, `sceneRoots`, `runConfigs`, `buildConfigs`, and `diagnostics`.
+
+### Supported Directives
+
+```text
+project Demo
+lang zia
+entry src/main.zia
+sources src
+exclude build
+asset-root assets
+scene-root scenes
+default-scene scenes/level.json
+
+[run.play]
+entry src/main.zia
+args --dev, --scene=one
+```
+
+Unknown directives or sections keep safe defaults and add diagnostic records instead of trapping.
+
+---
+
+## Viper.Workspace.Edit
+
+Transactional multi-file text edit validation and application.
+
+**Type:** Static utility class
+
+### Methods
+
+| Method | Signature | Description |
+|--------|-----------|-------------|
+| `Validate(edits)` | `Map(Seq)` | Check edit records without writing files |
+| `Apply(edits)` | `Map(Seq)` | Validate and apply edits all-or-nothing |
+
+Each edit record is a `Map` with `file`, `startLine`, `startColumn`, `endLine`, `endColumn`, `newText`, and optional `expectedMtime`. Line and column values are 1-based. The result map includes `success`, `applied`, and `diagnostics`.
+
+Validation rejects missing files, invalid ranges, overlapping edits in the same file, and stale `expectedMtime` values. `Apply` writes all changed files only after validation succeeds and restores original contents if a later write fails.
+
+---
+
 
 ## See Also
 

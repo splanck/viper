@@ -27,13 +27,13 @@ An alpha-quality hardening cycle, not a feature release. The Zia frontend reache
 
 | Metric | v0.2.5 | v0.2.6 | Delta |
 |---|---|---|---|
-| Commits | — | 170 | +170 |
-| Source files | 2,996 | 3,038 | +42 |
-| Production SLOC | 552K | 605K | +53K |
+| Commits | — | 171 | +171 |
+| Source files | 2,996 | 3,039 | +43 |
+| Production SLOC | 552K | 606K | +54K |
 | Test SLOC | 228K | 258K | +30K |
 | Demo SLOC | 188K | 189K | +1K |
 
-Counts via `scripts/count_sloc.sh` (production 605,221 / test 257,651 / demo 189,358 / source files 3,038).
+Counts via `scripts/count_sloc.sh` (production 606,107 / test 257,922 / demo 189,358 / source files 3,039).
 
 ---
 
@@ -141,6 +141,7 @@ Counts via `scripts/count_sloc.sh` (production 605,221 / test 257,651 / demo 189
 - New `Viper.System.Process` / `Process.Handle` streaming surface: args-based startup with cwd/env, non-blocking stdout/stderr reads, poll, running-state and exit-code queries, kill, wait, destroy, and GC finalization. `Viper.System.Exec` now accepts boxed Zia/Object-ABI strings in its argument sequence rather than only raw C strings.
 - New `Viper.Zia.Toolchain` (`Check`/`CheckForFile`/`Compile`/`CompileForFile`) returns structured `Seq`/`Map` records — diagnostics carry normalized path, start/end location, severity, code, message, stage, and help; compile results carry success, diagnostics, source/output paths, and serialized IL. ViperIDE live diagnostics moved off tab-delimited parsing onto `CheckForFile`, and diagnostic navigation opens the owning file before jumping to the line; weak-stub parity keeps runtime-only links returning shape-compatible empties when `fe_zia` is absent.
 - New `Viper.Zia.ProjectIndex` adds an explicit-lifetime project language index with dirty-buffer import resolution, structured definition/reference results, semantic reference collection that excludes comments/strings and separates shadowed locals/imports/globals, and rename workspace-edit generation with visible-collision detection.
+- ViperIDE prerequisite runtime slice: `Viper.Workspace.FileIndex` / `Watcher.PollBatch`, `Viper.Assets.Resolver`, `Viper.Project.Manifest`, `Viper.Workspace.Edit`, `Viper.Game.Scene`, scaled `Tilemap` draw/count/hit testing, `Viper.GUI.TestHarness`, `VirtualList`, `VirtualTree`, `CommandState`, `Accessibility`, `Viper.Debug.Protocol`, and `Viper.Text.FuzzyMatch` now expose structured primitives for project trees, scene editing, GUI automation, command palettes, and debugger integration.
 
 ### Windows, MSVC, and HiDPI
 
@@ -164,7 +165,7 @@ Counts via `scripts/count_sloc.sh` (production 605,221 / test 257,651 / demo 189
 - **Collections** — `RTCollectionsCorrectnessTests` for class-ID distinctness, retain-on-return, and owning value snapshots; extended Bytes (negative signed reads), Queue/Stack (`owns_elements` + finalize-while-owning), Seq (slice/keep/reject/apply ownership), and Convert.* suites.
 - **Codegen / bytecode VM** — cross-block SIB and IMUL→LEA fold-liveness MIR cases, `AsmEmitter` operand-class diagnostics for the rejected `CALL`/`JMP`/`JCC`/`LEA`/`SETcc`/`MOVZX` and non-`RCX` shift-count forms, x86-64 move-folding / store-forwarding / per-function binary-section pipeline-equivalence cases, plus direct-bytecode regressions covering wrapping arithmetic, conversion traps, negative alloca, invalid locals, and null memory loads.
 - **Native linker** — coverage for `parseSize`, archive symbol-candidate ordering, `CodeSection` identity, ELF symbol-size preservation, COFF reloc-overflow records and the new addend convention, AArch64 reloc instruction-class validators, COFF weak-external `SEARCH_NOLIBRARY` paths, Mach-O `SIGNED_4` bias, PE 32-bit overflow guards, branch-trampoline overflow, and external COFF unwind references with large-unwind-fanout dead-strip.
-- **Process / Zia tooling** — `RTExecTests` cover boxed-string args, streaming stdout/stderr before exit, cwd/env propagation, empty non-blocking reads, termination, and cleanup; the stub and native completion smokes prove structured diagnostics and compile records resolve through the strong `fe_zia` bridge and stay shape-compatible under weak-stub links; ProjectIndex CTests cover two-file definition, shadowed references, rename collision, and dirty-buffer replacement.
+- **Process / Zia tooling / ViperIDE primitives** — `RTExecTests` cover boxed-string args, streaming stdout/stderr before exit, cwd/env propagation, empty non-blocking reads, termination, and cleanup; the stub and native completion smokes prove structured diagnostics and compile records resolve through the strong `fe_zia` bridge and stay shape-compatible under weak-stub links; ProjectIndex CTests cover two-file definition, shadowed references, rename collision, and dirty-buffer replacement. New focused CTests cover workspace ignore/index/watcher batching, asset resolution, project manifest parsing, transactional workspace edits, fuzzy match scores/ranges, editable scene JSON/tile/object/property flows, scaled tilemap hit testing, GUI test/virtualization/accessibility helpers, and the headless debug protocol; `zia_rt_api_test_viperide_primitives` proves the public Zia-facing surface is callable.
 - **Zia alpha hardening** — `42_try_catch_promises`, `43_alpha_hardening`, and `44_language_promises` cover interpreted, optimized `viper run`, and native paths for structured catch bindings, multi-typed catches, bare rethrow, branchy catch/finally, namespace globals, struct interface dispatch, constrained generics, tuple destructuring, `Result[T]`, weak fields, and function references.
 - **Graphics, GUI, crypto, packaging** — alias type identity, texture-region sampler isolation, raw-vs-Color pixel APIs, animation replay/stop; stale tab/menu/context/toolbar/statusbar handles, file-dialog modal-stack removal, app-font inheritance; null-vs-empty string handling, AES-CBC empty plaintext, SAN matching beyond the public extraction cap; PE VERSIONINFO, Windows thumbprint normalisation, ZIP manifest duplicate / uncovered-entry, and the non-elevated `windows_installer_user_smoke` end-to-end.
 
@@ -174,6 +175,6 @@ Demos and docs tracked the runtime work above; stale Windows debug/O0 pins for C
 
 ### Commits
 
-See `git log v0.2.5-dev..HEAD -- .` for the full 170-commit history since v0.2.5.
+See `git log v0.2.5-dev..HEAD -- .` for the full 171-commit history since v0.2.5.
 
 <!-- END DRAFT -->

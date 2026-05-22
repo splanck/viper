@@ -76,10 +76,16 @@ Close the inner loop in stages:
 
 Implement the runtime scene model described by `misc/plans/game/scene-system.md`, with IDE-specific prerequisites called out in [phase-3-scene-data.md](phase-3-scene-data.md):
 
-- `Viper.Game.Scene` and `Viper.Game.SceneObject`.
-- Load/from-string, save/to-json, canonical round-trip.
-- Live object and tile/layer mutators that update scene-owned data, not just the cached `Tilemap`.
-- Structured diagnostics or last-error reporting for editor integration.
+- `Viper.Game.Scene` using the current `LoadJson` / `LoadFile` /
+  `SaveFile` / `ToJson` surface, with optional shorter aliases only after they
+  are registered.
+- Canonical `.scene` JSON round-trip, including legacy scene-shape import.
+- Live indexed object and tile/layer mutators that update scene-owned data, not
+  a returned `Tilemap`.
+- Typed scene and object property APIs.
+- Optional `BuildTilemap()` render copy for viewport code.
+- `DiagnosticRecords()` structured diagnostics, compatibility diagnostic strings,
+  and last-error reporting for editor integration.
 - Explicit extension and asset-path decisions.
 
 ### Phase 4 - Scene Viewport
@@ -105,7 +111,9 @@ Deliver scene editing as smaller increments:
 
 Final pass over the entire product:
 
-- End-to-end dogfood on a real Viper game.
+- End-to-end dogfood on a real Viper game, starting with a `.scene` version of
+  Xenoscape's `buildDescent()` level and a spawn adapter in
+  `examples/games/xenoscape/level.zia`.
 - Accessibility, keyboard, command palette, theme, and high-contrast audit.
 - Cross-platform smoke on macOS, Linux, and Windows.
 - Docs and showcase updates that do not overclaim features.
@@ -125,4 +133,4 @@ Specific gates:
 - No unsaved-edit loss on tab close, File > Exit, OS close, project switch, or scene/code surface switch.
 - No path parsing bugs on Windows drive-letter paths or filenames containing punctuation.
 - No blocking UI for long builds, searches, indexing, scene loads, or game runs once Phase 2 job support exists.
-- Scene edit -> save -> reload must round-trip through `Viper.Game.Scene`, not through the cached `Tilemap`.
+- Scene edit -> save -> reload must round-trip through `Viper.Game.Scene`, not through a `Tilemap` render copy.

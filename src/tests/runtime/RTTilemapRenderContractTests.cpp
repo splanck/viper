@@ -188,6 +188,63 @@ extern "C" void rt_canvas_blit_region(void *canvas,
     g_blits[g_blit_count++] = {dx, dy, sx, sy, w, h, static_cast<StubPixels *>(pixels)->id};
 }
 
+extern "C" void rt_canvas_blit(void *canvas, int64_t x, int64_t y, void *pixels) {
+    (void)canvas;
+    assert(g_blit_count < (int)(sizeof(g_blits) / sizeof(g_blits[0])));
+    auto *stub = static_cast<StubPixels *>(pixels);
+    g_blits[g_blit_count++] = {x, y, 0, 0, stub ? stub->width : 0, stub ? stub->height : 0,
+                               stub ? stub->id : 0};
+}
+
+extern "C" void *rt_pixels_new(int64_t width, int64_t height) {
+    auto *pixels = static_cast<StubPixels *>(std::calloc(1, sizeof(StubPixels)));
+    assert(pixels != nullptr);
+    pixels->width = width;
+    pixels->height = height;
+    pixels->id = 900;
+    pixels->refcount = 1;
+    return pixels;
+}
+
+extern "C" void rt_pixels_copy(
+    void *, int64_t, int64_t, void *, int64_t, int64_t, int64_t, int64_t) {}
+
+extern "C" void *rt_pixels_scale(void *pixels, int64_t new_width, int64_t new_height) {
+    auto *src = static_cast<StubPixels *>(pixels);
+    auto *scaled = static_cast<StubPixels *>(std::calloc(1, sizeof(StubPixels)));
+    assert(scaled != nullptr);
+    scaled->width = new_width;
+    scaled->height = new_height;
+    scaled->id = src ? src->id : 0;
+    scaled->refcount = 1;
+    return scaled;
+}
+
+extern "C" int32_t rt_obj_release_check0(void *obj) {
+    if (!obj)
+        return 0;
+    auto *pixels = static_cast<StubPixels *>(obj);
+    if (pixels->refcount > 0)
+        pixels->refcount--;
+    return pixels->refcount == 0 ? 1 : 0;
+}
+
+extern "C" void rt_obj_free(void *obj) {
+    std::free(obj);
+}
+
+extern "C" void *rt_map_new(void) {
+    return rt_obj_new_i64(0, 1);
+}
+
+extern "C" void rt_map_set_int(void *, rt_string, int64_t) {}
+
+extern "C" void rt_map_set_bool(void *, rt_string, int8_t) {}
+
+extern "C" rt_string rt_const_cstr(const char *) {
+    return nullptr;
+}
+
 extern "C" double rt_physics2d_body_x(void *body) {
     return body ? static_cast<StubBody *>(body)->x : 0.0;
 }

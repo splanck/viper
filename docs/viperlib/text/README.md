@@ -17,7 +17,7 @@ last-verified: 2026-04-09
 |------|----------|
 | [Encoding & Identity](encoding.md) | Codec (Base64, Hex, URL encoding), Uuid |
 | [Data Formats](formats.md) | Json, JsonPath, JsonStream, Csv, Toml, Ini, Xml, Yaml, and serialization |
-| [Pattern Matching](patterns.md) | Pattern, CompiledPattern, Scanner, Diff, String.Like/LikeCI |
+| [Pattern Matching](patterns.md) | Pattern, CompiledPattern, Scanner, Diff, FuzzyMatch, String.Like/LikeCI |
 | [Formatting & Generation](formatting.md) | Template, StringBuilder, TextWrapper, NumberFormat, Pluralize, Version, Html, Markdown |
 
 ## See Also
