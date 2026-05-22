@@ -694,7 +694,8 @@ void rt_codeeditor_set_line_number_width(void *editor, int64_t width) {
     vg_codeeditor_t *ce = rt_codeeditor_handle_checked(editor);
     if (!ce)
         return;
-    ce->line_number_width_override = width > 0 ? (float)((int)width) : 0.0f;
+    ce->line_number_width_override =
+        width > 0 ? (float)rt_gui_clamp_i64_to_i32(width, 0, INT32_MAX) : 0.0f;
     vg_codeeditor_refresh_layout_state(ce);
 }
 
@@ -714,6 +715,10 @@ static vg_icon_t rt_codeeditor_icon_from_pixels(void *pixels) {
     const uint32_t *raw = rt_pixels_raw_buffer(pixels);
     if (width <= 0 || height <= 0 || !raw)
         return icon;
+    if ((uintmax_t)width > (uintmax_t)SIZE_MAX ||
+        (uintmax_t)height > (uintmax_t)SIZE_MAX)
+        rt_trap_raise_kind(
+            RT_TRAP_KIND_OVERFLOW, Err_Overflow, -1, "CodeEditor.SetGutterIcon: icon too large");
 
     size_t pixel_count = (size_t)width * (size_t)height;
     if (pixel_count / (size_t)width != (size_t)height)
@@ -1568,7 +1573,8 @@ static int rt_codeeditor_chars_per_row(const vg_codeeditor_t *ce, float content_
         return 0;
     if (content_width <= 0.0f)
         return 1;
-    int chars = (int)(content_width / ce->char_width);
+    double chars_f = (double)content_width / (double)ce->char_width;
+    int chars = chars_f > (double)INT_MAX ? INT_MAX : (int)chars_f;
     return chars > 0 ? chars : 1;
 }
 
@@ -1642,9 +1648,10 @@ static float rt_codeeditor_content_draw_width(const vg_codeeditor_t *ce) {
 
     float content_width = base_width;
     for (int pass = 0; pass < 3; pass++) {
-        int total_rows = 0;
+        int64_t total_rows = 0;
         for (int i = 0; i < ce->line_count; i++) {
-            total_rows += rt_codeeditor_visual_rows_for_line(ce, i, content_width);
+            int rows = rt_codeeditor_visual_rows_for_line(ce, i, content_width);
+            total_rows = total_rows > INT64_MAX - rows ? INT64_MAX : total_rows + rows;
         }
         float total_height = (float)total_rows * ce->line_height;
         float next_width =
@@ -1726,14 +1733,16 @@ static int rt_codeeditor_visual_row_for_position(const vg_codeeditor_t *ce,
         line = ce->line_count - 1;
     line = rt_codeeditor_visible_anchor_line(ce, line);
 
-    int visual_row = 0;
+    int64_t visual_row = 0;
     for (int i = 0; i < line; i++) {
-        visual_row += rt_codeeditor_visual_rows_for_line(ce, i, content_width);
+        int rows = rt_codeeditor_visual_rows_for_line(ce, i, content_width);
+        visual_row = visual_row > INT64_MAX - rows ? INT64_MAX : visual_row + rows;
     }
 
     int row_index = 0;
     rt_codeeditor_visual_offset_for_position(ce, content_width, line, col, &row_index, NULL);
-    return visual_row + row_index;
+    visual_row = visual_row > INT64_MAX - row_index ? INT64_MAX : visual_row + row_index;
+    return visual_row > INT_MAX ? INT_MAX : (int)visual_row;
 }
 
 /// @brief Map a 0-based visual row index back to a logical `(line, row_in_line)` pair.
@@ -1756,19 +1765,20 @@ static void rt_codeeditor_locate_visual_row(const vg_codeeditor_t *ce,
     if (visual_row < 0)
         visual_row = 0;
 
-    int accumulated = 0;
+    int64_t accumulated = 0;
     for (int line = 0; line < ce->line_count; line++) {
         int row_count = rt_codeeditor_visual_rows_for_line(ce, line, content_width);
         if (row_count == 0)
             continue;
-        if (visual_row < accumulated + row_count) {
+        int64_t next = accumulated > INT64_MAX - row_count ? INT64_MAX : accumulated + row_count;
+        if ((int64_t)visual_row < next) {
             if (out_line)
                 *out_line = line;
             if (out_row_in_line)
-                *out_row_in_line = visual_row - accumulated;
+                *out_row_in_line = (int)((int64_t)visual_row - accumulated);
             return;
         }
-        accumulated += row_count;
+        accumulated = next;
     }
 
     if (out_line)
@@ -2031,10 +2041,10 @@ void rt_codeeditor_set_show_line_numbers(void *editor, int64_t show) {
     (void)show;
 }
 
-/// @brief Stub: returns 0 (line numbers always hidden in headless builds).
+/// @brief Stub: returns the default visible line-number state in headless builds.
 int64_t rt_codeeditor_get_show_line_numbers(void *editor) {
     (void)editor;
-    return 0;
+    return 1;
 }
 
 /// @brief Stub: `CodeEditor.SetLineNumberWidth` is a no-op without graphics.
@@ -2156,10 +2166,10 @@ void rt_codeeditor_set_auto_fold_detection(void *editor, int64_t enable) {
     (void)enable;
 }
 
-/// @brief Stub: returns 0 (no cursors exist in headless builds).
+/// @brief Stub: returns the primary cursor count in headless builds.
 int64_t rt_codeeditor_get_cursor_count(void *editor) {
     (void)editor;
-    return 0;
+    return 1;
 }
 
 /// @brief Stub: `CodeEditor.AddCursor` is a no-op without graphics.

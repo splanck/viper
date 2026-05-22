@@ -513,9 +513,13 @@ int8_t rt_shortcuts_check_key(rt_gui_app_t *app, int key, int mods) {
         if (expected_ctrl == event_ctrl && expected_super == event_super &&
             app->shortcuts[i].parsed_shift == has_shift &&
             app->shortcuts[i].parsed_alt == has_alt && app->shortcuts[i].parsed_key == upper_key) {
+            char *new_triggered_id =
+                app->shortcuts[i].id ? strdup(app->shortcuts[i].id) : NULL;
+            if (app->shortcuts[i].id && !new_triggered_id)
+                return 0;
             app->shortcuts[i].triggered = 1;
             free(app->triggered_shortcut_id);
-            app->triggered_shortcut_id = app->shortcuts[i].id ? strdup(app->shortcuts[i].id) : NULL;
+            app->triggered_shortcut_id = new_triggered_id;
             return 1;
         }
     }

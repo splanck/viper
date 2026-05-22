@@ -96,7 +96,7 @@ static bool contextmenu_ensure_registry_capacity(size_t needed) {
 
 /// @brief Return true if menu is non-NULL and its base widget is still alive.
 bool vg_contextmenu_is_live(const vg_contextmenu_t *menu) {
-    return menu && vg_widget_is_live(&menu->base);
+    return menu && vg_widget_is_live(&menu->base) && menu->base.type == VG_WIDGET_MENU;
 }
 
 /// @brief Remove all registry entries that reference menu, evicting stale entries inline.
@@ -515,7 +515,7 @@ vg_contextmenu_t *vg_contextmenu_create(void) {
         return NULL;
 
     // Initialize base widget
-    vg_widget_init(&menu->base, VG_WIDGET_CONTAINER, &g_contextmenu_vtable);
+    vg_widget_init(&menu->base, VG_WIDGET_MENU, &g_contextmenu_vtable);
 
     vg_theme_t *theme = vg_theme_get_current();
 

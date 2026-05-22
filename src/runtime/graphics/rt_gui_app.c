@@ -246,7 +246,19 @@ static const vg_theme_t *rt_gui_theme_base(rt_gui_theme_kind_t kind) {
     return (kind == RT_GUI_THEME_LIGHT) ? vg_theme_light() : vg_theme_dark();
 }
 
-/// @brief Recursively advance per-frame animation state across a widget subtree.
+static vg_widget_t *rt_gui_next_visible_widget(vg_widget_t *root, vg_widget_t *node) {
+    if (!root || !node)
+        return NULL;
+    if (node->visible && node->first_child)
+        return node->first_child;
+    while (node && node != root && !node->next_sibling)
+        node = node->parent;
+    if (!node || node == root)
+        return NULL;
+    return node->next_sibling;
+}
+
+/// @brief Iteratively advance per-frame animation state across a widget subtree.
 /// @details Called from the app's render loop with the elapsed time since the
 ///          last frame. Three widget types currently maintain time-based state
 ///          and need a per-frame tick: TextInput (cursor blink), ProgressBar
@@ -259,22 +271,22 @@ static void rt_gui_tick_widget_tree(vg_widget_t *widget, float dt) {
     if (!widget || !widget->visible || dt <= 0.0f)
         return;
 
-    switch (widget->type) {
-        case VG_WIDGET_TEXTINPUT:
-            vg_textinput_tick((vg_textinput_t *)widget, dt);
-            break;
-        case VG_WIDGET_PROGRESS:
-            vg_progressbar_tick((vg_progressbar_t *)widget, dt);
-            break;
-        case VG_WIDGET_CODEEDITOR:
-            vg_codeeditor_tick((vg_codeeditor_t *)widget, dt);
-            break;
-        default:
-            break;
-    }
-
-    VG_FOREACH_CHILD(widget, child) {
-        rt_gui_tick_widget_tree(child, dt);
+    for (vg_widget_t *node = widget; node; node = rt_gui_next_visible_widget(widget, node)) {
+        if (!node->visible)
+            continue;
+        switch (node->type) {
+            case VG_WIDGET_TEXTINPUT:
+                vg_textinput_tick((vg_textinput_t *)node, dt);
+                break;
+            case VG_WIDGET_PROGRESS:
+                vg_progressbar_tick((vg_progressbar_t *)node, dt);
+                break;
+            case VG_WIDGET_CODEEDITOR:
+                vg_codeeditor_tick((vg_codeeditor_t *)node, dt);
+                break;
+            default:
+                break;
+        }
     }
 }
 
@@ -289,11 +301,18 @@ static void rt_gui_tick_widget_tree(vg_widget_t *widget, float dt) {
 static bool rt_gui_widget_tree_needs_layout(const vg_widget_t *widget) {
     if (!widget || !widget->visible)
         return false;
-    if (widget->needs_layout)
-        return true;
-    for (const vg_widget_t *child = widget->first_child; child; child = child->next_sibling) {
-        if (rt_gui_widget_tree_needs_layout(child))
+    for (const vg_widget_t *node = widget; node;) {
+        if (node->visible && node->needs_layout)
             return true;
+        if (node->visible && node->first_child) {
+            node = node->first_child;
+            continue;
+        }
+        while (node && node != widget && !node->next_sibling)
+            node = node->parent;
+        if (!node || node == widget)
+            break;
+        node = node->next_sibling;
     }
     return false;
 }
@@ -922,18 +941,25 @@ static int rt_gui_widget_uses_font(vg_widget_t *widget, vg_font_t *font) {
     }
 }
 
-/// @brief Recursively check whether any widget in a subtree uses `font`.
+/// @brief Iteratively check whether any widget in a subtree uses `font`.
 /// @details Short-circuits at the first match so the full tree is not always
 ///          walked. Used by `rt_gui_app_uses_font` to scan dialogs and the root
 ///          widget tree.
 static int rt_gui_widget_tree_uses_font(vg_widget_t *widget, vg_font_t *font) {
     if (!widget || !font)
         return 0;
-    if (rt_gui_widget_uses_font(widget, font))
-        return 1;
-    for (vg_widget_t *child = widget->first_child; child; child = child->next_sibling) {
-        if (rt_gui_widget_tree_uses_font(child, font))
+    for (vg_widget_t *node = widget; node;) {
+        if (rt_gui_widget_uses_font(node, font))
             return 1;
+        if (node->first_child) {
+            node = node->first_child;
+            continue;
+        }
+        while (node && node != widget && !node->next_sibling)
+            node = node->parent;
+        if (!node || node == widget)
+            break;
+        node = node->next_sibling;
     }
     return 0;
 }
@@ -2154,46 +2180,79 @@ void rt_gui_app_set_font(void *app_ptr, void *font, double size) {
 /// @param widget       Root of the subtree to paint (skipped if NULL or invisible).
 /// @param parent_abs_x Accumulated absolute X of the parent widget.
 /// @param parent_abs_y Accumulated absolute Y of the parent widget.
+typedef struct rt_gui_render_frame {
+    vg_widget_t *widget;
+    float parent_abs_x;
+    float parent_abs_y;
+} rt_gui_render_frame_t;
+
+static bool rt_gui_render_stack_push(rt_gui_render_frame_t **frames,
+                                     size_t *count,
+                                     size_t *cap,
+                                     vg_widget_t *widget,
+                                     float parent_abs_x,
+                                     float parent_abs_y) {
+    if (!widget)
+        return true;
+    if (*count == *cap) {
+        size_t new_cap = *cap ? *cap * 2 : 64;
+        if (new_cap < *cap || new_cap > SIZE_MAX / sizeof(**frames))
+            return false;
+        rt_gui_render_frame_t *new_frames =
+            (rt_gui_render_frame_t *)realloc(*frames, new_cap * sizeof(*new_frames));
+        if (!new_frames)
+            return false;
+        *frames = new_frames;
+        *cap = new_cap;
+    }
+    (*frames)[(*count)++] = (rt_gui_render_frame_t){widget, parent_abs_x, parent_abs_y};
+    return true;
+}
+
 static void render_widget_tree(vgfx_window_t window,
                                vg_widget_t *widget,
                                float parent_abs_x,
                                float parent_abs_y) {
-    if (!widget || !widget->visible)
+    rt_gui_render_frame_t *frames = NULL;
+    size_t count = 0;
+    size_t cap = 0;
+    if (!rt_gui_render_stack_push(&frames, &count, &cap, widget, parent_abs_x, parent_abs_y))
         return;
 
-    // Compute absolute position from relative + parent offset
-    float abs_x = widget->x + parent_abs_x;
-    float abs_y = widget->y + parent_abs_y;
+    while (count > 0) {
+        rt_gui_render_frame_t frame = frames[--count];
+        widget = frame.widget;
+        if (!widget || !widget->visible)
+            continue;
 
-    // Save relative coords, set absolute for paint
-    float rel_x = widget->x;
-    float rel_y = widget->y;
-    widget->x = abs_x;
-    widget->y = abs_y;
+        float abs_x = widget->x + frame.parent_abs_x;
+        float abs_y = widget->y + frame.parent_abs_y;
+        float rel_x = widget->x;
+        float rel_y = widget->y;
+        widget->x = abs_x;
+        widget->y = abs_y;
 
-    // Delegate to vtable paint if available. All concrete widget types
-    // (Label, Button, MenuBar, Toolbar, StatusBar, etc.) have vtable paint.
-    // Paint functions use widget->x/y directly (now absolute).
-    if (widget->vtable && widget->vtable->paint) {
-        bool was_screen_space = widget->_paint_screen_space;
-        widget->_paint_screen_space = true;
-        widget->vtable->paint(widget, (void *)window);
-        widget->_paint_screen_space = was_screen_space;
+        if (widget->vtable && widget->vtable->paint) {
+            bool was_screen_space = widget->_paint_screen_space;
+            widget->_paint_screen_space = true;
+            widget->vtable->paint(widget, (void *)window);
+            widget->_paint_screen_space = was_screen_space;
+        }
+
+        widget->x = rel_x;
+        widget->y = rel_y;
+
+        if (rt_gui_widget_paints_children_internally(widget))
+            continue;
+
+        for (vg_widget_t *child = widget->last_child; child; child = child->prev_sibling) {
+            if (!rt_gui_render_stack_push(&frames, &count, &cap, child, abs_x, abs_y)) {
+                free(frames);
+                return;
+            }
+        }
     }
-
-    // Restore relative coords immediately after painting
-    widget->x = rel_x;
-    widget->y = rel_y;
-
-    if (rt_gui_widget_paints_children_internally(widget))
-        return;
-
-    // Render children — pass our absolute position as their parent offset
-    vg_widget_t *child = widget->first_child;
-    while (child) {
-        render_widget_tree(window, child, abs_x, abs_y);
-        child = child->next_sibling;
-    }
+    free(frames);
 }
 
 /// @brief Second-pass overlay paint: draws popup menus, focus rings, floating panels, and drag
@@ -2210,35 +2269,46 @@ static void render_widget_overlay_tree(vgfx_window_t window,
                                        vg_widget_t *widget,
                                        float parent_abs_x,
                                        float parent_abs_y) {
-    if (!widget || !widget->visible)
+    rt_gui_render_frame_t *frames = NULL;
+    size_t count = 0;
+    size_t cap = 0;
+    if (!rt_gui_render_stack_push(&frames, &count, &cap, widget, parent_abs_x, parent_abs_y))
         return;
 
-    float abs_x = widget->x + parent_abs_x;
-    float abs_y = widget->y + parent_abs_y;
+    while (count > 0) {
+        rt_gui_render_frame_t frame = frames[--count];
+        widget = frame.widget;
+        if (!widget || !widget->visible)
+            continue;
 
-    float rel_x = widget->x;
-    float rel_y = widget->y;
-    widget->x = abs_x;
-    widget->y = abs_y;
+        float abs_x = widget->x + frame.parent_abs_x;
+        float abs_y = widget->y + frame.parent_abs_y;
+        float rel_x = widget->x;
+        float rel_y = widget->y;
+        widget->x = abs_x;
+        widget->y = abs_y;
 
-    if (widget->vtable && widget->vtable->paint_overlay) {
-        bool was_screen_space = widget->_paint_screen_space;
-        widget->_paint_screen_space = true;
-        widget->vtable->paint_overlay(widget, (void *)window);
-        widget->_paint_screen_space = was_screen_space;
+        if (widget->vtable && widget->vtable->paint_overlay) {
+            bool was_screen_space = widget->_paint_screen_space;
+            widget->_paint_screen_space = true;
+            widget->vtable->paint_overlay(widget, (void *)window);
+            widget->_paint_screen_space = was_screen_space;
+        }
+
+        widget->x = rel_x;
+        widget->y = rel_y;
+
+        if (rt_gui_widget_paints_children_internally(widget))
+            continue;
+
+        for (vg_widget_t *child = widget->last_child; child; child = child->prev_sibling) {
+            if (!rt_gui_render_stack_push(&frames, &count, &cap, child, abs_x, abs_y)) {
+                free(frames);
+                return;
+            }
+        }
     }
-
-    widget->x = rel_x;
-    widget->y = rel_y;
-
-    if (rt_gui_widget_paints_children_internally(widget))
-        return;
-
-    vg_widget_t *child = widget->first_child;
-    while (child) {
-        render_widget_overlay_tree(window, child, abs_x, abs_y);
-        child = child->next_sibling;
-    }
+    free(frames);
 }
 
 #else /* !VIPER_ENABLE_GRAPHICS */

@@ -374,6 +374,7 @@ Item text is clipped to the viewport and item add/remove/clear/select operations
 Virtual list cache invalidation refreshes visible rows on the next paint even when the visible range has not changed.
 `SelectIndex(index)` leaves the current selection unchanged when `index` is negative or outside the current item range, including virtual-list totals, and `ItemSetText()` preserves the old text if allocation fails.
 `ItemSetData()` stores runtime strings with their explicit length, so embedded NUL bytes round-trip through `ItemGetData()`. Runtime-owned item data is freed automatically by `RemoveItem()` and `Clear()`.
+Item handles are runtime-managed and become inert after `RemoveItem()`, `Clear()`, or list-box destruction; later item method calls return empty/0 values or no-op safely.
 Virtual list selection and cache growth now fail closed if allocation or size
 checks fail; the widget does not publish a larger virtual item count until its
 selection bitmap can represent that range.

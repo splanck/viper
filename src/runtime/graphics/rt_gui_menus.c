@@ -74,19 +74,28 @@ static vg_menubar_t *rt_menubar_checked(void *menubar) {
 }
 
 /// @brief Validate a Menu handle.
-/// @details A vg_menu_t is NOT a vg_widget_t subtype, so this uses
-///          vg_menu_is_live rather than the widget handle-check path.
 static vg_menu_t *rt_menu_checked(void *menu) {
-    vg_menu_t *m = (vg_menu_t *)menu;
-    return vg_menu_is_live(m) ? m : NULL;
+    return rt_gui_menu_from_handle(menu);
 }
 
 /// @brief Validate a ContextMenu handle.
-/// @details Like @ref rt_menu_checked, a context menu is not a widget; it uses
-///          its own liveness check rather than the widget handle path.
 static vg_contextmenu_t *rt_contextmenu_checked(void *menu) {
-    vg_contextmenu_t *cm = (vg_contextmenu_t *)menu;
-    return vg_contextmenu_is_live(cm) ? cm : NULL;
+    return rt_gui_contextmenu_from_handle(menu);
+}
+
+/// @brief Validate a MenuItem handle.
+static vg_menu_item_t *rt_menuitem_checked(void *item) {
+    return rt_gui_menu_item_from_handle(item);
+}
+
+/// @brief Validate a StatusBarItem handle.
+static vg_statusbar_item_t *rt_statusbaritem_checked(void *item) {
+    return rt_gui_statusbar_item_from_handle(item);
+}
+
+/// @brief Validate a ToolbarItem handle.
+static vg_toolbar_item_t *rt_toolbaritem_checked(void *item) {
+    return rt_gui_toolbar_item_from_handle(item);
 }
 
 /// @brief Validate a handle as a live StatusBar widget (NULL if not).
@@ -142,6 +151,9 @@ static vg_icon_t rt_gui_icon_from_pixels(void *pixels) {
     int64_t height = rt_pixels_height(pixels);
     const uint32_t *raw = rt_pixels_raw_buffer(pixels);
     if (width <= 0 || height <= 0 || !raw)
+        return icon;
+    if ((uintmax_t)width > (uintmax_t)SIZE_MAX ||
+        (uintmax_t)height > (uintmax_t)SIZE_MAX)
         return icon;
 
     size_t pixel_count = (size_t)width * (size_t)height;
@@ -246,7 +258,7 @@ void *rt_menubar_add_menu(void *menubar, rt_string title) {
     vg_menu_t *menu = vg_menubar_add_menu(mb, ctitle);
     free(ctitle);
     rt_gui_menu_sync_menubar(mb);
-    return menu;
+    return rt_gui_wrap_menu(menu);
 }
 
 /// @brief Remove a menu from the menu bar.
@@ -283,7 +295,7 @@ void *rt_menubar_get_menu(void *menubar, int64_t index) {
     for (int64_t i = 0; i < index && menu; i++) {
         menu = menu->next;
     }
-    return menu;
+    return rt_gui_wrap_menu(menu);
 }
 
 /// @brief Show or hide the menu bar widget.
@@ -323,7 +335,7 @@ void *rt_menu_add_item(void *menu, rt_string text) {
     vg_menu_item_t *item = vg_menu_add_item(m, ctext, NULL, NULL, NULL);
     free(ctext);
     rt_gui_menu_sync_menubar(rt_gui_menu_owner_from_menu(m));
-    return item;
+    return rt_gui_wrap_menu_item(item);
 }
 
 /// @brief Add an item with a keyboard shortcut (e.g. `"Ctrl+S"`).
@@ -339,7 +351,7 @@ void *rt_menu_add_item_with_shortcut(void *menu, rt_string text, rt_string short
     free(ctext);
     free(cshortcut);
     rt_gui_menu_sync_menubar(rt_gui_menu_owner_from_menu(m));
-    return item;
+    return rt_gui_wrap_menu_item(item);
 }
 
 /// @brief Append a horizontal separator line between menu items.
@@ -348,9 +360,9 @@ void *rt_menu_add_separator(void *menu) {
     vg_menu_t *m = rt_menu_checked(menu);
     if (!m)
         return NULL;
-    void *item = vg_menu_add_separator(m);
+    vg_menu_item_t *item = vg_menu_add_separator(m);
     rt_gui_menu_sync_menubar(rt_gui_menu_owner_from_menu(m));
-    return item;
+    return rt_gui_wrap_menu_item(item);
 }
 
 /// @brief Add a nested submenu with the given title; returns the new submenu handle.
@@ -363,16 +375,17 @@ void *rt_menu_add_submenu(void *menu, rt_string title) {
     vg_menu_t *submenu = vg_menu_add_submenu(m, ctitle);
     free(ctitle);
     rt_gui_menu_sync_menubar(rt_gui_menu_owner_from_menu(m));
-    return submenu;
+    return rt_gui_wrap_menu(submenu);
 }
 
 /// @brief Remove a menu item and free its resources.
 void rt_menu_remove_item(void *menu, void *item) {
     RT_ASSERT_MAIN_THREAD();
     vg_menu_t *m = rt_menu_checked(menu);
-    if (!m || !vg_menu_item_is_live((vg_menu_item_t *)item))
+    vg_menu_item_t *mi = rt_menuitem_checked(item);
+    if (!m || !mi)
         return;
-    vg_menu_remove_item(m, (vg_menu_item_t *)item);
+    vg_menu_remove_item(m, mi);
     rt_gui_menu_sync_menubar(rt_gui_menu_owner_from_menu(m));
 }
 
@@ -432,7 +445,7 @@ void *rt_menu_get_item(void *menu, int64_t index) {
     for (int64_t i = 0; i < index && item; i++) {
         item = item->next;
     }
-    return item;
+    return rt_gui_wrap_menu_item(item);
 }
 
 /// @brief Enable or disable an entire menu (greys out all items when disabled).
@@ -459,9 +472,9 @@ int64_t rt_menu_is_enabled(void *menu) {
 /// @brief Set the text of the menuitem.
 void rt_menuitem_set_text(void *item, rt_string text) {
     RT_ASSERT_MAIN_THREAD();
-    if (!vg_menu_item_is_live((vg_menu_item_t *)item))
+    vg_menu_item_t *mi = rt_menuitem_checked(item);
+    if (!mi)
         return;
-    vg_menu_item_t *mi = (vg_menu_item_t *)item;
     char *new_text = text ? rt_string_to_gui_cstr(text) : NULL;
     if (text && !new_text)
         return;
@@ -475,9 +488,10 @@ void rt_menuitem_set_text(void *item, rt_string text) {
 /// @brief Get the text of the menuitem.
 rt_string rt_menuitem_get_text(void *item) {
     RT_ASSERT_MAIN_THREAD();
-    if (!vg_menu_item_is_live((vg_menu_item_t *)item))
+    vg_menu_item_t *mi = rt_menuitem_checked(item);
+    if (!mi)
         return rt_str_empty();
-    const char *text = ((vg_menu_item_t *)item)->text;
+    const char *text = mi->text;
     if (!text)
         return rt_str_empty();
     return rt_string_from_bytes(text, strlen(text));
@@ -486,9 +500,9 @@ rt_string rt_menuitem_get_text(void *item) {
 /// @brief Set the shortcut of the menuitem.
 void rt_menuitem_set_shortcut(void *item, rt_string shortcut) {
     RT_ASSERT_MAIN_THREAD();
-    if (!vg_menu_item_is_live((vg_menu_item_t *)item))
+    vg_menu_item_t *mi = rt_menuitem_checked(item);
+    if (!mi)
         return;
-    vg_menu_item_t *mi = (vg_menu_item_t *)item;
     char *new_shortcut = shortcut ? rt_string_to_gui_cstr(shortcut) : NULL;
     if (shortcut && !new_shortcut)
         return;
@@ -502,9 +516,10 @@ void rt_menuitem_set_shortcut(void *item, rt_string shortcut) {
 /// @brief Get the shortcut of the menuitem.
 rt_string rt_menuitem_get_shortcut(void *item) {
     RT_ASSERT_MAIN_THREAD();
-    if (!vg_menu_item_is_live((vg_menu_item_t *)item))
+    vg_menu_item_t *mi = rt_menuitem_checked(item);
+    if (!mi)
         return rt_str_empty();
-    const char *shortcut = ((vg_menu_item_t *)item)->shortcut;
+    const char *shortcut = mi->shortcut;
     if (!shortcut)
         return rt_str_empty();
     return rt_string_from_bytes(shortcut, strlen(shortcut));
@@ -513,9 +528,9 @@ rt_string rt_menuitem_get_shortcut(void *item) {
 /// @brief Set the icon of the menuitem.
 void rt_menuitem_set_icon(void *item, void *pixels) {
     RT_ASSERT_MAIN_THREAD();
-    if (!vg_menu_item_is_live((vg_menu_item_t *)item))
+    vg_menu_item_t *mi = rt_menuitem_checked(item);
+    if (!mi)
         return;
-    vg_menu_item_t *mi = (vg_menu_item_t *)item;
     vg_icon_t icon = rt_gui_icon_from_pixels(pixels);
     if (mi->owner_contextmenu) {
         vg_contextmenu_item_set_icon(mi, icon);
@@ -530,9 +545,9 @@ void rt_menuitem_set_icon(void *item, void *pixels) {
 /// @brief Enable or disable the checkable toggle behavior for a menu item.
 void rt_menuitem_set_checkable(void *item, int64_t checkable) {
     RT_ASSERT_MAIN_THREAD();
-    if (!vg_menu_item_is_live((vg_menu_item_t *)item))
+    vg_menu_item_t *mi = rt_menuitem_checked(item);
+    if (!mi)
         return;
-    vg_menu_item_t *mi = (vg_menu_item_t *)item;
     mi->checkable = checkable != 0;
     if (!mi->checkable)
         mi->checked = false;
@@ -553,17 +568,18 @@ void rt_menuitem_set_checkable(void *item, int64_t checkable) {
 /// @brief Check whether a menu item supports the checkable toggle state.
 int64_t rt_menuitem_is_checkable(void *item) {
     RT_ASSERT_MAIN_THREAD();
-    if (!vg_menu_item_is_live((vg_menu_item_t *)item))
+    vg_menu_item_t *mi = rt_menuitem_checked(item);
+    if (!mi)
         return 0;
-    return ((vg_menu_item_t *)item)->checkable ? 1 : 0;
+    return mi->checkable ? 1 : 0;
 }
 
 /// @brief Set the checked of the menuitem.
 void rt_menuitem_set_checked(void *item, int64_t checked) {
     RT_ASSERT_MAIN_THREAD();
-    if (!vg_menu_item_is_live((vg_menu_item_t *)item))
+    vg_menu_item_t *mi = rt_menuitem_checked(item);
+    if (!mi)
         return;
-    vg_menu_item_t *mi = (vg_menu_item_t *)item;
     if (mi->owner_contextmenu) {
         vg_contextmenu_item_set_checked(mi, checked != 0);
         return;
@@ -575,17 +591,18 @@ void rt_menuitem_set_checked(void *item, int64_t checked) {
 /// @brief Check whether a menu item is currently in the checked state.
 int64_t rt_menuitem_is_checked(void *item) {
     RT_ASSERT_MAIN_THREAD();
-    if (!vg_menu_item_is_live((vg_menu_item_t *)item))
+    vg_menu_item_t *mi = rt_menuitem_checked(item);
+    if (!mi)
         return 0;
-    return ((vg_menu_item_t *)item)->checked ? 1 : 0;
+    return mi->checked ? 1 : 0;
 }
 
 /// @brief Enable or disable a menu item (disabled items are greyed out).
 void rt_menuitem_set_enabled(void *item, int64_t enabled) {
     RT_ASSERT_MAIN_THREAD();
-    if (!vg_menu_item_is_live((vg_menu_item_t *)item))
+    vg_menu_item_t *mi = rt_menuitem_checked(item);
+    if (!mi)
         return;
-    vg_menu_item_t *mi = (vg_menu_item_t *)item;
     if (mi->owner_contextmenu) {
         vg_contextmenu_item_set_enabled(mi, enabled != 0);
         return;
@@ -597,25 +614,27 @@ void rt_menuitem_set_enabled(void *item, int64_t enabled) {
 /// @brief Check whether a menu item is currently enabled.
 int64_t rt_menuitem_is_enabled(void *item) {
     RT_ASSERT_MAIN_THREAD();
-    if (!vg_menu_item_is_live((vg_menu_item_t *)item))
+    vg_menu_item_t *mi = rt_menuitem_checked(item);
+    if (!mi)
         return 0;
-    return ((vg_menu_item_t *)item)->enabled ? 1 : 0;
+    return mi->enabled ? 1 : 0;
 }
 
 /// @brief Check whether a menu item is a separator (horizontal dividing line).
 int64_t rt_menuitem_is_separator(void *item) {
     RT_ASSERT_MAIN_THREAD();
-    if (!vg_menu_item_is_live((vg_menu_item_t *)item))
+    vg_menu_item_t *mi = rt_menuitem_checked(item);
+    if (!mi)
         return 0;
-    return ((vg_menu_item_t *)item)->separator ? 1 : 0;
+    return mi->separator ? 1 : 0;
 }
 
 /// @brief Check whether a menu item was clicked this frame (edge-triggered, clears after read).
 int64_t rt_menuitem_was_clicked(void *item) {
     RT_ASSERT_MAIN_THREAD();
-    if (!vg_menu_item_is_live((vg_menu_item_t *)item))
+    vg_menu_item_t *mi = rt_menuitem_checked(item);
+    if (!mi)
         return 0;
-    vg_menu_item_t *mi = (vg_menu_item_t *)item;
     if (mi->was_clicked) {
         mi->was_clicked = false;
         return 1;
@@ -634,7 +653,7 @@ int64_t rt_menuitem_was_clicked(void *item) {
 /// @return Opaque context menu handle, or NULL on failure.
 void *rt_contextmenu_new(void) {
     RT_ASSERT_MAIN_THREAD();
-    return vg_contextmenu_create();
+    return rt_gui_wrap_contextmenu(vg_contextmenu_create());
 }
 
 /// @brief Release resources and destroy the contextmenu.
@@ -642,6 +661,7 @@ void rt_contextmenu_destroy(void *menu) {
     RT_ASSERT_MAIN_THREAD();
     vg_contextmenu_t *cm = rt_contextmenu_checked(menu);
     if (cm) {
+        rt_gui_invalidate_contextmenu_tree(cm);
         vg_contextmenu_destroy(cm);
     }
 }
@@ -655,7 +675,7 @@ void *rt_contextmenu_add_item(void *menu, rt_string text) {
     char *ctext = rt_string_to_gui_cstr(text);
     vg_menu_item_t *item = vg_contextmenu_add_item(cm, ctext, NULL, NULL, NULL);
     free(ctext);
-    return item;
+    return rt_gui_wrap_menu_item(item);
 }
 
 /// @brief Add a context-menu item with an associated keyboard shortcut.
@@ -669,7 +689,7 @@ void *rt_contextmenu_add_item_with_shortcut(void *menu, rt_string text, rt_strin
     vg_menu_item_t *item = vg_contextmenu_add_item(cm, ctext, cshortcut, NULL, NULL);
     free(ctext);
     free(cshortcut);
-    return item;
+    return rt_gui_wrap_menu_item(item);
 }
 
 /// @brief Append a separator line to a context menu.
@@ -678,7 +698,7 @@ void *rt_contextmenu_add_item_with_shortcut(void *menu, rt_string text, rt_strin
 void *rt_contextmenu_add_separator(void *menu) {
     RT_ASSERT_MAIN_THREAD();
     vg_contextmenu_t *cm = rt_contextmenu_checked(menu);
-    return cm ? vg_contextmenu_add_separator(cm) : NULL;
+    return cm ? rt_gui_wrap_menu_item(vg_contextmenu_add_separator(cm)) : NULL;
 }
 
 /// @brief Add a nested submenu to a context menu; returns the new submenu handle.
@@ -701,15 +721,17 @@ void *rt_contextmenu_add_submenu(void *menu, rt_string title) {
         vg_contextmenu_destroy(submenu);
         return NULL;
     }
-    return submenu;
+    return rt_gui_wrap_contextmenu(submenu);
 }
 
 /// @brief Remove all items from a context menu.
 void rt_contextmenu_clear(void *menu) {
     RT_ASSERT_MAIN_THREAD();
     vg_contextmenu_t *cm = rt_contextmenu_checked(menu);
-    if (cm)
+    if (cm) {
+        rt_gui_invalidate_contextmenu_contents(cm);
         vg_contextmenu_clear(cm);
+    }
 }
 
 /// @brief Show the contextmenu.
@@ -751,7 +773,7 @@ void *rt_contextmenu_get_clicked_item(void *menu) {
     if (cm->clicked_index >= 0 && cm->clicked_index < (int)cm->item_count) {
         vg_menu_item_t *item = cm->items[cm->clicked_index];
         cm->clicked_index = -1; // Edge-triggered: clear after read
-        return item;
+        return rt_gui_wrap_menu_item(item);
     }
     return NULL;
 }
@@ -934,7 +956,7 @@ void *rt_statusbar_add_text(void *bar, rt_string text, int64_t zone) {
         return NULL;
     vg_statusbar_item_t *item = vg_statusbar_add_text(sb, checked_zone, ctext);
     free(ctext);
-    return item;
+    return rt_gui_wrap_statusbar_item(item);
 }
 
 /// @brief Append a clickable button to a status-bar zone.
@@ -950,7 +972,7 @@ void *rt_statusbar_add_button(void *bar, rt_string text, int64_t zone) {
     vg_statusbar_item_t *item =
         vg_statusbar_add_button(sb, checked_zone, ctext, rt_statusbar_button_clicked, NULL);
     free(ctext);
-    return item;
+    return rt_gui_wrap_statusbar_item(item);
 }
 
 /// @brief Append a progress bar to a status-bar zone (drive via `rt_statusbaritem_set_progress`).
@@ -959,7 +981,7 @@ void *rt_statusbar_add_progress(void *bar, int64_t zone) {
     vg_statusbar_t *sb = rt_statusbar_checked(bar);
     vg_statusbar_zone_t checked_zone = VG_STATUSBAR_ZONE_LEFT;
     return sb && rt_statusbar_zone_checked(zone, &checked_zone)
-               ? vg_statusbar_add_progress(sb, checked_zone)
+               ? rt_gui_wrap_statusbar_item(vg_statusbar_add_progress(sb, checked_zone))
                : NULL;
 }
 
@@ -969,7 +991,7 @@ void *rt_statusbar_add_separator(void *bar, int64_t zone) {
     vg_statusbar_t *sb = rt_statusbar_checked(bar);
     vg_statusbar_zone_t checked_zone = VG_STATUSBAR_ZONE_LEFT;
     return sb && rt_statusbar_zone_checked(zone, &checked_zone)
-               ? vg_statusbar_add_separator(sb, checked_zone)
+               ? rt_gui_wrap_statusbar_item(vg_statusbar_add_separator(sb, checked_zone))
                : NULL;
 }
 
@@ -979,7 +1001,7 @@ void *rt_statusbar_add_spacer(void *bar, int64_t zone) {
     vg_statusbar_t *sb = rt_statusbar_checked(bar);
     vg_statusbar_zone_t checked_zone = VG_STATUSBAR_ZONE_LEFT;
     return sb && rt_statusbar_zone_checked(zone, &checked_zone)
-               ? vg_statusbar_add_spacer(sb, checked_zone)
+               ? rt_gui_wrap_statusbar_item(vg_statusbar_add_spacer(sb, checked_zone))
                : NULL;
 }
 
@@ -989,13 +1011,13 @@ void rt_statusbar_remove_item(void *bar, void *item) {
     if (!bar || !item)
         return;
     vg_statusbar_t *sb = rt_statusbar_checked(bar);
-    if (!sb || !vg_statusbar_item_is_live((vg_statusbar_item_t *)item) ||
-        ((vg_statusbar_item_t *)item)->owner != sb)
+    vg_statusbar_item_t *sbi = rt_statusbaritem_checked(item);
+    if (!sb || !sbi || sbi->owner != sb)
         return;
     rt_gui_app_t *app = rt_gui_app_from_widget(&sb->base);
-    if (app && app->last_statusbar_clicked == item)
+    if (app && app->last_statusbar_clicked == sbi)
         app->last_statusbar_clicked = NULL;
-    vg_statusbar_remove_item(sb, (vg_statusbar_item_t *)item);
+    vg_statusbar_remove_item(sb, sbi);
 }
 
 /// @brief Remove all items from all status bar zones.
@@ -1035,21 +1057,22 @@ int64_t rt_statusbar_is_visible(void *bar) {
 /// @brief Set the text of the statusbaritem.
 void rt_statusbaritem_set_text(void *item, rt_string text) {
     RT_ASSERT_MAIN_THREAD();
-    if (!vg_statusbar_item_is_live((vg_statusbar_item_t *)item))
+    vg_statusbar_item_t *sbi = rt_statusbaritem_checked(item);
+    if (!sbi)
         return;
     char *ctext = rt_string_to_gui_cstr(text);
     if (!ctext)
         return;
-    vg_statusbar_item_set_text((vg_statusbar_item_t *)item, ctext);
+    vg_statusbar_item_set_text(sbi, ctext);
     free(ctext);
 }
 
 /// @brief Get the text of the statusbaritem.
 rt_string rt_statusbaritem_get_text(void *item) {
     RT_ASSERT_MAIN_THREAD();
-    if (!vg_statusbar_item_is_live((vg_statusbar_item_t *)item))
+    vg_statusbar_item_t *sbi = rt_statusbaritem_checked(item);
+    if (!sbi)
         return rt_str_empty();
-    vg_statusbar_item_t *sbi = (vg_statusbar_item_t *)item;
     if (sbi->text) {
         return rt_string_from_bytes(sbi->text, strlen(sbi->text));
     }
@@ -1059,39 +1082,42 @@ rt_string rt_statusbaritem_get_text(void *item) {
 /// @brief Set the tooltip of the statusbaritem.
 void rt_statusbaritem_set_tooltip(void *item, rt_string tooltip) {
     RT_ASSERT_MAIN_THREAD();
-    if (!vg_statusbar_item_is_live((vg_statusbar_item_t *)item))
+    vg_statusbar_item_t *sbi = rt_statusbaritem_checked(item);
+    if (!sbi)
         return;
     char *ctext = rt_string_to_gui_cstr(tooltip);
     if (!ctext)
         return;
-    vg_statusbar_item_set_tooltip((vg_statusbar_item_t *)item, ctext);
+    vg_statusbar_item_set_tooltip(sbi, ctext);
     free(ctext);
 }
 
 /// @brief Set the progress of the statusbaritem.
 void rt_statusbaritem_set_progress(void *item, double value) {
     RT_ASSERT_MAIN_THREAD();
-    if (!vg_statusbar_item_is_live((vg_statusbar_item_t *)item))
+    vg_statusbar_item_t *sbi = rt_statusbaritem_checked(item);
+    if (!sbi)
         return;
     double sanitized = rt_gui_double_is_finite(value) ? value : 0.0;
-    vg_statusbar_item_set_progress((vg_statusbar_item_t *)item,
-                                   (float)rt_gui_clamp_f64(sanitized, 0.0, 1.0));
+    vg_statusbar_item_set_progress(sbi, (float)rt_gui_clamp_f64(sanitized, 0.0, 1.0));
 }
 
 /// @brief Get the progress of the statusbaritem.
 double rt_statusbaritem_get_progress(void *item) {
     RT_ASSERT_MAIN_THREAD();
-    if (!vg_statusbar_item_is_live((vg_statusbar_item_t *)item))
+    vg_statusbar_item_t *sbi = rt_statusbaritem_checked(item);
+    if (!sbi)
         return 0.0;
-    return (double)((vg_statusbar_item_t *)item)->progress;
+    return (double)sbi->progress;
 }
 
 /// @brief Show or hide a status bar item.
 void rt_statusbaritem_set_visible(void *item, int64_t visible) {
     RT_ASSERT_MAIN_THREAD();
-    if (!vg_statusbar_item_is_live((vg_statusbar_item_t *)item))
+    vg_statusbar_item_t *sbi = rt_statusbaritem_checked(item);
+    if (!sbi)
         return;
-    vg_statusbar_item_set_visible((vg_statusbar_item_t *)item, visible != 0);
+    vg_statusbar_item_set_visible(sbi, visible != 0);
 }
 
 /// @brief Record which status bar item was clicked (for frame-based polling).
@@ -1109,13 +1135,13 @@ void rt_gui_set_clicked_statusbar_item(void *item) {
 /// @brief Check if a status bar item was clicked this frame (edge-triggered).
 int64_t rt_statusbaritem_was_clicked(void *item) {
     RT_ASSERT_MAIN_THREAD();
-    if (!vg_statusbar_item_is_live((vg_statusbar_item_t *)item))
+    vg_statusbar_item_t *sbi = rt_statusbaritem_checked(item);
+    if (!sbi)
         return 0;
-    vg_statusbar_item_t *sbi = (vg_statusbar_item_t *)item;
     if (!sbi->owner)
         return 0;
     rt_gui_app_t *app = rt_gui_app_from_widget(&sbi->owner->base);
-    if (!app || app->last_statusbar_clicked != item)
+    if (!app || app->last_statusbar_clicked != sbi)
         return 0;
     app->last_statusbar_clicked = NULL;
     return 1;
@@ -1203,7 +1229,7 @@ void *rt_toolbar_add_button(void *toolbar, rt_string icon_path, rt_string toolti
     }
 
     free(ctooltip);
-    return item;
+    return rt_gui_wrap_toolbar_item(item);
 }
 
 /// @brief Append a toolbar button that shows both an icon and a text label.
@@ -1243,7 +1269,7 @@ void *rt_toolbar_add_button_with_text(void *toolbar,
 
     free(ctext);
     free(ctooltip);
-    return item;
+    return rt_gui_wrap_toolbar_item(item);
 }
 
 /// @brief Append a sticky toggle button (radio/checkbox-style press state).
@@ -1270,21 +1296,21 @@ void *rt_toolbar_add_toggle(void *toolbar, rt_string icon_path, rt_string toolti
     }
 
     free(ctooltip);
-    return item;
+    return rt_gui_wrap_toolbar_item(item);
 }
 
 /// @brief Append a vertical (or horizontal, for vertical toolbars) separator line.
 void *rt_toolbar_add_separator(void *toolbar) {
     RT_ASSERT_MAIN_THREAD();
     vg_toolbar_t *tb = rt_toolbar_checked(toolbar);
-    return tb ? vg_toolbar_add_separator(tb) : NULL;
+    return tb ? rt_gui_wrap_toolbar_item(vg_toolbar_add_separator(tb)) : NULL;
 }
 
 /// @brief Append a flexible spacer (consumes free space, useful for right-aligning items).
 void *rt_toolbar_add_spacer(void *toolbar) {
     RT_ASSERT_MAIN_THREAD();
     vg_toolbar_t *tb = rt_toolbar_checked(toolbar);
-    return tb ? vg_toolbar_add_spacer(tb) : NULL;
+    return tb ? rt_gui_wrap_toolbar_item(vg_toolbar_add_spacer(tb)) : NULL;
 }
 
 /// @brief Append a dropdown button — clicking opens an attached menu of choices.
@@ -1306,7 +1332,7 @@ void *rt_toolbar_add_dropdown(void *toolbar, rt_string tooltip) {
     }
 
     free(ctooltip);
-    return item;
+    return rt_gui_wrap_toolbar_item(item);
 }
 
 /// @brief Remove an item from the toolbar.
@@ -1317,11 +1343,11 @@ void rt_toolbar_remove_item(void *toolbar, void *item) {
     vg_toolbar_t *tb = rt_toolbar_checked(toolbar);
     if (!tb)
         return;
-    vg_toolbar_item_t *ti = (vg_toolbar_item_t *)item;
-    if (!vg_toolbar_item_is_live(ti) || ti->owner != tb)
+    vg_toolbar_item_t *ti = rt_toolbaritem_checked(item);
+    if (!ti || ti->owner != tb)
         return;
     rt_gui_app_t *app = rt_gui_app_from_widget(&tb->base);
-    if (app && app->last_toolbar_clicked == item)
+    if (app && app->last_toolbar_clicked == ti)
         app->last_toolbar_clicked = NULL;
     vg_toolbar_remove_item_ptr(tb, ti);
 }
@@ -1369,7 +1395,7 @@ void *rt_toolbar_get_item(void *toolbar, int64_t index) {
         return NULL;
     if (index < 0 || index >= (int64_t)tb->item_count)
         return NULL;
-    return tb->items[index];
+    return rt_gui_wrap_toolbar_item(tb->items[index]);
 }
 
 /// @brief Show or hide the toolbar.
@@ -1395,76 +1421,84 @@ int64_t rt_toolbar_is_visible(void *toolbar) {
 /// @brief Set the icon of the toolbaritem.
 void rt_toolbaritem_set_icon(void *item, rt_string icon_path) {
     RT_ASSERT_MAIN_THREAD();
-    if (!vg_toolbar_item_is_live((vg_toolbar_item_t *)item))
+    vg_toolbar_item_t *ti = rt_toolbaritem_checked(item);
+    if (!ti)
         return;
     char *cicon = rt_string_to_cstr(icon_path);
     vg_icon_t icon = rt_gui_icon_from_path_cstr(cicon);
     free(cicon);
-    vg_toolbar_item_set_icon((vg_toolbar_item_t *)item, icon);
+    vg_toolbar_item_set_icon(ti, icon);
 }
 
 /// @brief Set the icon pixels of the toolbaritem.
 void rt_toolbaritem_set_icon_pixels(void *item, void *pixels) {
     RT_ASSERT_MAIN_THREAD();
-    if (!vg_toolbar_item_is_live((vg_toolbar_item_t *)item))
+    vg_toolbar_item_t *ti = rt_toolbaritem_checked(item);
+    if (!ti)
         return;
-    vg_toolbar_item_set_icon((vg_toolbar_item_t *)item, rt_gui_icon_from_pixels(pixels));
+    vg_toolbar_item_set_icon(ti, rt_gui_icon_from_pixels(pixels));
 }
 
 /// @brief Set the text of the toolbaritem.
 void rt_toolbaritem_set_text(void *item, rt_string text) {
     RT_ASSERT_MAIN_THREAD();
-    if (!vg_toolbar_item_is_live((vg_toolbar_item_t *)item))
+    vg_toolbar_item_t *ti = rt_toolbaritem_checked(item);
+    if (!ti)
         return;
     char *ctext = rt_string_to_gui_cstr(text);
     if (!ctext)
         return;
-    vg_toolbar_item_set_text((vg_toolbar_item_t *)item, ctext);
+    vg_toolbar_item_set_text(ti, ctext);
     free(ctext);
 }
 
 /// @brief Set the tooltip of the toolbaritem.
 void rt_toolbaritem_set_tooltip(void *item, rt_string tooltip) {
     RT_ASSERT_MAIN_THREAD();
-    if (!vg_toolbar_item_is_live((vg_toolbar_item_t *)item))
+    vg_toolbar_item_t *ti = rt_toolbaritem_checked(item);
+    if (!ti)
         return;
     char *ctooltip = rt_string_to_gui_cstr(tooltip);
     if (!ctooltip)
         return;
-    vg_toolbar_item_set_tooltip((vg_toolbar_item_t *)item, ctooltip);
+    vg_toolbar_item_set_tooltip(ti, ctooltip);
     free(ctooltip);
 }
 
 /// @brief Enable or disable a toolbar item.
 void rt_toolbaritem_set_enabled(void *item, int64_t enabled) {
     RT_ASSERT_MAIN_THREAD();
-    if (!vg_toolbar_item_is_live((vg_toolbar_item_t *)item))
+    vg_toolbar_item_t *ti = rt_toolbaritem_checked(item);
+    if (!ti)
         return;
-    vg_toolbar_item_set_enabled((vg_toolbar_item_t *)item, enabled != 0);
+    vg_toolbar_item_set_enabled(ti, enabled != 0);
 }
 
 /// @brief Check whether a toolbar item is currently enabled.
 int64_t rt_toolbaritem_is_enabled(void *item) {
     RT_ASSERT_MAIN_THREAD();
-    if (!vg_toolbar_item_is_live((vg_toolbar_item_t *)item))
+    vg_toolbar_item_t *ti = rt_toolbaritem_checked(item);
+    if (!ti)
         return 0;
-    return ((vg_toolbar_item_t *)item)->enabled ? 1 : 0;
+    return ti->enabled ? 1 : 0;
 }
 
 /// @brief Set the toggled of the toolbaritem.
 void rt_toolbaritem_set_toggled(void *item, int64_t toggled) {
     RT_ASSERT_MAIN_THREAD();
-    if (!vg_toolbar_item_is_live((vg_toolbar_item_t *)item))
+    vg_toolbar_item_t *ti = rt_toolbaritem_checked(item);
+    if (!ti)
         return;
-    vg_toolbar_item_set_checked((vg_toolbar_item_t *)item, toggled != 0);
+    vg_toolbar_item_set_checked(ti, toggled != 0);
 }
 
 /// @brief Check whether a toolbar toggle button is currently in the toggled state.
 int64_t rt_toolbaritem_is_toggled(void *item) {
     RT_ASSERT_MAIN_THREAD();
-    if (!vg_toolbar_item_is_live((vg_toolbar_item_t *)item))
+    vg_toolbar_item_t *ti = rt_toolbaritem_checked(item);
+    if (!ti)
         return 0;
-    return ((vg_toolbar_item_t *)item)->checked ? 1 : 0;
+    return ti->checked ? 1 : 0;
 }
 
 /// @brief Record which toolbar item was clicked (for frame-based polling).
@@ -1482,20 +1516,20 @@ void rt_gui_set_clicked_toolbar_item(void *item) {
 /// @brief Check if a toolbar button was clicked this frame (edge-triggered).
 int64_t rt_toolbaritem_was_clicked(void *item) {
     RT_ASSERT_MAIN_THREAD();
-    if (!vg_toolbar_item_is_live((vg_toolbar_item_t *)item))
+    vg_toolbar_item_t *ti = rt_toolbaritem_checked(item);
+    if (!ti)
         return 0;
-    vg_toolbar_item_t *ti = (vg_toolbar_item_t *)item;
     if (ti->was_clicked) {
         ti->was_clicked = false;
         rt_gui_app_t *app = ti->owner ? rt_gui_app_from_widget(&ti->owner->base) : NULL;
-        if (app && app->last_toolbar_clicked == item)
+        if (app && app->last_toolbar_clicked == ti)
             app->last_toolbar_clicked = NULL;
         return 1;
     }
     if (!ti->owner)
         return 0;
     rt_gui_app_t *app = rt_gui_app_from_widget(&ti->owner->base);
-    if (app && app->last_toolbar_clicked == item) {
+    if (app && app->last_toolbar_clicked == ti) {
         app->last_toolbar_clicked = NULL;
         return 1;
     }

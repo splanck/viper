@@ -356,60 +356,62 @@ void *rt_tabbar_add_tab(void *tabbar, rt_string title, int64_t closable) {
     char *ctitle = rt_string_to_gui_cstr(title);
     vg_tab_t *tab = vg_tabbar_add_tab(tb, ctitle, closable != 0);
     free(ctitle);
-    return tab;
+    return rt_gui_wrap_tab(tab);
 }
 
 /// @brief Remove a tab from the tab bar and free its resources.
 void rt_tabbar_remove_tab(void *tabbar, void *tab) {
     RT_ASSERT_MAIN_THREAD();
     vg_tabbar_t *tb = rt_tabbar_checked(tabbar);
-    if (tb && tab) {
-        vg_tabbar_remove_tab(tb, (vg_tab_t *)tab);
-    }
+    vg_tab_t *t = tab ? rt_gui_tab_from_handle(tab) : NULL;
+    if (tb && t && t->owner == tb)
+        vg_tabbar_remove_tab(tb, t);
 }
 
 /// @brief Set the currently active (selected) tab in the tab bar.
 void rt_tabbar_set_active(void *tabbar, void *tab) {
     RT_ASSERT_MAIN_THREAD();
     vg_tabbar_t *tb = rt_tabbar_checked(tabbar);
-    if (tb) {
-        vg_tabbar_set_active(tb, (vg_tab_t *)tab);
-    }
+    vg_tab_t *t = tab ? rt_gui_tab_from_handle(tab) : NULL;
+    if (tb && (!tab || (t && t->owner == tb)))
+        vg_tabbar_set_active(tb, t);
 }
 
 /// @brief Update the title text of a tab.
 void rt_tab_set_title(void *tab, rt_string title) {
     RT_ASSERT_MAIN_THREAD();
-    if (!vg_tab_is_live((vg_tab_t *)tab))
+    vg_tab_t *t = rt_gui_tab_from_handle(tab);
+    if (!t)
         return;
     char *ctitle = rt_string_to_gui_cstr(title);
-    vg_tab_set_title((vg_tab_t *)tab, ctitle);
+    vg_tab_set_title(t, ctitle);
     free(ctitle);
 }
 
 /// @brief Update the tooltip text of a tab.
 void rt_tab_set_tooltip(void *tab, rt_string tooltip) {
     RT_ASSERT_MAIN_THREAD();
-    if (!vg_tab_is_live((vg_tab_t *)tab))
+    vg_tab_t *t = rt_gui_tab_from_handle(tab);
+    if (!t)
         return;
     char *ctooltip = rt_string_to_gui_cstr(tooltip);
-    vg_tab_set_tooltip((vg_tab_t *)tab, ctooltip);
+    vg_tab_set_tooltip(t, ctooltip);
     free(ctooltip);
 }
 
 /// @brief Mark a tab as modified (shows an unsaved-changes indicator).
 void rt_tab_set_modified(void *tab, int64_t modified) {
     RT_ASSERT_MAIN_THREAD();
-    if (vg_tab_is_live((vg_tab_t *)tab)) {
-        vg_tab_set_modified((vg_tab_t *)tab, modified != 0);
-    }
+    vg_tab_t *t = rt_gui_tab_from_handle(tab);
+    if (t)
+        vg_tab_set_modified(t, modified != 0);
 }
 
 /// @brief Return the currently-active tab handle (NULL when no tabs / null bar).
 void *rt_tabbar_get_active(void *tabbar) {
     RT_ASSERT_MAIN_THREAD();
     vg_tabbar_t *tb = rt_tabbar_checked(tabbar);
-    return tb ? tb->active_tab : NULL;
+    return tb ? rt_gui_wrap_tab(tb->active_tab) : NULL;
 }
 
 /// @brief Get the active index of the tabbar.
@@ -476,7 +478,7 @@ void *rt_tabbar_get_tab_at(void *tabbar, int64_t index) {
         return NULL;
     if (index < 0 || index > INT_MAX || index >= (int64_t)tb->tab_count)
         return NULL;
-    return vg_tabbar_get_tab_at(tb, (int)index);
+    return rt_gui_wrap_tab(vg_tabbar_get_tab_at(tb, (int)index));
 }
 
 /// @brief Enable or disable automatic tab removal on close-button click.
@@ -1090,14 +1092,14 @@ void *rt_listbox_add_item(void *listbox, rt_string text) {
     char *ctext = rt_string_to_gui_cstr(text);
     vg_listbox_item_t *item = vg_listbox_add_item(lb, ctext, NULL);
     free(ctext);
-    return item;
+    return rt_gui_wrap_listbox_item(item);
 }
 
 /// @brief Remove an item from the listbox.
 void rt_listbox_remove_item(void *listbox, void *item) {
     RT_ASSERT_MAIN_THREAD();
     vg_listbox_t *lb = rt_listbox_checked(listbox);
-    vg_listbox_item_t *it = (vg_listbox_item_t *)item;
+    vg_listbox_item_t *it = item ? rt_gui_listbox_item_from_handle(item) : NULL;
     if (lb && it && vg_listbox_item_is_live(it) && it->owner == lb)
         vg_listbox_remove_item(lb, it);
 }
@@ -1115,10 +1117,10 @@ void rt_listbox_clear(void *listbox) {
 void rt_listbox_select(void *listbox, void *item) {
     RT_ASSERT_MAIN_THREAD();
     vg_listbox_t *lb = rt_listbox_checked(listbox);
-    vg_listbox_item_t *it = (vg_listbox_item_t *)item;
+    vg_listbox_item_t *it = item ? rt_gui_listbox_item_from_handle(item) : NULL;
     if (!lb)
         return;
-    if (it && (!vg_listbox_item_is_live(it) || it->owner != lb))
+    if (item && (!it || it->owner != lb))
         return;
     vg_listbox_select(lb, it);
 }
@@ -1129,7 +1131,7 @@ void *rt_listbox_get_selected(void *listbox) {
     vg_listbox_t *lb = rt_listbox_checked(listbox);
     if (!lb)
         return NULL;
-    return vg_listbox_get_selected(lb);
+    return rt_gui_wrap_listbox_item(vg_listbox_get_selected(lb));
 }
 
 /// @brief Get the number of items in the listbox.
@@ -1192,8 +1194,8 @@ rt_string rt_listbox_item_get_text(void *item) {
     RT_ASSERT_MAIN_THREAD();
     if (!item)
         return rt_str_empty();
-    vg_listbox_item_t *it = (vg_listbox_item_t *)item;
-    if (!vg_listbox_item_is_live(it))
+    vg_listbox_item_t *it = rt_gui_listbox_item_from_handle(item);
+    if (!it)
         return rt_str_empty();
     if (it->text)
         return rt_string_from_bytes(it->text, it->text_len);
@@ -1205,8 +1207,8 @@ void rt_listbox_item_set_text(void *item, rt_string text) {
     RT_ASSERT_MAIN_THREAD();
     if (!item)
         return;
-    vg_listbox_item_t *it = (vg_listbox_item_t *)item;
-    if (!vg_listbox_item_is_live(it))
+    vg_listbox_item_t *it = rt_gui_listbox_item_from_handle(item);
+    if (!it)
         return;
     char *ctext = rt_string_to_gui_cstr(text);
     if (!ctext)
@@ -1225,8 +1227,8 @@ void rt_listbox_item_set_data(void *item, rt_string data) {
     RT_ASSERT_MAIN_THREAD();
     if (!item)
         return;
-    vg_listbox_item_t *it = (vg_listbox_item_t *)item;
-    if (!vg_listbox_item_is_live(it))
+    vg_listbox_item_t *it = rt_gui_listbox_item_from_handle(item);
+    if (!it)
         return;
     rt_gui_string_data_t *new_data = data ? rt_gui_string_data_new(data) : NULL;
     if (data && !new_data)
@@ -1242,8 +1244,8 @@ rt_string rt_listbox_item_get_data(void *item) {
     RT_ASSERT_MAIN_THREAD();
     if (!item)
         return rt_str_empty();
-    vg_listbox_item_t *it = (vg_listbox_item_t *)item;
-    if (!vg_listbox_item_is_live(it))
+    vg_listbox_item_t *it = rt_gui_listbox_item_from_handle(item);
+    if (!it)
         return rt_str_empty();
     if (!it->user_data || !it->owns_user_data)
         return rt_str_empty();
@@ -1452,6 +1454,9 @@ static int rt_image_set_from_pixels_object(vg_image_t *image,
     int64_t source_h = rt_pixels_height(pixels);
     const uint32_t *src = rt_pixels_raw_buffer(pixels);
     if (source_w <= 0 || source_h <= 0 || !src)
+        return 0;
+    if ((uintmax_t)source_w > (uintmax_t)SIZE_MAX ||
+        (uintmax_t)source_h > (uintmax_t)SIZE_MAX)
         return 0;
     if ((size_t)source_w > SIZE_MAX / (size_t)source_h)
         return 0;

@@ -241,6 +241,21 @@ void rt_commandpalette_destroy(void *palette) {
     rt_commandpalette_dispose(data);
 }
 
+static char *rt_commandpalette_format_display_label(const char *category, const char *label) {
+    if (!category || !category[0])
+        return NULL;
+    size_t category_len = strlen(category);
+    size_t label_len = label ? strlen(label) : 0;
+    if (category_len > SIZE_MAX - label_len || category_len + label_len > SIZE_MAX - 4)
+        return NULL;
+    size_t len = category_len + label_len + 4;
+    char *display = (char *)malloc(len);
+    if (!display)
+        return NULL;
+    snprintf(display, len, "[%s] %s", category, label ? label : "");
+    return display;
+}
+
 /// @brief Register a command in the palette's fuzzy-searchable list.
 void rt_commandpalette_add_command(void *palette,
                                    rt_string id,
@@ -259,20 +274,12 @@ void rt_commandpalette_add_command(void *palette,
     char *ccat = rt_string_to_gui_cstr(category);
 
     // Prepend category to label if non-empty (e.g. "[File] Open")
-    char *display = clabel;
-    if (ccat && ccat[0]) {
-        size_t len = strlen(ccat) + (clabel ? strlen(clabel) : 0) + 4;
-        display = (char *)malloc(len);
-        if (display)
-            snprintf(display, len, "[%s] %s", ccat, clabel ? clabel : "");
-        else
-            display = clabel;
-    }
+    char *display_alloc = rt_commandpalette_format_display_label(ccat, clabel);
+    const char *display = display_alloc ? display_alloc : clabel;
 
     vg_commandpalette_add_command(data->palette, cid, display, NULL, NULL, NULL);
 
-    if (display != clabel)
-        free(display);
+    free(display_alloc);
     free(ccat);
     free(cid);
     free(clabel);
@@ -300,20 +307,12 @@ void rt_commandpalette_add_command_with_shortcut(
     char *ccat = rt_string_to_gui_cstr(category);
 
     // Prepend category to label if non-empty
-    char *display = clabel;
-    if (ccat && ccat[0]) {
-        size_t len = strlen(ccat) + (clabel ? strlen(clabel) : 0) + 4;
-        display = (char *)malloc(len);
-        if (display)
-            snprintf(display, len, "[%s] %s", ccat, clabel ? clabel : "");
-        else
-            display = clabel;
-    }
+    char *display_alloc = rt_commandpalette_format_display_label(ccat, clabel);
+    const char *display = display_alloc ? display_alloc : clabel;
 
     vg_commandpalette_add_command(data->palette, cid, display, cshort, NULL, NULL);
 
-    if (display != clabel)
-        free(display);
+    free(display_alloc);
     free(ccat);
     free(cid);
     free(clabel);

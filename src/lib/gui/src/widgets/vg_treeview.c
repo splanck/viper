@@ -34,6 +34,7 @@
 #include "../../include/vg_event.h"
 #include "../../include/vg_ide_widgets.h"
 #include "../../include/vg_theme.h"
+#include <limits.h>
 #include <stdint.h>
 #include <stdlib.h>
 #include <string.h>
@@ -93,49 +94,117 @@ static vg_widget_vtable_t g_treeview_vtable = {.destroy = treeview_destroy,
 // Helper Functions
 //=============================================================================
 
-/// @brief Recursively free a node subtree, its text, and optionally its user_data.
-static void free_node(vg_tree_node_t *node) {
-    if (!node)
+typedef struct tree_node_stack {
+    vg_tree_node_t **items;
+    size_t count;
+    size_t cap;
+} tree_node_stack_t;
+
+static void tree_node_stack_destroy(tree_node_stack_t *stack) {
+    if (!stack)
         return;
-
-    // Free children recursively
-    vg_tree_node_t *child = node->first_child;
-    while (child) {
-        vg_tree_node_t *next = child->next_sibling;
-        free_node(child);
-        child = next;
-    }
-
-    if (node->text) {
-        free((void *)node->text);
-    }
-    if (node->owns_user_data && node->user_data) {
-        free(node->user_data);
-        node->user_data = NULL;
-    }
-    free(node);
+    free(stack->items);
+    stack->items = NULL;
+    stack->count = 0;
+    stack->cap = 0;
 }
 
-/// @brief Recursively stamp VG_TREE_NODE_RETIRED_MAGIC and clear all payload fields on a subtree.
-static void mark_node_subtree_retired(vg_tree_node_t *node) {
+static bool tree_node_stack_push(tree_node_stack_t *stack, vg_tree_node_t *node) {
+    if (!stack || !node)
+        return true;
+    if (stack->count == stack->cap) {
+        size_t new_cap = stack->cap ? stack->cap * 2 : 64;
+        if (new_cap < stack->cap || new_cap > SIZE_MAX / sizeof(*stack->items))
+            return false;
+        vg_tree_node_t **items =
+            (vg_tree_node_t **)realloc(stack->items, new_cap * sizeof(*items));
+        if (!items)
+            return false;
+        stack->items = items;
+        stack->cap = new_cap;
+    }
+    stack->items[stack->count++] = node;
+    return true;
+}
+
+static vg_tree_node_t *tree_node_stack_pop(tree_node_stack_t *stack) {
+    if (!stack || stack->count == 0)
+        return NULL;
+    return stack->items[--stack->count];
+}
+
+static void free_node_payload(vg_tree_node_t *node) {
     if (!node)
         return;
-    for (vg_tree_node_t *child = node->first_child; child; child = child->next_sibling)
-        mark_node_subtree_retired(child);
-    if (node->text) {
-        free((void *)node->text);
-        node->text = NULL;
-    }
+    free((void *)node->text);
+    node->text = NULL;
     node->text_len = 0;
     if (node->owns_user_data && node->user_data) {
         free(node->user_data);
         node->user_data = NULL;
     }
     node->owns_user_data = false;
-    node->selected = false;
-    node->loading = false;
-    node->owner = NULL;
-    node->magic = VG_TREE_NODE_RETIRED_MAGIC;
+}
+
+/// @brief Iteratively free a node subtree, its text, and optionally its user_data.
+static void free_node(vg_tree_node_t *node) {
+    if (!node)
+        return;
+
+    while (node) {
+        if (node->first_child) {
+            node = node->first_child;
+            continue;
+        }
+
+        vg_tree_node_t *parent = node->parent;
+        vg_tree_node_t *next = node->next_sibling;
+
+        if (node->prev_sibling)
+            node->prev_sibling->next_sibling = next;
+        if (next)
+            next->prev_sibling = node->prev_sibling;
+        if (parent) {
+            if (parent->first_child == node)
+                parent->first_child = next;
+            if (parent->last_child == node)
+                parent->last_child = node->prev_sibling;
+            if (parent->child_count > 0)
+                parent->child_count--;
+            parent->has_children = parent->first_child != NULL;
+        }
+
+        free_node_payload(node);
+        free(node);
+        node = next ? next : parent;
+    }
+}
+
+/// @brief Iteratively stamp VG_TREE_NODE_RETIRED_MAGIC and clear all payload fields on a subtree.
+static void mark_node_subtree_retired(vg_tree_node_t *node) {
+    if (!node)
+        return;
+
+    vg_tree_node_t *root = node;
+    while (node) {
+        vg_tree_node_t *next = NULL;
+        if (node->first_child) {
+            next = node->first_child;
+        } else {
+            vg_tree_node_t *cursor = node;
+            while (cursor && cursor != root && !cursor->next_sibling)
+                cursor = cursor->parent;
+            if (cursor && cursor != root)
+                next = cursor->next_sibling;
+        }
+
+        free_node_payload(node);
+        node->selected = false;
+        node->loading = false;
+        node->owner = NULL;
+        node->magic = VG_TREE_NODE_RETIRED_MAGIC;
+        node = next;
+    }
 }
 
 /// @brief Mark node and its subtree retired and prepend them to tree->retired_nodes for deferred free.
@@ -173,47 +242,97 @@ static int count_visible_nodes(vg_tree_node_t *node) {
     if (!node)
         return 0;
 
-    int count = 0;
+    tree_node_stack_t stack = {0};
     for (vg_tree_node_t *child = node->first_child; child; child = child->next_sibling) {
-        count++; // Count this child
-        if (child->expanded) {
-            count += count_visible_nodes(child); // Count expanded children
+        if (!tree_node_stack_push(&stack, child)) {
+            tree_node_stack_destroy(&stack);
+            return INT_MAX;
         }
     }
+
+    int count = 0;
+    while ((node = tree_node_stack_pop(&stack)) != NULL) {
+        if (count < INT_MAX)
+            count++;
+        if (node->expanded) {
+            for (vg_tree_node_t *child = node->first_child; child; child = child->next_sibling) {
+                if (!tree_node_stack_push(&stack, child)) {
+                    tree_node_stack_destroy(&stack);
+                    return INT_MAX;
+                }
+            }
+        }
+    }
+    tree_node_stack_destroy(&stack);
     return count;
 }
 
 /// @brief Return the visible node at the given 0-based display index, or NULL if out of range.
 static vg_tree_node_t *get_node_at_index(vg_tree_node_t *root, int target_index, int *current) {
-    for (vg_tree_node_t *child = root->first_child; child; child = child->next_sibling) {
-        if (*current == target_index) {
-            return child;
-        }
-        (*current)++;
+    if (!root || !current || target_index < 0)
+        return NULL;
 
-        if (child->expanded && child->first_child) {
-            vg_tree_node_t *found = get_node_at_index(child, target_index, current);
-            if (found)
-                return found;
+    tree_node_stack_t stack = {0};
+    for (vg_tree_node_t *child = root->last_child; child; child = child->prev_sibling) {
+        if (!tree_node_stack_push(&stack, child)) {
+            tree_node_stack_destroy(&stack);
+            return NULL;
         }
     }
+
+    vg_tree_node_t *node = NULL;
+    while ((node = tree_node_stack_pop(&stack)) != NULL) {
+        if (*current == target_index) {
+            tree_node_stack_destroy(&stack);
+            return node;
+        }
+        if (*current < INT_MAX)
+            (*current)++;
+        if (node->expanded) {
+            for (vg_tree_node_t *child = node->last_child; child; child = child->prev_sibling) {
+                if (!tree_node_stack_push(&stack, child)) {
+                    tree_node_stack_destroy(&stack);
+                    return NULL;
+                }
+            }
+        }
+    }
+    tree_node_stack_destroy(&stack);
     return NULL;
 }
 
 /// @brief Return the 0-based display index of target in the visible tree, or -1 if not found.
 static int get_node_index(vg_tree_node_t *root, vg_tree_node_t *target, int *current) {
-    for (vg_tree_node_t *child = root->first_child; child; child = child->next_sibling) {
-        if (child == target) {
-            return *current;
-        }
-        (*current)++;
+    if (!root || !target || !current)
+        return -1;
 
-        if (child->expanded && child->first_child) {
-            int found = get_node_index(child, target, current);
-            if (found >= 0)
-                return found;
+    tree_node_stack_t stack = {0};
+    for (vg_tree_node_t *child = root->last_child; child; child = child->prev_sibling) {
+        if (!tree_node_stack_push(&stack, child)) {
+            tree_node_stack_destroy(&stack);
+            return -1;
         }
     }
+
+    vg_tree_node_t *node = NULL;
+    while ((node = tree_node_stack_pop(&stack)) != NULL) {
+        if (node == target) {
+            int found = *current;
+            tree_node_stack_destroy(&stack);
+            return found;
+        }
+        if (*current < INT_MAX)
+            (*current)++;
+        if (node->expanded) {
+            for (vg_tree_node_t *child = node->last_child; child; child = child->prev_sibling) {
+                if (!tree_node_stack_push(&stack, child)) {
+                    tree_node_stack_destroy(&stack);
+                    return -1;
+                }
+            }
+        }
+    }
+    tree_node_stack_destroy(&stack);
     return -1;
 }
 

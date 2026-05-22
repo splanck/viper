@@ -175,6 +175,44 @@ void rt_minimap_forget_editor_subtree(vg_widget_t *subtree);
 void rt_messagebox_invalidate_dialog(vg_dialog_t *dialog);
 /// @brief Drop wrapper references to @p dialog before an app destroys it.
 void rt_filedialog_invalidate_dialog(vg_dialog_t *dialog);
+/// @brief Invalidate Viper-facing subobject handles owned by @p subtree.
+void rt_gui_invalidate_widget_subhandles(vg_widget_t *subtree);
+/// @brief Invalidate Viper-facing handles for @p context menu and its descendants.
+void rt_gui_invalidate_contextmenu_tree(vg_contextmenu_t *menu);
+/// @brief Invalidate Viper-facing item/submenu handles contained by @p context menu.
+void rt_gui_invalidate_contextmenu_contents(vg_contextmenu_t *menu);
+/// @brief Return a managed Viper handle for a tree node.
+void *rt_gui_wrap_tree_node(vg_tree_node_t *node);
+/// @brief Return a managed Viper handle for a tab.
+void *rt_gui_wrap_tab(vg_tab_t *tab);
+/// @brief Return a managed Viper handle for a listbox item.
+void *rt_gui_wrap_listbox_item(vg_listbox_item_t *item);
+/// @brief Return a managed Viper handle for a menu.
+void *rt_gui_wrap_menu(vg_menu_t *menu);
+/// @brief Return a managed Viper handle for a menu item.
+void *rt_gui_wrap_menu_item(vg_menu_item_t *item);
+/// @brief Return a managed Viper handle for a context menu.
+void *rt_gui_wrap_contextmenu(vg_contextmenu_t *menu);
+/// @brief Return a managed Viper handle for a status-bar item.
+void *rt_gui_wrap_statusbar_item(vg_statusbar_item_t *item);
+/// @brief Return a managed Viper handle for a toolbar item.
+void *rt_gui_wrap_toolbar_item(vg_toolbar_item_t *item);
+/// @brief Resolve a managed tree-node handle to its live VG node, or NULL.
+vg_tree_node_t *rt_gui_tree_node_from_handle(void *handle);
+/// @brief Resolve a managed tab handle to its live VG tab, or NULL.
+vg_tab_t *rt_gui_tab_from_handle(void *handle);
+/// @brief Resolve a managed listbox-item handle to its live VG item, or NULL.
+vg_listbox_item_t *rt_gui_listbox_item_from_handle(void *handle);
+/// @brief Resolve a managed menu handle to its live VG menu, or NULL.
+vg_menu_t *rt_gui_menu_from_handle(void *handle);
+/// @brief Resolve a managed menu-item handle to its live VG item, or NULL.
+vg_menu_item_t *rt_gui_menu_item_from_handle(void *handle);
+/// @brief Resolve a managed context-menu handle to its live VG menu, or NULL.
+vg_contextmenu_t *rt_gui_contextmenu_from_handle(void *handle);
+/// @brief Resolve a managed status-bar item handle to its live VG item, or NULL.
+vg_statusbar_item_t *rt_gui_statusbar_item_from_handle(void *handle);
+/// @brief Resolve a managed toolbar item handle to its live VG item, or NULL.
+vg_toolbar_item_t *rt_gui_toolbar_item_from_handle(void *handle);
 /// @brief Register a command palette so @p app routes its shortcut to it.
 void rt_gui_register_command_palette(rt_gui_app_t *app, vg_commandpalette_t *palette);
 /// @brief Unregister a previously registered command palette.

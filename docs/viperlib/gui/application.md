@@ -33,6 +33,7 @@ Disabled top-level menus render in the disabled state and ignore mouse and keybo
 Menu and menu-item handles are owner-checked; removing an item through the wrong menu, or a menu through the wrong menubar, is ignored rather than corrupting either list.
 Removed menu-item handles become inert, open/highlighted menu state is cleared when its item disappears, and stale accelerator entries are ignored instead of firing removed actions.
 Menu-item shortcuts registered through `SetShortcut()` or add-with-shortcut runtime paths are rebuilt after menu mutations and dispatch from menu-bar key events as well as native macOS menus.
+Menu and menu-item handles are runtime-managed and become inert after removal, `Clear()`, or menubar destruction; later method calls return empty/0 values or no-op safely.
 
 | Method                  | Signature          | Description                    |
 |-------------------------|--------------------|--------------------------------|
@@ -106,6 +107,7 @@ Removed toolbar item handles become inert until the toolbar is destroyed, and re
 ### ToolbarItem
 
 Toolbar button (returned by `Toolbar.AddButton()`).
+Toolbar item handles are runtime-managed and become inert after `RemoveItem()`, `Clear()`, or toolbar destruction; later item method calls return empty/0 values or no-op safely.
 
 | Method                | Signature       | Description                    |
 |-----------------------|-----------------|--------------------------------|
@@ -154,6 +156,7 @@ Buttons added with `AddButton()` are wired into `StatusBarItem.WasClicked()` for
 ### StatusBarItem
 
 Status bar item (returned by `StatusBar.AddText()`).
+Status-bar item handles are runtime-managed and become inert after removal, `Clear()`, or status-bar destruction; later item method calls return empty/0 values or no-op safely.
 
 | Method                | Signature       | Description                    |
 |-----------------------|-----------------|--------------------------------|
@@ -183,6 +186,7 @@ Right-click context menu.
 Context menus now anchor in screen space for nested widgets, capture input while open, clamp to the host window, and reliably dismiss on outside click instead of letting clicks fall through to the underlying UI. Dismissing a submenu restores capture to its parent menu, callback payloads are tracked independently for selection and dismiss handlers, and destroyed menus are removed from the right-click registry.
 Nested context submenus are owned by their parent menu item. Destroying the parent destroys attached submenus, while explicitly destroying a child submenu detaches the parent item so later parent cleanup remains safe.
 `Clear()` dismisses any active submenu, resets hover/click state, and retires removed item handles so later item method calls are ignored safely.
+Context menu, submenu, and menu-item handles are runtime-managed and become inert after `Clear()`, `Destroy()`, or parent-menu destruction; later method calls return empty/0 values or no-op safely.
 
 **Constructor:** `NEW Viper.GUI.ContextMenu()`
 
@@ -191,6 +195,7 @@ Nested context submenus are owned by their parent menu item. Destroying the pare
 | `AddItem(text)`                       | `Object(String)`         | Add menu item                            |
 | `AddItemWithShortcut(text, shortcut)` | `Object(String, String)` | Add item with shortcut display           |
 | `AddSeparator()`                      | `Object()`               | Add separator and return its item handle |
+| `AddSubmenu(title)`                   | `Object(String)`         | Add submenu and return its menu handle   |
 | `Clear()`                             | `Void()`                 | Remove all items                         |
 | `Hide()`                              | `Void()`                 | Hide the menu                            |
 | `IsVisible()`                         | `Integer()`              | 1 if menu is visible                     |

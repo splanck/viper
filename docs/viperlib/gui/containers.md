@@ -144,6 +144,7 @@ Mouse activation and close actions now commit on mouse-up instead of mouse-down,
 ### Tab Methods
 
 Tab handles returned by `AddTab()` support these methods:
+Tab handles are runtime-managed and become inert after `RemoveTab()`, `Clear()`, or tab-bar destruction; later tab method calls are safe no-ops.
 
 | Method                    | Signature          | Description                    |
 |---------------------------|--------------------|--------------------------------|
@@ -219,6 +220,7 @@ Node glyph icons are rendered when present, and lazy/loading nodes now show an i
 Node handles returned by `AddNode()` support these methods:
 
 Keyboard navigation keeps the selected node scrolled into view, matching mouse selection and explicit `ScrollTo` behavior.
+Node handles are runtime-managed and become inert after `RemoveNode()`, `Clear()`, or tree destruction; later node method calls return empty/0 values or no-op safely.
 
 | Method                    | Signature          | Description                    |
 |---------------------------|--------------------|--------------------------------|

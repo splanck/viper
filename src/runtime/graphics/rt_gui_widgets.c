@@ -56,6 +56,336 @@ void *rt_gui_widget_parent_container_checked(void *handle) {
 }
 
 //=============================================================================
+// Runtime Subobject Handles
+//=============================================================================
+
+typedef enum {
+    RT_GUI_HANDLE_TREE_NODE = 1,
+    RT_GUI_HANDLE_TAB = 2,
+    RT_GUI_HANDLE_LISTBOX_ITEM = 3,
+    RT_GUI_HANDLE_MENU = 4,
+    RT_GUI_HANDLE_MENU_ITEM = 5,
+    RT_GUI_HANDLE_CONTEXTMENU = 6,
+    RT_GUI_HANDLE_STATUSBAR_ITEM = 7,
+    RT_GUI_HANDLE_TOOLBAR_ITEM = 8,
+} rt_gui_subhandle_kind_t;
+
+#define RT_GUI_SUBHANDLE_MAGIC UINT64_C(0x52544755484E444C)
+
+typedef struct rt_gui_subhandle {
+    uint64_t magic;
+    uint32_t kind;
+    void *ptr;
+    vg_widget_t *owner_widget;
+    struct rt_gui_subhandle *next;
+    struct rt_gui_subhandle *prev;
+} rt_gui_subhandle_t;
+
+static rt_gui_subhandle_t *s_gui_subhandles = NULL;
+
+static void rt_gui_subhandle_unlink(rt_gui_subhandle_t *handle) {
+    if (!handle)
+        return;
+    if (handle->prev)
+        handle->prev->next = handle->next;
+    else if (s_gui_subhandles == handle)
+        s_gui_subhandles = handle->next;
+    if (handle->next)
+        handle->next->prev = handle->prev;
+    handle->next = NULL;
+    handle->prev = NULL;
+}
+
+static void rt_gui_subhandle_finalize(void *obj) {
+    rt_gui_subhandle_t *handle = (rt_gui_subhandle_t *)obj;
+    if (!handle)
+        return;
+    rt_gui_subhandle_unlink(handle);
+    handle->magic = 0;
+    handle->ptr = NULL;
+    handle->owner_widget = NULL;
+}
+
+static rt_gui_subhandle_t *rt_gui_subhandle_checked(void *handle,
+                                                    rt_gui_subhandle_kind_t kind) {
+    if (!rt_obj_is_instance(handle, 0, sizeof(rt_gui_subhandle_t)))
+        return NULL;
+    rt_gui_subhandle_t *sub = (rt_gui_subhandle_t *)handle;
+    if (sub->magic != RT_GUI_SUBHANDLE_MAGIC || sub->kind != (uint32_t)kind)
+        return NULL;
+    return sub;
+}
+
+static void rt_gui_subhandle_invalidate(rt_gui_subhandle_t *handle) {
+    if (!handle || handle->magic != RT_GUI_SUBHANDLE_MAGIC)
+        return;
+    handle->ptr = NULL;
+    handle->owner_widget = NULL;
+}
+
+static bool rt_gui_subhandle_owner_is_live(rt_gui_subhandle_t *handle) {
+    if (!handle)
+        return false;
+    if (!handle->owner_widget)
+        return true;
+    if (vg_widget_is_live(handle->owner_widget))
+        return true;
+    rt_gui_subhandle_invalidate(handle);
+    return false;
+}
+
+static vg_widget_t *rt_gui_owner_widget_for_menu_item(vg_menu_item_t *item) {
+    if (!item)
+        return NULL;
+    if (item->owner_contextmenu)
+        return &item->owner_contextmenu->base;
+    if (item->parent_menu && item->parent_menu->owner_menubar)
+        return &item->parent_menu->owner_menubar->base;
+    return NULL;
+}
+
+static vg_widget_t *rt_gui_owner_widget_for_menu(vg_menu_t *menu) {
+    return menu && menu->owner_menubar ? &menu->owner_menubar->base : NULL;
+}
+
+static rt_gui_subhandle_t *rt_gui_find_subhandle(rt_gui_subhandle_kind_t kind, void *ptr) {
+    if (!ptr)
+        return NULL;
+    for (rt_gui_subhandle_t *handle = s_gui_subhandles; handle; handle = handle->next) {
+        if (handle->magic == RT_GUI_SUBHANDLE_MAGIC && handle->kind == (uint32_t)kind &&
+            handle->ptr == ptr)
+            return handle;
+    }
+    return NULL;
+}
+
+static void *rt_gui_wrap_subhandle(rt_gui_subhandle_kind_t kind,
+                                   void *ptr,
+                                   vg_widget_t *owner_widget) {
+    if (!ptr)
+        return NULL;
+    rt_gui_subhandle_t *existing = rt_gui_find_subhandle(kind, ptr);
+    if (existing) {
+        existing->owner_widget = owner_widget;
+        return existing;
+    }
+    rt_gui_subhandle_t *handle =
+        (rt_gui_subhandle_t *)rt_obj_new_i64(0, (int64_t)sizeof(rt_gui_subhandle_t));
+    if (!handle)
+        return NULL;
+    handle->magic = RT_GUI_SUBHANDLE_MAGIC;
+    handle->kind = (uint32_t)kind;
+    handle->ptr = ptr;
+    handle->owner_widget = owner_widget;
+    handle->prev = NULL;
+    handle->next = s_gui_subhandles;
+    if (s_gui_subhandles)
+        s_gui_subhandles->prev = handle;
+    s_gui_subhandles = handle;
+    rt_obj_set_finalizer(handle, rt_gui_subhandle_finalize);
+    return handle;
+}
+
+void *rt_gui_wrap_tree_node(vg_tree_node_t *node) {
+    return rt_gui_wrap_subhandle(RT_GUI_HANDLE_TREE_NODE,
+                                 node,
+                                 node && node->owner ? &node->owner->base : NULL);
+}
+
+void *rt_gui_wrap_tab(vg_tab_t *tab) {
+    return rt_gui_wrap_subhandle(RT_GUI_HANDLE_TAB,
+                                 tab,
+                                 tab && tab->owner ? &tab->owner->base : NULL);
+}
+
+void *rt_gui_wrap_listbox_item(vg_listbox_item_t *item) {
+    return rt_gui_wrap_subhandle(RT_GUI_HANDLE_LISTBOX_ITEM,
+                                 item,
+                                 item && item->owner ? &item->owner->base : NULL);
+}
+
+void *rt_gui_wrap_menu(vg_menu_t *menu) {
+    return rt_gui_wrap_subhandle(RT_GUI_HANDLE_MENU, menu, rt_gui_owner_widget_for_menu(menu));
+}
+
+void *rt_gui_wrap_menu_item(vg_menu_item_t *item) {
+    return rt_gui_wrap_subhandle(RT_GUI_HANDLE_MENU_ITEM,
+                                 item,
+                                 rt_gui_owner_widget_for_menu_item(item));
+}
+
+void *rt_gui_wrap_contextmenu(vg_contextmenu_t *menu) {
+    return rt_gui_wrap_subhandle(RT_GUI_HANDLE_CONTEXTMENU,
+                                 menu,
+                                 menu ? &menu->base : NULL);
+}
+
+void *rt_gui_wrap_statusbar_item(vg_statusbar_item_t *item) {
+    return rt_gui_wrap_subhandle(RT_GUI_HANDLE_STATUSBAR_ITEM,
+                                 item,
+                                 item && item->owner ? &item->owner->base : NULL);
+}
+
+void *rt_gui_wrap_toolbar_item(vg_toolbar_item_t *item) {
+    return rt_gui_wrap_subhandle(RT_GUI_HANDLE_TOOLBAR_ITEM,
+                                 item,
+                                 item && item->owner ? &item->owner->base : NULL);
+}
+
+vg_tree_node_t *rt_gui_tree_node_from_handle(void *handle) {
+    rt_gui_subhandle_t *sub = rt_gui_subhandle_checked(handle, RT_GUI_HANDLE_TREE_NODE);
+    if (!sub || !sub->ptr)
+        return NULL;
+    if (!rt_gui_subhandle_owner_is_live(sub))
+        return NULL;
+    vg_tree_node_t *node = (vg_tree_node_t *)sub->ptr;
+    if (!vg_tree_node_is_live(node)) {
+        rt_gui_subhandle_invalidate(sub);
+        return NULL;
+    }
+    return node;
+}
+
+vg_tab_t *rt_gui_tab_from_handle(void *handle) {
+    rt_gui_subhandle_t *sub = rt_gui_subhandle_checked(handle, RT_GUI_HANDLE_TAB);
+    if (!sub || !sub->ptr)
+        return NULL;
+    if (!rt_gui_subhandle_owner_is_live(sub))
+        return NULL;
+    vg_tab_t *tab = (vg_tab_t *)sub->ptr;
+    if (!vg_tab_is_live(tab)) {
+        rt_gui_subhandle_invalidate(sub);
+        return NULL;
+    }
+    return tab;
+}
+
+vg_listbox_item_t *rt_gui_listbox_item_from_handle(void *handle) {
+    rt_gui_subhandle_t *sub = rt_gui_subhandle_checked(handle, RT_GUI_HANDLE_LISTBOX_ITEM);
+    if (!sub || !sub->ptr)
+        return NULL;
+    if (!rt_gui_subhandle_owner_is_live(sub))
+        return NULL;
+    vg_listbox_item_t *item = (vg_listbox_item_t *)sub->ptr;
+    if (!vg_listbox_item_is_live(item)) {
+        rt_gui_subhandle_invalidate(sub);
+        return NULL;
+    }
+    return item;
+}
+
+vg_menu_t *rt_gui_menu_from_handle(void *handle) {
+    rt_gui_subhandle_t *sub = rt_gui_subhandle_checked(handle, RT_GUI_HANDLE_MENU);
+    if (!sub || !sub->ptr)
+        return NULL;
+    if (!rt_gui_subhandle_owner_is_live(sub))
+        return NULL;
+    vg_menu_t *menu = (vg_menu_t *)sub->ptr;
+    if (!vg_menu_is_live(menu)) {
+        rt_gui_subhandle_invalidate(sub);
+        return NULL;
+    }
+    return menu;
+}
+
+vg_menu_item_t *rt_gui_menu_item_from_handle(void *handle) {
+    rt_gui_subhandle_t *sub = rt_gui_subhandle_checked(handle, RT_GUI_HANDLE_MENU_ITEM);
+    if (!sub || !sub->ptr)
+        return NULL;
+    if (!rt_gui_subhandle_owner_is_live(sub))
+        return NULL;
+    vg_menu_item_t *item = (vg_menu_item_t *)sub->ptr;
+    if (!vg_menu_item_is_live(item)) {
+        rt_gui_subhandle_invalidate(sub);
+        return NULL;
+    }
+    return item;
+}
+
+vg_contextmenu_t *rt_gui_contextmenu_from_handle(void *handle) {
+    rt_gui_subhandle_t *sub = rt_gui_subhandle_checked(handle, RT_GUI_HANDLE_CONTEXTMENU);
+    if (!sub || !sub->ptr)
+        return NULL;
+    if (!rt_gui_subhandle_owner_is_live(sub))
+        return NULL;
+    vg_contextmenu_t *menu = (vg_contextmenu_t *)sub->ptr;
+    if (!vg_contextmenu_is_live(menu) || menu->base.type != VG_WIDGET_MENU) {
+        rt_gui_subhandle_invalidate(sub);
+        return NULL;
+    }
+    return menu;
+}
+
+vg_statusbar_item_t *rt_gui_statusbar_item_from_handle(void *handle) {
+    rt_gui_subhandle_t *sub = rt_gui_subhandle_checked(handle, RT_GUI_HANDLE_STATUSBAR_ITEM);
+    if (!sub || !sub->ptr)
+        return NULL;
+    if (!rt_gui_subhandle_owner_is_live(sub))
+        return NULL;
+    vg_statusbar_item_t *item = (vg_statusbar_item_t *)sub->ptr;
+    if (!vg_statusbar_item_is_live(item)) {
+        rt_gui_subhandle_invalidate(sub);
+        return NULL;
+    }
+    return item;
+}
+
+vg_toolbar_item_t *rt_gui_toolbar_item_from_handle(void *handle) {
+    rt_gui_subhandle_t *sub = rt_gui_subhandle_checked(handle, RT_GUI_HANDLE_TOOLBAR_ITEM);
+    if (!sub || !sub->ptr)
+        return NULL;
+    if (!rt_gui_subhandle_owner_is_live(sub))
+        return NULL;
+    vg_toolbar_item_t *item = (vg_toolbar_item_t *)sub->ptr;
+    if (!vg_toolbar_item_is_live(item)) {
+        rt_gui_subhandle_invalidate(sub);
+        return NULL;
+    }
+    return item;
+}
+
+void rt_gui_invalidate_widget_subhandles(vg_widget_t *subtree) {
+    if (!subtree)
+        return;
+    for (rt_gui_subhandle_t *handle = s_gui_subhandles; handle; handle = handle->next) {
+        if (handle->magic != RT_GUI_SUBHANDLE_MAGIC || !handle->owner_widget)
+            continue;
+        if (rt_gui_widget_tree_contains(subtree, handle->owner_widget))
+            rt_gui_subhandle_invalidate(handle);
+    }
+}
+
+void rt_gui_invalidate_contextmenu_contents(vg_contextmenu_t *menu) {
+    if (!menu)
+        return;
+
+    for (rt_gui_subhandle_t *handle = s_gui_subhandles; handle; handle = handle->next) {
+        if (handle->magic != RT_GUI_SUBHANDLE_MAGIC || handle->owner_widget != &menu->base)
+            continue;
+        if (handle->kind == RT_GUI_HANDLE_MENU_ITEM)
+            rt_gui_subhandle_invalidate(handle);
+    }
+
+    for (size_t i = 0; i < menu->item_count; i++) {
+        vg_menu_item_t *item = menu->items[i];
+        if (item && item->submenu)
+            rt_gui_invalidate_contextmenu_tree((vg_contextmenu_t *)item->submenu);
+    }
+}
+
+void rt_gui_invalidate_contextmenu_tree(vg_contextmenu_t *menu) {
+    if (!menu)
+        return;
+    rt_gui_invalidate_contextmenu_contents(menu);
+    for (rt_gui_subhandle_t *handle = s_gui_subhandles; handle; handle = handle->next) {
+        if (handle->magic != RT_GUI_SUBHANDLE_MAGIC || handle->kind != RT_GUI_HANDLE_CONTEXTMENU)
+            continue;
+        if (handle->ptr == menu)
+            rt_gui_subhandle_invalidate(handle);
+    }
+}
+
+//=============================================================================
 // Font Functions
 //=============================================================================
 
@@ -105,11 +435,18 @@ void rt_font_destroy(void *font) {
 int rt_gui_widget_tree_contains(vg_widget_t *root, const vg_widget_t *candidate) {
     if (!root || !candidate)
         return 0;
-    if (root == candidate)
-        return 1;
-    for (vg_widget_t *child = root->first_child; child; child = child->next_sibling) {
-        if (rt_gui_widget_tree_contains(child, candidate))
+    for (vg_widget_t *node = root; node;) {
+        if (node == candidate)
             return 1;
+        if (node->first_child) {
+            node = node->first_child;
+            continue;
+        }
+        while (node && node != root && !node->next_sibling)
+            node = node->parent;
+        if (!node || node == root)
+            break;
+        node = node->next_sibling;
     }
     return 0;
 }
@@ -188,6 +525,7 @@ void rt_widget_forget_runtime_refs(rt_gui_app_t *app, vg_widget_t *widget) {
     }
     rt_findbar_forget_editor_subtree(widget);
     rt_minimap_forget_editor_subtree(widget);
+    rt_gui_invalidate_widget_subhandles(widget);
 }
 
 /// @brief Destroy a widget and its entire subtree, freeing all resources.
@@ -751,8 +1089,8 @@ void rt_checkbox_set_text(void *checkbox, rt_string text) {
 /// @details Indeterminate is a tri-state used when a checkbox represents a group
 ///          of items whose states are mixed (some checked, some not). Visually
 ///          the checkbox shows a dash or filled square rather than a tick mark.
-///          Setting this overrides the checked state visually; the underlying
-///          checked value is preserved and re-shown when indeterminate is cleared.
+///          Setting this clears the checked state so the control has one
+///          unambiguous logical value.
 /// @param checkbox      Checkbox widget handle.
 /// @param indeterminate Non-zero to show mixed state, zero to clear it.
 void rt_checkbox_set_indeterminate(void *checkbox, int64_t indeterminate) {
@@ -890,13 +1228,13 @@ void *rt_treeview_add_node(void *tree, void *parent_node, rt_string text) {
         (vg_treeview_t *)rt_gui_widget_handle_checked_type(tree, VG_WIDGET_TREEVIEW);
     if (!tv)
         return NULL;
-    if (parent_node && (!vg_tree_node_is_live((vg_tree_node_t *)parent_node) ||
-                        ((vg_tree_node_t *)parent_node)->owner != tv))
+    vg_tree_node_t *parent = parent_node ? rt_gui_tree_node_from_handle(parent_node) : NULL;
+    if (parent_node && (!parent || parent->owner != tv))
         return NULL;
     char *ctext = rt_string_to_gui_cstr(text);
-    vg_tree_node_t *node = vg_treeview_add_node(tv, (vg_tree_node_t *)parent_node, ctext);
+    vg_tree_node_t *node = vg_treeview_add_node(tv, parent, ctext);
     free(ctext);
-    return node;
+    return rt_gui_wrap_tree_node(node);
 }
 
 /// @brief Remove a node and its subtree from the tree view.
@@ -904,9 +1242,9 @@ void rt_treeview_remove_node(void *tree, void *node) {
     RT_ASSERT_MAIN_THREAD();
     vg_treeview_t *tv =
         (vg_treeview_t *)rt_gui_widget_handle_checked_type(tree, VG_WIDGET_TREEVIEW);
-    if (tv && node && vg_tree_node_is_live((vg_tree_node_t *)node) &&
-        ((vg_tree_node_t *)node)->owner == tv)
-        vg_treeview_remove_node(tv, (vg_tree_node_t *)node);
+    vg_tree_node_t *n = node ? rt_gui_tree_node_from_handle(node) : NULL;
+    if (tv && n && n->owner == tv)
+        vg_treeview_remove_node(tv, n);
 }
 
 /// @brief Remove all nodes from the tree view, leaving it empty.
@@ -923,9 +1261,9 @@ void rt_treeview_expand(void *tree, void *node) {
     RT_ASSERT_MAIN_THREAD();
     vg_treeview_t *tv =
         (vg_treeview_t *)rt_gui_widget_handle_checked_type(tree, VG_WIDGET_TREEVIEW);
-    if (tv && node && vg_tree_node_is_live((vg_tree_node_t *)node) &&
-        ((vg_tree_node_t *)node)->owner == tv)
-        vg_treeview_expand(tv, (vg_tree_node_t *)node);
+    vg_tree_node_t *n = node ? rt_gui_tree_node_from_handle(node) : NULL;
+    if (tv && n && n->owner == tv)
+        vg_treeview_expand(tv, n);
 }
 
 /// @brief Collapse a tree node to hide its children.
@@ -933,9 +1271,9 @@ void rt_treeview_collapse(void *tree, void *node) {
     RT_ASSERT_MAIN_THREAD();
     vg_treeview_t *tv =
         (vg_treeview_t *)rt_gui_widget_handle_checked_type(tree, VG_WIDGET_TREEVIEW);
-    if (tv && node && vg_tree_node_is_live((vg_tree_node_t *)node) &&
-        ((vg_tree_node_t *)node)->owner == tv)
-        vg_treeview_collapse(tv, (vg_tree_node_t *)node);
+    vg_tree_node_t *n = node ? rt_gui_tree_node_from_handle(node) : NULL;
+    if (tv && n && n->owner == tv)
+        vg_treeview_collapse(tv, n);
 }
 
 /// @brief Programmatically select a tree node (NULL to clear selection).
@@ -945,10 +1283,10 @@ void rt_treeview_select(void *tree, void *node) {
         (vg_treeview_t *)rt_gui_widget_handle_checked_type(tree, VG_WIDGET_TREEVIEW);
     if (!tv)
         return;
-    if (node && (!vg_tree_node_is_live((vg_tree_node_t *)node) ||
-                 ((vg_tree_node_t *)node)->owner != tv))
+    vg_tree_node_t *n = node ? rt_gui_tree_node_from_handle(node) : NULL;
+    if (node && (!n || n->owner != tv))
         return;
-    vg_treeview_select(tv, (vg_tree_node_t *)node);
+    vg_treeview_select(tv, n);
 }
 
 /// @brief Set the font of the treeview.
@@ -971,7 +1309,7 @@ void *rt_treeview_get_selected(void *tree) {
         (vg_treeview_t *)rt_gui_widget_handle_checked_type(tree, VG_WIDGET_TREEVIEW);
     if (!tv)
         return NULL;
-    return tv->selected;
+    return rt_gui_wrap_tree_node(tv->selected);
 }
 
 /// @brief Check if the tree view selection changed since the last call (edge-triggered).
@@ -995,8 +1333,8 @@ rt_string rt_treeview_node_get_text(void *node) {
     RT_ASSERT_MAIN_THREAD();
     if (!node)
         return rt_str_empty();
-    vg_tree_node_t *n = (vg_tree_node_t *)node;
-    if (!vg_tree_node_is_live(n))
+    vg_tree_node_t *n = rt_gui_tree_node_from_handle(node);
+    if (!n)
         return rt_str_empty();
     if (!n->text)
         return rt_str_empty();
@@ -1008,8 +1346,8 @@ void rt_treeview_node_set_data(void *node, rt_string data) {
     RT_ASSERT_MAIN_THREAD();
     if (!node)
         return;
-    vg_tree_node_t *n = (vg_tree_node_t *)node;
-    if (!vg_tree_node_is_live(n))
+    vg_tree_node_t *n = rt_gui_tree_node_from_handle(node);
+    if (!n)
         return;
     rt_gui_string_data_t *new_data = data ? rt_gui_string_data_new(data) : NULL;
     if (data && !new_data)
@@ -1027,8 +1365,8 @@ rt_string rt_treeview_node_get_data(void *node) {
     RT_ASSERT_MAIN_THREAD();
     if (!node)
         return rt_str_empty();
-    vg_tree_node_t *n = (vg_tree_node_t *)node;
-    if (!vg_tree_node_is_live(n))
+    vg_tree_node_t *n = rt_gui_tree_node_from_handle(node);
+    if (!n)
         return rt_str_empty();
     if (!n->user_data || !n->owns_user_data)
         return rt_str_empty();
@@ -1040,8 +1378,8 @@ int64_t rt_treeview_node_is_expanded(void *node) {
     RT_ASSERT_MAIN_THREAD();
     if (!node)
         return 0;
-    vg_tree_node_t *n = (vg_tree_node_t *)node;
-    if (!vg_tree_node_is_live(n))
+    vg_tree_node_t *n = rt_gui_tree_node_from_handle(node);
+    if (!n)
         return 0;
     return n->expanded ? 1 : 0;
 }
@@ -1280,6 +1618,22 @@ int64_t rt_checkbox_is_checked(void *checkbox) {
 void rt_checkbox_set_text(void *checkbox, rt_string text) {
     (void)checkbox;
     (void)text;
+}
+
+/// @brief Programmatically set the indeterminate state of a checkbox.
+/// @param checkbox
+/// @param indeterminate
+void rt_checkbox_set_indeterminate(void *checkbox, int64_t indeterminate) {
+    (void)checkbox;
+    (void)indeterminate;
+}
+
+/// @brief Query whether a checkbox is currently indeterminate.
+/// @param checkbox
+/// @return Result value.
+int64_t rt_checkbox_is_indeterminate(void *checkbox) {
+    (void)checkbox;
+    return 0;
 }
 
 /// @brief Stub: graphics disabled — returns NULL; no scroll view widget is created.

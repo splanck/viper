@@ -199,10 +199,11 @@ static void test_statusbar_click_is_edge_triggered(void) {
     vg_statusbar_item_t *item =
         vg_statusbar_add_text(statusbar, VG_STATUSBAR_ZONE_LEFT, "ready");
     assert(item);
+    void *item_handle = rt_gui_wrap_statusbar_item(item);
 
     rt_gui_set_clicked_statusbar_item(item);
-    assert(rt_statusbaritem_was_clicked(item) == 1);
-    assert(rt_statusbaritem_was_clicked(item) == 0);
+    assert(rt_statusbaritem_was_clicked(item_handle) == 1);
+    assert(rt_statusbaritem_was_clicked(item_handle) == 0);
 
     cleanup_fake_app(&app);
     printf("test_statusbar_click_is_edge_triggered: PASSED\n");
@@ -218,14 +219,14 @@ static void test_statusbar_runtime_button_wires_click_polling(void) {
 
     vg_statusbar_t *statusbar = (vg_statusbar_t *)rt_statusbar_new(app.root);
     assert(statusbar);
-    vg_statusbar_item_t *button =
-        (vg_statusbar_item_t *)rt_statusbar_add_button(statusbar, rt_const_cstr("Build"), 0);
+    void *button_handle = rt_statusbar_add_button(statusbar, rt_const_cstr("Build"), 0);
+    vg_statusbar_item_t *button = rt_gui_statusbar_item_from_handle(button_handle);
     assert(button);
     assert(button->on_click != NULL);
 
     button->on_click(button, button->user_data);
-    assert(rt_statusbaritem_was_clicked(button) == 1);
-    assert(rt_statusbaritem_was_clicked(button) == 0);
+    assert(rt_statusbaritem_was_clicked(button_handle) == 1);
+    assert(rt_statusbaritem_was_clicked(button_handle) == 0);
 
     cleanup_fake_app(&app);
     printf("test_statusbar_runtime_button_wires_click_polling: PASSED\n");
@@ -777,7 +778,8 @@ static void test_menu_and_toolbar_pixel_icons_become_image_icons(void) {
     vg_menu_item_t *item = vg_menu_add_item(menu, "Open", NULL, NULL, NULL);
     assert(item);
 
-    rt_menuitem_set_icon(item, pixels);
+    void *item_handle = rt_gui_wrap_menu_item(item);
+    rt_menuitem_set_icon(item_handle, pixels);
     assert(item->icon.type == VG_ICON_IMAGE);
 
     vg_contextmenu_t *context_menu = vg_contextmenu_create();
@@ -785,7 +787,8 @@ static void test_menu_and_toolbar_pixel_icons_become_image_icons(void) {
     vg_menu_item_t *context_item = vg_contextmenu_add_item(context_menu, "Copy", NULL, NULL, NULL);
     assert(context_item);
 
-    rt_menuitem_set_icon(context_item, pixels);
+    void *context_item_handle = rt_gui_wrap_menu_item(context_item);
+    rt_menuitem_set_icon(context_item_handle, pixels);
     assert(context_item->icon.type == VG_ICON_IMAGE);
     assert(context_item->owner_contextmenu == context_menu);
 
@@ -795,7 +798,8 @@ static void test_menu_and_toolbar_pixel_icons_become_image_icons(void) {
         vg_toolbar_add_button(toolbar, "open", NULL, vg_icon_from_glyph('O'), NULL, NULL);
     assert(tool_item);
 
-    rt_toolbaritem_set_icon_pixels(tool_item, pixels);
+    void *tool_item_handle = rt_gui_wrap_toolbar_item(tool_item);
+    rt_toolbaritem_set_icon_pixels(tool_item_handle, pixels);
     assert(tool_item->icon.type == VG_ICON_IMAGE);
 
     char icon_path[256];
@@ -805,12 +809,13 @@ static void test_menu_and_toolbar_pixel_icons_become_image_icons(void) {
     snprintf(icon_path, sizeof(icon_path), "/tmp/viper_gui_icon_%ld.bmp", (long)getpid());
 #endif
     assert(rt_pixels_save_bmp(pixels, rt_const_cstr(icon_path)) == 1);
-    vg_toolbar_item_t *path_item =
-        (vg_toolbar_item_t *)rt_toolbar_add_button(toolbar, rt_const_cstr(icon_path), rt_const_cstr("path"));
+    void *path_item_handle =
+        rt_toolbar_add_button(toolbar, rt_const_cstr(icon_path), rt_const_cstr("path"));
+    vg_toolbar_item_t *path_item = rt_gui_toolbar_item_from_handle(path_item_handle);
     assert(path_item);
     assert(path_item->icon.type == VG_ICON_IMAGE);
 
-    rt_toolbaritem_set_icon(path_item, rt_const_cstr(icon_path));
+    rt_toolbaritem_set_icon(path_item_handle, rt_const_cstr(icon_path));
     assert(path_item->icon.type == VG_ICON_IMAGE);
 
 #ifdef _WIN32
@@ -847,14 +852,16 @@ static void test_tabbar_was_changed_tracks_real_active_tab_transitions(void) {
     vg_tab_t *second = vg_tabbar_add_tab(tabbar, "second.zia", true);
     assert(first);
     assert(second);
+    void *first_handle = rt_gui_wrap_tab(first);
+    void *second_handle = rt_gui_wrap_tab(second);
 
     assert(rt_tabbar_was_changed(tabbar) == 0);
-    rt_tabbar_set_active(tabbar, second);
+    rt_tabbar_set_active(tabbar, second_handle);
     assert(rt_tabbar_was_changed(tabbar) == 1);
     assert(rt_tabbar_was_changed(tabbar) == 0);
 
-    rt_tabbar_remove_tab(tabbar, second);
-    assert(rt_tabbar_get_active(tabbar) == first);
+    rt_tabbar_remove_tab(tabbar, second_handle);
+    assert(rt_tabbar_get_active(tabbar) == first_handle);
     assert(rt_tabbar_was_changed(tabbar) == 1);
     assert(rt_tabbar_was_changed(tabbar) == 0);
 
@@ -1101,8 +1108,9 @@ static void test_treeview_and_listbox_data_preserve_embedded_nuls(void) {
     assert(tree);
     vg_tree_node_t *node = vg_treeview_add_node(tree, NULL, "node");
     assert(node);
-    rt_treeview_node_set_data(node, data);
-    rt_string tree_data = rt_treeview_node_get_data(node);
+    void *node_handle = rt_gui_wrap_tree_node(node);
+    rt_treeview_node_set_data(node_handle, data);
+    rt_string tree_data = rt_treeview_node_get_data(node_handle);
     assert(rt_str_len(tree_data) == (int64_t)sizeof(payload));
     assert(memcmp(rt_string_cstr(tree_data), payload, sizeof(payload)) == 0);
 
@@ -1110,8 +1118,9 @@ static void test_treeview_and_listbox_data_preserve_embedded_nuls(void) {
     assert(listbox);
     vg_listbox_item_t *item = vg_listbox_add_item(listbox, "item", NULL);
     assert(item);
-    rt_listbox_item_set_data(item, data);
-    rt_string list_data = rt_listbox_item_get_data(item);
+    void *item_handle = rt_gui_wrap_listbox_item(item);
+    rt_listbox_item_set_data(item_handle, data);
+    rt_string list_data = rt_listbox_item_get_data(item_handle);
     assert(rt_str_len(list_data) == (int64_t)sizeof(payload));
     assert(memcmp(rt_string_cstr(list_data), payload, sizeof(payload)) == 0);
     assert(item->owns_user_data);
@@ -1128,16 +1137,18 @@ static void test_listbox_selection_changed_is_edge_triggered(void) {
     vg_listbox_item_t *second = vg_listbox_add_item(listbox, "second", NULL);
     assert(first);
     assert(second);
+    void *first_handle = rt_gui_wrap_listbox_item(first);
+    void *second_handle = rt_gui_wrap_listbox_item(second);
 
     assert(rt_listbox_was_selection_changed(listbox) == 0);
-    rt_listbox_select(listbox, first);
+    rt_listbox_select(listbox, first_handle);
     assert(rt_listbox_was_selection_changed(listbox) == 1);
     assert(rt_listbox_was_selection_changed(listbox) == 0);
 
-    rt_listbox_select(listbox, first);
+    rt_listbox_select(listbox, first_handle);
     assert(rt_listbox_was_selection_changed(listbox) == 0);
 
-    rt_listbox_select(listbox, second);
+    rt_listbox_select(listbox, second_handle);
     assert(rt_listbox_was_selection_changed(listbox) == 1);
     assert(rt_listbox_was_selection_changed(listbox) == 0);
 
@@ -1146,7 +1157,7 @@ static void test_listbox_selection_changed_is_edge_triggered(void) {
     assert(rt_listbox_was_selection_changed(listbox) == 1);
     assert(rt_listbox_was_selection_changed(listbox) == 0);
 
-    rt_listbox_select(listbox, first);
+    rt_listbox_select(listbox, first_handle);
     assert(rt_listbox_was_selection_changed(listbox) == 1);
     vg_listbox_clear(listbox);
     assert(rt_listbox_get_selected(listbox) == NULL);
@@ -1185,20 +1196,22 @@ static void test_treeview_selection_changed_reports_removal_and_clear(void) {
     vg_tree_node_t *first = vg_treeview_add_node(tree, NULL, "first");
     vg_tree_node_t *second = vg_treeview_add_node(tree, NULL, "second");
     assert(first && second);
+    void *first_handle = rt_gui_wrap_tree_node(first);
+    void *second_handle = rt_gui_wrap_tree_node(second);
 
     assert(rt_treeview_was_selection_changed(tree) == 0);
-    rt_treeview_select(tree, first);
+    rt_treeview_select(tree, first_handle);
     assert(rt_treeview_was_selection_changed(tree) == 1);
     assert(rt_treeview_was_selection_changed(tree) == 0);
 
-    rt_treeview_select(tree, second);
+    rt_treeview_select(tree, second_handle);
     assert(rt_treeview_was_selection_changed(tree) == 1);
     vg_treeview_remove_node(tree, second);
     assert(rt_treeview_get_selected(tree) == NULL);
     assert(rt_treeview_was_selection_changed(tree) == 1);
     assert(rt_treeview_was_selection_changed(tree) == 0);
 
-    rt_treeview_select(tree, first);
+    rt_treeview_select(tree, first_handle);
     assert(rt_treeview_was_selection_changed(tree) == 1);
     vg_treeview_clear(tree);
     assert(rt_treeview_get_selected(tree) == NULL);
@@ -1228,15 +1241,17 @@ static void test_removed_listbox_and_treeview_handles_are_inert(void) {
     assert(node);
     vg_tree_node_t *child = vg_treeview_add_node(tree, node, "child");
     assert(child);
-    rt_treeview_node_set_data(child, rt_const_cstr("payload"));
+    void *node_handle = rt_gui_wrap_tree_node(node);
+    void *child_handle = rt_gui_wrap_tree_node(child);
+    rt_treeview_node_set_data(child_handle, rt_const_cstr("payload"));
     vg_treeview_remove_node(tree, node);
-    assert(rt_str_len(rt_treeview_node_get_text(node)) == 0);
-    assert(rt_str_len(rt_treeview_node_get_text(child)) == 0);
-    assert(rt_str_len(rt_treeview_node_get_data(child)) == 0);
-    rt_treeview_node_set_data(child, rt_const_cstr("ignored"));
-    rt_treeview_select(tree, child);
+    assert(rt_str_len(rt_treeview_node_get_text(node_handle)) == 0);
+    assert(rt_str_len(rt_treeview_node_get_text(child_handle)) == 0);
+    assert(rt_str_len(rt_treeview_node_get_data(child_handle)) == 0);
+    rt_treeview_node_set_data(child_handle, rt_const_cstr("ignored"));
+    rt_treeview_select(tree, child_handle);
     assert(rt_treeview_get_selected(tree) == NULL);
-    assert(rt_treeview_node_is_expanded(child) == 0);
+    assert(rt_treeview_node_is_expanded(child_handle) == 0);
 
     vg_widget_destroy(&tree->base);
     vg_widget_destroy(&listbox->base);
@@ -1247,31 +1262,32 @@ static void test_listbox_and_treeview_reject_foreign_child_handles(void) {
     vg_listbox_t *list_a = vg_listbox_create(NULL);
     vg_listbox_t *list_b = vg_listbox_create(NULL);
     assert(list_a && list_b);
-    vg_listbox_item_t *item_b = (vg_listbox_item_t *)rt_listbox_add_item(list_b, rt_const_cstr("b"));
-    assert(item_b);
+    void *item_b = rt_listbox_add_item(list_b, rt_const_cstr("b"));
+    vg_listbox_item_t *raw_item_b = rt_gui_listbox_item_from_handle(item_b);
+    assert(raw_item_b);
 
     rt_listbox_select(list_a, item_b);
     assert(rt_listbox_get_selected(list_a) == NULL);
     rt_listbox_remove_item(list_a, item_b);
-    assert(vg_listbox_item_is_live(item_b));
-    assert(item_b->owner == list_b);
+    assert(vg_listbox_item_is_live(raw_item_b));
+    assert(raw_item_b->owner == list_b);
     assert(rt_listbox_get_count(list_b) == 1);
 
     vg_treeview_t *tree_a = vg_treeview_create(NULL);
     vg_treeview_t *tree_b = vg_treeview_create(NULL);
     assert(tree_a && tree_b);
-    vg_tree_node_t *node_b = (vg_tree_node_t *)rt_treeview_add_node(
-        tree_b, NULL, rt_const_cstr("b"));
-    assert(node_b);
+    void *node_b = rt_treeview_add_node(tree_b, NULL, rt_const_cstr("b"));
+    vg_tree_node_t *raw_node_b = rt_gui_tree_node_from_handle(node_b);
+    assert(raw_node_b);
 
     assert(rt_treeview_add_node(tree_a, node_b, rt_const_cstr("bad child")) == NULL);
     rt_treeview_expand(tree_a, node_b);
-    assert(node_b->expanded == false);
+    assert(raw_node_b->expanded == false);
     rt_treeview_select(tree_a, node_b);
     assert(rt_treeview_get_selected(tree_a) == NULL);
     rt_treeview_remove_node(tree_a, node_b);
-    assert(vg_tree_node_is_live(node_b));
-    assert(node_b->owner == tree_b);
+    assert(vg_tree_node_is_live(raw_node_b));
+    assert(raw_node_b->owner == tree_b);
 
     vg_widget_destroy(&tree_b->base);
     vg_widget_destroy(&tree_a->base);
@@ -1292,20 +1308,23 @@ static void test_contextmenu_separator_returns_item_handle(void) {
 }
 
 static void test_contextmenu_item_click_updates_menuitem_was_clicked(void) {
-    vg_contextmenu_t *menu = (vg_contextmenu_t *)rt_contextmenu_new();
+    void *menu_handle = rt_contextmenu_new();
+    vg_contextmenu_t *menu = rt_gui_contextmenu_from_handle(menu_handle);
     assert(menu);
-    vg_menu_item_t *item = (vg_menu_item_t *)rt_contextmenu_add_item(menu, rt_const_cstr("Open"));
+    void *item = rt_contextmenu_add_item(menu_handle, rt_const_cstr("Open"));
+    vg_menu_item_t *raw_item = rt_gui_menu_item_from_handle(item);
     assert(item);
 
-    rt_contextmenu_show(menu, 0, 0);
+    rt_contextmenu_show(menu_handle, 0, 0);
     vg_event_t down = vg_event_mouse(VG_EVENT_MOUSE_DOWN, 4.0f, 4.0f, VG_MOUSE_LEFT, 0);
     assert(menu->base.vtable->handle_event(&menu->base, &down));
 
-    assert(rt_contextmenu_get_clicked_item(menu) == item);
+    assert(rt_contextmenu_get_clicked_item(menu_handle) == item);
     assert(rt_menuitem_was_clicked(item) == 1);
     assert(rt_menuitem_was_clicked(item) == 0);
 
-    rt_contextmenu_destroy(menu);
+    assert(raw_item == NULL || raw_item->was_clicked == false);
+    rt_contextmenu_destroy(menu_handle);
     printf("test_contextmenu_item_click_updates_menuitem_was_clicked: PASSED\n");
 }
 
@@ -1817,8 +1836,8 @@ static void test_menu_context_toolbar_statusbar_handles_are_type_checked(void) {
     assert(rt_menubar_add_menu(&app, rt_const_cstr("Bad")) == NULL);
     vg_menubar_t *menubar = (vg_menubar_t *)rt_menubar_new(app.root);
     assert(menubar);
-    vg_menu_t *menu = (vg_menu_t *)rt_menubar_add_menu(menubar, rt_const_cstr("File"));
-    vg_menu_t *submenu = (vg_menu_t *)rt_menu_add_submenu(menu, rt_const_cstr("Recent"));
+    void *menu = rt_menubar_add_menu(menubar, rt_const_cstr("File"));
+    void *submenu = rt_menu_add_submenu(menu, rt_const_cstr("Recent"));
     assert(menu && submenu);
     rt_menubar_remove_menu(menubar, menu);
     assert(rt_menu_add_item(menu, rt_const_cstr("Open")) == NULL);
@@ -2255,26 +2274,28 @@ static void test_menuitem_checkable_state_is_real_and_invalidates_context(void) 
     assert(context);
     vg_menu_item_t *context_item = vg_contextmenu_add_item(context, "Toggle", NULL, NULL, NULL);
     assert(context_item);
-    assert(rt_menuitem_is_checkable(context_item) == 0);
+    void *context_item_handle = rt_gui_wrap_menu_item(context_item);
+    assert(rt_menuitem_is_checkable(context_item_handle) == 0);
     context->base.needs_layout = false;
-    rt_menuitem_set_checkable(context_item, 1);
-    assert(rt_menuitem_is_checkable(context_item) == 1);
-    rt_menuitem_set_checked(context_item, 1);
-    assert(rt_menuitem_is_checked(context_item) == 1);
+    rt_menuitem_set_checkable(context_item_handle, 1);
+    assert(rt_menuitem_is_checkable(context_item_handle) == 1);
+    rt_menuitem_set_checked(context_item_handle, 1);
+    assert(rt_menuitem_is_checked(context_item_handle) == 1);
     assert(context->base.needs_layout || context->base.needs_paint);
-    rt_menuitem_set_checkable(context_item, 0);
-    assert(rt_menuitem_is_checkable(context_item) == 0);
-    assert(rt_menuitem_is_checked(context_item) == 0);
+    rt_menuitem_set_checkable(context_item_handle, 0);
+    assert(rt_menuitem_is_checkable(context_item_handle) == 0);
+    assert(rt_menuitem_is_checked(context_item_handle) == 0);
 
     vg_menubar_t *menubar = vg_menubar_create(NULL);
     assert(menubar);
     vg_menu_t *menu = vg_menubar_add_menu(menubar, "View");
     vg_menu_item_t *menu_item = vg_menu_add_item(menu, "Sidebar", NULL, NULL, NULL);
     assert(menu_item);
-    assert(rt_menuitem_is_checkable(menu_item) == 0);
-    rt_menuitem_set_checked(menu_item, 1);
-    assert(rt_menuitem_is_checkable(menu_item) == 1);
-    assert(rt_menuitem_is_checked(menu_item) == 1);
+    void *menu_item_handle = rt_gui_wrap_menu_item(menu_item);
+    assert(rt_menuitem_is_checkable(menu_item_handle) == 0);
+    rt_menuitem_set_checked(menu_item_handle, 1);
+    assert(rt_menuitem_is_checkable(menu_item_handle) == 1);
+    assert(rt_menuitem_is_checked(menu_item_handle) == 1);
 
     vg_widget_destroy(&context->base);
     vg_widget_destroy(&menubar->base);
@@ -2314,11 +2335,11 @@ static void test_toolbar_remove_item_removes_runtime_null_id_items(void) {
 
     vg_toolbar_t *toolbar = (vg_toolbar_t *)rt_toolbar_new(app.root);
     assert(toolbar);
-    vg_toolbar_item_t *item =
-        (vg_toolbar_item_t *)rt_toolbar_add_button(toolbar, rt_const_cstr(""), rt_const_cstr(""));
+    void *item_handle = rt_toolbar_add_button(toolbar, rt_const_cstr(""), rt_const_cstr(""));
+    vg_toolbar_item_t *item = rt_gui_toolbar_item_from_handle(item_handle);
     assert(item && item->id == NULL);
     assert(toolbar->item_count == 1);
-    rt_toolbar_remove_item(toolbar, item);
+    rt_toolbar_remove_item(toolbar, item_handle);
     assert(toolbar->item_count == 0);
 
     cleanup_fake_app(&app);
@@ -2335,30 +2356,101 @@ static void test_toolbar_statusbar_remove_clears_runtime_click_caches(void) {
 
     vg_statusbar_t *statusbar = (vg_statusbar_t *)rt_statusbar_new(app.root);
     assert(statusbar);
-    vg_statusbar_item_t *status_item =
-        (vg_statusbar_item_t *)rt_statusbar_add_text(statusbar, rt_const_cstr("ready"), 0);
+    void *status_item_handle = rt_statusbar_add_text(statusbar, rt_const_cstr("ready"), 0);
+    vg_statusbar_item_t *status_item = rt_gui_statusbar_item_from_handle(status_item_handle);
     assert(status_item);
     app.last_statusbar_clicked = status_item;
-    rt_statusbar_remove_item(statusbar, status_item);
+    rt_statusbar_remove_item(statusbar, status_item_handle);
     assert(app.last_statusbar_clicked == NULL);
     assert(!vg_statusbar_item_is_live(status_item));
-    assert(rt_statusbaritem_was_clicked(status_item) == 0);
+    assert(rt_statusbaritem_was_clicked(status_item_handle) == 0);
 
     vg_toolbar_t *toolbar = (vg_toolbar_t *)rt_toolbar_new(app.root);
     assert(toolbar);
-    vg_toolbar_item_t *tool_item =
-        (vg_toolbar_item_t *)rt_toolbar_add_button(toolbar,
-                                                   rt_const_cstr(""),
-                                                   rt_const_cstr("tool"));
+    void *tool_item_handle =
+        rt_toolbar_add_button(toolbar, rt_const_cstr(""), rt_const_cstr("tool"));
+    vg_toolbar_item_t *tool_item = rt_gui_toolbar_item_from_handle(tool_item_handle);
     assert(tool_item);
     app.last_toolbar_clicked = tool_item;
-    rt_toolbar_remove_item(toolbar, tool_item);
+    rt_toolbar_remove_item(toolbar, tool_item_handle);
     assert(app.last_toolbar_clicked == NULL);
     assert(!vg_toolbar_item_is_live(tool_item));
-    assert(rt_toolbaritem_was_clicked(tool_item) == 0);
+    assert(rt_toolbaritem_was_clicked(tool_item_handle) == 0);
 
     cleanup_fake_app(&app);
     printf("test_toolbar_statusbar_remove_clears_runtime_click_caches: PASSED\n");
+}
+
+static void test_runtime_subobject_handles_are_inert_after_owner_destroy(void) {
+    rt_gui_app_t app;
+    reset_fake_app(&app);
+    app.root = vg_widget_create(VG_WIDGET_CONTAINER);
+    assert(app.root);
+    app.root->user_data = &app;
+    rt_gui_activate_app(&app);
+
+    vg_treeview_t *tree = (vg_treeview_t *)rt_treeview_new(app.root);
+    assert(tree);
+    void *node = rt_treeview_add_node(tree, NULL, rt_const_cstr("node"));
+    assert(node);
+    rt_widget_destroy(tree);
+    assert(rt_str_len(rt_treeview_node_get_text(node)) == 0);
+    rt_treeview_node_set_data(node, rt_const_cstr("ignored"));
+    assert(rt_treeview_node_is_expanded(node) == 0);
+
+    vg_listbox_t *listbox = (vg_listbox_t *)rt_listbox_new(app.root);
+    assert(listbox);
+    void *list_item = rt_listbox_add_item(listbox, rt_const_cstr("item"));
+    assert(list_item);
+    rt_widget_destroy(listbox);
+    assert(rt_str_len(rt_listbox_item_get_text(list_item)) == 0);
+    rt_listbox_item_set_text(list_item, rt_const_cstr("ignored"));
+
+    vg_tabbar_t *tabbar = (vg_tabbar_t *)rt_tabbar_new(app.root);
+    assert(tabbar);
+    void *tab = rt_tabbar_add_tab(tabbar, rt_const_cstr("tab"), 1);
+    assert(tab);
+    rt_widget_destroy(tabbar);
+    rt_tab_set_title(tab, rt_const_cstr("ignored"));
+    rt_tab_set_modified(tab, 1);
+
+    vg_menubar_t *menubar = (vg_menubar_t *)rt_menubar_new(app.root);
+    assert(menubar);
+    void *menu = rt_menubar_add_menu(menubar, rt_const_cstr("File"));
+    void *menu_item = rt_menu_add_item(menu, rt_const_cstr("Open"));
+    assert(menu && menu_item);
+    rt_widget_destroy(menubar);
+    assert(rt_menu_add_item(menu, rt_const_cstr("Ignored")) == NULL);
+    assert(rt_menuitem_is_enabled(menu_item) == 0);
+
+    vg_statusbar_t *statusbar = (vg_statusbar_t *)rt_statusbar_new(app.root);
+    assert(statusbar);
+    void *status_item = rt_statusbar_add_text(statusbar, rt_const_cstr("ready"), 0);
+    assert(status_item);
+    rt_widget_destroy(statusbar);
+    rt_statusbaritem_set_text(status_item, rt_const_cstr("ignored"));
+    assert(rt_str_len(rt_statusbaritem_get_text(status_item)) == 0);
+
+    vg_toolbar_t *toolbar = (vg_toolbar_t *)rt_toolbar_new(app.root);
+    assert(toolbar);
+    void *tool_item = rt_toolbar_add_button(toolbar, rt_const_cstr(""), rt_const_cstr("tool"));
+    assert(tool_item);
+    rt_widget_destroy(toolbar);
+    rt_toolbaritem_set_enabled(tool_item, 1);
+    assert(rt_toolbaritem_is_enabled(tool_item) == 0);
+
+    void *context = rt_contextmenu_new();
+    assert(context);
+    void *context_item = rt_contextmenu_add_item(context, rt_const_cstr("Open"));
+    void *submenu = rt_contextmenu_add_submenu(context, rt_const_cstr("More"));
+    assert(context_item && submenu);
+    rt_contextmenu_destroy(context);
+    assert(rt_contextmenu_add_item(context, rt_const_cstr("Ignored")) == NULL);
+    assert(rt_contextmenu_is_visible(submenu) == 0);
+    assert(rt_menuitem_is_enabled(context_item) == 0);
+
+    cleanup_fake_app(&app);
+    printf("test_runtime_subobject_handles_are_inert_after_owner_destroy: PASSED\n");
 }
 
 static void test_codeeditor_add_highlight_rejects_empty_and_inverted_spans(void) {
@@ -2516,6 +2608,7 @@ int main(void) {
     test_contextmenu_submenu_ownership_detaches_safely();
     test_toolbar_remove_item_removes_runtime_null_id_items();
     test_toolbar_statusbar_remove_clears_runtime_click_caches();
+    test_runtime_subobject_handles_are_inert_after_owner_destroy();
     test_codeeditor_add_highlight_rejects_empty_and_inverted_spans();
     test_codeeditor_gutter_slots_are_validated_and_click_coords_are_fresh();
 
