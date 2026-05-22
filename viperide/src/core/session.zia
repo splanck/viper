@@ -9,7 +9,7 @@ bind Ini = Viper.Text.Ini;
 bind IO = Viper.IO;
 bind Dir = Viper.IO.Dir;
 bind Path = Viper.IO.Path;
-bind Convert = Viper.Core.Convert;
+bind Parse = Viper.Core.Parse;
 bind Seq = Viper.Collections.Seq;
 bind Obj = Viper.Core.Object;
 
@@ -85,7 +85,7 @@ class SessionManager {
             projMgr.OpenFolder(projectRoot);
         }
 
-        var count = Convert.ToInt(Ini.Get(ini, "session", "count"));
+        var count = Parse.IntOr(Ini.Get(ini, "session", "count"), 0);
         var restored = 0;
         var i = 0;
         while i < count {
@@ -94,9 +94,9 @@ class SessionManager {
             if path != "" and IO.File.Exists(path) {
                 var doc = docMgr.OpenFile(path);
                 doc.kind = file_utils.DetectKind(path);
-                doc.cursorLine = Convert.ToInt(Ini.Get(ini, section, "cursorLine"));
-                doc.cursorCol = Convert.ToInt(Ini.Get(ini, section, "cursorCol"));
-                doc.scrollLine = Convert.ToInt(Ini.Get(ini, section, "scrollLine"));
+                doc.cursorLine = Parse.IntOr(Ini.Get(ini, section, "cursorLine"), 1);
+                doc.cursorCol = Parse.IntOr(Ini.Get(ini, section, "cursorCol"), 1);
+                doc.scrollLine = Parse.IntOr(Ini.Get(ini, section, "scrollLine"), 1);
                 if doc.cursorLine <= 0 { doc.cursorLine = 1; }
                 if doc.cursorCol <= 0 { doc.cursorCol = 1; }
                 if doc.scrollLine <= 0 { doc.scrollLine = 1; }
@@ -114,7 +114,7 @@ class SessionManager {
                 activeIdx = docMgr.FindByPath(activePath);
             }
             if activeIdx < 0 {
-                activeIdx = Convert.ToInt(Ini.Get(ini, "session", "activeIndex"));
+                activeIdx = Parse.IntOr(Ini.Get(ini, "session", "activeIndex"), 0);
             }
             if activeIdx < 0 or activeIdx >= docMgr.GetCount() {
                 activeIdx = 0;
@@ -128,7 +128,7 @@ class SessionManager {
     hide func SaveRecentProjects(ini: Any, projectRoot: String) {
         if projectRoot == "" { return; }
 
-        var oldCount = Convert.ToInt(Ini.Get(ini, "recent", "count"));
+        var oldCount = Parse.IntOr(Ini.Get(ini, "recent", "count"), 0);
         var oldPaths = Seq.New();
         var i = 0;
         while i < oldCount {

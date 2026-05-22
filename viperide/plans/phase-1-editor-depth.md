@@ -2,9 +2,15 @@
 
 ## Implementation Status
 
-Status: implemented in ViperIDE.
+Status: infrastructure landed, product completion superseded by
+[editor-first-class-plan.md](editor-first-class-plan.md).
 
-Key landed pieces:
+The original Phase 1 implementation delivered important plumbing, but ViperIDE is
+not yet a first-class code editor. Editor responsiveness, completion behavior,
+structured signature help, refactor preview, project explorer UX, and visual
+polish remain active correction work.
+
+Landed pieces to preserve:
 
 - `editor/language_service.zia` defines explicit capability records for Zia,
   BASIC, text, and scene-source buffers. Zia-only tooling is disabled for

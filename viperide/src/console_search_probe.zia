@@ -1,0 +1,71 @@
+module console_search_probe;
+
+bind "ui/app_shell";
+bind "commands/search_commands";
+
+bind Terminal = Viper.Terminal;
+
+func fail(shell: app_shell.AppShell, reason: String) {
+    shell.Destroy();
+    Terminal.Say("RESULT: fail " + reason);
+}
+
+func main() {
+    var shell = new app_shell.AppShell();
+    shell.Build("ViperIDE Console Search Probe", 800, 520);
+
+    shell.SetBuildOutput("line one\n");
+    if shell.outputListBox.Count != 1 {
+        fail(shell, "initial output rows");
+        return;
+    }
+
+    shell.SetBuildOutput("line one\nline two\n");
+    if shell.outputListBox.Count != 2 {
+        fail(shell, "append output rows");
+        return;
+    }
+
+    shell.SetBuildOutput("line one\nline two\n");
+    if shell.outputListBox.Count != 2 {
+        fail(shell, "stable output rows");
+        return;
+    }
+
+    shell.SetBuildOutput("partial");
+    shell.SetBuildOutput("partial more");
+    if shell.outputListBox.Count != 1 {
+        fail(shell, "partial output rebuild");
+        return;
+    }
+
+    shell.SetBuildOutput("");
+    if shell.outputListBox.Count != 0 or shell.outputListBox.IsVisible() != 0 {
+        fail(shell, "clear output");
+        return;
+    }
+
+    if search_commands.LineMatches("Alpha beta", "alpha", false, false) == false {
+        fail(shell, "case-insensitive search");
+        return;
+    }
+    if search_commands.LineMatches("alphabet", "alpha", false, true) {
+        fail(shell, "whole-word search");
+        return;
+    }
+    if search_commands.QuickOpenScore("src/main.zia", "main.zia") != 1 {
+        fail(shell, "quick open exact file");
+        return;
+    }
+    if search_commands.QuickOpenScore("src/main.zia", "mai") != 2 {
+        fail(shell, "quick open file prefix");
+        return;
+    }
+    if search_commands.QuickOpenScore("src/main.zia", "src/") != 3 {
+        fail(shell, "quick open path prefix");
+        return;
+    }
+
+    shell.Destroy();
+    Terminal.Say("RESULT: ok");
+}

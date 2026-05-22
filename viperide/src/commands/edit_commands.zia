@@ -124,11 +124,11 @@ func handleGoToDefinition(shell: app_shell.AppShell,
         return;
     }
 
-    var source = engine.GetText();
+    file_commands.SaveEditorState(docMgr, engine);
+    indexer.SyncActiveNow(docMgr, engine);
     var curLine = engine.editor.CursorLine + 1;
     var curCol  = engine.editor.CursorCol;
-    indexer.SyncOpenDocuments(docMgr);
-    var def = indexer.Definition(activeDoc.filePath, source, curLine, curCol);
+    var def = indexer.Definition(activeDoc.filePath, activeDoc.content, curLine, curCol);
     if def != null and Map.GetBool(def, "found") {
         var file = Map.GetStr(def, "file");
         var line = Map.GetInt(def, "line");
@@ -162,7 +162,7 @@ func handleFindReferences(shell: app_shell.AppShell,
         return;
     }
     file_commands.SaveEditorState(docMgr, engine);
-    indexer.SyncOpenDocuments(docMgr);
+    indexer.SyncActiveNow(docMgr, engine);
     var refs = indexer.References(activeDoc.filePath, activeDoc.content, engine.editor.CursorLine + 1, engine.editor.CursorCol);
     shell.outputListBox.Clear();
     if refs == null or Seq.get_Length(refs) == 0 {
@@ -216,7 +216,7 @@ func handleRenameSymbol(shell: app_shell.AppShell,
         return;
     }
     file_commands.SaveEditorState(docMgr, engine);
-    indexer.SyncOpenDocuments(docMgr);
+    indexer.SyncActiveNow(docMgr, engine);
     var rename = indexer.RenameEdits(activeDoc.filePath, activeDoc.content,
                                      engine.editor.CursorLine + 1,
                                      engine.editor.CursorCol,
@@ -229,6 +229,10 @@ func handleRenameSymbol(shell: app_shell.AppShell,
         return;
     }
     var edits = Map.Get(rename, "edits");
+    var preview = workspace_edits.PreviewRenameEdits(edits, 20);
+    if GUI.MessageBox.Confirm("Rename Preview", preview) == 0 {
+        return;
+    }
     var result = workspace_edits.ApplyRenameEdits(edits, docMgr);
     if result.success == false {
         GUI.Toast.Error(result.message);
@@ -239,7 +243,7 @@ func handleRenameSymbol(shell: app_shell.AppShell,
         engine.LoadDocument(active);
         tabs.SetModified(docMgr.activeIndex, active.isModified);
     }
-    indexer.SyncOpenDocuments(docMgr);
+    indexer.SyncActiveNow(docMgr, engine);
     shell.SetStatusLeft("Renamed to " + newName);
     GUI.Toast.Success("Rename complete");
 }

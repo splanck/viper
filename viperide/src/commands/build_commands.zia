@@ -2,21 +2,26 @@ module build_commands;
 
 bind "../ui/app_shell";
 bind "../core/document_manager";
+bind "../core/project_manager";
 bind "../editor/editor_engine";
+bind "../editor/editor_tabs";
 bind "../build/build_system";
 bind "../build/diagnostic";
+bind "../build/run_config";
 bind "../commands/file_commands";
 bind "../services/locations";
 
 bind Viper.GUI;
 bind Convert = Viper.Core.Convert;
+bind Seq = Viper.Collections.Seq;
+bind Obj = Viper.Core.Object;
 
 // ============================================================================
 // MODULE: build_commands
-// PURPOSE: Build / BuildAndRun / Run command handlers. Saves the active
-//          document, invokes the BuildSystem, and routes the resulting
-//          diagnostics to the diagnostics panel + minimap markers +
-//          status bar.
+// PURPOSE: Build / BuildAndRun / Run / Stop command handlers. Saves the
+//          active document, starts argument-vector Process jobs through
+//          BuildSystem, and routes streamed output + diagnostics to the
+//          output panel, diagnostics panel, minimap, and status bar.
 //
 // WHERE-THIS-FITS: Command handlers wired into main.zia's command
 //          dispatcher. Each handler receives the AppShell, document
@@ -31,9 +36,10 @@ bind Convert = Viper.Core.Convert;
 //   * TOAST + STATUS BAR. Every result reports through both the toast
 //     popup AND the status bar. Toast is for ephemeral notification;
 //     the status bar persists so the user can re-read the result later.
-//   * RUN == BUILDANDRUN (FOR NOW). Zia compiles and runs in one step,
-//     so handleRun delegates. Kept as a distinct entry point so future
-//     "build native binary, then run separately" workflows can diverge.
+//   * DIRECT ARGS, NOT SHELL STRINGS. RunConfig stores program + Seq args;
+//     paths with spaces are passed as a single argument.
+//   * IDE-OWNED JOBS. The frame loop calls UpdateJob so long-running
+//     processes can stream output and be stopped without freezing the IDE.
 //   * UpdateDiagnostics IS SHARED. Both Build and BuildAndRun call it
 //     to refresh the panel/minimap/output. Keeping it in one place
 //     prevents drift between the two paths.
@@ -46,25 +52,26 @@ final INFO_MARKER_COLOR = 10066329;      // grey   (0x999999)
 /// @brief Build the active file, refresh diagnostics, report status.
 func handleBuild(shell: app_shell.AppShell,
                  docMgr: document_manager.DocumentManager,
+                 projMgr: project_manager.ProjectManager,
                  engine: editor_engine.EditorEngine,
+                 tabs: editor_tabs.EditorTabs,
                  buildSys: build_system.BuildSystem,
                  locStore: locations.LocationStore) {
+    if EnsureNoActiveJob(shell, buildSys, "start a new build") == false { return; }
     file_commands.SaveEditorState(docMgr, engine);
     var buildDoc = docMgr.GetActive();
     if buildDoc != null {
         if buildDoc.isNew == false {
-            docMgr.SaveActive();
-            shell.SetStatusLeft("Building...");
-            var success = buildSys.Build(buildDoc.filePath);
-            if success {
-                shell.SetStatusLeft("Build succeeded in " + buildSys.GetBuildTime());
-                GUI.Toast.Success("Build succeeded in " + buildSys.GetBuildTime());
+            file_commands.handleSaveAll(shell, docMgr, engine, tabs);
+            file_commands.SaveEditorState(docMgr, engine);
+            var cfg = run_config.ForDocument(run_config.ACTION_BUILD, buildDoc, projMgr);
+            if buildSys.StartConfig(cfg) {
+                shell.SetStatusLeft("Building: " + cfg.targetPath);
+                shell.SetBuildOutput("Started: " + FormatCommand(cfg));
             } else {
-                var errCount = buildSys.GetErrorCount();
-                shell.SetStatusLeft("Build failed: " + errCount + " errors");
-                GUI.Toast.Error("Build failed: " + errCount + " errors");
+                shell.SetStatusLeft("Build already active or failed to start");
+                GUI.Toast.Warning("Build job did not start");
             }
-            UpdateDiagnostics(shell, buildSys, locStore);
         } else {
             shell.SetStatusLeft("Save file before building");
         }
@@ -74,25 +81,26 @@ func handleBuild(shell: app_shell.AppShell,
 /// @brief Build and run in one step; refresh diagnostics; report status.
 func handleBuildAndRun(shell: app_shell.AppShell,
                        docMgr: document_manager.DocumentManager,
+                       projMgr: project_manager.ProjectManager,
                        engine: editor_engine.EditorEngine,
+                       tabs: editor_tabs.EditorTabs,
                        buildSys: build_system.BuildSystem,
                        locStore: locations.LocationStore) {
+    if EnsureNoActiveJob(shell, buildSys, "start a new run") == false { return; }
     file_commands.SaveEditorState(docMgr, engine);
     var runDoc = docMgr.GetActive();
     if runDoc != null {
         if runDoc.isNew == false {
-            docMgr.SaveActive();
-            shell.SetStatusLeft("Building and running...");
-            var success = buildSys.BuildAndRun(runDoc.filePath);
-            if success {
-                shell.SetStatusLeft("Run completed in " + buildSys.GetBuildTime());
-                GUI.Toast.Info("Run completed in " + buildSys.GetBuildTime());
+            file_commands.handleSaveAll(shell, docMgr, engine, tabs);
+            file_commands.SaveEditorState(docMgr, engine);
+            var cfg = run_config.ForDocument(run_config.ACTION_RUN, runDoc, projMgr);
+            if buildSys.StartConfig(cfg) {
+                shell.SetStatusLeft("Running: " + cfg.targetPath);
+                shell.SetBuildOutput("Started: " + FormatCommand(cfg));
             } else {
-                var errCount = buildSys.GetErrorCount();
-                shell.SetStatusLeft("Build failed: " + errCount + " errors");
-                GUI.Toast.Error("Build failed: " + errCount + " errors");
+                shell.SetStatusLeft("Run already active or failed to start");
+                GUI.Toast.Warning("Run job did not start");
             }
-            UpdateDiagnostics(shell, buildSys, locStore);
         } else {
             shell.SetStatusLeft("Save file before running");
         }
@@ -105,10 +113,43 @@ func handleBuildAndRun(shell: app_shell.AppShell,
 ///        workflow can diverge without renaming call sites.
 func handleRun(shell: app_shell.AppShell,
                docMgr: document_manager.DocumentManager,
+               projMgr: project_manager.ProjectManager,
                engine: editor_engine.EditorEngine,
+               tabs: editor_tabs.EditorTabs,
                buildSys: build_system.BuildSystem,
                locStore: locations.LocationStore) {
-    handleBuildAndRun(shell, docMgr, engine, buildSys, locStore);
+    handleBuildAndRun(shell, docMgr, projMgr, engine, tabs, buildSys, locStore);
+}
+
+func handleStop(shell: app_shell.AppShell,
+                buildSys: build_system.BuildSystem) {
+    if buildSys.Stop() {
+        shell.SetStatusLeft("Stopped job");
+        GUI.Toast.Info("Stopped running job");
+    } else {
+        shell.SetStatusLeft("No running job");
+    }
+}
+
+func UpdateJob(shell: app_shell.AppShell,
+               buildSys: build_system.BuildSystem,
+               locStore: locations.LocationStore) {
+    if buildSys == null { return; }
+    var wasActive = buildSys.IsActive();
+    if wasActive {
+        buildSys.Update();
+        shell.SetBuildOutput(buildSys.GetOutput());
+        if buildSys.IsActive() == false {
+            if buildSys.lastBuildSuccess {
+                shell.SetStatusLeft(buildSys.activeName + " succeeded in " + buildSys.GetBuildTime());
+                GUI.Toast.Success(buildSys.activeName + " succeeded");
+            } else {
+                shell.SetStatusLeft(buildSys.activeName + " failed: exit " + buildSys.exitCode);
+                GUI.Toast.Error(buildSys.activeName + " failed");
+            }
+            UpdateDiagnostics(shell, buildSys, locStore);
+        }
+    }
 }
 
 /// @brief Repopulate the diagnostics listbox + minimap markers + build
@@ -123,7 +164,6 @@ func UpdateDiagnostics(shell: app_shell.AppShell,
 
     var diagCount = buildSys.diagnostics.count();
     if diagCount > 0 {
-        shell.diagListBox.SetVisible(1);
         var i = 0;
         while i < diagCount {
             var diag = buildSys.diagnostics.get(i);
@@ -149,9 +189,65 @@ func UpdateDiagnostics(shell: app_shell.AppShell,
             shell.minimap.AddMarker(diag.line, 1, markerColor);
             i = i + 1;
         }
+        shell.ShowProblemsPanel();
     } else {
-        shell.diagListBox.SetVisible(0);
+        shell.HideProblemsPanel();
     }
 
+    PopulateBuildOutput(shell, buildSys, locStore);
+}
+
+func PopulateBuildOutput(shell: app_shell.AppShell,
+                         buildSys: build_system.BuildSystem,
+                         locStore: locations.LocationStore) {
+    shell.outputListBox.Clear();
+    var output = buildSys.GetOutput();
+    if output == "" {
+        shell.HideOutputPanel();
+        return;
+    }
+    var lines = Viper.String.Split(output, "\n");
+    var i = 0;
+    while i < Seq.get_Length(lines) {
+        var line = Obj.ToString(Seq.Get(lines, i));
+        if line != "" {
+            var item = shell.outputListBox.AddItem(line);
+            var diag = buildSys.ParseDiagnosticLine(line);
+            if diag != null {
+                var locId = locStore.Add(diag.filePath, diag.line, diag.column,
+                                         diag.line, diag.column + 1,
+                                         locations.KIND_BUILD, diag.message);
+                GUI.ListBox.ItemSetData(item, locId);
+            }
+        }
+        i = i + 1;
+    }
+    shell.ShowOutputPanel();
+}
+
+func FormatCommand(cfg: run_config.RunConfig) -> String {
+    if cfg == null { return ""; }
+    var text = cfg.program;
+    var i = 0;
+    while i < Seq.get_Length(cfg.args) {
+        text = text + " " + Obj.ToString(Seq.Get(cfg.args, i));
+        i = i + 1;
+    }
+    return text;
+}
+
+func EnsureNoActiveJob(shell: app_shell.AppShell,
+                       buildSys: build_system.BuildSystem,
+                       nextAction: String) -> Boolean {
+    if buildSys == null or buildSys.IsActive() == false { return true; }
+    var confirmed = GUI.MessageBox.Confirm(
+        "Job Already Active",
+        "Stop the current job and " + nextAction + "?");
+    if confirmed == 0 {
+        shell.SetStatusLeft("Existing job kept running");
+        return false;
+    }
+    buildSys.Stop();
     shell.SetBuildOutput(buildSys.GetOutput());
+    return true;
 }

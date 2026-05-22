@@ -25,13 +25,13 @@ bind Viper.GUI;
 //   * DEBOUNCED. Re-running the type-checker on every keystroke would
 //     thrash. We defer the check by `DEBOUNCE_MS` ms after the last
 //     edit so a burst of typing produces a single check at the end.
-//     The two-call dance (first call sets `pending = true` and starts
-//     the timer; subsequent calls wait for the debounce window) means
-//     the timer arms itself on first detection of change.
-//   * SOURCE + PATH CACHE. Skip the check if both the buffer text AND
-//     the active file path haven't changed since last run. The path
-//     cache matters because a path change (tab switch) needs to
-//     re-check even if the new tab's text matches the previous run.
+//     The timer is reset whenever the editor content revision changes, so
+//     a burst of typing produces one check after the final edit.
+//   * REVISION + PATH CACHE. Per-frame updates read the editor's cheap
+//     content revision first and only pull the full buffer when a debounced
+//     check is actually due. The path cache matters because a path change
+//     (tab switch) needs to re-check even if the new tab's text matches
+//     the previous run.
 //   * PATH-AWARE CheckForFile. Same reason as completion — relative
 //     `bind` paths need the active file's directory for accurate
 //     resolution.
@@ -55,9 +55,12 @@ class LiveDiagnostics {
     expose Boolean enabled;
     expose Integer lastEditMs;       // tick of last detected edit
     expose Boolean pending;          // true if a check is scheduled
-    expose String  lastCheckedSource; // avoid rechecking unchanged source
+    expose String  lastCheckedSource; // retained for debugging/inspection; revision gates checks
     expose String  sourcePath;
     expose String  lastCheckedPath;
+    expose Integer pendingRevision;
+    expose String  pendingPath;
+    expose Integer lastCheckedRevision;
 
     /// @brief Initialize as enabled, with no pending work and empty caches.
     expose func init() {
@@ -67,6 +70,9 @@ class LiveDiagnostics {
         lastCheckedSource = "";
         sourcePath = "";
         lastCheckedPath = "";
+        pendingRevision = -1;
+        pendingPath = "";
+        lastCheckedRevision = -1;
     }
 
     /// @brief Set the active file's path; invalidates the path cache so
@@ -77,6 +83,9 @@ class LiveDiagnostics {
             sourcePath = path;
             lastCheckedPath = "";
             pending = false;
+            pendingRevision = -1;
+            pendingPath = "";
+            lastCheckedRevision = -1;
         }
     }
 
@@ -94,13 +103,14 @@ class LiveDiagnostics {
         if enabled == false { return 0; }
         if engine == null or engine.editor == null { return 0; }
 
-        var source = engine.GetText();
-        if source == lastCheckedSource and sourcePath == lastCheckedPath { return 0; }
+        var revision = engine.GetRevision();
+        if revision == lastCheckedRevision and sourcePath == lastCheckedPath { return 0; }
 
-        // Detect edit: source changed since last check
         var now = Viper.Time.GetTickCount();
-        if pending == false {
+        if pending == false or revision != pendingRevision or sourcePath != pendingPath {
             pending = true;
+            pendingRevision = revision;
+            pendingPath = sourcePath;
             lastEditMs = now;
             return 0;
         }
@@ -111,9 +121,11 @@ class LiveDiagnostics {
         }
 
         // Run check
+        var source = engine.GetText();
         pending = false;
         lastCheckedSource = source;
         lastCheckedPath = sourcePath;
+        lastCheckedRevision = revision;
 
         // Synthetic-module prefix for buffers lacking a `module` line;
         // diagnostic line numbers come back shifted and are un-shifted below.
@@ -123,7 +135,7 @@ class LiveDiagnostics {
         if Seq.get_Length(records) == 0 {
             // Clean — clear all markers and highlights
             shell.diagListBox.Clear();
-            shell.diagListBox.SetVisible(0);
+            shell.HideProblemsPanel();
             shell.minimap.ClearMarkers();
             engine.editor.ClearHighlights();
             return 0;
@@ -184,9 +196,9 @@ class LiveDiagnostics {
         }
 
         if shownCount > 0 {
-            shell.diagListBox.SetVisible(1);
+            shell.ShowProblemsPanel();
         } else {
-            shell.diagListBox.SetVisible(0);
+            shell.HideProblemsPanel();
         }
 
         return errorCount;
@@ -196,6 +208,23 @@ class LiveDiagnostics {
     /// @note Use after save / reload / any explicit "rerun checks" gesture.
     expose func invalidate() {
         lastCheckedSource = "";
+        lastCheckedPath = "";
+        lastCheckedRevision = -1;
         pending = false;
+        pendingRevision = -1;
+        pendingPath = "";
+    }
+
+    expose func runNow(engine: editor_engine.EditorEngine,
+                       shell: app_shell.AppShell,
+                       locStore: locations.LocationStore) -> Integer {
+        if enabled == false { return 0; }
+        if engine == null or engine.editor == null { return 0; }
+        lastCheckedRevision = -1;
+        pending = true;
+        pendingRevision = engine.GetRevision();
+        pendingPath = sourcePath;
+        lastEditMs = Viper.Time.GetTickCount() - DEBOUNCE_MS;
+        return update(engine, shell, locStore);
     }
 }

@@ -8,6 +8,8 @@ bind Viper.Core.Object as Obj;
 bind Viper.Zia.Completion as ZiaCompletion;
 bind "../editor/zia_query";
 
+final COMPLETION_DEBOUNCE_MS = 180;
+
 // ============================================================================
 // MODULE: completion
 // PURPOSE: IntelliSense-style code completion for ViperIDE. Owns the
@@ -43,6 +45,9 @@ bind "../editor/zia_query";
 //   * KIND TAGS. Single-letter brackets (e.g., "[fn]") give the user a
 //     visual cue for variable / method / function / keyword distinction
 //     at a glance.
+//   * EDITOR KEEPS FOCUS. The popup never focuses the listbox. Keyboard
+//     text continues through the CodeEditor, while main.zia routes Tab,
+//     Enter, Escape, Up, and Down to this controller.
 //
 // HOW-TO-READ: init -> Setup (creates popup) -> SetSourcePath (per-file
 //   wiring) -> TriggerCompletion (the meat: query + populate + show) ->
@@ -66,8 +71,13 @@ class CompletionController {
     // Track cursor position to detect line changes (auto-dismiss)
     expose Integer lastLine;
     expose Integer lastCol;
+    expose Integer pendingSinceMs;
+    expose Boolean pendingQuery;
 
-    // Parallel list of insertTexts (one entry per listbox item)
+    // Cached semantic result plus the filtered visible insertTexts.
+    expose List allLabels;
+    expose List allDisplays;
+    expose List allInsertTexts;
     expose List insertTexts;
 
     /// @brief Initialize an empty/hidden controller.
@@ -79,6 +89,11 @@ class CompletionController {
         enabled        = true;
         lastLine       = -1;
         lastCol        = -1;
+        pendingSinceMs = 0;
+        pendingQuery   = false;
+        allLabels      = new List();
+        allDisplays    = new List();
+        allInsertTexts = new List();
         insertTexts    = new List();
     }
 
@@ -118,6 +133,17 @@ class CompletionController {
         }
     }
 
+    /// @brief Schedule a semantic completion query after the typing debounce.
+    expose func ScheduleCompletion() {
+        if enabled == false or editor == null {
+            return;
+        }
+        if pendingQuery == false {
+            pendingSinceMs = Viper.Time.GetTickCount();
+        }
+        pendingQuery = true;
+    }
+
     /// @brief Query the engine and show the popup.
     /// @note Reads cursor coords from `editor`, sends them through
     ///       `CompleteForFile` (path-aware), parses the tab-separated
@@ -128,6 +154,7 @@ class CompletionController {
         if enabled == false or editor == null {
             return;
         }
+        pendingQuery = false;
 
         // Get current source and cursor position
         var text    = editor.Text;
@@ -147,9 +174,11 @@ class CompletionController {
         }
 
         // Clear previous state
-        listbox.Clear();
+        allLabels = new List();
+        allDisplays = new List();
+        allInsertTexts = new List();
         insertTexts = new List();
-        itemCount   = 0;
+        itemCount = 0;
 
         // Parse serialised result: each line is   label\tinsertText\tkind\tdetail
         var lines = Str.Split(result, "\n");
@@ -190,11 +219,17 @@ class CompletionController {
                 displayText = displayText + "  — " + detail;
             }
 
-            listbox.AddItem(displayText);
-            insertTexts.Push(ins);
-            itemCount = itemCount + 1;
+            allLabels.Push(label);
+            allDisplays.Push(displayText);
+            allInsertTexts.Push(ins);
         }
 
+        if allLabels.count() == 0 {
+            Hide();
+            return;
+        }
+
+        RebuildVisibleItems(CurrentPrefix());
         if itemCount == 0 {
             Hide();
             return;
@@ -212,7 +247,36 @@ class CompletionController {
         lastCol   = editor.CursorCol;
         isVisible = true;
         popup.SetVisible(1);
-        listbox.Focus();
+        editor.Focus();
+    }
+
+    expose func RebuildVisibleItems(prefix: String) {
+        listbox.Clear();
+        insertTexts = new List();
+        itemCount = 0;
+
+        var normalizedPrefix = Str.ToLower(prefix);
+        var i = 0;
+        while i < allLabels.count() {
+            var label = Obj.ToString(allLabels.get(i));
+            var display = Obj.ToString(allDisplays.get(i));
+            var insertText = Obj.ToString(allInsertTexts.get(i));
+            if normalizedPrefix == "" or StartsWith(Str.ToLower(label), normalizedPrefix) {
+                listbox.AddItem(display);
+                insertTexts.Push(insertText);
+                itemCount = itemCount + 1;
+            }
+            i = i + 1;
+        }
+
+        if itemCount > 0 {
+            selectedIndex = 0;
+            listbox.SelectIndex(0);
+        }
+    }
+
+    expose func CurrentPrefix() -> String {
+        return CurrentPrefixFor(editor);
     }
 
     /// @brief Insert the currently-selected item at the cursor.
@@ -262,13 +326,13 @@ class CompletionController {
     expose func Show() {
         isVisible = true;
         popup.SetVisible(1);
-        listbox.Focus();
+        editor.Focus();
     }
 
-    /// @brief Keep keyboard focus on the popup list while completions are open.
+    /// @brief Keep keyboard focus on the editor while completions are open.
     expose func EnsureFocus() {
-        if isVisible {
-            listbox.Focus();
+        if isVisible and editor != null {
+            editor.Focus();
         }
     }
 
@@ -281,29 +345,32 @@ class CompletionController {
         }
     }
 
-    /// @brief Per-frame update. Auto-dismisses when the cursor moves
-    ///        to a different line (the candidates would be stale).
+    /// @brief Per-frame update. Runs pending debounced queries and filters
+    ///        cached candidates as the editor text changes.
     /// @return true if an event was consumed (currently always false —
     ///         reserved for future use).
     expose func Update(typed: String) -> Boolean {
+        if pendingQuery {
+            var now = Viper.Time.GetTickCount();
+            if now - pendingSinceMs >= COMPLETION_DEBOUNCE_MS {
+                TriggerCompletion();
+                return true;
+            }
+        }
+
         if isVisible == false {
             return false;
         }
 
-        var hadListFocus = listbox.IsFocused();
         EnsureFocus();
-
-        // The popup keeps focus so Up/Down/Enter work on the listbox. Forward
-        // literal text input back into the editor, then close stale candidates.
         if typed != "" {
-            if hadListFocus != 0 {
-                editor.InsertAtCursor(typed);
+            RebuildVisibleItems(CurrentPrefix());
+            if itemCount == 0 {
+                ScheduleCompletion();
             }
-            Hide();
             return true;
         }
 
-        // Auto-dismiss if the user moved to a different line
         var curLine = editor.CursorLine;
         if curLine != lastLine {
             Hide();
@@ -317,6 +384,17 @@ class CompletionController {
 
         return false;
     }
+}
+
+func CurrentPrefixFor(editor: GUI.CodeEditor) -> String {
+    if editor == null { return ""; }
+    return editor.GetWordAtCursor();
+}
+
+func StartsWith(text: String, prefix: String) -> Boolean {
+    if prefix == "" { return true; }
+    if Str.Length(text) < Str.Length(prefix) { return false; }
+    return Str.Left(text, Str.Length(prefix)) == prefix;
 }
 
 /// @brief Map a CompletionKind integer to a short bracketed tag.

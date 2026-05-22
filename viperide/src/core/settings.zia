@@ -30,9 +30,9 @@ bind Viper.GUI;
 //     key is present and parseable. So adding a new settings field
 //     doesn't break existing settings files — older files just use the
 //     coded default.
-//   * VALIDATION ON LOAD. Numeric ranges (fontSize >= 6, tabWidth in
-//     2..8) are enforced when parsing. Out-of-range values keep the
-//     current value rather than producing a broken state.
+//   * VALIDATION ON LOAD. Numeric ranges (comfortable font sizes, tabWidth in
+//     2..8) are enforced when parsing. Tiny legacy font sizes migrate upward
+//     rather than producing an unreadable editor.
 //   * SetupPath() RESOLVES HOME LATE. Path computation happens lazily on
 //     first Load/Save rather than at construction so the manager can be
 //     instantiated before the runtime environment is available.
@@ -45,9 +45,12 @@ bind Viper.GUI;
 //   (route to GUI.Theme).
 // ============================================================================
 
-/// @brief Default font size (in points). Used both at construction and as
+/// @brief Default editor font size (in points). Used both at construction and as
 ///        the reset target for the "Reset font size" command.
-final DEFAULT_FONT_SIZE = 15;
+final DEFAULT_FONT_SIZE = 20;
+
+/// @brief Old ViperIDE builds persisted small sizes; migrate them upward.
+final MIN_COMFORTABLE_FONT_SIZE = 16;
 
 /// @brief Settings store with INI-backed persistence.
 class SettingsManager {
@@ -107,12 +110,14 @@ class SettingsManager {
         var content = IO.File.ReadAllText(settingsPath);
         var ini = Ini.Parse(content);
 
-        // fontSize: must be at least 6 to be useful.
+        // fontSize: migrate old tiny values to the current comfortable default.
         var sizeStr = Ini.Get(ini, "settings", "fontSize");
         if sizeStr != "" {
             var sz = Convert.ToInt(sizeStr);
-            if sz >= 6 {
+            if sz >= MIN_COMFORTABLE_FONT_SIZE {
                 fontSize = sz;
+            } else if sz >= 6 {
+                fontSize = DEFAULT_FONT_SIZE;
             }
         }
 

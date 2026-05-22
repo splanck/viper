@@ -137,6 +137,17 @@ class EditorEngine {
         return editor.Text;
     }
 
+    /// @brief Cheap content-version probe for per-frame controllers.
+    /// @note Cursor, selection, scroll, and highlight changes do not change
+    ///       this value. Controllers should read the full buffer only after
+    ///       the revision changes or during an explicit user command.
+    expose func GetRevision() -> Integer {
+        if editor == null {
+            return 0;
+        }
+        return editor.Revision;
+    }
+
     /// @brief Replace the buffer contents.
     expose func SetText(text: String) {
         if editor == null {

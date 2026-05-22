@@ -1,0 +1,141 @@
+module debug_session;
+
+bind "breakpoints";
+
+bind Debug = Viper.Debug.Protocol;
+bind Seq = Viper.Collections.Seq;
+bind Map = Viper.Collections.Map;
+
+class DebugSession {
+    expose Any protocol;
+    expose Boolean hasSession;
+    expose Boolean stopped;
+    expose Boolean terminated;
+    expose String activePath;
+    expose String lastType;
+    expose String lastReason;
+    expose Integer lastLine;
+    expose Any lastEvent;
+
+    expose func init() {
+        protocol = null;
+        hasSession = false;
+        stopped = false;
+        terminated = false;
+        activePath = "";
+        lastType = "";
+        lastReason = "";
+        lastLine = 0;
+        lastEvent = null;
+    }
+
+    expose func Launch(path: String,
+                       source: String,
+                       store: breakpoints.BreakpointStore) -> Boolean {
+        if path == "" { return false; }
+        protocol = Debug.New();
+        activePath = path;
+        hasSession = true;
+        stopped = false;
+        terminated = false;
+
+        if store != null {
+            var i = 0;
+            while i < store.Count() {
+                if store.GetPath(i) == path {
+                    Debug.SetBreakpoint(protocol, path, store.GetLine(i));
+                }
+                i = i + 1;
+            }
+        }
+
+        Capture(Debug.Launch(protocol, path, source));
+        return true;
+    }
+
+    expose func Continue() -> Boolean {
+        if hasSession == false or terminated { return false; }
+        Capture(Debug.Continue(protocol));
+        return true;
+    }
+
+    expose func StepOver() -> Boolean {
+        if hasSession == false or terminated { return false; }
+        Capture(Debug.StepOver(protocol));
+        return true;
+    }
+
+    expose func Pause() -> Boolean {
+        if hasSession == false or terminated { return false; }
+        Capture(Debug.Pause(protocol));
+        return true;
+    }
+
+    expose func Terminate() -> Boolean {
+        if hasSession == false { return false; }
+        Capture(Debug.Terminate(protocol));
+        terminated = true;
+        stopped = false;
+        return true;
+    }
+
+    expose func IsActive() -> Boolean {
+        return hasSession and terminated == false;
+    }
+
+    expose func FormatConsole() -> String {
+        if hasSession == false {
+            return "";
+        }
+        var text = "[debug] " + lastType + " " + lastReason;
+        if activePath != "" and lastLine > 0 {
+            text = text + " at " + activePath + ":" + lastLine;
+        }
+        text = text + "\n";
+
+        var frames = Debug.StackFrames(protocol);
+        if Seq.get_Length(frames) > 0 {
+            text = text + "\nStack:\n";
+            var i = 0;
+            while i < Seq.get_Length(frames) {
+                var frame = Seq.Get(frames, i);
+                text = text + "  #" + i + " " + Map.GetStr(frame, "name") + " "
+                    + Map.GetStr(frame, "path") + ":" + Map.GetInt(frame, "line") + "\n";
+                i = i + 1;
+            }
+        }
+
+        var locals = Debug.Locals(protocol);
+        if Seq.get_Length(locals) > 0 {
+            text = text + "\nLocals:\n";
+            var j = 0;
+            while j < Seq.get_Length(locals) {
+                var local = Seq.Get(locals, j);
+                text = text + "  " + Map.GetStr(local, "name") + " = "
+                    + Map.GetStr(local, "value") + " : " + Map.GetStr(local, "type") + "\n";
+                j = j + 1;
+            }
+        }
+        return text;
+    }
+
+    hide func Capture(event: Any) {
+        lastEvent = event;
+        if event == null {
+            lastType = "";
+            lastReason = "";
+            lastLine = 0;
+            stopped = false;
+            return;
+        }
+        lastType = Map.GetStr(event, "type");
+        lastReason = Map.GetStr(event, "reason");
+        lastLine = Map.GetInt(event, "line");
+        activePath = Map.GetStr(event, "path");
+        stopped = lastType == "stopped";
+        if lastType == "terminated" {
+            terminated = true;
+            stopped = false;
+        }
+    }
+}

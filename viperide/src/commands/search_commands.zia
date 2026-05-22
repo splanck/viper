@@ -3,6 +3,7 @@ module search_commands;
 bind "../ui/app_shell";
 bind "../core/project_manager";
 bind "../editor/editor_engine";
+bind "../editor/editor_tabs";
 bind "../commands/file_commands";
 bind "../core/document_manager";
 bind "../services/file_utils";
@@ -10,6 +11,7 @@ bind "../services/locations";
 
 bind Viper.GUI;
 bind IO = Viper.IO;
+bind Dir = Viper.IO.Dir;
 bind Str = Viper.String;
 bind Seq = Viper.Collections.Seq;
 bind Obj = Viper.Core.Object;
@@ -46,7 +48,66 @@ func handleProjectSearch(shell: app_shell.AppShell,
         return;
     }
 
-    var query = GUI.MessageBox.Prompt("Search in Project", "Search for:");
+    RunSearch(shell, projMgr.project.rootPath, "Search in Project", docMgr, engine, locStore);
+}
+
+func handleProjectSearchInFolder(shell: app_shell.AppShell,
+                                 folder: String,
+                                 docMgr: document_manager.DocumentManager,
+                                 engine: editor_engine.EditorEngine,
+                                 locStore: locations.LocationStore) {
+    if folder == "" or Dir.Exists(folder) == false {
+        GUI.Toast.Warning("Choose a folder to search");
+        return;
+    }
+    RunSearch(shell, folder, "Search in Folder", docMgr, engine, locStore);
+}
+
+func handleQuickOpen(shell: app_shell.AppShell,
+                     projMgr: project_manager.ProjectManager,
+                     docMgr: document_manager.DocumentManager,
+                     engine: editor_engine.EditorEngine,
+                     tabs: editor_tabs.EditorTabs) {
+    if projMgr.project == null or projMgr.project.isOpen == false {
+        GUI.Toast.Warning("Open a project folder first");
+        return;
+    }
+    var query = Str.Trim(GUI.MessageBox.Prompt("Quick Open", "File name or path:"));
+    if query == "" { return; }
+
+    var files = FileIndex.Enumerate(projMgr.project.rootPath,
+                                    ".zia,.bas,.vb,.json,.md,.scene,.level,.txt",
+                                    "", false);
+    var bestPath = "";
+    var bestScore = 999;
+    var i = 0;
+    while i < Seq.get_Length(files) {
+        var entry = Seq.Get(files, i);
+        var filePath = Map.GetStr(entry, "path");
+        var score = QuickOpenScore(projMgr.RelativePath(filePath), query);
+        if score >= 0 and score < bestScore {
+            bestScore = score;
+            bestPath = filePath;
+        }
+        i = i + 1;
+    }
+
+    if bestPath == "" {
+        GUI.Toast.Info("No project file matched '" + query + "'");
+        return;
+    }
+
+    file_commands.OpenFileAtPath(shell, docMgr, engine, tabs, bestPath);
+    shell.SetStatusLeft("Opened: " + projMgr.RelativePath(bestPath));
+}
+
+func RunSearch(shell: app_shell.AppShell,
+               root: String,
+               title: String,
+               docMgr: document_manager.DocumentManager,
+               engine: editor_engine.EditorEngine,
+               locStore: locations.LocationStore) {
+    var query = GUI.MessageBox.Prompt(title, "Search for:");
     if query == "" { return; }
     var caseSensitive = GUI.MessageBox.Confirm(
         "Search Options",
@@ -64,7 +125,6 @@ func handleProjectSearch(shell: app_shell.AppShell,
     }
     file_commands.SaveEditorState(docMgr, engine);
 
-    var root = projMgr.project.rootPath;
     var files = FileIndex.Enumerate(root, fileKinds, "", false);
 
     var resultCount = 0;
@@ -73,10 +133,10 @@ func handleProjectSearch(shell: app_shell.AppShell,
     resultCount = resultCount + searchFiles(shell, files, query, caseSensitive, wholeWord, docMgr, locStore);
 
     if resultCount > 0 {
-        shell.outputListBox.SetVisible(1);
+        shell.ShowOutputPanel();
         shell.SetStatusLeft("Found " + resultCount + " matches for '" + query + "'");
     } else {
-        shell.outputListBox.SetVisible(0);
+        shell.HideOutputPanel();
         GUI.Toast.Info("No matches found for '" + query + "'");
     }
 }
@@ -118,6 +178,24 @@ func searchFiles(shell: app_shell.AppShell,
         }
     }
     return count;
+}
+
+func QuickOpenScore(relativePath: String, query: String) -> Integer {
+    var rel = Str.ToLower(relativePath);
+    var needle = Str.ToLower(Str.Trim(query));
+    if needle == "" { return -1; }
+    if rel == needle { return 0; }
+
+    var slash = Str.LastIndexOf(rel, "/");
+    var name = rel;
+    if slash != 0 {
+        name = Str.Mid(rel, slash + 1);
+    }
+    if name == needle { return 1; }
+    if Str.StartsWith(name, needle) { return 2; }
+    if Str.StartsWith(rel, needle) { return 3; }
+    if Str.IndexOf(rel, needle) != 0 { return 4; }
+    return -1;
 }
 
 func contentForPath(docMgr: document_manager.DocumentManager, filePath: String) -> String {

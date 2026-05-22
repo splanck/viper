@@ -1,0 +1,79 @@
+module intellisense_probe;
+
+bind "ui/app_shell";
+bind "editor/editor_engine";
+bind "editor/completion";
+bind "editor/signature";
+
+bind Terminal = Viper.Terminal;
+bind Str = Viper.String;
+bind Obj = Viper.Core.Object;
+
+func fail(shell: app_shell.AppShell, reason: String) {
+    shell.Destroy();
+    Terminal.Say("RESULT: fail " + reason);
+}
+
+func listContains(items: List, label: String) -> Boolean {
+    var i = 0;
+    while i < items.count() {
+        if Obj.ToString(items.get(i)) == label {
+            return true;
+        }
+        i = i + 1;
+    }
+    return false;
+}
+
+func main() {
+    var shell = new app_shell.AppShell();
+    var engine = new editor_engine.EditorEngine();
+    var completer = new completion.CompletionController();
+
+    shell.Build("ViperIDE IntelliSense Probe", 820, 520);
+    engine.Setup(shell.editorRow);
+    completer.Setup(engine.editor, shell.app);
+    completer.SetSourcePath("intellisense_probe.zia");
+
+    engine.SetText(
+        "module IntelliProbe;\n"
+        + "func greet(value: Integer) -> Integer { return value; }\n"
+        + "func main() {\n"
+        + "    gr\n"
+        + "}\n");
+    engine.editor.SetCursor(3, 6);
+    engine.editor.Focus();
+    completer.TriggerCompletion();
+
+    if completer.isVisible == false or completer.itemCount <= 0 {
+        fail(shell, "completion did not open");
+        return;
+    }
+    if engine.editor.IsFocused() == 0 {
+        fail(shell, "completion stole editor focus");
+        return;
+    }
+    if listContains(completer.allLabels, "greet") == false {
+        fail(shell, "completion missing project function");
+        return;
+    }
+
+    completer.AcceptSelected();
+    var line = engine.editor.GetLine(3);
+    if Str.IndexOf(line, "greet") == 0 {
+        fail(shell, "completion accept did not replace prefix");
+        return;
+    }
+
+    if signature.ActiveParameter("func main() {\n    greet(one, two(", 2, 19) != 0 {
+        fail(shell, "nested active parameter");
+        return;
+    }
+    if signature.ActiveParameter("func main() {\n    greet(one, ", 2, 15) != 1 {
+        fail(shell, "comma active parameter");
+        return;
+    }
+
+    shell.Destroy();
+    Terminal.Say("RESULT: ok");
+}

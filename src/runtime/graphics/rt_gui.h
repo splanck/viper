@@ -423,6 +423,13 @@ void rt_treeview_set_font(void *tree, void *font, double size);
 /// @return Selected node handle or NULL if none selected.
 void *rt_treeview_get_selected(void *tree);
 
+/// @brief Get the visible tree node under a window-space point.
+/// @param tree TreeView widget handle.
+/// @param x Window-space X coordinate.
+/// @param y Window-space Y coordinate.
+/// @return Tree node handle or NULL if the point is outside rows.
+void *rt_treeview_get_node_at(void *tree, int64_t x, int64_t y);
+
 /// @brief Check if selection changed since last call (polling pattern).
 /// @param tree TreeView widget handle.
 /// @return 1 if selection changed, 0 otherwise.
@@ -585,6 +592,11 @@ void rt_codeeditor_set_text(void *editor, rt_string text);
 /// @param editor CodeEditor widget handle.
 /// @return Text content as runtime string, including trailing newlines.
 rt_string rt_codeeditor_get_text(void *editor);
+
+/// @brief Get the current content revision. Cursor and scroll changes do not change it.
+/// @param editor CodeEditor widget handle.
+/// @return Monotonic content revision, or 0 when unavailable.
+int64_t rt_codeeditor_get_revision(void *editor);
 
 /// @brief Get the currently selected text.
 /// @param editor CodeEditor widget handle.

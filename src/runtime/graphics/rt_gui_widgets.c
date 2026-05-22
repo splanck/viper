@@ -1346,6 +1346,16 @@ void *rt_treeview_get_selected(void *tree) {
     return rt_gui_wrap_tree_node(tv->selected);
 }
 
+/// @brief Tree node under a window-space point (NULL if outside rows).
+void *rt_treeview_get_node_at(void *tree, int64_t x, int64_t y) {
+    RT_ASSERT_MAIN_THREAD();
+    vg_treeview_t *tv =
+        (vg_treeview_t *)rt_gui_widget_handle_checked_type(tree, VG_WIDGET_TREEVIEW);
+    if (!tv)
+        return NULL;
+    return rt_gui_wrap_tree_node(vg_treeview_node_at(tv, (float)x, (float)y));
+}
+
 /// @brief Check if the tree view selection changed since the last call (edge-triggered).
 int64_t rt_treeview_was_selection_changed(void *tree) {
     RT_ASSERT_MAIN_THREAD();
@@ -1760,6 +1770,14 @@ void rt_treeview_set_font(void *tree, void *font, double size) {
 /// @brief Stub: graphics disabled — returns NULL; no selection exists without a tree view.
 void *rt_treeview_get_selected(void *tree) {
     (void)tree;
+    return NULL;
+}
+
+/// @brief Stub: graphics disabled — no hit-tested nodes exist.
+void *rt_treeview_get_node_at(void *tree, int64_t x, int64_t y) {
+    (void)tree;
+    (void)x;
+    (void)y;
     return NULL;
 }
 

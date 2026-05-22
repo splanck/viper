@@ -836,6 +836,23 @@ static vg_tree_node_t *find_node_at_y(vg_treeview_t *tree,
     return NULL;
 }
 
+vg_tree_node_t *vg_treeview_node_at(vg_treeview_t *tree, float x, float y) {
+    if (!tree)
+        return NULL;
+
+    vg_widget_t *widget = &tree->base;
+    if (x < widget->x || y < widget->y ||
+        x >= widget->x + widget->width ||
+        y >= widget->y + widget->height) {
+        return NULL;
+    }
+
+    float local_y = y - widget->y;
+    float target_y = local_y + tree->scroll_y;
+    float current_y = 0.0f;
+    return find_node_at_y(tree, tree->root, target_y, &current_y);
+}
+
 /// @brief Return true if dropping source onto target at position is allowed by the can_drop callback.
 static bool treeview_drop_is_valid(vg_treeview_t *tree,
                                    vg_tree_node_t *source,

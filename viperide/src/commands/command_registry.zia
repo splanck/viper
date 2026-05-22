@@ -59,6 +59,13 @@ class CommandRegistry {
         Add("build", "Build", "Compile the current file or project", "Ctrl+Shift+B", "", true);
         Add("buildrun", "Build and Run", "Build and run the current file or project", "F5", "", true);
         Add("run", "Run without Build", "Run without compiling first", "Ctrl+F5", "", true);
+        Add("stopjob", "Stop Running Job", "Terminate the active build or run process", "Shift+F5", "", true);
+        Add("debugstart", "Start Debugging", "Launch the active file in the debug protocol", "F6", "", true);
+        Add("debugcontinue", "Continue Debugging", "Continue a paused debug session", "F7", "", true);
+        Add("debugstepover", "Step Over", "Step over the current debug line", "F10", "", true);
+        Add("debugpause", "Pause Debugging", "Pause the active debug session", "", "", true);
+        Add("debugstop", "Stop Debugging", "Terminate the active debug session", "", "", true);
+        Add("togglebreakpoint", "Toggle Breakpoint", "Set or clear a breakpoint at the cursor", "F9", "", true);
         Add("togglesidebar", "Toggle Sidebar", "Show or hide the file tree", "Ctrl+B", "", true);
         Add("statusbar", "Toggle Status Bar", "Show or hide the status bar", "", "", true);
         Add("zoomin", "Zoom In", "Increase editor font size", "Ctrl+=", "", true);
@@ -68,6 +75,7 @@ class CommandRegistry {
         Add("fullscreen", "Toggle Fullscreen", "Enter or exit fullscreen mode", "F11", "", true);
         Add("minimap", "Toggle Minimap", "Show or hide the minimap panel", "Ctrl+Shift+M", "", true);
         Add("settings", "Settings", "View and adjust IDE settings", "Ctrl+,", "", true);
+        Add("quickopen", "Quick Open File", "Open a project file by name or path", "Ctrl+P", "", true);
         Add("undo", "Undo", "Undo last action", "Ctrl+Z", "", true);
         Add("redo", "Redo", "Redo last undone action", "Ctrl+Y", "", true);
         Add("cut", "Cut", "Cut selection", "Ctrl+X", "", false);
@@ -79,6 +87,7 @@ class CommandRegistry {
         Add("rename", "Rename Symbol", "Rename a semantic symbol", "F2", "rename", true);
         Add("nexterror", "Next Error", "Jump to next diagnostic", "F8", "diagnostics", true);
         Add("preverror", "Previous Error", "Jump to previous diagnostic", "Shift+F8", "diagnostics", true);
+        Add("checknow", "Run Check Now", "Run diagnostics for the active file now", "Ctrl+Alt+C", "diagnostics", true);
         Add("searchproject", "Search in Project", "Find text across project files", "Ctrl+Shift+F", "", true);
         Add("symboloutline", "Symbol Outline", "Toggle document symbol list", "Ctrl+Shift+O", "symbols", true);
         Add("completion_trigger", "Trigger Completion", "Show completion suggestions", "Ctrl+Space", "completion", false);

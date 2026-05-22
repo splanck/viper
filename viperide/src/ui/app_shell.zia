@@ -101,6 +101,13 @@ class AppShell {
     expose GUI.MenuItem miBuild;
     expose GUI.MenuItem miBuildAndRun;
     expose GUI.MenuItem miRun;
+    expose GUI.MenuItem miStop;
+    expose GUI.MenuItem miDebugStart;
+    expose GUI.MenuItem miDebugContinue;
+    expose GUI.MenuItem miDebugStepOver;
+    expose GUI.MenuItem miDebugPause;
+    expose GUI.MenuItem miDebugStop;
+    expose GUI.MenuItem miToggleBreakpoint;
 
     // Help menu
     expose GUI.MenuItem miAbout;
@@ -113,6 +120,10 @@ class AppShell {
     expose GUI.ToolbarItem tbSaveAll;
     expose GUI.ToolbarItem tbBuild;
     expose GUI.ToolbarItem tbRun;
+    expose GUI.ToolbarItem tbStop;
+    expose GUI.ToolbarItem tbDebug;
+    expose GUI.ToolbarItem tbDebugContinue;
+    expose GUI.ToolbarItem tbDebugStep;
     expose GUI.ToolbarItem tbFind;
 
     // Tab bar
@@ -136,14 +147,28 @@ class AppShell {
     // Build output panel (below diagnostics; shows raw compiler output)
     expose GUI.ListBox outputListBox;
 
+    // Bottom tool surface tabs
+    expose GUI.TabBar toolTabBar;
+    expose GUI.Tab toolProblemsTab;
+    expose GUI.Tab toolOutputTab;
+    expose GUI.Tab toolSearchTab;
+    expose GUI.Tab toolDebugTab;
+
     // Context menu for the file tree
     expose GUI.ContextMenu treeContextMenu;
     expose GUI.MenuItem ctxOpen;
+    expose GUI.MenuItem ctxOpenText;
     expose GUI.MenuItem ctxReveal;
+    expose GUI.MenuItem ctxCopyPath;
+    expose GUI.MenuItem ctxCopyRelativePath;
+    expose GUI.MenuItem ctxDuplicate;
     expose GUI.MenuItem ctxRename;
     expose GUI.MenuItem ctxDelete;
     expose GUI.MenuItem ctxNewFile;
     expose GUI.MenuItem ctxNewFolder;
+    expose GUI.MenuItem ctxSearchFolder;
+    expose GUI.MenuItem ctxRunFile;
+    expose GUI.MenuItem ctxRefresh;
 
     // Status bar + items
     expose GUI.StatusBar statusBar;
@@ -155,11 +180,17 @@ class AppShell {
     // State
     expose Boolean sidebarVisible;
     expose Integer activeSurfaceKind;
+    expose String contextPath;
+    expose String contextDir;
+    expose String lastBuildOutput;
 
     /// @brief Initialize with sidebar visible. Build() must be called next.
     expose func init() {
         sidebarVisible = true;
         activeSurfaceKind = 0;
+        contextPath = "";
+        contextDir = "";
+        lastBuildOutput = "";
     }
 
     /// @brief Construct the full IDE window and every chrome widget.
@@ -263,6 +294,19 @@ class AppShell {
         miBuildAndRun.SetShortcut("F5");
         miRun = buildMenu.AddItem("Run without Build");
         miRun.SetShortcut("Ctrl+F5");
+        miStop = buildMenu.AddItem("Stop");
+        miStop.SetShortcut("Shift+F5");
+        buildMenu.AddSeparator();
+        miDebugStart = buildMenu.AddItem("Start Debugging");
+        miDebugStart.SetShortcut("F6");
+        miDebugContinue = buildMenu.AddItem("Continue Debugging");
+        miDebugContinue.SetShortcut("F7");
+        miDebugStepOver = buildMenu.AddItem("Step Over");
+        miDebugStepOver.SetShortcut("F10");
+        miDebugPause = buildMenu.AddItem("Pause Debugging");
+        miDebugStop = buildMenu.AddItem("Stop Debugging");
+        miToggleBreakpoint = buildMenu.AddItem("Toggle Breakpoint");
+        miToggleBreakpoint.SetShortcut("F9");
 
         // Help menu
         helpMenu = menuBar.AddMenu("Help");
@@ -286,6 +330,10 @@ class AppShell {
         toolbar.AddSeparator();
         tbBuild   = toolbar.AddButtonWithText("", "▣",  "Build (Ctrl+Shift+B)");
         tbRun     = toolbar.AddButtonWithText("", "▶",  "Build & Run (F5)");
+        tbStop    = toolbar.AddButtonWithText("", "■",  "Stop Running Job (Shift+F5)");
+        tbDebug   = toolbar.AddButtonWithText("", "◇",  "Start Debugging (F6)");
+        tbDebugContinue = toolbar.AddButtonWithText("", "▷", "Continue Debugging (F7)");
+        tbDebugStep = toolbar.AddButtonWithText("", "→", "Step Over (F10)");
         toolbar.AddSeparator();
         tbFind    = toolbar.AddButtonWithText("", "?",  "Find (Ctrl+F)");
 
@@ -331,6 +379,14 @@ class AppShell {
         editorArea.AddChild(editorRow);
 
         // Diagnostics panel (hidden until a build produces errors or warnings)
+        toolTabBar = GUI.TabBar.New(editorArea);
+        toolTabBar.SetAutoClose(0);
+        toolProblemsTab = toolTabBar.AddTab("Problems", 0);
+        toolOutputTab = toolTabBar.AddTab("Output", 0);
+        toolSearchTab = toolTabBar.AddTab("Search", 0);
+        toolDebugTab = toolTabBar.AddTab("Debug Console", 0);
+        toolTabBar.SetVisible(0);
+
         diagListBox = GUI.ListBox.New(editorArea);
         diagListBox.SetVisible(0);
         diagListBox.SetSize(0, 120);
@@ -342,14 +398,23 @@ class AppShell {
 
         // Context menu for the file tree (populated on right-click)
         treeContextMenu = GUI.ContextMenu.New();
-        ctxOpen = treeContextMenu.AddItem("Open File");
+        ctxOpen = treeContextMenu.AddItem("Open");
+        ctxOpenText = treeContextMenu.AddItem("Open With Text Editor");
         treeContextMenu.AddSeparator();
         ctxReveal = treeContextMenu.AddItem("Reveal in Finder");
+        ctxCopyPath = treeContextMenu.AddItem("Copy Path");
+        ctxCopyRelativePath = treeContextMenu.AddItem("Copy Relative Path");
+        ctxDuplicate = treeContextMenu.AddItem("Duplicate File...");
+        treeContextMenu.AddSeparator();
         ctxRename = treeContextMenu.AddItem("Rename");
         ctxDelete = treeContextMenu.AddItem("Delete");
         treeContextMenu.AddSeparator();
         ctxNewFile = treeContextMenu.AddItem("New File...");
         ctxNewFolder = treeContextMenu.AddItem("New Folder...");
+        ctxSearchFolder = treeContextMenu.AddItem("Search in Folder...");
+        ctxRunFile = treeContextMenu.AddItem("Run This File");
+        treeContextMenu.AddSeparator();
+        ctxRefresh = treeContextMenu.AddItem("Refresh");
 
         // ====================================================================
         // Status Bar
@@ -421,11 +486,33 @@ class AppShell {
     /// @brief Populate the build-output panel with one row per line of
     ///        compiler stdout/stderr. Empty string clears + hides.
     expose func SetBuildOutput(output: String) {
-        outputListBox.Clear();
-        if output == "" {
-            outputListBox.SetVisible(0);
+        if output == lastBuildOutput {
             return;
         }
+        if output == "" {
+            outputListBox.Clear();
+            outputListBox.SetVisible(0);
+            lastBuildOutput = "";
+            HideOutputPanel();
+            return;
+        }
+
+        if lastBuildOutput != "" and Str.EndsWith(lastBuildOutput, "\n")
+           and Str.StartsWith(output, lastBuildOutput) {
+            var delta = Str.Mid(output, Str.Length(lastBuildOutput) + 1);
+            AddBuildOutputLines(delta);
+            lastBuildOutput = output;
+            ShowOutputPanel();
+            return;
+        }
+
+        outputListBox.Clear();
+        AddBuildOutputLines(output);
+        ShowOutputPanel();
+        lastBuildOutput = output;
+    }
+
+    func AddBuildOutputLines(output: String) {
         var lines = Str.Split(output, "\n");
         var n = Seq.get_Length(lines);
         var i = 0;
@@ -436,7 +523,56 @@ class AppShell {
             }
             i = i + 1;
         }
+    }
+
+    expose func ShowProblemsPanel() {
+        toolTabBar.SetVisible(1);
+        toolTabBar.SetActive(toolProblemsTab);
+        diagListBox.SetVisible(1);
+        outputListBox.SetVisible(0);
+    }
+
+    expose func HideProblemsPanel() {
+        diagListBox.SetVisible(0);
+        if outputListBox.Count > 0 {
+            ShowOutputPanel();
+        } else {
+            toolTabBar.SetVisible(0);
+        }
+    }
+
+    expose func ShowOutputPanel() {
+        toolTabBar.SetVisible(1);
+        toolTabBar.SetActive(toolOutputTab);
         outputListBox.SetVisible(1);
+        diagListBox.SetVisible(0);
+    }
+
+    expose func HideOutputPanel() {
+        outputListBox.SetVisible(0);
+        if diagListBox.Count > 0 {
+            ShowProblemsPanel();
+        } else {
+            toolTabBar.SetVisible(0);
+        }
+    }
+
+    expose func PumpToolTabs() {
+        if toolTabBar == null { return; }
+        if toolTabBar.WasChanged() == 0 { return; }
+        var idx = toolTabBar.GetActiveIndex();
+        if idx == 0 {
+            if diagListBox.Count > 0 { ShowProblemsPanel(); }
+        } else if idx == 1 {
+            if outputListBox.Count > 0 { ShowOutputPanel(); }
+        } else {
+            toolTabBar.SetActive(toolOutputTab);
+            if outputListBox.Count > 0 {
+                ShowOutputPanel();
+            } else if diagListBox.Count > 0 {
+                ShowProblemsPanel();
+            }
+        }
     }
 
     /// @brief Toggle the sidebar by collapsing the SplitPane to 0% width.

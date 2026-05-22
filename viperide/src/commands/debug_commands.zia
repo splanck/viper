@@ -1,0 +1,190 @@
+module debug_commands;
+
+bind "../ui/app_shell";
+bind "../core/document_manager";
+bind "../editor/editor_engine";
+bind "../editor/editor_tabs";
+bind "../build/breakpoints";
+bind "../build/debug_session";
+bind "../commands/file_commands";
+
+bind Viper.GUI;
+bind IO = Viper.IO;
+
+func handleToggleBreakpoint(shell: app_shell.AppShell,
+                            docMgr: document_manager.DocumentManager,
+                            engine: editor_engine.EditorEngine,
+                            store: breakpoints.BreakpointStore) {
+    file_commands.SaveEditorState(docMgr, engine);
+    var maybeDoc = docMgr.GetActive();
+    if maybeDoc == null {
+        shell.SetStatusLeft("Save file before setting breakpoints");
+        return;
+    }
+    var doc = maybeDoc!;
+    if doc.filePath == "" or doc.isNew {
+        shell.SetStatusLeft("Save file before setting breakpoints");
+        return;
+    }
+    var line = engine.GetCursorLine();
+    var added = store.Toggle(doc.filePath, line);
+    store.Save();
+    store.ApplyToEditor(engine, doc);
+    if added {
+        shell.SetStatusLeft("Breakpoint set at line " + line);
+    } else {
+        shell.SetStatusLeft("Breakpoint cleared at line " + line);
+    }
+}
+
+func PumpGutter(shell: app_shell.AppShell,
+                docMgr: document_manager.DocumentManager,
+                engine: editor_engine.EditorEngine,
+                store: breakpoints.BreakpointStore) {
+    if engine == null or engine.editor == null { return; }
+    var clickedLine0 = engine.editor.GetGutterClickLine();
+    if engine.editor.WasGutterClicked() == 0 { return; }
+    if clickedLine0 < 0 { return; }
+
+    var maybeDoc = docMgr.GetActive();
+    if maybeDoc == null {
+        shell.SetStatusLeft("Save file before setting breakpoints");
+        return;
+    }
+    var doc = maybeDoc!;
+    if doc.filePath == "" or doc.isNew {
+        shell.SetStatusLeft("Save file before setting breakpoints");
+        return;
+    }
+
+    var line = clickedLine0 + 1;
+    var added = store.Toggle(doc.filePath, line);
+    store.Save();
+    store.ApplyToEditor(engine, doc);
+    if added {
+        shell.SetStatusLeft("Breakpoint set at line " + line);
+    } else {
+        shell.SetStatusLeft("Breakpoint cleared at line " + line);
+    }
+}
+
+func handleDebugStart(shell: app_shell.AppShell,
+                      docMgr: document_manager.DocumentManager,
+                      engine: editor_engine.EditorEngine,
+                      tabs: editor_tabs.EditorTabs,
+                      store: breakpoints.BreakpointStore,
+                      session: debug_session.DebugSession) {
+    file_commands.SaveEditorState(docMgr, engine);
+    var maybeDoc = docMgr.GetActive();
+    if maybeDoc == null {
+        shell.SetStatusLeft("No file to debug");
+        return;
+    }
+    var doc = maybeDoc!;
+    if doc.isNew {
+        shell.SetStatusLeft("Save file before debugging");
+        return;
+    }
+
+    file_commands.handleSaveAll(shell, docMgr, engine, tabs);
+    file_commands.SaveEditorState(docMgr, engine);
+    maybeDoc = docMgr.GetActive();
+    if maybeDoc == null { return; }
+    doc = maybeDoc!;
+    if doc.isNew { return; }
+
+    if session.Launch(doc.filePath, doc.content, store) {
+        Publish(shell, docMgr, engine, tabs, session);
+    } else {
+        shell.SetStatusLeft("Debug session did not start");
+        GUI.Toast.Warning("Debug session did not start");
+    }
+}
+
+func handleDebugContinue(shell: app_shell.AppShell,
+                         docMgr: document_manager.DocumentManager,
+                         engine: editor_engine.EditorEngine,
+                         tabs: editor_tabs.EditorTabs,
+                         session: debug_session.DebugSession) {
+    if session.Continue() {
+        Publish(shell, docMgr, engine, tabs, session);
+    } else {
+        shell.SetStatusLeft("No paused debug session");
+    }
+}
+
+func handleDebugStepOver(shell: app_shell.AppShell,
+                         docMgr: document_manager.DocumentManager,
+                         engine: editor_engine.EditorEngine,
+                         tabs: editor_tabs.EditorTabs,
+                         session: debug_session.DebugSession) {
+    if session.StepOver() {
+        Publish(shell, docMgr, engine, tabs, session);
+    } else {
+        shell.SetStatusLeft("No paused debug session");
+    }
+}
+
+func handleDebugPause(shell: app_shell.AppShell,
+                      docMgr: document_manager.DocumentManager,
+                      engine: editor_engine.EditorEngine,
+                      tabs: editor_tabs.EditorTabs,
+                      session: debug_session.DebugSession) {
+    if session.Pause() {
+        Publish(shell, docMgr, engine, tabs, session);
+    } else {
+        shell.SetStatusLeft("No active debug session");
+    }
+}
+
+func handleDebugStop(shell: app_shell.AppShell,
+                     docMgr: document_manager.DocumentManager,
+                     engine: editor_engine.EditorEngine,
+                     tabs: editor_tabs.EditorTabs,
+                     session: debug_session.DebugSession) {
+    if session.Terminate() {
+        Publish(shell, docMgr, engine, tabs, session);
+    } else {
+        shell.SetStatusLeft("No active debug session");
+    }
+}
+
+func Publish(shell: app_shell.AppShell,
+             docMgr: document_manager.DocumentManager,
+             engine: editor_engine.EditorEngine,
+             tabs: editor_tabs.EditorTabs,
+             session: debug_session.DebugSession) {
+    shell.SetBuildOutput(session.FormatConsole());
+    if session.lastType == "stopped" {
+        shell.SetStatusLeft("Debug stopped: " + session.lastReason);
+        OpenStopLocation(shell, docMgr, engine, tabs, session);
+    } else if session.lastType == "terminated" {
+        shell.SetStatusLeft("Debug terminated: " + session.lastReason);
+    } else {
+        shell.SetStatusLeft("Debug: " + session.lastReason);
+    }
+}
+
+func OpenStopLocation(shell: app_shell.AppShell,
+                      docMgr: document_manager.DocumentManager,
+                      engine: editor_engine.EditorEngine,
+                      tabs: editor_tabs.EditorTabs,
+                      session: debug_session.DebugSession) {
+    if session.activePath == "" or session.lastLine <= 0 { return; }
+    var maybeActive = docMgr.GetActive();
+    var needsOpen = false;
+    if maybeActive == null {
+        needsOpen = true;
+    } else {
+        var active = maybeActive!;
+        if active.filePath != session.activePath {
+            needsOpen = true;
+        }
+    }
+    if needsOpen {
+        if IO.File.Exists(session.activePath) {
+            file_commands.OpenFileAtPath(shell, docMgr, engine, tabs, session.activePath);
+        }
+    }
+    engine.GoToLine(session.lastLine);
+}

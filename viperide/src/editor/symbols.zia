@@ -22,10 +22,9 @@ bind Convert = Viper.Core.Convert;
 //          `Viper.Zia.Completion.SymbolsForFile` for the symbol list.
 //
 // KEY-DESIGN-CHOICES:
-//   * SOURCE + PATH CACHE. Like diagnostics, only re-queries when
-//     either the buffer text OR the active file path changes. Keeps
-//     per-frame work zero when the user is just typing within a
-//     symbol's body.
+//   * REVISION + PATH CACHE. Like diagnostics, only re-queries when
+//     either the editor content revision OR the active file path changes.
+//     The full buffer is read only when the outline is visible and stale.
 //   * RUNTIME-SYMBOL FILTER. The completion engine returns symbols from
 //     dependent runtimes too (line == 0 marker). We skip those — the
 //     outline should only list symbols defined IN the file the user is
@@ -48,6 +47,7 @@ class SymbolOutline {
     expose String lastSource;
     expose String sourcePath;
     expose String lastPath;
+    expose Integer lastRevision;
     expose Boolean visible;
     expose Boolean enabled;
 
@@ -56,6 +56,7 @@ class SymbolOutline {
         lastSource = "";
         sourcePath = "";
         lastPath = "";
+        lastRevision = -1;
         visible = false;
         enabled = true;
     }
@@ -73,6 +74,7 @@ class SymbolOutline {
         if path != sourcePath {
             sourcePath = path;
             lastPath = "";
+            lastRevision = -1;
         }
     }
 
@@ -91,21 +93,24 @@ class SymbolOutline {
         if visible {
             symbolList.SetVisible(1);
             lastSource = "";  // force refresh
+            lastRevision = -1;
         } else {
             symbolList.SetVisible(0);
         }
     }
 
     /// @brief Per-frame refresh. Re-queries `SymbolsForFile` when the
-    ///        buffer text or active path changes; otherwise no-op.
+    ///        buffer revision or active path changes; otherwise no-op.
     expose func update(engine: editor_engine.EditorEngine) {
         if enabled == false or visible == false { return; }
         if engine == null or engine.editor == null { return; }
 
+        var revision = engine.GetRevision();
+        if revision == lastRevision and sourcePath == lastPath { return; }
         var source = engine.GetText();
-        if source == lastSource and sourcePath == lastPath { return; }
         lastSource = source;
         lastPath = sourcePath;
+        lastRevision = revision;
 
         symbolList.Clear();
 

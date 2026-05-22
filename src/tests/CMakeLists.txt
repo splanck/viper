@@ -969,6 +969,46 @@ set_tests_properties(zia_viperide_phase0_phase1 PROPERTIES
         LABELS "zia;viperide;phase0;phase1"
         TIMEOUT 60)
 
+add_test(NAME zia_viperide_phase2_phase3
+        COMMAND $<TARGET_FILE:zia> "${CMAKE_SOURCE_DIR}/viperide/src/phase2_phase3_probe.zia" -- --zia-bin $<TARGET_FILE:zia> --viper-bin $<TARGET_FILE:viper>
+        WORKING_DIRECTORY "${CMAKE_SOURCE_DIR}/viperide/src")
+set_tests_properties(zia_viperide_phase2_phase3 PROPERTIES
+        PASS_REGULAR_EXPRESSION "RESULT: ok"
+        LABELS "zia;viperide;phase2;phase3"
+        TIMEOUT 60)
+
+add_test(NAME zia_viperide_editor_hot_path
+        COMMAND $<TARGET_FILE:zia> "${CMAKE_SOURCE_DIR}/viperide/src/editor_hot_path_probe.zia"
+        WORKING_DIRECTORY "${CMAKE_SOURCE_DIR}/viperide/src")
+set_tests_properties(zia_viperide_editor_hot_path PROPERTIES
+        PASS_REGULAR_EXPRESSION "RESULT: ok"
+        LABELS "zia;viperide;editor;requires_display"
+        TIMEOUT 30)
+
+add_test(NAME zia_viperide_intellisense
+        COMMAND $<TARGET_FILE:zia> "${CMAKE_SOURCE_DIR}/viperide/src/intellisense_probe.zia"
+        WORKING_DIRECTORY "${CMAKE_SOURCE_DIR}/viperide/src")
+set_tests_properties(zia_viperide_intellisense PROPERTIES
+        PASS_REGULAR_EXPRESSION "RESULT: ok"
+        LABELS "zia;viperide;intellisense;requires_display"
+        TIMEOUT 30)
+
+add_test(NAME zia_viperide_file_tree
+        COMMAND $<TARGET_FILE:zia> "${CMAKE_SOURCE_DIR}/viperide/src/file_tree_probe.zia"
+        WORKING_DIRECTORY "${CMAKE_SOURCE_DIR}/viperide/src")
+set_tests_properties(zia_viperide_file_tree PROPERTIES
+        PASS_REGULAR_EXPRESSION "RESULT: ok"
+        LABELS "zia;viperide;file-tree;requires_display"
+        TIMEOUT 30)
+
+add_test(NAME zia_viperide_console_search
+        COMMAND $<TARGET_FILE:zia> "${CMAKE_SOURCE_DIR}/viperide/src/console_search_probe.zia"
+        WORKING_DIRECTORY "${CMAKE_SOURCE_DIR}/viperide/src")
+set_tests_properties(zia_viperide_console_search PROPERTIES
+        PASS_REGULAR_EXPRESSION "RESULT: ok"
+        LABELS "zia;viperide;console;search;requires_display"
+        TIMEOUT 30)
+
 add_test(NAME zia_smoke_vipersql
         COMMAND $<TARGET_FILE:zia> "${CMAKE_SOURCE_DIR}/examples/apps/vipersql/smoke_probe.zia"
         WORKING_DIRECTORY "${CMAKE_SOURCE_DIR}/examples/apps/vipersql")

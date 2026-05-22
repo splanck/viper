@@ -136,6 +136,13 @@ static bool ensure_line_capacity(vg_codeeditor_t *editor, int needed) {
     return ensure_line_array_capacity(&editor->lines, &editor->line_capacity, needed);
 }
 
+/// @brief Advance the editor content revision, keeping zero reserved for invalid handles.
+static void codeeditor_bump_revision(vg_codeeditor_t *editor) {
+    if (!editor)
+        return;
+    editor->revision = editor->revision == UINT64_MAX ? 1 : editor->revision + 1;
+}
+
 /// @brief Grows @p line->text to hold at least @p needed bytes, doubling from INITIAL_TEXT_CAPACITY.
 static bool ensure_text_capacity(vg_code_line_t *line, size_t needed) {
     if (needed <= line->capacity)
@@ -1628,6 +1635,7 @@ cleanup:
     free(has_old_texts);
     if (!changed)
         return;
+    codeeditor_bump_revision(editor);
     editor->modified = true;
     vg_codeeditor_refresh_layout_state(editor);
     ensure_cursor_visible(editor);
@@ -1726,6 +1734,7 @@ vg_codeeditor_t *vg_codeeditor_create(vg_widget_t *parent) {
     editor->cursor_visible = true;
     editor->cursor_blink_time = 0;
     editor->modified = false;
+    editor->revision = 1;
 
     // Create undo/redo history
     editor->history = edit_history_create();
@@ -3317,6 +3326,7 @@ void vg_codeeditor_set_text_bytes(vg_codeeditor_t *editor, const char *text, siz
     editor->zia_block_comment_depth = 0;
     edit_history_clear(editor->history);
 
+    codeeditor_bump_revision(editor);
     vg_codeeditor_refresh_layout_state(editor);
     editor->base.needs_paint = true;
 }
@@ -3365,6 +3375,10 @@ char *vg_codeeditor_get_text(vg_codeeditor_t *editor) {
     *p = '\0';
 
     return result;
+}
+
+uint64_t vg_codeeditor_get_revision(vg_codeeditor_t *editor) {
+    return editor ? editor->revision : 0;
 }
 
 /// @brief Return the selected text as a heap-allocated string.
@@ -3883,6 +3897,7 @@ void vg_codeeditor_undo(vg_codeeditor_t *editor) {
 
     editor->has_selection = false;
     clear_extra_cursor_selections(editor);
+    codeeditor_bump_revision(editor);
     editor->base.needs_paint = true;
 }
 
@@ -3948,6 +3963,7 @@ void vg_codeeditor_redo(vg_codeeditor_t *editor) {
 
     editor->has_selection = false;
     clear_extra_cursor_selections(editor);
+    codeeditor_bump_revision(editor);
     editor->base.needs_paint = true;
 }
 

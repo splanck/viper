@@ -1,17 +1,18 @@
 module build_system;
 
 bind "diagnostic";
+bind "run_config";
 bind Viper.String as Str;
-bind Viper.System.Exec as Exec;
 bind Viper.Core.Convert as Convert;
-bind Viper.Text.CompiledPattern as CP;
 bind Viper.Collections.Seq as Seq;
 bind Viper.Core.Object as Obj;
-bind Viper.Time.Stopwatch as Sw;// ============================================================================
+bind Viper.System.Process as Process;
+
+// ============================================================================
 // BuildSystem — compile and run Zia/BASIC programs from the IDE
 // ============================================================================
-// Handles compilation, error parsing, and running programs.
-// Uses Exec.ShellFull to run the zia compiler and capture the exit code.
+// Handles argument-vector build/run jobs, streamed process output, cancellation,
+// and compiler diagnostic parsing.
 //
 // Diagnostic format: "file.zia:line:col: error[code]: message"
 // ============================================================================
@@ -28,6 +29,12 @@ class BuildSystem {
 
     // Build timing ("1.2s" after last build)
     expose String lastBuildTime;
+    expose Integer startMs;
+    expose Integer exitCode;
+    expose String activeAction;
+    expose String activeName;
+    expose run_config.RunConfig activeConfig;
+    expose Process.Handle processHandle;
 
     // Parsed diagnostics
     expose List[diagnostic.Diagnostic] diagnostics;
@@ -37,90 +44,149 @@ class BuildSystem {
         isRunning = false;
         lastBuildSuccess = false;
         buildOutput = "";
-        compilerPath = "zia";
+        compilerPath = "viper";
         lastBuildTime = "";
+        startMs = 0;
+        exitCode = -1;
+        activeAction = "";
+        activeName = "";
+        activeConfig = null;
+        processHandle = null;
         diagnostics = [];
     }
 
-    // Build a Zia file. Returns true if compilation succeeded.
-    expose func Build(filePath: String) -> Boolean {
-        isBuilding = true;
-        diagnostics = [];
-
-        var sw = Sw.New();
-        sw.Start();
-
-        // Run compiler with stderr merged so error messages are captured
-        var cmd = compilerPath + " " + filePath + " --emit-il 2>&1";
-        buildOutput = Exec.ShellFull(cmd);
-
-        // Use exit code as the authoritative success indicator
-        lastBuildSuccess = Exec.LastExitCode() == 0;
-
-        // Record elapsed time
-        lastBuildTime = "" + sw.ElapsedMs + "ms";
-
-        // Parse output to populate the diagnostics list for gutter markers
-        ParseBuildOutput();
-
-        isBuilding = false;
-        return lastBuildSuccess;
+    expose func IsActive() -> Boolean {
+        return isBuilding or isRunning;
     }
 
-    // Build and run a Zia file.
-    expose func BuildAndRun(filePath: String) -> Boolean {
-        isBuilding = true;
+    expose func StartConfig(cfg: run_config.RunConfig) -> Boolean {
+        if cfg == null { return false; }
+        if IsActive() { return false; }
+
+        activeConfig = cfg;
+        activeAction = cfg.action;
+        activeName = cfg.name;
+        buildOutput = "";
         diagnostics = [];
+        exitCode = -1;
+        lastBuildSuccess = false;
+        lastBuildTime = "";
+        startMs = Viper.Time.GetTickCount();
 
-        var sw = Sw.New();
-        sw.Start();
+        if cfg.action == run_config.ACTION_BUILD {
+            isBuilding = true;
+            isRunning = false;
+        } else {
+            isBuilding = false;
+            isRunning = true;
+        }
 
-        // Run file directly (zia compiles and runs); merge stderr for error capture
-        var cmd = compilerPath + " " + filePath + " 2>&1";
-        buildOutput = Exec.ShellFull(cmd);
+        processHandle = Process.StartWithEnv(cfg.program, cfg.args, cfg.workingDirectory, cfg.env);
+        if processHandle == null or processHandle.IsValid() == false {
+            buildOutput = "Could not start process: " + cfg.program;
+            Finish(-1);
+            return false;
+        }
+        return true;
+    }
 
-        lastBuildSuccess = Exec.LastExitCode() == 0;
+    expose func Update() -> Boolean {
+        if processHandle == null { return false; }
+        var out = processHandle.ReadStdout();
+        var err = processHandle.ReadStderr();
+        if out != "" { buildOutput = buildOutput + out; }
+        if err != "" { buildOutput = buildOutput + err; }
 
-        lastBuildTime = "" + sw.ElapsedMs + "ms";
+        if processHandle.IsRunning() {
+            return true;
+        }
+        out = processHandle.ReadStdout();
+        err = processHandle.ReadStderr();
+        if out != "" { buildOutput = buildOutput + out; }
+        if err != "" { buildOutput = buildOutput + err; }
+        Finish(processHandle.ExitCode());
+        processHandle.Destroy();
+        processHandle = null;
+        return false;
+    }
 
-        ParseBuildOutput();
+    expose func Stop() -> Boolean {
+        if processHandle == null { return false; }
+        var killed = processHandle.Kill();
+        var out = processHandle.ReadStdout();
+        var err = processHandle.ReadStderr();
+        if out != "" { buildOutput = buildOutput + out; }
+        if err != "" { buildOutput = buildOutput + err; }
+        Finish(-1);
+        processHandle.Destroy();
+        processHandle = null;
+        buildOutput = buildOutput + "\n[stopped]\n";
+        return killed;
+    }
 
+    func Finish(code: Integer) {
+        exitCode = code;
         isBuilding = false;
-        return lastBuildSuccess;
+        isRunning = false;
+        lastBuildSuccess = code == 0;
+        lastBuildTime = "" + (Viper.Time.GetTickCount() - startMs) + "ms";
+        ParseBuildOutput();
     }
 
     // Parse build output for diagnostics (error/warning lines).
     // Populates `diagnostics` list. Success is determined by exit code in callers.
     func ParseBuildOutput() {
-        // Regex for compiler diagnostic lines.
-        // Format: "file.zia:line:col: error[code]: message"
-        // Group 1=file  2=line  3=col  4=severity  5=code  6=message
-        var diagPat = CP.New("([^:]+):([0-9]+):([0-9]+): (error|warning)\\[([^\\]]*)\\]: (.+)");
-
-        // Split output into lines and scan for diagnostic entries
+        diagnostics = [];
         var lines = Str.Split(buildOutput, "\n");
         var i = 0;
         while i < Seq.get_Length(lines) {
-            var line = Seq.Get(lines, i);
-
-            var caps = diagPat.Captures(line);
-            if Seq.get_Length(caps) >= 7 {
-                var diag = new diagnostic.Diagnostic();
-                diag.filePath = Obj.ToString(Seq.Get(caps, 1));
-                diag.line     = Convert.ToInt(Seq.Get(caps, 2));
-                diag.column   = Convert.ToInt(Seq.Get(caps, 3));
-                var sev       = Obj.ToString(Seq.Get(caps, 4));
-                diag.severity = 0;
-                if sev == "warning" {
-                    diag.severity = 1;
-                }
-                diag.code    = Obj.ToString(Seq.Get(caps, 5));
-                diag.message = Obj.ToString(Seq.Get(caps, 6));
+            var diag = ParseDiagnosticLine(Obj.ToString(Seq.Get(lines, i)));
+            if diag != null {
                 diagnostics.add(diag);
             }
-
             i = i + 1;
         }
+    }
+
+    expose func ParseDiagnosticLine(line: String) -> diagnostic.Diagnostic? {
+        var severity = "error";
+        var sevPos = Str.IndexOf(line, ": error[");
+        if sevPos == 0 {
+            sevPos = Str.IndexOf(line, ": warning[");
+            severity = "warning";
+        }
+        if sevPos == 0 { return null; }
+
+        var before = Str.Left(line, sevPos - 1);
+        var codeStart = sevPos + Str.Length(": " + severity + "[");
+        var msgSep = Str.IndexOfFrom(line, codeStart, "]: ");
+        if msgSep == 0 { return null; }
+        var code = Str.MidLen(line, codeStart, msgSep - codeStart);
+        var msg = Str.Mid(line, msgSep + 3);
+
+        var colSep = Str.LastIndexOf(before, ":");
+        if colSep <= 0 { return null; }
+        var colText = Str.Mid(before, colSep + 1);
+        var pathAndLine = Str.Left(before, colSep - 1);
+        var lineSep = Str.LastIndexOf(pathAndLine, ":");
+        if lineSep <= 0 { return null; }
+        var lineText = Str.Mid(pathAndLine, lineSep + 1);
+        var path = Str.Left(pathAndLine, lineSep - 1);
+        var lineNo = Convert.ToInt(lineText);
+        var colNo = Convert.ToInt(colText);
+        if path == "" or lineNo <= 0 or colNo <= 0 { return null; }
+
+        var diag = new diagnostic.Diagnostic();
+        diag.filePath = path;
+        diag.line = lineNo;
+        diag.column = colNo;
+        diag.severity = diagnostic.SEV_ERROR;
+        if severity == "warning" {
+            diag.severity = diagnostic.SEV_WARNING;
+        }
+        diag.code = code;
+        diag.message = msg;
+        return diag;
     }
 
     // Get the number of errors.

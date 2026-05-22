@@ -14,6 +14,7 @@ bind "services/locations";
 bind "services/workspace_edits";
 bind "core/project_manager";
 bind "core/session";
+bind "core/settings";
 
 bind Terminal = Viper.Terminal;
 bind File = Viper.IO.File;
@@ -23,6 +24,7 @@ bind TempFile = Viper.IO.TempFile;
 bind Ini = Viper.Text.Ini;
 bind Seq = Viper.Collections.Seq;
 bind Map = Viper.Collections.Map;
+bind Str = Viper.String;
 
 func fail(msg: String) {
     Terminal.Say("RESULT: fail " + msg);
@@ -88,6 +90,11 @@ func main() {
     if assertTrue(search_commands.LineMatches("Alpha", "alpha", true, false) == false,
                   "case-sensitive search") == false { return; }
 
+    var defaultSettings = new settings.SettingsManager();
+    if assertTrue(defaultSettings.fontSize == settings.DEFAULT_FONT_SIZE
+                  and settings.DEFAULT_FONT_SIZE == 20,
+                  "default editor font size is readable") == false { return; }
+
     var sigSource = "module Demo;\nfunc f() { outer(inner(a, b), c); }\n";
     if assertTrue(signature.ActiveParameter(sigSource, 2, 27) == 1,
                   "nested signature active parameter") == false { return; }
@@ -116,6 +123,15 @@ func main() {
     var filePath = Path.Join(root, "main.zia");
     File.WriteAllText(filePath, "module Main;\nfunc start() {\n    var oldName = 1;\n    var useName = oldName;\n}\n");
 
+    var tinySettingsPath = Path.Join(root, "tiny-settings.ini");
+    File.WriteAllText(tinySettingsPath, "[settings]\nfontSize=15\n");
+    var tinySettings = new settings.SettingsManager();
+    tinySettings.settingsDir = root;
+    tinySettings.settingsPath = tinySettingsPath;
+    tinySettings.Load();
+    if assertTrue(tinySettings.fontSize == settings.DEFAULT_FONT_SIZE,
+                  "tiny persisted font size migrates to readable default") == false { return; }
+
     var settingsPath = Path.Join(root, "settings.ini");
     File.WriteAllText(settingsPath,
         "[settings]\nrestoreSession=0\nrestoreLastProject=0\nconfirmOnExitWithUnsavedChanges=0\n"
@@ -141,11 +157,25 @@ func main() {
                   and Ini.Get(savedIni, "recent", "path.1") == "/old/project",
                   "session save prepends recent project history") == false { return; }
 
+    var settingsOnlyPath = Path.Join(root, "settings-only.ini");
+    File.WriteAllText(settingsOnlyPath, "[settings]\ntheme=dark\nfontSize=15\n");
+    var settingsOnlySession = new session.SessionManager();
+    settingsOnlySession.Setup(settingsOnlyPath);
+    var emptyRestoreCount = settingsOnlySession.Restore(new document_manager.DocumentManager(),
+                                                        new project_manager.ProjectManager(),
+                                                        null);
+    if assertTrue(emptyRestoreCount == 0,
+                  "session restore tolerates settings file without session section") == false { return; }
+
     var docMgr = new document_manager.DocumentManager();
     var doc = docMgr.OpenFile(filePath);
 
     var edits = Seq.New();
     AddEdit(edits, filePath, 4, 19, 4, 26, "newName");
+    var preview = workspace_edits.PreviewRenameEdits(edits, 20);
+    if assertTrue(Str.IndexOf(preview, "Apply 1 rename edits?") != 0
+                  and Str.IndexOf(preview, "newName") != 0,
+                  "workspace edit preview summarizes rename edits") == false { return; }
     var applyResult = workspace_edits.ApplyRenameEdits(edits, docMgr);
     if assertTrue(applyResult.success and doc.content != File.ReadAllText(filePath),
                   "workspace edit updates open dirty document only") == false { return; }

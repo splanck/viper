@@ -40,6 +40,16 @@ bool hasMethod(const il::runtime::RuntimeClass &cls,
     return false;
 }
 
+bool hasProperty(const il::runtime::RuntimeClass &cls,
+                 std::string_view name,
+                 std::string_view type) {
+    for (const auto &prop : cls.properties) {
+        if (std::string_view(prop.name) == name && std::string_view(prop.type) == type)
+            return true;
+    }
+    return false;
+}
+
 } // namespace
 
 int main() {
@@ -112,7 +122,12 @@ int main() {
 
     const il::runtime::RuntimeClass *guiCodeEditorCls = findClass("Viper.GUI.CodeEditor");
     assert(guiCodeEditorCls != nullptr && "Viper.GUI.CodeEditor not found in catalog");
+    assert(hasProperty(*guiCodeEditorCls, "Revision", "i64"));
     assert(hasMethod(*guiCodeEditorCls, "GetGutterClickSlot", "i64()"));
+
+    const il::runtime::RuntimeClass *guiTreeViewCls = findClass("Viper.GUI.TreeView");
+    assert(guiTreeViewCls != nullptr && "Viper.GUI.TreeView not found in catalog");
+    assert(hasMethod(*guiTreeViewCls, "GetNodeAt", "obj(i64,i64)"));
 
     const il::runtime::RuntimeClass *guiMessageBoxCls = findClass("Viper.GUI.MessageBox");
     assert(guiMessageBoxCls != nullptr && "Viper.GUI.MessageBox not found in catalog");

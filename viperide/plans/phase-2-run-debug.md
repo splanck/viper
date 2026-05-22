@@ -1,8 +1,40 @@
 # Phase 2 - Run, Console, and Debug
 
+## Implementation Status
+
+Partially implemented for the current ViperIDE/runtime boundary. Safe process
+plumbing landed, but the developer console and debug experience are not
+product-complete. Console UX is now tracked by
+[editor-first-class-plan.md](editor-first-class-plan.md); real debugging remains
+future work.
+
+- Build/run now use `RunConfig` records and direct argument vectors through
+  `Viper.System.Process`, including project-level command overrides from
+  `viper.project`.
+- Build/run jobs are owned by the IDE frame loop, stream stdout/stderr into the
+  output panel, prompt before replacing an active job, can be stopped with
+  Shift+F5, and parse problem lines into structured `LocationStore` records for
+  click-through navigation.
+- Build/run preflight goes through the Phase 0 save path (`handleSaveAll`) so
+  dirty files and external-change guards are respected before a process starts.
+- Breakpoints are stored in `~/.viperide/settings.ini`, painted in the editor
+  gutter, toggled by gutter click or F9, and replayed into debug launches.
+- The IDE drives the existing headless `Viper.Debug.Protocol` placeholder for
+  start, continue, step-over, pause, terminate, simulated stack/locals, and
+  crash/exit event shape. This placeholder interprets source text; it does not
+  execute compiled code, evaluate expressions, follow real control flow, or
+  expose VM stack frames.
+- A real debugger remains future work: either a crash-isolated external adapter
+  subprocess or a hosted VM debugger with proven lifetime, reentrancy, and crash
+  isolation.
+- The focused CTest gate is `zia_viperide_phase2_phase3`; it covers paths with
+  spaces, project run overrides, real project-entry execution, streaming and
+  cancellable process jobs, diagnostic parsing, persisted breakpoints, the
+  placeholder debug protocol event shape, and the Phase 3 scene data contract.
+
 ## 1. Summary and Objective
 
-Close the edit-build-run-debug loop without freezing the IDE or relying on shell-string commands. This phase starts with safe build/run jobs and a real console, then defines the debugger protocol and UI.
+Close the edit-build-run-debug loop without freezing the IDE or relying on shell-string commands. The current implementation starts with safe build/run jobs and structured output rows; a real console surface remains part of the editor-first correction plan.
 
 The debugger is not just "expose VM hooks." A live IDE debugger needs launch configs, process lifetime management, source mapping, breakpoints, pause/kill/restart, stdout/stderr streaming, target crash handling, and a stable protocol boundary.
 
@@ -12,10 +44,11 @@ In:
 
 - Project-aware run/build configurations.
 - Safe argument-vector execution for immediate build/run improvements.
-- Output console with structured clickable locations.
+- Output rows with structured clickable locations. A fuller console surface with
+  copy/search/filter/wrap/severity UI remains deferred.
 - Cancellable process/job abstraction if current `Viper.System.Exec` cannot stream output.
 - Debug adapter/protocol decision.
-- Breakpoint persistence and debug UI after the protocol exists.
+- Breakpoint persistence and debug UI against the current placeholder protocol.
 
 Out:
 

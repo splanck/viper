@@ -369,6 +369,13 @@ void vg_treeview_toggle(vg_treeview_t *tree, vg_tree_node_t *node);
 /// @param node Node to select, or NULL to deselect all.
 void vg_treeview_select(vg_treeview_t *tree, vg_tree_node_t *node);
 
+/// @brief Return the visible node under a window-space point.
+/// @param tree Tree view widget.
+/// @param x Window-space X coordinate.
+/// @param y Window-space Y coordinate.
+/// @return Node under the point, or NULL if the point is outside rows.
+vg_tree_node_t *vg_treeview_node_at(vg_treeview_t *tree, float x, float y);
+
 /// @brief Scroll the view so that a node is visible.
 /// @param tree Tree view widget.
 /// @param node Node to scroll into view.

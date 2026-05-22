@@ -1,5 +1,21 @@
 # Phase 3 - Scene Data Foundation
 
+## Implementation Status
+
+Implemented and verified for ViperIDE integration.
+
+- The runtime `Viper.Game.Scene` surface is the source of truth for scene data;
+  ViperIDE does not add `LevelData` writers or Tilemap-owned save shortcuts.
+- The focused `zia_viperide_phase2_phase3` CTest creates a `.scene`, writes
+  typed scene/object properties, layer assets, and tile edits through
+  scene-owned mutators, saves, reloads, and verifies persistence.
+- The same gate verifies `BuildTilemap()` as a render-copy handoff and checks
+  malformed JSON returns non-trapping diagnostics through `HasErrors`,
+  `DiagnosticRecords`, and `LastError`.
+- Phase 5 scene editor work may rely on this data contract, while visual scene
+  editing, scene viewport rendering, asset-resolution UI, undo/redo, and Play
+  integration remain later phase work.
+
 ## 1. Summary and Objective
 
 Provide the runtime data model that the visual scene editor can safely read and write. The authoritative implementation plan is `misc/plans/game/scene-system.md`; this file records the IDE-facing contract and the runtime gates ViperIDE must verify before depending on scene editing.

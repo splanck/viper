@@ -1,0 +1,56 @@
+module file_tree_probe;
+
+bind "ui/app_shell";
+bind "core/project_manager";
+
+bind Viper.GUI as GUI;
+bind Terminal = Viper.Terminal;
+bind Dir = Viper.IO.Dir;
+bind File = Viper.IO.File;
+bind Path = Viper.IO.Path;
+bind TempFile = Viper.IO.TempFile;
+
+func fail(shell: app_shell.AppShell, reason: String) {
+    shell.Destroy();
+    Terminal.Say("RESULT: fail " + reason);
+}
+
+func main() {
+    var shell = new app_shell.AppShell();
+    shell.Build("ViperIDE File Tree Probe", 960, 640);
+
+    var root = TempFile.CreateDirWithPrefix("viperide_file_tree_");
+    var subdir = Path.Join(root, "folder with spaces");
+    Dir.MakeAll(subdir);
+    File.WriteAllText(Path.Join(subdir, "main.zia"), "module TreeProbe;\n");
+
+    var projMgr = new project_manager.ProjectManager();
+    projMgr.Setup(shell.sidebarTree);
+    projMgr.OpenFolder(root);
+
+    shell.Poll();
+    shell.Render();
+
+    var x = shell.sidebarTree.GetX() + 12;
+    var y = shell.sidebarTree.GetY() + 12;
+    var hit = shell.sidebarTree.GetNodeAt(x, y);
+    if hit == null {
+        fail(shell, "root hit-test");
+        return;
+    }
+
+    var data = GUI.TreeView.Node.GetData(hit);
+    if data != root {
+        fail(shell, "hit-test data");
+        return;
+    }
+
+    shell.sidebarTree.Select(hit);
+    if projMgr.SelectedPath() != root {
+        fail(shell, "selected path");
+        return;
+    }
+
+    shell.Destroy();
+    Terminal.Say("RESULT: ok");
+}

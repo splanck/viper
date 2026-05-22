@@ -2,6 +2,7 @@ module project_index;
 
 bind "../core/document_manager";
 bind "../core/project_manager";
+bind "../editor/editor_engine";
 
 bind ProjectIndex = Viper.Zia.ProjectIndex;
 bind FileIndex = Viper.Workspace.FileIndex;
@@ -9,15 +10,29 @@ bind Seq = Viper.Collections.Seq;
 bind Map = Viper.Collections.Map;
 bind IO = Viper.IO;
 
+final INDEX_IDLE_MS = 350;
+
 class ProjectIndexer {
     expose Any handle;
     expose String rootPath;
     expose Boolean valid;
+    expose String syncedActivePath;
+    expose Integer syncedActiveRevision;
+    expose String pendingActivePath;
+    expose Integer pendingActiveRevision;
+    expose Integer pendingSinceMs;
+    expose Integer syncCount;
 
     expose func init() {
         handle = null;
         rootPath = "";
         valid = false;
+        syncedActivePath = "";
+        syncedActiveRevision = -1;
+        pendingActivePath = "";
+        pendingActiveRevision = -1;
+        pendingSinceMs = 0;
+        syncCount = 0;
     }
 
     expose func EnsureProject(projMgr: project_manager.ProjectManager,
@@ -59,6 +74,11 @@ class ProjectIndexer {
         handle = null;
         rootPath = "";
         valid = false;
+        syncedActivePath = "";
+        syncedActiveRevision = -1;
+        pendingActivePath = "";
+        pendingActiveRevision = -1;
+        pendingSinceMs = 0;
     }
 
     expose func IndexWorkspace() {
@@ -82,14 +102,68 @@ class ProjectIndexer {
             var doc = docMgr.documents.get(i);
             if doc.language == "zia" and doc.filePath != "" {
                 ProjectIndex.UpdateFile(handle, doc.filePath, doc.content);
+                syncCount = syncCount + 1;
             }
             i = i + 1;
         }
     }
 
+    expose func SyncActiveNow(docMgr: document_manager.DocumentManager,
+                              engine: editor_engine.EditorEngine) -> Boolean {
+        if valid == false or docMgr == null or engine == null or engine.editor == null { return false; }
+        var active = docMgr.GetActive();
+        if active == null { return false; }
+        var doc = active!;
+        if doc.language != "zia" or doc.filePath == "" { return false; }
+
+        var revision = engine.GetRevision();
+        if doc.filePath == syncedActivePath and revision == syncedActiveRevision { return false; }
+
+        doc.content = engine.GetText();
+        ProjectIndex.UpdateFile(handle, doc.filePath, doc.content);
+        syncedActivePath = doc.filePath;
+        syncedActiveRevision = revision;
+        pendingActivePath = "";
+        pendingActiveRevision = -1;
+        pendingSinceMs = 0;
+        syncCount = syncCount + 1;
+        return true;
+    }
+
+    expose func SyncActiveWhenIdle(docMgr: document_manager.DocumentManager,
+                                   engine: editor_engine.EditorEngine) -> Boolean {
+        if valid == false or docMgr == null or engine == null or engine.editor == null { return false; }
+        var active = docMgr.GetActive();
+        if active == null { return false; }
+        var doc = active!;
+        if doc.language != "zia" or doc.filePath == "" { return false; }
+
+        var revision = engine.GetRevision();
+        if doc.filePath == syncedActivePath and revision == syncedActiveRevision { return false; }
+
+        var now = Viper.Time.GetTickCount();
+        if doc.filePath != pendingActivePath or revision != pendingActiveRevision {
+            pendingActivePath = doc.filePath;
+            pendingActiveRevision = revision;
+            pendingSinceMs = now;
+            return false;
+        }
+        if now - pendingSinceMs < INDEX_IDLE_MS {
+            return false;
+        }
+        return SyncActiveNow(docMgr, engine);
+    }
+
     expose func RemoveFile(path: String) {
         if valid == false { return; }
         ProjectIndex.RemoveFile(handle, path);
+    }
+
+    expose func UpdateFile(path: String) {
+        if valid == false or path == "" { return; }
+        if IO.File.Exists(path) {
+            ProjectIndex.UpdateFile(handle, path, IO.File.ReadAllText(path));
+        }
     }
 
     expose func Definition(path: String,

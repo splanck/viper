@@ -302,7 +302,7 @@ class IdeOverlays {
         fontSizeControls.SetFlex(1.0);
         fontSizeRow.AddChild(fontSizeControls);
         fontSizeSpinner = GUI.Spinner.New(fontSizeControls);
-        fontSizeSpinner.SetRange(6.0, 32.0);
+        fontSizeSpinner.SetRange(12.0, 36.0);
         fontSizeSpinner.SetStep(1.0);
         fontSizeSpinner.SetDecimals(0);
         fontSizeSpinner.SetSize(110, 0);

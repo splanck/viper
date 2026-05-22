@@ -622,6 +622,16 @@ rt_string rt_codeeditor_get_text(void *editor) {
     return rt_codeeditor_all_text_to_rt_string(ce);
 }
 
+/// @brief Retrieve the code editor's monotonic content revision.
+int64_t rt_codeeditor_get_revision(void *editor) {
+    RT_ASSERT_MAIN_THREAD();
+    vg_codeeditor_t *ce = rt_codeeditor_checked(editor);
+    if (!ce)
+        return 0;
+    uint64_t revision = vg_codeeditor_get_revision(ce);
+    return revision > (uint64_t)INT64_MAX ? INT64_MAX : (int64_t)revision;
+}
+
 /// @brief Retrieve the currently selected text in a code editor.
 rt_string rt_codeeditor_get_selected_text(void *editor) {
     RT_ASSERT_MAIN_THREAD();
@@ -1825,6 +1835,12 @@ void rt_codeeditor_set_text(void *editor, rt_string text) {
 rt_string rt_codeeditor_get_text(void *editor) {
     (void)editor;
     return rt_str_empty();
+}
+
+/// @brief Stub: graphics disabled — no content revision exists.
+int64_t rt_codeeditor_get_revision(void *editor) {
+    (void)editor;
+    return 0;
 }
 
 /// @brief Retrieve the currently selected text in a code editor.

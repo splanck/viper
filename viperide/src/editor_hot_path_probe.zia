@@ -1,0 +1,144 @@
+module editor_hot_path_probe;
+
+bind "ui/app_shell";
+bind "core/document_manager";
+bind "core/project_manager";
+bind "editor/editor_engine";
+bind "editor/project_index";
+
+bind Viper.Terminal as Terminal;
+bind File = Viper.IO.File;
+bind Path = Viper.IO.Path;
+bind TempFile = Viper.IO.TempFile;
+bind Clock = Viper.Time.Clock;
+
+func fail(shell: app_shell.AppShell, reason: String) {
+    shell.Destroy();
+    Terminal.Say("RESULT: fail " + reason);
+}
+
+func main() {
+    var shell = new app_shell.AppShell();
+    var engine = new editor_engine.EditorEngine();
+
+    shell.Build("ViperIDE Editor Hot Path Probe", 720, 480);
+    engine.Setup(shell.editorRow);
+
+    var initialRevision = engine.GetRevision();
+    if initialRevision <= 0 {
+        fail(shell, "initial revision");
+        return;
+    }
+
+    engine.editor.SetCursor(0, 0);
+    if engine.GetRevision() != initialRevision {
+        fail(shell, "cursor changed revision");
+        return;
+    }
+
+    engine.SetText("module Probe;\nfunc main() {\n}\n");
+    var loadedRevision = engine.GetRevision();
+    if loadedRevision <= initialRevision {
+        fail(shell, "set text did not bump revision");
+        return;
+    }
+
+    engine.ClearModified();
+    if engine.GetRevision() != loadedRevision {
+        fail(shell, "clear modified changed revision");
+        return;
+    }
+
+    engine.editor.SetCursor(1, 0);
+    if engine.GetRevision() != loadedRevision {
+        fail(shell, "second cursor change changed revision");
+        return;
+    }
+
+    var large = "module Large;\nfunc main() {\n";
+    var largeLine = 0;
+    while largeLine < 20000 {
+        large = large + "    var value" + largeLine + " = " + largeLine + ";\n";
+        largeLine = largeLine + 1;
+    }
+    large = large + "}\n";
+    engine.SetText(large);
+    var largeRevision = engine.GetRevision();
+    var moves = 0;
+    while moves < 200 {
+        engine.editor.SetCursor(moves + 1, 4);
+        moves = moves + 1;
+    }
+    if engine.GetRevision() != largeRevision {
+        fail(shell, "large-file cursor movement changed revision");
+        return;
+    }
+
+    engine.SetText("module Probe;\nfunc main() {\n}\n");
+    loadedRevision = engine.GetRevision();
+    engine.editor.SetCursor(1, 0);
+
+    engine.editor.InsertAtCursor("    var value = 1;\n");
+    var editRevision = engine.GetRevision();
+    if editRevision <= loadedRevision {
+        fail(shell, "insert did not bump revision");
+        return;
+    }
+
+    engine.editor.Undo();
+    var undoRevision = engine.GetRevision();
+    if undoRevision <= editRevision {
+        fail(shell, "undo did not bump revision");
+        return;
+    }
+
+    engine.editor.Redo();
+    var redoRevision = engine.GetRevision();
+    if redoRevision <= undoRevision {
+        fail(shell, "redo did not bump revision");
+        return;
+    }
+
+    var root = TempFile.CreateDirWithPrefix("viperide_editor_hot_path_");
+    var filePath = Path.Join(root, "main.zia");
+    File.WriteAllText(filePath, "module HotPath;\nfunc main() {\n}\n");
+
+    var docMgr = new document_manager.DocumentManager();
+    var projMgr = new project_manager.ProjectManager();
+    projMgr.Setup(shell.sidebarTree);
+    projMgr.OpenFolder(root);
+    var doc = docMgr.OpenFile(filePath);
+    engine.LoadDocument(doc);
+
+    var indexer = new project_index.ProjectIndexer();
+    indexer.EnsureProject(projMgr, docMgr);
+    var baseSyncs = indexer.syncCount;
+
+    var frame = 0;
+    while frame < 20 {
+        indexer.SyncActiveWhenIdle(docMgr, engine);
+        frame = frame + 1;
+    }
+    if indexer.syncCount != baseSyncs {
+        fail(shell, "idle index sync repeated without revision change");
+        return;
+    }
+
+    engine.editor.SetCursor(1, 0);
+    engine.editor.InsertAtCursor("    var value = 1;\n");
+    var editedSyncs = indexer.syncCount;
+    indexer.SyncActiveWhenIdle(docMgr, engine);
+    if indexer.syncCount != editedSyncs {
+        fail(shell, "index sync ran before idle");
+        return;
+    }
+    Clock.Sleep(420);
+    indexer.SyncActiveWhenIdle(docMgr, engine);
+    if indexer.syncCount != editedSyncs + 1 {
+        fail(shell, "index sync did not run after idle");
+        return;
+    }
+
+    shell.Destroy();
+    Terminal.Say("RESULT: ok");
+}

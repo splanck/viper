@@ -8,13 +8,36 @@ The current app is useful, but the hard work is not just adding panels. The gaps
 
 ## Current Assessment
 
-**Implementation update:** Phase 0 and Phase 1 are now implemented in the IDE
-app. The current app has a command registry, document kinds, close-prevention
-flow, structured locations, session restore, language-service capability
-routing, project-index-backed Zia definition/reference/rename, multi-cursor
-commands, signature help, transactional workspace edits, configurable project
-search, and file-tree rename/delete handling. Phase 2 and later items below
-remain future roadmap work.
+**Roadmap reset:** the active plan is now
+[editor-first-class-plan.md](editor-first-class-plan.md). Scene editor work is
+blocked until ViperIDE is a fast, credible code editor and project IDE. Phases 0
+through 3 produced useful infrastructure, but the product-level result is not
+first-class yet: IntelliSense is basic, signature help is unreliable at call
+sites, editor responsiveness has regressed, the console is not a real console
+surface, the file tree and refactor UX need work, and the visual design still
+reads like a demo.
+
+The current app has a command registry, document kinds, close-prevention flow,
+structured locations, session restore, language-service capability routing,
+project-index-backed Zia definition/reference/rename plumbing, multi-cursor
+commands, basic signature help, transactional workspace edits, configurable
+project search, file-tree rename/delete handling, argument-vector build/run jobs,
+streamed cancellable process output, clickable build diagnostics, persisted
+breakpoints, headless placeholder debug-protocol controls, and a verified
+`Viper.Game.Scene` data foundation for future scene editor work. That is
+foundation, not product completion.
+
+The debug protocol currently wired in ViperIDE does not execute real programs or
+inspect real VM state. Phase 4 and later scene items below remain future roadmap
+work and must be re-reviewed after the editor-first plan is complete.
+
+**Phase 4/5 review update:** Scene data/runtime prerequisites are ready, but
+the viewport and editor are not. There is no `Viper.GUI.SceneView` widget, and
+ViperIDE's current `AppShell.SelectSurface(kind)` only records the document
+kind while leaving the code editor visible. `.scene` / `.level` files are
+recognized as scene documents, but they still open as text buffers; no
+`Viper.Game.Scene` handle is cached by the IDE, no scene-specific dirty/save
+path exists, and no visual tools are mounted.
 
 The IDE is still a single-frame Zia app in `viperide/src/main.zia`, but the
 Phase 0/1 work moved command metadata, session state, structured locations,
@@ -32,10 +55,26 @@ Strong pieces already exist:
 
 High-risk gaps:
 
-- Build/run uses blocking shell strings (`Exec.ShellFull`) with a hard-coded `zia` command.
+- Editor typing, selection, and scrolling must not pay whole-buffer or semantic
+  costs in the frame loop.
+- Completion and signature help need structured, incremental, project-aware
+  behavior before the editor can be considered serious.
+- Refactor workflows need preview, conflicts, all-or-nothing application, and
+  undo grouping.
+- The project tree needs complete right-click workflows and path-safe operations.
+- Console, Problems, Search, and Output need real work surfaces instead of
+  listbox-style dumps.
+- The settings and overall shell UX need a polish pass so the app no longer
+  feels like a demo.
 - Project loading eagerly walks the tree, has hardcoded excludes, and has no workspace manifest beyond a small `viper.project` parser.
 - BASIC has editor/build support in ViperIDE, while the separate `vbasic-server` IntelliSense surface is not yet integrated.
-- Scene editing still needs IDE integration work beyond document-kind routing: scene surface state, `SceneView`, asset-resolution UX, undo/redo, save/reload/conflict handling, and Play wiring. The underlying `Viper.Game.Scene`, tile ID convention, diagnostics, asset descriptors, atomic save, typed properties, and scaled tilemap primitives are available in the current runtime.
+- The debugger uses the existing headless `Viper.Debug.Protocol` placeholder inside the IDE process. It is useful for UI and command-state wiring, but it does not execute compiled code, evaluate expressions, or expose real VM frames. A crash-isolated external adapter/subprocess debugger or hosted VM debugger is still future work.
+- Scene editing still needs IDE integration work beyond document-kind routing:
+  a real scene surface, `SceneView`, `SceneDocumentState`, asset-resolution UX,
+  undo/redo, save/reload/conflict handling, and Play wiring. The underlying
+  `Viper.Game.Scene`, tile ID convention, diagnostics, asset descriptors,
+  atomic save, typed properties, asset resolver, expanded manifest parser, and
+  scaled tilemap primitives are available in the current runtime.
 
 ## Corrected Decisions
 
@@ -47,6 +86,25 @@ High-risk gaps:
 6. Accessibility, keyboard access, dark-theme contrast, and cross-platform behavior are acceptance criteria for each phase.
 
 ## Phases
+
+### Active Plan - First-Class Code Editor
+
+Before any scene editor work, complete
+[editor-first-class-plan.md](editor-first-class-plan.md):
+
+- E0: editor responsiveness and revision-based scheduling.
+- E1: completion and IntelliSense recovery.
+- E2: structured signature help and hover.
+- E3: diagnostics, Problems, and code actions.
+- E4: project navigation and refactoring.
+- E5: file tree and workspace UX.
+- E6: console, search, and tool panels.
+- E7: settings and preferences.
+- E8: visual design and interaction polish.
+- E9: BASIC and multi-language honesty.
+
+Only after that plan's dogfood gate passes should this roadmap resume Phase 4/5
+scene editor planning.
 
 ### Phase 0 - Foundations and Data Safety
 
@@ -74,17 +132,18 @@ Turn the editor into a project-aware coding environment:
 
 ### Phase 2 - Run, Console, and Debug
 
-Close the inner loop in stages:
+Implemented for the current IDE/runtime boundary:
 
 - Safe project-aware build/run commands using argument vectors, working directory, environment, run configs, and problem matchers.
-- A real output console with structured clickable locations.
+- Output rows backed by structured clickable locations for diagnostics.
 - IDE job ownership built on the existing `Viper.System.Process` runtime API, with streamed stdout/stderr, cancellation, and UI state.
-- Debug architecture based on an external debug protocol or adapter unless an in-process VM host is proven safe.
-- Debug UI only after launch configs, breakpoint persistence, source mapping, and process lifetime rules are defined.
+- Persisted breakpoints with gutter toggling and debug toolbar/menu commands.
+- Placeholder `Viper.Debug.Protocol` launch, continue, step-over, pause, stop, simulated stack/locals display, and crash/exit event reporting.
+- Real debugging through an external process adapter or hosted VM remains future work.
 
 ### Phase 3 - Scene Data Foundation
 
-Implement the runtime scene model described by `misc/plans/game/scene-system.md`, with IDE-specific prerequisites called out in [phase-3-scene-data.md](phase-3-scene-data.md):
+Implemented and verified as the IDE-facing runtime data foundation described by `misc/plans/game/scene-system.md`, with IDE-specific prerequisites called out in [phase-3-scene-data.md](phase-3-scene-data.md):
 
 - `Viper.Game.Scene` using the current `LoadJson` / `LoadFile` /
   `SaveFile` / `ToJson` surface.
@@ -99,17 +158,19 @@ Implement the runtime scene model described by `misc/plans/game/scene-system.md`
 
 ### Phase 4 - Scene Viewport
 
-Add a GUI widget for scene rendering and hit testing:
+Planned, not implemented. Add a GUI widget for scene rendering and hit testing:
 
-- Tilemap rendering built on the existing scaled tilemap draw/count/hit-test primitives, or a proven equivalent inside `SceneView`.
+- `Viper.GUI.SceneView` / `vg_sceneview` widget and runtime binding.
+- Tilemap rendering built on the existing scaled tilemap draw/count/hit-test primitives.
 - Pan/zoom, grid, markers, selection overlays, and tile hit testing without packed integer hacks.
 - Runtime object lifetime checks appropriate for non-widget tilemap/scene pointers.
-- Pixel tests against the mock graphics backend at multiple zoom levels.
+- Real render/pixel tests at multiple zoom levels plus graphics-off stubs.
 
 ### Phase 5 - Scene Editor UI
 
-Deliver scene editing as smaller increments:
+Planned, not implemented. Deliver scene editing as smaller increments:
 
+- 5A0: scene surface and `SceneDocumentState` skeleton; source fallback and structured load errors.
 - 5A: scene viewer and load-error surface.
 - 5B: scene document model, source/visual switching, save/reload/conflict handling.
 - 5C: tile palette, layer list, paint/erase/fill, undo grouping.

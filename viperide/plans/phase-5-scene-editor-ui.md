@@ -1,5 +1,46 @@
 # Phase 5 - Scene Editor UI
 
+## Current Review - 2026-05-22
+
+Verdict: **not implemented yet**. Phase 5 should remain a future plan.
+
+What exists now:
+
+- ViperIDE recognizes `.scene` and `.level` as `DOC_KIND_SCENE`.
+- File filters include `.scene` / `.level`, search includes scene files, and
+  scene documents route through the same tab/session/close safety model as
+  text documents.
+- The language-service layer correctly gives scene files no Zia semantic
+  capabilities.
+- Phase 2 run configs and cancellable `Viper.System.Process` jobs are available
+  for future Play integration.
+- Phase 3 landed the runtime data model: `Viper.Game.Scene.LoadFile`,
+  `SaveFile`, `DiagnosticRecords`, asset descriptors, scene-owned tile/layer
+  and object mutators, typed properties, and `BuildTilemap()`.
+- Runtime primitives also exist for asset resolution
+  (`Viper.Assets.Resolver.Resolve`) and richer project manifest parsing
+  (`Viper.Project.Manifest.ParseFile`).
+
+What is missing:
+
+- There is no `viperide/src/scene_editor/` implementation.
+- `AppShell.SelectSurface(kind)` currently records the active kind but still
+  shows the code editor for every document. There is no docked scene surface.
+- Opening a `.scene` file still loads it as text content through
+  `DocumentManager.OpenFile`; the IDE does not create or cache a
+  `Viper.Game.Scene` handle.
+- There is no `SceneDocumentState`, no scene dirty flag separate from editor
+  text, no scene save/reload path, no scene undo/redo, no asset-resolution UX,
+  no tile palette/layer/object tools, and no Play command that passes the active
+  scene.
+- Phase 4 `Viper.GUI.SceneView` is also still missing, so Phase 5 cannot ship
+  a real visual editor yet.
+
+Updated direction: split Phase 5 more sharply. The first IDE increment should
+be a surface/state skeleton that can open a scene, show structured load errors,
+and round-trip save through `Viper.Game.Scene` without visual editing. Visual
+tools come only after Phase 4 provides a real SceneView.
+
 ## 1. Summary and Objective
 
 Build the docked visual scene editor inside ViperIDE. This is a staged program, not one oversized increment. Each sub-phase must preserve document safety, save/reload behavior, keyboard access, and cross-platform behavior.
@@ -14,12 +55,45 @@ Required before any visual editing:
 - Phase 3 scene load/save, `DiagnosticRecords()` diagnostics, and mutators
   required by the specific tool.
 - Phase 4 SceneView rendering, hit testing, and marker/selection APIs.
+- A real ViperIDE scene surface, not the current placeholder
+  `SelectSurface(kind)` implementation that always leaves the code editor
+  visible.
 
 Required before Play:
 
 - Phase 2 run configs and the IDE job model built on `Viper.System.Process`.
 
+Useful runtime dependencies already available:
+
+- `Viper.Assets.Resolver.Resolve` for scene/project/asset-root/mounted lookup.
+- `Viper.Project.Manifest.ParseFile` for asset roots, scene roots, default
+  scene, and run/build config metadata.
+
 ## 3. Scope by Sub-Phase
+
+### 5A0 - Scene Surface and State Skeleton
+
+In:
+
+- Create `viperide/src/scene_editor/` with a small controller/state module.
+- Add a real scene area to `AppShell` and make
+  `AppShell.SelectSurface(DOC_KIND_SCENE)` hide the code editor and show the
+  scene surface.
+- Keep source-mode fallback available for scene files until visual editing is
+  mature.
+- Add a `SceneDocumentState` side table keyed by document path or future
+  document id.
+- Load `.scene` and `.level` through `Viper.Game.Scene.LoadFile` into that
+  state, but keep `Document.content` as the source text fallback.
+- Preserve code cursor/scroll state when switching to/from scene tabs.
+
+Acceptance:
+
+- Opening a scene tab shows the scene surface, not the code editor.
+- Switching code -> scene -> code preserves editor cursor/scroll.
+- Closing an unmodified scene participates in the same tab/exit close paths as
+  existing documents.
+- A bad scene file produces structured diagnostics and allows source fallback.
 
 ### 5A - Scene Viewer and Load Errors
 
@@ -41,6 +115,7 @@ Acceptance:
 
 - Switching between code and scene tabs preserves code cursor and scene pan/zoom.
 - Bad scene file shows error and allows source inspection.
+- No edit/save feature is claimed in this sub-phase.
 
 ### 5B - Scene Document Model and Save/Reload
 
@@ -53,12 +128,19 @@ In:
 - Reload from disk with dirty conflict prompt.
 - External-change handling for active and inactive scene docs.
 - Session restore for scene tabs, including pan/zoom and selected tool if practical.
+- Updating `Document.isModified` / tab modified indicators from scene-state
+  dirty changes so existing close prompts work.
+- A single `SaveStateToDocument`/surface flush path that dispatches to code or
+  scene state before commands that switch, close, run, or save.
 
 Acceptance:
 
 - Load -> Save -> Reload preserves canonical scene JSON.
 - Dirty scene blocks tab close, File > Exit, and OS close.
 - External disk change warns before overwrite.
+- Source fallback text and scene runtime state cannot silently diverge; when
+  source text changes, the scene state is either reloaded or marked stale with a
+  clear status.
 
 ### 5C - Tile Palette, Layers, and Brushes
 
@@ -105,7 +187,9 @@ Acceptance:
 
 In:
 
-- Run the current project with the active scene path passed through a run config.
+- Run the current project with the active scene path passed through a run config
+  argument or environment variable. The exact contract must be documented in
+  `viper.project`.
 - Save or prompt before Play.
 - Stream output to Phase 2 console.
 - Clickable runtime errors open source or scene diagnostics where possible.
@@ -122,8 +206,13 @@ Acceptance:
 
 - `AppShell.SelectSurface(KIND_SCENE)` shows the scene editor and hides the code editor.
 - `KIND_CODE` restores the code editor.
+- `KIND_TEXT` may use the code editor as a text surface.
+- `KIND_BINARY_UNSUPPORTED` should get a read-only unsupported-file surface
+  rather than loading binary content into the code editor.
 - Do not nest scene editor panels inside decorative cards; this is a tool surface.
 - Toolbar and command palette update by active surface.
+- The minimap should hide for scene visual mode unless/until it has a meaningful
+  scene overview role.
 
 ### 4.2 Source/Visual Duality
 
@@ -141,9 +230,11 @@ Define one editor asset resolver:
 
 1. scene-relative path
 2. project-root relative path
-3. mounted asset path through `Viper.IO.Assets`
+3. each manifest `asset-root`
+4. mounted asset path through `Viper.IO.Assets`
 
-The chosen order must be documented and tested. Missing assets should not prevent tile-id editing.
+Use `Viper.Assets.Resolver.Resolve` instead of recreating this logic in
+ViperIDE. Missing assets should not prevent tile-id editing.
 
 ### 4.4 Undo/Redo
 
@@ -179,6 +270,8 @@ Do not build a polished inspector that has no source of truth for valid object t
 
 ## 6. Tests
 
+- Surface skeleton: code -> scene -> code preserves editor state and toggles
+  visible surfaces.
 - Surface swap: code -> scene -> code preserves state.
 - Bad scene: error surface appears; source fallback works.
 - Save/reload: scene dirty flag clears only after save.
@@ -189,6 +282,14 @@ Do not build a polished inspector that has no source of truth for valid object t
 - Inspector property edit validation.
 - Asset resolver order and missing asset placeholder.
 - Play config passes active scene path.
+
+Suggested new gates:
+
+- `zia_viperide_phase5_scene_surface` for 5A0/5A.
+- `zia_viperide_phase5_scene_save` for 5B.
+- `zia_viperide_phase5_scene_editing` for 5C/5D.
+- Keep these separate from Phase 4 SceneView runtime/widget tests so failures
+  point to the right layer.
 
 ## 7. Manual Verification
 

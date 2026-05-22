@@ -1,0 +1,170 @@
+module breakpoints;
+
+bind "../core/document";
+bind "../editor/editor_engine";
+
+bind Ini = Viper.Text.Ini;
+bind IO = Viper.IO;
+bind Dir = Viper.IO.Dir;
+bind Path = Viper.IO.Path;
+bind Parse = Viper.Core.Parse;
+bind Map = Viper.Collections.Map;
+bind Pixels = Viper.Graphics.Pixels;
+
+final BREAKPOINT_SLOT = 0;
+final BREAKPOINT_COLOR = 3893437439; // 0xE81123FF
+final BREAKPOINT_HIGHLIGHT = 4294967295; // 0xFFFFFFFF
+
+class Breakpoint {
+    expose String path;
+    expose Integer line;
+
+    expose func init() {
+        path = "";
+        line = 0;
+    }
+}
+
+class BreakpointStore {
+    expose List[Breakpoint] items;
+    expose String settingsPath;
+    expose Integer version;
+
+    expose func init() {
+        items = [];
+        settingsPath = "";
+        version = 0;
+    }
+
+    expose func Setup(path: String) {
+        settingsPath = path;
+    }
+
+    expose func Count() -> Integer {
+        return items.count();
+    }
+
+    expose func GetPath(index: Integer) -> String {
+        if index < 0 or index >= items.count() { return ""; }
+        return items.get(index).path;
+    }
+
+    expose func GetLine(index: Integer) -> Integer {
+        if index < 0 or index >= items.count() { return 0; }
+        return items.get(index).line;
+    }
+
+    expose func Has(path: String, line: Integer) -> Boolean {
+        return Find(path, line) >= 0;
+    }
+
+    expose func Toggle(path: String, line: Integer) -> Boolean {
+        if path == "" or line <= 0 { return false; }
+        var idx = Find(path, line);
+        if idx >= 0 {
+            items.RemoveAt(idx);
+            version = version + 1;
+            return false;
+        }
+        var bp = new Breakpoint();
+        bp.path = path;
+        bp.line = line;
+        items.add(bp);
+        version = version + 1;
+        return true;
+    }
+
+    expose func ClearPath(path: String) {
+        var i = items.count() - 1;
+        while i >= 0 {
+            if items.get(i).path == path {
+                items.RemoveAt(i);
+            }
+            i = i - 1;
+        }
+        version = version + 1;
+    }
+
+    expose func Load() {
+        if settingsPath == "" or IO.File.Exists(settingsPath) == false { return; }
+        var ini = Ini.Parse(IO.File.ReadAllText(settingsPath));
+        var count = Parse.IntOr(Ini.Get(ini, "breakpoints", "count"), 0);
+        items = [];
+        var i = 0;
+        while i < count {
+            var section = "breakpoint." + i;
+            var path = Ini.Get(ini, section, "path");
+            var line = Parse.IntOr(Ini.Get(ini, section, "line"), 0);
+            if path != "" and line > 0 {
+                var bp = new Breakpoint();
+                bp.path = path;
+                bp.line = line;
+                items.add(bp);
+            }
+            i = i + 1;
+        }
+        version = version + 1;
+    }
+
+    expose func Save() {
+        if settingsPath == "" { return; }
+        Dir.MakeAll(Path.Dir(settingsPath));
+        var content = "";
+        if IO.File.Exists(settingsPath) {
+            content = IO.File.ReadAllText(settingsPath);
+        }
+        var ini = Ini.Parse(content);
+        var oldCount = Parse.IntOr(Ini.Get(ini, "breakpoints", "count"), 0);
+        Ini.Set(ini, "breakpoints", "count", "" + items.count());
+        var i = 0;
+        while i < items.count() {
+            var bp = items.get(i);
+            var section = "breakpoint." + i;
+            Ini.Set(ini, section, "path", bp.path);
+            Ini.Set(ini, section, "line", "" + bp.line);
+            i = i + 1;
+        }
+        while i < oldCount {
+            Map.Remove(ini, "breakpoint." + i);
+            i = i + 1;
+        }
+        IO.File.WriteAllText(settingsPath, Ini.Format(ini));
+    }
+
+    expose func ApplyToEditor(engine: editor_engine.EditorEngine,
+                              doc: document.Document) {
+        if engine == null or engine.editor == null { return; }
+        engine.editor.ClearGutterIcons(BREAKPOINT_SLOT);
+        if doc == null or doc.filePath == "" { return; }
+
+        var icon = BreakpointIcon();
+        var i = 0;
+        while i < items.count() {
+            var bp = items.get(i);
+            if bp.path == doc.filePath and bp.line > 0 {
+                engine.editor.SetGutterIcon(bp.line - 1, icon, BREAKPOINT_SLOT);
+            }
+            i = i + 1;
+        }
+    }
+
+    hide func Find(path: String, line: Integer) -> Integer {
+        var i = 0;
+        while i < items.count() {
+            var bp = items.get(i);
+            if bp.path == path and bp.line == line {
+                return i;
+            }
+            i = i + 1;
+        }
+        return -1;
+    }
+
+    hide func BreakpointIcon() -> Any {
+        var px = Pixels.New(8, 8);
+        px.Clear();
+        px.DrawDisc(4, 4, 3, BREAKPOINT_COLOR);
+        px.DrawDisc(3, 3, 1, BREAKPOINT_HIGHLIGHT);
+        return px;
+    }
+}

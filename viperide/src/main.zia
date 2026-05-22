@@ -21,12 +21,15 @@ bind "editor/symbols";
 bind "services/file_utils";
 bind "services/locations";
 bind "build/build_system";
+bind "build/breakpoints";
+bind "build/debug_session";
 bind "build/diagnostic";
 bind "commands/command_registry";
 bind "commands/file_commands";
 bind "commands/edit_commands";
 bind "commands/view_commands";
 bind "commands/build_commands";
+bind "commands/debug_commands";
 bind "commands/search_commands";
 
 bind Viper.GUI;
@@ -35,6 +38,7 @@ bind Path = Viper.IO.Path;
 bind Dir = Viper.IO.Dir;
 bind Input = Viper.Input;
 bind Exec = Viper.System.Exec;
+bind Machine = Viper.System.Machine;
 bind Str = Viper.String;
 
 // ============================================================================
@@ -90,6 +94,8 @@ func main() {
     var tabs = new editor_tabs.EditorTabs();
     var projMgr = new project_manager.ProjectManager();
     var buildSys = new build_system.BuildSystem();
+    var breakpointStore = new breakpoints.BreakpointStore();
+    var dbgSession = new debug_session.DebugSession();
     var locStore = new locations.LocationStore();
     var commandRegistry = new command_registry.CommandRegistry();
     var languageServices = new language_service.LanguageServiceManager();
@@ -138,6 +144,8 @@ func main() {
     // ========================================================================
     var appSettings = new settings.SettingsManager();
     appSettings.Load();
+    breakpointStore.Setup(appSettings.settingsPath);
+    breakpointStore.Load();
     view_commands.applyPersistentSettings(shell, engine, liveDiag, appSettings);
     file_commands.SetConfirmDirtyClose(appSettings.confirmOnExitWithUnsavedChanges);
 
@@ -202,6 +210,8 @@ func main() {
     var prevCursorCol  = 1;
     var minimapVisible = appSettings.minimapVisible;
     var lastServiceName = "";
+    var lastBreakpointPath = "";
+    var lastBreakpointVersion = -1;
 
     // ========================================================================
     // Main event loop
@@ -210,6 +220,7 @@ func main() {
         shell.Poll();
         if shell.WasCloseRequested() {
             file_commands.SaveEditorState(docMgr, engine);
+            breakpointStore.Save();
             sessionMgr.Save(docMgr, projMgr);
             if file_commands.handleExit(shell, docMgr, engine) {
                 return;
@@ -241,6 +252,19 @@ func main() {
         symbolOutline.setSourcePath(activeToolPath);
         symbolOutline.setEnabled(activeService.canDocumentSymbols);
         indexer.EnsureProject(projMgr, docMgr);
+        indexer.SyncActiveWhenIdle(docMgr, engine);
+        if activeToolDoc != null {
+            if lastBreakpointPath != activeToolDoc.filePath or lastBreakpointVersion != breakpointStore.version {
+                breakpointStore.ApplyToEditor(engine, activeToolDoc);
+                lastBreakpointPath = activeToolDoc.filePath;
+                lastBreakpointVersion = breakpointStore.version;
+            }
+        } else if lastBreakpointPath != "" {
+            engine.editor.ClearGutterIcons(0);
+            lastBreakpointPath = "";
+            lastBreakpointVersion = breakpointStore.version;
+        }
+        debug_commands.PumpGutter(shell, docMgr, engine, breakpointStore);
 
         var typedThisFrame = Input.Keyboard.GetText();
 
@@ -254,6 +278,12 @@ func main() {
             } else if Input.Keyboard.WasPressed(Input.Keyboard.get_KEY_ESCAPE()) {
                 completer.Hide();
                 typedThisFrame = "";
+            } else if Input.Keyboard.WasPressed(Input.Keyboard.get_KEY_DOWN()) {
+                completer.NavigateDown();
+                typedThisFrame = "";
+            } else if Input.Keyboard.WasPressed(Input.Keyboard.get_KEY_UP()) {
+                completer.NavigateUp();
+                typedThisFrame = "";
             }
         }
 
@@ -261,6 +291,7 @@ func main() {
             completer.Update(typedThisFrame);
         }
         liveDiag.update(engine, shell, locStore);
+        build_commands.UpdateJob(shell, buildSys, locStore);
         hoverCtrl.update(engine);
         sigCtrl.update(engine);
         symbolOutline.update(engine);
@@ -274,9 +305,15 @@ func main() {
         var curCursorCol  = engine.GetCursorCol();
         if Str.IndexOf(typedThisFrame, ".") != 0 {
             completer.TriggerCompletion();
+        } else if HasIdentifierInput(typedThisFrame) {
+            completer.ScheduleCompletion();
         }
         if Str.IndexOf(typedThisFrame, "(") != 0 {
             hoverCtrl.hideTooltip();
+            if activeService.canSignatureHelp {
+                sigCtrl.trigger(engine);
+            }
+        } else if Str.IndexOf(typedThisFrame, ",") != 0 {
             if activeService.canSignatureHelp {
                 sigCtrl.trigger(engine);
             }
@@ -300,42 +337,76 @@ func main() {
         // ====================================================================
         // Context menu — right-click on the file tree
         // ====================================================================
+        var suppressTreeOpen = false;
         if Input.Mouse.WasClicked(1) {
             if shell.sidebarTree.IsHovered() != 0 {
-                var ctxDir = projMgr.project.rootPath;
-                var ctxNode = shell.sidebarTree.GetSelected();
+                var ctxNode = shell.sidebarTree.GetNodeAt(Input.Mouse.X, Input.Mouse.Y);
                 if ctxNode != null {
-                    var nodePath = GUI.TreeView.Node.GetData(ctxNode);
-                    if IO.Dir.Exists(nodePath) != false {
-                        ctxDir = nodePath;
-                    } else {
-                        ctxDir = Path.Dir(nodePath);
-                    }
+                    shell.sidebarTree.Select(ctxNode);
+                    suppressTreeOpen = true;
+                    shell.contextPath = GUI.TreeView.Node.GetData(ctxNode);
+                } else {
+                    shell.contextPath = "";
                 }
+                shell.contextDir = ContextDirForPath(projMgr, shell.contextPath);
                 shell.treeContextMenu.Show(Input.Mouse.X, Input.Mouse.Y);
             }
         }
         if shell.ctxOpen.WasClicked() != 0 {
-            var ctxNode = shell.sidebarTree.GetSelected();
-            if ctxNode != null {
-                var ctxPath = GUI.TreeView.Node.GetData(ctxNode);
-                if IO.File.Exists(ctxPath) != false {
-                    file_commands.OpenFileAtPath(shell, docMgr, engine, tabs, ctxPath);
-                    pendingReload = false;
-                }
+            var ctxPath = CurrentContextPath(projMgr, shell);
+            if IO.File.Exists(ctxPath) != false {
+                file_commands.OpenFileAtPath(shell, docMgr, engine, tabs, ctxPath);
+                pendingReload = false;
+            }
+        }
+        if shell.ctxOpenText.WasClicked() != 0 {
+            var ctxTextPath = CurrentContextPath(projMgr, shell);
+            if IO.File.Exists(ctxTextPath) != false {
+                file_commands.OpenFileAtPath(shell, docMgr, engine, tabs, ctxTextPath);
+                pendingReload = false;
             }
         }
         if shell.ctxReveal.WasClicked() != 0 {
-            var revealDoc = docMgr.GetActive();
-            if revealDoc != null {
-                var doc = revealDoc!;
-                if doc.isNew == false {
-                    Exec.Shell("open -R \"" + doc.filePath + "\"");
+            var revealPath = CurrentContextPath(projMgr, shell);
+            if revealPath != "" {
+                RevealPath(revealPath);
+            }
+        }
+        if shell.ctxCopyPath.WasClicked() != 0 {
+            var copyPath = CurrentContextPath(projMgr, shell);
+            if copyPath != "" {
+                GUI.Clipboard.SetText(copyPath);
+                GUI.Toast.Success("Path copied");
+            }
+        }
+        if shell.ctxCopyRelativePath.WasClicked() != 0 {
+            var copyRelPath = CurrentContextPath(projMgr, shell);
+            if copyRelPath != "" {
+                GUI.Clipboard.SetText(projMgr.RelativePath(copyRelPath));
+                GUI.Toast.Success("Relative path copied");
+            }
+        }
+        if shell.ctxDuplicate.WasClicked() != 0 {
+            var dupPath = CurrentContextPath(projMgr, shell);
+            if IO.File.Exists(dupPath) != false {
+                var dupName = GUI.MessageBox.Prompt("Duplicate File", "New file name:");
+                if dupName != "" {
+                    var dupTarget = Path.Join(Path.Dir(dupPath), dupName);
+                    if IO.File.Exists(dupTarget) or Dir.Exists(dupTarget) {
+                        GUI.Toast.Warning("Target already exists");
+                    } else {
+                        IO.File.Copy(dupPath, dupTarget);
+                        projMgr.RefreshTree();
+                        indexer.UpdateFile(dupTarget);
+                        GUI.Toast.Success("Duplicated: " + dupName);
+                    }
                 }
+            } else if dupPath != "" {
+                GUI.Toast.Info("Duplicate is available for files");
             }
         }
         if shell.ctxRename.WasClicked() != 0 {
-            var selectedPath = projMgr.SelectedPath();
+            var selectedPath = CurrentContextPath(projMgr, shell);
             if selectedPath != "" {
                 var renameTo = GUI.MessageBox.Prompt("Rename", "New name:");
                 if renameTo != "" {
@@ -358,7 +429,7 @@ func main() {
             }
         }
         if shell.ctxDelete.WasClicked() != 0 {
-            var deletePath = projMgr.SelectedPath();
+            var deletePath = CurrentContextPath(projMgr, shell);
             if deletePath != "" {
                 if GUI.MessageBox.Confirm("Delete", "Delete " + Path.Name(deletePath) + "?") != 0 {
                     if projMgr.DeleteSelected(docMgr) {
@@ -377,7 +448,7 @@ func main() {
             }
         }
         if shell.ctxNewFile.WasClicked() != 0 {
-            var ctxDir = projMgr.project.rootPath;
+            var ctxDir = shell.contextDir;
             if ctxDir != "" {
                 var newName = GUI.MessageBox.Prompt("New File", "Enter file name:");
                 if newName != "" {
@@ -389,7 +460,7 @@ func main() {
             }
         }
         if shell.ctxNewFolder.WasClicked() != 0 {
-            var ctxDir = projMgr.project.rootPath;
+            var ctxDir = shell.contextDir;
             if ctxDir != "" {
                 var folderName = GUI.MessageBox.Prompt("New Folder", "Enter folder name:");
                 if folderName != "" {
@@ -399,6 +470,23 @@ func main() {
                     GUI.Toast.Success("Created folder: " + folderName);
                 }
             }
+        }
+        if shell.ctxSearchFolder.WasClicked() != 0 {
+            search_commands.handleProjectSearchInFolder(shell, shell.contextDir,
+                                                        docMgr, engine, locStore);
+        }
+        if shell.ctxRunFile.WasClicked() != 0 {
+            var runPath = CurrentContextPath(projMgr, shell);
+            if IO.File.Exists(runPath) != false {
+                file_commands.OpenFileAtPath(shell, docMgr, engine, tabs, runPath);
+                pendingReload = false;
+                build_commands.handleRun(shell, docMgr, projMgr, engine, tabs, buildSys, locStore);
+            }
+        }
+        if shell.ctxRefresh.WasClicked() != 0 {
+            projMgr.RefreshTree();
+            indexer.EnsureProject(projMgr, docMgr);
+            shell.SetStatusLeft("Project tree refreshed");
         }
 
         // ====================================================================
@@ -434,6 +522,7 @@ func main() {
 
         if shell.miExit.WasClicked() != 0 {
             file_commands.SaveEditorState(docMgr, engine);
+            breakpointStore.Save();
             sessionMgr.Save(docMgr, projMgr);
             if file_commands.handleExit(shell, docMgr, engine) {
                 return;
@@ -442,6 +531,9 @@ func main() {
 
         // File tree clicks — open selected file
         var treeSelectedPath = projMgr.HandleTreeClicks();
+        if suppressTreeOpen {
+            treeSelectedPath = "";
+        }
         if treeSelectedPath != "" {
             file_commands.OpenFileAtPath(shell, docMgr, engine, tabs, treeSelectedPath);
             pendingReload = false;
@@ -471,6 +563,15 @@ func main() {
         if triggeredNoMenu("preverror", cpSelected) {
             navigateDiagnostic(shell, docMgr, engine, tabs, locStore, -1);
         }
+        if triggeredNoMenu("checknow", cpSelected) {
+            file_commands.SaveEditorState(docMgr, engine);
+            var checkErrors = liveDiag.runNow(engine, shell, locStore);
+            if checkErrors > 0 {
+                shell.SetStatusLeft("Diagnostics: " + checkErrors + " errors");
+            } else {
+                shell.SetStatusLeft("Diagnostics complete");
+            }
+        }
 
         // FindBar per-frame updates
         if shell.findBar.IsVisible() != 0 {
@@ -496,13 +597,33 @@ func main() {
         if triggered("minimap", shell.miToggleMinimap, null, cpSelected)       { minimapVisible = view_commands.handleToggleMinimap(shell, appSettings); }
         if triggered("settings", shell.miPreferences, null, cpSelected)        { overlays.OpenSettings(shell, appSettings); }
         if shell.miAbout.WasClicked() != 0                                     { overlays.OpenAbout(shell); }
+        if triggeredNoMenu("quickopen", cpSelected) { search_commands.handleQuickOpen(shell, projMgr, docMgr, engine, tabs); }
         if triggeredNoMenu("searchproject", cpSelected) { search_commands.handleProjectSearch(shell, projMgr, docMgr, engine, locStore); }
         if triggeredNoMenu("symboloutline", cpSelected) { symbolOutline.toggle(); }
 
         // Build commands — toolbar items wired alongside menu items
-        if triggered("build", shell.miBuild, shell.tbBuild, cpSelected)         { build_commands.handleBuild(shell, docMgr, engine, buildSys, locStore); }
-        if triggered("buildrun", shell.miBuildAndRun, shell.tbRun, cpSelected)  { build_commands.handleBuildAndRun(shell, docMgr, engine, buildSys, locStore); }
-        if triggered("run", shell.miRun, null, cpSelected)                      { build_commands.handleRun(shell, docMgr, engine, buildSys, locStore); }
+        if triggered("build", shell.miBuild, shell.tbBuild, cpSelected)         { build_commands.handleBuild(shell, docMgr, projMgr, engine, tabs, buildSys, locStore); }
+        if triggered("buildrun", shell.miBuildAndRun, shell.tbRun, cpSelected)  { build_commands.handleBuildAndRun(shell, docMgr, projMgr, engine, tabs, buildSys, locStore); }
+        if triggered("run", shell.miRun, null, cpSelected)                      { build_commands.handleRun(shell, docMgr, projMgr, engine, tabs, buildSys, locStore); }
+        if triggered("stopjob", shell.miStop, shell.tbStop, cpSelected)         { build_commands.handleStop(shell, buildSys); }
+        if triggered("debugstart", shell.miDebugStart, shell.tbDebug, cpSelected) {
+            debug_commands.handleDebugStart(shell, docMgr, engine, tabs, breakpointStore, dbgSession);
+        }
+        if triggered("debugcontinue", shell.miDebugContinue, shell.tbDebugContinue, cpSelected) {
+            debug_commands.handleDebugContinue(shell, docMgr, engine, tabs, dbgSession);
+        }
+        if triggered("debugstepover", shell.miDebugStepOver, shell.tbDebugStep, cpSelected) {
+            debug_commands.handleDebugStepOver(shell, docMgr, engine, tabs, dbgSession);
+        }
+        if triggered("debugpause", shell.miDebugPause, null, cpSelected) {
+            debug_commands.handleDebugPause(shell, docMgr, engine, tabs, dbgSession);
+        }
+        if triggered("debugstop", shell.miDebugStop, null, cpSelected) {
+            debug_commands.handleDebugStop(shell, docMgr, engine, tabs, dbgSession);
+        }
+        if triggered("togglebreakpoint", shell.miToggleBreakpoint, null, cpSelected) {
+            debug_commands.handleToggleBreakpoint(shell, docMgr, engine, breakpointStore);
+        }
 
         // Diagnostics panel: click to navigate to error line
         if shell.diagListBox.WasSelectionChanged() != 0 {
@@ -521,6 +642,7 @@ func main() {
                 }
             }
         }
+        shell.PumpToolTabs();
 
         // Inline overlay actions
         var overlayAction = overlays.Pump(shell);
@@ -696,6 +818,7 @@ func main() {
     // ========================================================================
     if shell != null {
         file_commands.SaveEditorState(docMgr, engine);
+        breakpointStore.Save();
         sessionMgr.Save(docMgr, projMgr);
         indexer.Destroy();
         shell.Destroy();
@@ -724,6 +847,60 @@ func triggeredMenu(name: String, menuItem: GUI.MenuItem, cpSelected: String) -> 
     if menuItem != null and menuItem.WasClicked() != 0 { return true; }
     if cpSelected == name { return true; }
     return false;
+}
+
+func HasIdentifierInput(text: String) -> Boolean {
+    var i = 1;
+    while i <= Str.Length(text) {
+        var ch = Str.MidLen(text, i, 1);
+        if ch >= "a" and ch <= "z" { return true; }
+        if ch >= "A" and ch <= "Z" { return true; }
+        if ch >= "0" and ch <= "9" { return true; }
+        if ch == "_" { return true; }
+        i = i + 1;
+    }
+    return false;
+}
+
+func CurrentContextPath(projMgr: project_manager.ProjectManager,
+                        shell: app_shell.AppShell) -> String {
+    if shell.contextPath != "" {
+        return shell.contextPath;
+    }
+    return projMgr.SelectedPath();
+}
+
+func ContextDirForPath(projMgr: project_manager.ProjectManager,
+                       path: String) -> String {
+    if path != "" {
+        if Dir.Exists(path) != false {
+            return path;
+        }
+        if IO.File.Exists(path) != false {
+            return Path.Dir(path);
+        }
+    }
+    return projMgr.project.rootPath;
+}
+
+func RevealPath(path: String) {
+    if path == "" { return; }
+    var os = Machine.OS;
+    if os == "macos" {
+        Exec.Shell("open -R " + ShellQuote(path));
+    } else if os == "windows" {
+        Exec.Shell("explorer /select," + ShellQuote(path));
+    } else {
+        var dir = path;
+        if IO.File.Exists(path) != false {
+            dir = Path.Dir(path);
+        }
+        Exec.Shell("xdg-open " + ShellQuote(dir));
+    }
+}
+
+func ShellQuote(path: String) -> String {
+    return "\"" + Str.Replace(path, "\"", "\\\"") + "\"";
 }
 
 // Navigate to next/previous diagnostic in the diagnostics panel.

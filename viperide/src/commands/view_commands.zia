@@ -41,9 +41,9 @@ bind Machine = Viper.System.Machine;
 //     single glyph.
 // ============================================================================
 
-/// @brief Clamp font size to the editor's usable range [6, 72].
+/// @brief Clamp font size to the editor's usable range [12, 72].
 func clampFontSize(size: Integer) -> Integer {
-    if size < 6 { return 6; }
+    if size < 12 { return 12; }
     if size > 72 { return 72; }
     return size;
 }
@@ -149,7 +149,7 @@ func applyPersistentSettings(shell: app_shell.AppShell,
         liveDiag.invalidate();
     } else {
         shell.diagListBox.Clear();
-        shell.diagListBox.SetVisible(0);
+        shell.HideProblemsPanel();
         shell.minimap.ClearMarkers();
         engine.editor.ClearHighlights();
     }

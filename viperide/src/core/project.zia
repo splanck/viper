@@ -55,6 +55,13 @@ class Project {
     expose String  lang;
     /// Project version string.
     expose String  version;
+    /// Optional build/run overrides read from viper.project.
+    expose String  buildProgram;
+    expose String  buildArgs;
+    expose String  runProgram;
+    expose String  runArgs;
+    expose String  workingDirectory;
+    expose String  problemMatcher;
     /// Display name from package-name (takes precedence over folder name).
     expose String  packageName;
     /// True if a viper.project file was found and parsed.
@@ -68,6 +75,12 @@ class Project {
         entryFile = "main.zia";
         lang = "zia";
         version = "";
+        buildProgram = "";
+        buildArgs = "";
+        runProgram = "";
+        runArgs = "";
+        workingDirectory = "";
+        problemMatcher = "";
         packageName = "";
         hasProjectFile = false;
     }
@@ -102,6 +115,12 @@ class Project {
         entryFile = "main.zia";
         lang = "zia";
         version = "";
+        buildProgram = "";
+        buildArgs = "";
+        runProgram = "";
+        runArgs = "";
+        workingDirectory = "";
+        problemMatcher = "";
         packageName = "";
         hasProjectFile = false;
     }
@@ -143,6 +162,12 @@ class Project {
             if key == "entry"         { entryFile = value; }
             if key == "lang"          { lang = value; }
             if key == "version"       { version = value; }
+            if key == "build-program" { buildProgram = value; }
+            if key == "build-args"    { buildArgs = value; }
+            if key == "run-program"   { runProgram = value; }
+            if key == "run-args"      { runArgs = value; }
+            if key == "working-directory" { workingDirectory = value; }
+            if key == "problem-matcher" { problemMatcher = value; }
             if key == "package-name"  { packageName = value; }
         }
         hasProjectFile = true;

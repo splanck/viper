@@ -15,10 +15,16 @@ class SignatureController {
     expose GUI.Label label;
     expose Boolean visible;
     expose String sourcePath;
+    expose Integer lastRevision;
+    expose Integer lastCursorLine;
+    expose Integer lastCursorCol;
 
     expose func init() {
         visible = false;
         sourcePath = "";
+        lastRevision = -1;
+        lastCursorLine = -1;
+        lastCursorCol = -1;
     }
 
     expose func setup(appRoot: GUI.App) {
@@ -35,23 +41,29 @@ class SignatureController {
 
     expose func trigger(engine: editor_engine.EditorEngine) {
         if engine == null or engine.editor == null { return; }
+        var revision = engine.GetRevision();
+        var line = engine.GetCursorLine();
+        var col0 = engine.editor.CursorCol;
         var source = engine.GetText();
-        if IsInsideCall(source, engine.GetCursorLine(), engine.editor.CursorCol) == false {
+        if IsInsideCall(source, line, col0) == false {
             Hide();
             return;
         }
         var qsource = zia_query.WrapForQuery(source);
-        var qline = engine.GetCursorLine() + zia_query.LineOffset(source);
-        var sigInfo = ZiaCompletion.SignatureHelpForFile(qsource, sourcePath, qline, engine.editor.CursorCol);
+        var qline = line + zia_query.LineOffset(source);
+        var sigInfo = ZiaCompletion.SignatureHelpForFile(qsource, sourcePath, qline, col0);
         if sigInfo == "" {
             Hide();
             return;
         }
-        var activeParam = ActiveParameter(source, engine.GetCursorLine(), engine.editor.CursorCol);
+        var activeParam = ActiveParameter(source, line, col0);
         label.SetText(sigInfo + "  [" + (activeParam + 1) + "]");
         panel.SetPosition(engine.editor.GetCursorPixelX(), engine.editor.GetCursorPixelY() - 28);
         panel.SetVisible(1);
         visible = true;
+        lastRevision = revision;
+        lastCursorLine = line;
+        lastCursorCol = col0;
     }
 
     expose func update(engine: editor_engine.EditorEngine) {
@@ -60,12 +72,36 @@ class SignatureController {
             Hide();
             return;
         }
-        if IsInsideCall(engine.GetText(), engine.GetCursorLine(), engine.editor.CursorCol) == false {
-            Hide();
-        }
         if Input.Keyboard.WasPressed(Input.Keyboard.get_KEY_ESCAPE()) {
             Hide();
+            return;
         }
+
+        var revision = engine.GetRevision();
+        var line = engine.GetCursorLine();
+        var col0 = engine.editor.CursorCol;
+        if revision == lastRevision and line == lastCursorLine and col0 == lastCursorCol {
+            return;
+        }
+
+        var source = engine.GetText();
+        if IsInsideCall(source, line, col0) == false {
+            Hide();
+            return;
+        }
+        var qsource = zia_query.WrapForQuery(source);
+        var qline = line + zia_query.LineOffset(source);
+        var sigInfo = ZiaCompletion.SignatureHelpForFile(qsource, sourcePath, qline, col0);
+        if sigInfo == "" {
+            Hide();
+            return;
+        }
+        var activeParam = ActiveParameter(source, line, col0);
+        label.SetText(sigInfo + "  [" + (activeParam + 1) + "]");
+        panel.SetPosition(engine.editor.GetCursorPixelX(), engine.editor.GetCursorPixelY() - 28);
+        lastRevision = revision;
+        lastCursorLine = line;
+        lastCursorCol = col0;
     }
 
     expose func Hide() {
@@ -73,6 +109,9 @@ class SignatureController {
             panel.SetVisible(0);
         }
         visible = false;
+        lastRevision = -1;
+        lastCursorLine = -1;
+        lastCursorCol = -1;
     }
 }
 

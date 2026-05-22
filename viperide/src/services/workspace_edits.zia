@@ -22,6 +22,28 @@ class ApplyResult {
     }
 }
 
+func PreviewRenameEdits(edits: Any, maxRows: Integer) -> String {
+    if edits == null {
+        return "No edits returned.";
+    }
+    var count = Seq.get_Length(edits);
+    var text = "Apply " + count + " rename edits?";
+    var shown = 0;
+    while shown < count and shown < maxRows {
+        var edit = Seq.Get(edits, shown);
+        text = text + "\n" +
+               Map.GetStr(edit, "file") + ":" +
+               Map.GetInt(edit, "startLine") + ":" +
+               Map.GetInt(edit, "startColumn") +
+               " -> " + Map.GetStr(edit, "newText");
+        shown = shown + 1;
+    }
+    if count > maxRows {
+        text = text + "\n... and " + (count - maxRows) + " more";
+    }
+    return text;
+}
+
 func ApplyRenameEdits(edits: Any,
                       docMgr: document_manager.DocumentManager) -> ApplyResult {
     var result = new ApplyResult();

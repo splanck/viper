@@ -171,6 +171,7 @@ typedef struct vg_codeeditor {
     bool cursor_visible;     ///< Cursor blink state
     float cursor_blink_time; ///< Cursor blink timer
     bool modified;           ///< Document modified since last save
+    uint64_t revision;       ///< Monotonic content revision; cursor/scroll changes do not affect it
 
     // Undo/redo history
     vg_edit_history_t *history; ///< Edit history for undo/redo
@@ -255,6 +256,11 @@ void vg_codeeditor_set_text_bytes(vg_codeeditor_t *editor, const char *text, siz
 /// @param editor Code editor widget.
 /// @return Caller-owned null-terminated string; must be freed with free().
 char *vg_codeeditor_get_text(vg_codeeditor_t *editor);
+
+/// @brief Return the monotonic content revision.
+/// @param editor Code editor widget.
+/// @return Content revision, or 0 if editor is NULL.
+uint64_t vg_codeeditor_get_revision(vg_codeeditor_t *editor);
 
 /// @brief Return the currently selected text as a newly allocated string.
 /// @param editor Code editor widget.
