@@ -698,6 +698,7 @@ func main() {
         if shell.miAbout.WasClicked() != 0                                     { overlays.OpenAbout(shell); }
         if triggeredNoMenu("quickopen", cpSelected) { search_commands.handleQuickOpen(shell, projMgr, docMgr, engine, tabs); }
         if triggeredNoMenu("searchproject", cpSelected) { search_commands.handleProjectSearchAsync(shell, projMgr, docMgr, engine, locStore, searcher); }
+        if triggeredNoMenu("workspacesymbols", cpSelected) { search_commands.handleWorkspaceSymbols(shell, projMgr, docMgr, engine, locStore); }
         if triggeredNoMenu("symboloutline", cpSelected) { symbolOutline.toggle(); }
 
         // Build commands — toolbar items wired alongside menu items

@@ -103,6 +103,7 @@ class CommandRegistry {
         Add("preverror", "Previous Error", "Jump to previous diagnostic", "Shift+F8", "diagnostics", true);
         Add("checknow", "Run Check Now", "Run diagnostics for the active file now", "Ctrl+Alt+C", "diagnostics", true);
         Add("searchproject", "Search in Project", "Find text across project files", "Ctrl+Shift+F", "", true);
+        Add("workspacesymbols", "Workspace Symbols", "Find symbols across project files", "Ctrl+T", "symbols", true);
         Add("symboloutline", "Symbol Outline", "Toggle document symbol list", "Ctrl+Shift+O", "symbols", true);
         Add("completion_trigger", "Trigger Completion", "Show completion suggestions", "Ctrl+Space", "completion", false);
         Add("addnextoccurrence", "Add Next Occurrence", "Add a cursor at the next matching word", "Ctrl+D", "", true);

@@ -681,7 +681,11 @@ class AppShell {
             return null;
         }
         if outputWrapLines == false or Str.Length(line) <= 160 {
-            return outputListBox.AddItem(line);
+            var item = outputListBox.AddItem(line);
+            if outputAutoScroll and outputListBox.Count > 0 {
+                outputListBox.SelectIndex(outputListBox.Count - 1);
+            }
+            return item;
         }
 
         var first: Any = null;
@@ -690,6 +694,9 @@ class AppShell {
             var chunk = Str.MidLen(line, start, 160);
             var item = outputListBox.AddItem(chunk);
             if first == null { first = item; }
+            if outputAutoScroll and outputListBox.Count > 0 {
+                outputListBox.SelectIndex(outputListBox.Count - 1);
+            }
             start = start + 160;
         }
         return first;

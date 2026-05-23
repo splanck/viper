@@ -8,8 +8,10 @@ bind "../commands/file_commands";
 bind "../core/document_manager";
 bind "../services/file_utils";
 bind "../services/locations";
+bind "../editor/zia_query";
 
 bind Viper.GUI;
+bind ZiaCompletion = Viper.Zia.Completion;
 bind IO = Viper.IO;
 bind Dir = Viper.IO.Dir;
 bind Path = Viper.IO.Path;
@@ -17,6 +19,7 @@ bind Str = Viper.String;
 bind Seq = Viper.Collections.Seq;
 bind Obj = Viper.Core.Object;
 bind Map = Viper.Collections.Map;
+bind Convert = Viper.Core.Convert;
 bind FileIndex = Viper.Workspace.FileIndex;
 
 // ============================================================================
@@ -498,6 +501,111 @@ func handleQuickOpen(shell: app_shell.AppShell,
 
     file_commands.OpenFileAtPath(shell, docMgr, engine, tabs, bestPath);
     shell.SetStatusLeft("Opened: " + projMgr.RelativePath(bestPath));
+}
+
+func handleWorkspaceSymbols(shell: app_shell.AppShell,
+                            projMgr: project_manager.ProjectManager,
+                            docMgr: document_manager.DocumentManager,
+                            engine: editor_engine.EditorEngine,
+                            locStore: locations.LocationStore) {
+    if projMgr.project == null or projMgr.project.isOpen == false {
+        GUI.Toast.Warning("Open a project folder first");
+        return;
+    }
+
+    var query = Str.Trim(GUI.MessageBox.Prompt("Workspace Symbols", "Symbol name:"));
+    if query == "" { return; }
+
+    file_commands.SaveEditorState(docMgr, engine);
+    var count = CollectWorkspaceSymbols(shell, projMgr, docMgr, locStore, query);
+    if count > 0 {
+        shell.ShowSearchPanel();
+        shell.SetStatusLeft("Found " + count + " workspace symbols for '" + query + "'");
+    } else {
+        shell.HideSearchPanel();
+        GUI.Toast.Info("No workspace symbols matched '" + query + "'");
+    }
+}
+
+func CollectWorkspaceSymbols(shell: app_shell.AppShell,
+                             projMgr: project_manager.ProjectManager,
+                             docMgr: document_manager.DocumentManager,
+                             locStore: locations.LocationStore,
+                             query: String) -> Integer {
+    if shell == null or projMgr == null or locStore == null { return 0; }
+    if projMgr.project == null or projMgr.project.isOpen == false { return 0; }
+
+    var needle = Str.ToLower(Str.Trim(query));
+    if needle == "" { return 0; }
+
+    shell.searchListBox.Clear();
+    var resultCount = 0;
+    var i = 0;
+    while i < projMgr.CachedFileCount() {
+        var filePath = projMgr.CachedFileAt(i);
+        i = i + 1;
+        if SearchKindMatches(filePath, ".zia") == false { continue; }
+
+        var content = contentForPath(docMgr, filePath);
+        if content == "" { continue; }
+
+        var qsource = zia_query.WrapForQuery(content);
+        var lineOff = zia_query.LineOffset(content);
+        var raw = ZiaCompletion.SymbolsForFile(qsource, filePath);
+        if raw == "" { continue; }
+
+        var addedHeader = false;
+        var rows = Str.Split(raw, "\n");
+        var r = 0;
+        while r < Seq.get_Length(rows) {
+            var row = Obj.ToString(Seq.Get(rows, r));
+            r = r + 1;
+            if row == "" { continue; }
+
+            var parts = Str.Split(row, "\t");
+            if Seq.get_Length(parts) < 4 { continue; }
+
+            var name = Obj.ToString(Seq.Get(parts, 0));
+            var kind = Obj.ToString(Seq.Get(parts, 1));
+            var typeText = Obj.ToString(Seq.Get(parts, 2));
+            var lineText = Obj.ToString(Seq.Get(parts, 3));
+            if lineText == "0" { continue; }
+
+            var symbolLine = Convert.ToInt(lineText) - lineOff;
+            if symbolLine < 1 { continue; }
+            if WorkspaceSymbolMatches(name, kind, filePath, needle) == false { continue; }
+
+            if addedHeader == false {
+                shell.searchListBox.AddItem(filePath);
+                addedHeader = true;
+            }
+
+            var detail = "";
+            if typeText != "" { detail = " : " + typeText; }
+            var item = shell.searchListBox.AddItem("  " + kind + "  " + name + detail + "  line " + symbolLine);
+            var locId = locStore.Add(filePath, symbolLine, 1,
+                                     symbolLine, 1 + Str.Length(name),
+                                     locations.KIND_SYMBOL, name);
+            GUI.ListBox.ItemSetData(item, locId);
+            resultCount = resultCount + 1;
+        }
+    }
+
+    if resultCount > 0 {
+        shell.ShowSearchPanel();
+    }
+    return resultCount;
+}
+
+func WorkspaceSymbolMatches(name: String,
+                            kind: String,
+                            filePath: String,
+                            needle: String) -> Boolean {
+    var lowerName = Str.ToLower(name);
+    if Str.IndexOf(lowerName, needle) != 0 { return true; }
+    if Str.IndexOf(Str.ToLower(kind), needle) != 0 { return true; }
+    if Str.IndexOf(Str.ToLower(filePath), needle) != 0 { return true; }
+    return false;
 }
 
 func RunSearch(shell: app_shell.AppShell,

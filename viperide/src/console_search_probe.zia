@@ -102,6 +102,19 @@ func main() {
         fail(shell, "output auto-scroll lock");
         return;
     }
+    shell.SetOutputAutoScroll(true);
+    shell.SetBuildOutput("scroll one\nscroll two\n");
+    if shell.outputListBox.SelectedIndex != 1 {
+        fail(shell, "output auto-scroll selects latest row");
+        return;
+    }
+    shell.SetOutputAutoScroll(false);
+    shell.outputListBox.SelectIndex(0);
+    shell.AppendBuildOutput("scroll three\n");
+    if shell.outputListBox.SelectedIndex != 0 {
+        fail(shell, "output auto-scroll lock preserves selection");
+        return;
+    }
     shell.ClearOutputPanel();
     if shell.outputListBox.Count != 0 {
         fail(shell, "clear output helper");
@@ -202,6 +215,9 @@ func main() {
                           "module File" + i + ";\nfunc main() {\n    var needle = " + i + ";\n}\n");
         i = i + 1;
     }
+    var symbolPath = Path.Join(root, "symbols.zia");
+    File.WriteAllText(symbolPath,
+                      "module Symbols;\nfunc alphaSymbol() -> Integer { return 1; }\n");
 
     var docMgr = new document_manager.DocumentManager();
     var locStore = new locations.LocationStore();
@@ -234,6 +250,18 @@ func main() {
     var projMgr = new project_manager.ProjectManager();
     projMgr.Setup(shell.sidebarTree);
     projMgr.OpenFolder(root);
+    docMgr.OpenFile(symbolPath);
+    docMgr.GetActive()!.content = "module Symbols;\nfunc betaSymbol() -> Integer { return 2; }\n";
+    var symbolCount = search_commands.CollectWorkspaceSymbols(shell, projMgr, docMgr, locStore, "beta");
+    if symbolCount != 1 or shell.searchListBox.Count != 2 {
+        fail(shell, "workspace symbols use dirty open content");
+        return;
+    }
+    shell.searchListBox.SelectIndex(1);
+    if GUI.ListBox.ItemGetData(shell.searchListBox.Selected) == "" {
+        fail(shell, "workspace symbols location data");
+        return;
+    }
     var cachedSearcher = new search_commands.SearchController();
     if cachedSearcher.StartCachedDirect(shell, projMgr, root, "needle", ".zia", false, false) == false {
         fail(shell, "start cached search");
