@@ -102,6 +102,7 @@ typedef enum vg_widget_type {
     VG_WIDGET_STATUSBAR,    ///< IDE-style status bar at the bottom.
     VG_WIDGET_DIALOG,       ///< Modal or modeless dialog window.
     VG_WIDGET_CODEEDITOR,   ///< Source code editor with syntax highlighting.
+    VG_WIDGET_OUTPUTPANE,   ///< Append-only styled console/output log.
     VG_WIDGET_IMAGE,        ///< Raster image display.
     VG_WIDGET_SPINNER,      ///< Numeric up/down spinner control.
     VG_WIDGET_COLORSWATCH,  ///< Single-color preview swatch.

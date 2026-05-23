@@ -441,7 +441,11 @@ void vg_button_set_text(vg_button_t *button, const char *text) {
     if (!button)
         return;
 
-    char *copy = text ? strdup(text) : strdup("");
+    const char *new_text = text ? text : "";
+    if (button->text && strcmp(button->text, new_text) == 0)
+        return;
+
+    char *copy = strdup(new_text);
     if (!copy)
         return;
 
@@ -528,8 +532,11 @@ void vg_button_set_font(vg_button_t *button, vg_font_t *font, float size) {
     if (!button)
         return;
 
+    float font_size = size > 0 ? size : vg_theme_get_current()->typography.size_normal;
+    if (button->font == font && button->font_size == font_size)
+        return;
     button->font = font;
-    button->font_size = size > 0 ? size : vg_theme_get_current()->typography.size_normal;
+    button->font_size = font_size;
     button->base.needs_layout = true;
     button->base.needs_paint = true;
 }
@@ -540,6 +547,10 @@ void vg_button_set_font(vg_button_t *button, vg_font_t *font, float size) {
 /// @param icon   Icon string (copied internally); NULL removes the icon.
 void vg_button_set_icon(vg_button_t *button, const char *icon) {
     if (!button)
+        return;
+
+    if ((!button->icon_text && (!icon || icon[0] == '\0')) ||
+        (button->icon_text && icon && strcmp(button->icon_text, icon) == 0))
         return;
 
     char *copy = icon ? strdup(icon) : NULL;
@@ -560,6 +571,9 @@ void vg_button_set_icon_position(vg_button_t *button, int pos) {
     if (!button)
         return;
 
-    button->icon_pos = pos == 1 ? 1 : 0;
+    int icon_pos = pos == 1 ? 1 : 0;
+    if (button->icon_pos == icon_pos)
+        return;
+    button->icon_pos = icon_pos;
     button->base.needs_paint = true;
 }

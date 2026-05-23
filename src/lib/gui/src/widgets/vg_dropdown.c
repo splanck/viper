@@ -862,6 +862,8 @@ void vg_dropdown_set_selected(vg_dropdown_t *dropdown, int index) {
     int old_index = dropdown->selected_index;
     if (index < -1 || index >= dropdown->item_count)
         return;
+    if (old_index == index)
+        return;
     if (index == -1) {
         dropdown->selected_index = -1;
     } else {
@@ -899,6 +901,9 @@ const char *vg_dropdown_get_selected_text(vg_dropdown_t *dropdown) {
 void vg_dropdown_set_placeholder(vg_dropdown_t *dropdown, const char *text) {
     if (!dropdown)
         return;
+    if ((!dropdown->placeholder && (!text || text[0] == '\0')) ||
+        (dropdown->placeholder && text && strcmp(dropdown->placeholder, text) == 0))
+        return;
     char *copy = text ? strdup(text) : NULL;
     if (text && !copy)
         return;
@@ -916,8 +921,11 @@ void vg_dropdown_set_placeholder(vg_dropdown_t *dropdown, const char *text) {
 void vg_dropdown_set_font(vg_dropdown_t *dropdown, vg_font_t *font, float size) {
     if (!dropdown)
         return;
+    float font_size = size > 0 ? size : vg_theme_get_current()->typography.size_normal;
+    if (dropdown->font == font && dropdown->font_size == font_size)
+        return;
     dropdown->font = font;
-    dropdown->font_size = size > 0 ? size : vg_theme_get_current()->typography.size_normal;
+    dropdown->font_size = font_size;
     dropdown->base.needs_layout = true;
     dropdown->base.needs_paint = true;
 }

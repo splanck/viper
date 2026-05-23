@@ -812,6 +812,8 @@ void vg_statusbar_item_set_progress(vg_statusbar_item_t *item, float progress) {
         progress = 0.0f;
     if (progress > 1.0f)
         progress = 1.0f;
+    if (item->progress == progress)
+        return;
     item->progress = progress;
     if (item->owner)
         item->owner->base.needs_paint = true;
@@ -823,6 +825,8 @@ void vg_statusbar_item_set_progress(vg_statusbar_item_t *item, float progress) {
 /// @param visible false to hide the item (its slot collapses to zero width).
 void vg_statusbar_item_set_visible(vg_statusbar_item_t *item, bool visible) {
     if (!vg_statusbar_item_is_live(item))
+        return;
+    if (item->visible == visible)
         return;
     item->visible = visible;
     if (item->owner)

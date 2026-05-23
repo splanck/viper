@@ -321,7 +321,11 @@ void vg_checkbox_set_text(vg_checkbox_t *checkbox, const char *text) {
     if (!checkbox)
         return;
 
-    char *copy = text ? strdup(text) : strdup("");
+    const char *new_text = text ? text : "";
+    if (checkbox->text && strcmp(checkbox->text, new_text) == 0)
+        return;
+
+    char *copy = strdup(new_text);
     if (!copy)
         return;
 
@@ -355,8 +359,11 @@ void vg_checkbox_set_font(vg_checkbox_t *checkbox, vg_font_t *font, float size) 
     if (!checkbox)
         return;
 
+    float font_size = size > 0 ? size : vg_theme_get_current()->typography.size_normal;
+    if (checkbox->font == font && checkbox->font_size == font_size)
+        return;
     checkbox->font = font;
-    checkbox->font_size = size > 0 ? size : vg_theme_get_current()->typography.size_normal;
+    checkbox->font_size = font_size;
     checkbox->base.needs_layout = true;
     checkbox->base.needs_paint = true;
 }

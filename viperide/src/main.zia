@@ -20,6 +20,7 @@ bind "editor/completion";
 bind "editor/diagnostics";
 bind "editor/hover";
 bind "editor/symbols";
+bind "editor/inlay_hints";
 bind "services/file_utils";
 bind "services/locations";
 bind "build/build_system";
@@ -136,6 +137,8 @@ func main() {
     var sigCtrl = new signature.SignatureController();
     sigCtrl.setup(shell.app);
     sigCtrl.SetScheduler(editorScheduler);
+
+    var inlayCtrl = new inlay_hints.InlayHintController();
 
     // Symbol outline panel (below diagnostics, toggled via View menu)
     var symbolOutline = new symbols.SymbolOutline();
@@ -274,6 +277,7 @@ func main() {
         hoverCtrl.setSourcePath(activeToolPath);
         hoverCtrl.setEnabled(activeService.canHover);
         sigCtrl.setSourcePath(activeToolPath);
+        inlayCtrl.SetEnabled(activeService.name == language_service.LANGUAGE_ZIA);
         symbolOutline.setSourcePath(activeToolPath);
         symbolOutline.setEnabled(activeService.canDocumentSymbols);
         symbolOutline.setSemanticFoldingEnabled(appSettings.codeFolding
@@ -342,6 +346,9 @@ func main() {
         perfSpan = perfMon.StartSpan();
         sigCtrl.update(engine);
         perfMon.AddSignature(perfSpan);
+        perfSpan = perfMon.StartSpan();
+        inlayCtrl.update(engine);
+        perfMon.AddInlay(perfSpan);
         perfSpan = perfMon.StartSpan();
         symbolOutline.update(engine);
         perfMon.AddSymbols(perfSpan);
@@ -601,18 +608,18 @@ func main() {
         // File commands
         if triggered("new", shell.miNew, shell.tbNew, cpSelected)      { file_commands.handleNew(shell, docMgr, engine, tabs); }
         if triggered("open", shell.miOpen, shell.tbOpen, cpSelected)    { file_commands.handleOpen(shell, docMgr, engine, tabs); RecordActiveFile(sessionMgr, docMgr); pendingReload = false; }
-        if shell.miOpenFolder.WasClicked() != 0 {
+        if triggered("openfolder", shell.miOpenFolder, null, cpSelected) {
             if file_commands.ConfirmCloseDocuments(shell, docMgr, engine, "Open Folder", -1) {
                 file_commands.handleOpenFolder(shell, projMgr);
                 indexer.Open(projMgr.project.rootPath, docMgr);
             }
         }
         if triggered("save", shell.miSave, shell.tbSave, cpSelected)   { file_commands.handleSave(shell, docMgr, engine, tabs); pendingReload = false; }
-        if shell.miSaveAs.WasClicked() != 0                            { file_commands.handleSaveAs(shell, docMgr, engine, tabs); }
+        if triggered("saveas", shell.miSaveAs, null, cpSelected)       { file_commands.handleSaveAs(shell, docMgr, engine, tabs); }
         if triggered("saveall", shell.miSaveAll, shell.tbSaveAll, cpSelected) { file_commands.handleSaveAll(shell, docMgr, engine, tabs); }
         if triggered("reload", shell.miReload, null, cpSelected)       { file_commands.handleReload(shell, docMgr, engine, tabs); pendingReload = false; }
-        if triggeredNoMenu("recentfiles", cpSelected)                  { view_commands.handleRecentFiles(shell, sessionMgr); }
-        if triggeredNoMenu("reopenclosed", cpSelected)                 { ReopenClosedFile(shell, docMgr, engine, tabs, sessionMgr); pendingReload = false; }
+        if triggeredMenu("recentfiles", shell.miRecentFiles, cpSelected) { view_commands.handleRecentFiles(shell, sessionMgr); }
+        if triggeredMenu("reopenclosed", shell.miReopenClosed, cpSelected) { ReopenClosedFile(shell, docMgr, engine, tabs, sessionMgr); pendingReload = false; }
 
         // Close — also check tab close button
         var closeIdx = -1;
@@ -647,18 +654,18 @@ func main() {
         }
 
         // Edit commands
-        if triggered("undo", shell.miUndo, null, cpSelected)           { edit_commands.handleUndo(engine); }
+        if triggered("undo", shell.miUndo, null, cpSelected)           { edit_commands.handleUndo(engine, docMgr); }
         if triggered("redo", shell.miRedo, null, cpSelected)           { edit_commands.handleRedo(engine); }
         if triggered("cut", shell.miCut, null, cpSelected)             { edit_commands.handleCut(engine); }
         if triggered("copy", shell.miCopy, null, cpSelected)           { edit_commands.handleCopy(engine); }
         if triggered("paste", shell.miPaste, null, cpSelected)         { edit_commands.handlePaste(engine); }
         if triggered("selectall", shell.miSelectAll, null, cpSelected) { edit_commands.handleSelectAll(engine); }
         if triggered("find", shell.miFind, shell.tbFind, cpSelected)    { edit_commands.handleFind(shell); }
-        if triggeredNoMenu("goto", cpSelected)                          { edit_commands.handleGoToLine(shell, engine); }
-        if triggeredNoMenu("gotodef", cpSelected)                       { edit_commands.handleGoToDefinition(shell, docMgr, engine, tabs, indexer, locStore); }
+        if triggeredMenu("goto", shell.miGoToLine, cpSelected)           { edit_commands.handleGoToLine(shell, engine); }
+        if triggeredMenu("gotodef", shell.miGoToDefinition, cpSelected)  { edit_commands.handleGoToDefinition(shell, docMgr, engine, tabs, indexer, locStore); }
         if triggeredMenu("findrefs", shell.miFindReferences, cpSelected) { edit_commands.handleFindReferences(shell, docMgr, engine, indexer, locStore); }
-        if triggeredNoMenu("incomingcalls", cpSelected)                  { edit_commands.handleIncomingCalls(shell, docMgr, engine, indexer, locStore); }
-        if triggeredNoMenu("outgoingcalls", cpSelected)                  { edit_commands.handleOutgoingCalls(shell, docMgr, engine, indexer, locStore); }
+        if triggeredMenu("incomingcalls", shell.miIncomingCalls, cpSelected) { edit_commands.handleIncomingCalls(shell, docMgr, engine, indexer, locStore); }
+        if triggeredMenu("outgoingcalls", shell.miOutgoingCalls, cpSelected) { edit_commands.handleOutgoingCalls(shell, docMgr, engine, indexer, locStore); }
         if triggeredMenu("rename", shell.miRenameSymbol, cpSelected)     { edit_commands.handleRenameSymbol(shell, docMgr, engine, tabs, indexer); }
         if triggeredNoMenu("addnextoccurrence", cpSelected)              { edit_commands.handleAddNextOccurrence(shell, engine); }
         if triggeredNoMenu("skipoccurrence", cpSelected)                 { edit_commands.handleSkipOccurrence(shell, engine); }
@@ -672,6 +679,9 @@ func main() {
         if triggeredNoMenu("movelineup", cpSelected)                     { edit_commands.handleMoveLineUp(shell, engine); }
         if triggeredNoMenu("movelinedown", cpSelected)                   { edit_commands.handleMoveLineDown(shell, engine); }
         if triggeredNoMenu("organizebinds", cpSelected)                  { edit_commands.handleOrganizeBinds(shell, docMgr, engine); }
+        if triggeredNoMenu("extractlocal", cpSelected)                   { edit_commands.handleExtractLocalVariable(shell, docMgr, engine); }
+        if triggeredNoMenu("extractfunction", cpSelected)                { edit_commands.handleExtractFunction(shell, docMgr, engine); }
+        if triggeredNoMenu("inlinelocal", cpSelected)                    { edit_commands.handleInlineLocalVariable(shell, docMgr, engine); }
         if triggeredNoMenu("suppressdiagnostic", cpSelected)             { edit_commands.handleSuppressDiagnostic(shell, docMgr, engine); }
         if triggeredNoMenu("applydiagnosticfix", cpSelected)             { edit_commands.handleApplyDiagnosticFix(shell, docMgr, engine); }
         if triggeredNoMenu("createmissingbind", cpSelected)              { edit_commands.handleCreateMissingBind(shell, docMgr, engine, projMgr); }
@@ -680,10 +690,10 @@ func main() {
         if triggeredNoMenu("formatselection", cpSelected)                { edit_commands.handleFormatSelection(shell, docMgr, engine); }
 
         // Error navigation (F8 / Shift+F8)
-        if triggeredNoMenu("nexterror", cpSelected) {
+        if triggeredMenu("nexterror", shell.miNextError, cpSelected) {
             navigateDiagnostic(shell, docMgr, engine, tabs, locStore, 1);
         }
-        if triggeredNoMenu("preverror", cpSelected) {
+        if triggeredMenu("preverror", shell.miPreviousError, cpSelected) {
             navigateDiagnostic(shell, docMgr, engine, tabs, locStore, -1);
         }
         if triggeredNoMenu("checknow", cpSelected) {
@@ -695,7 +705,8 @@ func main() {
                 shell.SetStatusLeft("Diagnostics complete");
             }
         }
-        if cpSelected == "signature_trigger" {
+        if (shell.miSignatureHelp != null and shell.miSignatureHelp.WasClicked() != 0)
+           or cpSelected == "signature_trigger" {
             sigCtrl.trigger(engine);
         }
         if triggeredNoMenu("signaturenextoverload", cpSelected) {
@@ -741,10 +752,10 @@ func main() {
         if triggeredNoMenu("treedelete", cpSelected)                           { TreeDelete(shell, projMgr, docMgr, engine, tabs, indexer, locStore); }
         if triggeredNoMenu("treerefresh", cpSelected)                          { projMgr.RefreshTree(); indexer.EnsureProject(projMgr, docMgr); shell.SetStatusLeft("Project tree refreshed"); }
         if shell.miAbout.WasClicked() != 0                                     { overlays.OpenAbout(shell); }
-        if triggeredNoMenu("quickopen", cpSelected) { search_commands.handleQuickOpen(shell, projMgr, docMgr, engine, tabs); }
-        if triggeredNoMenu("searchproject", cpSelected) { search_commands.handleProjectSearchAsync(shell, projMgr, docMgr, engine, locStore, searcher); }
-        if triggeredNoMenu("workspacesymbols", cpSelected) { search_commands.handleWorkspaceSymbols(shell, projMgr, docMgr, engine, locStore); }
-        if triggeredNoMenu("symboloutline", cpSelected) { symbolOutline.toggle(); }
+        if triggeredMenu("quickopen", shell.miQuickOpen, cpSelected) { search_commands.handleQuickOpen(shell, projMgr, docMgr, engine, tabs); }
+        if triggeredMenu("searchproject", shell.miSearchProject, cpSelected) { search_commands.handleProjectSearchAsync(shell, projMgr, docMgr, engine, locStore, searcher); }
+        if triggeredMenu("workspacesymbols", shell.miWorkspaceSymbols, cpSelected) { search_commands.handleWorkspaceSymbols(shell, projMgr, docMgr, engine, locStore); }
+        if triggeredMenu("symboloutline", shell.miSymbolOutline, cpSelected) { symbolOutline.toggle(); }
 
         // Build commands — toolbar items wired alongside menu items
         if triggered("build", shell.miBuild, shell.tbBuild, cpSelected)         { build_commands.handleBuild(shell, docMgr, projMgr, engine, tabs, buildSys, locStore); }
@@ -1069,6 +1080,7 @@ func triggeredNoMenu(name: String, cpSelected: String) -> Boolean {
 
 func triggeredMenu(name: String, menuItem: GUI.MenuItem, cpSelected: String) -> Boolean {
     if menuItem != null and menuItem.WasClicked() != 0 { return true; }
+    if Shortcuts.WasTriggered(name) != 0 { return true; }
     if cpSelected == name { return true; }
     return false;
 }

@@ -10,14 +10,19 @@ final TOOL_COLOR_WARNING = 15911349; // 0xF2C76D
 final TOOL_COLOR_INFO = 6662382;     // 0x65A5EE
 final TOOL_COLOR_SUCCESS = 10264905; // 0x9CD67D
 final TOOL_COLOR_MUTED = 10066329;   // 0x999999
+final TOOL_KIND_COL = 10;
+final TOOL_SOURCE_COL = 10;
+final TOOL_LOCATION_COL = 24;
+final TOOL_CODE_COL = 10;
+final TOOL_ACTION_COL = 18;
 
 // ============================================================================
 // MODULE: app_shell
 // PURPOSE: Top-level UI layout for ViperIDE. Owns the GUI.App window and
 //          every widget that lives in the persistent chrome (menu bar,
 //          toolbar, sidebar, tab bar, breadcrumb, find bar, editor row,
-//          minimap, diagnostics panel, build-output panel, status bar,
-//          context menu, command palette).
+//          minimap, docked preferences panel, diagnostics panel, build-output
+//          panel, status bar, context menu, command palette).
 //
 // WHERE-THIS-FITS: Constructed once by main.zia. The main loop polls
 //          this shell each frame for input events; command handlers in
@@ -33,10 +38,10 @@ final TOOL_COLOR_MUTED = 10066329;   // 0x999999
 //   * VBox(menu / toolbar / split / status). Main vertical layout with
 //     a SplitPane filling the middle. The SplitPane is horizontal (1)
 //     with the sidebar on the left and the editor area on the right.
-//   * EDITOR ROW IS HBOX. The editor itself + the minimap sit
-//     side-by-side in `editorRow`. The editor is added later (by
-//     `engine.Setup` in main.zia) because the EditorEngine owns the
-//     widget construction.
+//   * WORKBENCH ROW IS HBOX. The editor area and the preferences side panel
+//     sit beside each other, so Preferences resizes the editor instead of
+//     floating over it. Inside the editor area, `editorRow` still holds the
+//     editor + minimap.
 //   * KEYBOARD SHORTCUTS WIRED INTO MENU ITEMS. Every menu item with a
 //     shortcut calls `SetShortcut(...)` so the runtime can dispatch
 //     accelerators to that menu item without the IDE needing to
@@ -59,13 +64,16 @@ class AppShell {
     // Layout containers
     expose GUI.VBox mainVBox;
     expose GUI.SplitPane splitPane;
+    expose GUI.HBox workbenchRow;
     expose GUI.VBox editorArea;
     expose GUI.HBox editorRow;         // horizontal: editor (flex) + minimap
+    expose GUI.VBox preferencesPanel;  // right-side dock for Preferences
 
     // Menu bar + menus
     expose GUI.MenuBar menuBar;
     expose GUI.Menu fileMenu;
     expose GUI.Menu editMenu;
+    expose GUI.Menu navigateMenu;
     expose GUI.Menu viewMenu;
     expose GUI.Menu helpMenu;
 
@@ -73,11 +81,14 @@ class AppShell {
     expose GUI.MenuItem miNew;
     expose GUI.MenuItem miOpen;
     expose GUI.MenuItem miOpenFolder;
+    expose GUI.MenuItem miQuickOpen;
     expose GUI.MenuItem miSave;
     expose GUI.MenuItem miSaveAs;
     expose GUI.MenuItem miSaveAll;
     expose GUI.MenuItem miClose;
     expose GUI.MenuItem miReload;      // Reload File from disk
+    expose GUI.MenuItem miRecentFiles;
+    expose GUI.MenuItem miReopenClosed;
     expose GUI.MenuItem miExit;
 
     // Edit menu items
@@ -88,7 +99,19 @@ class AppShell {
     expose GUI.MenuItem miPaste;
     expose GUI.MenuItem miSelectAll;
     expose GUI.MenuItem miFind;
+    expose GUI.MenuItem miSearchProject;
+    expose GUI.MenuItem miGoToLine;
+
+    // Navigate menu items
+    expose GUI.MenuItem miGoToDefinition;
     expose GUI.MenuItem miFindReferences;
+    expose GUI.MenuItem miIncomingCalls;
+    expose GUI.MenuItem miOutgoingCalls;
+    expose GUI.MenuItem miWorkspaceSymbols;
+    expose GUI.MenuItem miSymbolOutline;
+    expose GUI.MenuItem miNextError;
+    expose GUI.MenuItem miPreviousError;
+    expose GUI.MenuItem miSignatureHelp;
     expose GUI.MenuItem miRenameSymbol;
     expose GUI.MenuItem miPreferences;
 
@@ -150,7 +173,8 @@ class AppShell {
     // Diagnostics panel (below editor; populated after build)
     expose GUI.ListBox diagListBox;
 
-    // Build output panel (below diagnostics; shows raw compiler output)
+    // Build output surfaces (OutputPane for raw streams, ListBox for row tools)
+    expose GUI.OutputPane outputPane;
     expose GUI.ListBox outputListBox;
     expose GUI.ListBox searchListBox;
     expose GUI.ListBox referencesListBox;
@@ -203,6 +227,7 @@ class AppShell {
     expose String outputFilterText;
     expose Boolean outputWrapLines;
     expose Boolean outputAutoScroll;
+    expose Boolean outputPaneMode;
     expose String lastDiagnosticsStatus;
     expose Integer lastDiagnosticsColor;
     expose String lastProjectStatus;
@@ -221,6 +246,7 @@ class AppShell {
         outputFilterText = "";
         outputWrapLines = false;
         outputAutoScroll = true;
+        outputPaneMode = true;
         lastDiagnosticsStatus = "Diagnostics: clean";
         lastDiagnosticsColor = TOOL_COLOR_SUCCESS;
         lastProjectStatus = "No project";
@@ -260,18 +286,25 @@ class AppShell {
         miOpen = fileMenu.AddItem("Open File...");
         miOpen.SetShortcut("Ctrl+O");
         miOpenFolder = fileMenu.AddItem("Open Folder...");
-        miOpenFolder.SetShortcut("Ctrl+K Ctrl+O");
+        miOpenFolder.SetShortcut("Ctrl+Alt+O");
+        miQuickOpen = fileMenu.AddItem("Quick Open File");
+        miQuickOpen.SetShortcut("Ctrl+P");
         fileMenu.AddSeparator();
         miSave = fileMenu.AddItem("Save");
         miSave.SetShortcut("Ctrl+S");
         miSaveAs = fileMenu.AddItem("Save As...");
         miSaveAs.SetShortcut("Ctrl+Shift+S");
         miSaveAll = fileMenu.AddItem("Save All");
+        miSaveAll.SetShortcut("Ctrl+Alt+Shift+S");
         fileMenu.AddSeparator();
         miClose = fileMenu.AddItem("Close File");
         miClose.SetShortcut("Ctrl+W");
         miReload = fileMenu.AddItem("Reload File");
         miReload.SetShortcut("Ctrl+Shift+R");
+        miRecentFiles = fileMenu.AddItem("Recent Files");
+        miRecentFiles.SetShortcut("Ctrl+K Ctrl+R");
+        miReopenClosed = fileMenu.AddItem("Reopen Closed File");
+        miReopenClosed.SetShortcut("Ctrl+Alt+T");
         fileMenu.AddSeparator();
         miExit = fileMenu.AddItem("Exit");
 
@@ -293,13 +326,38 @@ class AppShell {
         miSelectAll.SetShortcut("Ctrl+A");
         miFind = editMenu.AddItem("Find...");
         miFind.SetShortcut("Ctrl+F");
-        miFindReferences = editMenu.AddItem("Find References");
-        miFindReferences.SetShortcut("Shift+F12");
+        miSearchProject = editMenu.AddItem("Search in Project");
+        miSearchProject.SetShortcut("Ctrl+Shift+F");
+        miGoToLine = editMenu.AddItem("Go To Line");
+        miGoToLine.SetShortcut("Ctrl+G");
         miRenameSymbol = editMenu.AddItem("Rename Symbol");
         miRenameSymbol.SetShortcut("F2");
         editMenu.AddSeparator();
         miPreferences = editMenu.AddItem("Preferences...");
         miPreferences.SetShortcut("Ctrl+,");
+
+        // Navigate menu
+        navigateMenu = menuBar.AddMenu("Navigate");
+        miGoToDefinition = navigateMenu.AddItem("Go To Definition");
+        miGoToDefinition.SetShortcut("F12");
+        miFindReferences = navigateMenu.AddItem("Find References");
+        miFindReferences.SetShortcut("Shift+F12");
+        navigateMenu.AddSeparator();
+        miIncomingCalls = navigateMenu.AddItem("Incoming Calls");
+        miIncomingCalls.SetShortcut("Ctrl+Alt+H");
+        miOutgoingCalls = navigateMenu.AddItem("Outgoing Calls");
+        miOutgoingCalls.SetShortcut("Ctrl+Alt+Shift+H");
+        miWorkspaceSymbols = navigateMenu.AddItem("Workspace Symbols");
+        miWorkspaceSymbols.SetShortcut("Ctrl+T");
+        miSymbolOutline = navigateMenu.AddItem("Symbol Outline");
+        miSymbolOutline.SetShortcut("Ctrl+Shift+O");
+        navigateMenu.AddSeparator();
+        miNextError = navigateMenu.AddItem("Next Error");
+        miNextError.SetShortcut("F8");
+        miPreviousError = navigateMenu.AddItem("Previous Error");
+        miPreviousError.SetShortcut("Shift+F8");
+        miSignatureHelp = navigateMenu.AddItem("Trigger Signature Help");
+        miSignatureHelp.SetShortcut("Ctrl+Shift+Space");
 
         // View menu
         viewMenu = menuBar.AddMenu("View");
@@ -361,7 +419,7 @@ class AppShell {
         tbNew     = toolbar.AddButtonWithText("", "+",  "New File (Ctrl+N)");
         tbOpen    = toolbar.AddButtonWithText("", "▤",  "Open File (Ctrl+O)");
         tbSave    = toolbar.AddButtonWithText("", "▼",  "Save File (Ctrl+S)");
-        tbSaveAll = toolbar.AddButtonWithText("", "⇓",  "Save All Files (Ctrl+Shift+S)");
+        tbSaveAll = toolbar.AddButtonWithText("", "⇓",  "Save All Files (Ctrl+Alt+Shift+S)");
         toolbar.AddSeparator();
         tbBuild   = toolbar.AddButtonWithText("", "▣",  "Build (Ctrl+Shift+B)");
         tbRun     = toolbar.AddButtonWithText("", "▶",  "Build & Run (F5)");
@@ -384,13 +442,26 @@ class AppShell {
         var leftPanel: GUI.Widget = splitPane.First;
         sidebarTree = GUI.TreeView.New(leftPanel);
 
-        // Editor area — VBox in right panel
+        // Workbench — editor area plus the docked Preferences side panel.
         var rightPanel: GUI.Widget = splitPane.Second;
+        workbenchRow = GUI.HBox.New();
+        workbenchRow.SetSpacing(0.0);
+        workbenchRow.SetPadding(0.0);
+        workbenchRow.SetFlex(1.0);
+        rightPanel.AddChild(workbenchRow);
+
         editorArea = GUI.VBox.New();
         editorArea.SetSpacing(0.0);
         editorArea.SetPadding(0.0);
         editorArea.SetFlex(1.0);
-        rightPanel.AddChild(editorArea);
+        workbenchRow.AddChild(editorArea);
+
+        preferencesPanel = GUI.VBox.New();
+        preferencesPanel.SetSpacing(0.0);
+        preferencesPanel.SetPadding(0.0);
+        preferencesPanel.SetSize(420, 0);
+        preferencesPanel.SetVisible(0);
+        workbenchRow.AddChild(preferencesPanel);
 
         // Tab bar inside editor area
         tabBar = GUI.TabBar.New(editorArea);
@@ -430,6 +501,12 @@ class AppShell {
         diagListBox.SetSize(0, 120);
 
         // Build output panel (hidden until a build runs; shows raw compiler stdout/stderr)
+        outputPane = GUI.OutputPane.New(editorArea);
+        outputPane.SetMaxLines(10000);
+        outputPane.SetAutoScroll(1);
+        outputPane.SetVisible(0);
+        outputPane.SetSize(0, 100);
+
         outputListBox = GUI.ListBox.New(editorArea);
         outputListBox.SetMultiSelect(1);
         outputListBox.SetVisible(0);
@@ -461,15 +538,20 @@ class AppShell {
         ctxDuplicate = treeContextMenu.AddItem("Duplicate File...");
         treeContextMenu.AddSeparator();
         ctxRename = treeContextMenu.AddItem("Rename");
+        ctxRename.SetShortcut("Ctrl+Alt+R");
         ctxDelete = treeContextMenu.AddItem("Delete");
+        ctxDelete.SetShortcut("Ctrl+Alt+D");
         treeContextMenu.AddSeparator();
         ctxNewFile = treeContextMenu.AddItem("New File...");
+        ctxNewFile.SetShortcut("Ctrl+Alt+N");
         ctxNewFolder = treeContextMenu.AddItem("New Folder...");
+        ctxNewFolder.SetShortcut("Ctrl+Alt+Shift+N");
         ctxSearchFolder = treeContextMenu.AddItem("Search in Folder...");
         ctxRunFile = treeContextMenu.AddItem("Run This File");
         ctxSetEntry = treeContextMenu.AddItem("Set as Project Entry");
         treeContextMenu.AddSeparator();
         ctxRefresh = treeContextMenu.AddItem("Refresh");
+        ctxRefresh.SetShortcut("Ctrl+Alt+Shift+R");
 
         // ====================================================================
         // Status Bar
@@ -629,41 +711,42 @@ class AppShell {
             return;
         }
         if output == "" {
-            outputListBox.Clear();
-            outputListBox.SetVisible(0);
-            lastBuildOutput = "";
-            outputPartialLine = "";
-            outputPartialItem = null;
-            HideOutputPanel();
+            ClearOutputPanel();
             return;
         }
 
         if lastBuildOutput != "" and Str.EndsWith(lastBuildOutput, "\n")
            and Str.StartsWith(output, lastBuildOutput) {
             var delta = Str.Mid(output, Str.Length(lastBuildOutput) + 1);
-            if outputFilterText == "" and outputWrapLines == false {
+            if UsesRawOutputPane() {
                 AppendBuildOutput(delta);
             } else {
-                outputListBox.Clear();
-                outputPartialLine = "";
-                outputPartialItem = null;
-                AddBuildOutputLines(output);
+                RenderOutputRows(output);
+                lastBuildOutput = output;
+                ShowOutputPanel();
             }
-            lastBuildOutput = output;
-            ShowOutputPanel();
             return;
         }
 
-        outputListBox.Clear();
-        outputPartialLine = "";
-        outputPartialItem = null;
-        AddBuildOutputLines(output);
-        ShowOutputPanel();
         lastBuildOutput = output;
+        if UsesRawOutputPane() {
+            RenderOutputPane(output);
+        } else {
+            RenderOutputRows(output);
+        }
+        ShowOutputPanel();
     }
 
     expose func AppendBuildOutput(output: String) {
         if output == "" { return; }
+        if UsesRawOutputPane() {
+            UseOutputPane();
+            outputPane.Append(output);
+            lastBuildOutput = lastBuildOutput + output;
+            ShowOutputPanel();
+            return;
+        }
+
         if outputPartialItem != null {
             outputListBox.RemoveItem(outputPartialItem);
             outputPartialItem = null;
@@ -692,6 +775,57 @@ class AppShell {
 
         lastBuildOutput = lastBuildOutput + output;
         ShowOutputPanel();
+    }
+
+    hide func UsesRawOutputPane() -> Boolean {
+        return outputFilterText == "" and outputWrapLines == false;
+    }
+
+    hide func RenderOutputPane(output: String) {
+        UseOutputPane();
+        outputPane.Clear();
+        outputListBox.Clear();
+        outputPartialLine = "";
+        outputPartialItem = null;
+        outputPane.Append(output);
+    }
+
+    hide func RenderOutputRows(output: String) {
+        UseOutputRows();
+        outputListBox.Clear();
+        outputPartialLine = "";
+        outputPartialItem = null;
+        AddBuildOutputLines(output);
+    }
+
+    hide func UseOutputPane() {
+        outputPaneMode = true;
+        outputListBox.SetVisible(0);
+        if activeSurfaceKind == 2 {
+            outputPane.SetVisible(1);
+        }
+    }
+
+    expose func UseOutputRows() {
+        outputPaneMode = false;
+        outputPane.SetVisible(0);
+        if activeSurfaceKind == 2 {
+            outputListBox.SetVisible(1);
+        }
+    }
+
+    expose func BeginOutputRows() {
+        UseOutputRows();
+        outputListBox.Clear();
+        outputPartialLine = "";
+        outputPartialItem = null;
+    }
+
+    hide func HasOutputContent() -> Boolean {
+        if lastBuildOutput != "" { return true; }
+        if outputPaneMode and outputPane.LineCount > 0 { return true; }
+        if outputListBox.Count > 0 { return true; }
+        return false;
     }
 
     expose func SetDebugOutput(output: String) {
@@ -728,10 +862,16 @@ class AppShell {
 
     expose func SetOutputFilter(filter: String) {
         outputFilterText = Str.ToLower(Str.Trim(filter));
-        outputListBox.Clear();
-        outputPartialLine = "";
-        outputPartialItem = null;
-        AddBuildOutputLines(lastBuildOutput);
+        if UsesRawOutputPane() {
+            RenderOutputPane(lastBuildOutput);
+            if lastBuildOutput != "" {
+                ShowOutputPanel();
+            } else {
+                HideOutputPanel();
+            }
+            return;
+        }
+        RenderOutputRows(lastBuildOutput);
         if outputListBox.Count > 0 or outputFilterText != "" {
             ShowOutputPanel();
         } else {
@@ -741,10 +881,14 @@ class AppShell {
 
     expose func ToggleOutputWrap() -> Boolean {
         outputWrapLines = outputWrapLines == false;
-        outputListBox.Clear();
-        outputPartialLine = "";
-        outputPartialItem = null;
-        AddBuildOutputLines(lastBuildOutput);
+        if UsesRawOutputPane() {
+            RenderOutputPane(lastBuildOutput);
+            if lastBuildOutput != "" {
+                ShowOutputPanel();
+            }
+            return outputWrapLines;
+        }
+        RenderOutputRows(lastBuildOutput);
         if outputListBox.Count > 0 {
             ShowOutputPanel();
         }
@@ -753,18 +897,28 @@ class AppShell {
 
     expose func SetOutputAutoScroll(enabled: Boolean) {
         outputAutoScroll = enabled;
+        if enabled {
+            outputPane.SetAutoScroll(1);
+        } else {
+            outputPane.SetAutoScroll(0);
+        }
     }
 
     expose func ToggleOutputAutoScroll() -> Boolean {
         outputAutoScroll = outputAutoScroll == false;
+        SetOutputAutoScroll(outputAutoScroll);
         return outputAutoScroll;
     }
 
     expose func ClearOutputPanel() {
+        outputPane.Clear();
+        outputPane.SetVisible(0);
         outputListBox.Clear();
+        outputListBox.SetVisible(0);
         lastBuildOutput = "";
         outputPartialLine = "";
         outputPartialItem = null;
+        outputPaneMode = true;
         HideOutputPanel();
     }
 
@@ -778,6 +932,9 @@ class AppShell {
 
     expose func CopySelectedToolRow() -> Boolean {
         var selectedText = outputListBox.GetSelectedText();
+        if activeSurfaceKind == 2 and outputPaneMode {
+            selectedText = outputPane.GetSelection();
+        }
         if activeSurfaceKind == 1 { selectedText = diagListBox.GetSelectedText(); }
         if activeSurfaceKind == 3 { selectedText = searchListBox.GetSelectedText(); }
         if activeSurfaceKind == 4 { selectedText = referencesListBox.GetSelectedText(); }
@@ -794,8 +951,8 @@ class AppShell {
         if outputWrapLines == false or Str.Length(line) <= 160 {
             var item = outputListBox.AddItem(line);
             ApplyOutputLineColor(item, line);
-            if outputAutoScroll and outputListBox.Count > 0 {
-                outputListBox.SelectIndex(outputListBox.Count - 1);
+            if outputAutoScroll {
+                outputListBox.ScrollToBottom();
             }
             return item;
         }
@@ -807,8 +964,8 @@ class AppShell {
             var item = outputListBox.AddItem(chunk);
             ApplyOutputLineColor(item, line);
             if first == null { first = item; }
-            if outputAutoScroll and outputListBox.Count > 0 {
-                outputListBox.SelectIndex(outputListBox.Count - 1);
+            if outputAutoScroll {
+                outputListBox.ScrollToBottom();
             }
             start = start + 160;
         }
@@ -822,7 +979,12 @@ class AppShell {
 
     expose func BeginProblems() {
         diagListBox.Clear();
-        var header = diagListBox.AddItem("Severity | Source | File | Line | Code | Message | Action");
+        var header = diagListBox.AddItem(PadToolColumn("TYPE", TOOL_KIND_COL)
+                                         + "  " + PadToolColumn("SOURCE", TOOL_SOURCE_COL)
+                                         + "  " + PadToolColumn("LOCATION", TOOL_LOCATION_COL)
+                                         + "  " + PadToolColumn("CODE", TOOL_CODE_COL)
+                                         + "  MESSAGE"
+                                         + "  " + PadToolColumn("ACTION", TOOL_ACTION_COL));
         GUI.ListBox.ItemSetTextColor(header, TOOL_COLOR_MUTED);
     }
 
@@ -840,11 +1002,72 @@ class AppShell {
         if displayAction == "" { displayAction = "No quick fix"; }
         var displaySource = source;
         if displaySource == "" { displaySource = "-"; }
-        var item = diagListBox.AddItem(severity + " | " + displaySource + " | " + filePath + " | "
-                                       + line + ":" + column + " | " + displayCode
-                                       + " | " + message + " | " + displayAction);
+        var location = filePath + ":" + line + ":" + column;
+        var item = AddToolLocationRow(diagListBox, ProblemSeverityLabel(severity),
+                                      displaySource, location, displayCode,
+                                      message, displayAction);
         ApplyProblemSeverityColor(item, severity);
         return item;
+    }
+
+    expose func AddToolGroupHeader(listBox: GUI.ListBox,
+                                   title: String,
+                                   detail: String) -> Any {
+        if listBox == null { return null; }
+        var text = TrimToolText(title, 36);
+        if detail != "" and detail != title {
+            text = text + "  " + TrimToolText(detail, 96);
+        }
+        var item = listBox.AddItem(text);
+        GUI.ListBox.ItemSetTextColor(item, TOOL_COLOR_MUTED);
+        return item;
+    }
+
+    expose func AddToolLocationRow(listBox: GUI.ListBox,
+                                   kind: String,
+                                   source: String,
+                                   location: String,
+                                   code: String,
+                                   preview: String,
+                                   action: String) -> Any {
+        if listBox == null { return null; }
+        var displayKind = kind;
+        if displayKind == "" { displayKind = "-"; }
+        var displaySource = source;
+        if displaySource == "" { displaySource = "-"; }
+        var displayCode = code;
+        if displayCode == "" { displayCode = "-"; }
+        var text = PadToolColumn(displayKind, TOOL_KIND_COL)
+                   + "  " + PadToolColumn(displaySource, TOOL_SOURCE_COL)
+                   + "  " + PadToolColumn(location, TOOL_LOCATION_COL)
+                   + "  " + PadToolColumn(displayCode, TOOL_CODE_COL)
+                   + "  " + TrimToolText(preview, 96);
+        if action != "" {
+            text = text + "  " + PadToolColumn(action, TOOL_ACTION_COL);
+        }
+        return listBox.AddItem(text);
+    }
+
+    expose func ProblemSeverityLabel(severity: String) -> String {
+        var sev = Str.ToLower(severity);
+        if sev == "error" { return "ERROR"; }
+        if sev == "warning" or sev == "warn" { return "WARN"; }
+        return "INFO";
+    }
+
+    expose func PadToolColumn(text: String, width: Integer) -> String {
+        var out = TrimToolText(text, width);
+        while Str.Length(out) < width {
+            out = out + " ";
+        }
+        return out;
+    }
+
+    expose func TrimToolText(text: String, width: Integer) -> String {
+        if width <= 0 { return ""; }
+        if Str.Length(text) <= width { return text; }
+        if width == 1 { return "~"; }
+        return Str.MidLen(text, 1, width - 1) + "~";
     }
 
     expose func ApplyProblemSeverityColor(item: Any, severity: String) {
@@ -927,6 +1150,7 @@ class AppShell {
         toolTabBar.SetActive(toolProblemsTab);
         activeSurfaceKind = 1;
         diagListBox.SetVisible(1);
+        outputPane.SetVisible(0);
         outputListBox.SetVisible(0);
         searchListBox.SetVisible(0);
         referencesListBox.SetVisible(0);
@@ -935,7 +1159,7 @@ class AppShell {
 
     expose func HideProblemsPanel() {
         diagListBox.SetVisible(0);
-        if outputListBox.Count > 0 {
+        if HasOutputContent() {
             ShowOutputPanel();
         } else if searchListBox.Count > 0 {
             ShowSearchPanel();
@@ -952,7 +1176,13 @@ class AppShell {
         toolTabBar.SetVisible(1);
         toolTabBar.SetActive(toolOutputTab);
         activeSurfaceKind = 2;
-        outputListBox.SetVisible(1);
+        if outputPaneMode {
+            outputPane.SetVisible(1);
+            outputListBox.SetVisible(0);
+        } else {
+            outputPane.SetVisible(0);
+            outputListBox.SetVisible(1);
+        }
         diagListBox.SetVisible(0);
         searchListBox.SetVisible(0);
         referencesListBox.SetVisible(0);
@@ -960,6 +1190,7 @@ class AppShell {
     }
 
     expose func HideOutputPanel() {
+        outputPane.SetVisible(0);
         outputListBox.SetVisible(0);
         if diagListBox.Count > 0 {
             ShowProblemsPanel();
@@ -980,6 +1211,7 @@ class AppShell {
         activeSurfaceKind = 3;
         searchListBox.SetVisible(1);
         diagListBox.SetVisible(0);
+        outputPane.SetVisible(0);
         outputListBox.SetVisible(0);
         referencesListBox.SetVisible(0);
         debugListBox.SetVisible(0);
@@ -987,7 +1219,7 @@ class AppShell {
 
     expose func HideSearchPanel() {
         searchListBox.SetVisible(0);
-        if outputListBox.Count > 0 {
+        if HasOutputContent() {
             ShowOutputPanel();
         } else if diagListBox.Count > 0 {
             ShowProblemsPanel();
@@ -1006,6 +1238,7 @@ class AppShell {
         activeSurfaceKind = 4;
         referencesListBox.SetVisible(1);
         diagListBox.SetVisible(0);
+        outputPane.SetVisible(0);
         outputListBox.SetVisible(0);
         searchListBox.SetVisible(0);
         debugListBox.SetVisible(0);
@@ -1013,7 +1246,7 @@ class AppShell {
 
     expose func HideReferencesPanel() {
         referencesListBox.SetVisible(0);
-        if outputListBox.Count > 0 {
+        if HasOutputContent() {
             ShowOutputPanel();
         } else if diagListBox.Count > 0 {
             ShowProblemsPanel();
@@ -1032,6 +1265,7 @@ class AppShell {
         activeSurfaceKind = 5;
         debugListBox.SetVisible(1);
         diagListBox.SetVisible(0);
+        outputPane.SetVisible(0);
         outputListBox.SetVisible(0);
         searchListBox.SetVisible(0);
         referencesListBox.SetVisible(0);
@@ -1039,7 +1273,7 @@ class AppShell {
 
     expose func HideDebugPanel() {
         debugListBox.SetVisible(0);
-        if outputListBox.Count > 0 {
+        if HasOutputContent() {
             ShowOutputPanel();
         } else if diagListBox.Count > 0 {
             ShowProblemsPanel();
@@ -1059,7 +1293,7 @@ class AppShell {
         if idx == 0 {
             if diagListBox.Count > 0 { ShowProblemsPanel(); }
         } else if idx == 1 {
-            if outputListBox.Count > 0 { ShowOutputPanel(); }
+            if HasOutputContent() { ShowOutputPanel(); }
         } else if idx == 2 {
             ShowSearchPanel();
         } else if idx == 3 {
@@ -1068,7 +1302,7 @@ class AppShell {
             ShowDebugPanel();
         } else {
             toolTabBar.SetActive(toolOutputTab);
-            if outputListBox.Count > 0 {
+            if HasOutputContent() {
                 ShowOutputPanel();
             } else if diagListBox.Count > 0 {
                 ShowProblemsPanel();

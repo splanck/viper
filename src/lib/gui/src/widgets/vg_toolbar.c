@@ -2033,6 +2033,8 @@ vg_toolbar_item_t *vg_toolbar_get_item(vg_toolbar_t *tb, const char *id) {
 void vg_toolbar_item_set_enabled(vg_toolbar_item_t *item, bool enabled) {
     if (!vg_toolbar_item_is_live(item))
         return;
+    if (item->enabled == enabled)
+        return;
     item->enabled = enabled;
     if (item->owner) {
         item->owner->overflow_popup_dirty = true;
@@ -2047,6 +2049,8 @@ void vg_toolbar_item_set_enabled(vg_toolbar_item_t *item, bool enabled) {
 void vg_toolbar_item_set_checked(vg_toolbar_item_t *item, bool checked) {
     if (!vg_toolbar_item_is_live(item))
         return;
+    if (item->checked == checked)
+        return;
     item->checked = checked;
     if (item->owner) {
         item->owner->overflow_popup_dirty = true;
@@ -2060,6 +2064,9 @@ void vg_toolbar_item_set_checked(vg_toolbar_item_t *item, bool checked) {
 /// @param tooltip Tooltip string, duplicated internally; may be NULL to clear.
 void vg_toolbar_item_set_tooltip(vg_toolbar_item_t *item, const char *tooltip) {
     if (!vg_toolbar_item_is_live(item))
+        return;
+    if ((!item->tooltip && (!tooltip || tooltip[0] == '\0')) ||
+        (item->tooltip && tooltip && strcmp(item->tooltip, tooltip) == 0))
         return;
     char *copy = tooltip ? strdup(tooltip) : NULL;
     if (tooltip && !copy)
@@ -2078,6 +2085,9 @@ void vg_toolbar_item_set_tooltip(vg_toolbar_item_t *item, const char *tooltip) {
 /// @param text New label string, duplicated internally; may be NULL to clear.
 void vg_toolbar_item_set_text(vg_toolbar_item_t *item, const char *text) {
     if (!vg_toolbar_item_is_live(item))
+        return;
+    if ((!item->label && (!text || text[0] == '\0')) ||
+        (item->label && text && strcmp(item->label, text) == 0))
         return;
     char *copy = text ? strdup(text) : NULL;
     if (text && !copy)

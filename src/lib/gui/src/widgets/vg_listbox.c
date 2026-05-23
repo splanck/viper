@@ -33,6 +33,7 @@
 
 #define VG_LISTBOX_ITEM_MAGIC UINT64_C(0x56474C424954454D)
 #define VG_LISTBOX_ITEM_RETIRED_MAGIC UINT64_C(0x56474C4244524F50)
+#define VG_LISTBOX_MEASURE_TEXT_SCAN_LIMIT 512u
 
 //=============================================================================
 // Forward declarations
@@ -561,7 +562,7 @@ static void listbox_measure(vg_widget_t *widget, float avail_w, float avail_h) {
                                     : (lb->item_count > 0 ? (size_t)lb->item_count : 0u);
     size_t visible = count > 0 ? (count < 5u ? count : 5u) : 5u;
     float measured_width = 200.0f;
-    if (lb->font && !lb->virtual_mode) {
+    if (lb->font && !lb->virtual_mode && count <= VG_LISTBOX_MEASURE_TEXT_SCAN_LIMIT) {
         vg_text_metrics_t metrics = {0};
         for (vg_listbox_item_t *item = lb->first_item; item; item = item->next) {
             if (!item->text)
@@ -572,6 +573,8 @@ static void listbox_measure(vg_widget_t *widget, float avail_w, float avail_h) {
             if (candidate > measured_width)
                 measured_width = candidate;
         }
+    } else if (count > VG_LISTBOX_MEASURE_TEXT_SCAN_LIMIT && avail_w > 0.0f) {
+        measured_width = avail_w;
     }
     if (avail_w > 0.0f && measured_width > avail_w)
         measured_width = avail_w;
@@ -1402,4 +1405,35 @@ size_t vg_listbox_get_selected_index(vg_listbox_t *listbox) {
     }
 
     return listbox->selected_index;
+}
+
+/// @brief Scroll to the first row without changing selection.
+void vg_listbox_scroll_to_top(vg_listbox_t *listbox) {
+    if (!listbox)
+        return;
+    if (listbox->scroll_y == 0.0f)
+        return;
+    listbox->scroll_y = 0.0f;
+    listbox->base.needs_paint = true;
+}
+
+/// @brief Scroll to the last row without changing selection.
+void vg_listbox_scroll_to_bottom(vg_listbox_t *listbox) {
+    if (!listbox)
+        return;
+    float viewport_height = listbox->base.height;
+    if (viewport_height < 0.0f)
+        viewport_height = 0.0f;
+    float old_scroll = listbox->scroll_y;
+    listbox_clamp_scroll(listbox, viewport_height);
+    float max_scroll = listbox->scroll_y;
+    size_t count = listbox_virtual_item_count(listbox);
+    if (count > 0 && listbox->item_height > 0.0f) {
+        max_scroll = (float)count * listbox->item_height - viewport_height;
+        if (max_scroll < 0.0f)
+            max_scroll = 0.0f;
+        listbox->scroll_y = max_scroll;
+    }
+    if (listbox->scroll_y != old_scroll)
+        listbox->base.needs_paint = true;
 }

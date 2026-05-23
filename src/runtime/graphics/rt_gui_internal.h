@@ -325,6 +325,7 @@ static inline int rt_gui_widget_type_accepts_runtime_children(vg_widget_type_t t
         case VG_WIDGET_TOOLBAR:
         case VG_WIDGET_STATUSBAR:
         case VG_WIDGET_CODEEDITOR:
+        case VG_WIDGET_OUTPUTPANE:
         case VG_WIDGET_IMAGE:
         case VG_WIDGET_SPINNER:
         case VG_WIDGET_COLORSWATCH:

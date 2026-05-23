@@ -387,7 +387,11 @@ void vg_label_set_text(vg_label_t *label, const char *text) {
     if (!label)
         return;
 
-    char *copy = text ? strdup(text) : strdup("");
+    const char *new_text = text ? text : "";
+    if (label->text && strcmp(label->text, new_text) == 0)
+        return;
+
+    char *copy = strdup(new_text);
     if (!copy)
         return;
 
@@ -415,8 +419,11 @@ void vg_label_set_font(vg_label_t *label, vg_font_t *font, float size) {
     if (!label)
         return;
 
+    float font_size = size > 0 ? size : 13.0f;
+    if (label->font == font && label->font_size == font_size)
+        return;
     label->font = font;
-    label->font_size = size > 0 ? size : 13.0f;
+    label->font_size = font_size;
     label_free_wrap_cache(label); /* font metrics changed — cache stale */
     label->base.needs_layout = true;
     label->base.needs_paint = true;
@@ -428,6 +435,8 @@ void vg_label_set_font(vg_label_t *label, vg_font_t *font, float size) {
 /// @param color Text colour in 0xRRGGBB format.
 void vg_label_set_color(vg_label_t *label, uint32_t color) {
     if (!label)
+        return;
+    if (label->text_color == color)
         return;
 
     label->text_color = color;
@@ -441,6 +450,8 @@ void vg_label_set_color(vg_label_t *label, uint32_t color) {
 /// @param v_align Vertical alignment (VG_ALIGN_TOP, MIDDLE, or BOTTOM).
 void vg_label_set_alignment(vg_label_t *label, vg_h_align_t h_align, vg_v_align_t v_align) {
     if (!label)
+        return;
+    if (label->h_align == h_align && label->v_align == v_align)
         return;
 
     label->h_align = h_align;

@@ -838,13 +838,15 @@ func CollectWorkspaceSymbols(shell: app_shell.AppShell,
             if WorkspaceSymbolMatches(name, kind, filePath, needle) == false { continue; }
 
             if addedHeader == false {
-                shell.searchListBox.AddItem(filePath);
+                shell.AddToolGroupHeader(shell.searchListBox, Path.Name(filePath), filePath);
                 addedHeader = true;
             }
 
             var detail = "";
             if typeText != "" { detail = " : " + typeText; }
-            var item = shell.searchListBox.AddItem("  " + kind + "  " + name + detail + "  line " + symbolLine);
+            var item = shell.AddToolLocationRow(shell.searchListBox, kind, "symbol",
+                                                "line " + symbolLine, typeText,
+                                                name + detail, "");
             var locId = locStore.Add(filePath, symbolLine, 1,
                                      symbolLine, 1 + Str.Length(name),
                                      locations.KIND_SYMBOL, name);
@@ -969,11 +971,13 @@ func searchOneFile(shell: app_shell.AppShell,
         var match = FindLineMatch(line, query, caseSensitive, wholeWord, regexMode);
         if match.matched {
             if addedHeader == false {
-                shell.searchListBox.AddItem(filePath);
+                shell.AddToolGroupHeader(shell.searchListBox, Path.Name(filePath), filePath);
                 addedHeader = true;
             }
-            var resultText = "  " + lineNum + ": " + Str.Trim(line);
-            var item = shell.searchListBox.AddItem(resultText);
+            var resultText = Str.Trim(line);
+            var item = shell.AddToolLocationRow(shell.searchListBox, "match", "text",
+                                                "" + lineNum + ":" + match.startCol,
+                                                "", resultText, "");
             var locId = locStore.Add(filePath, lineNum, match.startCol,
                                      lineNum, match.startCol + match.length,
                                      locations.KIND_SEARCH, Str.Trim(line));

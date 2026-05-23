@@ -25,6 +25,20 @@ func main() {
     var shell = new app_shell.AppShell();
     shell.Build("ViperIDE Console Search Probe", 800, 520);
 
+    if shell.miOpenFolder.GetShortcut() != "Ctrl+Alt+O"
+       or shell.miQuickOpen.GetShortcut() != "Ctrl+P"
+       or shell.miSaveAs.GetShortcut() != "Ctrl+Shift+S"
+       or shell.miSaveAll.GetShortcut() != "Ctrl+Alt+Shift+S"
+       or shell.miSearchProject.GetShortcut() != "Ctrl+Shift+F"
+       or shell.miGoToDefinition.GetShortcut() != "F12"
+       or shell.miWorkspaceSymbols.GetShortcut() != "Ctrl+T"
+       or shell.miSymbolOutline.GetShortcut() != "Ctrl+Shift+O"
+       or shell.ctxRename.GetShortcut() != "Ctrl+Alt+R"
+       or shell.ctxRefresh.GetShortcut() != "Ctrl+Alt+Shift+R" {
+        fail(shell, "menu shortcut discoverability");
+        return;
+    }
+
     if shell.lastProjectStatus != "No project"
        or shell.lastLanguageStatus != "Lang: text"
        or shell.jobItem.GetText() != "Job: idle" {
@@ -47,44 +61,50 @@ func main() {
     }
 
     shell.SetBuildOutput("line one\n");
-    if shell.outputListBox.Count != 1 {
-        fail(shell, "initial output rows");
+    if shell.outputPane.LineCount <= 0 or shell.outputListBox.Count != 0 {
+        fail(shell, "initial raw output pane");
         return;
     }
 
     shell.SetBuildOutput("line one\nline two\n");
-    if shell.outputListBox.Count != 2 {
-        fail(shell, "append output rows");
+    if shell.outputPane.LineCount < 2 or shell.outputListBox.Count != 0 {
+        fail(shell, "append raw output pane");
         return;
     }
 
     shell.SetBuildOutput("line one\nline two\n");
-    if shell.outputListBox.Count != 2 {
-        fail(shell, "stable output rows");
+    if shell.outputPane.LineCount < 2 or shell.outputListBox.Count != 0 {
+        fail(shell, "stable raw output pane");
         return;
     }
 
     shell.SetBuildOutput("partial");
     shell.SetBuildOutput("partial more");
-    if shell.outputListBox.Count != 1 {
-        fail(shell, "partial output rebuild");
+    if shell.outputPane.LineCount <= 0 or shell.outputListBox.Count != 0 {
+        fail(shell, "partial raw output rebuild");
         return;
     }
 
     shell.SetBuildOutput("");
     shell.AppendBuildOutput("one");
-    if shell.outputListBox.Count != 1 {
-        fail(shell, "append partial row");
+    if shell.outputPane.LineCount <= 0 or shell.outputListBox.Count != 0 {
+        fail(shell, "append partial raw output");
         return;
     }
     shell.AppendBuildOutput(" two\nthree\n");
-    if shell.outputListBox.Count != 2 {
-        fail(shell, "append completed rows");
+    if shell.outputPane.LineCount < 2 or shell.outputListBox.Count != 0 {
+        fail(shell, "append completed raw output");
+        return;
+    }
+    shell.outputPane.SelectAll();
+    if shell.CopySelectedToolRow() == false or Str.IndexOf(GUI.Clipboard.GetText(), "one two") == 0 {
+        fail(shell, "copy raw output selection");
         return;
     }
 
     shell.SetBuildOutput("");
-    if shell.outputListBox.Count != 0 or shell.outputListBox.IsVisible() != 0 {
+    if shell.outputPane.LineCount != 0 or shell.outputListBox.Count != 0
+       or shell.outputPane.IsVisible() != 0 or shell.outputListBox.IsVisible() != 0 {
         fail(shell, "clear output");
         return;
     }
@@ -96,7 +116,7 @@ func main() {
         return;
     }
     shell.SetOutputFilter("");
-    if shell.outputListBox.Count != 3 {
+    if shell.outputPane.LineCount < 3 or shell.outputListBox.Count != 0 {
         fail(shell, "output filter clear");
         return;
     }
@@ -135,8 +155,8 @@ func main() {
     }
     shell.SetOutputAutoScroll(true);
     shell.SetBuildOutput("scroll one\nscroll two\n");
-    if shell.outputListBox.SelectedIndex != 1 {
-        fail(shell, "output auto-scroll selects latest row");
+    if shell.outputListBox.SelectedIndex != -1 {
+        fail(shell, "output auto-scroll does not force selection");
         return;
     }
     shell.SetOutputAutoScroll(false);
@@ -147,7 +167,7 @@ func main() {
         return;
     }
     shell.ClearOutputPanel();
-    if shell.outputListBox.Count != 0 {
+    if shell.outputPane.LineCount != 0 or shell.outputListBox.Count != 0 {
         fail(shell, "clear output helper");
         return;
     }
@@ -182,7 +202,10 @@ func main() {
         return;
     }
     shell.diagListBox.SelectIndex(1);
-    if Str.IndexOf(GUI.ListBox.ItemGetText(shell.diagListBox.Selected), "No quick fix") == 0 {
+    var problemText = GUI.ListBox.ItemGetText(shell.diagListBox.Selected);
+    if Str.IndexOf(problemText, "ERROR") == 0
+       or Str.IndexOf(problemText, "V-ZIA") == 0
+       or Str.IndexOf(problemText, "No quick fix") == 0 {
         fail(shell, "problems code action placeholder");
         return;
     }
@@ -254,10 +277,25 @@ func main() {
     shell.app.SetWindowSize(620, 460);
     overlays.OpenSettings(shell, prefs);
     overlays.Pump(shell);
+    if overlays.settingsPanel.IsVisible() == 0
+       or overlays.settingsDockWidth < 300
+       or overlays.settingsDockWidth > 360 {
+        fail(shell, "preferences compact side panel");
+        return;
+    }
     shell.app.SetWindowSize(1000, 720);
     overlays.OpenSettings(shell, prefs);
     overlays.Pump(shell);
+    if overlays.settingsPanel.IsVisible() == 0
+       or overlays.settingsDockWidth != 420 {
+        fail(shell, "preferences wide side panel");
+        return;
+    }
     overlays.CloseSettings();
+    if overlays.settingsPanel.IsVisible() != 0 {
+        fail(shell, "preferences side panel close");
+        return;
+    }
 
     if search_commands.LineMatches("Alpha beta", "alpha", false, false) == false {
         fail(shell, "case-insensitive search");
@@ -341,6 +379,14 @@ func main() {
         fail(shell, "search panel rows");
         return;
     }
+    shell.searchListBox.SelectIndex(1);
+    var searchRowText = GUI.ListBox.ItemGetText(shell.searchListBox.Selected);
+    if Str.IndexOf(searchRowText, "match") == 0
+       or Str.IndexOf(searchRowText, "text") == 0
+       or Str.IndexOf(searchRowText, "needle") == 0 {
+        fail(shell, "search structured row");
+        return;
+    }
     if search_commands.SearchPathAllowed(root, Path.Join(root, "file11.zia"), "file1*.zia", "file10.zia") == false
        or search_commands.SearchPathAllowed(root, Path.Join(root, "file10.zia"), "file1*.zia", "file10.zia") {
         fail(shell, "search include exclude path filters");
@@ -386,6 +432,12 @@ func main() {
     shell.searchListBox.SelectIndex(1);
     if GUI.ListBox.ItemGetData(shell.searchListBox.Selected) == "" {
         fail(shell, "workspace symbols location data");
+        return;
+    }
+    var symbolRowText = GUI.ListBox.ItemGetText(shell.searchListBox.Selected);
+    if Str.IndexOf(symbolRowText, "symbol") == 0
+       or Str.IndexOf(symbolRowText, "betaSymbol") == 0 {
+        fail(shell, "workspace symbols structured row");
         return;
     }
     var cachedSearcher = new search_commands.SearchController();

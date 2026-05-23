@@ -799,6 +799,14 @@ int64_t rt_listbox_get_selected_index(void *listbox);
 /// @param index Item index (0-based).
 void rt_listbox_select_index(void *listbox, int64_t index);
 
+/// @brief Scroll to the first row without changing selection.
+/// @param listbox ListBox widget handle.
+void rt_listbox_scroll_to_top(void *listbox);
+
+/// @brief Scroll to the last row without changing selection.
+/// @param listbox ListBox widget handle.
+void rt_listbox_scroll_to_bottom(void *listbox);
+
 /// @brief Enable or disable multi-row selection for a list box.
 /// @param listbox ListBox widget handle.
 /// @param enabled Non-zero to allow Ctrl/Shift range selection.
@@ -846,6 +854,55 @@ rt_string rt_listbox_item_get_data(void *item);
 /// @param font Font handle.
 /// @param size Font size in pixels.
 void rt_listbox_set_font(void *listbox, void *font, double size);
+
+//=========================================================================
+// OutputPane Widget
+//=========================================================================
+
+/// @brief Create a new append-only styled output pane.
+/// @param parent Parent widget handle (can be NULL).
+/// @return OutputPane widget handle.
+void *rt_outputpane_new(void *parent);
+
+/// @brief Append text, parsing ANSI SGR escape sequences.
+void rt_outputpane_append(void *pane, rt_string text);
+
+/// @brief Append text as a complete line.
+void rt_outputpane_append_line(void *pane, rt_string text);
+
+/// @brief Append a single explicitly styled segment.
+void rt_outputpane_append_styled(void *pane,
+                                 rt_string text,
+                                 int64_t fg,
+                                 int64_t bg,
+                                 int64_t bold);
+
+/// @brief Clear all retained output.
+void rt_outputpane_clear(void *pane);
+
+/// @brief Scroll to the first output line and lock auto-scroll.
+void rt_outputpane_scroll_to_top(void *pane);
+
+/// @brief Scroll to the latest output line and unlock auto-scroll.
+void rt_outputpane_scroll_to_bottom(void *pane);
+
+/// @brief Enable or disable auto-scroll on append.
+void rt_outputpane_set_auto_scroll(void *pane, int64_t enabled);
+
+/// @brief Return selected output text.
+rt_string rt_outputpane_get_selection(void *pane);
+
+/// @brief Select all retained output text.
+void rt_outputpane_select_all(void *pane);
+
+/// @brief Set the retained line cap.
+void rt_outputpane_set_max_lines(void *pane, int64_t max_lines);
+
+/// @brief Return the retained output line count.
+int64_t rt_outputpane_get_line_count(void *pane);
+
+/// @brief Set output pane font.
+void rt_outputpane_set_font(void *pane, void *font, double size);
 
 //=========================================================================
 // RadioButton Widget
@@ -1819,6 +1876,27 @@ void rt_codeeditor_add_highlight(void *editor,
 /// @brief Refresh syntax highlights.
 /// @param editor CodeEditor handle.
 void rt_codeeditor_refresh_highlights(void *editor);
+
+/// @brief Add display-only inlay hint text anchored to a source position.
+/// @param editor CodeEditor handle.
+/// @param line Zero-based source line.
+/// @param col Zero-based source column.
+/// @param text Hint text.
+/// @param color ARGB text color.
+void rt_codeeditor_add_inlay_hint(void *editor,
+                                  int64_t line,
+                                  int64_t col,
+                                  rt_string text,
+                                  int64_t color);
+
+/// @brief Clear all inlay hints.
+/// @param editor CodeEditor handle.
+void rt_codeeditor_clear_inlay_hints(void *editor);
+
+/// @brief Return active inlay hint count.
+/// @param editor CodeEditor handle.
+/// @return Number of active inlay hints.
+int64_t rt_codeeditor_get_inlay_hint_count(void *editor);
 
 //=========================================================================
 // CodeEditor Enhancements - Gutter & Line Numbers (Phase 4)

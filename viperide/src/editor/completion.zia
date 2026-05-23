@@ -715,7 +715,9 @@ class CompletionController {
     /// @brief Keep keyboard focus on the editor while completions are open.
     expose func EnsureFocus() {
         if isVisible and editor != null {
-            editor.Focus();
+            if editor.IsFocused() == 0 {
+                editor.Focus();
+            }
         }
     }
 

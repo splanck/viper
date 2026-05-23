@@ -513,6 +513,8 @@ void vg_splitpane_set_position(vg_splitpane_t *split, float position) {
         position = 0;
     if (position > 1)
         position = 1;
+    if (split->split_position == position)
+        return;
 
     split->split_position = position;
     split->base.needs_layout = true;
@@ -539,8 +541,12 @@ void vg_splitpane_set_min_sizes(vg_splitpane_t *split, float min_first, float mi
     if (!split)
         return;
 
-    split->min_first_size = min_first > 0 ? min_first : 0;
-    split->min_second_size = min_second > 0 ? min_second : 0;
+    min_first = min_first > 0 ? min_first : 0;
+    min_second = min_second > 0 ? min_second : 0;
+    if (split->min_first_size == min_first && split->min_second_size == min_second)
+        return;
+    split->min_first_size = min_first;
+    split->min_second_size = min_second;
     split->base.needs_layout = true;
 }
 

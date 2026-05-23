@@ -417,24 +417,21 @@ void rt_shortcuts_clear(void) {
 int64_t rt_shortcuts_was_triggered(rt_string id) {
     RT_ASSERT_MAIN_THREAD();
     rt_gui_app_t *app = rt_shortcuts_app();
-    if (!app)
+    if (!app || !app->triggered_shortcut_id || !id)
         return 0;
     if (rt_string_contains_nul(id))
         return 0;
 
-    char *cid = rt_string_to_cstr(id);
-    if (!cid)
+    int64_t id_len64 = rt_str_len(id);
+    if (id_len64 < 0)
+        return 0;
+    size_t id_len = (size_t)id_len64;
+    size_t triggered_len = strlen(app->triggered_shortcut_id);
+    if (id_len != triggered_len)
         return 0;
 
-    for (int i = 0; i < app->shortcut_count; i++) {
-        if (app->shortcuts[i].id && strcmp(app->shortcuts[i].id, cid) == 0) {
-            free(cid);
-            return app->shortcuts[i].triggered ? 1 : 0;
-        }
-    }
-
-    free(cid);
-    return 0;
+    const char *id_bytes = id_len > 0 ? rt_string_cstr(id) : "";
+    return id_bytes && memcmp(id_bytes, app->triggered_shortcut_id, id_len) == 0 ? 1 : 0;
 }
 
 /// @brief Reset all per-shortcut triggered flags and the cached triggered-id string.
@@ -445,6 +442,8 @@ int64_t rt_shortcuts_was_triggered(rt_string id) {
 void rt_shortcuts_clear_triggered(rt_gui_app_t *app) {
     RT_ASSERT_MAIN_THREAD();
     if (!app)
+        return;
+    if (!app->triggered_shortcut_id)
         return;
     for (int i = 0; i < app->shortcut_count; i++) {
         app->shortcuts[i].triggered = 0;

@@ -481,6 +481,10 @@ void rt_menuitem_set_text(void *item, rt_string text) {
     char *new_text = text ? rt_string_to_gui_cstr(text) : NULL;
     if (text && !new_text)
         return;
+    if ((!mi->text && !new_text) || (mi->text && new_text && strcmp(mi->text, new_text) == 0)) {
+        free(new_text);
+        return;
+    }
     free(mi->text);
     mi->text = new_text;
     rt_gui_menu_sync_menubar(rt_gui_menu_owner_from_item(mi));
@@ -509,6 +513,11 @@ void rt_menuitem_set_shortcut(void *item, rt_string shortcut) {
     char *new_shortcut = shortcut ? rt_string_to_gui_cstr(shortcut) : NULL;
     if (shortcut && !new_shortcut)
         return;
+    if ((!mi->shortcut && !new_shortcut) ||
+        (mi->shortcut && new_shortcut && strcmp(mi->shortcut, new_shortcut) == 0)) {
+        free(new_shortcut);
+        return;
+    }
     free(mi->shortcut);
     mi->shortcut = new_shortcut;
     rt_gui_menu_sync_menubar(rt_gui_menu_owner_from_item(mi));
@@ -583,11 +592,16 @@ void rt_menuitem_set_checked(void *item, int64_t checked) {
     vg_menu_item_t *mi = rt_menuitem_checked(item);
     if (!mi)
         return;
+    bool new_checked = checked != 0;
     if (mi->owner_contextmenu) {
-        vg_contextmenu_item_set_checked(mi, checked != 0);
+        if (mi->checkable && mi->checked == new_checked)
+            return;
+        vg_contextmenu_item_set_checked(mi, new_checked);
         return;
     }
-    vg_menu_item_set_checked(mi, checked != 0);
+    if (mi->checkable && mi->checked == new_checked)
+        return;
+    vg_menu_item_set_checked(mi, new_checked);
     rt_gui_menu_sync_menubar(rt_gui_menu_owner_from_item(mi));
 }
 
@@ -606,11 +620,14 @@ void rt_menuitem_set_enabled(void *item, int64_t enabled) {
     vg_menu_item_t *mi = rt_menuitem_checked(item);
     if (!mi)
         return;
+    bool new_enabled = enabled != 0;
+    if (mi->enabled == new_enabled)
+        return;
     if (mi->owner_contextmenu) {
-        vg_contextmenu_item_set_enabled(mi, enabled != 0);
+        vg_contextmenu_item_set_enabled(mi, new_enabled);
         return;
     }
-    vg_menu_item_set_enabled(mi, enabled != 0);
+    vg_menu_item_set_enabled(mi, new_enabled);
     rt_gui_menu_sync_menubar(rt_gui_menu_owner_from_item(mi));
 }
 

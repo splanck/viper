@@ -245,7 +245,7 @@ func handleToggleTheme(appSettings: settings.SettingsManager) {
 func handleKeybindings(shell: app_shell.AppShell,
                        registry: command_registry.CommandRegistry) {
     if shell == null or registry == null { return; }
-    shell.outputListBox.Clear();
+    shell.BeginOutputRows();
     var conflictCount = registry.ShortcutConflictCount();
     if conflictCount == 0 {
         shell.outputListBox.AddItem("Keyboard Shortcuts - no conflicts");
@@ -269,7 +269,6 @@ func handleKeybindings(shell: app_shell.AppShell,
         }
         i = i + 1;
     }
-    shell.outputListBox.SetVisible(1);
     shell.ShowOutputPanel();
     shell.SetStatusLeft("Keyboard shortcuts");
 }
@@ -325,7 +324,7 @@ func handleToggleOutputAutoScroll(shell: app_shell.AppShell) {
 
 func handleRecentFiles(shell: app_shell.AppShell,
                        sessionMgr: session.SessionManager) {
-    shell.outputListBox.Clear();
+    shell.BeginOutputRows();
     var count = sessionMgr.RecentFileCount();
     if count <= 0 {
         shell.outputListBox.AddItem("Recent Files - none");

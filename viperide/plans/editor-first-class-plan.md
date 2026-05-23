@@ -329,6 +329,9 @@ Current implementation status:
 - Active build/run output now consumes incremental output deltas, so the UI no
   longer receives the full accumulated output string every frame while a job is
   running.
+- Output auto-scroll now uses a non-selecting `ListBox.ScrollToBottom()` runtime
+  helper instead of selecting `Count - 1` for every appended row, avoiding the
+  O(n^2) UI-thread path that made large build/test output beachball the IDE.
 - Syntax highlighting no longer bumps the global syntax generation for ordinary
   single-line edits; edited lines are invalidated directly, Zia block-comment
   state is cached per line, and highlight spans are sorted so paint can stop
@@ -518,9 +521,11 @@ Current implementation status:
   completion results after local semantic items, including dirty open documents.
 - Automatic completion triggers are suppressed inside line comments and open
   string literals; explicit completion remains available.
-- Still open: richer receiver/member ranking, authored runtime API prose beyond
-  generated metadata docs, broader project/imported signature-hover
-  documentation, and deeper semantic scoring across workspace candidates.
+- Runtime member completion now layers curated prose for common Terminal, File,
+  Path, App, and CodeEditor APIs ahead of generated signature/target metadata.
+- Still open: richer receiver/member ranking, broader project/imported
+  signature-hover documentation, and deeper semantic scoring across workspace
+  candidates.
 
 ### E2 - Signature Help and Hover
 
@@ -591,7 +596,8 @@ Current implementation status:
   `///` declaration documentation through synchronous and async structured maps.
 - Runtime API completion, signature help, and hover now surface generated
   documentation from runtime metadata: class/member/property names, generated
-  parameter names, signatures, and canonical runtime targets.
+  parameter names, signatures, and canonical runtime targets. Common runtime
+  APIs also carry curated prose before the generated metadata.
 - Signature help now returns structured overload records and overload counts for
   current-source overloads, and the popup marks the active overload as `1/N`.
 - Signature overloads can be cycled from the popup keyboard path and through
@@ -599,8 +605,8 @@ Current implementation status:
   `Signature: Previous Overload`); the command registry gates these commands to
   languages with signature-help support and the IntelliSense probe covers the
   controller navigation path.
-- Still open: authored runtime API prose beyond generated metadata docs, and
-  broader imported/project declaration fallback beyond bound-file exports.
+- Still open: broader imported/project declaration fallback beyond bound-file
+  exports.
 
 ### E3 - Diagnostics, Problems, and Code Actions
 
@@ -649,8 +655,9 @@ Current implementation status:
 - Live diagnostics now remain disabled when the persisted auto-check setting is
   off; language capability no longer overrides the user's performance setting
   each frame.
-- Problems rows now include severity, source, file, line, code, message, and an
-  action column, while retaining structured click locations.
+- Problems rows now use shared fixed-column tool-row formatting for severity,
+  source, location, code, message, and action, while retaining structured click
+  locations and severity colors.
 - Added a safe `Organize Binds` code action/command for Zia files; it sorts and
   deduplicates the leading bind block as a single editor edit and remains
   hidden/unsupported for BASIC/text files through language-service capabilities.
@@ -674,9 +681,8 @@ Current implementation status:
   Ambiguous matches intentionally leave the editor unchanged.
 - Added a safe `Trim Trailing Whitespace` command; it removes trailing spaces
   and tabs as one undoable editor edit.
-- Still open: a richer Problems surface and broader language-proposed quick
-  fixes beyond compiler-provided fix-its, known runtime namespace binds, and
-  unambiguous project-file binds.
+- Still open: broader language-proposed quick fixes beyond compiler-provided
+  fix-its, known runtime namespace binds, and unambiguous project-file binds.
 
 ### E4 - Project Navigation and Refactoring
 
@@ -777,12 +783,36 @@ Current implementation status:
 - Zia code folding now derives fold regions from document symbols and brace
   ranges, so the active IDE path no longer depends on the native indentation
   auto-fold detector for semantic source files.
+- Zia inlay hints now refresh on editor revision changes and render through
+  native `CodeEditor.AddInlayHint` ghost text. The initial controller adds
+  conservative end-of-line inferred type hints for simple `var` initializers and
+  parameter-name summaries for same-file function calls.
 - File/folder rename now previews the number of Zia bind paths that will change,
   allows cancel before moving the file/folder, updates quoted file-bind paths in
   open and closed project `.zia` files, and keeps `viper.project` entry paths in
   sync.
-- Still open: inlay hints, undo grouping for inactive affected open documents,
-  and extract/inline refactors.
+- Rename/workspace edits now store a pending undo snapshot for inactive affected
+  open documents; when that tab is later active and the editor has no native
+  undo entry, Undo restores the pre-rename content as the document's single
+  workspace-edit undo step.
+- Inline Local Variable is implemented for simple single-assignment Zia local
+  declarations. It removes the declaration, replaces uses inside the enclosing
+  function while skipping strings/comments, preserves undo via whole-document
+  editor replacement, allows equality comparisons, and rejects later direct or
+  compound mutations.
+- Extract Local Variable is implemented for selected single-line Zia expressions
+  inside functions. It prompts for a valid new local name, inserts a local
+  declaration before the selection line, replaces the selected expression with
+  the new identifier, and rejects multi-line selections or duplicate names.
+- Extract Function is implemented for complete selected Zia statement lines
+  inside a function. The initial safe path extracts to a sibling no-argument
+  function, replaces the selected statements with a call, rejects duplicate
+  function names, return/break/continue selections, unbalanced brace selections,
+  captured locals declared before the selection, and locals declared inside the
+  selection that are used afterward.
+- Still open: richer parameterized/return-value extract refactors and AST-backed
+  conflict analysis; Extract/Inline Local and Extract Function remain
+  intentionally limited to simple safe forms.
 
 ### E5 - File Tree and Workspace UX
 
@@ -905,6 +935,9 @@ Current implementation status:
 - Output updates now preserve appended complete lines instead of clearing and
   rebuilding the list on every frame. Partial-line output falls back to a safe
   rebuild to avoid corrupt rows.
+- Raw build/run output now renders through the native append-only
+  `Viper.GUI.OutputPane` runtime widget, while filtered, wrapped, and clickable
+  tool output keeps the existing `ListBox` row model.
 - Existing Problems, Output, Search, References, and Debug Console list surfaces now sit
   behind a lightweight bottom tool tab strip instead of appearing as unrelated
   raw panels. Search, references, and debug output no longer reuse the build
@@ -912,8 +945,9 @@ Current implementation status:
 - Folder-scoped search is available from the file-tree context menu and reuses
   structured search result locations.
 - Added Quick Open (`Ctrl+P`) for project file name/path fragments.
-- Added `zia_viperide_console_search` for output append behavior, partial-line
-  rebuild behavior, whole-word search, and Quick Open ranking.
+- Added `zia_viperide_console_search` for raw output pane append behavior,
+  partial-line rebuild behavior, row-mode output helpers, whole-word search, and
+  Quick Open ranking.
 - Project/folder search uses cached project-tree file state when available and
   scans contents cooperatively with cancellation; direct fallback search now
   discovers directories incrementally instead of enumerating every path in the
@@ -929,8 +963,15 @@ Current implementation status:
 - Output/tool-panel listboxes now support multi-select range copy through a
   runtime `ListBox.GetSelectedText()` binding, and output auto-scroll can be
   toggled/locked without losing the user's selected row.
-- Search results now include file header rows, while individual matches keep
-  structured location ids for path-safe navigation.
+- Output auto-scroll is now selection-free through runtime
+  `ListBox.ScrollToBottom()` / `ScrollToTop()` helpers, and large listbox layout
+  skips full text-width scans once rows exceed the small-list threshold.
+- Raw output streams avoid list row insertion entirely through
+  `OutputPane.Append()`, so ordinary console updates no longer force listbox
+  selection, measurement, or per-row layout work.
+- Problems, Search, and References now use shared fixed-column tool-row helpers
+  with muted group headers, stable kind/source/location/code columns, preview
+  text, and structured location ids for path-safe navigation.
 - The command palette now keeps unsupported language-service commands visible with
   an unavailable marker; selecting one reports a status/toast reason instead of
   dispatching a Zia-only semantic command for BASIC/text/scene files.
@@ -939,7 +980,8 @@ Current implementation status:
   output colors parsed diagnostics plus common success/failure/warning lines.
 - Runtime `StatusBarItem.SetTextColor()` lets the shell color the diagnostics
   summary by worst active severity while preserving the compact status-bar text.
-- Still open: richer multi-column/rich-console result UI beyond colored rows.
+- Still open: richer output-console rendering beyond listbox rows, such as
+  segmented log text and column-native result widgets.
 
 ### E7 - Settings and Preferences
 
@@ -990,7 +1032,7 @@ Current implementation status:
 - Default editor font size is 15, and persisted legacy sizes below 12 migrate to
   the readable default on load.
 - Preferences font-size spinner now avoids the old tiny range.
-- Existing settings overlay exposes font path, font size, tab width, insert
+- Docked Preferences side panel exposes font path, font size, tab width, insert
   spaces, word wrap, minimap, line numbers, diagnostics, folding, diagnostics
   delay, completion delay, auto-save, save-time whitespace/final-newline
   behavior, session restore, project restore, and close confirmation.
@@ -1002,11 +1044,12 @@ Current implementation status:
 - Added a keyboard-shortcuts command/list view with conflict detection.
 - Auto-save is settings-backed and saves modified named files after editor idle;
   it pauses rather than overwriting if the file changed on disk.
-- Preferences now expose grouped defaults reset helpers for Appearance, Editing,
-  IntelliSense, and Startup, and the console/search probe covers compact and
-  wide layout smoke.
-- Still open: replacing the floating overlay with the final polished preferences
-  dialog/side-panel surface.
+- Preferences now live in the workbench right-side dock instead of a floating
+  settings overlay, expose grouped defaults reset helpers for Appearance,
+  Editing, IntelliSense, and Startup, and the console/search probe covers
+  compact and wide side-panel layout smoke plus close behavior.
+- E7-specific automated blockers are closed. Remaining visual/manual polish is
+  tracked by E8/P5.
 
 ### E8 - Visual Design and Interaction Polish
 
@@ -1063,7 +1106,12 @@ Current implementation status:
   of leaking long command descriptions into the category prefix.
 - Toolbar and status chrome now expose active build/run job state plus compact
   project, language-service, and diagnostics state.
-- Still open: the broader visual system pass, icon/tooltips polish, and manual
+- File/Search/Navigate menu entries now expose the same shortcut labels as the
+  command registry for Quick Open, Search in Project, Go To Line/Definition,
+  References, call hierarchy, workspace symbols, symbol outline, diagnostics
+  navigation, and signature help. Save As and Save All now have distinct
+  shortcuts, and Explorer context-menu rows show their keyboard commands.
+- Still open: the broader visual system pass, icon polish, and manual
   compact/wide layout evidence.
 
 ### E9 - BASIC and Multi-Language Honesty
@@ -1124,9 +1172,10 @@ Current implementation status:
   pointer-driven selection drag. `test_vg_codeeditor_perf` covers auto-indent
   undo grouping, pair auto-close/skip undo behavior, same-line and multi-line
   pair highlight resolution, and pointer selection-drag performance.
-- ViperIDE edit commands cover line comment toggle, duplicate line, move line
-  up/down, block comment toggle for Zia/text selections, and save-time
-  trailing-whitespace/final-newline behavior behind settings.
+- ViperIDE edit commands cover line comment toggle for single lines and selected
+  line ranges, duplicate line, move line up/down, block comment toggle for
+  Zia/text selections, and save-time trailing-whitespace/final-newline behavior
+  behind settings.
 - Expand Selection now provides a predictable word -> line -> enclosing brace
   block -> document ladder, with shrink reversing simple word/line/document
   selections back toward the originating word.
@@ -1134,7 +1183,8 @@ Current implementation status:
   expressions, so word selections inside calls/indexers expand to the enclosing
   expression before the whole line.
 - `zia_viperide_intellisense` now audits single-step undo for block-comment
-  toggles, duplicate line, and move-line commands.
+  toggles, selected-line comment toggles, duplicate line, and move-line
+  commands.
 - Format Document / Format Selection now use an initial formatter backend:
   Zia gets brace-aware indentation that respects the editor tab-size /
   insert-spaces settings and ignores braces in strings/comments, text selections
@@ -1414,12 +1464,14 @@ Gate:
 - screenshot/manual checklist at compact and wide sizes
 
 Current status: partial. Font defaults/migration, editor behavior preferences,
-per-section default reset helpers, compact/wide layout smoke, auto-save,
-save-time whitespace preferences, scheduler delay preferences, a
-keybindings/conflict view, live build/run toolbar/menu state, categorized command
-palette entries, disabled command explanations, and compact status-bar project,
-language-service, job, and diagnostics state exist; the visual system and final
-preferences UX are still below the target bar.
+the docked Preferences side panel, per-section default reset helpers,
+compact/wide layout smoke, auto-save, save-time whitespace preferences,
+scheduler delay preferences, a keybindings/conflict view, live build/run
+toolbar/menu state, categorized command palette entries, disabled command
+explanations, shortcut-labeled File/Search/Navigate/Explorer menu commands, and
+compact status-bar project, language-service, job, and diagnostics state exist;
+the broader visual system and manual compact/wide evidence are still below the
+target bar.
 
 ### Milestone P5 - Dogfood Release Gate
 
@@ -1588,9 +1640,89 @@ Latest automated evidence (2026-05-23):
   with `VIPERIDE_PERF_LOG=/tmp/viperide_perf_final.log viperide/bin/viperide`
   measured about 4.5% CPU via `ps`, down from about 40% before the runtime
   relink.
+- Passed docked Preferences side-panel regression:
+  `cmake --build build --target zia -j 8`,
+  `../../build/src/tools/zia/zia console_search_probe.zia` from
+  `viperide/src`,
+  `ctest --test-dir build -R '^(zia_viperide_console_search|zia_viperide_phase0_phase1)$' --output-on-failure`,
+  and `git diff --check`.
+- Passed structured tool-row regression:
+  `cmake --build build --target zia -j 8`,
+  `ctest --test-dir build -R '^(zia_viperide_console_search|zia_viperide_intellisense)$' --output-on-failure`,
+  `git diff --check`, and `./scripts/build_ide.sh`.
+- Passed authored runtime API documentation regression:
+  `cmake --build build --target test_zia_completion_engine zia -j 8`,
+  `ctest --test-dir build -R '^(test_zia_completion_engine|zia_viperide_intellisense)$' --output-on-failure`,
+  `git diff --check`, `cmake --build build --target viper -j 8`, and
+  `./scripts/build_ide.sh`.
+- Passed selected-line comment regression:
+  `cmake --build build --target zia -j 8`,
+  `ctest --test-dir build -R '^zia_viperide_intellisense$' --output-on-failure`,
+  `git diff --check`, and `./scripts/build_ide.sh`.
+- Passed inactive rename undo regression:
+  `cmake --build build --target zia -j 8`,
+  `ctest --test-dir build -R '^zia_viperide_intellisense$' --output-on-failure`,
+  `git diff --check`, and `./scripts/build_ide.sh`.
+- Passed inline local variable refactor regression:
+  `cmake --build build --target zia -j 8`,
+  `ctest --test-dir build -R '^zia_viperide_intellisense$' --output-on-failure`,
+  `ctest --test-dir build -R '^zia_viperide_phase0_phase1$' --output-on-failure`,
+  `git diff --check`, and `./scripts/build_ide.sh`.
+- Passed extract local variable refactor regression:
+  `cmake --build build --target zia -j 8`,
+  `ctest --test-dir build -R '^zia_viperide_intellisense$' --output-on-failure`,
+  `git diff --check`, and `./scripts/build_ide.sh`.
 - Passed post-documentation hot-path focused regression and standalone rebuild:
   `ctest --test-dir build -R '^(zia_viperide_editor_hot_path|zia_viperide_intellisense)$' --output-on-failure`
   and `./scripts/build_ide.sh`.
+- Passed post-invalidation-churn regression after making repeated widget/layout
+  setters no-op when values are unchanged:
+  `cmake --build build --target zia -j 8`,
+  `ctest --test-dir build -R 'test_vg|test_rt_gui_runtime|test_rt_gui_ide|zia_viperide_editor_hot_path|zia_viperide_intellisense|zia_viperide_console_search' --output-on-failure`,
+  `git diff --check`, and `./scripts/build_ide.sh`.
+- Passed a short live-window perf smoke with
+  `VIPERIDE_PERF_LOG=/tmp/viperide-perf.log ./viperide/bin/viperide`; the
+  restored 427-line session held about 56 frames/second, with controller work
+  near zero after startup and no full-text copies/layout scans.
+- Passed output auto-scroll responsiveness regression after replacing
+  append-time last-row selection with non-selecting scroll helpers:
+  `ctest --test-dir build -R '^(test_vg_tier2_fixes|zia_viperide_console_search|test_rt_gui_runtime)$' --output-on-failure`,
+  `cmake --build build --target viper -j 8`, `git diff --check`, and
+  `./scripts/build_ide.sh`.
+- Passed a short post-fix live-window typing smoke with
+  `VIPERIDE_PERF_LOG=/tmp/viperide-perf-fixed.log ./viperide/bin/viperide`;
+  the restored 427-line session stayed near 58-60 frames/second after typing,
+  with controller work near zero and no layout scans.
+- Passed native `OutputPane` runtime + ViperIDE output integration:
+  `cmake --build build --target test_vg_tier2_fixes -j 8`,
+  `cmake --build build --target test_vg_audit_fixes -j 8`,
+  `cmake --build build --target zia -j 8`,
+  `cmake --build build --target viper -j 8`,
+  `ctest --test-dir build -R '^(test_vg_tier2_fixes|test_vg_audit_fixes|test_rt_gui_runtime|zia_viperide_console_search)$' --output-on-failure`,
+  `ctest --test-dir build -R '^(test_runtime_classes_catalog|test_runtime_surface_audit|test_linker_runtime_import_audit)$' --output-on-failure`,
+  `ctest --test-dir build -R '^(test_zia_completion_engine|zia_viperide_intellisense|zia_viperide_phase0_phase1|zia_viperide_editor_hot_path)$' --output-on-failure`,
+  and `./scripts/build_ide.sh`.
+- Passed a short live-window output-pane perf smoke with
+  `VIPERIDE_PERF_LOG=/tmp/viperide-outputpane-perf.log ./viperide/bin/viperide`;
+  the restored 427-line session held about 56-60 frames/second after typing,
+  with controller work near zero, no layout scans, and no repeated full-text
+  copies.
+- Passed Zia inlay-hint controller/runtime integration:
+  `cmake --build build --target test_vg_tier2_fixes -j 8`,
+  `cmake --build build --target zia -j 8`,
+  `cmake --build build --target viper -j 8`,
+  `ctest --test-dir build -R '^(test_vg_tier2_fixes|test_rt_gui_runtime|test_runtime_classes_catalog|test_runtime_surface_audit|zia_viperide_intellisense|zia_viperide_editor_hot_path)$' --output-on-failure`,
+  and `./scripts/build_ide.sh`.
+- Passed menu shortcut discoverability regression after adding File/Search/
+  Navigate/Explorer shortcut labels and resolving the Save As/Save All shortcut
+  conflict:
+  `cmake --build build --target zia -j 8`,
+  `ctest --test-dir build -R '^(zia_viperide_phase0_phase1|zia_viperide_console_search)$' --output-on-failure`,
+  and `git diff --check`.
+- Passed Extract Function safe-form regression:
+  `cmake --build build --target zia -j 8`,
+  `ctest --test-dir build -R '^(zia_viperide_intellisense|zia_viperide_phase0_phase1)$' --output-on-failure`,
+  and `git diff --check`.
 - Still missing for this release gate: the manual dogfood report.
 
 ## 7. Documentation Updates Required Per Milestone

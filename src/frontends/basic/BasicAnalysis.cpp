@@ -26,6 +26,14 @@
 
 namespace il::frontends::basic {
 
+/// @brief Parse and semantically analyze a BASIC source unit for IDE tooling (no lowering).
+/// @param input Source text plus optional path/file-id.
+/// @param sm Source manager that assigns/owns file ids and source text.
+/// @return An owned result holding the AST, semantic analyzer, diagnostics, and file id.
+/// @details Runs the front half of the pipeline — parse → CollectProcedures → foldConstants →
+///          semantic analysis — and stops before lowering. It is error-tolerant: a registered
+///          file-id exhaustion or parse failure returns early with diagnostics, but sema runs
+///          even when earlier stages produced errors so tooling still gets partial results.
 std::unique_ptr<BasicAnalysisResult> parseAndAnalyzeBasic(const BasicCompilerInput &input,
                                                           il::support::SourceManager &sm) {
     auto result = std::make_unique<BasicAnalysisResult>();

@@ -97,12 +97,59 @@ std::vector<std::string> memberParamNamesFromExtern(const Symbol *externSym, siz
     return {};
 }
 
+const char *authoredRuntimeMemberDocumentation(const std::string &className,
+                                               const std::string &memberName) {
+    struct Doc {
+        const char *className;
+        const char *memberName;
+        const char *text;
+    };
+    static constexpr Doc docs[] = {
+        {"Viper.Terminal", "Say",
+         "Writes text followed by a newline to the terminal output stream."},
+        {"Viper.Terminal", "Print",
+         "Writes text to the terminal output stream without appending a newline."},
+        {"Viper.Terminal", "Ask",
+         "Prompts the user and returns the entered text when input is available."},
+        {"Viper.IO.File", "ReadAllText",
+         "Reads an entire text file into a String."},
+        {"Viper.IO.File", "WriteAllText",
+         "Writes a String to a file, replacing the previous contents."},
+        {"Viper.IO.File", "Exists",
+         "Returns whether a file exists at the supplied path."},
+        {"Viper.IO.Path", "Join",
+         "Combines path fragments using the platform path separator."},
+        {"Viper.GUI.App", "Poll",
+         "Processes pending window and input events for the app."},
+        {"Viper.GUI.App", "Render",
+         "Lays out and paints the current GUI frame when the app needs repainting."},
+        {"Viper.GUI.CodeEditor", "SetText",
+         "Replaces the editor buffer text and refreshes editor state."},
+        {"Viper.GUI.CodeEditor", "GetText",
+         "Returns the current editor buffer text."},
+        {"Viper.GUI.CodeEditor", "Text",
+         "Read-only property containing the current editor buffer text."},
+        {"Viper.GUI.CodeEditor", "Revision",
+         "Read-only counter that changes when the editor buffer changes."},
+        {"Viper.GUI.App", "Root",
+         "Root widget for the app window; add top-level layout containers here."},
+    };
+
+    for (const auto &doc : docs) {
+        if (className == doc.className && memberName == doc.memberName)
+            return doc.text;
+    }
+    return nullptr;
+}
+
 std::string runtimeMethodDocumentation(const std::string &className,
                                        const std::string &methodName,
                                        const char *target,
                                        const TypeRef &type,
                                        const std::vector<std::string> &paramNames) {
     std::ostringstream out;
+    if (const char *authored = authoredRuntimeMemberDocumentation(className, methodName))
+        out << authored << "\n";
     out << "Runtime method " << className << "." << methodName << ".\n";
     out << "Signature: " << runtimeCallableSignature(methodName, type, paramNames);
     if (target && *target)
@@ -114,6 +161,9 @@ std::string runtimePropertyDocumentation(const std::string &className,
                                          const il::runtime::RuntimeProperty &prop,
                                          const TypeRef &type) {
     std::ostringstream out;
+    if (const char *authored =
+            authoredRuntimeMemberDocumentation(className, prop.name ? prop.name : ""))
+        out << authored << "\n";
     out << "Runtime property " << className << "." << (prop.name ? prop.name : "");
     if (prop.readonly)
         out << " (read-only)";

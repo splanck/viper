@@ -42,7 +42,10 @@ static bool minimap_handle_event(vg_widget_t *widget, vg_event_t *event);
 static int minimap_document_line_count(const vg_minimap_t *minimap);
 static int minimap_line_from_local_y(vg_minimap_t *minimap, float local_y);
 static void minimap_scroll_editor_to_line(vg_minimap_t *minimap, int line);
-static int minimap_trimmed_line_bounds(const char *text, int *out_first, int *out_last);
+static int minimap_trimmed_line_bounds(const char *text,
+                                       int max_columns,
+                                       int *out_first,
+                                       int *out_last);
 static vg_codeeditor_t *minimap_live_editor(vg_minimap_t *minimap);
 
 //=============================================================================
@@ -199,7 +202,10 @@ static void minimap_scroll_editor_to_line(vg_minimap_t *minimap, int line) {
 }
 
 /// @brief Scans @p text for the first and last non-whitespace byte positions, writing them into @p out_first and @p out_last; returns 0 for blank lines.
-static int minimap_trimmed_line_bounds(const char *text, int *out_first, int *out_last) {
+static int minimap_trimmed_line_bounds(const char *text,
+                                       int max_columns,
+                                       int *out_first,
+                                       int *out_last) {
     int first = -1;
     int last = -1;
 
@@ -211,11 +217,16 @@ static int minimap_trimmed_line_bounds(const char *text, int *out_first, int *ou
         return 0;
     }
 
-    for (int i = 0; text[i]; i++) {
+    if (max_columns < 1)
+        max_columns = 1;
+
+    for (int i = 0; text[i] && i <= max_columns; i++) {
         if (text[i] != ' ' && text[i] != '\t') {
             if (first < 0)
                 first = i;
             last = i;
+            if (last >= max_columns)
+                break;
         }
     }
 
@@ -266,12 +277,17 @@ static void minimap_paint(vg_widget_t *widget, void *canvas) {
     float visible_columns = 120.0f * (0.1f / scale);
     if (visible_columns < 24.0f)
         visible_columns = 24.0f;
+    int scan_columns = (int)(visible_columns + 1.0f);
+    if (scan_columns < 24)
+        scan_columns = 24;
+    if (scan_columns > 240)
+        scan_columns = 240;
 
     int max_lines_to_draw = inner_h * 2;
     if (max_lines_to_draw < 1)
         max_lines_to_draw = 1;
-    if (max_lines_to_draw > 2048)
-        max_lines_to_draw = 2048;
+    if (max_lines_to_draw > 1024)
+        max_lines_to_draw = 1024;
     int line_step = (line_count + max_lines_to_draw - 1) / max_lines_to_draw;
     if (line_step < 1)
         line_step = 1;
@@ -288,7 +304,7 @@ static void minimap_paint(vg_widget_t *widget, void *canvas) {
 
         int first = -1;
         int last = -1;
-        if (!minimap_trimmed_line_bounds(editor->lines[line].text, &first, &last))
+        if (!minimap_trimmed_line_bounds(editor->lines[line].text, scan_columns, &first, &last))
             continue;
 
         float start_ratio = (float)first / visible_columns;

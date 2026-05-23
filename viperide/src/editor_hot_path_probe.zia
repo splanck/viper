@@ -4,6 +4,7 @@ bind "ui/app_shell";
 bind "core/document_manager";
 bind "core/project_manager";
 bind "editor/editor_engine";
+bind "editor/inlay_hints";
 bind "editor/project_index";
 bind "editor/symbols";
 
@@ -255,6 +256,18 @@ func main() {
     }
     if engine.editor.GetFullTextCopyCount() != 0 {
         fail(shell, "large-buffer cursor movement copied full text");
+        return;
+    }
+
+    var inlayCtrl = new inlay_hints.InlayHintController();
+    engine.editor.ResetPerfStats();
+    inlayCtrl.Refresh(engine);
+    if inlayCtrl.lastHintCount != 0 or engine.editor.GetInlayHintCount() != 0 {
+        fail(shell, "large-buffer inlay hints were not capped");
+        return;
+    }
+    if engine.editor.GetFullTextCopyCount() != 0 {
+        fail(shell, "large-buffer inlay scan copied full text");
         return;
     }
 

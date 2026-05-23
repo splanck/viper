@@ -326,7 +326,7 @@ vg_outputpane_t *vg_outputpane_create(void) {
     if (!pane)
         return NULL;
 
-    vg_widget_init(&pane->base, VG_WIDGET_CUSTOM, &g_outputpane_vtable);
+    vg_widget_init(&pane->base, VG_WIDGET_OUTPUTPANE, &g_outputpane_vtable);
 
     vg_theme_t *theme = vg_theme_get_current();
 
@@ -914,8 +914,19 @@ void vg_outputpane_set_max_lines(vg_outputpane_t *pane, size_t max) {
 void vg_outputpane_set_font(vg_outputpane_t *pane, vg_font_t *font, float size) {
     if (!pane)
         return;
+    if (pane->font == font && pane->font_size == size)
+        return;
 
     pane->font = font;
     pane->font_size = size;
+    if (font && size > 0.0f) {
+        vg_font_metrics_t metrics = {0};
+        vg_font_get_metrics(font, size, &metrics);
+        if (metrics.line_height > 0)
+            pane->line_height = (float)metrics.line_height;
+        else
+            pane->line_height = size * 1.35f;
+    }
+    pane->base.needs_layout = true;
     pane->base.needs_paint = true;
 }

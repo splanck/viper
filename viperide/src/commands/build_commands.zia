@@ -208,7 +208,7 @@ func UpdateDiagnostics(shell: app_shell.AppShell,
 func PopulateBuildOutput(shell: app_shell.AppShell,
                          buildSys: build_system.BuildSystem,
                          locStore: locations.LocationStore) {
-    shell.outputListBox.Clear();
+    shell.BeginOutputRows();
     var output = buildSys.GetOutput();
     if output == "" {
         shell.HideOutputPanel();
@@ -238,6 +238,9 @@ func PopulateBuildOutput(shell: app_shell.AppShell,
             }
         }
         i = i + 1;
+    }
+    if shell.outputAutoScroll {
+        shell.outputListBox.ScrollToBottom();
     }
     shell.ShowOutputPanel();
 }

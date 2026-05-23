@@ -53,8 +53,10 @@ class CommandRegistry {
     expose func RegisterDefaults() {
         Add("new", "New File", "Create a new untitled file", "Ctrl+N", "", true);
         Add("open", "Open File...", "Open a file from disk", "Ctrl+O", "", true);
+        Add("openfolder", "Open Folder...", "Open a project folder", "Ctrl+Alt+O", "", true);
         Add("save", "Save", "Save the current file", "Ctrl+S", "", true);
-        Add("saveall", "Save All", "Save all open files", "Ctrl+Shift+S", "", true);
+        Add("saveas", "Save As...", "Save the current file under a new path", "Ctrl+Shift+S", "", true);
+        Add("saveall", "Save All", "Save all open files", "Ctrl+Alt+Shift+S", "", true);
         Add("close", "Close File", "Close the current tab", "Ctrl+W", "", true);
         Add("reload", "Reload File", "Reload file from disk", "Ctrl+Shift+R", "", true);
         Add("recentfiles", "Recent Files", "Show recently opened files", "Ctrl+K Ctrl+R", "", true);
@@ -126,6 +128,9 @@ class CommandRegistry {
         Add("movelineup", "Move Line Up", "Move the active line above the previous line", "Alt+Up", "", true);
         Add("movelinedown", "Move Line Down", "Move the active line below the next line", "Alt+Down", "", true);
         Add("organizebinds", "Organize Binds", "Sort and deduplicate the leading Zia bind block", "Shift+Alt+O", "diagnostics", true);
+        Add("extractlocal", "Extract Local Variable", "Extract the selected expression into a simple local variable", "", "rename", true);
+        Add("extractfunction", "Extract Function", "Extract selected complete Zia statements into a new function", "", "rename", true);
+        Add("inlinelocal", "Inline Local Variable", "Inline a simple single-assignment local variable", "Ctrl+Alt+I", "rename", true);
         Add("suppressdiagnostic", "Suppress Warning", "Insert a Zia suppression comment for the warning at the cursor", "", "diagnostics", true);
         Add("applydiagnosticfix", "Apply Diagnostic Fix-It", "Apply the first language-proposed diagnostic fix at the cursor", "Ctrl+.", "diagnostics", true);
         Add("createmissingbind", "Create Missing Bind", "Add a safe runtime bind for an undefined Viper namespace alias", "", "diagnostics", true);
@@ -307,7 +312,8 @@ class CommandRegistry {
     }
 
     expose func CommandCategory(id: String) -> String {
-        if id == "new" or id == "open" or id == "save" or id == "saveall"
+        if id == "new" or id == "open" or id == "openfolder"
+           or id == "save" or id == "saveas" or id == "saveall"
            or id == "close" or id == "reload" or id == "recentfiles"
            or id == "reopenclosed" {
             return "File";
@@ -322,7 +328,8 @@ class CommandRegistry {
            or id == "signaturenextoverload" or id == "signatureprevoverload" {
             return "Navigate";
         }
-        if id == "rename" or id == "organizebinds" or id == "suppressdiagnostic"
+        if id == "rename" or id == "organizebinds" or id == "extractlocal" or id == "extractfunction"
+           or id == "inlinelocal" or id == "suppressdiagnostic"
            or id == "applydiagnosticfix" or id == "createmissingbind" {
             return "Refactor";
         }

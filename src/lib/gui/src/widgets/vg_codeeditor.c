@@ -927,6 +927,58 @@ static void codeeditor_clear_highlight_spans(vg_codeeditor_t *editor) {
     codeeditor_free_highlight_line_index(editor);
 }
 
+static void codeeditor_free_inlay_hint_storage(vg_codeeditor_t *editor) {
+    if (!editor)
+        return;
+    for (int i = 0; i < editor->inlay_hint_count; i++)
+        free(editor->inlay_hints[i].text);
+    free(editor->inlay_hints);
+    editor->inlay_hints = NULL;
+    editor->inlay_hint_count = 0;
+    editor->inlay_hint_cap = 0;
+    editor->inlay_hints_sorted = true;
+}
+
+static int codeeditor_compare_inlay_hints(const void *a, const void *b) {
+    const struct vg_inlay_hint *lhs = (const struct vg_inlay_hint *)a;
+    const struct vg_inlay_hint *rhs = (const struct vg_inlay_hint *)b;
+    if (lhs->line != rhs->line)
+        return lhs->line < rhs->line ? -1 : 1;
+    if (lhs->col != rhs->col)
+        return lhs->col < rhs->col ? -1 : 1;
+    return 0;
+}
+
+static void codeeditor_sort_inlay_hints(vg_codeeditor_t *editor) {
+    if (!editor || editor->inlay_hints_sorted)
+        return;
+    if (editor->inlay_hint_count > 1) {
+        qsort(editor->inlay_hints,
+              (size_t)editor->inlay_hint_count,
+              sizeof(*editor->inlay_hints),
+              codeeditor_compare_inlay_hints);
+    }
+    editor->inlay_hints_sorted = true;
+}
+
+static int codeeditor_first_inlay_hint_for_line(const vg_codeeditor_t *editor, int line) {
+    if (!editor || !editor->inlay_hints || editor->inlay_hint_count <= 0)
+        return -1;
+
+    int lo = 0;
+    int hi = editor->inlay_hint_count;
+    while (lo < hi) {
+        int mid = lo + (hi - lo) / 2;
+        if (editor->inlay_hints[mid].line < line)
+            lo = mid + 1;
+        else
+            hi = mid;
+    }
+    if (lo >= editor->inlay_hint_count || editor->inlay_hints[lo].line != line)
+        return -1;
+    return lo;
+}
+
 /// @brief Ensures the colors buffer for @p line_idx is sized, then invokes the syntax highlighter callback.
 static void highlight_line(vg_codeeditor_t *editor, size_t line_idx) {
     if (!editor->syntax_highlighter || line_idx >= (size_t)editor->line_count)
@@ -2493,6 +2545,7 @@ vg_codeeditor_t *vg_codeeditor_create(vg_widget_t *parent) {
     editor->highlight_line_offsets_cap = 0;
     editor->highlight_line_span_indices = NULL;
     editor->highlight_line_span_indices_cap = 0;
+    editor->inlay_hints_sorted = true;
 
     // Create undo/redo history
     editor->history = edit_history_create();
@@ -2534,6 +2587,7 @@ static void codeeditor_destroy(vg_widget_t *widget) {
     }
 
     codeeditor_clear_highlight_spans(editor);
+    codeeditor_free_inlay_hint_storage(editor);
 
     if (editor->gutter_icons) {
         for (int i = 0; i < editor->gutter_icon_count; i++)
@@ -2718,6 +2772,69 @@ static void codeeditor_draw_highlight_underline(void *canvas,
                    (vgfx_color_t)color);
 }
 
+static void codeeditor_paint_inlay_hints_for_segment(vg_codeeditor_t *editor,
+                                                     void *canvas,
+                                                     int line,
+                                                     int segment_start,
+                                                     int segment_len,
+                                                     float content_x,
+                                                     float row_y,
+                                                     float scroll_x,
+                                                     float baseline_y,
+                                                     bool wrapped) {
+    if (!editor || !canvas || !editor->font || editor->inlay_hint_count <= 0)
+        return;
+
+    int line_len = 0;
+    if (line >= 0 && line < editor->line_count)
+        line_len = (int)editor->lines[line].length;
+    int segment_end = segment_start + segment_len;
+    float hint_size = editor->font_size * 0.9f;
+    if (hint_size <= 0.0f)
+        hint_size = editor->font_size;
+
+    int first_hint = codeeditor_first_inlay_hint_for_line(editor, line);
+    if (first_hint < 0)
+        return;
+
+    for (int i = first_hint; i < editor->inlay_hint_count; i++) {
+        const struct vg_inlay_hint *hint = &editor->inlay_hints[i];
+        if (hint->line != line)
+            break;
+        if (!hint->text || hint->text[0] == '\0')
+            continue;
+
+        int col = hint->col;
+        if (col < 0)
+            col = 0;
+        if (col > line_len)
+            col = line_len;
+
+        if (wrapped) {
+            bool at_segment_end = col == line_len && line_len <= segment_end;
+            if ((col < segment_start || col > segment_end) && !at_segment_end)
+                continue;
+        }
+
+        int visual_col = wrapped ? col - segment_start : col;
+        if (visual_col < 0)
+            visual_col = 0;
+        float x = content_x + (float)visual_col * editor->char_width - scroll_x + 4.0f;
+        vg_text_metrics_t metrics = {0};
+        vg_font_measure_text(editor->font, hint_size, hint->text, &metrics);
+        if (metrics.width > 0.0f) {
+            uint32_t bg = (editor->current_line_bg & 0x00FFFFFFu) | 0x66000000u;
+            vgfx_fill_rect((vgfx_window_t)canvas,
+                           (int32_t)(x - 2.0f),
+                           (int32_t)(row_y + 2.0f),
+                           (int32_t)(metrics.width + 4.0f),
+                           (int32_t)(editor->line_height - 4.0f),
+                           bg);
+        }
+        vg_font_draw_text(canvas, editor->font, hint_size, x, baseline_y, hint->text, hint->color);
+    }
+}
+
 /// @brief VTable paint: renders background, gutter, current-line highlight, selection, syntax-coloured text, cursor, and scrollbar.
 static void codeeditor_paint(vg_widget_t *widget, void *canvas) {
     vg_codeeditor_t *editor = (vg_codeeditor_t *)widget;
@@ -2759,6 +2876,7 @@ static void codeeditor_paint(vg_widget_t *widget, void *canvas) {
     vg_font_metrics_t font_metrics;
     vg_font_get_metrics(editor->font, editor->font_size, &font_metrics);
     codeeditor_sort_highlight_spans(editor);
+    codeeditor_sort_inlay_hints(editor);
     int32_t clip_x = (int32_t)content_x;
     int32_t clip_y = (int32_t)widget->y;
     int32_t clip_w = (int32_t)content_width;
@@ -2866,6 +2984,16 @@ static void codeeditor_paint(vg_widget_t *widget, void *canvas) {
                 codeeditor_draw_fold_ellipsis(
                     editor, canvas, content_x - editor->scroll_x, text_y, i, (int)editor->lines[i].length);
             }
+            codeeditor_paint_inlay_hints_for_segment(editor,
+                                                     canvas,
+                                                     i,
+                                                     0,
+                                                     (int)editor->lines[i].length,
+                                                     content_x,
+                                                     line_y,
+                                                     editor->scroll_x,
+                                                     line_y + font_metrics.ascent,
+                                                     false);
 
             line_y += editor->line_height;
         }
@@ -3044,6 +3172,16 @@ static void codeeditor_paint(vg_widget_t *widget, void *canvas) {
                     codeeditor_draw_fold_ellipsis(
                         editor, canvas, content_x, row_y + font_metrics.ascent, line, seg_len);
                 }
+                codeeditor_paint_inlay_hints_for_segment(editor,
+                                                         canvas,
+                                                         line,
+                                                         seg_start,
+                                                         seg_len,
+                                                         content_x,
+                                                         row_y,
+                                                         0.0f,
+                                                         row_y + font_metrics.ascent,
+                                                         true);
 
                 row_in_line++;
                 if (row_in_line >= row_count) {
@@ -4252,6 +4390,7 @@ void vg_codeeditor_set_text_bytes(vg_codeeditor_t *editor, const char *text, siz
     }
 
     codeeditor_clear_highlight_spans(editor);
+    codeeditor_free_inlay_hint_storage(editor);
     free_line_array(editor->lines, editor->line_count);
     editor->lines = new_lines;
     editor->line_capacity = new_capacity;
@@ -4279,6 +4418,56 @@ void vg_codeeditor_set_text_bytes(vg_codeeditor_t *editor, const char *text, siz
 
 void vg_codeeditor_set_text(vg_codeeditor_t *editor, const char *text) {
     vg_codeeditor_set_text_bytes(editor, text, text ? strlen(text) : 0);
+}
+
+void vg_codeeditor_clear_inlay_hints(vg_codeeditor_t *editor) {
+    if (!editor)
+        return;
+    codeeditor_free_inlay_hint_storage(editor);
+    editor->base.needs_paint = true;
+}
+
+void vg_codeeditor_add_inlay_hint(vg_codeeditor_t *editor,
+                                  int line,
+                                  int col,
+                                  const char *text,
+                                  uint32_t color) {
+    if (!editor || !text || text[0] == '\0')
+        return;
+    if (line < 0 || line >= editor->line_count)
+        return;
+    if (col < 0)
+        col = 0;
+    if (col > (int)editor->lines[line].length)
+        col = (int)editor->lines[line].length;
+    if (editor->inlay_hint_count >= editor->inlay_hint_cap) {
+        if (editor->inlay_hint_cap > INT_MAX / 2)
+            return;
+        int new_cap = editor->inlay_hint_cap ? editor->inlay_hint_cap * 2 : 8;
+        void *p = realloc(editor->inlay_hints, (size_t)new_cap * sizeof(*editor->inlay_hints));
+        if (!p)
+            return;
+        editor->inlay_hints = p;
+        editor->inlay_hint_cap = new_cap;
+    }
+    char *copy = strdup(text);
+    if (!copy)
+        return;
+    if (editor->inlay_hint_count > 0) {
+        const struct vg_inlay_hint *prev = &editor->inlay_hints[editor->inlay_hint_count - 1];
+        if (prev->line > line || (prev->line == line && prev->col > col))
+            editor->inlay_hints_sorted = false;
+    }
+    struct vg_inlay_hint *hint = &editor->inlay_hints[editor->inlay_hint_count++];
+    hint->line = line;
+    hint->col = col;
+    hint->text = copy;
+    hint->color = color;
+    editor->base.needs_paint = true;
+}
+
+int vg_codeeditor_get_inlay_hint_count(const vg_codeeditor_t *editor) {
+    return editor ? editor->inlay_hint_count : 0;
 }
 
 /// @brief Return the complete editor content as a heap-allocated newline-joined string.

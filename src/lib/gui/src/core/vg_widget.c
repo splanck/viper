@@ -852,6 +852,8 @@ void vg_widget_set_constraints(vg_widget_t *widget, vg_constraints_t constraints
     if (!widget)
         return;
     widget_normalize_constraints(&constraints);
+    if (memcmp(&widget->constraints, &constraints, sizeof(widget->constraints)) == 0)
+        return;
     widget->constraints = constraints;
     widget->needs_layout = true;
 }
@@ -860,8 +862,12 @@ void vg_widget_set_constraints(vg_widget_t *widget, vg_constraints_t constraints
 void vg_widget_set_min_size(vg_widget_t *widget, float width, float height) {
     if (!widget)
         return;
-    widget->constraints.min_width = widget_nonnegative_finite(width);
-    widget->constraints.min_height = widget_nonnegative_finite(height);
+    width = widget_nonnegative_finite(width);
+    height = widget_nonnegative_finite(height);
+    if (widget->constraints.min_width == width && widget->constraints.min_height == height)
+        return;
+    widget->constraints.min_width = width;
+    widget->constraints.min_height = height;
     widget_normalize_constraints(&widget->constraints);
     widget->needs_layout = true;
 }
@@ -870,8 +876,12 @@ void vg_widget_set_min_size(vg_widget_t *widget, float width, float height) {
 void vg_widget_set_max_size(vg_widget_t *widget, float width, float height) {
     if (!widget)
         return;
-    widget->constraints.max_width = widget_nonnegative_finite(width);
-    widget->constraints.max_height = widget_nonnegative_finite(height);
+    width = widget_nonnegative_finite(width);
+    height = widget_nonnegative_finite(height);
+    if (widget->constraints.max_width == width && widget->constraints.max_height == height)
+        return;
+    widget->constraints.max_width = width;
+    widget->constraints.max_height = height;
     widget_normalize_constraints(&widget->constraints);
     widget->needs_layout = true;
 }
@@ -880,8 +890,12 @@ void vg_widget_set_max_size(vg_widget_t *widget, float width, float height) {
 void vg_widget_set_preferred_size(vg_widget_t *widget, float width, float height) {
     if (!widget)
         return;
-    widget->constraints.preferred_width = widget_nonnegative_finite(width);
-    widget->constraints.preferred_height = widget_nonnegative_finite(height);
+    width = widget_nonnegative_finite(width);
+    height = widget_nonnegative_finite(height);
+    if (widget->constraints.preferred_width == width && widget->constraints.preferred_height == height)
+        return;
+    widget->constraints.preferred_width = width;
+    widget->constraints.preferred_height = height;
     widget_normalize_constraints(&widget->constraints);
     widget->needs_layout = true;
 }
@@ -892,6 +906,11 @@ void vg_widget_set_fixed_size(vg_widget_t *widget, float width, float height) {
         return;
     width = widget_nonnegative_finite(width);
     height = widget_nonnegative_finite(height);
+    if (widget->constraints.min_width == width && widget->constraints.max_width == width &&
+        widget->constraints.preferred_width == width && widget->constraints.min_height == height &&
+        widget->constraints.max_height == height && widget->constraints.preferred_height == height) {
+        return;
+    }
     widget->constraints.min_width = width;
     widget->constraints.max_width = width;
     widget->constraints.preferred_width = width;
@@ -987,7 +1006,10 @@ void vg_widget_get_screen_bounds(
 void vg_widget_set_flex(vg_widget_t *widget, float flex) {
     if (!widget)
         return;
-    widget->layout.flex = widget_nonnegative_finite(flex);
+    flex = widget_nonnegative_finite(flex);
+    if (widget->layout.flex == flex)
+        return;
+    widget->layout.flex = flex;
     if (widget->parent)
         widget->parent->needs_layout = true;
 }
@@ -997,6 +1019,10 @@ void vg_widget_set_margin(vg_widget_t *widget, float margin) {
     if (!widget)
         return;
     margin = widget_nonnegative_finite(margin);
+    if (widget->layout.margin_left == margin && widget->layout.margin_top == margin &&
+        widget->layout.margin_right == margin && widget->layout.margin_bottom == margin) {
+        return;
+    }
     widget->layout.margin_left = margin;
     widget->layout.margin_top = margin;
     widget->layout.margin_right = margin;
@@ -1009,10 +1035,18 @@ void vg_widget_set_margin(vg_widget_t *widget, float margin) {
 void vg_widget_set_margins(vg_widget_t *widget, float left, float top, float right, float bottom) {
     if (!widget)
         return;
-    widget->layout.margin_left = widget_nonnegative_finite(left);
-    widget->layout.margin_top = widget_nonnegative_finite(top);
-    widget->layout.margin_right = widget_nonnegative_finite(right);
-    widget->layout.margin_bottom = widget_nonnegative_finite(bottom);
+    left = widget_nonnegative_finite(left);
+    top = widget_nonnegative_finite(top);
+    right = widget_nonnegative_finite(right);
+    bottom = widget_nonnegative_finite(bottom);
+    if (widget->layout.margin_left == left && widget->layout.margin_top == top &&
+        widget->layout.margin_right == right && widget->layout.margin_bottom == bottom) {
+        return;
+    }
+    widget->layout.margin_left = left;
+    widget->layout.margin_top = top;
+    widget->layout.margin_right = right;
+    widget->layout.margin_bottom = bottom;
     if (widget->parent)
         widget->parent->needs_layout = true;
 }
@@ -1022,6 +1056,10 @@ void vg_widget_set_padding(vg_widget_t *widget, float padding) {
     if (!widget)
         return;
     padding = widget_nonnegative_finite(padding);
+    if (widget->layout.padding_left == padding && widget->layout.padding_top == padding &&
+        widget->layout.padding_right == padding && widget->layout.padding_bottom == padding) {
+        return;
+    }
     widget->layout.padding_left = padding;
     widget->layout.padding_top = padding;
     widget->layout.padding_right = padding;
@@ -1033,10 +1071,18 @@ void vg_widget_set_padding(vg_widget_t *widget, float padding) {
 void vg_widget_set_paddings(vg_widget_t *widget, float left, float top, float right, float bottom) {
     if (!widget)
         return;
-    widget->layout.padding_left = widget_nonnegative_finite(left);
-    widget->layout.padding_top = widget_nonnegative_finite(top);
-    widget->layout.padding_right = widget_nonnegative_finite(right);
-    widget->layout.padding_bottom = widget_nonnegative_finite(bottom);
+    left = widget_nonnegative_finite(left);
+    top = widget_nonnegative_finite(top);
+    right = widget_nonnegative_finite(right);
+    bottom = widget_nonnegative_finite(bottom);
+    if (widget->layout.padding_left == left && widget->layout.padding_top == top &&
+        widget->layout.padding_right == right && widget->layout.padding_bottom == bottom) {
+        return;
+    }
+    widget->layout.padding_left = left;
+    widget->layout.padding_top = top;
+    widget->layout.padding_right = right;
+    widget->layout.padding_bottom = bottom;
     widget->needs_layout = true;
 }
 
@@ -1047,6 +1093,8 @@ void vg_widget_set_paddings(vg_widget_t *widget, float left, float top, float ri
 /// @brief Enables or disables @p widget; on disable clears focus, capture, hover, modal, and click references for the subtree.
 void vg_widget_set_enabled(vg_widget_t *widget, bool enabled) {
     if (!widget)
+        return;
+    if (widget->enabled == enabled)
         return;
     widget->enabled = enabled;
     if (enabled) {
@@ -1450,6 +1498,8 @@ void vg_widget_set_focus(vg_widget_t *widget) {
     if (!widget->vtable || !widget->vtable->can_focus || !widget->vtable->can_focus(widget)) {
         return;
     }
+    if (g_focused_widget == widget)
+        return;
 
     // Unfocus previous widget
     if (g_focused_widget && g_focused_widget != widget) {

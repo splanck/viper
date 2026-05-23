@@ -250,6 +250,18 @@ typedef struct vg_codeeditor {
     int *highlight_line_span_indices; ///< Span indices touching each line, grouped by line.
     int highlight_line_span_indices_cap;
 
+    // Inlay hints (display-only ghost text anchored to source positions)
+    struct vg_inlay_hint {
+        int line;       ///< Zero-based source line.
+        int col;        ///< Zero-based source column anchor.
+        char *text;     ///< Owned hint text.
+        uint32_t color; ///< ARGB text color.
+    } *inlay_hints;     ///< Owned array; NULL when unused.
+
+    int inlay_hint_count; ///< Active hint count.
+    int inlay_hint_cap;   ///< Allocated capacity.
+    bool inlay_hints_sorted; ///< True when hints are ordered by line/column for paint.
+
     // Gutter icons (breakpoints, diagnostics, etc.)
     struct vg_gutter_icon {
         int line;        ///< 0-based line number
@@ -435,6 +447,27 @@ void vg_codeeditor_refresh_layout_state(vg_codeeditor_t *editor);
 /// @brief Reset CodeEditor performance counters to zero.
 /// @param editor Code editor widget.
 void vg_codeeditor_reset_perf_stats(vg_codeeditor_t *editor);
+
+/// @brief Add display-only ghost text anchored to a source position.
+/// @param editor Code editor widget.
+/// @param line   Zero-based source line.
+/// @param col    Zero-based source column.
+/// @param text   Hint text (copied internally).
+/// @param color  ARGB text color.
+void vg_codeeditor_add_inlay_hint(vg_codeeditor_t *editor,
+                                  int line,
+                                  int col,
+                                  const char *text,
+                                  uint32_t color);
+
+/// @brief Clear all inlay hints.
+/// @param editor Code editor widget.
+void vg_codeeditor_clear_inlay_hints(vg_codeeditor_t *editor);
+
+/// @brief Return the active inlay hint count.
+/// @param editor Code editor widget.
+/// @return Number of retained inlay hints.
+int vg_codeeditor_get_inlay_hint_count(const vg_codeeditor_t *editor);
 
 /// @brief Copy current CodeEditor performance counters.
 /// @param editor Code editor widget.

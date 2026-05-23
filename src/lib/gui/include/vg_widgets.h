@@ -672,6 +672,14 @@ void vg_listbox_select_index(vg_listbox_t *listbox, size_t index);
 /// @return Selected index or SIZE_MAX if none
 size_t vg_listbox_get_selected_index(vg_listbox_t *listbox);
 
+/// @brief Scroll to the first row without changing selection.
+/// @param listbox ListBox widget.
+void vg_listbox_scroll_to_top(vg_listbox_t *listbox);
+
+/// @brief Scroll to the last row without changing selection.
+/// @param listbox ListBox widget.
+void vg_listbox_scroll_to_bottom(vg_listbox_t *listbox);
+
 //=============================================================================
 // Dropdown/ComboBox Widget
 //=============================================================================

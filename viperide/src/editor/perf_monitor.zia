@@ -20,6 +20,7 @@ class PerfMonitor {
     expose Integer diagnosticsUs;
     expose Integer hoverUs;
     expose Integer signatureUs;
+    expose Integer inlayUs;
     expose Integer symbolsUs;
     expose Integer indexUs;
     expose Integer searchUs;
@@ -44,6 +45,7 @@ class PerfMonitor {
         diagnosticsUs = 0;
         hoverUs = 0;
         signatureUs = 0;
+        inlayUs = 0;
         symbolsUs = 0;
         indexUs = 0;
         searchUs = 0;
@@ -77,6 +79,10 @@ class PerfMonitor {
 
     expose func AddSignature(startUs: Integer) {
         if enabled and startUs > 0 { signatureUs = signatureUs + (Clock.TicksUs() - startUs); }
+    }
+
+    expose func AddInlay(startUs: Integer) {
+        if enabled and startUs > 0 { inlayUs = inlayUs + (Clock.TicksUs() - startUs); }
     }
 
     expose func AddSymbols(startUs: Integer) {
@@ -145,6 +151,7 @@ class PerfMonitor {
             + " diagnosticsUs=" + diagnosticsUs
             + " hoverUs=" + hoverUs
             + " signatureUs=" + signatureUs
+            + " inlayUs=" + inlayUs
             + " symbolsUs=" + symbolsUs
             + " indexUs=" + indexUs
             + " searchUs=" + searchUs

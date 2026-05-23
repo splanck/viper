@@ -68,11 +68,18 @@ func main() {
                   "sidebar command normalized") == false { return; }
     if assertTrue(registry.IsKnown("rename"), "rename command registered") == false { return; }
     if assertTrue(registry.Find("save").category == "File"
+                  and registry.Find("saveas").category == "File"
+                  and registry.Find("openfolder").category == "File"
                   and registry.Find("rename").category == "Refactor"
+                  and registry.Find("extractfunction").category == "Refactor"
                   and registry.Find("searchproject").category == "Search"
                   and registry.Find("signature_trigger").category == "Navigate"
                   and registry.Find("signaturenextoverload").category == "Navigate",
                   "command palette categories assigned") == false { return; }
+    if assertTrue(registry.Find("saveas").shortcut == "Ctrl+Shift+S"
+                  and registry.Find("saveall").shortcut == "Ctrl+Alt+Shift+S"
+                  and registry.Find("openfolder").shortcut == "Ctrl+Alt+O",
+                  "file command shortcuts are discoverable and conflict-free") == false { return; }
 
     var langMgr = new language_service.LanguageServiceManager();
     var basicDoc = new document.Document();

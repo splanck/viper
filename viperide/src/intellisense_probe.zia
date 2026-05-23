@@ -7,11 +7,13 @@ bind "editor/signature";
 bind "editor/hover";
 bind "editor/symbols";
 bind "editor/diagnostics";
+bind "editor/inlay_hints";
 bind "editor/project_index";
 bind "commands/edit_commands";
 bind "core/document_manager";
 bind "core/project_manager";
 bind "services/locations";
+bind "services/workspace_edits";
 
 bind Viper.GUI;
 bind ZiaCompletion = Viper.Zia.Completion;
@@ -109,6 +111,7 @@ func main() {
     var engine = new editor_engine.EditorEngine();
     var completer = new completion.CompletionController();
     var sigCtrl = new signature.SignatureController();
+    var inlayCtrl = new inlay_hints.InlayHintController();
     var docMgr = new document_manager.DocumentManager();
     var projMgr = new project_manager.ProjectManager();
 
@@ -121,6 +124,25 @@ func main() {
     completer.SetSourcePath("intellisense_probe.zia");
     sigCtrl.setup(shell.app);
     sigCtrl.setSourcePath("intellisense_probe.zia");
+
+    var hintSource = "module HintProbe;\n"
+        + "func add(value: Integer, amount: Integer) -> Integer { return value + amount; }\n"
+        + "func main() {\n"
+        + "    var total = add(1, 2);\n"
+        + "}\n";
+    engine.SetText(hintSource);
+    inlayCtrl.Refresh(engine);
+    if inlayCtrl.lastHintCount < 2 or engine.editor.GetInlayHintCount() < 2 {
+        fail(shell, "inlay hint controller");
+        return;
+    }
+    inlayCtrl.SetEnabled(false);
+    inlayCtrl.Refresh(engine);
+    if engine.editor.GetInlayHintCount() != 0 {
+        fail(shell, "inlay hint clear");
+        return;
+    }
+    inlayCtrl.SetEnabled(true);
 
     engine.SetText(
         "module IntelliProbe;\n"
@@ -937,6 +959,217 @@ func main() {
         fail(shell, "toggle line comment remove");
         return;
     }
+    var lineCommentRange = "module IntelliProbe;\n    alpha\n    beta\n";
+    engine.SetText(lineCommentRange);
+    engine.editor.SetCursorSelection(0, 1, 0, 2, 8);
+    edit_commands.handleToggleLineComment(shell, docMgr, engine);
+    if engine.editor.GetLine(1) != "    // alpha"
+       or engine.editor.GetLine(2) != "    // beta" {
+        fail(shell, "toggle line comment selection add");
+        return;
+    }
+    engine.editor.Undo();
+    if engine.GetTextSnapshot() != lineCommentRange {
+        fail(shell, "toggle line comment selection undo");
+        return;
+    }
+    engine.editor.SetCursorSelection(0, 1, 0, 2, 8);
+    edit_commands.handleToggleLineComment(shell, docMgr, engine);
+    engine.editor.SetCursorSelection(0, 1, 0, 2, 11);
+    edit_commands.handleToggleLineComment(shell, docMgr, engine);
+    if engine.GetTextSnapshot() != lineCommentRange {
+        fail(shell, "toggle line comment selection remove");
+        return;
+    }
+
+    var undoRoot = TempFile.CreateDirWithPrefix("viperide_inactive_rename_undo_");
+    var activeRenamePath = Path.Join(undoRoot, "active.zia");
+    var inactiveRenamePath = Path.Join(undoRoot, "inactive.zia");
+    File.WriteAllText(activeRenamePath, "old\n");
+    File.WriteAllText(inactiveRenamePath, "old\n");
+    var undoDocMgr = new document_manager.DocumentManager();
+    undoDocMgr.OpenFile(activeRenamePath);
+    undoDocMgr.OpenFile(inactiveRenamePath);
+    undoDocMgr.SetActive(0);
+    engine.LoadDocument(undoDocMgr.GetActive()!);
+    var renameEdits = Seq.New();
+    var editA = Map.New();
+    Map.SetStr(editA, "file", activeRenamePath);
+    Map.SetInt(editA, "startLine", 1);
+    Map.SetInt(editA, "startColumn", 1);
+    Map.SetInt(editA, "endLine", 1);
+    Map.SetInt(editA, "endColumn", 4);
+    Map.SetStr(editA, "newText", "new");
+    Seq.Push(renameEdits, editA);
+    var editB = Map.New();
+    Map.SetStr(editB, "file", inactiveRenamePath);
+    Map.SetInt(editB, "startLine", 1);
+    Map.SetInt(editB, "startColumn", 1);
+    Map.SetInt(editB, "endLine", 1);
+    Map.SetInt(editB, "endColumn", 4);
+    Map.SetStr(editB, "newText", "new");
+    Seq.Push(renameEdits, editB);
+    var renameUndoResult = workspace_edits.ApplyRenameEdits(renameEdits, undoDocMgr);
+    if renameUndoResult.success == false
+       or undoDocMgr.documents.get(1).hasPendingWorkspaceUndo == false
+       or undoDocMgr.documents.get(1).content != "new\n" {
+        fail(shell, "inactive rename pending undo snapshot");
+        return;
+    }
+    undoDocMgr.SetActive(1);
+    engine.LoadDocument(undoDocMgr.GetActive()!);
+    edit_commands.handleUndo(engine, undoDocMgr);
+    if undoDocMgr.documents.get(1).content != "old\n"
+       or engine.GetTextSnapshot() != "old\n"
+       or undoDocMgr.documents.get(1).hasPendingWorkspaceUndo {
+        fail(shell, "inactive rename undo restore");
+        return;
+    }
+    Dir.RemoveAll(undoRoot);
+
+    var inlineSource = "module InlineProbe;\n"
+        + "func main() {\n"
+        + "    var total = count + 1;\n"
+        + "    Say(total);\n"
+        + "    var label = \"total\"; // total stays in trivia\n"
+        + "}\n";
+    var inlineText = edit_commands.InlineLocalVariableText(inlineSource, 2);
+    if Str.IndexOf(inlineText, "var total") != 0
+       or Str.IndexOf(inlineText, "Say((count + 1))") == 0
+       or Str.IndexOf(inlineText, "\"total\"") == 0
+       or Str.IndexOf(inlineText, "trivia") == 0 {
+        fail(shell, "inline local variable text");
+        return;
+    }
+    var inlineUnsafe = "module InlineProbe;\n"
+        + "func main() {\n"
+        + "    var total = count + 1;\n"
+        + "    total = 3;\n"
+        + "    Say(total);\n"
+        + "}\n";
+    if edit_commands.InlineLocalVariableText(inlineUnsafe, 2) != inlineUnsafe {
+        fail(shell, "inline local rejects reassignment");
+        return;
+    }
+    var inlineComparison = "module InlineProbe;\n"
+        + "func main() {\n"
+        + "    var total = count + 1;\n"
+        + "    if total == 3 {\n"
+        + "        Say(total);\n"
+        + "    }\n"
+        + "}\n";
+    var inlineComparisonText = edit_commands.InlineLocalVariableText(inlineComparison, 2);
+    if Str.IndexOf(inlineComparisonText, "if (count + 1) == 3") == 0
+       or Str.IndexOf(inlineComparisonText, "Say((count + 1))") == 0 {
+        fail(shell, "inline local allows equality comparison");
+        return;
+    }
+    var inlineCompound = "module InlineProbe;\n"
+        + "func main() {\n"
+        + "    var total = count + 1;\n"
+        + "    total += 1;\n"
+        + "    Say(total);\n"
+        + "}\n";
+    if edit_commands.InlineLocalVariableText(inlineCompound, 2) != inlineCompound {
+        fail(shell, "inline local rejects compound assignment");
+        return;
+    }
+    var extractSource = "module ExtractProbe;\n"
+        + "func main() {\n"
+        + "    Say(count + 1);\n"
+        + "}\n";
+    var extractText = edit_commands.ExtractLocalVariableText(extractSource, 2, 8, 2, 17, "total");
+    if Str.IndexOf(extractText, "var total = count + 1;") == 0
+       or Str.IndexOf(extractText, "Say(total);") == 0 {
+        fail(shell, "extract local variable text");
+        return;
+    }
+    var extractDuplicate = "module ExtractProbe;\n"
+        + "func main() {\n"
+        + "    var total = 0;\n"
+        + "    Say(count + 1);\n"
+        + "}\n";
+    if edit_commands.ExtractLocalVariableText(extractDuplicate, 3, 8, 3, 17, "total") != extractDuplicate {
+        fail(shell, "extract local rejects duplicate name");
+        return;
+    }
+    if edit_commands.ExtractLocalVariableText(extractSource, 1, 0, 2, 8, "total") != extractSource {
+        fail(shell, "extract local rejects multi-line selection");
+        return;
+    }
+    var extractFunctionSource = "module ExtractFunctionProbe;\n"
+        + "func main() {\n"
+        + "    Terminal.Say(\"one\");\n"
+        + "    Terminal.Say(\"two\");\n"
+        + "    Terminal.Say(\"done\");\n"
+        + "}\n";
+    var extractFunctionText = edit_commands.ExtractFunctionText(extractFunctionSource,
+                                                                 2,
+                                                                 0,
+                                                                 3,
+                                                                 Str.Length("    Terminal.Say(\"two\");"),
+                                                                 "sayBoth");
+    if Str.IndexOf(extractFunctionText, "    sayBoth();") == 0
+       or Str.IndexOf(extractFunctionText, "func sayBoth() {") == 0
+       or Str.IndexOf(extractFunctionText, "    Terminal.Say(\"one\");") == 0
+       or Str.IndexOf(extractFunctionText, "    Terminal.Say(\"two\");") == 0 {
+        fail(shell, "extract function text");
+        return;
+    }
+    var captureFunctionSource = "module ExtractFunctionProbe;\n"
+        + "func main() {\n"
+        + "    var count = 1;\n"
+        + "    Terminal.Say(count);\n"
+        + "}\n";
+    if edit_commands.ExtractFunctionText(captureFunctionSource,
+                                         3,
+                                         0,
+                                         3,
+                                         Str.Length("    Terminal.Say(count);"),
+                                         "sayCount") != captureFunctionSource {
+        fail(shell, "extract function rejects captured local");
+        return;
+    }
+    var escapingLocalSource = "module ExtractFunctionProbe;\n"
+        + "func main() {\n"
+        + "    var count = 1;\n"
+        + "    Terminal.Say(count);\n"
+        + "}\n";
+    if edit_commands.ExtractFunctionText(escapingLocalSource,
+                                         2,
+                                         0,
+                                         2,
+                                         Str.Length("    var count = 1;"),
+                                         "makeCount") != escapingLocalSource {
+        fail(shell, "extract function rejects escaping local");
+        return;
+    }
+    if edit_commands.ExtractFunctionText(extractFunctionSource,
+                                         2,
+                                         0,
+                                         2,
+                                         Str.Length("    Terminal.Say(\"one\");"),
+                                         "main") != extractFunctionSource {
+        fail(shell, "extract function rejects duplicate function");
+        return;
+    }
+    var inlineDocMgr = new document_manager.DocumentManager();
+    var inlineDoc = inlineDocMgr.NewDocument();
+    inlineDoc.content = inlineSource;
+    inlineDoc.language = "zia";
+    engine.LoadDocument(inlineDoc);
+    engine.editor.SetCursor(2, 8);
+    edit_commands.handleInlineLocalVariable(shell, inlineDocMgr, engine);
+    if Str.IndexOf(engine.GetTextSnapshot(), "Say((count + 1))") == 0 {
+        fail(shell, "inline local command");
+        return;
+    }
+    engine.editor.Undo();
+    if engine.GetTextSnapshot() != inlineSource {
+        fail(shell, "inline local undo");
+        return;
+    }
+
     var messyBinds = "module BindProbe;\n"
         + "bind Zeta = Viper.Zeta;\n"
         + "bind Alpha = Viper.Alpha;\n"

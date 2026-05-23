@@ -299,6 +299,7 @@ enum class RuntimeTypeId : std::size_t {
     RTCLS_GuiSlider,
     RTCLS_GuiProgressBar,
     RTCLS_GuiListBox,
+    RTCLS_GuiOutputPane,
     RTCLS_GuiRadioGroup,
     RTCLS_GuiRadioButton,
     RTCLS_GuiSpinner,

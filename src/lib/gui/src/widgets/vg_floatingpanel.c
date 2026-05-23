@@ -444,6 +444,8 @@ static void floatingpanel_render_overlay_subtree(vg_widget_t *widget,
 void vg_floatingpanel_set_position(vg_floatingpanel_t *panel, float x, float y) {
     if (!panel)
         return;
+    if (panel->abs_x == x && panel->abs_y == y)
+        return;
     panel->abs_x = x;
     panel->abs_y = y;
     panel->base.needs_layout = true;
@@ -457,6 +459,8 @@ void vg_floatingpanel_set_position(vg_floatingpanel_t *panel, float x, float y) 
 /// @param h     Height in logical pixels.
 void vg_floatingpanel_set_size(vg_floatingpanel_t *panel, float w, float h) {
     if (!panel)
+        return;
+    if (panel->abs_w == w && panel->abs_h == h)
         return;
     panel->abs_w = w;
     panel->abs_h = h;

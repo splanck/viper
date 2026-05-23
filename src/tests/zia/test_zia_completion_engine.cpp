@@ -355,6 +355,8 @@ func main() {
     auto items = engine.complete(source, line, col, "<test>", 0);
     const CompletionItem *say = findItem(items, "Say");
     ASSERT_NE(say, nullptr);
+    EXPECT_TRUE(say->documentation.find("Writes text followed by a newline") !=
+                std::string::npos);
     EXPECT_TRUE(say->documentation.find("Runtime method Viper.Terminal.Say.") !=
                 std::string::npos);
     EXPECT_TRUE(say->documentation.find("Signature: Say(s: String) -> Void") !=
@@ -500,6 +502,7 @@ func main() {
     std::string help = engine.signatureHelp(source, line, col, "<test>");
 
     EXPECT_TRUE(help.find("Say(s: String) -> Void") != std::string::npos);
+    EXPECT_TRUE(help.find("Writes text followed by a newline") != std::string::npos);
     EXPECT_TRUE(help.find("Runtime method Viper.Terminal.Say.") != std::string::npos);
 }
 

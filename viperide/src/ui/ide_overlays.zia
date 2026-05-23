@@ -19,20 +19,19 @@ final ACTION_RESET_EDITING = 8;
 final ACTION_RESET_INTELLISENSE = 9;
 final ACTION_RESET_STARTUP = 10;
 
-final SETTINGS_PANEL_WIDTH = 860;
-final SETTINGS_PANEL_HEIGHT = 600;
+final SETTINGS_DOCK_WIDTH = 420;
+final SETTINGS_DOCK_MAX_WIDTH = 520;
+final SETTINGS_DOCK_MIN_WIDTH = 320;
 final ABOUT_PANEL_WIDTH = 520;
 final ABOUT_PANEL_HEIGHT = 270;
 final FIELD_LABEL_WIDTH = 200;
 final PANEL_SCREEN_MARGIN = 28;
-final SETTINGS_MIN_WIDTH = 560;
-final SETTINGS_MIN_HEIGHT = 420;
 
-/// @brief Floating in-app overlays for ViperIDE settings and about panels.
-/// @details These replace the old stacked MessageBox/Prompt flow with
-///          persistent controls that can be edited inline.
+/// @brief Docked Preferences surface plus the floating About panel.
+/// @details Preferences live in the workbench side panel so they can stay open
+///          while the editor remains visible.
 class IdeOverlays {
-    expose GUI.FloatingPanel settingsPanel;
+    expose GUI.VBox settingsPanel;
     expose GUI.FloatingPanel aboutPanel;
 
     expose GUI.TextInput fontPathInput;
@@ -66,10 +65,12 @@ class IdeOverlays {
 
     expose Boolean settingsVisible;
     expose Boolean aboutVisible;
+    expose Integer settingsDockWidth;
 
     expose func init() {
         settingsVisible = false;
         aboutVisible = false;
+        settingsDockWidth = 0;
     }
 
     expose func Setup(shell: app_shell.AppShell) {
@@ -373,16 +374,17 @@ class IdeOverlays {
     }
 
     hide func setupSettingsPanel(shell: app_shell.AppShell) {
-        settingsPanel = GUI.FloatingPanel.New(shell.app);
-        settingsPanel.SetSize(SETTINGS_PANEL_WIDTH, SETTINGS_PANEL_HEIGHT);
+        settingsPanel = shell.preferencesPanel;
+        settingsPanel.SetSize(SETTINGS_DOCK_WIDTH, 0);
         settingsPanel.SetVisible(0);
 
         var root = GUI.VBox.New();
-        root.SetPadding(20.0);
+        root.SetPadding(18.0);
         root.SetSpacing(14.0);
+        root.SetFlex(1.0);
         settingsPanel.AddChild(root);
 
-        var title = GUI.Label.New(root, "Editor Settings");
+        var title = GUI.Label.New(root, "Preferences");
         title.SetMargin(1);
 
         var intro = GUI.Label.New(
@@ -600,25 +602,19 @@ class IdeOverlays {
     hide func layoutSettingsPanel(shell: app_shell.AppShell) {
         if settingsPanel == null { return; }
         var rootW = shell.app.GetWidth();
-        var rootH = shell.app.GetHeight();
         if rootW <= 0 { rootW = 1280; }
-        if rootH <= 0 { rootH = 800; }
-        var maxW = rootW - (PANEL_SCREEN_MARGIN * 2);
-        var maxH = rootH - (PANEL_SCREEN_MARGIN * 2);
-        if maxW <= 0 { maxW = rootW; }
-        if maxH <= 0 { maxH = rootH; }
-        var panelW = SETTINGS_PANEL_WIDTH;
-        var panelH = SETTINGS_PANEL_HEIGHT;
+        var panelW = SETTINGS_DOCK_WIDTH;
+        if rootW < 760 { panelW = SETTINGS_DOCK_MIN_WIDTH; }
+        if rootW > 1320 { panelW = SETTINGS_DOCK_MAX_WIDTH; }
+        var maxW = (rootW * 55) / 100;
         if panelW > maxW { panelW = maxW; }
-        if panelH > maxH { panelH = maxH; }
-        if panelW < SETTINGS_MIN_WIDTH and maxW >= SETTINGS_MIN_WIDTH { panelW = SETTINGS_MIN_WIDTH; }
-        if panelH < SETTINGS_MIN_HEIGHT and maxH >= SETTINGS_MIN_HEIGHT { panelH = SETTINGS_MIN_HEIGHT; }
-        settingsPanel.SetSize(panelW, panelH);
-        var x = (rootW - panelW) / 2;
-        var y = (rootH - panelH) / 2;
-        if x < PANEL_SCREEN_MARGIN { x = PANEL_SCREEN_MARGIN; }
-        if y < PANEL_SCREEN_MARGIN { y = PANEL_SCREEN_MARGIN; }
-        settingsPanel.SetPosition(x, y);
+        if maxW >= SETTINGS_DOCK_MIN_WIDTH and panelW < SETTINGS_DOCK_MIN_WIDTH {
+            panelW = SETTINGS_DOCK_MIN_WIDTH;
+        }
+        if panelW < 240 { panelW = 240; }
+        if settingsDockWidth == panelW { return; }
+        settingsDockWidth = panelW;
+        settingsPanel.SetSize(panelW, 0);
     }
 
     hide func layoutAboutPanel(shell: app_shell.AppShell) {

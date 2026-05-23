@@ -233,6 +233,11 @@ static vg_listbox_t *rt_listbox_checked(void *handle) {
     return (vg_listbox_t *)rt_gui_widget_handle_checked_type(handle, VG_WIDGET_LISTBOX);
 }
 
+/// @brief Safe-cast a handle to a live OutputPane widget, or NULL.
+static vg_outputpane_t *rt_outputpane_checked(void *handle) {
+    return (vg_outputpane_t *)rt_gui_widget_handle_checked_type(handle, VG_WIDGET_OUTPUTPANE);
+}
+
 /// @brief Safe-cast a handle to a live RadioButton widget, or NULL.
 static vg_radiobutton_t *rt_radiobutton_checked(void *handle) {
     return (vg_radiobutton_t *)rt_gui_widget_handle_checked_type(handle, VG_WIDGET_RADIO);
@@ -1216,6 +1221,22 @@ void rt_listbox_select_index(void *listbox, int64_t index) {
     vg_listbox_select_index(lb, idx);
 }
 
+/// @brief Scroll to the first listbox row without changing selection.
+void rt_listbox_scroll_to_top(void *listbox) {
+    RT_ASSERT_MAIN_THREAD();
+    vg_listbox_t *lb = rt_listbox_checked(listbox);
+    if (lb)
+        vg_listbox_scroll_to_top(lb);
+}
+
+/// @brief Scroll to the last listbox row without changing selection.
+void rt_listbox_scroll_to_bottom(void *listbox) {
+    RT_ASSERT_MAIN_THREAD();
+    vg_listbox_t *lb = rt_listbox_checked(listbox);
+    if (lb)
+        vg_listbox_scroll_to_bottom(lb);
+}
+
 /// @brief Enable or disable Ctrl/Shift multi-row selection.
 void rt_listbox_set_multi_select(void *listbox, int64_t enabled) {
     RT_ASSERT_MAIN_THREAD();
@@ -1460,6 +1481,147 @@ void rt_listbox_set_font(void *listbox, void *font, double size) {
                             checked_font,
                             (float)rt_gui_sanitize_font_size(size, 14.0));
     }
+}
+
+//=============================================================================
+// OutputPane Widget
+//=============================================================================
+
+/// @brief Create an append-only ANSI-aware output pane.
+void *rt_outputpane_new(void *parent) {
+    RT_ASSERT_MAIN_THREAD();
+    vg_widget_t *parent_widget = rt_widget_parent_or_null_if_invalid(parent);
+    if (parent && !parent_widget)
+        return NULL;
+    vg_outputpane_t *pane = vg_outputpane_create();
+    if (!pane)
+        return NULL;
+    if (parent_widget)
+        vg_widget_add_child(parent_widget, &pane->base);
+    rt_gui_apply_default_font(&pane->base);
+    return pane;
+}
+
+/// @brief Append text, parsing ANSI SGR escape sequences.
+void rt_outputpane_append(void *pane, rt_string text) {
+    RT_ASSERT_MAIN_THREAD();
+    vg_outputpane_t *out = rt_outputpane_checked(pane);
+    if (!out)
+        return;
+    char *ctext = rt_string_to_gui_cstr(text);
+    vg_outputpane_append(out, ctext);
+    free(ctext);
+}
+
+/// @brief Append text as a complete line.
+void rt_outputpane_append_line(void *pane, rt_string text) {
+    RT_ASSERT_MAIN_THREAD();
+    vg_outputpane_t *out = rt_outputpane_checked(pane);
+    if (!out)
+        return;
+    char *ctext = rt_string_to_gui_cstr(text);
+    vg_outputpane_append_line(out, ctext);
+    free(ctext);
+}
+
+/// @brief Append a single explicitly styled segment.
+void rt_outputpane_append_styled(void *pane,
+                                 rt_string text,
+                                 int64_t fg,
+                                 int64_t bg,
+                                 int64_t bold) {
+    RT_ASSERT_MAIN_THREAD();
+    vg_outputpane_t *out = rt_outputpane_checked(pane);
+    if (!out)
+        return;
+    char *ctext = rt_string_to_gui_cstr(text);
+    vg_outputpane_append_styled(out, ctext, (uint32_t)fg, (uint32_t)bg, bold != 0);
+    free(ctext);
+}
+
+/// @brief Clear all output and reset ANSI state.
+void rt_outputpane_clear(void *pane) {
+    RT_ASSERT_MAIN_THREAD();
+    vg_outputpane_t *out = rt_outputpane_checked(pane);
+    if (out)
+        vg_outputpane_clear(out);
+}
+
+/// @brief Scroll to the first output line and lock auto-scroll.
+void rt_outputpane_scroll_to_top(void *pane) {
+    RT_ASSERT_MAIN_THREAD();
+    vg_outputpane_t *out = rt_outputpane_checked(pane);
+    if (out)
+        vg_outputpane_scroll_to_top(out);
+}
+
+/// @brief Scroll to the latest output line and unlock auto-scroll.
+void rt_outputpane_scroll_to_bottom(void *pane) {
+    RT_ASSERT_MAIN_THREAD();
+    vg_outputpane_t *out = rt_outputpane_checked(pane);
+    if (out)
+        vg_outputpane_scroll_to_bottom(out);
+}
+
+/// @brief Enable or disable automatic scrolling on append.
+void rt_outputpane_set_auto_scroll(void *pane, int64_t enabled) {
+    RT_ASSERT_MAIN_THREAD();
+    vg_outputpane_t *out = rt_outputpane_checked(pane);
+    if (out)
+        vg_outputpane_set_auto_scroll(out, enabled != 0);
+}
+
+/// @brief Return selected output text.
+rt_string rt_outputpane_get_selection(void *pane) {
+    RT_ASSERT_MAIN_THREAD();
+    vg_outputpane_t *out = rt_outputpane_checked(pane);
+    if (!out)
+        return rt_str_empty();
+    char *selection = vg_outputpane_get_selection(out);
+    if (!selection)
+        return rt_str_empty();
+    rt_string result = rt_string_from_bytes(selection, strlen(selection));
+    free(selection);
+    return result;
+}
+
+/// @brief Select all output text.
+void rt_outputpane_select_all(void *pane) {
+    RT_ASSERT_MAIN_THREAD();
+    vg_outputpane_t *out = rt_outputpane_checked(pane);
+    if (out)
+        vg_outputpane_select_all(out);
+}
+
+/// @brief Set the retained line cap.
+void rt_outputpane_set_max_lines(void *pane, int64_t max_lines) {
+    RT_ASSERT_MAIN_THREAD();
+    vg_outputpane_t *out = rt_outputpane_checked(pane);
+    if (!out)
+        return;
+    size_t max = max_lines <= 0 ? 1u : (size_t)max_lines;
+    vg_outputpane_set_max_lines(out, max);
+}
+
+/// @brief Return the current retained line count.
+int64_t rt_outputpane_get_line_count(void *pane) {
+    RT_ASSERT_MAIN_THREAD();
+    vg_outputpane_t *out = rt_outputpane_checked(pane);
+    if (!out)
+        return 0;
+    return out->line_count > (size_t)INT64_MAX ? INT64_MAX : (int64_t)out->line_count;
+}
+
+/// @brief Set the output pane font.
+void rt_outputpane_set_font(void *pane, void *font, double size) {
+    RT_ASSERT_MAIN_THREAD();
+    vg_outputpane_t *out = rt_outputpane_checked(pane);
+    if (!out)
+        return;
+    vg_font_t *checked_font = rt_gui_font_handle_checked(font);
+    if (!checked_font)
+        return;
+    vg_outputpane_set_font(out, checked_font, (float)rt_gui_sanitize_font_size(size, 14.0));
 }
 
 //=============================================================================
@@ -2285,6 +2447,16 @@ void rt_listbox_select_index(void *listbox, int64_t index) {
     (void)index;
 }
 
+/// @brief Stub: graphics disabled — no listbox scroll state exists.
+void rt_listbox_scroll_to_top(void *listbox) {
+    (void)listbox;
+}
+
+/// @brief Stub: graphics disabled — no listbox scroll state exists.
+void rt_listbox_scroll_to_bottom(void *listbox) {
+    (void)listbox;
+}
+
 /// @brief Stub: graphics disabled — no listbox selection exists.
 void rt_listbox_set_multi_select(void *listbox, int64_t enabled) {
     (void)listbox;
@@ -2336,6 +2508,88 @@ void rt_listbox_item_set_text_color(void *item, int64_t color) {
 /// @brief Set the font of the listbox.
 void rt_listbox_set_font(void *listbox, void *font, double size) {
     (void)listbox;
+    (void)font;
+    (void)size;
+}
+
+/// @brief Stub: graphics disabled — returns NULL; no output pane is created.
+void *rt_outputpane_new(void *parent) {
+    (void)parent;
+    return NULL;
+}
+
+/// @brief Stub: graphics disabled — no output pane exists.
+void rt_outputpane_append(void *pane, rt_string text) {
+    (void)pane;
+    (void)text;
+}
+
+/// @brief Stub: graphics disabled — no output pane exists.
+void rt_outputpane_append_line(void *pane, rt_string text) {
+    (void)pane;
+    (void)text;
+}
+
+/// @brief Stub: graphics disabled — no output pane exists.
+void rt_outputpane_append_styled(void *pane,
+                                 rt_string text,
+                                 int64_t fg,
+                                 int64_t bg,
+                                 int64_t bold) {
+    (void)pane;
+    (void)text;
+    (void)fg;
+    (void)bg;
+    (void)bold;
+}
+
+/// @brief Stub: graphics disabled — no output pane exists.
+void rt_outputpane_clear(void *pane) {
+    (void)pane;
+}
+
+/// @brief Stub: graphics disabled — no output pane exists.
+void rt_outputpane_scroll_to_top(void *pane) {
+    (void)pane;
+}
+
+/// @brief Stub: graphics disabled — no output pane exists.
+void rt_outputpane_scroll_to_bottom(void *pane) {
+    (void)pane;
+}
+
+/// @brief Stub: graphics disabled — no output pane exists.
+void rt_outputpane_set_auto_scroll(void *pane, int64_t enabled) {
+    (void)pane;
+    (void)enabled;
+}
+
+/// @brief Stub: graphics disabled — no selected output text exists.
+rt_string rt_outputpane_get_selection(void *pane) {
+    (void)pane;
+    return rt_str_empty();
+}
+
+/// @brief Stub: graphics disabled — no output pane exists.
+void rt_outputpane_select_all(void *pane) {
+    (void)pane;
+}
+
+/// @brief Stub: graphics disabled — no output pane exists.
+void rt_outputpane_set_max_lines(void *pane, int64_t max_lines) {
+    (void)pane;
+    (void)max_lines;
+}
+
+/// @brief Stub: graphics disabled — no output pane exists.
+int64_t rt_outputpane_get_line_count(void *pane) {
+    (void)pane;
+    return 0;
+}
+
+/// @brief Stub: graphics disabled — no output pane exists.
+void rt_outputpane_set_font(void *pane, void *font, double size) {
+    (void)pane;
     (void)font;
     (void)size;
 }

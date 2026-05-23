@@ -118,9 +118,17 @@ func ApplyRenameEdits(edits: Any,
         var openIdx = docMgr.FindByPath(openPath);
         if openIdx >= 0 {
             var doc = docMgr.documents.get(openIdx);
-            doc.content = Map.GetStr(newContentByPath, openPath);
-            doc.isModified = true;
-            result.changedDocuments = result.changedDocuments + 1;
+            var newContent = Map.GetStr(newContentByPath, openPath);
+            if newContent != doc.content {
+                if openIdx != docMgr.activeIndex {
+                    doc.pendingWorkspaceUndoContent = doc.content;
+                    doc.pendingWorkspaceUndoLabel = "Rename";
+                    doc.hasPendingWorkspaceUndo = true;
+                }
+                doc.content = newContent;
+                doc.isModified = true;
+                result.changedDocuments = result.changedDocuments + 1;
+            }
         }
         p = p + 1;
     }

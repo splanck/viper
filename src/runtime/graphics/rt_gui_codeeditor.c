@@ -823,6 +823,40 @@ void rt_codeeditor_refresh_highlights(void *editor) {
     ce->base.needs_paint = true;
 }
 
+/// @brief `CodeEditor.AddInlayHint(line, col, text, color)` — add ghost annotation text.
+void rt_codeeditor_add_inlay_hint(void *editor,
+                                  int64_t line,
+                                  int64_t col,
+                                  rt_string text,
+                                  int64_t color) {
+    vg_codeeditor_t *ce = rt_codeeditor_handle_checked(editor);
+    if (!ce)
+        return;
+    char *ctext = rt_string_to_gui_cstr(text);
+    if (!ctext)
+        return;
+    int32_t line_i = rt_gui_clamp_i64_to_i32(line, 0, INT32_MAX);
+    int32_t col_i = rt_gui_clamp_i64_to_i32(col, 0, INT32_MAX);
+    vg_codeeditor_add_inlay_hint(ce, line_i, col_i, ctext, (uint32_t)color);
+    free(ctext);
+}
+
+/// @brief `CodeEditor.ClearInlayHints()` — remove every inlay hint.
+void rt_codeeditor_clear_inlay_hints(void *editor) {
+    vg_codeeditor_t *ce = rt_codeeditor_handle_checked(editor);
+    if (!ce)
+        return;
+    vg_codeeditor_clear_inlay_hints(ce);
+}
+
+/// @brief `CodeEditor.GetInlayHintCount()` — return active inlay hints.
+int64_t rt_codeeditor_get_inlay_hint_count(void *editor) {
+    vg_codeeditor_t *ce = rt_codeeditor_handle_checked(editor);
+    if (!ce)
+        return 0;
+    return vg_codeeditor_get_inlay_hint_count(ce);
+}
+
 //=============================================================================
 // CodeEditor Enhancements - Gutter & Line Numbers (Phase 4)
 //=============================================================================
@@ -2379,6 +2413,30 @@ void rt_codeeditor_add_highlight(void *editor,
 /// @brief Stub: `CodeEditor.RefreshHighlights` is a no-op without graphics.
 void rt_codeeditor_refresh_highlights(void *editor) {
     (void)editor;
+}
+
+/// @brief Stub: `CodeEditor.AddInlayHint` is a no-op without graphics.
+void rt_codeeditor_add_inlay_hint(void *editor,
+                                  int64_t line,
+                                  int64_t col,
+                                  rt_string text,
+                                  int64_t color) {
+    (void)editor;
+    (void)line;
+    (void)col;
+    (void)text;
+    (void)color;
+}
+
+/// @brief Stub: `CodeEditor.ClearInlayHints` is a no-op without graphics.
+void rt_codeeditor_clear_inlay_hints(void *editor) {
+    (void)editor;
+}
+
+/// @brief Stub: returns 0 (no inlay hint state without graphics).
+int64_t rt_codeeditor_get_inlay_hint_count(void *editor) {
+    (void)editor;
+    return 0;
 }
 
 /// @brief Stub: `CodeEditor.SetShowLineNumbers` is a no-op without graphics.

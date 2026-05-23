@@ -960,6 +960,9 @@ static void rt_gui_apply_font_to_widget(vg_widget_t *widget, vg_font_t *font, fl
         case VG_WIDGET_CODEEDITOR:
             vg_codeeditor_set_font((vg_codeeditor_t *)widget, font, size);
             break;
+        case VG_WIDGET_OUTPUTPANE:
+            vg_outputpane_set_font((vg_outputpane_t *)widget, font, size);
+            break;
         case VG_WIDGET_RADIO: {
             vg_radiobutton_t *radio = (vg_radiobutton_t *)widget;
             radio->font = font;
@@ -1020,6 +1023,8 @@ static int rt_gui_widget_uses_font(vg_widget_t *widget, vg_font_t *font) {
             return ((vg_dialog_t *)widget)->font == font;
         case VG_WIDGET_CODEEDITOR:
             return ((vg_codeeditor_t *)widget)->font == font;
+        case VG_WIDGET_OUTPUTPANE:
+            return ((vg_outputpane_t *)widget)->font == font;
         case VG_WIDGET_RADIO:
             return ((vg_radiobutton_t *)widget)->font == font;
         default:
@@ -1211,6 +1216,15 @@ static void rt_gui_inherit_font_to_widget(vg_widget_t *widget, vg_font_t *font, 
                 editor->char_width = editor->font_size * 0.6f;
             if (editor->line_height <= 0.0f)
                 editor->line_height = editor->font_size * 1.35f;
+            break;
+        }
+        case VG_WIDGET_OUTPUTPANE: {
+            vg_outputpane_t *pane = (vg_outputpane_t *)widget;
+            pane->font = font;
+            pane->font_size =
+                size > 0 ? size : (theme ? theme->typography.size_normal : 14.0f);
+            if (pane->line_height <= 0.0f)
+                pane->line_height = pane->font_size * 1.35f;
             break;
         }
         case VG_WIDGET_RADIO: {

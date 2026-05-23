@@ -122,9 +122,13 @@ using Identifier = std::string;
 using StmtPtr = std::unique_ptr<Stmt>;
 using ProcDecl = StmtPtr;
 
+/// @brief Dispatch an expression to the matching visitor callback (double dispatch).
 void visit(const Expr &expr, ExprVisitor &visitor);
+/// @brief Dispatch a mutable expression to the matching mutable-visitor callback.
 void visit(Expr &expr, MutExprVisitor &visitor);
+/// @brief Dispatch a statement to the matching visitor callback (double dispatch).
 void visit(const Stmt &stmt, StmtVisitor &visitor);
+/// @brief Dispatch a mutable statement to the matching mutable-visitor callback.
 void visit(Stmt &stmt, MutStmtVisitor &visitor);
 
 } // namespace il::frontends::basic

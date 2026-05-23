@@ -50,6 +50,9 @@ class Document {
     expose Integer cursorCol;          // Last known cursor column (1-based).
     expose Integer scrollLine;         // Last known top-of-viewport line.
     expose Integer lastModifiedOnDisk; // Timestamp from Viper.IO.File.Modified.
+    expose Boolean hasPendingWorkspaceUndo; // Inactive workspace edit can be undone on activation.
+    expose String pendingWorkspaceUndoContent; // Snapshot before the pending workspace edit.
+    expose String pendingWorkspaceUndoLabel;   // User-facing name of the pending edit.
 
     /// @brief Initialize as an untitled, empty, plain-text document.
     expose func init() {
@@ -64,5 +67,8 @@ class Document {
         cursorCol = 1;
         scrollLine = 1;
         lastModifiedOnDisk = 0;
+        hasPendingWorkspaceUndo = false;
+        pendingWorkspaceUndoContent = "";
+        pendingWorkspaceUndoLabel = "";
     }
 }
