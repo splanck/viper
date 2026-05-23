@@ -14,6 +14,10 @@ final ACTION_USE_SYSTEM_FONT = 3;
 final ACTION_RESET_FONT_SIZE = 4;
 final ACTION_CLOSE_SETTINGS = 5;
 final ACTION_CLOSE_ABOUT = 6;
+final ACTION_RESET_APPEARANCE = 7;
+final ACTION_RESET_EDITING = 8;
+final ACTION_RESET_INTELLISENSE = 9;
+final ACTION_RESET_STARTUP = 10;
 
 final SETTINGS_PANEL_WIDTH = 860;
 final SETTINGS_PANEL_HEIGHT = 600;
@@ -52,6 +56,10 @@ class IdeOverlays {
     expose GUI.Button browseFontButton;
     expose GUI.Button useSystemFontButton;
     expose GUI.Button resetFontSizeButton;
+    expose GUI.Button resetAppearanceButton;
+    expose GUI.Button resetEditingButton;
+    expose GUI.Button resetIntelliSenseButton;
+    expose GUI.Button resetStartupButton;
     expose GUI.Button applySettingsButton;
     expose GUI.Button closeSettingsButton;
     expose GUI.Button aboutCloseButton;
@@ -217,6 +225,22 @@ class IdeOverlays {
             if browseFontButton.WasClicked() != 0 { return ACTION_BROWSE_FONT; }
             if useSystemFontButton.WasClicked() != 0 { return ACTION_USE_SYSTEM_FONT; }
             if resetFontSizeButton.WasClicked() != 0 { return ACTION_RESET_FONT_SIZE; }
+            if resetAppearanceButton.WasClicked() != 0 {
+                ResetAppearanceDefaults();
+                return ACTION_RESET_APPEARANCE;
+            }
+            if resetEditingButton.WasClicked() != 0 {
+                ResetEditingDefaults();
+                return ACTION_RESET_EDITING;
+            }
+            if resetIntelliSenseButton.WasClicked() != 0 {
+                ResetIntelliSenseDefaults();
+                return ACTION_RESET_INTELLISENSE;
+            }
+            if resetStartupButton.WasClicked() != 0 {
+                ResetStartupDefaults();
+                return ACTION_RESET_STARTUP;
+            }
             if applySettingsButton.WasClicked() != 0 { return ACTION_APPLY_SETTINGS; }
             if closeSettingsButton.WasClicked() != 0 { return ACTION_CLOSE_SETTINGS; }
         }
@@ -311,6 +335,36 @@ class IdeOverlays {
 
     expose func ResetFontSize() {
         fontSizeSpinner.SetValue(settings.DEFAULT_FONT_SIZE);
+    }
+
+    expose func ResetAppearanceDefaults() {
+        fontPathInput.SetText("");
+        fontSizeSpinner.SetValue(settings.DEFAULT_FONT_SIZE);
+        themeDropdown.SetSelected(0);
+        minimapCheck.SetChecked(0);
+    }
+
+    expose func ResetEditingDefaults() {
+        tabWidthSpinner.SetValue(4.0);
+        autoCheckCheck.SetChecked(1);
+        codeFoldingCheck.SetChecked(1);
+        wordWrapCheck.SetChecked(0);
+        lineNumbersCheck.SetChecked(1);
+        insertSpacesCheck.SetChecked(1);
+        trimWhitespaceCheck.SetChecked(0);
+        finalNewlineCheck.SetChecked(1);
+        autoSaveCheck.SetChecked(0);
+    }
+
+    expose func ResetIntelliSenseDefaults() {
+        diagnosticsDelaySpinner.SetValue(500.0);
+        completionDelaySpinner.SetValue(180.0);
+    }
+
+    expose func ResetStartupDefaults() {
+        restoreSessionCheck.SetChecked(1);
+        restoreLastProjectCheck.SetChecked(1);
+        confirmCloseCheck.SetChecked(1);
     }
 
     expose func SetFontPath(path: String) {
@@ -429,6 +483,8 @@ class IdeOverlays {
         themeDropdown.SetFlex(1.0);
         themeDropdown.AddItem("Dark");
         themeDropdown.AddItem("Light");
+        resetAppearanceButton = GUI.Button.New(body, "Restore Appearance Defaults");
+        resetAppearanceButton.SetStyle(2);
 
         var togglesTitle = GUI.Label.New(body, "Editing");
         togglesTitle.SetMargin(1);
@@ -445,6 +501,8 @@ class IdeOverlays {
         trimWhitespaceCheck = GUI.Checkbox.New(body, "Trim trailing whitespace on save");
         finalNewlineCheck = GUI.Checkbox.New(body, "Ensure final newline on save");
         autoSaveCheck = GUI.Checkbox.New(body, "Auto-save named files after idle");
+        resetEditingButton = GUI.Button.New(body, "Restore Editing Defaults");
+        resetEditingButton.SetStyle(2);
 
         var intelliTitle = GUI.Label.New(body, "IntelliSense");
         intelliTitle.SetMargin(1);
@@ -481,6 +539,8 @@ class IdeOverlays {
         completionDelaySpinner.SetStep(25.0);
         completionDelaySpinner.SetDecimals(0);
         completionDelaySpinner.SetSize(130, 0);
+        resetIntelliSenseButton = GUI.Button.New(body, "Restore IntelliSense Defaults");
+        resetIntelliSenseButton.SetStyle(2);
 
         var startupTitle = GUI.Label.New(body, "Startup and safety");
         startupTitle.SetMargin(1);
@@ -491,6 +551,8 @@ class IdeOverlays {
         restoreSessionCheck = GUI.Checkbox.New(body, "Restore open files on launch");
         restoreLastProjectCheck = GUI.Checkbox.New(body, "Restore the last project on launch");
         confirmCloseCheck = GUI.Checkbox.New(body, "Confirm before closing unsaved files");
+        resetStartupButton = GUI.Button.New(body, "Restore Startup Defaults");
+        resetStartupButton.SetStyle(2);
 
         var footer = GUI.HBox.New();
         footer.SetSpacing(10.0);

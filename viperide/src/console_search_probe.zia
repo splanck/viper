@@ -1,9 +1,11 @@
 module console_search_probe;
 
 bind "ui/app_shell";
+bind "ui/ide_overlays";
 bind "commands/search_commands";
 bind "core/document_manager";
 bind "core/project_manager";
+bind "core/settings";
 bind "services/locations";
 
 bind GUI = Viper.GUI;
@@ -11,6 +13,7 @@ bind Terminal = Viper.Terminal;
 bind File = Viper.IO.File;
 bind Path = Viper.IO.Path;
 bind TempFile = Viper.IO.TempFile;
+bind Str = Viper.String;
 
 func fail(shell: app_shell.AppShell, reason: String) {
     shell.Destroy();
@@ -86,11 +89,90 @@ func main() {
         fail(shell, "copy output row");
         return;
     }
+    if shell.CopyOutputText() == false or Str.IndexOf(GUI.Clipboard.GetText(), "abcdefghijklmnopqrstuvwxyz") == 0 {
+        fail(shell, "copy full output text");
+        return;
+    }
+    shell.SetOutputAutoScroll(false);
+    if shell.ToggleOutputAutoScroll() == false {
+        fail(shell, "output auto-scroll enable");
+        return;
+    }
+    if shell.ToggleOutputAutoScroll() {
+        fail(shell, "output auto-scroll lock");
+        return;
+    }
     shell.ClearOutputPanel();
     if shell.outputListBox.Count != 0 {
         fail(shell, "clear output helper");
         return;
     }
+
+    shell.BeginProblems();
+    var prob = shell.AddProblem("error", "src/main.zia", 12, 4, "V-ZIA", "expected token", "");
+    GUI.ListBox.ItemSetData(prob, "loc|src/main.zia|12|4|12|5|diagnostic|expected token");
+    shell.FinishProblems(1);
+    if shell.diagListBox.Count != 2 or shell.diagListBox.IsVisible() == 0 {
+        fail(shell, "problems structured rows");
+        return;
+    }
+    shell.diagListBox.SelectIndex(1);
+    if Str.IndexOf(GUI.ListBox.ItemGetText(shell.diagListBox.Selected), "No quick fix") == 0 {
+        fail(shell, "problems code action placeholder");
+        return;
+    }
+    shell.ClearProblemsPanel();
+    if shell.diagListBox.Count != 0 {
+        fail(shell, "clear problems helper");
+        return;
+    }
+
+    var overlays = new ide_overlays.IdeOverlays();
+    overlays.Setup(shell);
+    var prefs = new settings.SettingsManager();
+    prefs.fontSize = 24;
+    prefs.theme = "light";
+    prefs.minimapVisible = true;
+    prefs.wordWrap = true;
+    prefs.insertSpaces = false;
+    prefs.diagnosticsDelayMs = 1200;
+    prefs.completionDelayMs = 700;
+    prefs.restoreSession = false;
+    overlays.OpenSettings(shell, prefs);
+    overlays.ResetAppearanceDefaults();
+    if overlays.ReadFontSize() != settings.DEFAULT_FONT_SIZE
+       or overlays.ReadTheme() != "dark"
+       or overlays.ReadMinimapVisible() {
+        fail(shell, "preferences appearance defaults");
+        return;
+    }
+    overlays.ResetEditingDefaults();
+    if overlays.ReadTabWidth() != 4
+       or overlays.ReadWordWrap()
+       or overlays.ReadInsertSpaces() == false
+       or overlays.ReadAutoSave() {
+        fail(shell, "preferences editing defaults");
+        return;
+    }
+    overlays.ResetIntelliSenseDefaults();
+    if overlays.ReadDiagnosticsDelayMs() != 500 or overlays.ReadCompletionDelayMs() != 180 {
+        fail(shell, "preferences intellisense defaults");
+        return;
+    }
+    overlays.ResetStartupDefaults();
+    if overlays.ReadRestoreSession() == false
+       or overlays.ReadRestoreLastProject() == false
+       or overlays.ReadConfirmClose() == false {
+        fail(shell, "preferences startup defaults");
+        return;
+    }
+    shell.app.SetWindowSize(620, 460);
+    overlays.OpenSettings(shell, prefs);
+    overlays.Pump(shell);
+    shell.app.SetWindowSize(1000, 720);
+    overlays.OpenSettings(shell, prefs);
+    overlays.Pump(shell);
+    overlays.CloseSettings();
 
     if search_commands.LineMatches("Alpha beta", "alpha", false, false) == false {
         fail(shell, "case-insensitive search");

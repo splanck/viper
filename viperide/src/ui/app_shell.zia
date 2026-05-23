@@ -192,6 +192,7 @@ class AppShell {
     expose Any outputPartialItem;
     expose String outputFilterText;
     expose Boolean outputWrapLines;
+    expose Boolean outputAutoScroll;
 
     /// @brief Initialize with sidebar visible. Build() must be called next.
     expose func init() {
@@ -204,6 +205,7 @@ class AppShell {
         outputPartialItem = null;
         outputFilterText = "";
         outputWrapLines = false;
+        outputAutoScroll = true;
     }
 
     /// @brief Construct the full IDE window and every chrome widget.
@@ -639,12 +641,29 @@ class AppShell {
         return outputWrapLines;
     }
 
+    expose func SetOutputAutoScroll(enabled: Boolean) {
+        outputAutoScroll = enabled;
+    }
+
+    expose func ToggleOutputAutoScroll() -> Boolean {
+        outputAutoScroll = outputAutoScroll == false;
+        return outputAutoScroll;
+    }
+
     expose func ClearOutputPanel() {
         outputListBox.Clear();
         lastBuildOutput = "";
         outputPartialLine = "";
         outputPartialItem = null;
         HideOutputPanel();
+    }
+
+    expose func CopyOutputText() -> Boolean {
+        if lastBuildOutput == "" {
+            return false;
+        }
+        GUI.Clipboard.SetText(lastBuildOutput);
+        return true;
     }
 
     expose func CopySelectedToolRow() -> Boolean {
@@ -674,6 +693,40 @@ class AppShell {
             start = start + 160;
         }
         return first;
+    }
+
+    expose func ClearProblemsPanel() {
+        diagListBox.Clear();
+        HideProblemsPanel();
+    }
+
+    expose func BeginProblems() {
+        diagListBox.Clear();
+        diagListBox.AddItem("Severity | File | Line | Code | Message | Action");
+    }
+
+    expose func AddProblem(severity: String,
+                           filePath: String,
+                           line: Integer,
+                           column: Integer,
+                           code: String,
+                           message: String,
+                           action: String) -> Any {
+        var displayCode = code;
+        if displayCode == "" { displayCode = "-"; }
+        var displayAction = action;
+        if displayAction == "" { displayAction = "No quick fix"; }
+        return diagListBox.AddItem(severity + " | " + filePath + " | "
+                                   + line + ":" + column + " | " + displayCode
+                                   + " | " + message + " | " + displayAction);
+    }
+
+    expose func FinishProblems(problemCount: Integer) {
+        if problemCount > 0 {
+            ShowProblemsPanel();
+        } else {
+            ClearProblemsPanel();
+        }
     }
 
     expose func ShowProblemsPanel() {

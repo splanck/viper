@@ -165,13 +165,20 @@ func ValidateRenameEdits(edits: Any,
         while j < Seq.get_Length(edits) {
             var other = Seq.Get(edits, j);
             if EditsOverlap(edit, other) {
-                return "Overlapping workspace edits in " + path;
+                return "Overlapping workspace edits: "
+                       + EditLocation(edit) + " conflicts with " + EditLocation(other);
             }
             j = j + 1;
         }
         i = i + 1;
     }
     return "";
+}
+
+func EditLocation(edit: Any) -> String {
+    return Map.GetStr(edit, "file") + ":"
+           + Map.GetInt(edit, "startLine") + ":" + Map.GetInt(edit, "startColumn")
+           + "-" + Map.GetInt(edit, "endLine") + ":" + Map.GetInt(edit, "endColumn");
 }
 
 func EditsOverlap(a: Any, b: Any) -> Boolean {

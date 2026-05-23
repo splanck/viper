@@ -140,11 +140,21 @@ struct BlockStmt : Stmt {
     /// @brief The statements within this block.
     std::vector<StmtPtr> statements;
 
+    /// @brief Location of the closing brace when this block came from braces.
+    SourceLoc endLoc{};
+
     /// @brief Construct a block statement.
     /// @param l Source location.
     /// @param s The statements.
     BlockStmt(SourceLoc l, std::vector<StmtPtr> s)
         : Stmt(StmtKind::Block, l), statements(std::move(s)) {}
+
+    /// @brief Construct a block statement with an explicit closing location.
+    /// @param l Source location.
+    /// @param end Closing brace or synthetic end location.
+    /// @param s The statements.
+    BlockStmt(SourceLoc l, SourceLoc end, std::vector<StmtPtr> s)
+        : Stmt(StmtKind::Block, l), statements(std::move(s)), endLoc(end) {}
 };
 
 /// @brief Block expression: `{ stmts; expr }`.

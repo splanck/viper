@@ -162,7 +162,7 @@ func UpdateJob(shell: app_shell.AppShell,
 func UpdateDiagnostics(shell: app_shell.AppShell,
                        buildSys: build_system.BuildSystem,
                        locStore: locations.LocationStore) {
-    shell.diagListBox.Clear();
+    shell.BeginProblems();
     shell.minimap.ClearMarkers();
 
     var diagCount = buildSys.diagnostics.count();
@@ -183,8 +183,8 @@ func UpdateDiagnostics(shell: app_shell.AppShell,
                 sevLabel = "info";
                 markerColor = INFO_MARKER_COLOR;
             }
-            var diagText = diag.filePath + ":" + diag.line + "  " + sevLabel + "[" + diag.code + "]: " + diag.message;
-            var item = shell.diagListBox.AddItem(diagText);
+            var item = shell.AddProblem(sevLabel, diag.filePath, diag.line, diag.column,
+                                        diag.code, diag.message, "No quick fix");
             var locId = locStore.Add(diag.filePath, diag.line, diag.column,
                                      diag.line, diag.column + 1,
                                      locations.KIND_BUILD, diag.message);
@@ -192,10 +192,8 @@ func UpdateDiagnostics(shell: app_shell.AppShell,
             shell.minimap.AddMarker(diag.line, 1, markerColor);
             i = i + 1;
         }
-        shell.ShowProblemsPanel();
-    } else {
-        shell.HideProblemsPanel();
     }
+    shell.FinishProblems(diagCount);
 
     PopulateBuildOutput(shell, buildSys, locStore);
 }

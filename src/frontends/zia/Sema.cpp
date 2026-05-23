@@ -2254,6 +2254,8 @@ SourceLoc Sema::scopeEndForStmt(const Stmt *stmt) {
     switch (stmt->kind) {
         case StmtKind::Block: {
             auto *block = static_cast<const BlockStmt *>(stmt);
+            if (block->endLoc.isValid())
+                return block->endLoc;
             if (block->statements.empty())
                 return stmt->loc;
             return scopeEndForStmt(block->statements.back().get());

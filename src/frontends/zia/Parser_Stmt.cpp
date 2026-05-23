@@ -181,10 +181,11 @@ StmtPtr Parser::parseBlock() {
         statements.push_back(std::move(stmt));
     }
 
-    if (!expect(TokenKind::RBrace, "}"))
+    Token rbraceTok;
+    if (!expect(TokenKind::RBrace, "}", &rbraceTok))
         return nullptr;
 
-    return std::make_unique<BlockStmt>(loc, std::move(statements));
+    return std::make_unique<BlockStmt>(loc, rbraceTok.loc, std::move(statements));
 }
 
 /// @brief Parse a local variable declaration (var x: Type = expr; or final/let x = expr;).

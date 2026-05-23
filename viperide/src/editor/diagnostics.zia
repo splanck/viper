@@ -221,8 +221,7 @@ class LiveDiagnostics {
         }
         if Seq.get_Length(records) == 0 {
             // Clean — clear all markers and highlights
-            shell.diagListBox.Clear();
-            shell.HideProblemsPanel();
+            shell.ClearProblemsPanel();
             shell.minimap.ClearMarkers();
             engine.editor.ClearHighlights();
             return 0;
@@ -231,7 +230,7 @@ class LiveDiagnostics {
         // Emit diagnostics
         var errorCount = 0;
         var shownCount = 0;
-        shell.diagListBox.Clear();
+        shell.BeginProblems();
         shell.minimap.ClearMarkers();
         engine.editor.ClearHighlights();
 
@@ -264,8 +263,8 @@ class LiveDiagnostics {
 
             var displayPath = diagPath;
             if displayPath == "" { displayPath = sourcePath; }
-            var diagText = displayPath + ":" + diagLine + "  " + sevLabel + "[" + code + "]: " + msg;
-            var item = shell.diagListBox.AddItem(diagText);
+            var item = shell.AddProblem(sevLabel, displayPath, diagLine, diagCol, code, msg,
+                                        "No quick fix");
             shownCount = shownCount + 1;
             var locId = locStore.Add(displayPath, diagLine, diagCol, endLine, endCol,
                                      locations.KIND_DIAGNOSTIC, msg);
@@ -282,11 +281,7 @@ class LiveDiagnostics {
             engine.editor.AddHighlight(diagLine - 1, diagCol0, endLine0, endCol0, markerColor);
         }
 
-        if shownCount > 0 {
-            shell.ShowProblemsPanel();
-        } else {
-            shell.HideProblemsPanel();
-        }
+        shell.FinishProblems(shownCount);
 
         return errorCount;
     }

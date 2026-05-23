@@ -169,8 +169,7 @@ func applyPersistentSettings(shell: app_shell.AppShell,
     if appSettings.autoCheckOnSave {
         liveDiag.invalidate();
     } else {
-        shell.diagListBox.Clear();
-        shell.HideProblemsPanel();
+        shell.ClearProblemsPanel();
         shell.minimap.ClearMarkers();
         engine.editor.ClearHighlights();
     }
@@ -281,6 +280,15 @@ func handleCopyToolSelection(shell: app_shell.AppShell) {
     }
 }
 
+func handleCopyOutputText(shell: app_shell.AppShell) {
+    if shell.CopyOutputText() {
+        GUI.Toast.Success("Copied output text");
+        shell.SetStatusLeft("Copied full output");
+    } else {
+        GUI.Toast.Info("No output to copy");
+    }
+}
+
 func handleClearOutput(shell: app_shell.AppShell) {
     shell.ClearOutputPanel();
     shell.SetStatusLeft("Output cleared");
@@ -301,6 +309,14 @@ func handleToggleOutputWrap(shell: app_shell.AppShell) {
         shell.SetStatusLeft("Output wrap enabled");
     } else {
         shell.SetStatusLeft("Output wrap disabled");
+    }
+}
+
+func handleToggleOutputAutoScroll(shell: app_shell.AppShell) {
+    if shell.ToggleOutputAutoScroll() {
+        shell.SetStatusLeft("Output auto-scroll enabled");
+    } else {
+        shell.SetStatusLeft("Output auto-scroll locked");
     }
 }
 

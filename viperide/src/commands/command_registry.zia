@@ -79,9 +79,11 @@ class CommandRegistry {
         Add("settings", "Settings", "View and adjust IDE settings", "Ctrl+,", "", true);
         Add("keybindings", "Keyboard Shortcuts", "Show active keyboard shortcuts and conflicts", "Ctrl+K Ctrl+S", "", true);
         Add("copytoolrow", "Copy Tool Row", "Copy the selected row from the active tool panel", "Ctrl+Alt+Y", "", true);
+        Add("copyoutputtext", "Copy Output Text", "Copy the full build output buffer", "Ctrl+Alt+Shift+Y", "", true);
         Add("clearoutput", "Clear Output", "Clear the build output panel", "Ctrl+Alt+L", "", true);
         Add("filteroutput", "Filter Output", "Filter build output rows by text", "Ctrl+Alt+F", "", true);
         Add("toggleoutputwrap", "Toggle Output Wrap", "Wrap long output rows into readable chunks", "Ctrl+Alt+W", "", true);
+        Add("toggleoutputautoscroll", "Toggle Output Auto-Scroll", "Keep new output pinned or preserve the current view", "Ctrl+Alt+S", "", true);
         Add("treenewfile", "Explorer: New File", "Create a file in the selected project folder", "Ctrl+Alt+N", "", true);
         Add("treenewfolder", "Explorer: New Folder", "Create a folder in the selected project folder", "Ctrl+Alt+Shift+N", "", true);
         Add("treerename", "Explorer: Rename", "Rename the selected project tree item", "Ctrl+Alt+R", "", true);

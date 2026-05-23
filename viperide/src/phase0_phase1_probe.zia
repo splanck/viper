@@ -274,8 +274,10 @@ func main() {
     var overlapResult = workspace_edits.ApplyRenameEdits(overlapEdits, rollbackMgr);
     if assertTrue(overlapResult.success == false
                   and rollbackDoc.content == beforeRollback
-                  and rollbackDoc.isModified == false,
-                  "overlapping workspace edits are rejected before mutation") == false { return; }
+                  and rollbackDoc.isModified == false
+                  and Str.IndexOf(overlapResult.message, "3:9-3:16") != 0
+                  and Str.IndexOf(overlapResult.message, "3:12-3:16") != 0,
+                  "overlapping workspace edits are rejected with conflict ranges") == false { return; }
 
     var indexer = new project_index.ProjectIndexer();
     indexer.Open(root, docMgr);

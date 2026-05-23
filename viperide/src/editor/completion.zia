@@ -87,6 +87,7 @@ class CompletionController {
     expose Integer pendingJobQueryCol;
     expose Integer pendingJobCursorLine;
     expose Integer pendingJobCursorCol;
+    expose Integer visibleRevision;
 
     // Cached semantic result plus the filtered visible insertTexts.
     expose List allLabels;
@@ -126,6 +127,7 @@ class CompletionController {
         pendingJobQueryCol = 0;
         pendingJobCursorLine = -1;
         pendingJobCursorCol = -1;
+        visibleRevision = -1;
         allLabels      = new List();
         allDisplays    = new List();
         allInsertTexts = new List();
@@ -343,6 +345,11 @@ class CompletionController {
         listbox.SelectIndex(0);
         lastLine  = editor.CursorLine;
         lastCol   = editor.CursorCol;
+        if engine != null {
+            visibleRevision = engine.GetRevision();
+        } else {
+            visibleRevision = editor.Revision;
+        }
         isVisible = true;
         popup.SetVisible(1);
         editor.Focus();
@@ -442,6 +449,54 @@ class CompletionController {
         if ContainsAny("\t", typed) == false {
             return false;
         }
+        AcceptSelectedInternal(true);
+        return true;
+    }
+
+    /// @brief Accept after the focused editor consumed Tab as indentation.
+    /// @details GUI dispatch gives the focused CodeEditor first chance at Tab.
+    ///          On platforms where that happens before `Keyboard.WasPressed`
+    ///          is observable here, the editor revision advances and the
+    ///          cursor sits after inserted spaces/tabs. Treat that exact shape
+    ///          as a completion accept and replace the prefix plus inserted
+    ///          indentation in one undoable edit.
+    expose func AcceptIfEditorInsertedTab() -> Boolean {
+        if isVisible == false or itemCount == 0 or editor == null {
+            return false;
+        }
+
+        var currentRevision = editor.Revision;
+        if engine != null {
+            currentRevision = engine.GetRevision();
+        }
+        if currentRevision == visibleRevision {
+            return false;
+        }
+
+        var activeIndex = listbox.SelectedIndex;
+        if activeIndex < 0 {
+            activeIndex = selectedIndex;
+        }
+        if activeIndex < 0 or activeIndex >= itemCount {
+            return false;
+        }
+
+        var endLine = ListIntAt(replaceEndLines, activeIndex, editor.CursorLine);
+        var endCol = ListIntAt(replaceEndCols, activeIndex, editor.CursorCol);
+        if editor.CursorLine != endLine or editor.CursorCol <= endCol {
+            return false;
+        }
+
+        var gapLen = editor.CursorCol - endCol;
+        var lineText = editor.GetLine(endLine);
+        if gapLen <= 0 or Str.Length(lineText) < editor.CursorCol {
+            return false;
+        }
+        var gap = Str.MidLen(lineText, endCol + 1, gapLen);
+        if IsOnlyIndentWhitespace(gap) == false {
+            return false;
+        }
+
         AcceptSelectedInternal(true);
         return true;
     }
@@ -556,6 +611,11 @@ class CompletionController {
     /// @brief Show the popup and focus the listbox for keyboard navigation.
     expose func Show() {
         isVisible = true;
+        if engine != null {
+            visibleRevision = engine.GetRevision();
+        } else if editor != null {
+            visibleRevision = editor.Revision;
+        }
         popup.SetVisible(1);
         editor.Focus();
     }
@@ -610,6 +670,11 @@ class CompletionController {
         EnsureFocus();
         if typed != "" {
             RebuildVisibleItems(CurrentPrefix());
+            if engine != null {
+                visibleRevision = engine.GetRevision();
+            } else {
+                visibleRevision = editor.Revision;
+            }
             if itemCount == 0 {
                 ScheduleCompletion();
             }
@@ -653,6 +718,19 @@ func ContainsAny(characters: String, typed: String) -> Boolean {
         i = i + 1;
     }
     return false;
+}
+
+func IsOnlyIndentWhitespace(text: String) -> Boolean {
+    if text == "" { return false; }
+    var i = 1;
+    while i <= Str.Length(text) {
+        var ch = Str.MidLen(text, i, 1);
+        if ch != " " and ch != "\t" {
+            return false;
+        }
+        i = i + 1;
+    }
+    return true;
 }
 
 func ListIntAt(values: List, index: Integer, fallback: Integer) -> Integer {

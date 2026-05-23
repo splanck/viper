@@ -199,6 +199,26 @@ func main() {
     engine.editor.SetCursor(3, 6);
     completer.TriggerCompletion();
     pumpCompletion(completer, 200);
+    engine.editor.InsertAtCursor("    ");
+    if completer.AcceptIfEditorInsertedTab() == false {
+        fail(shell, "completion native tab fallback not consumed");
+        return;
+    }
+    line = engine.editor.GetLine(3);
+    if line != "    greet" {
+        fail(shell, "completion native tab fallback did not replace prefix cleanly: " + line);
+        return;
+    }
+
+    engine.SetText(
+        "module IntelliProbe;\n"
+        + "func greet(value: Integer) -> Integer { return value; }\n"
+        + "func main() {\n"
+        + "    gr\n"
+        + "}\n");
+    engine.editor.SetCursor(3, 6);
+    completer.TriggerCompletion();
+    pumpCompletion(completer, 200);
     if Str.IndexOf(completer.SelectedCommitCharacters(), "(") == 0 {
         fail(shell, "completion missing callable commit character");
         return;
