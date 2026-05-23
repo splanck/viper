@@ -132,6 +132,13 @@ std::optional<Lowerer::MemberFieldAccess> Lowerer::resolveMemberField(
     return access;
 }
 
+/// @brief Resolve an unqualified name as an implicit field of the current instance (`ME.name`).
+/// @param name Field name.
+/// @param loc Source location for emitted IL.
+/// @return The field access (pointer, IL/AST type, object class), or nullopt if there is no
+///         active field scope, no such field, or no `ME` receiver in scope.
+/// @details Loads the `ME` self pointer and GEPs to the field offset; object fields are typed
+///          as pointers (BUG-082).
 std::optional<Lowerer::MemberFieldAccess> Lowerer::resolveImplicitField(
     std::string_view name, il::support::SourceLoc loc) {
     const FieldScope *scope = activeFieldScope();
@@ -163,6 +170,13 @@ std::optional<Lowerer::MemberFieldAccess> Lowerer::resolveImplicitField(
     return access;
 }
 
+/// @brief Lower a member-access expression (`base.member`) to a value.
+/// @param expr The member-access expression.
+/// @return The accessed value and its IL type.
+/// @details Resolution order: enum variant constant (`Enum.Variant`); instance field load via
+///          resolveMemberField(); runtime-class property getter; instance property getter sugar
+///          (`get_member`); static property getter or static field load on a class name. Falls
+///          back to a null/zero value when nothing matches.
 Lowerer::RVal Lowerer::lowerMemberAccessExpr(const MemberAccessExpr &expr) {
     // Check for enum variant access: Color.RED → ConstInt(I64, value)
     if (expr.base && expr.base->kind() == Expr::Kind::Var) {
@@ -336,12 +350,16 @@ Lowerer::RVal Lowerer::lowerMemberAccessExpr(const MemberAccessExpr &expr) {
 // OopLoweringContext-aware implementations
 // -------------------------------------------------------------------------
 
+/// @brief Context-aware overload of lowerMeExpr(); @p ctx is unused (no caching benefit).
 Lowerer::RVal Lowerer::lowerMeExpr(const MeExpr &expr, OopLoweringContext &ctx) {
     // ME resolution is simple slot lookup - no class caching benefits.
     (void)ctx;
     return lowerMeExpr(expr);
 }
 
+/// @brief Context-aware overload of lowerMemberAccessExpr() that pre-warms the class-info cache.
+/// @details Pre-caches the base object's class info in @p ctx (accelerating access-control
+///          checks), then delegates to the single-argument overload.
 Lowerer::RVal Lowerer::lowerMemberAccessExpr(const MemberAccessExpr &expr,
                                              OopLoweringContext &ctx) {
     // Pre-cache class info when base is a known object type.
@@ -354,6 +372,9 @@ Lowerer::RVal Lowerer::lowerMemberAccessExpr(const MemberAccessExpr &expr,
     return lowerMemberAccessExpr(expr);
 }
 
+/// @brief Context-aware overload of resolveMemberField() that pre-warms the class-info cache.
+/// @details Pre-caches the base object's class info in @p ctx for access-control checks, then
+///          delegates to the single-argument overload.
 std::optional<Lowerer::MemberFieldAccess> Lowerer::resolveMemberField(const MemberAccessExpr &expr,
                                                                       OopLoweringContext &ctx) {
     // Pre-cache class info for access control checks.
@@ -365,6 +386,9 @@ std::optional<Lowerer::MemberFieldAccess> Lowerer::resolveMemberField(const Memb
     return resolveMemberField(expr);
 }
 
+/// @brief Context-aware overload of resolveImplicitField(); @p ctx is unused.
+/// @details Implicit field resolution uses the active field scope rather than the OOP index, so
+///          there is nothing to pre-cache; delegates to the two-argument overload.
 std::optional<Lowerer::MemberFieldAccess> Lowerer::resolveImplicitField(std::string_view name,
                                                                         il::support::SourceLoc loc,
                                                                         OopLoweringContext &ctx) {

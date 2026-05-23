@@ -205,6 +205,12 @@ void OopEmitHelper::emitBodyAndBranchToExit(const std::vector<const Stmt *> &bod
 // VTable/ITable Population (duplicated logic consolidated)
 // -------------------------------------------------------------------------
 
+/// @brief Find the class that actually implements a method, walking up from a starting class.
+/// @param oopIndex OOP index for class/inheritance lookups.
+/// @param startQClass Qualified class to start the search from.
+/// @param methodName Method to locate.
+/// @return The qualified name of the nearest ancestor (or self) with a non-abstract definition,
+///         or @p startQClass as a fallback.
 std::string OopEmitHelper::findImplementorClass(const OopIndex &oopIndex,
                                                 const std::string &startQClass,
                                                 const std::string &methodName) {
@@ -222,6 +228,14 @@ std::string OopEmitHelper::findImplementorClass(const OopIndex &oopIndex,
     return startQClass; // fallback
 }
 
+/// @brief Build the vtable slot → method-name map for a class.
+/// @param oopIndex OOP index for class/inheritance lookups.
+/// @param classQName Qualified class whose vtable is being built.
+/// @param[out] maxSlot Receives the highest virtual slot index encountered.
+/// @return A vector indexed by slot, holding the method name occupying each slot (empty for a
+///         class with no virtual methods).
+/// @details Two passes over the inheritance chain: the first computes the slot count, the second
+///          fills names. Walking most-derived first lets a derived override win its slot.
 std::vector<std::string> OopEmitHelper::buildVtableSlotMap(const OopIndex &oopIndex,
                                                            const std::string &classQName,
                                                            std::size_t &maxSlot) {

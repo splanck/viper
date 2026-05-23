@@ -201,7 +201,10 @@ class CompletionEngine {
     std::vector<CompletionItem> provideSnippets(const std::string &prefix) const;
 
     std::vector<CompletionItem> provideScopeSymbols(const Sema &sema,
-                                                    const std::string &prefix) const;
+                                                    const std::string &prefix,
+                                                    uint32_t fileId,
+                                                    int line,
+                                                    int col) const;
 
     std::vector<CompletionItem> provideMemberCompletions(const Sema &sema,
                                                          const Context &ctx) const;

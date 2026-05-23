@@ -50,6 +50,14 @@ int compareLoc(const SourceLoc &a, const SourceLoc &b) {
     return 0;
 }
 
+std::vector<std::string> paramNamesFor(const std::vector<Param> &params) {
+    std::vector<std::string> names;
+    names.reserve(params.size());
+    for (const auto &param : params)
+        names.push_back(param.name);
+    return names;
+}
+
 std::string classifySemanticError(const std::string &message) {
     auto startsWith = [&](const char *prefix) { return message.rfind(prefix, 0) == 0; };
     if (startsWith("Undefined identifier"))
@@ -1563,6 +1571,7 @@ bool Sema::analyze(ModuleDecl &module) {
                     sym.type = placeholderType;
                     sym.decl = func;
                     sym.isExported = func->isExported;
+                    sym.paramNames = paramNamesFor(func->params);
                     if (!currentScope_->lookupLocal(semanticName))
                         defineSymbol(semanticName, sym);
                 } else {
@@ -1574,6 +1583,7 @@ bool Sema::analyze(ModuleDecl &module) {
                     sym.type = funcType;
                     sym.decl = func;
                     sym.isExported = func->isExported;
+                    sym.paramNames = paramNamesFor(func->params);
                     Symbol *existing = currentScope_->lookupLocal(semanticName);
                     if (!existing) {
                         defineSymbol(semanticName, sym);
@@ -2632,6 +2642,7 @@ void Sema::analyzeNamespaceDecl(NamespaceDecl &decl) {
                 sym.type = funcType;
                 sym.decl = func;
                 sym.isExported = func->isExported;
+                sym.paramNames = paramNamesFor(func->params);
                 Symbol *existing = currentScope_->lookupLocal(qualifiedName);
                 if (!existing) {
                     defineSymbol(qualifiedName, sym);

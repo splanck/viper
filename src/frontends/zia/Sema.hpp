@@ -1492,6 +1492,18 @@ class Sema {
     ///       are popped from the scope stack when their block finishes.
     std::vector<Symbol> getGlobalSymbols() const;
 
+    /// @brief Get local, parameter, member, and global symbols visible at a cursor.
+    /// @param fileId Source-manager file id for the cursor file.
+    /// @param line 1-based cursor line.
+    /// @param col 1-based cursor column.
+    /// @return Visible symbols ordered from innermost/recent definitions outward.
+    /// @details Unlike getGlobalSymbols(), this consults the scoped-symbol
+    ///          snapshots captured during analysis, so completion can rank
+    ///          local variables and parameters ahead of globals/runtime symbols.
+    std::vector<Symbol> getVisibleSymbolsAtPosition(uint32_t fileId,
+                                                    uint32_t line,
+                                                    uint32_t col) const;
+
     /// @brief Find the most relevant symbol at a given cursor position.
     /// @param name The identifier name to look up.
     /// @param line 1-based line number.

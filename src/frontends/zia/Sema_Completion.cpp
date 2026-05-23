@@ -32,9 +32,35 @@
 #include "frontends/zia/RuntimeAdapter.hpp"
 #include "frontends/zia/Sema.hpp"
 #include "il/runtime/classes/RuntimeClasses.hpp"
+#include <algorithm>
 #include <unordered_set>
 
 namespace il::frontends::zia {
+
+namespace {
+
+/// @brief Extract the parameter names from a parameter list (for signature/tooling display).
+std::vector<std::string> paramNamesFor(const std::vector<Param> &params) {
+    std::vector<std::string> names;
+    names.reserve(params.size());
+    for (const auto &param : params)
+        names.push_back(param.name);
+    return names;
+}
+
+/// @brief Order two source locations by (file, line, column).
+/// @return -1 if @p a precedes @p b, 1 if it follows, 0 if equal.
+int compareToolLoc(const SourceLoc &a, const SourceLoc &b) {
+    if (a.file_id != b.file_id)
+        return a.file_id < b.file_id ? -1 : 1;
+    if (a.line != b.line)
+        return a.line < b.line ? -1 : 1;
+    if (a.column != b.column)
+        return a.column < b.column ? -1 : 1;
+    return 0;
+}
+
+} // namespace
 
 // ---------------------------------------------------------------------------
 // getGlobalSymbols
@@ -55,6 +81,72 @@ std::vector<Symbol> Sema::getGlobalSymbols() const {
     // were popped off the scope stack when their blocks were analyzed.
     for (const auto &[name, sym] : scopes_[0]->getSymbols()) {
         result.push_back(sym);
+    }
+    return result;
+}
+
+// ---------------------------------------------------------------------------
+// getVisibleSymbolsAtPosition
+// ---------------------------------------------------------------------------
+
+/// @brief Return symbols visible at a source position, innermost scope first, for completion.
+/// @param fileId File of the cursor (0 matches any file).
+/// @param line Cursor line.
+/// @param col Cursor column.
+/// @return Deduplicated visible symbols ordered by enclosing-scope depth (deepest first), then
+///         by declaration position.
+/// @details Considers each scoped symbol whose declaration precedes the cursor and whose
+///          enclosing scope (from @c scopeSnapshots_) contains the cursor; shadowing is handled
+///          by keeping only the first (deepest/nearest) symbol seen for each name.
+std::vector<Symbol> Sema::getVisibleSymbolsAtPosition(uint32_t fileId,
+                                                      uint32_t line,
+                                                      uint32_t col) const {
+    struct Candidate {
+        Symbol symbol;
+        SourceLoc loc;
+        size_t depth{0};
+    };
+
+    std::vector<Candidate> candidates;
+    const SourceLoc cursor{fileId, line, col};
+    for (const auto &ss : scopedSymbols_) {
+        if (!ss.loc.isValid())
+            continue;
+        if (fileId != 0 && ss.loc.file_id != fileId)
+            continue;
+        if (compareToolLoc(ss.loc, cursor) > 0)
+            continue;
+
+        size_t depth = 0;
+        auto scopeIt = scopeSnapshots_.find(ss.scopeId);
+        if (scopeIt != scopeSnapshots_.end()) {
+            const auto &scope = scopeIt->second;
+            if (fileId != 0 && scope.startLoc.hasFile() && scope.startLoc.file_id != fileId)
+                continue;
+            if (scope.startLoc.isValid() && compareToolLoc(scope.startLoc, cursor) > 0)
+                continue;
+            if (scope.endLoc.isValid() && cursor.file_id == scope.endLoc.file_id &&
+                cursor.line > scope.endLoc.line)
+                continue;
+            depth = scope.depth;
+        }
+
+        candidates.push_back({ss.symbol, ss.loc, depth});
+    }
+
+    std::stable_sort(candidates.begin(), candidates.end(), [](const Candidate &a,
+                                                              const Candidate &b) {
+        if (a.depth != b.depth)
+            return a.depth > b.depth;
+        return compareToolLoc(a.loc, b.loc) > 0;
+    });
+
+    std::vector<Symbol> result;
+    std::unordered_set<std::string> seen;
+    result.reserve(candidates.size());
+    for (const auto &candidate : candidates) {
+        if (seen.insert(candidate.symbol.name).second)
+            result.push_back(candidate.symbol);
     }
     return result;
 }
@@ -106,11 +198,31 @@ std::vector<Symbol> Sema::getMembersOf(const TypeRef &type) const {
     for (const auto &[key, methodType] : methodTypes_) {
         if (key.rfind(prefix, 0) == 0) {
             std::string memberName = key.substr(prefix.size());
-            Symbol sym;
-            sym.kind = Symbol::Kind::Method;
-            sym.name = memberName;
-            sym.type = methodType;
-            result.push_back(sym);
+            std::unordered_set<std::string> emitted;
+            for (auto *decl : collectMethodOverloads(typeName, memberName, true)) {
+                if (!decl)
+                    continue;
+                TypeRef overloadType = methodTypeForDecl(*decl);
+                std::string sigKey = memberName;
+                if (overloadType && overloadType->kind == TypeKindSem::Function)
+                    sigKey += "#" + overloadType->toDisplayString();
+                if (!emitted.insert(sigKey).second)
+                    continue;
+
+                Symbol sym;
+                sym.kind = Symbol::Kind::Method;
+                sym.name = memberName;
+                sym.type = overloadType ? overloadType : methodType;
+                sym.paramNames = paramNamesFor(decl->params);
+                result.push_back(std::move(sym));
+            }
+            if (emitted.empty()) {
+                Symbol sym;
+                sym.kind = Symbol::Kind::Method;
+                sym.name = memberName;
+                sym.type = methodType;
+                result.push_back(sym);
+            }
         }
     }
 

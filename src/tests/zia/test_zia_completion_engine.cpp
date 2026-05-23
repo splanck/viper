@@ -63,6 +63,13 @@ static bool hasKind(const std::vector<CompletionItem> &items,
     return false;
 }
 
+static int indexOfLabel(const std::vector<CompletionItem> &items, const std::string &label) {
+    for (size_t i = 0; i < items.size(); ++i)
+        if (items[i].label == label)
+            return static_cast<int>(i);
+    return -1;
+}
+
 static void writeFile(const fs::path &path, const std::string &contents) {
     fs::create_directories(path.parent_path());
     std::ofstream out(path);
@@ -334,6 +341,31 @@ func main() {
     EXPECT_FALSE(hasLabel(members, "hiddenThing"));
 }
 
+TEST(CompletionEngine, CtrlSpace_RanksVisibleLocalsAndParametersBeforeGlobals) {
+    const std::string source = R"(module Main;
+
+func globalCandidate() -> Integer { return 1; }
+
+func main(paramCandidate: Integer) {
+    var localCandidate = 2;
+    
+}
+)";
+
+    CompletionEngine engine;
+    auto [line, col] = lineColAfter(source, "var localCandidate = 2;\n    ");
+    auto items = engine.complete(source, line, col, "<test>", 0);
+
+    const int localIdx = indexOfLabel(items, "localCandidate");
+    const int paramIdx = indexOfLabel(items, "paramCandidate");
+    const int globalIdx = indexOfLabel(items, "globalCandidate");
+    EXPECT_GE(localIdx, 0);
+    EXPECT_GE(paramIdx, 0);
+    EXPECT_GE(globalIdx, 0);
+    EXPECT_LT(localIdx, globalIdx);
+    EXPECT_LT(paramIdx, globalIdx);
+}
+
 TEST(CompletionEngine, SignatureHelp_UserMethod) {
     const std::string source = R"(
 module Test;
@@ -351,8 +383,32 @@ func main() {
     CompletionEngine engine;
     std::string help = engine.signatureHelp(source, line, col, "<test>");
 
-    EXPECT_TRUE(help.find("Resize(arg1: Integer, arg2: Integer) -> Void") != std::string::npos);
+    EXPECT_TRUE(help.find("Resize(w: Integer, h: Integer) -> Void") != std::string::npos);
     EXPECT_TRUE(help.find("parameter 1 of 2") != std::string::npos);
+}
+
+TEST(CompletionEngine, SignatureHelp_BoundFileModuleExportUsesParameterNames) {
+    const fs::path tempRoot = fs::temp_directory_path() / "zia_signature_bound_file_modules";
+    fs::remove_all(tempRoot);
+
+    writeFile(tempRoot / "dep.zia", R"(module Dep;
+expose func exportedThing(count: Integer, label: String) -> Integer { return count; }
+)");
+
+    const std::string source = R"(module Main;
+bind "./dep";
+
+func main() {
+    var value = Dep.exportedThing(1, "x");
+}
+)";
+
+    CompletionEngine engine;
+    auto [line, col] = lineColAfter(source, "Dep.exportedThing(");
+    std::string help = engine.signatureHelp(source, line, col, (tempRoot / "main.zia").string());
+
+    EXPECT_TRUE(help.find("exportedThing(count: Integer, label: String) -> Integer") !=
+                std::string::npos);
 }
 
 TEST(CompletionEngine, SignatureHelp_RuntimeAliasMethod) {

@@ -201,7 +201,8 @@ static SignatureCallContext extractSignatureCallContext(std::string_view src, in
 
 static std::string formatFunctionSignature(const std::string &name,
                                            const TypeRef &type,
-                                           int activeParameter) {
+                                           int activeParameter,
+                                           const std::vector<std::string> *paramNames = nullptr) {
     if (!type || type->kind != TypeKindSem::Function)
         return {};
 
@@ -212,7 +213,10 @@ static std::string formatFunctionSignature(const std::string &name,
     for (size_t i = 0; i < params.size(); ++i) {
         if (i > 0)
             out << ", ";
-        out << "arg" << (i + 1) << ": "
+        std::string paramName = "arg" + std::to_string(i + 1);
+        if (paramNames && i < paramNames->size() && !(*paramNames)[i].empty())
+            paramName = (*paramNames)[i];
+        out << paramName << ": "
             << (params[i] ? params[i]->toDisplayString() : "Unknown");
     }
     out << ")";
@@ -227,6 +231,26 @@ static std::string formatFunctionSignature(const std::string &name,
         out << "\nparameter " << (active + 1) << " of " << params.size();
     }
     return out.str();
+}
+
+static int sortPriorityForScopeSymbol(const Symbol &sym) {
+    switch (sym.kind) {
+        case Symbol::Kind::Parameter:
+            return 1;
+        case Symbol::Kind::Variable:
+            return sym.isExtern ? 45 : 2;
+        case Symbol::Kind::Field:
+            return sym.isExtern ? 35 : 3;
+        case Symbol::Kind::Method:
+            return sym.isExtern ? 30 : 4;
+        case Symbol::Kind::Function:
+            return sym.isExtern ? 35 : 10;
+        case Symbol::Kind::Type:
+            return 20;
+        case Symbol::Kind::Module:
+            return 12;
+    }
+    return 50;
 }
 
 static std::string trimCopy(std::string_view text) {
@@ -715,10 +739,16 @@ std::vector<CompletionItem> CompletionEngine::provideSnippets(const std::string 
 }
 
 std::vector<CompletionItem> CompletionEngine::provideScopeSymbols(const Sema &sema,
-                                                                  const std::string &prefix) const {
+                                                                  const std::string &prefix,
+                                                                  uint32_t fileId,
+                                                                  int line,
+                                                                  int col) const {
     std::vector<CompletionItem> items;
-    auto globals = sema.getGlobalSymbols();
-    for (const auto &sym : globals) {
+    auto symbols = sema.getVisibleSymbolsAtPosition(
+        fileId, static_cast<uint32_t>(line), static_cast<uint32_t>(std::max(1, col + 1)));
+    std::unordered_set<std::string> seen;
+    for (const auto &sym : symbols) {
+        seen.insert(sym.name);
         CompletionItem item;
         item.label = sym.name;
         item.insertText = sym.name;
@@ -727,7 +757,23 @@ std::vector<CompletionItem> CompletionEngine::provideScopeSymbols(const Sema &se
         item.source = sym.isExtern ? "runtime" : "scope";
         if (item.kind == CompletionKind::Function || item.kind == CompletionKind::Method)
             item.commitCharacters = "(";
-        item.sortPriority = 10;
+        item.sortPriority = sortPriorityForScopeSymbol(sym);
+        items.push_back(std::move(item));
+    }
+
+    auto globals = sema.getGlobalSymbols();
+    for (const auto &sym : globals) {
+        if (!seen.insert(sym.name).second)
+            continue;
+        CompletionItem item;
+        item.label = sym.name;
+        item.insertText = sym.name;
+        item.kind = kindFromSymbol(sym);
+        item.detail = typeDetail(sym.type);
+        item.source = sym.isExtern ? "runtime" : "scope";
+        if (item.kind == CompletionKind::Function || item.kind == CompletionKind::Method)
+            item.commitCharacters = "(";
+        item.sortPriority = sortPriorityForScopeSymbol(sym);
         items.push_back(std::move(item));
     }
     filterByPrefix(items, prefix);
@@ -1091,7 +1137,8 @@ std::vector<CompletionItem> CompletionEngine::complete(
             // Scope symbols and type names require sema.
             if (hasSema) {
                 const Sema &sema = *analysis->sema;
-                auto scope = provideScopeSymbols(sema, ctx.prefix);
+                auto scope = provideScopeSymbols(
+                    sema, ctx.prefix, analysis->fileId, ctx.line, ctx.col);
                 items.insert(items.end(), scope.begin(), scope.end());
                 auto modules = provideBoundFileModules(sema, ctx.prefix);
                 items.insert(items.end(), modules.begin(), modules.end());
@@ -1145,8 +1192,9 @@ std::string CompletionEngine::signatureHelp(std::string_view source,
     std::vector<std::string> signatures;
     std::unordered_set<std::string> seen;
 
-    auto addFunctionType = [&](const TypeRef &type) {
-        std::string formatted = formatFunctionSignature(call.name, type, call.activeParameter);
+    auto addFunctionSymbol = [&](const Symbol &sym) {
+        std::string formatted =
+            formatFunctionSignature(call.name, sym.type, call.activeParameter, &sym.paramNames);
         if (!formatted.empty() && seen.insert(formatted).second)
             signatures.push_back(std::move(formatted));
     };
@@ -1154,7 +1202,7 @@ std::string CompletionEngine::signatureHelp(std::string_view source,
     auto addMatchingMembers = [&](const std::vector<Symbol> &members) {
         for (const auto &sym : members) {
             if (equalsIgnoreCase(sym.name, call.name))
-                addFunctionType(sym.type);
+                addFunctionSymbol(sym);
         }
     };
 
@@ -1184,16 +1232,20 @@ std::string CompletionEngine::signatureHelp(std::string_view source,
                 analysis->fileId,
                 static_cast<uint32_t>(line),
                 static_cast<uint32_t>(col + 1))) {
-            addFunctionType(scoped->symbol.type);
+            addFunctionSymbol(scoped->symbol);
         }
 
         if (signatures.empty()) {
             for (const auto &sym : sema.getGlobalSymbols()) {
                 if (equalsIgnoreCase(sym.name, call.name))
-                    addFunctionType(sym.type);
+                    addFunctionSymbol(sym);
             }
         }
     } else {
+        if (call.receiverExpr.find('.') == std::string::npos) {
+            addMatchingMembers(sema.getModuleExports(call.receiverExpr));
+        }
+
         std::string className = runtimeClassNameFromReceiver(call.receiverExpr);
         if (!className.empty())
             addMatchingMembers(sema.getRuntimeMembers(className));

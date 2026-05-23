@@ -32,6 +32,14 @@ namespace il::frontends::basic {
 
 namespace {
 
+/// @brief Determine the qualified class name a runtime function returns, if it returns an object.
+/// @param lowerer Lowerer (used to consult the semantic analyzer's USING imports).
+/// @param calleeName The callee name as written (qualified or simple).
+/// @return The qualified return class name, or nullopt when the callee is unknown or does not
+///         return an object.
+/// @details Resolves a concrete object return class for the exact name (including `Class.New`
+///          constructors). For an unqualified name, retries against each USING-imported
+///          namespace prefix.
 std::optional<std::string> resolveRuntimeFunctionReturnClassQName(const Lowerer &lowerer,
                                                                   std::string_view calleeName) {
     const auto &registry = il::runtime::RuntimeRegistry::instance();
@@ -247,6 +255,12 @@ std::string Lowerer::resolveObjectClass(const Expr &expr) const {
 // These helpers consolidate patterns for resolving object class names from
 // fields, arrays, and method return types. (BUG-061, BUG-082, BUG-089, etc.)
 
+/// @brief Resolve the object-class name of a field within a class layout.
+/// @param layout The owning class layout (may be null).
+/// @param fieldName Field to inspect.
+/// @param qualify Optional name-qualification callback applied to the result.
+/// @return The (optionally qualified) field object-class name, or "" if the field is absent or
+///         not object-typed.
 std::string resolveFieldObjectClass(
     const ClassLayout *layout,
     std::string_view fieldName,
@@ -259,6 +273,12 @@ std::string resolveFieldObjectClass(
     return qualify ? qualify(field->objectClassName) : field->objectClassName;
 }
 
+/// @brief Resolve the object-class element name of an array field within a class layout.
+/// @param layout The owning class layout (may be null).
+/// @param fieldName Array field to inspect.
+/// @param qualify Optional name-qualification callback applied to the result.
+/// @return The (optionally qualified) element object-class name, or "" if the field is absent,
+///         not an array, or not object-typed.
 std::string resolveFieldArrayElementClass(
     const ClassLayout *layout,
     std::string_view fieldName,
