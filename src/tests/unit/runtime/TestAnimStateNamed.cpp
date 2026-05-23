@@ -17,6 +17,8 @@
 extern "C" {
 #include "rt_string.h"
 void *rt_animstate_new(void);
+void rt_animstate_add_state(
+    void *asm_, int64_t state_id, int64_t start, int64_t end, int64_t dur, int8_t loop);
 void rt_animstate_add_named(
     void *asm_, void *name, int64_t start, int64_t end, int64_t dur, int8_t loop);
 void rt_animstate_play(void *asm_, void *name);
@@ -28,6 +30,7 @@ int8_t rt_animstate_just_entered(void *asm_);
 void rt_animstate_set_event_frame(void *asm_, int64_t frame);
 int8_t rt_animstate_event_fired(void *asm_);
 int8_t rt_animstate_set_initial(void *asm_, int64_t id);
+int8_t rt_animstate_add_event(void *asm_, int64_t state_id, int64_t frame, int64_t event_id);
 rt_string rt_const_cstr(const char *s);
 const char *rt_string_cstr(rt_string s);
 }
@@ -107,6 +110,22 @@ TEST(AnimStateNamed, EventDoesNotRetriggerWhileFrameIsUnchanged) {
     rt_animstate_update(sm);
     rt_animstate_update(sm);
     EXPECT_FALSE(rt_animstate_event_fired(sm));
+}
+
+TEST(AnimStateNamed, RejectsEventFramesOutsideClip) {
+    void *sm = rt_animstate_new();
+    rt_animstate_add_state(sm, 0, 2, 4, 1, 1);
+    rt_animstate_add_state(sm, 1, 6, 3, 1, 1);
+
+    EXPECT_TRUE(rt_animstate_add_event(sm, 0, 2, 20));
+    EXPECT_TRUE(rt_animstate_add_event(sm, 0, 4, 40));
+    EXPECT_FALSE(rt_animstate_add_event(sm, 0, 1, 10));
+    EXPECT_FALSE(rt_animstate_add_event(sm, 0, 5, 50));
+
+    EXPECT_TRUE(rt_animstate_add_event(sm, 1, 6, 60));
+    EXPECT_TRUE(rt_animstate_add_event(sm, 1, 3, 30));
+    EXPECT_FALSE(rt_animstate_add_event(sm, 1, 2, 20));
+    EXPECT_FALSE(rt_animstate_add_event(sm, 1, 7, 70));
 }
 
 int main() {

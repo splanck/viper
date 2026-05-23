@@ -83,6 +83,27 @@ static double tween_finite_or(double value, double fallback) {
     return isfinite(value) ? value : fallback;
 }
 
+/// @brief Linear interpolation that avoids overflowing the endpoint delta for
+///        large opposite-signed values.
+static double tween_lerp_double(double from, double to, double t) {
+    if (!isfinite(t))
+        t = 0.0;
+    if (t == 0.0)
+        return from;
+    if (t == 1.0)
+        return to;
+
+    double result = from * (1.0 - t) + to * t;
+    if (isfinite(result))
+        return result;
+
+    result = from + (to - from) * t;
+    if (isfinite(result))
+        return result;
+
+    return t < 0.5 ? from : to;
+}
+
 /// @brief Round-half-away-from-zero to int64, saturating; 0 for non-finite.
 static int64_t tween_round_to_i64(double value) {
     if (!isfinite(value))
@@ -207,7 +228,7 @@ int8_t rt_tween_update(rt_tween tween) {
     double eased_t = rt_tween_ease(t, tween->ease_type);
 
     // Interpolate
-    tween->current = tween->from + (tween->to - tween->from) * eased_t;
+    tween->current = tween_lerp_double(tween->from, tween->to, eased_t);
 
     // Check for completion
     if (tween->elapsed >= tween->duration) {
@@ -338,7 +359,7 @@ int64_t rt_tween_lerp_i64(int64_t from, int64_t to, double t) {
         t = 0.0;
     if (t > 1.0)
         t = 1.0;
-    double result = (double)from + ((double)to - (double)from) * t;
+    double result = tween_lerp_double((double)from, (double)to, t);
     return tween_round_to_i64(result);
 }
 

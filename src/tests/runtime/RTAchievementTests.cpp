@@ -30,6 +30,7 @@ int g_text_calls = 0;
 int64_t g_last_class_id = 0;
 int g_string_unref_calls = 0;
 const char *g_last_text = nullptr;
+bool g_canvas_valid = true;
 
 FakeObjectHeader *fake_header(void *obj) {
     return reinterpret_cast<FakeObjectHeader *>(obj) - 1;
@@ -111,6 +112,10 @@ extern "C" void rt_canvas_text_scaled(
 
 extern "C" int64_t rt_canvas_width(void *canvas) {
     return canvas ? static_cast<FakeCanvas *>(canvas)->width : 0;
+}
+
+extern "C" int8_t rt_canvas_is_handle(void *canvas) {
+    return (canvas && g_canvas_valid) ? 1 : 0;
 }
 
 static void test_capacity_is_honored() {
@@ -266,6 +271,24 @@ static void test_notification_lifetime_and_draw() {
     rt_achievement_destroy(ach);
 }
 
+static void test_draw_rejects_non_canvas_handle() {
+    rt_achievement ach = rt_achievement_new(1);
+    FakeCanvas canvas{640};
+    assert(ach != nullptr);
+
+    rt_achievement_add(ach, 0, rt_const_cstr("Unlocked"), rt_const_cstr("Done"));
+    assert(rt_achievement_unlock(ach, 0) == 1);
+
+    g_canvas_valid = false;
+    reset_draw_counters();
+    rt_achievement_draw(ach, &canvas);
+    assert(g_box_calls == 0);
+    assert(g_text_calls == 0);
+    g_canvas_valid = true;
+
+    rt_achievement_destroy(ach);
+}
+
 static void test_highest_bit_unlock_is_supported() {
     rt_achievement ach = rt_achievement_new(64);
     assert(ach != nullptr);
@@ -288,6 +311,7 @@ int main() {
     test_stat_increment_saturates();
     test_destroy_runs_finalizer_for_retained_strings();
     test_notification_lifetime_and_draw();
+    test_draw_rejects_non_canvas_handle();
     test_negative_notification_delta_is_noop();
     test_large_notification_delta_dismisses();
     test_highest_bit_unlock_is_supported();

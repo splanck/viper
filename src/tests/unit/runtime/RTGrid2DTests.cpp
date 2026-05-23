@@ -233,6 +233,19 @@ static void test_copy_from_dimension_mismatch() {
     rt_grid2d_destroy(dest);
 }
 
+static void test_copy_from_self_is_noop_success() {
+    printf("  test_copy_from_self_is_noop_success...\n");
+
+    rt_grid2d grid = rt_grid2d_new(3, 3, 0);
+    assert(grid != nullptr);
+    rt_grid2d_set(grid, 1, 1, 42);
+
+    assert(rt_grid2d_copy_from(grid, grid) == 1);
+    assert(rt_grid2d_get(grid, 1, 1) == 42);
+
+    rt_grid2d_destroy(grid);
+}
+
 static void test_invalid_dimensions() {
     printf("  test_invalid_dimensions...\n");
 
@@ -303,6 +316,7 @@ int main() {
     test_replace();
     test_copy_from();
     test_copy_from_dimension_mismatch();
+    test_copy_from_self_is_noop_success();
     test_invalid_dimensions();
     test_tile_map_use_case();
 

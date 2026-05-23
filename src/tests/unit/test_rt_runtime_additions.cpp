@@ -331,6 +331,7 @@ static void test_animstate_events_and_timeline() {
     rt_animstate_add_state(state, 1, 0, 3, 1, 0);
     assert(rt_animstate_add_event(state, 1, 1, 101) == 1);
     assert(rt_animstate_add_event(state, 1, 2, 102) == 1);
+    assert(rt_animstate_add_event(state, 1, 4, 104) == 0);
     assert(rt_animstate_add_event(state, 99, 1, 999) == 0);
     assert(rt_animstate_set_initial(state, 1) == 1);
     rt_animstate_update(state);
@@ -364,6 +365,10 @@ static void test_animstate_events_and_timeline() {
     rt_animtimeline_advance(timeline, 1);
     assert(rt_animtimeline_events_fired_count(timeline) == 1);
     assert(rt_animtimeline_event_fired_id(timeline, 0) == 77);
+    rt_animtimeline_advance(timeline, 0);
+    assert(rt_animtimeline_events_fired_count(timeline) == 0);
+    rt_animtimeline_advance(timeline, -5);
+    assert(rt_animtimeline_events_fired_count(timeline) == 0);
     rt_animtimeline_set_looping(timeline, 1);
     rt_animtimeline_advance(timeline, 7);
     assert(rt_animtimeline_get_current_frame(timeline) == 0);

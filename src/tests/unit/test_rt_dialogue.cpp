@@ -23,6 +23,7 @@
 #include "rt.hpp"
 #include "rt_dialogue.h"
 #include "rt_internal.h"
+#include "rt_pixels.h"
 #include "rt_string.h"
 #include <cassert>
 #include <cstdio>
@@ -206,6 +207,19 @@ static void test_null_safety(void) {
     PASS();
 }
 
+static void test_draw_rejects_non_canvas_handle(void) {
+    TEST("Draw rejects non-Canvas handles");
+    void *d = rt_dialogue_new(0, 0, 200, 80);
+    void *pixels = rt_pixels_new(8, 8);
+    assert(pixels != NULL);
+
+    rt_dialogue_say_text(d, make_str("Visible"));
+    rt_dialogue_set_speed(d, 0);
+    rt_dialogue_update(d, 1);
+    rt_dialogue_draw(d, pixels);
+    PASS();
+}
+
 int main() {
     printf("test_rt_dialogue:\n");
     test_creation();
@@ -219,6 +233,7 @@ int main() {
     test_utf8_reveal_counts_codepoints();
     test_empty_text();
     test_null_safety();
+    test_draw_rejects_non_canvas_handle();
 
     printf("\n  %d/%d tests passed\n", tests_passed, tests_total);
     assert(tests_passed == tests_total);

@@ -243,9 +243,11 @@ static int8_t timeline_crossed(int64_t before, int64_t after, int64_t frame) {
 
 void rt_animtimeline_advance(void *ptr, int64_t delta_frames) {
     rt_animtimeline_impl *tl = checked_timeline(ptr, "AnimTimeline.Advance: expected AnimTimeline");
-    if (!tl || delta_frames <= 0)
+    if (!tl)
         return;
     tl->events_fired_count = 0;
+    if (delta_frames <= 0)
+        return;
     if (!tl->playing || tl->finished)
         return;
 

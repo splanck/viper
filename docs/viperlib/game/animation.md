@@ -310,7 +310,7 @@ Eliminates the boilerplate of manually wiring StateMachine and SpriteAnimation t
 | `AddNamed(name, start, end, dur, loop)` | `Void(String, Integer, Integer, Integer, Boolean)` | Register a named state |
 | `Play(name)` | `Void(String)` | Transition to a named state |
 | `SetEventFrame(frame)` | `Void(Integer)` | Configure a frame event |
-| `AddEvent(stateId, frame, eventId)` | `Boolean(Integer, Integer, Integer)` | Add a frame-keyed event to a specific state |
+| `AddEvent(stateId, frame, eventId)` | `Boolean(Integer, Integer, Integer)` | Add a frame-keyed event to a specific state; returns false when `frame` is outside the state's clip |
 | `ClearEvents(stateId)` | `Void(Integer)` | Remove all multi-events from a state |
 | `EventFiredId(index)` | `Integer(Integer)` | Get an event id from the most recent update, or 0 when invalid |
 

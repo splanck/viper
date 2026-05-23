@@ -36,7 +36,7 @@ A 2D array container optimized for tile maps, game boards, and grid-based data.
 | Method              | Signature                 | Description                                        |
 |---------------------|---------------------------|----------------------------------------------------|
 | `Clear()`           | `Void()`                  | Clear grid (fill with 0)                           |
-| `CopyFrom(other)`   | `Boolean(Grid2D)`         | Copy data from another grid (must match dimensions)|
+| `CopyFrom(other)`   | `Boolean(Grid2D)`         | Copy data from another grid (must match dimensions; self-copy is a no-op success)|
 | `Count(value)`      | `Integer(Integer)`        | Count cells with specified value                   |
 | `Fill(value)`       | `Void(Integer)`           | Fill entire grid with value                        |
 | `Get(x, y)`         | `Integer(Int, Int)`       | Get value at coordinates                           |
