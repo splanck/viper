@@ -292,6 +292,7 @@ struct SemanticJob {
     int signatureLine{1};
     int signatureCol{0};
     std::string hoverDisplay;
+    std::string hoverSource;
     std::string symbols;
     std::vector<DiagnosticRecord> diagnostics;
 };
@@ -907,6 +908,87 @@ std::string trimAscii(std::string_view text) {
     return std::string(text.substr(start, end - start));
 }
 
+bool startsWithAscii(std::string_view text, std::string_view prefix) {
+    return text.size() >= prefix.size() && text.substr(0, prefix.size()) == prefix;
+}
+
+std::string readIdentifier(std::string_view text, size_t start) {
+    while (start < text.size() && std::isspace(static_cast<unsigned char>(text[start])))
+        ++start;
+    size_t end = start;
+    while (end < text.size() &&
+           (std::isalnum(static_cast<unsigned char>(text[end])) || text[end] == '_'))
+        ++end;
+    return std::string(text.substr(start, end - start));
+}
+
+bool declarationLineMatchesName(std::string_view line, std::string_view name) {
+    std::string text = trimAscii(line);
+    if (startsWithAscii(text, "expose "))
+        text = trimAscii(std::string_view(text).substr(7));
+    if (startsWithAscii(text, "final "))
+        text = trimAscii(std::string_view(text).substr(6));
+
+    constexpr std::string_view keywords[] = {
+        "func ",
+        "class ",
+        "struct ",
+        "interface ",
+        "var ",
+    };
+    for (std::string_view keyword : keywords) {
+        if (startsWithAscii(text, keyword)) {
+            std::string ident = readIdentifier(text, keyword.size());
+            return ident == std::string(name);
+        }
+    }
+    return false;
+}
+
+std::string docCommentBeforeLine(const std::vector<std::string> &lines, size_t declLine) {
+    if (declLine == 0 || declLine > lines.size())
+        return {};
+
+    std::vector<std::string> docs;
+    size_t i = declLine;
+    while (i > 0) {
+        --i;
+        std::string text = trimAscii(lines[i]);
+        if (startsWithAscii(text, "///"))
+            docs.push_back(trimAscii(std::string_view(text).substr(3)));
+        else
+            break;
+    }
+
+    std::string doc;
+    for (auto it = docs.rbegin(); it != docs.rend(); ++it) {
+        if (!doc.empty())
+            doc += "\n";
+        doc += *it;
+    }
+    return doc;
+}
+
+std::string declarationDocumentationForName(std::string_view source, std::string_view name) {
+    if (source.empty() || name.empty())
+        return {};
+
+    std::vector<std::string> lines;
+    std::istringstream input{std::string(source)};
+    std::string line;
+    while (std::getline(input, line)) {
+        if (!line.empty() && line.back() == '\r')
+            line.pop_back();
+        lines.push_back(line);
+    }
+
+    for (size_t i = 0; i < lines.size(); ++i) {
+        if (declarationLineMatchesName(lines[i], name))
+            return docCommentBeforeLine(lines, i);
+    }
+    return {};
+}
+
 int activeParameterForSource(std::string_view source, int line, int col) {
     size_t cursor = 0;
     int curLine = 1;
@@ -1029,9 +1111,6 @@ void *signatureInfoMap(std::string_view display, std::string_view source, int li
     mapSetInt(map, "activeParameter", available ? activeParameterForSource(source, line, col) : 0);
     mapSetInt(map, "activeSignature", 0);
     mapSetInt(map, "overloadCount", available ? 1 : 0);
-    mapSetStr(map, "documentation", "");
-    mapSetStr(map, "source", "zia");
-
     std::string firstLine(display.substr(0, display.find('\n')));
     size_t open = firstLine.find('(');
     std::string name = open == std::string::npos ? std::string() :
@@ -1045,16 +1124,16 @@ void *signatureInfoMap(std::string_view display, std::string_view source, int li
     void *params = signatureParametersToSeq(firstLine);
     mapSetObject(map, "parameters", params);
     releaseRuntimeObject(params);
+    mapSetStr(map, "documentation", declarationDocumentationForName(source, name));
+    mapSetStr(map, "source", "zia");
     return map;
 }
 
-void *hoverInfoMap(std::string_view display) {
+void *hoverInfoMap(std::string_view display, std::string_view source) {
     void *map = rt_map_new();
     bool available = !display.empty();
     mapSetBool(map, "available", available);
     mapSetStr(map, "display", display);
-    mapSetStr(map, "documentation", "");
-    mapSetStr(map, "source", "zia");
 
     std::string text(display);
     std::string kind;
@@ -1072,6 +1151,8 @@ void *hoverInfoMap(std::string_view display) {
     mapSetStr(map, "name", name);
     mapSetStr(map, "type", type);
     mapSetStr(map, "title", name.empty() ? text : name);
+    mapSetStr(map, "documentation", declarationDocumentationForName(source, name));
+    mapSetStr(map, "source", "zia");
     return map;
 }
 
@@ -1527,8 +1608,10 @@ void *rt_zia_completion_begin_hover_info_for_file(
         [sourceStr = std::move(sourceStr), pathStr = std::move(pathStr), line, col](SemanticJob &job) {
             std::string display = hoverForSource(sourceStr, pathStr, line, col);
             std::lock_guard<std::mutex> lock(job.mutex);
-            if (!job.cancelled.load(std::memory_order_acquire))
+            if (!job.cancelled.load(std::memory_order_acquire)) {
                 job.hoverDisplay = std::move(display);
+                job.hoverSource = sourceStr;
+            }
         });
 }
 
@@ -1616,11 +1699,11 @@ void *rt_zia_semantic_job_hover_info(void *handle) {
     auto job = asSemanticJob(handle);
     if (!job || !job->done.load(std::memory_order_acquire) ||
         job->kind != SemanticJobKind::HoverInfo)
-        return hoverInfoMap("");
+        return hoverInfoMap("", "");
     std::lock_guard<std::mutex> lock(job->mutex);
     if (!job->error.empty())
-        return hoverInfoMap("");
-    return hoverInfoMap(job->hoverDisplay);
+        return hoverInfoMap("", "");
+    return hoverInfoMap(job->hoverDisplay, job->hoverSource);
 }
 
 rt_string rt_zia_semantic_job_symbols(void *handle) {
@@ -1913,10 +1996,11 @@ void *rt_zia_hover_info(rt_string source, int64_t line, int64_t col) {
 /// @brief Runtime entry point: structured hover info for the identifier at
 ///        (@p line, @p col).
 void *rt_zia_hover_info_for_file(rt_string source, rt_string file_path, int64_t line, int64_t col) {
+    std::string sourceStr = toStdString(source);
     rt_string hover = rt_zia_hover_for_file(source, file_path, line, col);
     std::string hoverText = toStdString(hover);
     rt_string_unref(hover);
-    return hoverInfoMap(hoverText);
+    return hoverInfoMap(hoverText, sourceStr);
 }
 
 // =========================================================================

@@ -48,7 +48,7 @@ class SignatureController {
 
     expose func setup(appRoot: GUI.App) {
         panel = GUI.FloatingPanel.New(appRoot);
-        panel.SetSize(640.0, 68.0);
+        panel.SetSize(680.0, 92.0);
         panel.SetVisible(0);
         label = GUI.Label.New(null, "");
         panel.AddChild(label);
@@ -202,7 +202,9 @@ func FormatSignatureDisplay(sigInfo: Any) -> String {
     var params = Map.Get(sigInfo, "parameters");
     var name = Map.GetStr(sigInfo, "name");
     if name == "" or params == null or Seq.get_Length(params) == 0 {
-        return display + "  [" + (Map.GetInt(sigInfo, "activeParameter") + 1) + "]";
+        return AddSignatureMetadata(display + "  [" + (Map.GetInt(sigInfo, "activeParameter") + 1) + "]",
+                                    Map.GetStr(sigInfo, "documentation"),
+                                    Map.GetStr(sigInfo, "source"));
     }
 
     var active = Map.GetInt(sigInfo, "activeParameter");
@@ -227,7 +229,32 @@ func FormatSignatureDisplay(sigInfo: Any) -> String {
     if returnType != "" {
         text = text + " -> " + returnType;
     }
+    return AddSignatureMetadata(text,
+                                Map.GetStr(sigInfo, "documentation"),
+                                Map.GetStr(sigInfo, "source"));
+}
+
+func AddSignatureMetadata(display: String, documentation: String, source: String) -> String {
+    var text = display;
+    if source != "" {
+        text = text + "  [" + source + "]";
+    }
+    var doc = ShortInlineText(documentation, 140);
+    if doc != "" {
+        text = text + "\n" + doc;
+    }
     return text;
+}
+
+func ShortInlineText(text: String, limit: Integer) -> String {
+    var cleaned = Str.Trim(Str.Replace(Str.Replace(text, "\n", " "), "\t", " "));
+    if limit <= 0 or Str.Length(cleaned) <= limit {
+        return cleaned;
+    }
+    if limit <= 3 {
+        return Str.Left(cleaned, limit);
+    }
+    return Str.Left(cleaned, limit - 3) + "...";
 }
 
 func ActiveParameter(source: String, line: Integer, col0: Integer) -> Integer {

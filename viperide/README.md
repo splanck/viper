@@ -92,21 +92,24 @@ and search exclusions on top of hard excludes and `.gitignore`.
   pointer selection drag, auto-indent, bracket/quote pair insertion, line
   and block comment toggle, matching-pair highlight, duplicate line, move line
   up/down, expand/shrink selection, semantic fold regions for Zia symbols,
-  Organize Binds, word wrap, and minimap
+  Organize Binds, Trim Trailing Whitespace, word wrap, and minimap
 - Revision-gated editor controllers with background semantic jobs for
   completion, diagnostics, signature help, hover, and outline refresh, plus idle
   project-index sync
 - Zia IntelliSense using path-aware structured completion/signature/hover APIs,
   editor-focus-safe popup filtering, dot triggers, identifier debounce, snippet
   cursor placement metadata, callable commit characters, workspace-symbol
-  completion from the project file cache, stale-result rejection, and explicit
-  `Ctrl+Space`
+  completion from an on-demand async project file cache, compact docs/source
+  metadata display from Zia declaration doc comments for completion,
+  signature help, and hover, stale-result rejection, and explicit `Ctrl+Space`
 - Live diagnostics through structured toolchain records and background checks,
-  plus an explicit Run Check Now command
-- Hover tooltips for type and signature information, delayed until dwell and
-  resolved through background jobs
-- Project-aware Zia definition, references, and rename through `Viper.Zia.ProjectIndex`; rename now has a preview/cancel step
-- Dedicated References bottom-panel tab with grouped file headers and preview rows
+  plus explicit Run Check Now and Suppress Warning commands
+- Hover tooltips for type, signature, docs, and source information, delayed
+  until dwell and resolved through background jobs
+- Project-aware Zia definition, references, incoming/outgoing call lookup, and
+  rename through `Viper.Zia.ProjectIndex`; rename now has a preview/cancel step
+- Dedicated References bottom-panel tab with grouped file/caller headers and
+  preview rows
 - Language-service capability routing so BASIC/text/scene files do not invoke Zia semantic APIs
 - File explorer with recursive tree view, right-click node targeting, Open/Open With Text Editor, duplicate, copy path, copy relative path, search in folder, run file, set project entry, refresh, keyboard commands for common tree actions, project-specific ignore patterns, and OS-aware reveal
 - File-tree rename/delete operations that update open documents; rename previews
@@ -115,7 +118,8 @@ and search exclusions on top of hard excludes and `.gitignore`.
 - Find/replace bar with match count and navigation
 - Project search and folder-scoped search with grouped file headers,
   cooperative file discovery/content scanning, cached project file state when
-  available, and structured location ids instead of `path:line` parsing
+  available, literal/regex content matching, case/whole-word and include/exclude
+  path filters, and structured location ids instead of `path:line` parsing
 - Quick Open by project file name/path fragment (`Ctrl+P`), plus recent-file
   and recently closed-tab reopen workflows
 - Workspace symbol search by project symbol fragment (`Ctrl+T`) with structured
@@ -127,7 +131,9 @@ and search exclusions on top of hard excludes and `.gitignore`.
   Problems/Output/Search/References/Debug Console tabs
 - Debug UI controls with persisted breakpoints and a dedicated Debug Console tab
   wired to the current non-executing `Viper.Debug.Protocol` placeholder
-- Command palette for keyboard-driven workflow
+- Categorized command palette for keyboard-driven workflow, with unsupported
+  language-service commands kept discoverable through unavailable markers and
+  status/toast reasons
 - Persistent settings in `~/.viperide/settings.ini`, with editor behavior
   controls, auto-save, save-time whitespace controls, IntelliSense delay
   controls, configurable editor font size, per-section default resets, and
@@ -163,15 +169,15 @@ and minimap paint.
 
 The Phase 0/1 regression probe is registered as `zia_viperide_phase0_phase1`.
 It covers document kind detection, command id consistency, structured locations,
-language-service capabilities, search matching, signature-call parsing,
-session/recent-project persistence, active-tab close behavior, transactional
-workspace edits for open and closed files, recent-file persistence, recently
-closed tab tracking, and project-index queries.
+language-service capabilities, command palette categories, search matching,
+signature-call parsing, session/recent-project persistence, active-tab close
+behavior, transactional workspace edits for open and closed files, recent-file
+persistence, recently closed tab tracking, and project-index queries.
 
 The console/search regression probe is registered as
 `zia_viperide_console_search`. It covers output append behavior, partial-line
-rebuild behavior, output filter/wrap/copy/clear helpers, whole-word search, and
-Quick Open ranking.
+rebuild behavior, output filter/wrap/copy/clear helpers, whole-word search,
+regex search mode, include/exclude search path filters, and Quick Open ranking.
 
 The Phase 2/3 regression probe is registered as `zia_viperide_phase2_phase3`.
 It covers run-config argument vectors, project command overrides, real

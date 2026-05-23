@@ -263,6 +263,46 @@ static std::string trimCopy(std::string_view text) {
     return std::string(text.substr(start, end - start));
 }
 
+static bool startsWith(std::string_view text, std::string_view prefix) {
+    return text.size() >= prefix.size() && text.substr(0, prefix.size()) == prefix;
+}
+
+static std::string docCommentBefore(const il::support::SourceManager &sm,
+                                    il::support::SourceLoc loc) {
+    if (!loc.isValid() || loc.line <= 1)
+        return {};
+
+    std::vector<std::string> lines;
+    uint32_t line = loc.line - 1;
+    while (line > 0) {
+        std::string text = trimCopy(sm.getLine(loc.file_id, line));
+        if (startsWith(text, "///")) {
+            std::string doc = trimCopy(std::string_view(text).substr(3));
+            lines.push_back(std::move(doc));
+        } else {
+            break;
+        }
+        --line;
+    }
+
+    std::string doc;
+    for (auto it = lines.rbegin(); it != lines.rend(); ++it) {
+        if (!doc.empty())
+            doc += "\n";
+        doc += *it;
+    }
+    return doc;
+}
+
+static std::string documentationForSymbol(const il::support::SourceManager *sm,
+                                          const Symbol &sym) {
+    if (!sm)
+        return {};
+    il::support::SourceLoc loc = sym.loc.isValid() ? sym.loc :
+                                                       (sym.decl ? sym.decl->loc : il::support::SourceLoc{});
+    return docCommentBefore(*sm, loc);
+}
+
 static bool hasKeywordBoundary(std::string_view source, size_t start, size_t len) {
     if (start > 0 && isIdentChar(source[start - 1]))
         return false;
@@ -754,6 +794,7 @@ std::vector<CompletionItem> CompletionEngine::provideScopeSymbols(const Sema &se
         item.insertText = sym.name;
         item.kind = kindFromSymbol(sym);
         item.detail = typeDetail(sym.type);
+        item.documentation = documentationForSymbol(sm_.get(), sym);
         item.source = sym.isExtern ? "runtime" : "scope";
         if (item.kind == CompletionKind::Function || item.kind == CompletionKind::Method)
             item.commitCharacters = "(";
@@ -770,6 +811,7 @@ std::vector<CompletionItem> CompletionEngine::provideScopeSymbols(const Sema &se
         item.insertText = sym.name;
         item.kind = kindFromSymbol(sym);
         item.detail = typeDetail(sym.type);
+        item.documentation = documentationForSymbol(sm_.get(), sym);
         item.source = sym.isExtern ? "runtime" : "scope";
         if (item.kind == CompletionKind::Function || item.kind == CompletionKind::Method)
             item.commitCharacters = "(";
@@ -865,6 +907,7 @@ std::vector<CompletionItem> CompletionEngine::provideMemberCompletions(const Sem
         item.insertText = sym.name;
         item.kind = kindFromSymbol(sym);
         item.detail = typeDetail(sym.type);
+        item.documentation = documentationForSymbol(sm_.get(), sym);
         item.source = sym.isExtern ? "runtime" : "member";
         if (item.kind == CompletionKind::Function || item.kind == CompletionKind::Method)
             item.commitCharacters = "(";
@@ -902,6 +945,7 @@ std::vector<CompletionItem> CompletionEngine::provideModuleMembers(
         item.insertText = sym.name;
         item.kind = kindFromSymbol(sym);
         item.detail = typeDetail(sym.type);
+        item.documentation = documentationForSymbol(sm_.get(), sym);
         item.source = "module";
         if (item.kind == CompletionKind::Function || item.kind == CompletionKind::Method)
             item.commitCharacters = "(";

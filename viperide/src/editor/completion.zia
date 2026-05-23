@@ -19,6 +19,10 @@ bind Path = Viper.IO.Path;
 final COMPLETION_DEBOUNCE_MS = 180;
 final WORKSPACE_SYMBOL_FILES_PER_FRAME = 1;
 final MAX_WORKSPACE_COMPLETION_ITEMS = 80;
+final MAX_VISIBLE_COMPLETION_ITEMS = 80;
+final MAX_WORKSPACE_SYMBOL_CACHE_ITEMS = 300;
+final WORKSPACE_SYMBOL_PUMP_INTERVAL_MS = 500;
+final FILTER_PREFIX_UNSET = "<unset>";
 
 // ============================================================================
 // MODULE: completion
@@ -123,6 +127,11 @@ class CompletionController {
     expose List workspaceTypes;
     expose List workspacePaths;
     expose List workspaceLines;
+    expose Any workspacePendingJob;
+    expose String workspacePendingPath;
+    expose Integer workspacePendingLineOffset;
+    expose String visiblePrefix;
+    expose Integer workspaceLastPumpMs;
 
     /// @brief Initialize an empty/hidden controller.
     expose func init() {
@@ -173,6 +182,11 @@ class CompletionController {
         workspaceTypes = new List();
         workspacePaths = new List();
         workspaceLines = new List();
+        workspacePendingJob = null;
+        workspacePendingPath = "";
+        workspacePendingLineOffset = 0;
+        visiblePrefix = FILTER_PREFIX_UNSET;
+        workspaceLastPumpMs = 0;
     }
 
     /// @brief Construct the popup panel and embed a ListBox.
@@ -261,7 +275,17 @@ class CompletionController {
         if enabled == false or editor == null {
             return;
         }
-        CancelPendingJob();
+        if pendingJob != null {
+            pendingSinceMs = Viper.Time.GetTickCount();
+            pendingQuery = true;
+            if workScheduler != null and engine != null {
+                workScheduler.Queue(scheduler.JOB_COMPLETION,
+                                    sourcePath,
+                                    engine.GetRevision(),
+                                    COMPLETION_DEBOUNCE_MS);
+            }
+            return;
+        }
 
         // Get current source and cursor position
         var text = editor.Text;
@@ -316,6 +340,7 @@ class CompletionController {
         cursorOffsets = new List();
         commitCharacters = new List();
         itemCount = 0;
+        visiblePrefix = FILTER_PREFIX_UNSET;
 
         if items != null {
             var itemIdx = 0;
@@ -328,16 +353,11 @@ class CompletionController {
                 var ins = Map.GetStr(item, "insertText");
                 if ins == "" { ins = label; }
 
-                var kindTag = kindLabel(Map.GetInt(item, "kind"));
-                var detail = Map.GetStr(item, "detail");
-
-                var displayText = label;
-                if kindTag != "" {
-                    displayText = kindTag + " " + label;
-                }
-                if detail != "" {
-                    displayText = displayText + "  — " + detail;
-                }
+                var displayText = FormatCompletionDisplay(label,
+                                                           Map.GetInt(item, "kind"),
+                                                           Map.GetStr(item, "detail"),
+                                                           Map.GetStr(item, "documentation"),
+                                                           Map.GetStr(item, "source"));
 
                 allLabels.Push(label);
                 allDisplays.Push(displayText);
@@ -423,6 +443,10 @@ class CompletionController {
     }
 
     expose func RebuildVisibleItems(prefix: String) {
+        if prefix == visiblePrefix {
+            return;
+        }
+        visiblePrefix = prefix;
         listbox.Clear();
         insertTexts = new List();
         replaceStartLines = new List();
@@ -435,7 +459,7 @@ class CompletionController {
 
         var normalizedPrefix = Str.ToLower(prefix);
         var i = 0;
-        while i < allLabels.count() {
+        while i < allLabels.count() and itemCount < MAX_VISIBLE_COMPLETION_ITEMS {
             var label = Obj.ToString(allLabels.get(i));
             var display = Obj.ToString(allDisplays.get(i));
             var insertText = Obj.ToString(allInsertTexts.get(i));
@@ -678,7 +702,14 @@ class CompletionController {
     /// @return true if an event was consumed (currently always false —
     ///         reserved for future use).
     expose func Update(typed: String) -> Boolean {
-        PumpWorkspaceSymbolCache(WORKSPACE_SYMBOL_FILES_PER_FRAME);
+        if typed == "" and isVisible == false and pendingQuery == false and pendingJob == null
+           and workspacePendingJob != null {
+            var nowMs = Viper.Time.GetTickCount();
+            if nowMs - workspaceLastPumpMs >= WORKSPACE_SYMBOL_PUMP_INTERVAL_MS {
+                workspaceLastPumpMs = nowMs;
+                PumpWorkspaceSymbolCache(WORKSPACE_SYMBOL_FILES_PER_FRAME);
+            }
+        }
 
         if PollPendingJob() {
             return true;
@@ -751,15 +782,41 @@ class CompletionController {
             workspaceTypes = new List();
             workspacePaths = new List();
             workspaceLines = new List();
+            CancelWorkspaceSymbolJob();
+            workspaceLastPumpMs = 0;
         }
 
         if workspaceCacheReady { return 0; }
+        if workspaceLabels.count() >= MAX_WORKSPACE_SYMBOL_CACHE_ITEMS {
+            workspaceCacheReady = true;
+            CancelWorkspaceSymbolJob();
+            return 0;
+        }
 
         var limit = maxFiles;
         if limit <= 0 { limit = WORKSPACE_SYMBOL_FILES_PER_FRAME; }
 
         var processed = 0;
-        while workspaceFileIndex < workspaceFileCount and processed < limit {
+        if workspacePendingJob != null {
+            if SemanticJob.IsDone(workspacePendingJob) == false {
+                return 0;
+            }
+            var job = workspacePendingJob;
+            var jobPath = workspacePendingPath;
+            var jobLineOff = workspacePendingLineOffset;
+            workspacePendingJob = null;
+            workspacePendingPath = "";
+            workspacePendingLineOffset = 0;
+            if SemanticJob.IsError(job) == false {
+                AddRawWorkspaceSymbolsToCache(jobPath,
+                                              SemanticJob.Symbols(job),
+                                              jobLineOff);
+            }
+            processed = processed + 1;
+        }
+
+        while workspaceFileIndex < workspaceFileCount and processed < limit
+              and workspaceLabels.count() < MAX_WORKSPACE_SYMBOL_CACHE_ITEMS {
             var filePath = workspaceProject.CachedFileAt(workspaceFileIndex);
             workspaceFileIndex = workspaceFileIndex + 1;
             processed = processed + 1;
@@ -767,18 +824,32 @@ class CompletionController {
             if Str.ToLower(Path.Ext(filePath)) != ".zia" { continue; }
             var content = WorkspaceContentFor(filePath);
             if content == "" { continue; }
+            var qcontent = zia_query.WrapForQuery(content);
+            var lineOff = zia_query.LineOffset(content);
+            var job2 = ZiaCompletion.BeginSymbolsForFile(qcontent, filePath);
+            if job2 != null {
+                workspacePendingJob = job2;
+                workspacePendingPath = filePath;
+                workspacePendingLineOffset = lineOff;
+                return processed;
+            }
+
             AddRawWorkspaceSymbolsToCache(filePath,
-                                          ZiaCompletion.SymbolsForFile(zia_query.WrapForQuery(content), filePath),
-                                          zia_query.LineOffset(content));
+                                          ZiaCompletion.SymbolsForFile(qcontent, filePath),
+                                          lineOff);
         }
 
-        if workspaceFileIndex >= workspaceFileCount {
-            workspaceCacheReady = true;
+        if workspacePendingJob == null {
+            if workspaceFileIndex >= workspaceFileCount
+               or workspaceLabels.count() >= MAX_WORKSPACE_SYMBOL_CACHE_ITEMS {
+                workspaceCacheReady = true;
+            }
         }
         return processed;
     }
 
     hide func ClearWorkspaceSymbolCache() {
+        CancelWorkspaceSymbolJob();
         workspaceRoot = "";
         workspaceFileCount = -1;
         workspaceFileIndex = 0;
@@ -788,6 +859,16 @@ class CompletionController {
         workspaceTypes = new List();
         workspacePaths = new List();
         workspaceLines = new List();
+        workspaceLastPumpMs = 0;
+    }
+
+    hide func CancelWorkspaceSymbolJob() {
+        if workspacePendingJob != null {
+            SemanticJob.Cancel(workspacePendingJob);
+            workspacePendingJob = null;
+        }
+        workspacePendingPath = "";
+        workspacePendingLineOffset = 0;
     }
 
     hide func WorkspaceContentFor(filePath: String) -> String {
@@ -809,7 +890,8 @@ class CompletionController {
         if raw == "" { return; }
         var rows = Str.Split(raw, "\n");
         var i = 0;
-        while i < Seq.get_Length(rows) {
+        while i < Seq.get_Length(rows)
+              and workspaceLabels.count() < MAX_WORKSPACE_SYMBOL_CACHE_ITEMS {
             var row = Obj.ToString(Seq.Get(rows, i));
             i = i + 1;
             if row == "" { continue; }
@@ -868,8 +950,6 @@ class CompletionController {
         if startCol < 0 { startCol = 0; }
 
         var added = 0;
-        added = added + AddOpenWorkspaceSymbolCompletions(prefix, actualLine, startCol, curCol,
-                                                          MAX_WORKSPACE_COMPLETION_ITEMS);
 
         var i = 0;
         while i < workspaceLabels.count() and added < MAX_WORKSPACE_COMPLETION_ITEMS {
@@ -1027,6 +1107,48 @@ func ListIntAt(values: List, index: Integer, fallback: Integer) -> Integer {
         return fallback;
     }
     return Viper.Core.Convert.ToInt(Obj.ToString(values.get(index)));
+}
+
+func FormatCompletionDisplay(label: String,
+                             kind: Integer,
+                             detail: String,
+                             documentation: String,
+                             source: String) -> String {
+    var kindTag = kindLabel(kind);
+    var text = label;
+    if kindTag != "" {
+        text = kindTag + " " + label;
+    }
+    if detail != "" {
+        text = text + "  -  " + ShortInlineText(detail, 72);
+    }
+
+    var meta = "";
+    var doc = ShortInlineText(documentation, 96);
+    if doc != "" {
+        meta = doc;
+    }
+    if source != "" {
+        if meta != "" {
+            meta = meta + "  ";
+        }
+        meta = meta + "[" + source + "]";
+    }
+    if meta != "" {
+        text = text + "  -  " + meta;
+    }
+    return text;
+}
+
+func ShortInlineText(text: String, limit: Integer) -> String {
+    var cleaned = Str.Trim(Str.Replace(Str.Replace(text, "\n", " "), "\t", " "));
+    if limit <= 0 or Str.Length(cleaned) <= limit {
+        return cleaned;
+    }
+    if limit <= 3 {
+        return Str.Left(cleaned, limit);
+    }
+    return Str.Left(cleaned, limit - 3) + "...";
 }
 
 /// @brief Map a CompletionKind integer to a short bracketed tag.

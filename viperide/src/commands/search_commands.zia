@@ -25,8 +25,9 @@ bind FileIndex = Viper.Workspace.FileIndex;
 // ============================================================================
 // MODULE: search_commands
 // PURPOSE: Project-wide text search (Ctrl+Shift+F). Scans selected text
-//          file kinds under the project root, supports case and whole-word
-//          options, and stores structured location ids on output rows.
+//          file kinds under the project root, supports literal/regex, case,
+//          whole-word, and path-filter options, and stores structured location
+//          ids on output rows.
 //
 // WHERE-THIS-FITS: Wired into main.zia's command dispatcher. Only
 //          enabled when a project is open (otherwise toasts a warning).
@@ -35,14 +36,27 @@ bind FileIndex = Viper.Workspace.FileIndex;
 //   * GLOB-BASED FILE DISCOVERY. `Viper.IO.Glob.Files(root, "**/*.zia")`
 //     walks the tree once. Two passes (zia then bas) is simpler than
 //     extending Glob to handle multi-pattern queries.
-//   * SIMPLE MATCH MODES. No regex in Phase 0; the command flow exposes
-//     case-sensitive and whole-word toggles without adding query syntax.
+//   * COOPERATIVE MATCHING. Search work remains file-sliced per frame; regex
+//     matching is intentionally local to a single line and uses a compact
+//     editor-search subset (`.`, `*`, `+`, `?`, `[]`, `^`, `$`, and escapes).
 //   * RESULT ROWS CARRY DATA. Each output-panel item stores a LocationStore
 //     id via `ItemSetData`, so clicking a result does not parse display text.
 // ============================================================================
 
 final SEARCH_FILES_PER_FRAME = 16;
 final SEARCH_DISCOVERY_DIRS_PER_FRAME = 8;
+
+class SearchMatch {
+    expose Boolean matched;
+    expose Integer startCol;
+    expose Integer length;
+
+    expose func init() {
+        matched = false;
+        startCol = 1;
+        length = 0;
+    }
+}
 
 class SearchController {
     expose Boolean active;
@@ -51,8 +65,11 @@ class SearchController {
     expose String query;
     expose String fileKinds;
     expose String ignorePatterns;
+    expose String includeGlobs;
+    expose String excludeGlobs;
     expose Boolean caseSensitive;
     expose Boolean wholeWord;
+    expose Boolean regexMode;
     expose Integer fileIndex;
     expose Integer resultCount;
     expose Integer totalFiles;
@@ -68,8 +85,11 @@ class SearchController {
         query = "";
         fileKinds = "";
         ignorePatterns = "";
+        includeGlobs = "";
+        excludeGlobs = "";
         caseSensitive = false;
         wholeWord = false;
+        regexMode = false;
         fileIndex = 0;
         resultCount = 0;
         totalFiles = 0;
@@ -100,6 +120,9 @@ class SearchController {
         var requestedWholeWord = GUI.MessageBox.Confirm(
             "Search Options",
             "Match whole words only?") != 0;
+        var requestedRegex = GUI.MessageBox.Confirm(
+            "Search Options",
+            "Treat the search text as a regular expression?") != 0;
         var requestedKinds = GUI.MessageBox.Prompt(
             "Search File Kinds",
             "Comma-separated extensions to search.\nLeave blank for code, text, scene, and docs.");
@@ -108,9 +131,17 @@ class SearchController {
         } else {
             requestedKinds = Str.Replace(requestedKinds, " ", "");
         }
+        var requestedInclude = GUI.MessageBox.Prompt(
+            "Search Include Paths",
+            "Comma-separated include globs. Leave blank for all matching files.");
+        var requestedExclude = GUI.MessageBox.Prompt(
+            "Search Exclude Paths",
+            "Comma-separated exclude globs. Leave blank for project defaults.");
 
         file_commands.SaveEditorState(docMgr, engine);
-        return StartDirect(shell, rootPath, requestedQuery, requestedKinds, requestedCase, requestedWholeWord);
+        return StartDirectWithSearchMode(shell, rootPath, requestedQuery,
+                                         requestedKinds, requestedCase, requestedWholeWord,
+                                         requestedRegex, requestedInclude, requestedExclude);
     }
 
     expose func StartProject(shell: app_shell.AppShell,
@@ -166,6 +197,9 @@ class SearchController {
         var requestedWholeWord = GUI.MessageBox.Confirm(
             "Search Options",
             "Match whole words only?") != 0;
+        var requestedRegex = GUI.MessageBox.Confirm(
+            "Search Options",
+            "Treat the search text as a regular expression?") != 0;
         var requestedKinds = GUI.MessageBox.Prompt(
             "Search File Kinds",
             "Comma-separated extensions to search.\nLeave blank for code, text, scene, and docs.");
@@ -174,10 +208,17 @@ class SearchController {
         } else {
             requestedKinds = Str.Replace(requestedKinds, " ", "");
         }
+        var requestedInclude = GUI.MessageBox.Prompt(
+            "Search Include Paths",
+            "Comma-separated include globs. Leave blank for all matching files.");
+        var requestedExclude = GUI.MessageBox.Prompt(
+            "Search Exclude Paths",
+            "Comma-separated exclude globs. Leave blank for project defaults.");
 
         file_commands.SaveEditorState(docMgr, engine);
-        return StartCachedDirect(shell, projMgr, scopeRoot, requestedQuery,
-                                 requestedKinds, requestedCase, requestedWholeWord);
+        return StartCachedDirectWithSearchMode(shell, projMgr, scopeRoot, requestedQuery,
+                                               requestedKinds, requestedCase, requestedWholeWord,
+                                               requestedRegex, requestedInclude, requestedExclude);
     }
 
     expose func StartDirect(shell: app_shell.AppShell,
@@ -186,6 +227,34 @@ class SearchController {
                             requestedKinds: String,
                             requestedCase: Boolean,
                             requestedWholeWord: Boolean) -> Boolean {
+        return StartDirectWithOptions(shell, rootPath, requestedQuery,
+                                      requestedKinds, requestedCase, requestedWholeWord,
+                                      "", "");
+    }
+
+    expose func StartDirectWithOptions(shell: app_shell.AppShell,
+                                       rootPath: String,
+                                       requestedQuery: String,
+                                       requestedKinds: String,
+                                       requestedCase: Boolean,
+                                       requestedWholeWord: Boolean,
+                                       requestedIncludeGlobs: String,
+                                       requestedExcludeGlobs: String) -> Boolean {
+        if rootPath == "" or requestedQuery == "" { return false; }
+        return StartDirectWithSearchMode(shell, rootPath, requestedQuery,
+                                         requestedKinds, requestedCase, requestedWholeWord,
+                                         false, requestedIncludeGlobs, requestedExcludeGlobs);
+    }
+
+    expose func StartDirectWithSearchMode(shell: app_shell.AppShell,
+                                          rootPath: String,
+                                          requestedQuery: String,
+                                          requestedKinds: String,
+                                          requestedCase: Boolean,
+                                          requestedWholeWord: Boolean,
+                                          requestedRegexMode: Boolean,
+                                          requestedIncludeGlobs: String,
+                                          requestedExcludeGlobs: String) -> Boolean {
         if rootPath == "" or requestedQuery == "" { return false; }
         if Dir.Exists(rootPath) == false { return false; }
 
@@ -196,8 +265,11 @@ class SearchController {
             fileKinds = ".zia,.bas,.vb,.json,.md,.scene,.level";
         }
         ignorePatterns = "";
+        includeGlobs = NormalizeSearchGlobList(requestedIncludeGlobs);
+        excludeGlobs = NormalizeSearchGlobList(requestedExcludeGlobs);
         caseSensitive = requestedCase;
         wholeWord = requestedWholeWord;
+        regexMode = requestedRegexMode;
         files = new List();
         pendingDirs = new List();
         pendingDirs.Push(root);
@@ -222,6 +294,36 @@ class SearchController {
                                   requestedKinds: String,
                                   requestedCase: Boolean,
                                   requestedWholeWord: Boolean) -> Boolean {
+        return StartCachedDirectWithOptions(shell, projMgr, scopeRoot, requestedQuery,
+                                            requestedKinds, requestedCase, requestedWholeWord,
+                                            "", "");
+    }
+
+    expose func StartCachedDirectWithOptions(shell: app_shell.AppShell,
+                                             projMgr: project_manager.ProjectManager,
+                                             scopeRoot: String,
+                                             requestedQuery: String,
+                                             requestedKinds: String,
+                                             requestedCase: Boolean,
+                                             requestedWholeWord: Boolean,
+                                             requestedIncludeGlobs: String,
+                                             requestedExcludeGlobs: String) -> Boolean {
+        if projMgr == null or scopeRoot == "" or requestedQuery == "" { return false; }
+        return StartCachedDirectWithSearchMode(shell, projMgr, scopeRoot, requestedQuery,
+                                               requestedKinds, requestedCase, requestedWholeWord,
+                                               false, requestedIncludeGlobs, requestedExcludeGlobs);
+    }
+
+    expose func StartCachedDirectWithSearchMode(shell: app_shell.AppShell,
+                                                projMgr: project_manager.ProjectManager,
+                                                scopeRoot: String,
+                                                requestedQuery: String,
+                                                requestedKinds: String,
+                                                requestedCase: Boolean,
+                                                requestedWholeWord: Boolean,
+                                                requestedRegexMode: Boolean,
+                                                requestedIncludeGlobs: String,
+                                                requestedExcludeGlobs: String) -> Boolean {
         if projMgr == null or scopeRoot == "" or requestedQuery == "" { return false; }
         if Dir.Exists(scopeRoot) == false { return false; }
 
@@ -232,9 +334,12 @@ class SearchController {
             fileKinds = ".zia,.bas,.vb,.json,.md,.scene,.level";
         }
         ignorePatterns = projMgr.project.ignorePatterns;
+        includeGlobs = NormalizeSearchGlobList(requestedIncludeGlobs);
+        excludeGlobs = NormalizeSearchGlobList(requestedExcludeGlobs);
         caseSensitive = requestedCase;
         wholeWord = requestedWholeWord;
-        files = BuildFileListFromCache(projMgr, scopeRoot, fileKinds);
+        regexMode = requestedRegexMode;
+        files = BuildFileListFromCacheWithFilters(projMgr, scopeRoot, fileKinds, includeGlobs, excludeGlobs);
         totalFiles = files.count();
         pendingDirs = new List();
         discovering = false;
@@ -278,14 +383,16 @@ class SearchController {
 
             for dirName in Dir.DirsSeq(dirPath) {
                 var childDir = Path.Join(dirPath, dirName);
-                if ShouldSearchIgnore(root, childDir, true, ignorePatterns) == false {
+                if ShouldSearchIgnore(root, childDir, true, MergePatternLists(ignorePatterns, excludeGlobs)) == false {
                     pendingDirs.Push(childDir);
                 }
             }
 
             for fileName in Dir.FilesSeq(dirPath) {
                 var filePath = Path.Join(dirPath, fileName);
-                if ShouldSearchIgnore(root, filePath, false, ignorePatterns) == false and SearchKindMatches(filePath, fileKinds) {
+                if ShouldSearchIgnore(root, filePath, false, MergePatternLists(ignorePatterns, excludeGlobs)) == false
+                   and SearchKindMatches(filePath, fileKinds)
+                   and SearchPathAllowed(root, filePath, includeGlobs, excludeGlobs) {
                     files.Push(filePath);
                 }
             }
@@ -313,7 +420,8 @@ class SearchController {
             scanned = scanned + 1;
 
             if IO.File.Exists(filePath) == false { continue; }
-            resultCount = resultCount + searchOneFile(shell, filePath, query, caseSensitive, wholeWord, docMgr, locStore);
+            resultCount = resultCount + searchOneFile(shell, filePath, query, caseSensitive, wholeWord,
+                                                      regexMode, docMgr, locStore);
         }
 
         if discovering == false and fileIndex >= files.count() {
@@ -353,12 +461,22 @@ func BuildFileListFromIndex(rootPath: String, fileKinds: String) -> List {
 func BuildFileListFromCache(projMgr: project_manager.ProjectManager,
                             scopeRoot: String,
                             fileKinds: String) -> List {
+    return BuildFileListFromCacheWithFilters(projMgr, scopeRoot, fileKinds, "", "");
+}
+
+func BuildFileListFromCacheWithFilters(projMgr: project_manager.ProjectManager,
+                                       scopeRoot: String,
+                                       fileKinds: String,
+                                       includeGlobs: String,
+                                       excludeGlobs: String) -> List {
     var result = new List();
     if projMgr == null { return result; }
     var i = 0;
     while i < projMgr.CachedFileCount() {
         var filePath = projMgr.CachedFileAt(i);
-        if IsWithinRoot(filePath, scopeRoot) and SearchKindMatches(filePath, fileKinds) {
+        if IsWithinRoot(filePath, scopeRoot)
+           and SearchKindMatches(filePath, fileKinds)
+           and SearchPathAllowed(scopeRoot, filePath, includeGlobs, excludeGlobs) {
             result.Push(filePath);
         }
         i = i + 1;
@@ -401,6 +519,150 @@ func ShouldSearchIgnore(rootPath: String,
         rel = rel + "/";
     }
     return FileIndex.ShouldIgnore(rootPath, rel, ignorePatterns);
+}
+
+func SearchPathAllowed(rootPath: String,
+                       filePath: String,
+                       includeGlobs: String,
+                       excludeGlobs: String) -> Boolean {
+    var rel = RelativeSearchPath(rootPath, filePath);
+    if excludeGlobs != "" and AnySearchGlobMatches(rel, excludeGlobs) {
+        return false;
+    }
+    if includeGlobs == "" {
+        return true;
+    }
+    return AnySearchGlobMatches(rel, includeGlobs);
+}
+
+func RelativeSearchPath(rootPath: String, filePath: String) -> String {
+    var rel = filePath;
+    var prefix = rootPath;
+    if prefix != "" and Str.EndsWith(prefix, Path.Sep()) == false {
+        prefix = prefix + Path.Sep();
+    }
+    if prefix != "" and Str.StartsWith(filePath, prefix) {
+        rel = Str.Mid(filePath, Str.Length(prefix) + 1);
+    }
+    return NormalizeSearchPath(rel);
+}
+
+func NormalizeSearchPath(path: String) -> String {
+    var normalized = Str.Replace(path, "\\", "/");
+    if Path.Sep() != "/" {
+        normalized = Str.Replace(normalized, Path.Sep(), "/");
+    }
+    return normalized;
+}
+
+func NormalizeSearchGlobList(globs: String) -> String {
+    var raw = Str.Replace(globs, ";", ",");
+    var parts = Str.Split(raw, ",");
+    var result = "";
+    var i = 0;
+    while i < Seq.get_Length(parts) {
+        var part = Str.Trim(Obj.ToString(Seq.Get(parts, i)));
+        i = i + 1;
+        if part == "" { continue; }
+        part = NormalizeSearchPath(part);
+        if result != "" {
+            result = result + ",";
+        }
+        result = result + part;
+    }
+    return result;
+}
+
+func MergePatternLists(left: String, right: String) -> String {
+    var lhs = NormalizeSearchGlobList(left);
+    var rhs = NormalizeSearchGlobList(right);
+    if lhs == "" { return rhs; }
+    if rhs == "" { return lhs; }
+    return lhs + "," + rhs;
+}
+
+func AnySearchGlobMatches(relativePath: String, globs: String) -> Boolean {
+    var rel = NormalizeSearchPath(relativePath);
+    var normalizedGlobs = NormalizeSearchGlobList(globs);
+    if normalizedGlobs == "" { return false; }
+
+    var parts = Str.Split(normalizedGlobs, ",");
+    var i = 0;
+    while i < Seq.get_Length(parts) {
+        var pattern = Str.Trim(Obj.ToString(Seq.Get(parts, i)));
+        i = i + 1;
+        if pattern == "" { continue; }
+        if SearchGlobMatches(rel, pattern) {
+            return true;
+        }
+    }
+    return false;
+}
+
+func SearchGlobMatches(relativePath: String, pattern: String) -> Boolean {
+    var rel = Str.ToLower(NormalizeSearchPath(relativePath));
+    var pat = Str.ToLower(NormalizeSearchPath(Str.Trim(pattern)));
+    if rel == "" or pat == "" { return false; }
+
+    if ContainsGlobWildcard(pat) == false {
+        if rel == pat { return true; }
+        if SearchPathBaseName(rel) == pat { return true; }
+        return Str.IndexOf(rel, pat) != 0;
+    }
+
+    if GlobMatchesText(rel, pat) {
+        return true;
+    }
+    if Str.IndexOf(pat, "/") == 0 and GlobMatchesText(SearchPathBaseName(rel), pat) {
+        return true;
+    }
+    return false;
+}
+
+func ContainsGlobWildcard(pattern: String) -> Boolean {
+    return Str.IndexOf(pattern, "*") != 0 or Str.IndexOf(pattern, "?") != 0;
+}
+
+func SearchPathBaseName(path: String) -> String {
+    var slash = Str.LastIndexOf(path, "/");
+    if slash == 0 { return path; }
+    return Str.Mid(path, slash + 1);
+}
+
+func GlobMatchesText(text: String, pattern: String) -> Boolean {
+    var textLen = Str.Length(text);
+    var patLen = Str.Length(pattern);
+    var ti = 1;
+    var pi = 1;
+    var star = 0;
+    var match = 1;
+
+    while ti <= textLen {
+        if pi <= patLen and PatternCharMatches(Str.MidLen(text, ti, 1), Str.MidLen(pattern, pi, 1)) {
+            ti = ti + 1;
+            pi = pi + 1;
+        } else if pi <= patLen and Str.MidLen(pattern, pi, 1) == "*" {
+            star = pi;
+            match = ti;
+            pi = pi + 1;
+        } else if star != 0 {
+            pi = star + 1;
+            match = match + 1;
+            ti = match;
+        } else {
+            return false;
+        }
+    }
+
+    while pi <= patLen and Str.MidLen(pattern, pi, 1) == "*" {
+        pi = pi + 1;
+    }
+    return pi > patLen;
+}
+
+func PatternCharMatches(textChar: String, patternChar: String) -> Boolean {
+    if patternChar == "?" { return true; }
+    return textChar == patternChar;
 }
 
 /// @brief Prompt for a query, scan the project, populate the output panel.
@@ -622,6 +884,9 @@ func RunSearch(shell: app_shell.AppShell,
     var wholeWord = GUI.MessageBox.Confirm(
         "Search Options",
         "Match whole words only?") != 0;
+    var regexMode = GUI.MessageBox.Confirm(
+        "Search Options",
+        "Treat the search text as a regular expression?") != 0;
     var fileKinds = GUI.MessageBox.Prompt(
         "Search File Kinds",
         "Comma-separated extensions to search.\nLeave blank for code, text, scene, and docs.");
@@ -630,14 +895,23 @@ func RunSearch(shell: app_shell.AppShell,
     } else {
         fileKinds = Str.Replace(fileKinds, " ", "");
     }
+    var includeGlobs = GUI.MessageBox.Prompt(
+        "Search Include Paths",
+        "Comma-separated include globs. Leave blank for all matching files.");
+    var excludeGlobs = GUI.MessageBox.Prompt(
+        "Search Exclude Paths",
+        "Comma-separated exclude globs. Leave blank for project defaults.");
     file_commands.SaveEditorState(docMgr, engine);
 
-    var files = FileIndex.Enumerate(root, fileKinds, "", false);
+    includeGlobs = NormalizeSearchGlobList(includeGlobs);
+    excludeGlobs = NormalizeSearchGlobList(excludeGlobs);
+    var files = FileIndex.Enumerate(root, fileKinds, excludeGlobs, false);
 
     var resultCount = 0;
     shell.searchListBox.Clear();
 
-    resultCount = resultCount + searchFiles(shell, files, query, caseSensitive, wholeWord, docMgr, locStore);
+    resultCount = resultCount + searchFiles(shell, root, files, query, caseSensitive, wholeWord, regexMode,
+                                            includeGlobs, excludeGlobs, docMgr, locStore);
 
     if resultCount > 0 {
         shell.ShowSearchPanel();
@@ -651,10 +925,14 @@ func RunSearch(shell: app_shell.AppShell,
 /// @brief Substring-search every file in `files` for `query`.
 /// @return Match count (rows added to the output panel).
 func searchFiles(shell: app_shell.AppShell,
+                 rootPath: String,
                  files: Any,
                  query: String,
                  caseSensitive: Boolean,
                  wholeWord: Boolean,
+                 regexMode: Boolean,
+                 includeGlobs: String,
+                 excludeGlobs: String,
                  docMgr: document_manager.DocumentManager,
                  locStore: locations.LocationStore) -> Integer {
     var count = 0;
@@ -665,7 +943,9 @@ func searchFiles(shell: app_shell.AppShell,
         fileIdx = fileIdx + 1;
 
         if IO.File.Exists(filePath) == false { continue; }
-        count = count + searchOneFile(shell, filePath, query, caseSensitive, wholeWord, docMgr, locStore);
+        if SearchPathAllowed(rootPath, filePath, includeGlobs, excludeGlobs) == false { continue; }
+        count = count + searchOneFile(shell, filePath, query, caseSensitive, wholeWord,
+                                      regexMode, docMgr, locStore);
     }
     return count;
 }
@@ -675,6 +955,7 @@ func searchOneFile(shell: app_shell.AppShell,
                    query: String,
                    caseSensitive: Boolean,
                    wholeWord: Boolean,
+                   regexMode: Boolean,
                    docMgr: document_manager.DocumentManager,
                    locStore: locations.LocationStore) -> Integer {
     var count = 0;
@@ -685,15 +966,16 @@ func searchOneFile(shell: app_shell.AppShell,
     while lineNum < Seq.get_Length(contentLines) {
         var line = Obj.ToString(Seq.Get(contentLines, lineNum));
         lineNum = lineNum + 1;
-        if LineMatches(line, query, caseSensitive, wholeWord) {
+        var match = FindLineMatch(line, query, caseSensitive, wholeWord, regexMode);
+        if match.matched {
             if addedHeader == false {
                 shell.searchListBox.AddItem(filePath);
                 addedHeader = true;
             }
             var resultText = "  " + lineNum + ": " + Str.Trim(line);
             var item = shell.searchListBox.AddItem(resultText);
-            var locId = locStore.Add(filePath, lineNum, MatchColumn(line, query, caseSensitive),
-                                     lineNum, MatchColumn(line, query, caseSensitive) + Str.Length(query),
+            var locId = locStore.Add(filePath, lineNum, match.startCol,
+                                     lineNum, match.startCol + match.length,
                                      locations.KIND_SEARCH, Str.Trim(line));
             GUI.ListBox.ItemSetData(item, locId);
             count = count + 1;
@@ -732,6 +1014,57 @@ func LineMatches(line: String,
                  query: String,
                  caseSensitive: Boolean,
                  wholeWord: Boolean) -> Boolean {
+    return LineMatchesWithMode(line, query, caseSensitive, wholeWord, false);
+}
+
+func LineMatchesWithMode(line: String,
+                         query: String,
+                         caseSensitive: Boolean,
+                         wholeWord: Boolean,
+                         regexMode: Boolean) -> Boolean {
+    return FindLineMatch(line, query, caseSensitive, wholeWord, regexMode).matched;
+}
+
+func MatchColumn(line: String, query: String, caseSensitive: Boolean) -> Integer {
+    return MatchColumnWithMode(line, query, caseSensitive, false);
+}
+
+func MatchColumnWithMode(line: String,
+                         query: String,
+                         caseSensitive: Boolean,
+                         regexMode: Boolean) -> Integer {
+    var match = FindLineMatch(line, query, caseSensitive, false, regexMode);
+    if match.matched == false { return 1; }
+    return match.startCol;
+}
+
+func MatchLengthWithMode(line: String,
+                         query: String,
+                         caseSensitive: Boolean,
+                         regexMode: Boolean) -> Integer {
+    var match = FindLineMatch(line, query, caseSensitive, false, regexMode);
+    if match.matched == false { return 0; }
+    return match.length;
+}
+
+func FindLineMatch(line: String,
+                   query: String,
+                   caseSensitive: Boolean,
+                   wholeWord: Boolean,
+                   regexMode: Boolean) -> SearchMatch {
+    if regexMode {
+        return FindRegexLineMatch(line, query, caseSensitive, wholeWord);
+    }
+    return FindLiteralLineMatch(line, query, caseSensitive, wholeWord);
+}
+
+func FindLiteralLineMatch(line: String,
+                          query: String,
+                          caseSensitive: Boolean,
+                          wholeWord: Boolean) -> SearchMatch {
+    var match = new SearchMatch();
+    if query == "" { return match; }
+
     var hay = line;
     var needle = query;
     if caseSensitive == false {
@@ -741,23 +1074,217 @@ func LineMatches(line: String,
     var idx = Str.IndexOf(hay, needle);
     while idx != 0 {
         if wholeWord == false or IsWholeWordMatch(hay, idx, Str.Length(needle)) {
-            return true;
+            match.matched = true;
+            match.startCol = idx;
+            match.length = Str.Length(needle);
+            return match;
         }
         idx = Str.IndexOfFrom(hay, idx + 1, needle);
     }
-    return false;
+    return match;
 }
 
-func MatchColumn(line: String, query: String, caseSensitive: Boolean) -> Integer {
-    var hay = line;
-    var needle = query;
+func FindRegexLineMatch(line: String,
+                        query: String,
+                        caseSensitive: Boolean,
+                        wholeWord: Boolean) -> SearchMatch {
+    var match = new SearchMatch();
+    if query == "" { return match; }
+
+    var text = line;
+    var pattern = query;
     if caseSensitive == false {
-        hay = Str.ToLower(hay);
-        needle = Str.ToLower(needle);
+        text = Str.ToLower(text);
+        pattern = Str.ToLower(pattern);
     }
-    var idx = Str.IndexOf(hay, needle);
-    if idx <= 0 { return 1; }
-    return idx;
+
+    var textLen = Str.Length(text);
+    if Str.StartsWith(pattern, "^") {
+        var anchoredEnd = RegexMatchHere(text, pattern, 1, 2);
+        if anchoredEnd > 1 {
+            var anchoredLen = anchoredEnd - 1;
+            if wholeWord == false or IsWholeWordMatch(text, 1, anchoredLen) {
+                match.matched = true;
+                match.startCol = 1;
+                match.length = anchoredLen;
+            }
+        }
+        return match;
+    }
+
+    var startCol = 1;
+    while startCol <= textLen {
+        var endCol = RegexMatchHere(text, pattern, startCol, 1);
+        if endCol > startCol {
+            var length = endCol - startCol;
+            if wholeWord == false or IsWholeWordMatch(text, startCol, length) {
+                match.matched = true;
+                match.startCol = startCol;
+                match.length = length;
+                return match;
+            }
+        }
+        startCol = startCol + 1;
+    }
+    return match;
+}
+
+func RegexMatchHere(text: String,
+                    pattern: String,
+                    textPos: Integer,
+                    patternPos: Integer) -> Integer {
+    var patternLen = Str.Length(pattern);
+    if patternPos > patternLen { return textPos; }
+
+    var ch = Str.MidLen(pattern, patternPos, 1);
+    if ch == "$" and patternPos == patternLen {
+        if textPos > Str.Length(text) { return textPos; }
+        return 0;
+    }
+
+    var atomEnd = RegexAtomEnd(pattern, patternPos);
+    var quant = "";
+    if atomEnd <= patternLen {
+        var q = Str.MidLen(pattern, atomEnd, 1);
+        if q == "*" or q == "+" or q == "?" {
+            quant = q;
+        }
+    }
+
+    var nextPattern = atomEnd;
+    if quant != "" { nextPattern = atomEnd + 1; }
+
+    if quant == "?" {
+        if RegexAtomMatchesAt(text, textPos, pattern, patternPos) {
+            var oneEnd = RegexMatchHere(text, pattern, textPos + 1, nextPattern);
+            if oneEnd != 0 { return oneEnd; }
+        }
+        return RegexMatchHere(text, pattern, textPos, nextPattern);
+    }
+    if quant == "*" {
+        return RegexMatchRepeat(text, pattern, textPos, patternPos, nextPattern, 0);
+    }
+    if quant == "+" {
+        return RegexMatchRepeat(text, pattern, textPos, patternPos, nextPattern, 1);
+    }
+
+    if RegexAtomMatchesAt(text, textPos, pattern, patternPos) == false {
+        return 0;
+    }
+    return RegexMatchHere(text, pattern, textPos + 1, nextPattern);
+}
+
+func RegexMatchRepeat(text: String,
+                      pattern: String,
+                      textPos: Integer,
+                      atomPos: Integer,
+                      nextPattern: Integer,
+                      minCount: Integer) -> Integer {
+    var maxCount = 0;
+    var probe = textPos;
+    while RegexAtomMatchesAt(text, probe, pattern, atomPos) {
+        maxCount = maxCount + 1;
+        probe = probe + 1;
+    }
+
+    var count = maxCount;
+    while count >= minCount {
+        var endCol = RegexMatchHere(text, pattern, textPos + count, nextPattern);
+        if endCol != 0 { return endCol; }
+        count = count - 1;
+    }
+    return 0;
+}
+
+func RegexAtomEnd(pattern: String, patternPos: Integer) -> Integer {
+    var patternLen = Str.Length(pattern);
+    var ch = Str.MidLen(pattern, patternPos, 1);
+    if ch == "\\" {
+        if patternPos < patternLen { return patternPos + 2; }
+        return patternPos + 1;
+    }
+    if ch == "[" {
+        var classEnd = RegexClassEnd(pattern, patternPos);
+        if classEnd != 0 { return classEnd + 1; }
+    }
+    return patternPos + 1;
+}
+
+func RegexAtomMatchesAt(text: String,
+                        textPos: Integer,
+                        pattern: String,
+                        patternPos: Integer) -> Boolean {
+    if textPos > Str.Length(text) { return false; }
+    var textCh = Str.MidLen(text, textPos, 1);
+    var patternLen = Str.Length(pattern);
+    var patCh = Str.MidLen(pattern, patternPos, 1);
+    if patCh == "." { return true; }
+    if patCh == "\\" {
+        if patternPos < patternLen {
+            return textCh == Str.MidLen(pattern, patternPos + 1, 1);
+        }
+        return textCh == "\\";
+    }
+    if patCh == "[" {
+        var classEnd = RegexClassEnd(pattern, patternPos);
+        if classEnd != 0 {
+            return RegexClassMatches(textCh, pattern, patternPos, classEnd);
+        }
+    }
+    return textCh == patCh;
+}
+
+func RegexClassEnd(pattern: String, patternPos: Integer) -> Integer {
+    var i = patternPos + 1;
+    var patternLen = Str.Length(pattern);
+    if i <= patternLen and Str.MidLen(pattern, i, 1) == "^" {
+        i = i + 1;
+    }
+    while i <= patternLen {
+        var ch = Str.MidLen(pattern, i, 1);
+        if ch == "]" { return i; }
+        if ch == "\\" and i < patternLen {
+            i = i + 2;
+        } else {
+            i = i + 1;
+        }
+    }
+    return 0;
+}
+
+func RegexClassMatches(textCh: String,
+                       pattern: String,
+                       patternPos: Integer,
+                       classEnd: Integer) -> Boolean {
+    var negate = false;
+    var i = patternPos + 1;
+    if i < classEnd and Str.MidLen(pattern, i, 1) == "^" {
+        negate = true;
+        i = i + 1;
+    }
+
+    var matched = false;
+    while i < classEnd {
+        var startCh = Str.MidLen(pattern, i, 1);
+        if startCh == "\\" and i + 1 < classEnd {
+            i = i + 1;
+            startCh = Str.MidLen(pattern, i, 1);
+        }
+
+        if i + 2 < classEnd and Str.MidLen(pattern, i + 1, 1) == "-" {
+            var endCh = Str.MidLen(pattern, i + 2, 1);
+            if textCh >= startCh and textCh <= endCh {
+                matched = true;
+            }
+            i = i + 3;
+        } else {
+            if textCh == startCh { matched = true; }
+            i = i + 1;
+        }
+    }
+
+    if negate { return matched == false; }
+    return matched;
 }
 
 func IsWholeWordMatch(text: String, startCol: Integer, len: Integer) -> Boolean {

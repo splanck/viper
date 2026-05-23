@@ -1112,9 +1112,13 @@ void rt_codeeditor_add_fold_region(void *editor, int64_t start_line, int64_t end
     int end_i = rt_gui_clamp_i64_to_i32(end_line, 0, INT32_MAX);
     for (int i = 0; i < ce->fold_region_count; i++) {
         if (ce->fold_regions[i].start_line == start_i) {
+            bool was_folded = ce->fold_regions[i].folded;
             ce->fold_regions[i].end_line = end_i;
             ce->fold_regions[i].folded = false;
-            vg_codeeditor_refresh_layout_state(ce);
+            if (was_folded)
+                vg_codeeditor_refresh_layout_state(ce);
+            else
+                ce->base.needs_paint = true;
             return;
         }
     }
@@ -1132,7 +1136,7 @@ void rt_codeeditor_add_fold_region(void *editor, int64_t start_line, int64_t end
     r->start_line = start_i;
     r->end_line = end_i;
     r->folded = false;
-    vg_codeeditor_refresh_layout_state(ce);
+    ce->base.needs_paint = true;
 }
 
 /// @brief `CodeEditor.RemoveFoldRegion(startLine)` — drop a fold region.

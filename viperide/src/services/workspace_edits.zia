@@ -165,8 +165,7 @@ func ValidateRenameEdits(edits: Any,
         while j < Seq.get_Length(edits) {
             var other = Seq.Get(edits, j);
             if EditsOverlap(edit, other) {
-                return "Overlapping workspace edits: "
-                       + EditLocation(edit) + " conflicts with " + EditLocation(other);
+                return RenameConflictMessage(edit, other);
             }
             j = j + 1;
         }
@@ -175,9 +174,26 @@ func ValidateRenameEdits(edits: Any,
     return "";
 }
 
+func RenameConflictMessage(edit: Any,
+                           other: Any) -> String {
+    var path = Map.GetStr(edit, "file");
+    var otherPath = Map.GetStr(other, "file");
+    if path == "" { path = otherPath; }
+    return "Overlapping workspace edits.\n"
+           + "Rename was canceled before changing files.\n"
+           + "File: " + path + "\n"
+           + "First edit:  " + EditRange(edit) + " -> " + Map.GetStr(edit, "newText") + "\n"
+           + "Second edit: " + EditRange(other) + " -> " + Map.GetStr(other, "newText");
+}
+
 func EditLocation(edit: Any) -> String {
     return Map.GetStr(edit, "file") + ":"
            + Map.GetInt(edit, "startLine") + ":" + Map.GetInt(edit, "startColumn")
+           + "-" + Map.GetInt(edit, "endLine") + ":" + Map.GetInt(edit, "endColumn");
+}
+
+func EditRange(edit: Any) -> String {
+    return Map.GetInt(edit, "startLine") + ":" + Map.GetInt(edit, "startColumn")
            + "-" + Map.GetInt(edit, "endLine") + ":" + Map.GetInt(edit, "endColumn");
 }
 

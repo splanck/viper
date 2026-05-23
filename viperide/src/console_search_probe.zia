@@ -204,6 +204,23 @@ func main() {
         fail(shell, "whole-word search");
         return;
     }
+    if search_commands.LineMatchesWithMode("var needle = 42;", "needle = [0-9]+", false, false, true) == false {
+        fail(shell, "regex search match");
+        return;
+    }
+    if search_commands.LineMatchesWithMode("var needle = x;", "needle = [0-9]+", false, false, true) {
+        fail(shell, "regex search reject");
+        return;
+    }
+    if search_commands.MatchColumnWithMode("abc needle42", "needle[0-9]+", false, true) != 5
+       or search_commands.MatchLengthWithMode("abc needle42", "needle[0-9]+", false, true) != 8 {
+        fail(shell, "regex search range");
+        return;
+    }
+    if search_commands.LineMatchesWithMode("func main()", "^func [a-z]+\\(\\)$", false, false, true) == false {
+        fail(shell, "regex anchors and escapes");
+        return;
+    }
     if search_commands.QuickOpenScore("src/main.zia", "main.zia") != 1 {
         fail(shell, "quick open exact file");
         return;
@@ -214,6 +231,12 @@ func main() {
     }
     if search_commands.QuickOpenScore("src/main.zia", "src/") != 3 {
         fail(shell, "quick open path prefix");
+        return;
+    }
+    if search_commands.SearchGlobMatches("src/main.zia", "src/*.zia") == false
+       or search_commands.SearchGlobMatches("src/main.zia", "main.*") == false
+       or search_commands.SearchGlobMatches("src/main.zia", "test*.zia") {
+        fail(shell, "search glob matching");
         return;
     }
 
@@ -255,6 +278,37 @@ func main() {
         fail(shell, "search panel rows");
         return;
     }
+    if search_commands.SearchPathAllowed(root, Path.Join(root, "file11.zia"), "file1*.zia", "file10.zia") == false
+       or search_commands.SearchPathAllowed(root, Path.Join(root, "file10.zia"), "file1*.zia", "file10.zia") {
+        fail(shell, "search include exclude path filters");
+        return;
+    }
+    var filteredSearcher = new search_commands.SearchController();
+    if filteredSearcher.StartDirectWithOptions(shell, root, "needle", ".zia", false, false,
+                                               "file1*.zia", "file10.zia") == false {
+        fail(shell, "start filtered direct search");
+        return;
+    }
+    while filteredSearcher.active {
+        filteredSearcher.Pump(shell, docMgr, locStore);
+    }
+    if filteredSearcher.resultCount != 10 {
+        fail(shell, "filtered direct search count");
+        return;
+    }
+    var regexSearcher = new search_commands.SearchController();
+    if regexSearcher.StartDirectWithSearchMode(shell, root, "needle = [1-3][0-9]", ".zia",
+                                               false, false, true, "", "") == false {
+        fail(shell, "start regex direct search");
+        return;
+    }
+    while regexSearcher.active {
+        regexSearcher.Pump(shell, docMgr, locStore);
+    }
+    if regexSearcher.resultCount != 30 {
+        fail(shell, "regex direct search count");
+        return;
+    }
 
     var projMgr = new project_manager.ProjectManager();
     projMgr.Setup(shell.sidebarTree);
@@ -281,6 +335,32 @@ func main() {
     }
     if cachedSearcher.resultCount != 40 {
         fail(shell, "cached search final count");
+        return;
+    }
+    var filteredCachedSearcher = new search_commands.SearchController();
+    if filteredCachedSearcher.StartCachedDirectWithOptions(shell, projMgr, root, "needle", ".zia", false, false,
+                                                           "file1*.zia", "file10.zia") == false {
+        fail(shell, "start filtered cached search");
+        return;
+    }
+    while filteredCachedSearcher.active {
+        filteredCachedSearcher.Pump(shell, docMgr, locStore);
+    }
+    if filteredCachedSearcher.resultCount != 10 {
+        fail(shell, "filtered cached search count");
+        return;
+    }
+    var regexCachedSearcher = new search_commands.SearchController();
+    if regexCachedSearcher.StartCachedDirectWithSearchMode(shell, projMgr, root, "needle = [12][0-9]", ".zia",
+                                                           false, false, true, "", "") == false {
+        fail(shell, "start regex cached search");
+        return;
+    }
+    while regexCachedSearcher.active {
+        regexCachedSearcher.Pump(shell, docMgr, locStore);
+    }
+    if regexCachedSearcher.resultCount != 20 {
+        fail(shell, "regex cached search count");
         return;
     }
     shell.SetDebugOutput("debug one\ndebug two\n");

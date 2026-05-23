@@ -9,6 +9,7 @@ class CommandEntry {
     expose String id;
     expose String label;
     expose String description;
+    expose String category;
     expose String shortcut;
     expose String capability;
     expose Boolean showInPalette;
@@ -17,6 +18,7 @@ class CommandEntry {
         id = "";
         label = "";
         description = "";
+        category = "";
         shortcut = "";
         capability = "";
         showInPalette = true;
@@ -41,6 +43,7 @@ class CommandRegistry {
         cmd.id = id;
         cmd.label = label;
         cmd.description = description;
+        cmd.category = CommandCategory(id);
         cmd.shortcut = shortcut;
         cmd.capability = capability;
         cmd.showInPalette = showInPalette;
@@ -98,6 +101,8 @@ class CommandRegistry {
         Add("selectall", "Select All", "Select the full document", "Ctrl+A", "", true);
         Add("gotodef", "Go To Definition", "Jump to symbol definition", "F12", "definition", true);
         Add("findrefs", "Find References", "Find semantic references", "Shift+F12", "references", true);
+        Add("incomingcalls", "Incoming Calls", "Show callers of the symbol at the cursor", "Ctrl+Alt+H", "references", true);
+        Add("outgoingcalls", "Outgoing Calls", "Show calls made by the enclosing function", "Ctrl+Alt+Shift+H", "definition", true);
         Add("rename", "Rename Symbol", "Rename a semantic symbol", "F2", "rename", true);
         Add("nexterror", "Next Error", "Jump to next diagnostic", "F8", "diagnostics", true);
         Add("preverror", "Previous Error", "Jump to previous diagnostic", "Shift+F8", "diagnostics", true);
@@ -118,6 +123,8 @@ class CommandRegistry {
         Add("movelineup", "Move Line Up", "Move the active line above the previous line", "Alt+Up", "", true);
         Add("movelinedown", "Move Line Down", "Move the active line below the next line", "Alt+Down", "", true);
         Add("organizebinds", "Organize Binds", "Sort and deduplicate the leading Zia bind block", "Shift+Alt+O", "diagnostics", true);
+        Add("suppressdiagnostic", "Suppress Warning", "Insert a Zia suppression comment for the warning at the cursor", "", "diagnostics", true);
+        Add("trimtrailingwhitespace", "Trim Trailing Whitespace", "Remove trailing spaces and tabs from the active document", "Shift+Alt+T", "", true);
         Add("formatdocument", "Format Document", "Format the active document when a formatter is available", "Shift+Alt+F", "", true);
         Add("formatselection", "Format Selection", "Format the selected text when a formatter is available", "", "", true);
     }
@@ -141,8 +148,15 @@ class CommandRegistry {
         var i = 0;
         while i < commands.count() {
             var cmd = commands.get(i);
-            if cmd.showInPalette and IsSupported(cmd, service) {
-                palette.AddCommandWithShortcut(cmd.id, cmd.label, cmd.description, cmd.shortcut);
+            if cmd.showInPalette {
+                if IsSupported(cmd, service) {
+                    palette.AddCommandWithShortcut(cmd.id, cmd.label, cmd.category, cmd.shortcut);
+                } else {
+                    palette.AddCommandWithShortcut(cmd.id,
+                                                   cmd.label + " (Unavailable)",
+                                                   cmd.category,
+                                                   cmd.shortcut);
+                }
             }
             i = i + 1;
         }
@@ -170,12 +184,31 @@ class CommandRegistry {
 
     expose func IsKnown(id: String) -> Boolean {
         var norm = NormalizeId(id);
+        return Find(norm) != null;
+    }
+
+    expose func IsExecutable(id: String,
+                             service: language_service.LanguageService) -> Boolean {
+        var cmd = Find(NormalizeId(id));
+        if cmd == null { return false; }
+        return IsSupported(cmd, service);
+    }
+
+    expose func DisabledReason(id: String,
+                               service: language_service.LanguageService) -> String {
+        var cmd = Find(NormalizeId(id));
+        if cmd == null { return "Command is not registered"; }
+        if IsSupported(cmd, service) { return ""; }
+        return DisabledReasonFor(cmd, service);
+    }
+
+    expose func Find(id: String) -> CommandEntry {
         var i = 0;
         while i < commands.count() {
-            if commands.get(i).id == norm { return true; }
+            if commands.get(i).id == id { return commands.get(i); }
             i = i + 1;
         }
-        return false;
+        return null;
     }
 
     expose func ShortcutConflictCount() -> Integer {
@@ -244,5 +277,81 @@ class CommandRegistry {
         if cmd.capability == "signature" { return service.canSignatureHelp; }
         if cmd.capability == "symbols" { return service.canDocumentSymbols; }
         return true;
+    }
+
+    expose func DisabledReasonFor(cmd: CommandEntry,
+                                  service: language_service.LanguageService) -> String {
+        if cmd == null { return "Command is not registered"; }
+        var language = "this file";
+        if service != null and service.name != "" {
+            language = Str.ToUpper(service.name);
+        }
+        return cmd.label + " is unavailable: " + language
+               + " does not support " + CapabilityLabel(cmd.capability) + ".";
+    }
+
+    expose func CapabilityLabel(capability: String) -> String {
+        if capability == "completion" { return "completion"; }
+        if capability == "diagnostics" { return "diagnostics"; }
+        if capability == "definition" { return "go to definition"; }
+        if capability == "references" { return "references"; }
+        if capability == "rename" { return "rename"; }
+        if capability == "signature" { return "signature help"; }
+        if capability == "symbols" { return "document symbols"; }
+        return "this language feature";
+    }
+
+    expose func CommandCategory(id: String) -> String {
+        if id == "new" or id == "open" or id == "save" or id == "saveall"
+           or id == "close" or id == "reload" or id == "recentfiles"
+           or id == "reopenclosed" {
+            return "File";
+        }
+        if id == "find" or id == "searchproject" {
+            return "Search";
+        }
+        if id == "quickopen" or id == "goto" or id == "gotodef"
+           or id == "findrefs" or id == "incomingcalls" or id == "outgoingcalls"
+           or id == "nexterror" or id == "preverror" or id == "workspacesymbols"
+           or id == "symboloutline" {
+            return "Navigate";
+        }
+        if id == "rename" or id == "organizebinds" or id == "suppressdiagnostic" {
+            return "Refactor";
+        }
+        if id == "build" or id == "buildrun" or id == "run" or id == "stopjob" {
+            return "Build";
+        }
+        if Str.StartsWith(id, "debug") or id == "togglebreakpoint" {
+            return "Debug";
+        }
+        if id == "togglesidebar" or id == "statusbar" or id == "zoomin"
+           or id == "zoomout" or id == "zoomreset" or id == "toggletheme"
+           or id == "fullscreen" or id == "minimap" {
+            return "View";
+        }
+        if id == "settings" or id == "keybindings" {
+            return "Settings";
+        }
+        if id == "copytoolrow" or id == "copyoutputtext" or id == "clearoutput"
+           or id == "filteroutput" or id == "toggleoutputwrap"
+           or id == "toggleoutputautoscroll" {
+            return "Output";
+        }
+        if Str.StartsWith(id, "tree") {
+            return "Explorer";
+        }
+        if id == "undo" or id == "redo" or id == "cut" or id == "copy"
+           or id == "paste" or id == "selectall" or id == "completion_trigger"
+           or id == "addnextoccurrence" or id == "skipoccurrence"
+           or id == "selectalloccurrences" or id == "clearcursors"
+           or id == "expandselection" or id == "shrinkselection"
+           or id == "togglelinecomment" or id == "toggleblockcomment"
+           or id == "duplicateline" or id == "movelineup" or id == "movelinedown"
+           or id == "trimtrailingwhitespace" or id == "formatdocument"
+           or id == "formatselection" {
+            return "Edit";
+        }
+        return "Command";
     }
 }

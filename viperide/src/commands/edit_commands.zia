@@ -17,6 +17,7 @@ bind Str = Viper.String;
 bind Seq = Viper.Collections.Seq;
 bind Obj = Viper.Core.Object;
 bind Map = Viper.Collections.Map;
+bind ZiaToolchain = Viper.Zia.Toolchain;
 
 // ============================================================================
 // MODULE: edit_commands
@@ -204,23 +205,386 @@ func handleFindReferences(shell: app_shell.AppShell,
     shell.SetStatusLeft("Found " + Seq.get_Length(refs) + " references");
 }
 
+func handleIncomingCalls(shell: app_shell.AppShell,
+                         docMgr: document_manager.DocumentManager,
+                         engine: editor_engine.EditorEngine,
+                         indexer: project_index.ProjectIndexer,
+                         locStore: locations.LocationStore) {
+    if engine == null or engine.editor == null { return; }
+    var doc = docMgr.GetActive();
+    if doc == null {
+        GUI.Toast.Info("Incoming calls is unavailable for this file");
+        return;
+    }
+    var activeDoc = doc!;
+    if activeDoc.language != "zia" {
+        GUI.Toast.Info("Incoming calls is unavailable for this file");
+        return;
+    }
+    file_commands.SaveEditorState(docMgr, engine);
+    indexer.SyncActiveNow(docMgr, engine);
+    indexer.SyncOpenDocuments(docMgr);
+    var refs = indexer.References(activeDoc.filePath, activeDoc.content, engine.editor.CursorLine + 1, engine.editor.CursorCol);
+    shell.referencesListBox.Clear();
+    if refs == null or Seq.get_Length(refs) == 0 {
+        shell.HideReferencesPanel();
+        GUI.Toast.Info("No incoming calls found");
+        return;
+    }
+
+    var i = 0;
+    var count = 0;
+    var lastGroup = "";
+    while i < Seq.get_Length(refs) {
+        var ref = Seq.Get(refs, i);
+        if Map.GetBool(ref, "isDefinition") {
+            i = i + 1;
+            continue;
+        }
+
+        var file = Map.GetStr(ref, "file");
+        var line = Map.GetInt(ref, "line");
+        var col = Map.GetInt(ref, "column");
+        var endLine = Map.GetIntOr(ref, "endLine", line);
+        var endCol = Map.GetIntOr(ref, "endColumn", col + 1);
+        var name = Map.GetStr(ref, "name");
+        var source = SourceForPath(docMgr, file);
+        var caller = EnclosingZiaFunctionName(source, line);
+        if caller == "" {
+            caller = "<top-level>";
+        }
+        var group = file + "|" + caller;
+        if group != lastGroup {
+            shell.referencesListBox.AddItem(Path.Name(file) + "  -  " + caller);
+            lastGroup = group;
+        }
+
+        var preview = ReferencePreviewLine(docMgr, file, line);
+        var id = locStore.Add(file, line, col, endLine, endCol,
+                              locations.KIND_REFERENCE, name);
+        var item = shell.referencesListBox.AddItem("  " + line + ":" + col + "  " + preview);
+        GUI.ListBox.ItemSetData(item, id);
+        count = count + 1;
+        i = i + 1;
+    }
+
+    if count == 0 {
+        shell.HideReferencesPanel();
+        GUI.Toast.Info("No incoming calls found");
+        return;
+    }
+    shell.referencesListBox.SetVisible(1);
+    shell.ShowReferencesPanel();
+    shell.SetStatusLeft("Found " + count + " incoming calls");
+}
+
+func handleOutgoingCalls(shell: app_shell.AppShell,
+                         docMgr: document_manager.DocumentManager,
+                         engine: editor_engine.EditorEngine,
+                         indexer: project_index.ProjectIndexer,
+                         locStore: locations.LocationStore) {
+    if engine == null or engine.editor == null { return; }
+    var doc = docMgr.GetActive();
+    if doc == null {
+        GUI.Toast.Info("Outgoing calls is unavailable for this file");
+        return;
+    }
+    var activeDoc = doc!;
+    if activeDoc.language != "zia" {
+        GUI.Toast.Info("Outgoing calls is unavailable for this file");
+        return;
+    }
+    file_commands.SaveEditorState(docMgr, engine);
+    indexer.SyncActiveNow(docMgr, engine);
+    indexer.SyncOpenDocuments(docMgr);
+
+    var cursorLine = engine.editor.CursorLine + 1;
+    var startLine = EnclosingZiaFunctionStartLine(activeDoc.content, cursorLine);
+    if startLine <= 0 {
+        shell.HideReferencesPanel();
+        GUI.Toast.Info("No enclosing function found");
+        return;
+    }
+    var callerName = ZiaFunctionNameFromLine(SourceLine(activeDoc.content, startLine));
+    var endLine = ZiaFunctionEndLine(activeDoc.content, startLine);
+    var tokens = OutgoingZiaCallTokens(activeDoc.content, startLine, endLine);
+    shell.referencesListBox.Clear();
+    if tokens == null or Seq.get_Length(tokens) == 0 {
+        shell.HideReferencesPanel();
+        GUI.Toast.Info("No outgoing calls found");
+        return;
+    }
+
+    var i = 0;
+    var count = 0;
+    var lastTarget = "";
+    while i < Seq.get_Length(tokens) {
+        var token = Seq.Get(tokens, i);
+        var tokenLine = Map.GetInt(token, "line");
+        var tokenCol = Map.GetInt(token, "column");
+        var tokenName = Map.GetStr(token, "name");
+        var def = indexer.Definition(activeDoc.filePath, activeDoc.content,
+                                     tokenLine, tokenCol);
+        if def != null and Map.GetBool(def, "found") {
+            var file = Map.GetStr(def, "file");
+            var line = Map.GetInt(def, "line");
+            var col = Map.GetInt(def, "column");
+            var endDefLine = Map.GetIntOr(def, "endLine", line);
+            var endDefCol = Map.GetIntOr(def, "endColumn", col + 1);
+            var targetName = Map.GetStr(def, "name");
+            if targetName == "" {
+                targetName = tokenName;
+            }
+            var targetGroup = file + "|" + targetName + "|" + line + "|" + col;
+            if targetGroup != lastTarget {
+                shell.referencesListBox.AddItem(callerName + "  ->  " + targetName + "  -  " + Path.Name(file));
+                lastTarget = targetGroup;
+            }
+            var preview = ReferencePreviewLine(docMgr, activeDoc.filePath, tokenLine);
+            var id = locStore.Add(file, line, col, endDefLine, endDefCol,
+                                  locations.KIND_DEFINITION, targetName);
+            var item = shell.referencesListBox.AddItem("  " + tokenLine + ":" + tokenCol + "  " + preview);
+            GUI.ListBox.ItemSetData(item, id);
+            count = count + 1;
+        }
+        i = i + 1;
+    }
+
+    if count == 0 {
+        shell.HideReferencesPanel();
+        GUI.Toast.Info("No outgoing calls found");
+        return;
+    }
+    shell.referencesListBox.SetVisible(1);
+    shell.ShowReferencesPanel();
+    shell.SetStatusLeft("Found " + count + " outgoing calls");
+}
+
 func ReferencePreviewLine(docMgr: document_manager.DocumentManager,
                           filePath: String,
                           lineNumber: Integer) -> String {
-    var source = "";
-    if docMgr != null {
-        var idx = docMgr.FindByPath(filePath);
-        if idx >= 0 {
-            source = docMgr.documents.get(idx).content;
-        }
-    }
-    if source == "" and IO.File.Exists(filePath) {
-        source = IO.File.ReadAllText(filePath);
-    }
+    var source = SourceForPath(docMgr, filePath);
     if source == "" { return ""; }
     var lines = Str.Split(source, "\n");
     if lineNumber < 1 or lineNumber > Seq.get_Length(lines) { return ""; }
     return Str.Trim(Obj.ToString(Seq.Get(lines, lineNumber - 1)));
+}
+
+func SourceForPath(docMgr: document_manager.DocumentManager,
+                   filePath: String) -> String {
+    if docMgr != null {
+        var idx = docMgr.FindByPath(filePath);
+        if idx >= 0 {
+            return docMgr.documents.get(idx).content;
+        }
+    }
+    if IO.File.Exists(filePath) {
+        return IO.File.ReadAllText(filePath);
+    }
+    return "";
+}
+
+func SourceLine(source: String,
+                lineNumber: Integer) -> String {
+    if source == "" { return ""; }
+    var lines = Str.Split(source, "\n");
+    if lineNumber < 1 or lineNumber > Seq.get_Length(lines) { return ""; }
+    return Obj.ToString(Seq.Get(lines, lineNumber - 1));
+}
+
+expose func EnclosingZiaFunctionStartLine(source: String,
+                                          lineNumber: Integer) -> Integer {
+    if source == "" { return 0; }
+    var lines = Str.Split(source, "\n");
+    var i = lineNumber;
+    if i > Seq.get_Length(lines) {
+        i = Seq.get_Length(lines);
+    }
+    while i >= 1 {
+        if ZiaFunctionNameFromLine(Obj.ToString(Seq.Get(lines, i - 1))) != "" {
+            return i;
+        }
+        i = i - 1;
+    }
+    return 0;
+}
+
+expose func EnclosingZiaFunctionName(source: String,
+                                     lineNumber: Integer) -> String {
+    return ZiaFunctionNameFromLine(SourceLine(source, EnclosingZiaFunctionStartLine(source, lineNumber)));
+}
+
+expose func ZiaFunctionNameFromLine(line: String) -> String {
+    var trimmed = Str.Trim(line);
+    if trimmed == "" or Str.StartsWith(trimmed, "//") {
+        return "";
+    }
+    var funcPos = Str.IndexOf(trimmed, "func ");
+    if funcPos == 0 {
+        return "";
+    }
+    if funcPos > 1 {
+        var before = Str.Trim(Str.Left(trimmed, funcPos - 1));
+        if before != "expose" and before != "hide" {
+            return "";
+        }
+    }
+    var nameStart = funcPos + Str.Length("func ");
+    var openParen = Str.IndexOfFrom(trimmed, nameStart, "(");
+    if openParen == 0 or openParen <= nameStart {
+        return "";
+    }
+    return Str.Trim(Str.MidLen(trimmed, nameStart, openParen - nameStart));
+}
+
+expose func ZiaFunctionEndLine(source: String,
+                               startLine: Integer) -> Integer {
+    var lines = Str.Split(source, "\n");
+    var startIdx = startLine - 1;
+    if startIdx < 0 or startIdx >= Seq.get_Length(lines) { return startLine; }
+
+    var depth = 0;
+    var seenOpen = false;
+    var i = startIdx;
+    while i < Seq.get_Length(lines) {
+        var line = Obj.ToString(Seq.Get(lines, i));
+        var pos = 1;
+        var inString = false;
+        while pos <= Str.Length(line) {
+            var ch = Str.MidLen(line, pos, 1);
+            var next = "";
+            if pos < Str.Length(line) {
+                next = Str.MidLen(line, pos + 1, 1);
+            }
+
+            if inString {
+                if ch == "\\" {
+                    pos = pos + 2;
+                    continue;
+                }
+                if ch == "\"" {
+                    inString = false;
+                }
+            } else {
+                if ch == "/" and next == "/" {
+                    break;
+                }
+                if ch == "\"" {
+                    inString = true;
+                } else if ch == "{" {
+                    depth = depth + 1;
+                    seenOpen = true;
+                } else if ch == "}" {
+                    if seenOpen {
+                        depth = depth - 1;
+                        if depth <= 0 {
+                            return i + 1;
+                        }
+                    }
+                }
+            }
+
+            pos = pos + 1;
+        }
+        i = i + 1;
+    }
+
+    return startLine;
+}
+
+expose func OutgoingZiaCallTokens(source: String,
+                                  startLine: Integer,
+                                  endLine: Integer) -> Any {
+    var tokens = Seq.New();
+    if source == "" { return tokens; }
+    var lines = Str.Split(source, "\n");
+    var fromLine = startLine;
+    var toLine = endLine;
+    if fromLine < 1 { fromLine = 1; }
+    if toLine < fromLine { toLine = fromLine; }
+    if toLine > Seq.get_Length(lines) { toLine = Seq.get_Length(lines); }
+
+    var i = fromLine;
+    while i <= toLine {
+        AddOutgoingCallsFromLine(tokens, Obj.ToString(Seq.Get(lines, i - 1)), i);
+        i = i + 1;
+    }
+    return tokens;
+}
+
+func AddOutgoingCallsFromLine(tokens: Any,
+                              line: String,
+                              lineNumber: Integer) {
+    var pos = 1;
+    var inString = false;
+    while pos <= Str.Length(line) {
+        var ch = Str.MidLen(line, pos, 1);
+        var next = "";
+        if pos < Str.Length(line) {
+            next = Str.MidLen(line, pos + 1, 1);
+        }
+
+        if inString {
+            if ch == "\\" {
+                pos = pos + 2;
+                continue;
+            }
+            if ch == "\"" {
+                inString = false;
+            }
+            pos = pos + 1;
+            continue;
+        }
+        if ch == "/" and next == "/" {
+            break;
+        }
+        if ch == "\"" {
+            inString = true;
+            pos = pos + 1;
+            continue;
+        }
+        if IsIdentStart(ch) {
+            var start = pos;
+            var name = "";
+            while pos <= Str.Length(line) and IsIdentPart(Str.MidLen(line, pos, 1)) {
+                name = name + Str.MidLen(line, pos, 1);
+                pos = pos + 1;
+            }
+            var callParen = SkipWhitespace(line, pos);
+            if callParen <= Str.Length(line)
+               and Str.MidLen(line, callParen, 1) == "("
+               and IsKeyword(name) == false
+               and IsFunctionDeclarationName(line, start) == false {
+                var token = Map.New();
+                Map.SetStr(token, "name", name);
+                Map.SetInt(token, "line", lineNumber);
+                Map.SetInt(token, "column", start - 1);
+                Seq.Push(tokens, token);
+            }
+            continue;
+        }
+        pos = pos + 1;
+    }
+}
+
+func SkipWhitespace(line: String,
+                    pos: Integer) -> Integer {
+    var i = pos;
+    while i <= Str.Length(line) {
+        var ch = Str.MidLen(line, i, 1);
+        if ch != " " and ch != "\t" {
+            return i;
+        }
+        i = i + 1;
+    }
+    return i;
+}
+
+func IsFunctionDeclarationName(line: String,
+                               startCol: Integer) -> Boolean {
+    if startCol <= 1 { return false; }
+    var before = Str.Trim(Str.Left(line, startCol - 1));
+    return Str.EndsWith(before, "func");
 }
 
 func handleRenameSymbol(shell: app_shell.AppShell,
@@ -269,14 +633,37 @@ func handleRenameSymbol(shell: app_shell.AppShell,
         GUI.Toast.Error(result.message);
         return;
     }
-    var active = docMgr.GetActive();
-    if active != null {
-        engine.LoadDocument(active);
-        tabs.SetModified(docMgr.activeIndex, active.isModified);
-    }
+    ApplyActiveDocumentContentToEditor(docMgr, engine, tabs);
     indexer.SyncActiveNow(docMgr, engine);
     shell.SetStatusLeft("Renamed to " + newName);
     GUI.Toast.Success("Rename complete");
+}
+
+expose func ApplyActiveDocumentContentToEditor(docMgr: document_manager.DocumentManager,
+                                               engine: editor_engine.EditorEngine,
+                                               tabs: editor_tabs.EditorTabs) -> Boolean {
+    if docMgr == null or engine == null or engine.editor == null { return false; }
+    var active = docMgr.GetActive();
+    if active == null { return false; }
+    var target = active!.content;
+    if engine.GetTextSnapshot() == target {
+        if tabs != null {
+            tabs.SetModified(docMgr.activeIndex, active!.isModified);
+        }
+        return false;
+    }
+
+    var lastLine = engine.editor.LineCount - 1;
+    if lastLine < 0 { return false; }
+    var last = engine.editor.GetLine(lastLine);
+    engine.editor.SetCursorSelection(0, 0, 0, lastLine, Str.Length(last));
+    engine.editor.InsertAtCursor(target);
+    engine.SaveToDocument(active!);
+    active!.isModified = true;
+    if tabs != null {
+        tabs.SetModified(docMgr.activeIndex, true);
+    }
+    return true;
 }
 
 func handleAddNextOccurrence(shell: app_shell.AppShell,
@@ -367,9 +754,17 @@ func handleExpandSelection(shell: app_shell.AppShell,
     var startCol = engine.editor.GetSelectionStartColAt(0);
     var endLine = engine.editor.GetSelectionEndLineAt(0);
     var endCol = engine.editor.GetSelectionEndColAt(0);
+    if startLine == endLine and SelectEnclosingInlineDelimiter(engine, startLine, startCol, endCol) {
+        shell.SetStatusLeft("Selected expression");
+        return;
+    }
     if startLine == endLine and IsWholeLineSelection(engine, startLine, startCol, endCol) == false {
         SelectLine(engine, startLine);
         shell.SetStatusLeft("Selected line");
+        return;
+    }
+    if SelectEnclosingBraceBlock(engine, startLine) {
+        shell.SetStatusLeft("Selected block");
         return;
     }
     SelectDocument(engine);
@@ -608,6 +1003,84 @@ func handleOrganizeBinds(shell: app_shell.AppShell,
     shell.SetStatusLeft("Organized Zia binds");
 }
 
+func handleTrimTrailingWhitespace(shell: app_shell.AppShell,
+                                  docMgr: document_manager.DocumentManager,
+                                  engine: editor_engine.EditorEngine) {
+    if engine == null or engine.editor == null { return; }
+    var doc = docMgr.GetActive();
+    if doc == null {
+        GUI.Toast.Info("No active document");
+        return;
+    }
+
+    var source = engine.GetTextSnapshot();
+    var trimmed = TrimTrailingWhitespaceText(source);
+    if trimmed == source {
+        shell.SetStatusLeft("No trailing whitespace");
+        return;
+    }
+
+    ReplaceWholeDocument(engine, trimmed);
+    file_commands.SaveEditorState(docMgr, engine);
+    var active = docMgr.GetActive();
+    if active != null {
+        active!.isModified = true;
+    }
+    shell.SetStatusLeft("Trimmed trailing whitespace");
+}
+
+func handleSuppressDiagnostic(shell: app_shell.AppShell,
+                              docMgr: document_manager.DocumentManager,
+                              engine: editor_engine.EditorEngine) {
+    if engine == null or engine.editor == null { return; }
+    var doc = docMgr.GetActive();
+    if doc == null or doc.language != "zia" {
+        GUI.Toast.Info("Suppress Warning is only available for Zia files");
+        shell.SetStatusLeft("Suppress Warning unavailable");
+        return;
+    }
+
+    var source = engine.GetTextSnapshot();
+    var records = ZiaToolchain.CheckForFile(source, doc!.filePath);
+    var targetLine = engine.editor.CursorLine + 1;
+    var code = SuppressibleDiagnosticCodeAt(records, targetLine);
+    if code == "" {
+        shell.SetStatusLeft("No suppressible warning at cursor");
+        return;
+    }
+
+    var lineText = engine.editor.GetLine(engine.editor.CursorLine);
+    var indentLen = LeadingWhitespaceLength(lineText);
+    var indent = "";
+    if indentLen > 0 {
+        indent = Str.Left(lineText, indentLen);
+    }
+    engine.editor.SetCursor(engine.editor.CursorLine, 0);
+    engine.editor.InsertAtCursor(indent + "// @suppress(" + code + ")\n");
+    shell.SetStatusLeft("Suppressed warning " + code);
+}
+
+func SuppressibleDiagnosticCodeAt(records: Any, targetLine: Integer) -> String {
+    if records == null { return ""; }
+    var i = 0;
+    while i < Seq.get_Length(records) {
+        var record = Seq.Get(records, i);
+        i = i + 1;
+        if Map.GetInt(record, "severity") == 1
+           and Map.GetInt(record, "line") == targetLine {
+            var code = Map.GetStr(record, "code");
+            if IsSuppressibleDiagnosticCode(code) {
+                return code;
+            }
+        }
+    }
+    return "";
+}
+
+func IsSuppressibleDiagnosticCode(code: String) -> Boolean {
+    return Str.Length(code) >= 2 and Str.Left(code, 1) == "W";
+}
+
 expose func OrganizeZiaBindsText(source: String) -> String {
     var lines = Str.Split(source, "\n");
     var output = new List();
@@ -647,6 +1120,46 @@ expose func OrganizeZiaBindsText(source: String) -> String {
     }
 
     return JoinStringList(output, "\n");
+}
+
+expose func TrimTrailingWhitespaceText(source: String) -> String {
+    if source == "" { return ""; }
+    var eol = "\n";
+    if Str.IndexOf(source, "\r\n") != 0 { eol = "\r\n"; }
+    var lines = Str.Split(source, "\n");
+    var result = "";
+    var i = 0;
+    while i < Seq.get_Length(lines) {
+        var line = Obj.ToString(Seq.Get(lines, i));
+        if Str.EndsWith(line, "\r") {
+            line = Str.Left(line, Str.Length(line) - 1);
+        }
+        line = TrimLineRightWhitespace(line);
+        if i > 0 { result = result + eol; }
+        result = result + line;
+        i = i + 1;
+    }
+    return result;
+}
+
+func TrimLineRightWhitespace(line: String) -> String {
+    var end = Str.Length(line);
+    while end > 0 {
+        var ch = Str.MidLen(line, end, 1);
+        if ch != " " and ch != "\t" { break; }
+        end = end - 1;
+    }
+    if end <= 0 { return ""; }
+    return Str.Left(line, end);
+}
+
+func ReplaceWholeDocument(engine: editor_engine.EditorEngine,
+                          text: String) {
+    var lastLine = engine.editor.LineCount - 1;
+    if lastLine < 0 { return; }
+    var last = engine.editor.GetLine(lastLine);
+    engine.editor.SetCursorSelection(0, 0, 0, lastLine, Str.Length(last));
+    engine.editor.InsertAtCursor(text);
 }
 
 func IsZiaBindLine(trimmed: String) -> Boolean {
@@ -747,6 +1260,248 @@ func SelectDocument(engine: editor_engine.EditorEngine) {
     if lastLine < 0 { return; }
     var last = engine.editor.GetLine(lastLine);
     engine.editor.SetCursorSelection(0, 0, 0, lastLine, Str.Length(last));
+}
+
+func SelectEnclosingBraceBlock(engine: editor_engine.EditorEngine,
+                               lineIdx: Integer) -> Boolean {
+    if engine == null or engine.editor == null { return false; }
+    var source = engine.GetTextSnapshot();
+    var openLine = EnclosingBraceOpenLine(source, lineIdx);
+    if openLine < 0 { return false; }
+    var closeLine = MatchingBraceCloseLine(source, openLine);
+    if closeLine <= openLine { return false; }
+    if closeLine >= engine.editor.LineCount { return false; }
+    if engine.editor.CursorHasSelection(0) != 0
+       and engine.editor.GetSelectionStartLineAt(0) == openLine
+       and engine.editor.GetSelectionEndLineAt(0) == closeLine {
+        return false;
+    }
+    var closeText = engine.editor.GetLine(closeLine);
+    engine.editor.SetCursorSelection(0, openLine, 0, closeLine, Str.Length(closeText));
+    return true;
+}
+
+func SelectEnclosingInlineDelimiter(engine: editor_engine.EditorEngine,
+                                    lineIdx: Integer,
+                                    startCol: Integer,
+                                    endCol: Integer) -> Boolean {
+    if engine == null or engine.editor == null { return false; }
+    if lineIdx < 0 or lineIdx >= engine.editor.LineCount { return false; }
+    var line = engine.editor.GetLine(lineIdx);
+    var openCol = EnclosingInlineDelimiterOpenCol(line, startCol);
+    if openCol < 0 { return false; }
+    var closeCol = MatchingInlineDelimiterCloseCol(line, openCol);
+    if closeCol <= openCol { return false; }
+    if startCol == openCol and endCol == closeCol + 1 {
+        return false;
+    }
+    engine.editor.SetCursorSelection(0, lineIdx, openCol, lineIdx, closeCol + 1);
+    return true;
+}
+
+expose func EnclosingInlineDelimiterOpenCol(line: String,
+                                            startCol: Integer) -> Integer {
+    if line == "" { return -1; }
+    var limit = startCol;
+    if limit < 0 { limit = 0; }
+    var len = Str.Length(line);
+    if limit >= len { limit = len - 1; }
+
+    var openCols = new List();
+    var openChars = new List();
+    var pos = 0;
+    var inString = false;
+    while pos <= limit {
+        var ch = Str.MidLen(line, pos + 1, 1);
+        var next = "";
+        if pos + 1 < len {
+            next = Str.MidLen(line, pos + 2, 1);
+        }
+        if inString {
+            if ch == "\\" {
+                pos = pos + 2;
+                continue;
+            }
+            if ch == "\"" {
+                inString = false;
+            }
+        } else {
+            if ch == "/" and next == "/" {
+                break;
+            }
+            if ch == "\"" {
+                inString = true;
+            } else if IsInlineOpenDelimiter(ch) {
+                openCols.add("" + pos);
+                openChars.add(ch);
+            } else if IsInlineCloseDelimiter(ch) {
+                if openChars.count() > 0
+                   and MatchingInlineClose(Obj.ToString(openChars.get(openChars.count() - 1))) == ch {
+                    openCols.removeAt(openCols.count() - 1);
+                    openChars.removeAt(openChars.count() - 1);
+                }
+            }
+        }
+        pos = pos + 1;
+    }
+    if openCols.count() == 0 { return -1; }
+    return Convert.ToInt(Obj.ToString(openCols.get(openCols.count() - 1)));
+}
+
+expose func MatchingInlineDelimiterCloseCol(line: String,
+                                            openCol: Integer) -> Integer {
+    var len = Str.Length(line);
+    if line == "" or openCol < 0 or openCol >= len { return -1; }
+    var openCh = Str.MidLen(line, openCol + 1, 1);
+    if IsInlineOpenDelimiter(openCh) == false { return -1; }
+    var closeCh = MatchingInlineClose(openCh);
+    var depth = 0;
+    var pos = openCol;
+    var inString = false;
+    while pos < len {
+        var ch = Str.MidLen(line, pos + 1, 1);
+        var next = "";
+        if pos + 1 < len {
+            next = Str.MidLen(line, pos + 2, 1);
+        }
+        if inString {
+            if ch == "\\" {
+                pos = pos + 2;
+                continue;
+            }
+            if ch == "\"" {
+                inString = false;
+            }
+        } else {
+            if ch == "/" and next == "/" {
+                break;
+            }
+            if ch == "\"" {
+                inString = true;
+            } else if ch == openCh {
+                depth = depth + 1;
+            } else if ch == closeCh {
+                depth = depth - 1;
+                if depth == 0 {
+                    return pos;
+                }
+            }
+        }
+        pos = pos + 1;
+    }
+    return -1;
+}
+
+func IsInlineOpenDelimiter(ch: String) -> Boolean {
+    return ch == "(" or ch == "[";
+}
+
+func IsInlineCloseDelimiter(ch: String) -> Boolean {
+    return ch == ")" or ch == "]";
+}
+
+func MatchingInlineClose(ch: String) -> String {
+    if ch == "(" { return ")"; }
+    if ch == "[" { return "]"; }
+    return "";
+}
+
+expose func EnclosingBraceOpenLine(source: String,
+                                   lineIdx: Integer) -> Integer {
+    if source == "" or lineIdx < 0 { return -1; }
+    var lines = Str.Split(source, "\n");
+    var openLines = new List();
+    var i = 0;
+    while i < Seq.get_Length(lines) and i <= lineIdx {
+        ScanBraceLineForStack(Obj.ToString(Seq.Get(lines, i)), i, openLines);
+        i = i + 1;
+    }
+    if openLines.count() == 0 { return -1; }
+    return Convert.ToInt(Obj.ToString(openLines.get(openLines.count() - 1)));
+}
+
+func ScanBraceLineForStack(line: String,
+                           lineIdx: Integer,
+                           openLines: List) {
+    var pos = 1;
+    var inString = false;
+    while pos <= Str.Length(line) {
+        var ch = Str.MidLen(line, pos, 1);
+        var next = "";
+        if pos < Str.Length(line) {
+            next = Str.MidLen(line, pos + 1, 1);
+        }
+        if inString {
+            if ch == "\\" {
+                pos = pos + 2;
+                continue;
+            }
+            if ch == "\"" {
+                inString = false;
+            }
+        } else {
+            if ch == "/" and next == "/" {
+                break;
+            }
+            if ch == "\"" {
+                inString = true;
+            } else if ch == "{" {
+                openLines.add("" + lineIdx);
+            } else if ch == "}" {
+                if openLines.count() > 0 {
+                    openLines.removeAt(openLines.count() - 1);
+                }
+            }
+        }
+        pos = pos + 1;
+    }
+}
+
+expose func MatchingBraceCloseLine(source: String,
+                                   openLine: Integer) -> Integer {
+    if source == "" or openLine < 0 { return -1; }
+    var lines = Str.Split(source, "\n");
+    if openLine >= Seq.get_Length(lines) { return -1; }
+    var depth = 0;
+    var i = openLine;
+    while i < Seq.get_Length(lines) {
+        var line = Obj.ToString(Seq.Get(lines, i));
+        var pos = 1;
+        var inString = false;
+        while pos <= Str.Length(line) {
+            var ch = Str.MidLen(line, pos, 1);
+            var next = "";
+            if pos < Str.Length(line) {
+                next = Str.MidLen(line, pos + 1, 1);
+            }
+            if inString {
+                if ch == "\\" {
+                    pos = pos + 2;
+                    continue;
+                }
+                if ch == "\"" {
+                    inString = false;
+                }
+            } else {
+                if ch == "/" and next == "/" {
+                    break;
+                }
+                if ch == "\"" {
+                    inString = true;
+                } else if ch == "{" {
+                    depth = depth + 1;
+                } else if ch == "}" {
+                    depth = depth - 1;
+                    if depth <= 0 {
+                        return i;
+                    }
+                }
+            }
+            pos = pos + 1;
+        }
+        i = i + 1;
+    }
+    return -1;
 }
 
 func IsWholeLineSelection(engine: editor_engine.EditorEngine,

@@ -85,6 +85,7 @@ final WIN_WIDTH = 1280;
 final WIN_HEIGHT = 800;
 final WINDOW_SIZE_PERCENT = 72;  // % of monitor size on first launch.
 final AUTO_SAVE_IDLE_MS = 1500;
+final INDEX_AUTO_PUMP_INTERVAL_MS = 250;
 
 /// @brief Program entry point. Constructs the IDE and runs the main loop.
 func main() {
@@ -231,6 +232,7 @@ func main() {
     var lastBreakpointVersion = -1;
     var autoSaveRevision = engine.GetRevision();
     var autoSaveDueMs = 0;
+    var lastIndexPumpMs = 0;
 
     // ========================================================================
     // Main event loop
@@ -275,8 +277,11 @@ func main() {
                                                 engine);
         var perfSpan = perfMon.StartSpan();
         indexer.EnsureProject(projMgr, docMgr);
-        indexer.PumpIndex(8);
-        indexer.SyncActiveWhenIdle(docMgr, engine);
+        var indexNowMs = Viper.Time.GetTickCount();
+        if indexNowMs - lastIndexPumpMs >= INDEX_AUTO_PUMP_INTERVAL_MS {
+            indexer.PumpIndex(1);
+            lastIndexPumpMs = indexNowMs;
+        }
         perfMon.AddIndex(perfSpan);
         if activeToolDoc != null {
             if lastBreakpointPath != activeToolDoc.filePath or lastBreakpointVersion != breakpointStore.version {
@@ -384,6 +389,12 @@ func main() {
         var cpSelected = "";
         if shell.commandPalette.WasSelected() != 0 {
             cpSelected = commandRegistry.NormalizeId(shell.commandPalette.GetSelected());
+            if cpSelected != "" and commandRegistry.IsExecutable(cpSelected, activeService) == false {
+                var disabledReason = commandRegistry.DisabledReason(cpSelected, activeService);
+                shell.SetStatusLeft(disabledReason);
+                GUI.Toast.Info(disabledReason);
+                cpSelected = "";
+            }
         }
         if Shortcuts.WasTriggered("palette") != 0 {
             shell.commandPalette.Show();
@@ -634,6 +645,8 @@ func main() {
         if triggeredNoMenu("goto", cpSelected)                          { edit_commands.handleGoToLine(shell, engine); }
         if triggeredNoMenu("gotodef", cpSelected)                       { edit_commands.handleGoToDefinition(shell, docMgr, engine, tabs, indexer, locStore); }
         if triggeredMenu("findrefs", shell.miFindReferences, cpSelected) { edit_commands.handleFindReferences(shell, docMgr, engine, indexer, locStore); }
+        if triggeredNoMenu("incomingcalls", cpSelected)                  { edit_commands.handleIncomingCalls(shell, docMgr, engine, indexer, locStore); }
+        if triggeredNoMenu("outgoingcalls", cpSelected)                  { edit_commands.handleOutgoingCalls(shell, docMgr, engine, indexer, locStore); }
         if triggeredMenu("rename", shell.miRenameSymbol, cpSelected)     { edit_commands.handleRenameSymbol(shell, docMgr, engine, tabs, indexer); }
         if triggeredNoMenu("addnextoccurrence", cpSelected)              { edit_commands.handleAddNextOccurrence(shell, engine); }
         if triggeredNoMenu("skipoccurrence", cpSelected)                 { edit_commands.handleSkipOccurrence(shell, engine); }
@@ -647,6 +660,8 @@ func main() {
         if triggeredNoMenu("movelineup", cpSelected)                     { edit_commands.handleMoveLineUp(shell, engine); }
         if triggeredNoMenu("movelinedown", cpSelected)                   { edit_commands.handleMoveLineDown(shell, engine); }
         if triggeredNoMenu("organizebinds", cpSelected)                  { edit_commands.handleOrganizeBinds(shell, docMgr, engine); }
+        if triggeredNoMenu("suppressdiagnostic", cpSelected)             { edit_commands.handleSuppressDiagnostic(shell, docMgr, engine); }
+        if triggeredNoMenu("trimtrailingwhitespace", cpSelected)          { edit_commands.handleTrimTrailingWhitespace(shell, docMgr, engine); }
         if triggeredNoMenu("formatdocument", cpSelected)                 { edit_commands.handleFormatUnavailable(shell); }
         if triggeredNoMenu("formatselection", cpSelected)                { edit_commands.handleFormatUnavailable(shell); }
 

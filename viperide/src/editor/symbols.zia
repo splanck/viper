@@ -13,6 +13,9 @@ bind Seq = Viper.Collections.Seq;
 bind Obj = Viper.Core.Object;
 bind Convert = Viper.Core.Convert;
 
+final MAX_SEMANTIC_FOLD_LINES = 8000;
+final MAX_SEMANTIC_FOLD_REGIONS = 200;
+
 // ============================================================================
 // MODULE: symbols
 // PURPOSE: Document-symbol navigator. Lists every top-level symbol
@@ -298,10 +301,15 @@ expose func ApplySemanticFoldRegions(engine: editor_engine.EditorEngine,
     engine.editor.ClearFoldRegions();
     if raw == "" or source == "" { return 0; }
 
+    var sourceLines = Str.Split(source, "\n");
+    if Seq.get_Length(sourceLines) > MAX_SEMANTIC_FOLD_LINES {
+        return 0;
+    }
+
     var added = 0;
     var rows = Str.Split(raw, "\n");
     var i = 0;
-    while i < Seq.get_Length(rows) {
+    while i < Seq.get_Length(rows) and added < MAX_SEMANTIC_FOLD_REGIONS {
         var row = Obj.ToString(Seq.Get(rows, i));
         i = i + 1;
         if row == "" { continue; }
@@ -318,7 +326,7 @@ expose func ApplySemanticFoldRegions(engine: editor_engine.EditorEngine,
         var startLine = Convert.ToInt(symLineText) - lineOff;
         if startLine < 1 { continue; }
 
-        var endLine = SemanticFoldEndLine(source, startLine);
+        var endLine = SemanticFoldEndLineFromLines(sourceLines, startLine);
         if endLine > startLine {
             engine.editor.AddFoldRegion(startLine - 1, endLine - 1);
             added = added + 1;
@@ -329,6 +337,10 @@ expose func ApplySemanticFoldRegions(engine: editor_engine.EditorEngine,
 
 expose func SemanticFoldEndLine(source: String, startLine: Integer) -> Integer {
     var lines = Str.Split(source, "\n");
+    return SemanticFoldEndLineFromLines(lines, startLine);
+}
+
+expose func SemanticFoldEndLineFromLines(lines: Any, startLine: Integer) -> Integer {
     var startIdx = startLine - 1;
     if startIdx < 0 or startIdx >= Seq.get_Length(lines) { return startLine; }
 

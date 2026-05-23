@@ -27,13 +27,13 @@ An alpha-quality hardening cycle, not a feature release. The Zia frontend reache
 
 | Metric | v0.2.5 | v0.2.6 | Delta |
 |---|---|---|---|
-| Commits | — | 178 | +178 |
+| Commits | — | 186 | +186 |
 | Source files | 2,996 | 3,055 | +59 |
-| Production SLOC | 552K | 613K | +61K |
+| Production SLOC | 552K | 614K | +62K |
 | Test SLOC | 228K | 259K | +31K |
 | Demo SLOC | 188K | 186K | −2K |
 
-Counts via `scripts/count_sloc.sh` (production 612,603 / test 258,714 / demo 185,633 / source files 3,055). Demo SLOC dropped because ViperIDE moved out of the demo gallery into a standalone top-level project.
+Counts via `scripts/count_sloc.sh` (production 614,254 / test 258,844 / demo 185,633 / source files 3,055). Demo SLOC dropped because ViperIDE moved out of the demo gallery into a standalone top-level project.
 
 ---
 
@@ -129,7 +129,7 @@ Counts via `scripts/count_sloc.sh` (production 612,603 / test 258,714 / demo 185
 - New `Viper.Zia.ProjectIndex`: an explicit-lifetime project index with dirty-buffer import resolution, structured definition/reference results, and rename workspace-edit generation with visible-collision detection.
 - `Viper.Game.Scene` graduated to a full editable JSON scene document: non-trapping load returning structured diagnostics under enforced resource/overflow limits, typed scene/object properties, a deterministic canonical-v1 round-trip, an isolated `BuildTilemap` render copy, and atomic same-directory save.
 - A prerequisite runtime slice exposes structured primitives for project trees, automation, palettes, and debugger integration: `Workspace.FileIndex`/`Watcher`, `Assets.Resolver`, `Project.Manifest`, `Workspace.Edit`, GUI `TestHarness`/`VirtualList`/`VirtualTree`/`CommandState`/`Accessibility`, `Debug.Protocol`, and `Text.FuzzyMatch`.
-- The ViperIDE app itself moved to a standalone top-level project and gained an argument-vector build/run loop with streamed, cancellable output and clickable diagnostics, persisted gutter breakpoints, content-revision-gated background completion/diagnostics/hover/signature/outline, file-tree project operations with previewed Zia bind rewrites during file/folder rename, Quick Open, workspace symbols/completion, semantic Zia fold regions, Organize Binds, and core edit commands such as line/block comment toggle, duplicate line, move line, and expand/shrink selection. New `Viper.GUI.CodeEditor.Revision` (a content-change probe that ignores cursor/scroll) and `Viper.GUI.TreeView.GetNodeAt(x, y)` (point hit-test) back the editor hot path and context menus. A native editor performance pass targets large-file responsiveness — O(1) no-wrap layout, dirty-line syntax caching, matching-pair highlight, pointer selection drag, stale fold-region clearing on text replacement, a default-off sampled minimap, and revision-keyed text snapshots keep completion, diagnostics, indexing, and search off the keystroke path — guarded by large-file typing/paint, scroll/paint, selection-drag, and minimap wall-clock probes. Tool panels gained auto-scroll lock, selected-row/range copy, and severity-colored list rows, with the Problems/Output/Search/References/Debug tabs still intentionally documented as lightweight list-backed surfaces. The wired debug protocol is a non-executing placeholder, not real debugging yet.
+- The ViperIDE app itself moved to a standalone top-level project and gained an argument-vector build/run loop with streamed, cancellable output and clickable diagnostics, persisted gutter breakpoints, content-revision-gated background completion/diagnostics/hover/signature/outline, file-tree project operations with previewed Zia bind rewrites during file/folder rename, Quick Open, workspace symbols/async completion, IntelliSense docs/source metadata display fed by Zia declaration doc comments for completion/signature/hover, incoming/outgoing call lookup, semantic Zia fold regions, Organize Binds, Suppress Warning, Trim Trailing Whitespace, and core edit commands such as line/block comment toggle, duplicate line, move line, and expand/shrink selection. New `Viper.GUI.CodeEditor.Revision` (a content-change probe that ignores cursor/scroll) and `Viper.GUI.TreeView.GetNodeAt(x, y)` (point hit-test) back the editor hot path and context menus. A native editor performance pass targets large-file responsiveness — O(1) no-wrap layout, dirty-line syntax caching, matching-pair highlight, pointer selection drag, bounded semantic fold-region generation, stale fold-region clearing on text replacement, a default-off sampled minimap, and revision-keyed text snapshots keep completion, diagnostics, indexing, and search off the keystroke path — guarded by large-file typing/paint, scroll/paint, selection-drag, fold-generation, and minimap wall-clock probes. Project search is cooperative and supports literal/regex content matching, case/whole-word, and include/exclude path filters. The categorized command palette keeps unsupported language-service commands discoverable with unavailable markers and status/toast reasons. Tool panels gained auto-scroll lock, selected-row/range copy, and severity-colored list rows, with the Problems/Output/Search/References/Debug tabs still intentionally documented as lightweight list-backed surfaces. The wired debug protocol is a non-executing placeholder, not real debugging yet.
 
 ### Windows, MSVC, and HiDPI
 
@@ -161,6 +161,6 @@ Demos and docs tracked the runtime work: stale Windows debug/O0 build pins were 
 
 ### Commits
 
-See `git log v0.2.5-dev..HEAD -- .` for the full 178-commit history since v0.2.5.
+See `git log v0.2.5-dev..HEAD -- .` for the full 186-commit history since v0.2.5.
 
 <!-- END DRAFT -->

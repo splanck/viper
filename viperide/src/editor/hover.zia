@@ -92,7 +92,7 @@ class HoverController {
     ///       the panel via AddChild.
     expose func setup(appRoot: GUI.App) {
         tooltip = GUI.FloatingPanel.New(appRoot);
-        tooltip.SetSize(400.0, 30.0);
+        tooltip.SetSize(520.0, 72.0);
         tooltip.SetVisible(0);
 
         // Create unattached, then reparent it into the FloatingPanel via AddChild.
@@ -203,7 +203,7 @@ class HoverController {
         if Map.GetBool(info, "available") == false { return; }
 
         // Show tooltip
-        tooltipLabel.SetText(Map.GetStr(info, "display"));
+        tooltipLabel.SetText(FormatHoverDisplay(info));
         tooltip.SetPosition(mx + 10.0, my - 25.0);
         tooltip.SetVisible(1);
         isVisible = true;
@@ -249,4 +249,42 @@ class HoverController {
             pendingJob = null;
         }
     }
+}
+
+func FormatHoverDisplay(info: Any) -> String {
+    if info == null { return ""; }
+    var display = Map.GetStr(info, "display");
+    if display == "" {
+        display = Map.GetStr(info, "title");
+        var typ = Map.GetStr(info, "type");
+        if typ != "" {
+            if display != "" {
+                display = display + ": " + typ;
+            } else {
+                display = typ;
+            }
+        }
+    }
+
+    var source = Map.GetStr(info, "source");
+    if source != "" {
+        display = display + "  [" + source + "]";
+    }
+
+    var doc = ShortInlineText(Map.GetStr(info, "documentation"), 160);
+    if doc != "" {
+        display = display + "\n" + doc;
+    }
+    return display;
+}
+
+func ShortInlineText(text: String, limit: Integer) -> String {
+    var cleaned = Str.Trim(Str.Replace(Str.Replace(text, "\n", " "), "\t", " "));
+    if limit <= 0 or Str.Length(cleaned) <= limit {
+        return cleaned;
+    }
+    if limit <= 3 {
+        return Str.Left(cleaned, limit);
+    }
+    return Str.Left(cleaned, limit - 3) + "...";
 }

@@ -5,6 +5,7 @@ bind "core/document_manager";
 bind "core/project_manager";
 bind "editor/editor_engine";
 bind "editor/project_index";
+bind "editor/symbols";
 
 bind Viper.Terminal as Terminal;
 bind Str = Viper.String;
@@ -236,6 +237,33 @@ func main() {
     }
     if engine.editor.GetFullTextCopyCount() != 0 {
         fail(shell, "large-buffer cursor movement copied full text");
+        return;
+    }
+
+    var foldStressSource = "module FoldPerf;\n";
+    var foldStressRaw = "";
+    var foldLine = 2;
+    var foldIdx = 0;
+    while foldIdx < 1200 {
+        foldStressSource = foldStressSource
+            + "func fold" + foldIdx + "() -> Integer {\n"
+            + "    return " + foldIdx + ";\n"
+            + "}\n";
+        foldStressRaw = foldStressRaw
+            + "fold" + foldIdx + "\tfunction\tFunction()->Integer\t" + foldLine + "\n";
+        foldLine = foldLine + 3;
+        foldIdx = foldIdx + 1;
+    }
+    engine.SetText(foldStressSource);
+    var foldStartMs = Viper.Time.GetTickCount();
+    var foldCount = symbols.ApplySemanticFoldRegions(engine, foldStressRaw, 0, foldStressSource);
+    var foldElapsedMs = Viper.Time.GetTickCount() - foldStartMs;
+    if foldCount != 200 {
+        fail(shell, "semantic fold perf count: " + foldCount);
+        return;
+    }
+    if foldElapsedMs > 250 {
+        fail(shell, "semantic fold generation exceeded budget: " + foldElapsedMs + "ms");
         return;
     }
 

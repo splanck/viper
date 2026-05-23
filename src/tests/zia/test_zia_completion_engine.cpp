@@ -70,6 +70,14 @@ static int indexOfLabel(const std::vector<CompletionItem> &items, const std::str
     return -1;
 }
 
+static const CompletionItem *findItem(const std::vector<CompletionItem> &items,
+                                      const std::string &label) {
+    for (const auto &item : items)
+        if (item.label == label)
+            return &item;
+    return nullptr;
+}
+
 static void writeFile(const fs::path &path, const std::string &contents) {
     fs::create_directories(path.parent_path());
     std::ofstream out(path);
@@ -129,6 +137,25 @@ TEST(CompletionEngine, PrefixFiltering_NarrowsResults) {
     EXPECT_TRUE(hasLabel(items, "func"));
     EXPECT_FALSE(hasLabel(items, "var"));
     EXPECT_FALSE(hasLabel(items, "if"));
+}
+
+TEST(CompletionEngine, CtrlSpace_ReturnsDeclarationDocumentation) {
+    const std::string source = R"(module Test;
+
+/// Greets users.
+/// Supports labels.
+func greetDocs() -> Integer { return 1; }
+
+func main() {
+    gre
+}
+)";
+    CompletionEngine engine;
+    auto [line, col] = lineColAfter(source, "    gre");
+    auto items = engine.complete(source, line, col, "<test>", 0);
+    const CompletionItem *item = findItem(items, "greetDocs");
+    ASSERT_NE(item, nullptr);
+    EXPECT_EQ(item->documentation, "Greets users.\nSupports labels.");
 }
 
 // ---------------------------------------------------------------------------
@@ -318,6 +345,7 @@ TEST(CompletionEngine, BoundFileModuleNameAndExports) {
     fs::remove_all(tempRoot);
 
     writeFile(tempRoot / "dep.zia", R"(module Dep;
+/// Exported helper docs.
 expose func exportedThing() -> Integer { return 1; }
 func hiddenThing() -> Integer { return 0; }
 )");
@@ -339,6 +367,9 @@ func main() {
     auto members = engine.complete(source, memberLine, memberCol, (tempRoot / "main.zia").string(), 0);
     EXPECT_TRUE(hasKind(members, "exportedThing", CompletionKind::Function));
     EXPECT_FALSE(hasLabel(members, "hiddenThing"));
+    const CompletionItem *exported = findItem(members, "exportedThing");
+    ASSERT_NE(exported, nullptr);
+    EXPECT_EQ(exported->documentation, "Exported helper docs.");
 }
 
 TEST(CompletionEngine, CtrlSpace_RanksVisibleLocalsAndParametersBeforeGlobals) {
