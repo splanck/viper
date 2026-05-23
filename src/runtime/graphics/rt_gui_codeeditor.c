@@ -79,6 +79,17 @@ static vg_codeeditor_t *rt_codeeditor_handle_checked(void *editor) {
     return (vg_codeeditor_t *)rt_gui_widget_handle_checked_type(editor, VG_WIDGET_CODEEDITOR);
 }
 
+static void rt_codeeditor_invalidate_syntax_cache(vg_codeeditor_t *ce) {
+    if (!ce)
+        return;
+    ce->highlight_generation = ce->highlight_generation == UINT64_MAX ? 1 : ce->highlight_generation + 1;
+    for (int i = 0; i < ce->line_count; i++) {
+        ce->lines[i].highlight_generation = 0;
+        ce->lines[i].syntax_state_generation = 0;
+    }
+    ce->base.needs_paint = true;
+}
+
 /// @brief Validate a gutter-marker slot index (0–3) and report it via @p out_type.
 /// @return 1 if the slot is in range; 0 otherwise (leaving `*out_type` untouched).
 static int rt_codeeditor_gutter_slot_checked(int64_t slot, int *out_type) {
@@ -283,56 +294,81 @@ static const char *const zia_types[] = {"Integer",
                                         "Queue",
                                         NULL};
 
+static int rt_zia_comment_depth_after_text(const char *line, int depth) {
+    if (!line)
+        return depth;
+
+    size_t len = strlen(line);
+    for (size_t i = 0; i < len;) {
+        if (depth > 0) {
+            if (i + 1 < len && line[i] == '/' && line[i + 1] == '*') {
+                depth++;
+                i += 2;
+            } else if (i + 1 < len && line[i] == '*' && line[i + 1] == '/') {
+                depth--;
+                i += 2;
+            } else {
+                i++;
+            }
+            continue;
+        }
+
+        if (i + 1 < len && line[i] == '/' && line[i + 1] == '/')
+            break;
+        if (i + 1 < len && line[i] == '/' && line[i + 1] == '*') {
+            depth = 1;
+            i += 2;
+            continue;
+        }
+        if (line[i] == '"') {
+            i++;
+            while (i < len) {
+                if (line[i] == '\\' && i + 1 < len) {
+                    i += 2;
+                    continue;
+                }
+                if (line[i++] == '"')
+                    break;
+            }
+            continue;
+        }
+        i++;
+    }
+
+    return depth;
+}
+
 /// @brief Compute the open Zia block-comment nesting depth at the start of
 ///        @p line_num.
-/// @details Scans all lines before @p line_num counting `/* ... */` nesting so
-///          the syntax highlighter knows whether a line begins inside a
-///          (possibly nested) block comment. Returns 0 for invalid input.
+/// @details Caches per-line lexical state so painting a viewport near the end
+///          of a large file does not rescan all preceding lines for every
+///          visible row.
 static int rt_zia_comment_depth_before_line(vg_codeeditor_t *ce, int line_num) {
     if (!ce || line_num <= 0 || !ce->lines)
         return 0;
 
-    int depth = 0;
     int limit = line_num < ce->line_count ? line_num : ce->line_count;
-    for (int line_index = 0; line_index < limit; line_index++) {
-        const char *line = ce->lines[line_index].text ? ce->lines[line_index].text : "";
-        size_t len = strlen(line);
-        for (size_t i = 0; i < len;) {
-            if (depth > 0) {
-                if (i + 1 < len && line[i] == '/' && line[i + 1] == '*') {
-                    depth++;
-                    i += 2;
-                } else if (i + 1 < len && line[i] == '*' && line[i + 1] == '/') {
-                    depth--;
-                    i += 2;
-                } else {
-                    i++;
-                }
-                continue;
-            }
+    uint64_t generation = ce->highlight_generation;
+    int start = 0;
+    int depth = 0;
 
-            if (i + 1 < len && line[i] == '/' && line[i + 1] == '/')
-                break;
-            if (i + 1 < len && line[i] == '/' && line[i + 1] == '*') {
-                depth = 1;
-                i += 2;
-                continue;
-            }
-            if (line[i] == '"') {
-                i++;
-                while (i < len) {
-                    if (line[i] == '\\' && i + 1 < len) {
-                        i += 2;
-                        continue;
-                    }
-                    if (line[i++] == '"')
-                        break;
-                }
-                continue;
-            }
-            i++;
+    for (int i = limit - 1; i >= 0; i--) {
+        if (ce->lines[i].syntax_state_generation == generation) {
+            start = i + 1;
+            depth = ce->lines[i].syntax_state_out;
+            break;
         }
     }
+
+    for (int line_index = start; line_index < limit; line_index++) {
+        vg_code_line_t *line = &ce->lines[line_index];
+        line->syntax_state_in = depth;
+        depth = rt_zia_comment_depth_after_text(line->text ? line->text : "", depth);
+        line->syntax_state_out = depth;
+        line->syntax_state_generation = generation;
+        ce->perf_stats.syntax_state_line_scans++;
+    }
+
     return depth;
 }
 
@@ -362,6 +398,9 @@ static void rt_zia_syntax_cb(
     size_t len = strlen(text);
     size_t i = 0;
     int block_depth = rt_zia_comment_depth_before_line(ce, line_num);
+    if (ce && line_num >= 0 && line_num < ce->line_count) {
+        ce->lines[line_num].syntax_state_in = block_depth;
+    }
 
     // If we entered this line inside a block comment, paint until we find */
     // (with proper nesting).
@@ -381,8 +420,13 @@ static void rt_zia_syntax_cb(
         syn_fill(colors, comment_start, i - comment_start, c_comment);
         if (block_depth > 0) {
             // Block comment continues past this line — done with line.
-            if (ce)
+            if (ce) {
                 ce->zia_block_comment_depth = block_depth;
+                if (line_num >= 0 && line_num < ce->line_count) {
+                    ce->lines[line_num].syntax_state_out = block_depth;
+                    ce->lines[line_num].syntax_state_generation = ce->highlight_generation;
+                }
+            }
             return;
         }
     }
@@ -391,6 +435,10 @@ static void rt_zia_syntax_cb(
         // Line comment
         if (text[i] == '/' && i + 1 < len && text[i + 1] == '/') {
             syn_fill(colors, i, len - i, c_comment);
+            if (ce && line_num >= 0 && line_num < ce->line_count) {
+                ce->lines[line_num].syntax_state_out = block_depth;
+                ce->lines[line_num].syntax_state_generation = ce->highlight_generation;
+            }
             return;
         }
 
@@ -475,8 +523,13 @@ static void rt_zia_syntax_cb(
         // Default (operators, punctuation)
         colors[i++] = c_default;
     }
-    if (ce)
+    if (ce) {
         ce->zia_block_comment_depth = block_depth;
+        if (line_num >= 0 && line_num < ce->line_count) {
+            ce->lines[line_num].syntax_state_out = block_depth;
+            ce->lines[line_num].syntax_state_generation = ce->highlight_generation;
+        }
+    }
 }
 
 // ─── Viper BASIC language tokenizer ───────────────────────────────────────
@@ -604,7 +657,7 @@ void rt_codeeditor_set_token_color(void *editor, int64_t token_type, int64_t col
     // Token type indices: 0=default, 1=keyword, 2=type, 3=string, 4=comment, 5=number
     if (token_type >= 0 && token_type < 6) {
         ce->token_colors[token_type] = (uint32_t)color;
-        ce->base.needs_paint = true;
+        rt_codeeditor_invalidate_syntax_cache(ce);
     }
 }
 
@@ -628,7 +681,7 @@ void rt_codeeditor_set_custom_keywords(void *editor, rt_string keywords) {
         free(ce->custom_keywords);
         ce->custom_keywords = NULL;
         ce->custom_keyword_count = 0;
-        ce->base.needs_paint = true;
+        rt_codeeditor_invalidate_syntax_cache(ce);
         return;
     }
 
@@ -690,7 +743,7 @@ void rt_codeeditor_set_custom_keywords(void *editor, rt_string keywords) {
     free(ce->custom_keywords);
     ce->custom_keywords = new_keywords;
     ce->custom_keyword_count = new_count;
-    ce->base.needs_paint = true;
+    rt_codeeditor_invalidate_syntax_cache(ce);
 }
 
 /// @brief `CodeEditor.ClearHighlights()` — remove every custom highlight span.
@@ -705,6 +758,7 @@ void rt_codeeditor_clear_highlights(void *editor) {
     ce->highlight_spans = NULL;
     ce->highlight_span_count = 0;
     ce->highlight_span_cap = 0;
+    ce->highlight_spans_sorted = true;
     ce->base.needs_paint = true;
 }
 
@@ -744,6 +798,7 @@ void rt_codeeditor_add_highlight(void *editor,
     s->end_line = el;
     s->end_col = ec;
     s->color = (uint32_t)color;
+    ce->highlight_spans_sorted = false;
     ce->base.needs_paint = true;
 }
 
@@ -2152,6 +2207,51 @@ rt_string rt_codeeditor_get_line(void *editor, int64_t line_index) {
     return rt_string_from_bytes(line->text, line->length);
 }
 
+static int64_t rt_codeeditor_perf_i64(uint64_t value) {
+    return value > (uint64_t)INT64_MAX ? INT64_MAX : (int64_t)value;
+}
+
+/// @brief Clear low-level editor performance counters.
+void rt_codeeditor_reset_perf_stats(void *editor) {
+    RT_ASSERT_MAIN_THREAD();
+    vg_codeeditor_t *ce = rt_codeeditor_handle_checked(editor);
+    if (ce)
+        vg_codeeditor_reset_perf_stats(ce);
+}
+
+/// @brief Return full-buffer materialization count.
+int64_t rt_codeeditor_get_full_text_copy_count(void *editor) {
+    RT_ASSERT_MAIN_THREAD();
+    vg_codeeditor_t *ce = rt_codeeditor_handle_checked(editor);
+    if (!ce)
+        return 0;
+    vg_codeeditor_perf_stats_t stats = vg_codeeditor_get_perf_stats(ce);
+    return rt_codeeditor_perf_i64(stats.full_text_copies);
+}
+
+/// @brief Return aggregate line visits from layout/scroll visual-row scans.
+int64_t rt_codeeditor_get_layout_linear_scan_count(void *editor) {
+    RT_ASSERT_MAIN_THREAD();
+    vg_codeeditor_t *ce = rt_codeeditor_handle_checked(editor);
+    if (!ce)
+        return 0;
+    vg_codeeditor_perf_stats_t stats = vg_codeeditor_get_perf_stats(ce);
+    uint64_t total = stats.total_height_linear_scans;
+    if (UINT64_MAX - total < stats.total_visual_row_linear_scans)
+        total = UINT64_MAX;
+    else
+        total += stats.total_visual_row_linear_scans;
+    if (UINT64_MAX - total < stats.visual_row_linear_scans)
+        total = UINT64_MAX;
+    else
+        total += stats.visual_row_linear_scans;
+    if (UINT64_MAX - total < stats.locate_visual_row_linear_scans)
+        total = UINT64_MAX;
+    else
+        total += stats.locate_visual_row_linear_scans;
+    return rt_codeeditor_perf_i64(total);
+}
+
 #else /* !VIPER_ENABLE_GRAPHICS */
 
 //=============================================================================
@@ -2582,6 +2682,23 @@ rt_string rt_codeeditor_get_line(void *editor, int64_t line_index) {
     (void)editor;
     (void)line_index;
     return rt_str_empty();
+}
+
+/// @brief Stub: `CodeEditor.ResetPerfStats` is a no-op without graphics.
+void rt_codeeditor_reset_perf_stats(void *editor) {
+    (void)editor;
+}
+
+/// @brief Stub: returns 0 without graphics.
+int64_t rt_codeeditor_get_full_text_copy_count(void *editor) {
+    (void)editor;
+    return 0;
+}
+
+/// @brief Stub: returns 0 without graphics.
+int64_t rt_codeeditor_get_layout_linear_scan_count(void *editor) {
+    (void)editor;
+    return 0;
 }
 
 #endif /* VIPER_ENABLE_GRAPHICS */

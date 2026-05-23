@@ -107,7 +107,7 @@ class SymbolOutline {
 
         var revision = engine.GetRevision();
         if revision == lastRevision and sourcePath == lastPath { return; }
-        var source = engine.GetText();
+        var source = engine.GetTextSnapshot();
         lastSource = source;
         lastPath = sourcePath;
         lastRevision = revision;

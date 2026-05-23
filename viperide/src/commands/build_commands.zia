@@ -138,7 +138,10 @@ func UpdateJob(shell: app_shell.AppShell,
     var wasActive = buildSys.IsActive();
     if wasActive {
         buildSys.Update();
-        shell.SetBuildOutput(buildSys.GetOutput());
+        var outputDelta = buildSys.TakeOutputDelta();
+        if outputDelta != "" {
+            shell.AppendBuildOutput(outputDelta);
+        }
         if buildSys.IsActive() == false {
             if buildSys.lastBuildSuccess {
                 shell.SetStatusLeft(buildSys.activeName + " succeeded in " + buildSys.GetBuildTime());

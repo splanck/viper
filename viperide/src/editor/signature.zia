@@ -29,7 +29,7 @@ class SignatureController {
 
     expose func setup(appRoot: GUI.App) {
         panel = GUI.FloatingPanel.New(appRoot);
-        panel.SetSize(520.0, 42.0);
+        panel.SetSize(640.0, 68.0);
         panel.SetVisible(0);
         label = GUI.Label.New(null, "");
         panel.AddChild(label);
@@ -44,7 +44,7 @@ class SignatureController {
         var revision = engine.GetRevision();
         var line = engine.GetCursorLine();
         var col0 = engine.editor.CursorCol;
-        var source = engine.GetText();
+        var source = engine.GetTextSnapshot();
         if IsInsideCall(source, line, col0) == false {
             Hide();
             return;
@@ -84,7 +84,7 @@ class SignatureController {
             return;
         }
 
-        var source = engine.GetText();
+        var source = engine.GetTextSnapshot();
         if IsInsideCall(source, line, col0) == false {
             Hide();
             return;

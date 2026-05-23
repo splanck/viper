@@ -25,6 +25,7 @@ class BuildSystem {
 
     // Build output
     expose String buildOutput;
+    expose String outputDelta;
     expose String compilerPath;
 
     // Build timing ("1.2s" after last build)
@@ -44,6 +45,7 @@ class BuildSystem {
         isRunning = false;
         lastBuildSuccess = false;
         buildOutput = "";
+        outputDelta = "";
         compilerPath = "viper";
         lastBuildTime = "";
         startMs = 0;
@@ -67,6 +69,7 @@ class BuildSystem {
         activeAction = cfg.action;
         activeName = cfg.name;
         buildOutput = "";
+        outputDelta = "";
         diagnostics = [];
         exitCode = -1;
         lastBuildSuccess = false;
@@ -94,16 +97,16 @@ class BuildSystem {
         if processHandle == null { return false; }
         var out = processHandle.ReadStdout();
         var err = processHandle.ReadStderr();
-        if out != "" { buildOutput = buildOutput + out; }
-        if err != "" { buildOutput = buildOutput + err; }
+        AppendOutput(out);
+        AppendOutput(err);
 
         if processHandle.IsRunning() {
             return true;
         }
         out = processHandle.ReadStdout();
         err = processHandle.ReadStderr();
-        if out != "" { buildOutput = buildOutput + out; }
-        if err != "" { buildOutput = buildOutput + err; }
+        AppendOutput(out);
+        AppendOutput(err);
         Finish(processHandle.ExitCode());
         processHandle.Destroy();
         processHandle = null;
@@ -115,13 +118,19 @@ class BuildSystem {
         var killed = processHandle.Kill();
         var out = processHandle.ReadStdout();
         var err = processHandle.ReadStderr();
-        if out != "" { buildOutput = buildOutput + out; }
-        if err != "" { buildOutput = buildOutput + err; }
+        AppendOutput(out);
+        AppendOutput(err);
         Finish(-1);
         processHandle.Destroy();
         processHandle = null;
-        buildOutput = buildOutput + "\n[stopped]\n";
+        AppendOutput("\n[stopped]\n");
         return killed;
+    }
+
+    func AppendOutput(text: String) {
+        if text == "" { return; }
+        buildOutput = buildOutput + text;
+        outputDelta = outputDelta + text;
     }
 
     func Finish(code: Integer) {
@@ -220,6 +229,12 @@ class BuildSystem {
     // Get the build output text.
     expose func GetOutput() -> String {
         return buildOutput;
+    }
+
+    expose func TakeOutputDelta() -> String {
+        var delta = outputDelta;
+        outputDelta = "";
+        return delta;
     }
 
     // Get the elapsed time of the last build ("1.2s").

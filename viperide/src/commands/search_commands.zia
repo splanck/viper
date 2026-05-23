@@ -37,6 +37,140 @@ bind FileIndex = Viper.Workspace.FileIndex;
 //     id via `ItemSetData`, so clicking a result does not parse display text.
 // ============================================================================
 
+final SEARCH_FILES_PER_FRAME = 16;
+
+class SearchController {
+    expose Boolean active;
+    expose Boolean canceled;
+    expose String root;
+    expose String query;
+    expose String fileKinds;
+    expose Boolean caseSensitive;
+    expose Boolean wholeWord;
+    expose Integer fileIndex;
+    expose Integer resultCount;
+    expose Integer totalFiles;
+    expose Any files;
+
+    expose func init() {
+        active = false;
+        canceled = false;
+        root = "";
+        query = "";
+        fileKinds = "";
+        caseSensitive = false;
+        wholeWord = false;
+        fileIndex = 0;
+        resultCount = 0;
+        totalFiles = 0;
+        files = null;
+    }
+
+    expose func Start(shell: app_shell.AppShell,
+                      rootPath: String,
+                      searchTitle: String,
+                      docMgr: document_manager.DocumentManager,
+                      engine: editor_engine.EditorEngine) -> Boolean {
+        if active {
+            var confirmed = GUI.MessageBox.Confirm(
+                "Search Already Running",
+                "Cancel the current search and start a new one?");
+            if confirmed == 0 { return false; }
+            Cancel(shell);
+        }
+
+        var requestedQuery = GUI.MessageBox.Prompt(searchTitle, "Search for:");
+        if requestedQuery == "" { return false; }
+        var requestedCase = GUI.MessageBox.Confirm(
+            "Search Options",
+            "Use case-sensitive matching?") != 0;
+        var requestedWholeWord = GUI.MessageBox.Confirm(
+            "Search Options",
+            "Match whole words only?") != 0;
+        var requestedKinds = GUI.MessageBox.Prompt(
+            "Search File Kinds",
+            "Comma-separated extensions to search.\nLeave blank for code, text, scene, and docs.");
+        if requestedKinds == "" {
+            requestedKinds = ".zia,.bas,.vb,.json,.md,.scene,.level";
+        } else {
+            requestedKinds = Str.Replace(requestedKinds, " ", "");
+        }
+
+        file_commands.SaveEditorState(docMgr, engine);
+        return StartDirect(shell, rootPath, requestedQuery, requestedKinds, requestedCase, requestedWholeWord);
+    }
+
+    expose func StartDirect(shell: app_shell.AppShell,
+                            rootPath: String,
+                            requestedQuery: String,
+                            requestedKinds: String,
+                            requestedCase: Boolean,
+                            requestedWholeWord: Boolean) -> Boolean {
+        if rootPath == "" or requestedQuery == "" { return false; }
+        if Dir.Exists(rootPath) == false { return false; }
+
+        root = rootPath;
+        query = requestedQuery;
+        fileKinds = requestedKinds;
+        if fileKinds == "" {
+            fileKinds = ".zia,.bas,.vb,.json,.md,.scene,.level";
+        }
+        caseSensitive = requestedCase;
+        wholeWord = requestedWholeWord;
+        files = FileIndex.Enumerate(root, fileKinds, "", false);
+        totalFiles = Seq.get_Length(files);
+        fileIndex = 0;
+        resultCount = 0;
+        canceled = false;
+        active = true;
+
+        shell.outputListBox.Clear();
+        shell.ShowOutputPanel();
+        shell.SetStatusLeft("Searching " + totalFiles + " files for '" + query + "'...");
+        return true;
+    }
+
+    expose func Cancel(shell: app_shell.AppShell) {
+        if active == false { return; }
+        active = false;
+        canceled = true;
+        shell.SetStatusLeft("Search canceled after " + resultCount + " matches");
+        if resultCount == 0 {
+            shell.HideOutputPanel();
+        }
+    }
+
+    expose func Pump(shell: app_shell.AppShell,
+                     docMgr: document_manager.DocumentManager,
+                     locStore: locations.LocationStore) {
+        if active == false { return; }
+
+        var scanned = 0;
+        while active and scanned < SEARCH_FILES_PER_FRAME and fileIndex < totalFiles {
+            var entry = Seq.Get(files, fileIndex);
+            var filePath = Map.GetStr(entry, "path");
+            fileIndex = fileIndex + 1;
+            scanned = scanned + 1;
+
+            if IO.File.Exists(filePath) == false { continue; }
+            resultCount = resultCount + searchOneFile(shell, filePath, query, caseSensitive, wholeWord, docMgr, locStore);
+        }
+
+        if fileIndex >= totalFiles {
+            active = false;
+            if resultCount > 0 {
+                shell.ShowOutputPanel();
+                shell.SetStatusLeft("Found " + resultCount + " matches for '" + query + "'");
+            } else {
+                shell.HideOutputPanel();
+                GUI.Toast.Info("No matches found for '" + query + "'");
+            }
+        } else {
+            shell.SetStatusLeft("Searching " + fileIndex + "/" + totalFiles + " files...");
+        }
+    }
+}
+
 /// @brief Prompt for a query, scan the project, populate the output panel.
 func handleProjectSearch(shell: app_shell.AppShell,
                          projMgr: project_manager.ProjectManager,
@@ -51,6 +185,23 @@ func handleProjectSearch(shell: app_shell.AppShell,
     RunSearch(shell, projMgr.project.rootPath, "Search in Project", docMgr, engine, locStore);
 }
 
+func handleProjectSearchAsync(shell: app_shell.AppShell,
+                              projMgr: project_manager.ProjectManager,
+                              docMgr: document_manager.DocumentManager,
+                              engine: editor_engine.EditorEngine,
+                              locStore: locations.LocationStore,
+                              searcher: SearchController) {
+    if projMgr.project == null or projMgr.project.isOpen == false {
+        GUI.Toast.Warning("Open a project folder first");
+        return;
+    }
+    if searcher == null {
+        RunSearch(shell, projMgr.project.rootPath, "Search in Project", docMgr, engine, locStore);
+        return;
+    }
+    searcher.Start(shell, projMgr.project.rootPath, "Search in Project", docMgr, engine);
+}
+
 func handleProjectSearchInFolder(shell: app_shell.AppShell,
                                  folder: String,
                                  docMgr: document_manager.DocumentManager,
@@ -61,6 +212,23 @@ func handleProjectSearchInFolder(shell: app_shell.AppShell,
         return;
     }
     RunSearch(shell, folder, "Search in Folder", docMgr, engine, locStore);
+}
+
+func handleProjectSearchInFolderAsync(shell: app_shell.AppShell,
+                                      folder: String,
+                                      docMgr: document_manager.DocumentManager,
+                                      engine: editor_engine.EditorEngine,
+                                      locStore: locations.LocationStore,
+                                      searcher: SearchController) {
+    if folder == "" or Dir.Exists(folder) == false {
+        GUI.Toast.Warning("Choose a folder to search");
+        return;
+    }
+    if searcher == null {
+        RunSearch(shell, folder, "Search in Folder", docMgr, engine, locStore);
+        return;
+    }
+    searcher.Start(shell, folder, "Search in Folder", docMgr, engine);
 }
 
 func handleQuickOpen(shell: app_shell.AppShell,
@@ -75,21 +243,35 @@ func handleQuickOpen(shell: app_shell.AppShell,
     var query = Str.Trim(GUI.MessageBox.Prompt("Quick Open", "File name or path:"));
     if query == "" { return; }
 
-    var files = FileIndex.Enumerate(projMgr.project.rootPath,
-                                    ".zia,.bas,.vb,.json,.md,.scene,.level,.txt",
-                                    "", false);
     var bestPath = "";
     var bestScore = 999;
     var i = 0;
-    while i < Seq.get_Length(files) {
-        var entry = Seq.Get(files, i);
-        var filePath = Map.GetStr(entry, "path");
+    while i < projMgr.CachedFileCount() {
+        var filePath = projMgr.CachedFileAt(i);
         var score = QuickOpenScore(projMgr.RelativePath(filePath), query);
         if score >= 0 and score < bestScore {
             bestScore = score;
             bestPath = filePath;
         }
         i = i + 1;
+    }
+
+    // Fallback for projects opened before the tree cache has been populated.
+    if bestPath == "" and projMgr.CachedFileCount() == 0 {
+        var files = FileIndex.Enumerate(projMgr.project.rootPath,
+                                        ".zia,.bas,.vb,.json,.md,.scene,.level,.txt",
+                                        "", false);
+        i = 0;
+        while i < Seq.get_Length(files) {
+            var entry = Seq.Get(files, i);
+            var filePath2 = Map.GetStr(entry, "path");
+            var score2 = QuickOpenScore(projMgr.RelativePath(filePath2), query);
+            if score2 >= 0 and score2 < bestScore {
+                bestScore = score2;
+                bestPath = filePath2;
+            }
+            i = i + 1;
+        }
     }
 
     if bestPath == "" {
@@ -158,23 +340,33 @@ func searchFiles(shell: app_shell.AppShell,
         fileIdx = fileIdx + 1;
 
         if IO.File.Exists(filePath) == false { continue; }
-        var content = contentForPath(docMgr, filePath);
+        count = count + searchOneFile(shell, filePath, query, caseSensitive, wholeWord, docMgr, locStore);
+    }
+    return count;
+}
 
-        // Search each line for the query
-        var contentLines = Str.Split(content, "\n");
-        var lineNum = 0;
-        while lineNum < Seq.get_Length(contentLines) {
-            var line = Obj.ToString(Seq.Get(contentLines, lineNum));
-            lineNum = lineNum + 1;
-            if LineMatches(line, query, caseSensitive, wholeWord) {
-                var resultText = filePath + ":" + lineNum + ": " + Str.Trim(line);
-                var item = shell.outputListBox.AddItem(resultText);
-                var locId = locStore.Add(filePath, lineNum, MatchColumn(line, query, caseSensitive),
-                                         lineNum, MatchColumn(line, query, caseSensitive) + Str.Length(query),
-                                         locations.KIND_SEARCH, Str.Trim(line));
-                GUI.ListBox.ItemSetData(item, locId);
-                count = count + 1;
-            }
+func searchOneFile(shell: app_shell.AppShell,
+                   filePath: String,
+                   query: String,
+                   caseSensitive: Boolean,
+                   wholeWord: Boolean,
+                   docMgr: document_manager.DocumentManager,
+                   locStore: locations.LocationStore) -> Integer {
+    var count = 0;
+    var content = contentForPath(docMgr, filePath);
+    var contentLines = Str.Split(content, "\n");
+    var lineNum = 0;
+    while lineNum < Seq.get_Length(contentLines) {
+        var line = Obj.ToString(Seq.Get(contentLines, lineNum));
+        lineNum = lineNum + 1;
+        if LineMatches(line, query, caseSensitive, wholeWord) {
+            var resultText = filePath + ":" + lineNum + ": " + Str.Trim(line);
+            var item = shell.outputListBox.AddItem(resultText);
+            var locId = locStore.Add(filePath, lineNum, MatchColumn(line, query, caseSensitive),
+                                     lineNum, MatchColumn(line, query, caseSensitive) + Str.Length(query),
+                                     locations.KIND_SEARCH, Str.Trim(line));
+            GUI.ListBox.ItemSetData(item, locId);
+            count = count + 1;
         }
     }
     return count;

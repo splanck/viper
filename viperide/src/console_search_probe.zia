@@ -2,8 +2,13 @@ module console_search_probe;
 
 bind "ui/app_shell";
 bind "commands/search_commands";
+bind "core/document_manager";
+bind "services/locations";
 
 bind Terminal = Viper.Terminal;
+bind File = Viper.IO.File;
+bind Path = Viper.IO.Path;
+bind TempFile = Viper.IO.TempFile;
 
 func fail(shell: app_shell.AppShell, reason: String) {
     shell.Destroy();
@@ -40,6 +45,18 @@ func main() {
     }
 
     shell.SetBuildOutput("");
+    shell.AppendBuildOutput("one");
+    if shell.outputListBox.Count != 1 {
+        fail(shell, "append partial row");
+        return;
+    }
+    shell.AppendBuildOutput(" two\nthree\n");
+    if shell.outputListBox.Count != 2 {
+        fail(shell, "append completed rows");
+        return;
+    }
+
+    shell.SetBuildOutput("");
     if shell.outputListBox.Count != 0 or shell.outputListBox.IsVisible() != 0 {
         fail(shell, "clear output");
         return;
@@ -63,6 +80,48 @@ func main() {
     }
     if search_commands.QuickOpenScore("src/main.zia", "src/") != 3 {
         fail(shell, "quick open path prefix");
+        return;
+    }
+
+    var root = TempFile.CreateDirWithPrefix("viperide_search_probe_");
+    var i = 0;
+    while i < 40 {
+        File.WriteAllText(Path.Join(root, "file" + i + ".zia"),
+                          "module File" + i + ";\nfunc main() {\n    var needle = " + i + ";\n}\n");
+        i = i + 1;
+    }
+
+    var docMgr = new document_manager.DocumentManager();
+    var locStore = new locations.LocationStore();
+    var searcher = new search_commands.SearchController();
+    if searcher.StartDirect(shell, root, "needle", ".zia", false, false) == false {
+        fail(shell, "start direct search");
+        return;
+    }
+    searcher.Pump(shell, docMgr, locStore);
+    if searcher.active == false {
+        fail(shell, "search completed in one pump");
+        return;
+    }
+    if searcher.resultCount <= 0 or searcher.resultCount >= 40 {
+        fail(shell, "search slice result count");
+        return;
+    }
+    while searcher.active {
+        searcher.Pump(shell, docMgr, locStore);
+    }
+    if searcher.resultCount != 40 {
+        fail(shell, "cooperative search final count");
+        return;
+    }
+
+    if searcher.StartDirect(shell, root, "needle", ".zia", false, false) == false {
+        fail(shell, "restart direct search");
+        return;
+    }
+    searcher.Cancel(shell);
+    if searcher.active {
+        fail(shell, "cancel search");
         return;
     }
 

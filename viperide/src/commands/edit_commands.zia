@@ -255,7 +255,7 @@ func handleAddNextOccurrence(shell: app_shell.AppShell,
         GUI.Toast.Info("No word at cursor");
         return;
     }
-    var next = FindNextOccurrence(engine.GetText(), word, engine.GetCursorLine(), engine.GetCursorCol() + Str.Length(word));
+    var next = FindNextOccurrence(engine.GetTextSnapshot(), word, engine.GetCursorLine(), engine.GetCursorCol() + Str.Length(word));
     if next == "" {
         GUI.Toast.Info("No next occurrence");
         return;
@@ -271,7 +271,7 @@ func handleSkipOccurrence(shell: app_shell.AppShell,
                           engine: editor_engine.EditorEngine) {
     var word = engine.editor.GetWordAtCursor();
     if word == "" { return; }
-    var next = FindNextOccurrence(engine.GetText(), word, engine.GetCursorLine(), engine.GetCursorCol() + Str.Length(word));
+    var next = FindNextOccurrence(engine.GetTextSnapshot(), word, engine.GetCursorLine(), engine.GetCursorCol() + Str.Length(word));
     if next == "" { return; }
     var parts = Str.Split(next, ":");
     engine.editor.SetCursor(Convert.ToInt(Obj.ToString(Seq.Get(parts, 0))) - 1,
@@ -284,7 +284,7 @@ func handleSelectAllOccurrences(shell: app_shell.AppShell,
     var word = engine.editor.GetWordAtCursor();
     if word == "" { return; }
     engine.editor.ClearCursors();
-    var lines = Str.Split(engine.GetText(), "\n");
+    var lines = Str.Split(engine.GetTextSnapshot(), "\n");
     var lineIdx = 0;
     var firstSet = false;
     while lineIdx < Seq.get_Length(lines) {

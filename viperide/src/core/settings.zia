@@ -73,7 +73,10 @@ class SettingsManager {
         fontSize       = DEFAULT_FONT_SIZE;
         fontPath       = "";
         theme          = "dark";
-        minimapVisible = true;
+        // The minimap is useful on small files, but it is still a measurable
+        // paint-path cost on large buffers. Keep it opt-in until the minimap
+        // has a full incremental renderer.
+        minimapVisible = false;
         autoCheckOnSave = true;
         codeFolding    = true;
         restoreSession = true;

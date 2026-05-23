@@ -183,6 +183,8 @@ class AppShell {
     expose String contextPath;
     expose String contextDir;
     expose String lastBuildOutput;
+    expose String outputPartialLine;
+    expose Any outputPartialItem;
 
     /// @brief Initialize with sidebar visible. Build() must be called next.
     expose func init() {
@@ -191,6 +193,8 @@ class AppShell {
         contextPath = "";
         contextDir = "";
         lastBuildOutput = "";
+        outputPartialLine = "";
+        outputPartialItem = null;
     }
 
     /// @brief Construct the full IDE window and every chrome widget.
@@ -493,6 +497,8 @@ class AppShell {
             outputListBox.Clear();
             outputListBox.SetVisible(0);
             lastBuildOutput = "";
+            outputPartialLine = "";
+            outputPartialItem = null;
             HideOutputPanel();
             return;
         }
@@ -500,16 +506,50 @@ class AppShell {
         if lastBuildOutput != "" and Str.EndsWith(lastBuildOutput, "\n")
            and Str.StartsWith(output, lastBuildOutput) {
             var delta = Str.Mid(output, Str.Length(lastBuildOutput) + 1);
-            AddBuildOutputLines(delta);
+            AppendBuildOutput(delta);
             lastBuildOutput = output;
             ShowOutputPanel();
             return;
         }
 
         outputListBox.Clear();
+        outputPartialLine = "";
+        outputPartialItem = null;
         AddBuildOutputLines(output);
         ShowOutputPanel();
         lastBuildOutput = output;
+    }
+
+    expose func AppendBuildOutput(output: String) {
+        if output == "" { return; }
+        if outputPartialItem != null {
+            outputListBox.RemoveItem(outputPartialItem);
+            outputPartialItem = null;
+        }
+
+        var combined = outputPartialLine + output;
+        outputPartialLine = "";
+
+        var lines = Str.Split(combined, "\n");
+        var n = Seq.get_Length(lines);
+        var endsWithNewline = Str.EndsWith(combined, "\n");
+        var i = 0;
+        while i < n {
+            var line = Obj.ToString(Seq.Get(lines, i));
+            var isLast = i == n - 1;
+            if isLast and endsWithNewline == false {
+                outputPartialLine = line;
+                if line != "" {
+                    outputPartialItem = outputListBox.AddItem(line);
+                }
+            } else if line != "" {
+                outputListBox.AddItem(line);
+            }
+            i = i + 1;
+        }
+
+        lastBuildOutput = lastBuildOutput + output;
+        ShowOutputPanel();
     }
 
     func AddBuildOutputLines(output: String) {

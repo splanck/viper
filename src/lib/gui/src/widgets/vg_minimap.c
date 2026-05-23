@@ -267,9 +267,21 @@ static void minimap_paint(vg_widget_t *widget, void *canvas) {
     if (visible_columns < 24.0f)
         visible_columns = 24.0f;
 
-    for (int line = 0; line < editor->line_count; line++) {
+    int max_lines_to_draw = inner_h * 2;
+    if (max_lines_to_draw < 1)
+        max_lines_to_draw = 1;
+    if (max_lines_to_draw > 2048)
+        max_lines_to_draw = 2048;
+    int line_step = (line_count + max_lines_to_draw - 1) / max_lines_to_draw;
+    if (line_step < 1)
+        line_step = 1;
+
+    for (int line = 0; line < editor->line_count; line += line_step) {
         int32_t y0 = inner_y + (line * inner_h) / line_count;
-        int32_t y1 = inner_y + ((line + 1) * inner_h) / line_count;
+        int end_line = line + line_step;
+        if (end_line > line_count)
+            end_line = line_count;
+        int32_t y1 = inner_y + (end_line * inner_h) / line_count;
         int32_t bar_h = y1 - y0;
         if (bar_h < 1)
             bar_h = 1;

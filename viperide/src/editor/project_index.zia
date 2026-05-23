@@ -11,6 +11,7 @@ bind Map = Viper.Collections.Map;
 bind IO = Viper.IO;
 
 final INDEX_IDLE_MS = 350;
+final INDEX_FILES_PER_FRAME = 8;
 
 class ProjectIndexer {
     expose Any handle;
@@ -22,6 +23,10 @@ class ProjectIndexer {
     expose Integer pendingActiveRevision;
     expose Integer pendingSinceMs;
     expose Integer syncCount;
+    expose Any pendingIndexFiles;
+    expose Integer pendingIndexPos;
+    expose Boolean indexing;
+    expose Integer indexedFileCount;
 
     expose func init() {
         handle = null;
@@ -33,6 +38,10 @@ class ProjectIndexer {
         pendingActiveRevision = -1;
         pendingSinceMs = 0;
         syncCount = 0;
+        pendingIndexFiles = null;
+        pendingIndexPos = 0;
+        indexing = false;
+        indexedFileCount = 0;
     }
 
     expose func EnsureProject(projMgr: project_manager.ProjectManager,
@@ -62,7 +71,7 @@ class ProjectIndexer {
         handle = ProjectIndex.New(root);
         valid = ProjectIndex.IsValid(handle);
         if valid {
-            IndexWorkspace();
+            StartIndexWorkspace();
             SyncOpenDocuments(docMgr);
         }
     }
@@ -79,20 +88,55 @@ class ProjectIndexer {
         pendingActivePath = "";
         pendingActiveRevision = -1;
         pendingSinceMs = 0;
+        pendingIndexFiles = null;
+        pendingIndexPos = 0;
+        indexing = false;
+        indexedFileCount = 0;
     }
 
-    expose func IndexWorkspace() {
+    expose func StartIndexWorkspace() {
         if valid == false { return; }
-        var files = FileIndex.Enumerate(rootPath, ".zia", "", false);
-        var i = 0;
-        while i < Seq.get_Length(files) {
-            var entry = Seq.Get(files, i);
+        pendingIndexFiles = FileIndex.Enumerate(rootPath, ".zia", "", false);
+        pendingIndexPos = 0;
+        indexing = true;
+        indexedFileCount = 0;
+    }
+
+    expose func PumpIndex(maxFiles: Integer) -> Integer {
+        if valid == false or indexing == false or pendingIndexFiles == null { return 0; }
+        var limit = maxFiles;
+        if limit <= 0 { limit = INDEX_FILES_PER_FRAME; }
+
+        var processed = 0;
+        var total = Seq.get_Length(pendingIndexFiles);
+        while pendingIndexPos < total and processed < limit {
+            var entry = Seq.Get(pendingIndexFiles, pendingIndexPos);
+            pendingIndexPos = pendingIndexPos + 1;
+            processed = processed + 1;
             var path = Map.GetStr(entry, "path");
             if IO.File.Exists(path) {
                 ProjectIndex.UpdateFile(handle, path, IO.File.ReadAllText(path));
+                indexedFileCount = indexedFileCount + 1;
             }
-            i = i + 1;
         }
+        if pendingIndexPos >= total {
+            indexing = false;
+            pendingIndexFiles = null;
+            pendingIndexPos = 0;
+        }
+        return processed;
+    }
+
+    expose func FinishPendingIndex() {
+        if valid == false { return; }
+        while indexing {
+            PumpIndex(128);
+        }
+    }
+
+    expose func IndexWorkspace() {
+        StartIndexWorkspace();
+        FinishPendingIndex();
     }
 
     expose func SyncOpenDocuments(docMgr: document_manager.DocumentManager) {
@@ -119,7 +163,7 @@ class ProjectIndexer {
         var revision = engine.GetRevision();
         if doc.filePath == syncedActivePath and revision == syncedActiveRevision { return false; }
 
-        doc.content = engine.GetText();
+        doc.content = engine.GetTextSnapshot();
         ProjectIndex.UpdateFile(handle, doc.filePath, doc.content);
         syncedActivePath = doc.filePath;
         syncedActiveRevision = revision;
@@ -171,6 +215,7 @@ class ProjectIndexer {
                            line: Integer,
                            col: Integer) -> Any {
         if valid == false { return null; }
+        FinishPendingIndex();
         return ProjectIndex.Definition(handle, path, source, line, col);
     }
 
@@ -179,6 +224,7 @@ class ProjectIndexer {
                            line: Integer,
                            col: Integer) -> Any {
         if valid == false { return null; }
+        FinishPendingIndex();
         return ProjectIndex.References(handle, path, source, line, col);
     }
 
@@ -188,6 +234,7 @@ class ProjectIndexer {
                             col: Integer,
                             newName: String) -> Any {
         if valid == false { return null; }
+        FinishPendingIndex();
         return ProjectIndex.RenameEdits(handle, path, source, line, col, newName);
     }
 }

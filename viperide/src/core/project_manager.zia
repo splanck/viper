@@ -2,6 +2,7 @@ module project_manager;
 
 bind "project";
 bind Viper.GUI as GUI;
+bind Obj = Viper.Core.Object;
 bind IO = Viper.IO;
 bind Viper.IO.Path as Path;
 bind Viper.IO.Dir as Dir;
@@ -53,11 +54,14 @@ class ProjectManager {
     expose String selectedFilePath;
     /// True for one frame after a file was clicked.
     expose Boolean fileWasSelected;
+    /// Project file paths collected while building the tree, reused by Quick Open.
+    expose List fileCache;
 
     /// @brief Initialize with no selection. Call `Setup` next.
     expose func init() {
         selectedFilePath = "";
         fileWasSelected = false;
+        fileCache = new List();
     }
 
     /// @brief Inject the TreeView widget and construct the empty Project.
@@ -87,6 +91,7 @@ class ProjectManager {
     expose func CloseProject() {
         project.Close();
         treeView.Clear();
+        fileCache = new List();
         selectedFilePath = "";
     }
 
@@ -129,8 +134,18 @@ class ProjectManager {
             if ShouldExcludePath(fullPath, false) == false {
                 var fileNode = treeView.AddNode(parentNode, fileName);
                 GUI.TreeView.Node.SetData(fileNode, fullPath);
+                fileCache.Push(fullPath);
             }
         }
+    }
+
+    expose func CachedFileCount() -> Integer {
+        return fileCache.count();
+    }
+
+    expose func CachedFileAt(index: Integer) -> String {
+        if index < 0 or index >= fileCache.count() { return ""; }
+        return Obj.ToString(fileCache.get(index));
     }
 
     /// @brief Per-frame selection-change poll.

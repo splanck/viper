@@ -7,6 +7,7 @@ bind "editor/editor_engine";
 bind "editor/project_index";
 
 bind Viper.Terminal as Terminal;
+bind Str = Viper.String;
 bind File = Viper.IO.File;
 bind Path = Viper.IO.Path;
 bind TempFile = Viper.IO.TempFile;
@@ -64,6 +65,7 @@ func main() {
     large = large + "}\n";
     engine.SetText(large);
     var largeRevision = engine.GetRevision();
+    engine.editor.ResetPerfStats();
     var moves = 0;
     while moves < 200 {
         engine.editor.SetCursor(moves + 1, 4);
@@ -71,6 +73,49 @@ func main() {
     }
     if engine.GetRevision() != largeRevision {
         fail(shell, "large-file cursor movement changed revision");
+        return;
+    }
+    if engine.editor.GetLayoutLinearScanCount() != 0 {
+        fail(shell, "large-file no-wrap cursor movement scanned layout");
+        return;
+    }
+    if engine.editor.GetFullTextCopyCount() != 0 {
+        fail(shell, "large-file cursor movement copied full text");
+        return;
+    }
+
+    engine.editor.ResetPerfStats();
+    var snapshot1 = engine.GetTextSnapshot();
+    var snapshot2 = engine.GetTextSnapshot();
+    if snapshot1 != snapshot2 {
+        fail(shell, "text snapshot mismatch");
+        return;
+    }
+    if engine.editor.GetFullTextCopyCount() != 0 {
+        fail(shell, "cached snapshot copied clean revision");
+        return;
+    }
+
+    var beforeSnapshotEditRevision = engine.GetRevision();
+    engine.editor.InsertAtCursor("    var cachedSnapshotProbe = 1;\n");
+    if engine.GetRevision() <= beforeSnapshotEditRevision {
+        fail(shell, "snapshot probe insert did not bump revision");
+        return;
+    }
+    engine.editor.ResetPerfStats();
+    snapshot1 = engine.GetTextSnapshot();
+    snapshot2 = engine.GetTextSnapshot();
+    if snapshot1 != snapshot2 {
+        fail(shell, "edited text snapshot mismatch");
+        return;
+    }
+    if Str.IndexOf(snapshot1, "cachedSnapshotProbe") == 0 {
+        fail(shell, "edited text snapshot stale");
+        return;
+    }
+    var snapshotCopies = engine.editor.GetFullTextCopyCount();
+    if snapshotCopies != 1 {
+        fail(shell, "edited revision not snapshotted exactly once: " + snapshotCopies);
         return;
     }
 

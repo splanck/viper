@@ -131,7 +131,6 @@ Expect breaking changes. The IL specification, APIs, and tool interfaces are not
 
 | Demo | Description |
 |------|-------------|
-| [ViperIDE](viperide/) | Full-featured IDE for Zia and BASIC |
 | [ViperSQL](examples/apps/vipersql/) | SQL database engine with an interactive client |
 | [Paint](examples/apps/paint/) | Drawing app with layers, undo/redo, and an expanded tool set |
 | [Chess](examples/games/chess/) | Chess with alpha-beta AI and a drag-and-drop GUI |

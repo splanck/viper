@@ -121,7 +121,7 @@ class LiveDiagnostics {
         }
 
         // Run check
-        var source = engine.GetText();
+        var source = engine.GetTextSnapshot();
         pending = false;
         lastCheckedSource = source;
         lastCheckedPath = sourcePath;

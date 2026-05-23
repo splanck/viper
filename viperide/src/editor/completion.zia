@@ -7,6 +7,7 @@ bind Viper.Collections.Seq as Seq;
 bind Viper.Core.Object as Obj;
 bind Viper.Zia.Completion as ZiaCompletion;
 bind "../editor/zia_query";
+bind "../editor/editor_engine";
 
 final COMPLETION_DEBOUNCE_MS = 180;
 
@@ -59,6 +60,7 @@ final COMPLETION_DEBOUNCE_MS = 180;
 /// @brief IntelliSense popup controller. One per editor.
 class CompletionController {
     expose GUI.CodeEditor editor;
+    expose editor_engine.EditorEngine engine;
     expose GUI.FloatingPanel popup;
     expose GUI.ListBox listbox;
 
@@ -95,6 +97,7 @@ class CompletionController {
         allDisplays    = new List();
         allInsertTexts = new List();
         insertTexts    = new List();
+        engine          = null;
     }
 
     /// @brief Construct the popup panel and embed a ListBox.
@@ -118,6 +121,13 @@ class CompletionController {
 
         popup.SetVisible(0);
         Input.Keyboard.EnableTextInput();
+    }
+
+    expose func SetEngine(value: editor_engine.EditorEngine) {
+        engine = value;
+        if value != null {
+            editor = value.editor;
+        }
     }
 
     /// @brief Set the active file's path so CompleteForFile can resolve
@@ -157,7 +167,10 @@ class CompletionController {
         pendingQuery = false;
 
         // Get current source and cursor position
-        var text    = editor.Text;
+        var text = editor.Text;
+        if engine != null {
+            text = engine.GetTextSnapshot();
+        }
         // A buffer with no `module` line yields null Sema; query a synthetic-
         // module-prefixed copy and shift the cursor line by the same amount.
         var qtext   = zia_query.WrapForQuery(text);

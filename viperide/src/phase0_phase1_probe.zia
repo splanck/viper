@@ -94,6 +94,8 @@ func main() {
     if assertTrue(defaultSettings.fontSize == settings.DEFAULT_FONT_SIZE
                   and settings.DEFAULT_FONT_SIZE == 20,
                   "default editor font size is readable") == false { return; }
+    if assertTrue(defaultSettings.minimapVisible == false,
+                  "minimap defaults off until large-file renderer is incremental") == false { return; }
 
     var sigSource = "module Demo;\nfunc f() { outer(inner(a, b), c); }\n";
     if assertTrue(signature.ActiveParameter(sigSource, 2, 27) == 1,

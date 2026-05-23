@@ -229,6 +229,159 @@ static std::string formatFunctionSignature(const std::string &name,
     return out.str();
 }
 
+static std::string trimCopy(std::string_view text) {
+    size_t start = 0;
+    while (start < text.size() && std::isspace(static_cast<unsigned char>(text[start])))
+        ++start;
+    size_t end = text.size();
+    while (end > start && std::isspace(static_cast<unsigned char>(text[end - 1])))
+        --end;
+    return std::string(text.substr(start, end - start));
+}
+
+static bool hasKeywordBoundary(std::string_view source, size_t start, size_t len) {
+    if (start > 0 && isIdentChar(source[start - 1]))
+        return false;
+    size_t end = start + len;
+    return end >= source.size() || !isIdentChar(source[end]);
+}
+
+static size_t findMatchingParen(std::string_view source, size_t open) {
+    int depth = 0;
+    bool inString = false;
+    for (size_t i = open; i < source.size(); ++i) {
+        char c = source[i];
+        if (inString) {
+            if (c == '\\' && i + 1 < source.size()) {
+                ++i;
+                continue;
+            }
+            if (c == '"')
+                inString = false;
+            continue;
+        }
+        if (c == '"') {
+            inString = true;
+            continue;
+        }
+        if (c == '(') {
+            ++depth;
+        } else if (c == ')') {
+            --depth;
+            if (depth == 0)
+                return i;
+        }
+    }
+    return std::string_view::npos;
+}
+
+static std::string fallbackSignatureFromSource(std::string_view source,
+                                               const SignatureCallContext &call) {
+    if (!call.valid || !call.receiverExpr.empty() || call.name.empty())
+        return {};
+
+    std::vector<std::string> signatures;
+    size_t pos = 0;
+    while ((pos = source.find("func", pos)) != std::string_view::npos) {
+        if (!hasKeywordBoundary(source, pos, 4)) {
+            pos += 4;
+            continue;
+        }
+
+        size_t cursor = pos + 4;
+        while (cursor < source.size() && std::isspace(static_cast<unsigned char>(source[cursor])))
+            ++cursor;
+        size_t nameStart = cursor;
+        while (cursor < source.size() && isIdentChar(source[cursor]))
+            ++cursor;
+        if (nameStart == cursor) {
+            pos += 4;
+            continue;
+        }
+
+        std::string name(source.substr(nameStart, cursor - nameStart));
+        if (!equalsIgnoreCase(name, call.name)) {
+            pos = cursor;
+            continue;
+        }
+
+        while (cursor < source.size() && std::isspace(static_cast<unsigned char>(source[cursor])))
+            ++cursor;
+        if (cursor >= source.size() || source[cursor] != '(') {
+            pos = cursor;
+            continue;
+        }
+
+        size_t close = findMatchingParen(source, cursor);
+        if (close == std::string_view::npos) {
+            pos = cursor + 1;
+            continue;
+        }
+
+        std::string params = trimCopy(source.substr(cursor + 1, close - cursor - 1));
+        size_t after = close + 1;
+        while (after < source.size() && std::isspace(static_cast<unsigned char>(source[after])))
+            ++after;
+
+        std::string returnType;
+        if (after + 1 < source.size() && source[after] == '-' && source[after + 1] == '>') {
+            after += 2;
+            size_t retStart = after;
+            while (after < source.size() && source[after] != '{' && source[after] != '\n' &&
+                   source[after] != ';')
+                ++after;
+            returnType = trimCopy(source.substr(retStart, after - retStart));
+        }
+
+        std::ostringstream sig;
+        sig << name << "(" << params << ")";
+        if (!returnType.empty())
+            sig << " -> " << returnType;
+        if (!params.empty()) {
+            int paramCount = 1;
+            int nestedParen = 0;
+            int nestedBracket = 0;
+            int nestedBrace = 0;
+            for (char c : params) {
+                if (c == '(')
+                    ++nestedParen;
+                else if (c == ')' && nestedParen > 0)
+                    --nestedParen;
+                else if (c == '[')
+                    ++nestedBracket;
+                else if (c == ']' && nestedBracket > 0)
+                    --nestedBracket;
+                else if (c == '{')
+                    ++nestedBrace;
+                else if (c == '}' && nestedBrace > 0)
+                    --nestedBrace;
+                else if (c == ',' && nestedParen == 0 && nestedBracket == 0 && nestedBrace == 0)
+                    ++paramCount;
+            }
+
+            int active = call.activeParameter;
+            if (active < 0)
+                active = 0;
+            if (active >= paramCount)
+                active = paramCount - 1;
+            sig << "\nparameter " << (active + 1) << " of " << paramCount;
+        }
+        signatures.push_back(sig.str());
+        pos = close + 1;
+    }
+
+    if (signatures.empty())
+        return {};
+
+    std::ostringstream out;
+    for (size_t i = 0; i < signatures.size(); ++i) {
+        if (i > 0)
+            out << "\n";
+        out << signatures[i];
+    }
+    return out.str();
+}
+
 // ---------------------------------------------------------------------------
 // serialize
 // ---------------------------------------------------------------------------
@@ -921,12 +1074,16 @@ std::string CompletionEngine::signatureHelp(std::string_view source,
                                             int line,
                                             int col,
                                             std::string_view filePath) {
-    AnalysisResult *analysis = analyze(source, filePath);
-    if (!analysis || !analysis->sema)
-        return {};
-
     SignatureCallContext call = extractSignatureCallContext(source, line, col);
     if (!call.valid)
+        return {};
+
+    std::string fallback = fallbackSignatureFromSource(source, call);
+    if (!fallback.empty())
+        return fallback;
+
+    AnalysisResult *analysis = analyze(source, filePath);
+    if (!analysis || !analysis->sema)
         return {};
 
     const Sema &sema = *analysis->sema;

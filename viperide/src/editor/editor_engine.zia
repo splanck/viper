@@ -36,11 +36,15 @@ class EditorEngine {
     expose GUI.CodeEditor editor;   // Underlying CodeEditor widget.
     expose Integer lastCursorLine;  // For detecting cursor changes between frames.
     expose Integer lastCursorCol;
+    expose String cachedTextSnapshot;
+    expose Integer cachedTextRevision;
 
     /// @brief Initialize with no widget yet. Call Setup to attach.
     expose func init() {
         lastCursorLine = 1;
         lastCursorCol = 1;
+        cachedTextSnapshot = "";
+        cachedTextRevision = -1;
     }
 
     /// @brief Construct the CodeEditor inside `parent` and configure it.
@@ -63,6 +67,8 @@ class EditorEngine {
         }
         editor.SetText(doc.content);
         editor.ClearModified();
+        cachedTextSnapshot = doc.content;
+        cachedTextRevision = editor.Revision;
 
         if doc.language == "zia" {
             editor.SetLanguage("zia");
@@ -91,7 +97,7 @@ class EditorEngine {
         if doc == null {
             return;
         }
-        doc.content = editor.Text;
+        doc.content = GetTextSnapshot();
         doc.cursorLine = GetCursorLine();
         doc.cursorCol = GetCursorCol();
         doc.scrollLine = GetScrollLine();
@@ -137,6 +143,22 @@ class EditorEngine {
         return editor.Text;
     }
 
+    /// @brief Full text snapshot cached by editor content revision.
+    /// @details Multiple controllers may need the same source after a single
+    ///          edit. This avoids repeated full-buffer materialization within
+    ///          the same revision while preserving exact text for semantic jobs.
+    expose func GetTextSnapshot() -> String {
+        if editor == null {
+            return "";
+        }
+        var revision = editor.Revision;
+        if revision != cachedTextRevision {
+            cachedTextSnapshot = editor.Text;
+            cachedTextRevision = revision;
+        }
+        return cachedTextSnapshot;
+    }
+
     /// @brief Cheap content-version probe for per-frame controllers.
     /// @note Cursor, selection, scroll, and highlight changes do not change
     ///       this value. Controllers should read the full buffer only after
@@ -154,6 +176,8 @@ class EditorEngine {
             return;
         }
         editor.SetText(text);
+        cachedTextSnapshot = text;
+        cachedTextRevision = editor.Revision;
     }
 
     /// @brief Resize the editor widget to (w, h) pixels.

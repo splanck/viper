@@ -125,7 +125,7 @@ class HoverController {
         // Dwell time reached — query hover info
         waiting = false;
 
-        var source = engine.GetText();
+        var source = engine.GetTextSnapshot();
         var hoverLine = engine.editor.GetLineAtPixel(my);
         var hoverCol = engine.editor.GetColAtPixel(mx, my);
         if hoverLine < 0 or hoverCol < 0 { return; }

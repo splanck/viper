@@ -100,6 +100,7 @@ func main() {
     var commandRegistry = new command_registry.CommandRegistry();
     var languageServices = new language_service.LanguageServiceManager();
     var indexer = new project_index.ProjectIndexer();
+    var searcher = new search_commands.SearchController();
 
     shell.Build("ViperIDE", WIN_WIDTH, WIN_HEIGHT);
     view_commands.applyShellFont(shell);
@@ -113,6 +114,7 @@ func main() {
 
     var completer = new completion.CompletionController();
     completer.Setup(engine.editor, shell.app);
+    completer.SetEngine(engine);
 
     // Real-time diagnostics (errors-as-you-type)
     var liveDiag = new diagnostics.LiveDiagnostics();
@@ -252,6 +254,7 @@ func main() {
         symbolOutline.setSourcePath(activeToolPath);
         symbolOutline.setEnabled(activeService.canDocumentSymbols);
         indexer.EnsureProject(projMgr, docMgr);
+        indexer.PumpIndex(8);
         indexer.SyncActiveWhenIdle(docMgr, engine);
         if activeToolDoc != null {
             if lastBreakpointPath != activeToolDoc.filePath or lastBreakpointVersion != breakpointStore.version {
@@ -292,6 +295,7 @@ func main() {
         }
         liveDiag.update(engine, shell, locStore);
         build_commands.UpdateJob(shell, buildSys, locStore);
+        searcher.Pump(shell, docMgr, locStore);
         hoverCtrl.update(engine);
         sigCtrl.update(engine);
         symbolOutline.update(engine);
@@ -321,6 +325,9 @@ func main() {
         if Str.IndexOf(typedThisFrame, ")") != 0 {
             hoverCtrl.hideTooltip();
             sigCtrl.Hide();
+        }
+        if searcher.active and Input.Keyboard.WasPressed(Input.Keyboard.get_KEY_ESCAPE()) {
+            searcher.Cancel(shell);
         }
 
         // ====================================================================
@@ -472,8 +479,8 @@ func main() {
             }
         }
         if shell.ctxSearchFolder.WasClicked() != 0 {
-            search_commands.handleProjectSearchInFolder(shell, shell.contextDir,
-                                                        docMgr, engine, locStore);
+            search_commands.handleProjectSearchInFolderAsync(shell, shell.contextDir,
+                                                             docMgr, engine, locStore, searcher);
         }
         if shell.ctxRunFile.WasClicked() != 0 {
             var runPath = CurrentContextPath(projMgr, shell);
@@ -598,7 +605,7 @@ func main() {
         if triggered("settings", shell.miPreferences, null, cpSelected)        { overlays.OpenSettings(shell, appSettings); }
         if shell.miAbout.WasClicked() != 0                                     { overlays.OpenAbout(shell); }
         if triggeredNoMenu("quickopen", cpSelected) { search_commands.handleQuickOpen(shell, projMgr, docMgr, engine, tabs); }
-        if triggeredNoMenu("searchproject", cpSelected) { search_commands.handleProjectSearch(shell, projMgr, docMgr, engine, locStore); }
+        if triggeredNoMenu("searchproject", cpSelected) { search_commands.handleProjectSearchAsync(shell, projMgr, docMgr, engine, locStore, searcher); }
         if triggeredNoMenu("symboloutline", cpSelected) { symbolOutline.toggle(); }
 
         // Build commands — toolbar items wired alongside menu items

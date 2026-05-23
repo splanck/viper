@@ -83,6 +83,36 @@ static void delete_text_range_internal(
     vg_codeeditor_t *editor, int start_line, int start_col, int end_line, int end_col);
 static void codeeditor_adjust_hidden_cursors(vg_codeeditor_t *editor);
 
+static void codeeditor_perf_add(uint64_t *counter, uint64_t amount) {
+    if (!counter)
+        return;
+    if (*counter > UINT64_MAX - amount) {
+        *counter = UINT64_MAX;
+    } else {
+        *counter += amount;
+    }
+}
+
+static bool codeeditor_has_hidden_lines(const vg_codeeditor_t *editor) {
+    if (!editor || editor->fold_region_count <= 0)
+        return false;
+    for (int i = 0; i < editor->fold_region_count; i++) {
+        if (editor->fold_regions[i].folded)
+            return true;
+    }
+    return false;
+}
+
+static int codeeditor_clamp_line_index(const vg_codeeditor_t *editor, int line) {
+    if (!editor || editor->line_count <= 0)
+        return 0;
+    if (line < 0)
+        return 0;
+    if (line >= editor->line_count)
+        return editor->line_count - 1;
+    return line;
+}
+
 //=============================================================================
 // CodeEditor VTable
 //=============================================================================
@@ -141,6 +171,72 @@ static void codeeditor_bump_revision(vg_codeeditor_t *editor) {
     if (!editor)
         return;
     editor->revision = editor->revision == UINT64_MAX ? 1 : editor->revision + 1;
+}
+
+/// @brief Advance the syntax-cache generation after a language/theme/global-state change.
+static void codeeditor_bump_highlight_generation(vg_codeeditor_t *editor) {
+    if (!editor)
+        return;
+    editor->highlight_generation =
+        editor->highlight_generation == UINT64_MAX ? 1 : editor->highlight_generation + 1;
+}
+
+/// @brief Mark one line's cached syntax colors and language state stale.
+static void codeeditor_invalidate_line_highlight(vg_codeeditor_t *editor, int line) {
+    if (!editor || line < 0 || line >= editor->line_count)
+        return;
+    editor->lines[line].highlight_generation = 0;
+    editor->lines[line].syntax_state_generation = 0;
+}
+
+/// @brief Mark all syntax colors and cached language states stale without touching text revision.
+static void codeeditor_invalidate_all_highlights(vg_codeeditor_t *editor) {
+    if (!editor)
+        return;
+    codeeditor_bump_highlight_generation(editor);
+    for (int i = 0; i < editor->line_count; i++) {
+        editor->lines[i].highlight_generation = 0;
+        editor->lines[i].syntax_state_generation = 0;
+    }
+}
+
+/// @brief Heuristic for edits that can change downstream lexical state.
+static bool codeeditor_text_may_affect_multiline_syntax(const char *text) {
+    if (!text)
+        return false;
+    for (const char *p = text; *p; p++) {
+        if (*p == '\n' || *p == '/' || *p == '*')
+            return true;
+    }
+    return false;
+}
+
+static int highlight_span_compare(const void *lhs, const void *rhs) {
+    const struct vg_highlight_span *a = (const struct vg_highlight_span *)lhs;
+    const struct vg_highlight_span *b = (const struct vg_highlight_span *)rhs;
+    if (a->start_line != b->start_line)
+        return a->start_line < b->start_line ? -1 : 1;
+    if (a->start_col != b->start_col)
+        return a->start_col < b->start_col ? -1 : 1;
+    if (a->end_line != b->end_line)
+        return a->end_line < b->end_line ? -1 : 1;
+    if (a->end_col != b->end_col)
+        return a->end_col < b->end_col ? -1 : 1;
+    return 0;
+}
+
+static void codeeditor_sort_highlight_spans(vg_codeeditor_t *editor) {
+    if (!editor || editor->highlight_spans_sorted)
+        return;
+    if (editor->highlight_span_count <= 1) {
+        editor->highlight_spans_sorted = true;
+        return;
+    }
+    qsort(editor->highlight_spans,
+          (size_t)editor->highlight_span_count,
+          sizeof(*editor->highlight_spans),
+          highlight_span_compare);
+    editor->highlight_spans_sorted = true;
 }
 
 /// @brief Grows @p line->text to hold at least @p needed bytes, doubling from INITIAL_TEXT_CAPACITY.
@@ -365,6 +461,7 @@ static void codeeditor_clear_highlight_spans(vg_codeeditor_t *editor) {
     editor->highlight_spans = NULL;
     editor->highlight_span_count = 0;
     editor->highlight_span_cap = 0;
+    editor->highlight_spans_sorted = true;
 }
 
 /// @brief Ensures the colors buffer for @p line_idx is sized, then invokes the syntax highlighter callback.
@@ -374,6 +471,9 @@ static void highlight_line(vg_codeeditor_t *editor, size_t line_idx) {
 
     vg_code_line_t *line = &editor->lines[line_idx];
     if (line->length == 0)
+        return;
+    if (line->colors && line->colors_capacity >= line->length &&
+        line->highlight_generation == editor->highlight_generation)
         return;
 
     // Grow the colors buffer if needed
@@ -392,8 +492,10 @@ static void highlight_line(vg_codeeditor_t *editor, size_t line_idx) {
         line->colors_capacity = new_cap;
     }
 
+    codeeditor_perf_add(&editor->perf_stats.line_highlight_calls, 1);
     editor->syntax_highlighter(
         (vg_widget_t *)editor, (int)line_idx, line->text, line->colors, editor->syntax_data);
+    line->highlight_generation = editor->highlight_generation;
 }
 
 /// @brief Draws the substring text[start..start+len] at (x,y) using a stack buffer for short slices.
@@ -636,8 +738,12 @@ static float codeeditor_total_content_height_for_width(const vg_codeeditor_t *ed
     if (!editor)
         return 0.0f;
 
+    if (!editor->word_wrap && !codeeditor_has_hidden_lines(editor))
+        return (float)editor->line_count * editor->line_height;
+
     float total_rows = 0.0f;
     for (int i = 0; i < editor->line_count; i++) {
+        codeeditor_perf_add(&((vg_codeeditor_t *)editor)->perf_stats.total_height_linear_scans, 1);
         total_rows += (float)codeeditor_visual_rows_for_line(editor, i, content_width);
     }
     return total_rows * editor->line_height;
@@ -678,8 +784,12 @@ static int codeeditor_total_visual_rows_for_width(const vg_codeeditor_t *editor,
     if (!editor)
         return 0;
 
+    if (!editor->word_wrap && !codeeditor_has_hidden_lines(editor))
+        return editor->line_count;
+
     int total_rows = 0;
     for (int i = 0; i < editor->line_count; i++) {
+        codeeditor_perf_add(&((vg_codeeditor_t *)editor)->perf_stats.total_visual_row_linear_scans, 1);
         total_rows += codeeditor_visual_rows_for_line(editor, i, content_width);
     }
     return total_rows;
@@ -746,6 +856,8 @@ static int codeeditor_visual_row_for_position(const vg_codeeditor_t *editor,
                                               int col) {
     if (!editor)
         return 0;
+    if (!editor->word_wrap && !codeeditor_has_hidden_lines(editor))
+        return codeeditor_clamp_line_index(editor, line);
     if (line < 0)
         line = 0;
     if (line >= editor->line_count)
@@ -754,6 +866,7 @@ static int codeeditor_visual_row_for_position(const vg_codeeditor_t *editor,
 
     int visual_row = 0;
     for (int i = 0; i < line; i++) {
+        codeeditor_perf_add(&((vg_codeeditor_t *)editor)->perf_stats.visual_row_linear_scans, 1);
         visual_row += codeeditor_visual_rows_for_line(editor, i, content_width);
     }
 
@@ -779,8 +892,17 @@ static void codeeditor_locate_visual_row(const vg_codeeditor_t *editor,
     if (visual_row < 0)
         visual_row = 0;
 
+    if (!editor->word_wrap && !codeeditor_has_hidden_lines(editor)) {
+        if (out_line)
+            *out_line = codeeditor_clamp_line_index(editor, visual_row);
+        if (out_row_in_line)
+            *out_row_in_line = 0;
+        return;
+    }
+
     int accumulated = 0;
     for (int line = 0; line < editor->line_count; line++) {
+        codeeditor_perf_add(&((vg_codeeditor_t *)editor)->perf_stats.locate_visual_row_linear_scans, 1);
         int row_count = codeeditor_visual_rows_for_line(editor, line, content_width);
         if (row_count == 0)
             continue;
@@ -1559,12 +1681,16 @@ static void apply_edit_targets(vg_codeeditor_t *editor,
         edit_history_begin_group(editor->history);
 
     bool changed = false;
+    bool syntax_global_dirty = false;
     for (int i = 0; i < target_count; i++) {
         const vg_edit_target_t *target = &clamped_targets[i];
         char *old_text = old_texts[i];
         int history_end_line = target->end_line;
         int history_end_col = target->end_col;
         const bool has_old_text = has_old_texts[i];
+        syntax_global_dirty =
+            syntax_global_dirty || codeeditor_text_may_affect_multiline_syntax(old_text) ||
+            codeeditor_text_may_affect_multiline_syntax(replacement_text);
 
         if (has_old_text) {
             delete_text_range_internal(
@@ -1636,6 +1762,8 @@ cleanup:
     if (!changed)
         return;
     codeeditor_bump_revision(editor);
+    if (syntax_global_dirty)
+        codeeditor_invalidate_all_highlights(editor);
     editor->modified = true;
     vg_codeeditor_refresh_layout_state(editor);
     ensure_cursor_visible(editor);
@@ -1735,6 +1863,8 @@ vg_codeeditor_t *vg_codeeditor_create(vg_widget_t *parent) {
     editor->cursor_blink_time = 0;
     editor->modified = false;
     editor->revision = 1;
+    editor->highlight_generation = 1;
+    editor->highlight_spans_sorted = true;
 
     // Create undo/redo history
     editor->history = edit_history_create();
@@ -1994,6 +2124,7 @@ static void codeeditor_paint(vg_widget_t *widget, void *canvas) {
 
     vg_font_metrics_t font_metrics;
     vg_font_get_metrics(editor->font, editor->font_size, &font_metrics);
+    codeeditor_sort_highlight_spans(editor);
     int32_t clip_x = (int32_t)content_x;
     int32_t clip_y = (int32_t)widget->y;
     int32_t clip_w = (int32_t)content_width;
@@ -2022,7 +2153,10 @@ static void codeeditor_paint(vg_widget_t *widget, void *canvas) {
             }
 
             for (int s = 0; s < editor->highlight_span_count; s++) {
+                codeeditor_perf_add(&editor->perf_stats.highlight_span_checks, 1);
                 struct vg_highlight_span *span = &editor->highlight_spans[s];
+                if (span->start_line > i)
+                    break;
                 if (i < span->start_line || i > span->end_line)
                     continue;
                 int col_start = (i == span->start_line) ? span->start_col : 0;
@@ -2181,7 +2315,10 @@ static void codeeditor_paint(vg_widget_t *widget, void *canvas) {
                 }
 
                 for (int s = 0; s < editor->highlight_span_count; s++) {
+                    codeeditor_perf_add(&editor->perf_stats.highlight_span_checks, 1);
                     struct vg_highlight_span *span = &editor->highlight_spans[s];
+                    if (span->start_line > line)
+                        break;
                     if (line < span->start_line || line > span->end_line)
                         continue;
                     int span_start = (line == span->start_line) ? span->start_col : 0;
@@ -2611,6 +2748,7 @@ VG_UNUSED static void insert_bytes(vg_codeeditor_t *editor, const char *bytes, s
     editor->cursor_col += (int)n;
     editor->modified = true;
     line->modified = true;
+    codeeditor_invalidate_line_highlight(editor, editor->cursor_line);
 }
 
 VG_UNUSED static void insert_char(vg_codeeditor_t *editor, char c) {
@@ -2634,6 +2772,7 @@ VG_UNUSED static void insert_char(vg_codeeditor_t *editor, char c) {
     editor->cursor_col++;
     editor->modified = true;
     line->modified = true;
+    codeeditor_invalidate_line_highlight(editor, editor->cursor_line);
 }
 
 /// @brief Inserts @p n bytes from @p bytes into @p line_idx at *col, advancing *col past the inserted content.
@@ -2667,6 +2806,7 @@ static bool codeeditor_insert_bytes_at(vg_codeeditor_t *editor,
     line->length += n;
     *col += (int)n;
     line->modified = true;
+    codeeditor_invalidate_line_highlight(editor, line_idx);
     return true;
 }
 
@@ -2703,6 +2843,8 @@ static bool codeeditor_split_line_at(vg_codeeditor_t *editor, int line_idx, int 
     current->length = split_col;
     current->modified = true;
     editor->lines[line_idx + 1].modified = true;
+    codeeditor_invalidate_line_highlight(editor, line_idx);
+    codeeditor_invalidate_line_highlight(editor, line_idx + 1);
     editor->line_count++;
     return true;
 }
@@ -2734,6 +2876,7 @@ VG_UNUSED static void delete_char_backward(vg_codeeditor_t *editor) {
         editor->cursor_col--;
         editor->modified = true;
         line->modified = true;
+        codeeditor_invalidate_line_highlight(editor, editor->cursor_line);
     } else if (editor->cursor_line > 0) {
         // Join with previous line
         vg_code_line_t *current = &editor->lines[editor->cursor_line];
@@ -2766,6 +2909,7 @@ VG_UNUSED static void delete_char_backward(vg_codeeditor_t *editor) {
         editor->cursor_col = (int)new_col;
         editor->modified = true;
         prev->modified = true;
+        codeeditor_invalidate_line_highlight(editor, editor->cursor_line);
 
         vg_codeeditor_refresh_layout_state(editor);
     }
@@ -3374,6 +3518,8 @@ char *vg_codeeditor_get_text(vg_codeeditor_t *editor) {
     }
     *p = '\0';
 
+    codeeditor_perf_add(&editor->perf_stats.full_text_copies, 1);
+    codeeditor_perf_add(&editor->perf_stats.full_text_copy_bytes, total > 0 ? total - 1 : 0);
     return result;
 }
 
@@ -3670,13 +3816,16 @@ void vg_codeeditor_set_syntax(vg_codeeditor_t *editor,
     // Reset language-specific scanner state — block-comment depth from a prior
     // Zia document must not leak into a freshly-installed highlighter.
     editor->zia_block_comment_depth = 0;
-    // Invalidate cached colors so the new highlighter runs on the next paint
+    codeeditor_bump_highlight_generation(editor);
+    // Invalidate cached colors so the new highlighter runs on the next paint.
     for (int i = 0; i < editor->line_count; i++) {
         if (editor->lines[i].colors) {
             free(editor->lines[i].colors);
             editor->lines[i].colors = NULL;
             editor->lines[i].colors_capacity = 0;
         }
+        editor->lines[i].highlight_generation = 0;
+        editor->lines[i].syntax_state_generation = 0;
     }
     editor->base.needs_paint = true;
 }
@@ -3752,6 +3901,7 @@ static void delete_text_range_internal(
 
         memmove(line->text + start_col, line->text + end_col, line->length - end_col + 1);
         line->length -= (end_col - start_col);
+        codeeditor_invalidate_line_highlight(editor, start_line);
     } else {
         // Multi-line deletion
         vg_code_line_t *first = &editor->lines[start_line];
@@ -3770,6 +3920,7 @@ static void delete_text_range_internal(
 
         memcpy(first->text + start_col, last->text + end_col, last->length - end_col + 1);
         first->length = new_len;
+        codeeditor_invalidate_line_highlight(editor, start_line);
 
         for (int i = start_line + 1; i <= end_line; i++) {
             free_line(&editor->lines[i]);
@@ -3793,6 +3944,7 @@ static void delete_text_range_internal(
     editor->cursor_line = start_line;
     editor->cursor_col = start_col;
     editor->modified = true;
+    editor->lines[start_line].modified = true;
 }
 
 /// @brief Computes the document position reached after inserting @p text starting at (start_line, start_col).
@@ -3898,6 +4050,7 @@ void vg_codeeditor_undo(vg_codeeditor_t *editor) {
     editor->has_selection = false;
     clear_extra_cursor_selections(editor);
     codeeditor_bump_revision(editor);
+    codeeditor_invalidate_all_highlights(editor);
     editor->base.needs_paint = true;
 }
 
@@ -3964,6 +4117,7 @@ void vg_codeeditor_redo(vg_codeeditor_t *editor) {
     editor->has_selection = false;
     clear_extra_cursor_selections(editor);
     codeeditor_bump_revision(editor);
+    codeeditor_invalidate_all_highlights(editor);
     editor->base.needs_paint = true;
 }
 
@@ -4186,4 +4340,18 @@ void vg_codeeditor_clear_modified(vg_codeeditor_t *editor) {
             editor->lines[i].modified = false;
         }
     }
+}
+
+void vg_codeeditor_reset_perf_stats(vg_codeeditor_t *editor) {
+    if (!editor)
+        return;
+    memset(&editor->perf_stats, 0, sizeof(editor->perf_stats));
+}
+
+vg_codeeditor_perf_stats_t vg_codeeditor_get_perf_stats(const vg_codeeditor_t *editor) {
+    vg_codeeditor_perf_stats_t stats;
+    memset(&stats, 0, sizeof(stats));
+    if (editor)
+        stats = editor->perf_stats;
+    return stats;
 }

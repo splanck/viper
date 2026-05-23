@@ -42,6 +42,7 @@
 #include "rt_object.h"
 #include "rt_pixels.h"
 #include "rt_platform.h"
+#include <stdint.h>
 
 #ifdef VIPER_ENABLE_GRAPHICS
 
@@ -202,6 +203,12 @@ static rt_string rt_codeeditor_all_text_to_rt_string(vg_codeeditor_t *ce) {
     }
 
     rt_string result = rt_string_from_bytes(buffer, total);
+    if (ce->perf_stats.full_text_copies != UINT64_MAX)
+        ce->perf_stats.full_text_copies++;
+    if (ce->perf_stats.full_text_copy_bytes > UINT64_MAX - (uint64_t)total)
+        ce->perf_stats.full_text_copy_bytes = UINT64_MAX;
+    else
+        ce->perf_stats.full_text_copy_bytes += (uint64_t)total;
     free(buffer);
     return result;
 }

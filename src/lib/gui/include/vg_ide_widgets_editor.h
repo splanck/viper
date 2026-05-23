@@ -81,6 +81,10 @@ typedef struct vg_code_line {
     size_t capacity;        ///< Buffer capacity
     uint32_t *colors;       ///< Per-character colors (owned, optional)
     size_t colors_capacity; ///< Allocated entries in colors array
+    uint64_t highlight_generation; ///< Syntax-cache generation represented by colors.
+    uint64_t syntax_state_generation; ///< Generation for cached language state.
+    int syntax_state_in;     ///< Cached language state before this line.
+    int syntax_state_out;    ///< Cached language state after this line.
     bool modified;          ///< Line modified since last save
 } vg_code_line_t;
 
@@ -91,6 +95,19 @@ typedef struct vg_selection {
     int end_line;
     int end_col;
 } vg_selection_t;
+
+/// @brief Low-level CodeEditor performance counters for tests and diagnostics.
+typedef struct vg_codeeditor_perf_stats {
+    uint64_t total_height_linear_scans;      ///< Lines visited while summing document height.
+    uint64_t total_visual_row_linear_scans;  ///< Lines visited while summing visual rows.
+    uint64_t visual_row_linear_scans;        ///< Lines visited while mapping position to visual row.
+    uint64_t locate_visual_row_linear_scans; ///< Lines visited while mapping visual row to line.
+    uint64_t line_highlight_calls;           ///< Syntax highlighter invocations from paint.
+    uint64_t syntax_state_line_scans;        ///< Lines scanned to compute cached syntax state.
+    uint64_t highlight_span_checks;          ///< Highlight spans inspected while painting.
+    uint64_t full_text_copies;               ///< Full-document text materializations.
+    uint64_t full_text_copy_bytes;           ///< Bytes copied by full-document materializations.
+} vg_codeeditor_perf_stats_t;
 
 /// @brief Syntax highlighter callback
 typedef void (*vg_syntax_callback_t)(
@@ -172,6 +189,8 @@ typedef struct vg_codeeditor {
     float cursor_blink_time; ///< Cursor blink timer
     bool modified;           ///< Document modified since last save
     uint64_t revision;       ///< Monotonic content revision; cursor/scroll changes do not affect it
+    uint64_t highlight_generation; ///< Monotonic syntax-cache generation.
+    vg_codeeditor_perf_stats_t perf_stats; ///< Low-level performance counters.
 
     // Undo/redo history
     vg_edit_history_t *history; ///< Edit history for undo/redo
@@ -190,6 +209,7 @@ typedef struct vg_codeeditor {
 
     int highlight_span_count; ///< Active span count
     int highlight_span_cap;   ///< Allocated capacity
+    bool highlight_spans_sorted; ///< True when highlight_spans is ordered by start line/column.
 
     // Gutter icons (breakpoints, diagnostics, etc.)
     struct vg_gutter_icon {
@@ -372,6 +392,15 @@ void vg_codeeditor_clear_modified(vg_codeeditor_t *editor);
 /// @brief Recompute gutter width and layout metrics after visual option changes.
 /// @param editor Code editor widget.
 void vg_codeeditor_refresh_layout_state(vg_codeeditor_t *editor);
+
+/// @brief Reset CodeEditor performance counters to zero.
+/// @param editor Code editor widget.
+void vg_codeeditor_reset_perf_stats(vg_codeeditor_t *editor);
+
+/// @brief Copy current CodeEditor performance counters.
+/// @param editor Code editor widget.
+/// @return Counter snapshot; all fields zero when editor is NULL.
+vg_codeeditor_perf_stats_t vg_codeeditor_get_perf_stats(const vg_codeeditor_t *editor);
 
 //=============================================================================
 // FindReplaceBar Widget

@@ -2064,6 +2064,20 @@ void rt_codeeditor_set_word_wrap(void *editor, int64_t enabled);
 /// @return 1 if enabled, 0 otherwise.
 int64_t rt_codeeditor_get_word_wrap(void *editor);
 
+/// @brief Reset low-level CodeEditor performance counters.
+/// @param editor CodeEditor handle.
+void rt_codeeditor_reset_perf_stats(void *editor);
+
+/// @brief Return how many times full editor text has been materialized.
+/// @param editor CodeEditor handle.
+/// @return Full-text copy count.
+int64_t rt_codeeditor_get_full_text_copy_count(void *editor);
+
+/// @brief Return aggregate line visits from CodeEditor layout/scroll scans.
+/// @param editor CodeEditor handle.
+/// @return Linear scan count, clamped to INT64_MAX.
+int64_t rt_codeeditor_get_layout_linear_scan_count(void *editor);
+
 //=========================================================================
 // Phase 5: MessageBox Dialog
 //=========================================================================
