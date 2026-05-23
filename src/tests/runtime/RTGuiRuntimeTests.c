@@ -620,6 +620,7 @@ static void test_codeeditor_runtime_pixel_helpers_follow_scroll_and_wrap(void) {
     assert(rt_codeeditor_get_col_at_pixel(editor, 145, 55) == 4);
 
     rt_codeeditor_set_word_wrap(editor, 1);
+    editor->gutter_width = 20.0f;
     editor->scroll_y = 10.0f;
     editor->cursor_line = 0;
     editor->cursor_col = 6;

@@ -37,6 +37,14 @@ static constexpr int kClosureEnvOffset = 8;
 // Lambda Expression Lowering
 //=============================================================================
 
+/// @brief Lower a lambda expression to a top-level function plus a heap closure value.
+/// @param expr Lambda expression.
+/// @return A pointer to the closure struct `{ funcPtr, envPtr }`.
+/// @details Emits a uniquely named function `__lambda_N` whose first parameter is the
+///          environment pointer (uniform closure ABI), capturing referenced variables by value
+///          into an aligned env struct. The enclosing function/block/temp context is saved
+///          before lowering the body and restored afterward (using a function index, since the
+///          functions vector may reallocate). No-capture lambdas use a null env pointer.
 LowerResult Lowerer::lowerLambda(LambdaExpr *expr) {
     // Generate unique lambda function name (per-instance counter, not static)
     std::string lambdaName = "__lambda_" + std::to_string(lambdaCounter_++);
@@ -290,6 +298,13 @@ LowerResult Lowerer::lowerLambda(LambdaExpr *expr) {
 // Block Expression Lowering
 //=============================================================================
 
+/// @brief Lower a block expression (`{ stmts...; value }`) to its trailing value.
+/// @param expr Block expression.
+/// @return The final value expression's result, or a null pointer for a value-less block.
+/// @details Lowers statements until the block terminates, then the optional trailing value.
+///          Scope cleanups registered within the block are emitted on normal exit, and the
+///          enclosing local/slot/type maps are saved and restored so block-local bindings do
+///          not leak.
 LowerResult Lowerer::lowerBlockExpr(BlockExpr *expr) {
     auto localsBackup = locals_;
     auto slotsBackup = slots_;
@@ -320,6 +335,14 @@ LowerResult Lowerer::lowerBlockExpr(BlockExpr *expr) {
 // As (Type Cast) Expression Lowering
 //=============================================================================
 
+/// @brief Lower an `as` type-cast expression.
+/// @param expr Cast expression.
+/// @return The converted value and its IL type.
+/// @details Unwraps an optional source (trapping on null) before converting. Numeric casts use
+///          real conversion opcodes — checked f64→i64, i64→f64 widening, checked i64→byte
+///          narrowing, byte→i64 zero-extension — rather than bit reinterpretation. Assignable
+///          types coerce directly; class/interface downcasts call `rt_cast_as` /
+///          `rt_cast_as_iface` and trap if the runtime cast fails.
 LowerResult Lowerer::lowerAs(AsExpr *expr) {
     // Lower the source value expression
     auto source = lowerExpr(expr->value.get());
@@ -467,6 +490,14 @@ LowerResult Lowerer::lowerAs(AsExpr *expr) {
 // Is Expression Lowering
 //=============================================================================
 
+/// @brief Lower an `is` type-test expression to a boolean.
+/// @param expr Is-expression.
+/// @return An `i1` value: true when the source's runtime type matches the target.
+/// @details For an optional source tested against its inner type, this is a non-null check.
+///          Non-class/interface targets compare static types for equality. Interface targets
+///          query `rt_type_implements`. Class targets compare the runtime class id against the
+///          target and all of its descendant class ids (so `obj is Base` is true for subclass
+///          instances), via a single compare or an OR-chain.
 LowerResult Lowerer::lowerIsExpr(IsExpr *expr) {
     // Lower the value being tested
     auto source = lowerExpr(expr->value.get());

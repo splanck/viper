@@ -33,6 +33,10 @@ using namespace runtime;
 // Global Variable Declaration Lowering
 //=============================================================================
 
+/// @brief Select the runtime helper that returns a module-level variable's address.
+/// @param kind IL type kind of the global being accessed.
+/// @return Name of the matching `rt_modvar_addr_*` helper (the pointer helper covers
+///         aggregates and any unmapped kind).
 std::string Lowerer::getModvarAddrHelper(Type::Kind kind) {
     switch (kind) {
         case Type::Kind::I64:
@@ -49,6 +53,12 @@ std::string Lowerer::getModvarAddrHelper(Type::Kind kind) {
     }
 }
 
+/// @brief Emit the runtime call that yields the storage address of a module-level global.
+/// @param name Source-level (already namespace-qualified) global variable name.
+/// @param type Semantic type of the global, used to pick the address helper.
+/// @return An IL pointer value holding the global's runtime storage address.
+/// @details Interns the global's string name, then calls the type-appropriate
+///          `rt_modvar_addr_*` helper, registering that helper as a used extern.
 Lowerer::Value Lowerer::getGlobalVarAddr(const std::string &name, TypeRef type) {
     std::string globalName = getStringGlobal(name);
     Value nameStr = emitConstStr(globalName);
@@ -61,6 +71,12 @@ Lowerer::Value Lowerer::getGlobalVarAddr(const std::string &name, TypeRef type) 
     return addr;
 }
 
+/// @brief Lower a module-level variable declaration.
+/// @param decl The global variable declaration AST node.
+/// @details `final` declarations whose initializer is a literal or constant-foldable
+///          expression are recorded in @c globalConstants_ and emit no storage. Mutable
+///          globals and runtime-initialized finals are registered in @c globalVariables_,
+///          with any initializer queued in @c globalInitializers_ for module startup.
 void Lowerer::lowerGlobalVarDecl(GlobalVarDecl &decl) {
     ZiaLocationScope locScope(*this, decl.loc);
 
@@ -129,6 +145,11 @@ void Lowerer::lowerGlobalVarDecl(GlobalVarDecl &decl) {
     }
 }
 
+/// @brief Emit stores for every queued global initializer at module startup.
+/// @details Invoked from the program entry point. Each initializer expression is lowered,
+///          struct values are boxed or deep-copied to pointer form, the result is coerced to
+///          the global's declared type, and the value is stored at the address returned by
+///          getGlobalVarAddr(). Deferred temporaries produced during lowering are consumed.
 void Lowerer::emitGlobalInitializers() {
     for (const auto &entry : globalInitializers_) {
         if (!entry.initializer || !entry.type)
@@ -160,6 +181,14 @@ void Lowerer::emitGlobalInitializers() {
 // Function Declaration Lowering
 //=============================================================================
 
+/// @brief Lower a top-level function declaration to an IL function.
+/// @param decl The function declaration AST node.
+/// @details Generic templates are skipped (they are lowered on demand at instantiation) and
+///          `async` functions are delegated to lowerAsyncFunctionDecl(). Foreign functions
+///          become import declarations with no body. Parameters are stored in slots for
+///          cross-block SSA correctness; the entry point (`start`/`main`) seeds itable and
+///          global initialization. A type-correct implicit return is appended when the body
+///          falls through.
 void Lowerer::lowerFunctionDecl(FunctionDecl &decl) {
     ZiaLocationScope locScope(*this, decl.loc);
 
@@ -318,6 +347,18 @@ void Lowerer::lowerFunctionDecl(FunctionDecl &decl) {
     currentReturnType_ = nullptr;
 }
 
+/// @brief Lower an `async` function into a worker trampoline plus a public wrapper.
+/// @param decl Async function declaration.
+/// @param mangledName Lowered name of the public entry point.
+/// @param params IL parameter list of the public entry.
+/// @param returnType Semantic return type of the public entry.
+/// @param ilReturnType IL return type of the public entry.
+/// @param declaredReturnType Declared payload type that the worker resolves into a future.
+/// @param cachedParamTypes Pre-resolved parameter types (generic substitutions applied).
+/// @details Emits `<name>__async_worker(ptr env)`, which unpacks and takes ownership of the
+///          captured arguments, lowers the body, and returns the boxed payload (or null for
+///          void). It then emits the public wrapper that boxes arguments into an env block
+///          and starts the task through the async runtime, returning the future handle.
 void Lowerer::lowerAsyncFunctionDecl(FunctionDecl &decl,
                                      const std::string &mangledName,
                                      const std::vector<il::core::Param> &params,
@@ -490,6 +531,13 @@ void Lowerer::lowerAsyncFunctionDecl(FunctionDecl &decl,
     }
 }
 
+/// @brief Lower one concrete instantiation of a generic function.
+/// @param mangledName Substitution-keyed lowered name of this instantiation.
+/// @param decl The generic function template declaration.
+/// @details Pushes the substitution context so type parameters resolve to concrete types,
+///          re-analyzes the declaration under those substitutions, lowers the body like an
+///          ordinary function (slot-based params, typed implicit return), then pops the
+///          substitution context.
 void Lowerer::lowerGenericFunctionInstantiation(const std::string &mangledName,
                                                 FunctionDecl *decl) {
     // Push substitution context so type parameters resolve correctly
@@ -591,6 +639,11 @@ void Lowerer::lowerGenericFunctionInstantiation(const std::string &mangledName,
 // Value and Entity Declaration Lowering
 //=============================================================================
 
+/// @brief Lower a value-type (`struct`) declaration: register its layout and lower methods.
+/// @param decl Struct declaration AST node.
+/// @details Uninstantiated generics are skipped (lowered at instantiation). The layout may
+///          already be registered by the pre-pass (BUG-FE-006); if not, it is registered
+///          here before each method is lowered against the qualified type name.
 void Lowerer::lowerStructDecl(StructDecl &decl) {
     ZiaLocationScope locScope(*this, decl.loc);
 
@@ -613,6 +666,12 @@ void Lowerer::lowerStructDecl(StructDecl &decl) {
     }
 }
 
+/// @brief Lower a reference-type (`class`) declaration.
+/// @param decl Class declaration AST node.
+/// @details Uninstantiated generics are skipped. Registers the layout if the pre-pass did
+///          not, promotes static fields to module-level globals (queuing their initializers),
+///          lowers all methods before the vtable can reference them, synthesizes property
+///          getters/setters and the optional destructor, and finally emits the vtable global.
 void Lowerer::lowerClassDecl(ClassDecl &decl) {
     ZiaLocationScope locScope(*this, decl.loc);
 
@@ -680,6 +739,11 @@ void Lowerer::lowerClassDecl(ClassDecl &decl) {
     }
 }
 
+/// @brief Lower an interface declaration.
+/// @param decl Interface declaration AST node.
+/// @details Registers the interface layout. Methods with bodies become default
+///          implementations (lowered via lowerInterfaceDefaultMethodDecl); abstract
+///          signatures are satisfied by implementing types through the itable.
 void Lowerer::lowerInterfaceDecl(InterfaceDecl &decl) {
     ZiaLocationScope locScope(*this, decl.loc);
 
@@ -698,6 +762,12 @@ void Lowerer::lowerInterfaceDecl(InterfaceDecl &decl) {
     }
 }
 
+/// @brief Lower an interface default-method body to a standalone IL function.
+/// @param decl Interface method declaration carrying a default body.
+/// @param interfaceName Qualified interface name used to mangle the lowered function name.
+/// @details The lowered function takes `self` (ptr) followed by the declared parameters,
+///          stored in slots, and is dispatched through the itable when an implementor does
+///          not override the method. A typed implicit return is appended on fall-through.
 void Lowerer::lowerInterfaceDefaultMethodDecl(MethodDecl &decl, const std::string &interfaceName) {
     ZiaLocationScope locScope(*this, decl.loc);
 
@@ -791,6 +861,14 @@ void Lowerer::lowerInterfaceDefaultMethodDecl(MethodDecl &decl, const std::strin
 // Method Declaration Lowering
 //=============================================================================
 
+/// @brief Lower a class or struct method to an IL function.
+/// @param decl Method declaration AST node.
+/// @param typeName Qualified owning-type name (used for type lookup and name mangling).
+/// @param isClass True for class (reference) methods, false for struct (value) methods.
+/// @details Sets currentClassType_/currentStructType_ for the duration of lowering, prepends
+///          a `self` pointer parameter for instance methods, stores all parameters in slots
+///          for cross-block SSA, lowers the body, and appends a type-correct implicit return
+///          on fall-through. The class/struct context is cleared on exit.
 void Lowerer::lowerMethodDecl(MethodDecl &decl, const std::string &typeName, bool isClass) {
     ZiaLocationScope locScope(*this, decl.loc);
 
@@ -937,6 +1015,13 @@ void Lowerer::lowerMethodDecl(MethodDecl &decl, const std::string &typeName, boo
 // Property Declaration Lowering
 //=============================================================================
 
+/// @brief Synthesize getter/setter IL functions for a property declaration.
+/// @param decl Property declaration AST node.
+/// @param typeName Qualified owning-type name (prefixes the synthesized `get_`/`set_` names).
+/// @param isClass True when the owning type is a class.
+/// @details When present, emits `<Type>.get_<Name>(self) -> PropType` from the getter body
+///          (with a typed implicit return) and `<Type>.set_<Name>(self, value) -> Void` from
+///          the setter body. Static properties omit the `self` parameter.
 void Lowerer::lowerPropertyDecl(PropertyDecl &decl, const std::string &typeName, bool isClass) {
     ZiaLocationScope locScope(*this, decl.loc);
 
@@ -1070,6 +1155,12 @@ void Lowerer::lowerPropertyDecl(PropertyDecl &decl, const std::string &typeName,
 // Destructor Declaration Lowering
 //=============================================================================
 
+/// @brief Lower a class destructor into the `<Type>.__dtor(self)` function.
+/// @param decl Destructor declaration AST node.
+/// @param typeName Qualified owning-class name.
+/// @details Lowers the user-defined body, then on fall-through releases each reference-typed
+///          field: weak fields via `Viper.Memory.WeakRef.Free`, and owned `Str`/`Ptr` fields
+///          via emitManagedRelease(). Emits an implicit return-void.
 void Lowerer::lowerDestructorDecl(DestructorDecl &decl, const std::string &typeName) {
     ZiaLocationScope locScope(*this, decl.loc);
 

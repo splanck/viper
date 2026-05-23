@@ -36,6 +36,12 @@ bool isInlineAggregateType(TypeRef type) {
 // Helper Functions
 //=============================================================================
 
+/// @brief Coerce a value into Optional storage when assigned to an Optional-typed target.
+/// @param val The value being stored.
+/// @param fieldType Declared type of the target field/variable.
+/// @param valueType Static type of @p val.
+/// @return @p val unchanged when the target is non-optional or already optional; a null
+///         pointer for a `unit` source; otherwise the value wrapped via emitOptionalWrap().
 Value Lowerer::wrapValueForOptionalField(Value val, TypeRef fieldType, TypeRef valueType) {
     if (!fieldType || fieldType->kind != TypeKindSem::Optional)
         return val;
@@ -51,6 +57,11 @@ Value Lowerer::wrapValueForOptionalField(Value val, TypeRef fieldType, TypeRef v
     return val;
 }
 
+/// @brief Widen an operand to I64 so heterogeneous values can be integer-compared.
+/// @param val The operand value.
+/// @param type The operand's IL type.
+/// @return An I64 (or original) value: null becomes 0, `i1` is zero-extended, and pointer/
+///         string values are reinterpreted to I64 via an alloca/store/load round-trip.
 Value Lowerer::extendOperandForComparison(Value val, Type type) {
     if (val.kind == Value::Kind::NullPtr) {
         return Value::constInt(0);
@@ -77,6 +88,12 @@ Value Lowerer::extendOperandForComparison(Value val, Type type) {
 // Binary Expression Lowering
 //=============================================================================
 
+/// @brief Lower an assignment expression by dispatching on the target's form.
+/// @param expr Assignment binary expression.
+/// @return The assigned value and its IL type.
+/// @details Routes to lowerIdentAssignment(), lowerIndexAssignment(), or
+///          lowerFieldAssignment() based on whether the left-hand side is an identifier,
+///          an index, or a field access; unsupported targets are reported (V3000).
 LowerResult Lowerer::lowerAssignment(BinaryExpr *expr) {
     auto right = lowerExpr(expr->right.get());
     TypeRef rightType = sema_.typeOf(expr->right.get());
@@ -95,6 +112,16 @@ LowerResult Lowerer::lowerAssignment(BinaryExpr *expr) {
     return {Value::constInt(0), Type(Type::Kind::I64)};
 }
 
+/// @brief Lower assignment to a bare identifier target.
+/// @param expr The assignment expression.
+/// @param ident The identifier being assigned.
+/// @param right The already-lowered right-hand value.
+/// @param rightType Static type of the right-hand side.
+/// @return The stored value and its IL type.
+/// @details Applies optional-wrapping, Ptr→primitive unboxing, Number/Integer numeric
+///          coercion, and struct-copy semantics, then stores into the first matching target:
+///          a slot variable, an implicit `self.field` (struct/class method), a module global,
+///          or a freshly defined local. Reassigning an SSA-only final is skipped defensively.
 LowerResult Lowerer::lowerIdentAssignment(BinaryExpr *expr, IdentExpr *ident,
                                           LowerResult right, TypeRef rightType) {
     {
@@ -307,6 +334,15 @@ LowerResult Lowerer::lowerIdentAssignment(BinaryExpr *expr, IdentExpr *ident,
     }
 }
 
+/// @brief Lower assignment to an indexed target (`base[index] = value`).
+/// @param expr The assignment expression.
+/// @param indexExpr The index target.
+/// @param right The already-lowered right-hand value.
+/// @param rightType Static type of the right-hand side (unused; type taken from sema).
+/// @return The assigned value.
+/// @details Fixed-size arrays store inline via a bounds-checked GEP + element store (no
+///          boxing). List/Map targets box the value and call the runtime set helper
+///          (kListSet / kMapSet).
 LowerResult Lowerer::lowerIndexAssignment(BinaryExpr *expr, IndexExpr *indexExpr,
                                           LowerResult right, TypeRef rightType) {
     (void)rightType;
@@ -365,6 +401,16 @@ LowerResult Lowerer::lowerIndexAssignment(BinaryExpr *expr, IndexExpr *indexExpr
     }
 }
 
+/// @brief Lower assignment to a field target (`base.field = value`).
+/// @param expr The assignment expression.
+/// @param fieldExpr The field target.
+/// @param right The already-lowered right-hand value.
+/// @param rightType Static type of the right-hand side.
+/// @return The assigned value and its IL type.
+/// @details Resolves the target in order: a module-qualified global, a synthesized property
+///          setter (runtime or user-defined), or a struct/class instance field. Applies
+///          optional-wrapping, Ptr→primitive unboxing, struct boxing, and Number/Integer
+///          coercion as needed. Unsupported targets are reported (V3000).
 LowerResult Lowerer::lowerFieldAssignment(BinaryExpr *expr, FieldExpr *fieldExpr,
                                           LowerResult right, TypeRef rightType) {
     (void)rightType;
@@ -516,6 +562,11 @@ LowerResult Lowerer::lowerFieldAssignment(BinaryExpr *expr, FieldExpr *fieldExpr
     return {Value::constInt(0), Type(Type::Kind::I64)};
 }
 
+/// @brief Lower a binary expression.
+/// @param expr Binary expression.
+/// @return The result value and its IL type.
+/// @details Thin entry point that delegates to BinaryOperatorLowerer, which handles operator
+///          selection, numeric promotion, string/comparison helpers, and short-circuiting.
 LowerResult Lowerer::lowerBinary(BinaryExpr *expr) {
     return BinaryOperatorLowerer(*this).lowerBinary(expr);
 }
@@ -524,6 +575,13 @@ LowerResult Lowerer::lowerBinary(BinaryExpr *expr) {
 // Unary Expression Lowering
 //=============================================================================
 
+/// @brief Lower a unary expression.
+/// @param expr Unary expression.
+/// @return The result value and its IL type.
+/// @details `&`/address-of yields a function's global address (without lowering the operand,
+///          so forward-declared callbacks work). Otherwise the operand is lowered and the
+///          op applied: `Neg` (FP `0 - x` or checked integer `0 - x`), `Not` (compare-equal
+///          zero), and `BitNot` (`x ^ -1`).
 LowerResult Lowerer::lowerUnary(UnaryExpr *expr) {
     if (expr->op == UnaryOp::AddressOf) {
         // Address-of is a symbol reference, not a value load.  Do not lower the
@@ -592,6 +650,14 @@ LowerResult Lowerer::lowerUnary(UnaryExpr *expr) {
 // Short-Circuit Evaluation for And/Or
 //=============================================================================
 
+/// @brief Lower short-circuiting `and`/`or` to control flow.
+/// @param expr Logical binary expression (`And` or `Or`).
+/// @return An `i1` result value.
+/// @details Stores the left operand's truthiness into a result slot, then conditionally
+///          branches: `and` evaluates the right side only when the left is true, `or` only
+///          when the left is false. The right side overwrites the slot, and the merge block
+///          loads the final boolean. This guarantees the right operand is not evaluated when
+///          the result is already determined.
 LowerResult Lowerer::lowerShortCircuit(BinaryExpr *expr) {
     // Short-circuit evaluation for 'and' and 'or' operators.
     //

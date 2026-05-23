@@ -22,9 +22,12 @@
 
 namespace il::frontends::basic {
 
+/// @brief Construct a resolver over a namespace registry and USING import context.
+/// @note Neither argument is owned; both must outlive the resolver.
 TypeResolver::TypeResolver(const NamespaceRegistry &ns, const UsingContext &uc)
     : registry_(ns), using_(uc) {}
 
+/// @brief Lowercase a string (used for case-insensitive ambiguity ordering).
 std::string TypeResolver::toLower(const std::string &str) {
     std::string result;
     result.reserve(str.size());
@@ -34,6 +37,7 @@ std::string TypeResolver::toLower(const std::string &str) {
     return result;
 }
 
+/// @brief Join path segments into a dotted qualified name (`A.B.C`).
 std::string TypeResolver::joinPath(const std::vector<std::string> &segments) {
     if (segments.empty())
         return "";
@@ -46,6 +50,7 @@ std::string TypeResolver::joinPath(const std::vector<std::string> &segments) {
     return result;
 }
 
+/// @brief Split a dotted path into its non-empty segments.
 std::vector<std::string> TypeResolver::splitPath(std::string_view path) {
     std::vector<std::string> segments;
     std::string current;
@@ -67,6 +72,10 @@ std::vector<std::string> TypeResolver::splitPath(std::string_view path) {
     return segments;
 }
 
+/// @brief Try to resolve a simple type name within a single namespace.
+/// @param ns Namespace to qualify with (empty means the global namespace).
+/// @param typeName Simple type name.
+/// @return The qualified candidate name if it exists in the registry, otherwise "".
 std::string TypeResolver::tryResolveInNamespace(const std::string &ns,
                                                 std::string_view typeName) const {
     std::string candidate = ns.empty() ? std::string(typeName) : (ns + "." + std::string(typeName));
@@ -83,6 +92,7 @@ std::string TypeResolver::tryResolveInNamespace(const std::string &ns,
     return "";
 }
 
+/// @brief Map a NamespaceRegistry type kind to the resolver's public Kind enum.
 TypeResolver::Kind TypeResolver::convertKind(NamespaceRegistry::TypeKind nsk) {
     switch (nsk) {
         case NamespaceRegistry::TypeKind::Class:
@@ -95,6 +105,15 @@ TypeResolver::Kind TypeResolver::convertKind(NamespaceRegistry::TypeKind nsk) {
     return Kind::Unknown;
 }
 
+/// @brief Resolve a type name to its canonical qualified form.
+/// @param name The type name as written (qualified or simple, possibly alias-prefixed).
+/// @param currentNsChain The enclosing namespace chain, outermost first.
+/// @return A Result with `found`/`qname`/`kind` set, or (for simple names) a sorted
+///         `contenders` list when the name is ambiguous.
+/// @details Qualified names bypass USING imports: an alias first segment is expanded, otherwise
+///          the name is treated as fully qualified. Simple names are resolved by walking the
+///          namespace chain from innermost to global first, then USING imports in declaration
+///          order; multiple USING matches are ambiguous (contenders sorted case-insensitively).
 TypeResolver::Result TypeResolver::resolve(std::string_view name,
                                            const std::vector<std::string> &currentNsChain) const {
     Result result;

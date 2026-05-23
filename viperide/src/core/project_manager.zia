@@ -3,6 +3,7 @@ module project_manager;
 bind "project";
 bind Viper.GUI as GUI;
 bind Obj = Viper.Core.Object;
+bind Seq = Viper.Collections.Seq;
 bind IO = Viper.IO;
 bind Viper.IO.Path as Path;
 bind Viper.IO.Dir as Dir;
@@ -30,10 +31,9 @@ bind "../core/document_manager";
 //     path via `TreeView.Node.SetData`. The label is now just the plain
 //     basename; the path is the source of truth for file-vs-directory
 //     detection.
-//   * EXCLUDE PATTERNS. `ShouldExclude` and `ShouldExcludeFile` skip
-//     hidden entries (starting with ".") and common build artifacts
-//     ("build", "node_modules", "__pycache__"). Hardcoded — a real IDE
-//     would read .gitignore.
+//   * EXCLUDE PATTERNS. `ShouldExcludePath` delegates to
+//     Viper.Workspace.FileIndex, which applies hard excludes, `.gitignore`,
+//     and optional ignore/exclude patterns from `viper.project`.
 //   * RECURSIVE TREE BUILD. `BuildTree` is depth-first: directories
 //     first (so they sort to the top), then files. No lazy expansion —
 //     the entire tree is built at open time. Fine for projects
@@ -56,12 +56,15 @@ class ProjectManager {
     expose Boolean fileWasSelected;
     /// Project file paths collected while building the tree, reused by Quick Open.
     expose List fileCache;
+    /// Number of Zia file-bind paths rewritten by the most recent rename.
+    expose Integer lastBindRewriteCount;
 
     /// @brief Initialize with no selection. Call `Setup` next.
     expose func init() {
         selectedFilePath = "";
         fileWasSelected = false;
         fileCache = new List();
+        lastBindRewriteCount = 0;
     }
 
     /// @brief Inject the TreeView widget and construct the empty Project.
@@ -211,7 +214,7 @@ class ProjectManager {
         if isDir and Str.EndsWith(rel, "/") == false {
             rel = rel + "/";
         }
-        return FileIndex.ShouldIgnore(project.rootPath, rel, "");
+        return FileIndex.ShouldIgnore(project.rootPath, rel, project.ignorePatterns);
     }
 
     expose func SelectedPath() -> String {
@@ -224,18 +227,31 @@ class ProjectManager {
     expose func RenameSelected(newName: String,
                                docMgr: document_manager.DocumentManager) -> String {
         var oldPath = SelectedPath();
+        return RenamePath(oldPath, newName, docMgr);
+    }
+
+    expose func RenamePath(oldPath: String,
+                           newName: String,
+                           docMgr: document_manager.DocumentManager) -> String {
+        lastBindRewriteCount = 0;
         if oldPath == "" or newName == "" { return ""; }
+        if Str.IndexOf(newName, Path.Sep()) != 0
+           or Str.IndexOf(newName, "/") != 0
+           or Str.IndexOf(newName, "\\") != 0 {
+            return "";
+        }
         var newPath = Path.Join(Path.Dir(oldPath), newName);
         if IO.File.Exists(newPath) or Dir.Exists(newPath) {
             return "";
         }
+        var oldWasDir = Dir.Exists(oldPath);
         if IO.File.Exists(oldPath) {
             IO.File.Move(oldPath, newPath);
             if docMgr != null {
                 docMgr.UpdatePath(oldPath, newPath);
             }
         } else if Dir.Exists(oldPath) {
-            IO.File.Move(oldPath, newPath);
+            Dir.Move(oldPath, newPath);
             if docMgr != null {
                 var i = 0;
                 while i < docMgr.GetCount() {
@@ -250,8 +266,24 @@ class ProjectManager {
         } else {
             return "";
         }
+        UpdateEntryAfterRename(oldPath, newPath, oldWasDir);
+        lastBindRewriteCount = RewriteProjectBindsAfterRename(oldPath, newPath, oldWasDir, docMgr);
         RefreshTree();
         return newPath;
+    }
+
+    expose func PreviewBindRewriteCount(path: String,
+                                        newName: String,
+                                        docMgr: document_manager.DocumentManager) -> Integer {
+        if path == "" or newName == "" { return 0; }
+        if Str.IndexOf(newName, Path.Sep()) != 0
+           or Str.IndexOf(newName, "/") != 0
+           or Str.IndexOf(newName, "\\") != 0 {
+            return 0;
+        }
+        var newPath = Path.Join(Path.Dir(path), newName);
+        var isDir = Dir.Exists(path);
+        return CountProjectBindsForRename(path, newPath, isDir, docMgr);
     }
 
     expose func DeleteSelected(docMgr: document_manager.DocumentManager) -> Boolean {
@@ -267,6 +299,48 @@ class ProjectManager {
             return false;
         }
         RefreshTree();
+        return true;
+    }
+
+    expose func SetEntryFile(filePath: String) -> Boolean {
+        if project == null or project.isOpen == false { return false; }
+        if filePath == "" or IO.File.Exists(filePath) == false { return false; }
+        if Str.StartsWith(filePath, project.rootPath + Path.Sep()) == false and filePath != project.rootPath {
+            return false;
+        }
+
+        var rel = RelativePath(filePath);
+        project.entryFile = rel;
+        var manifestPath = Path.Join(project.rootPath, "viper.project");
+        var content = "";
+        var replaced = false;
+
+        if IO.File.Exists(manifestPath) {
+            var lines = Str.Split(IO.File.ReadAllText(manifestPath), "\n");
+            var i = 0;
+            while i < Seq.get_Length(lines) {
+                var line = Obj.ToString(Seq.Get(lines, i));
+                if Str.StartsWith(Str.Trim(line), "entry ") {
+                    line = "entry " + rel;
+                    replaced = true;
+                }
+                if i > 0 { content = content + "\n"; }
+                content = content + line;
+                i = i + 1;
+            }
+        }
+
+        if content == "" {
+            content = "project " + project.name + "\nentry " + rel + "\nlang " + project.lang + "\n";
+        } else if replaced == false {
+            if Str.EndsWith(content, "\n") == false {
+                content = content + "\n";
+            }
+            content = content + "entry " + rel + "\n";
+        }
+
+        IO.File.WriteAllText(manifestPath, content);
+        project.hasProjectFile = true;
         return true;
     }
 
@@ -293,6 +367,113 @@ class ProjectManager {
         return fullPath;
     }
 
+    func UpdateEntryAfterRename(oldPath: String, newPath: String, oldWasDir: Boolean) {
+        if project == null or project.entryFile == "" { return; }
+        var entryAbs = NormalizeAbsPath(Path.Join(project.rootPath, project.entryFile));
+        var oldNorm = NormalizeAbsPath(oldPath);
+        var newNorm = NormalizeAbsPath(newPath);
+        var replacement = "";
+        if oldWasDir {
+            var prefix = oldNorm + Path.Sep();
+            if Str.StartsWith(entryAbs, prefix) {
+                var suffix = Str.Mid(entryAbs, Str.Length(prefix) + 1);
+                replacement = Path.Join(newNorm, suffix);
+            }
+        } else if entryAbs == oldNorm {
+            replacement = newNorm;
+        }
+        if replacement != "" {
+            SetEntryFile(replacement);
+        }
+    }
+
+    func RewriteProjectBindsAfterRename(oldPath: String,
+                                        newPath: String,
+                                        oldWasDir: Boolean,
+                                        docMgr: document_manager.DocumentManager) -> Integer {
+        return ProcessProjectBindsForRename(oldPath, newPath, oldWasDir, docMgr, true);
+    }
+
+    func CountProjectBindsForRename(oldPath: String,
+                                    newPath: String,
+                                    oldWasDir: Boolean,
+                                    docMgr: document_manager.DocumentManager) -> Integer {
+        return ProcessProjectBindsForRename(oldPath, newPath, oldWasDir, docMgr, false);
+    }
+
+    func ProcessProjectBindsForRename(oldPath: String,
+                                      newPath: String,
+                                      oldWasDir: Boolean,
+                                      docMgr: document_manager.DocumentManager,
+                                      applyChanges: Boolean) -> Integer {
+        if project == null or project.rootPath == "" { return 0; }
+        var files = new List();
+        CollectZiaFiles(project.rootPath, files);
+        if docMgr != null {
+            var d = 0;
+            while d < docMgr.GetCount() {
+                var doc = docMgr.documents.get(d);
+                if doc.filePath != "" and IsZiaFile(doc.filePath) and ListContains(files, doc.filePath) == false {
+                    files.Push(doc.filePath);
+                }
+                d = d + 1;
+            }
+        }
+
+        var oldNorm = NormalizeAbsPath(oldPath);
+        var newNorm = NormalizeAbsPath(newPath);
+        var total = 0;
+        var i = 0;
+        while i < files.count() {
+            var filePath = Obj.ToString(files.get(i));
+            var docIndex = -1;
+            var content = "";
+            if docMgr != null {
+                docIndex = docMgr.FindByPath(filePath);
+            }
+            if docIndex >= 0 {
+                content = docMgr.documents.get(docIndex).content;
+            } else if IO.File.Exists(filePath) {
+                content = IO.File.ReadAllText(filePath);
+            }
+
+            var rewrite = RewriteZiaBindContent(content, filePath, oldNorm, newNorm, oldWasDir);
+            total = total + rewrite.count;
+            if applyChanges and rewrite.count > 0 {
+                if docIndex >= 0 {
+                    var openDoc = docMgr.documents.get(docIndex);
+                    openDoc.content = rewrite.text;
+                    openDoc.isModified = true;
+                } else {
+                    IO.File.WriteAllText(filePath, rewrite.text);
+                }
+            }
+            i = i + 1;
+        }
+        return total;
+    }
+
+    func CollectZiaFiles(dirPath: String, files: List) {
+        for dirName in Dir.DirsSeq(dirPath) {
+            var fullDir = Path.Join(dirPath, dirName);
+            if ShouldExcludePath(fullDir, true) == false {
+                CollectZiaFiles(fullDir, files);
+            }
+        }
+        for fileName in Dir.FilesSeq(dirPath) {
+            var fullPath = Path.Join(dirPath, fileName);
+            if ShouldExcludePath(fullPath, false) == false and IsZiaFile(fullPath) {
+                if ListContains(files, fullPath) == false {
+                    files.Push(fullPath);
+                }
+            }
+        }
+    }
+
+    func IsZiaFile(path: String) -> Boolean {
+        return Str.ToLower(Path.Ext(path)) == ".zia";
+    }
+
     /// @brief Re-read the disk and rebuild the tree.
     /// @note Called by the user (or after an external file watcher fires)
     ///       to pick up new files added outside the IDE.
@@ -301,4 +482,189 @@ class ProjectManager {
             PopulateTree();
         }
     }
+}
+
+class BindRewriteResult {
+    expose String text;
+    expose Integer count;
+
+    expose func init() {
+        text = "";
+        count = 0;
+    }
+}
+
+func RewriteZiaBindContent(content: String,
+                           importingPath: String,
+                           oldNorm: String,
+                           newNorm: String,
+                           oldWasDir: Boolean) -> BindRewriteResult {
+    var result = new BindRewriteResult();
+    result.text = content;
+    if content == "" { return result; }
+
+    var lines = Str.Split(content, "\n");
+    var rebuilt = "";
+    var i = 0;
+    while i < Seq.get_Length(lines) {
+        var line = Obj.ToString(Seq.Get(lines, i));
+        var rewritten = RewriteZiaBindLine(line, importingPath, oldNorm, newNorm, oldWasDir);
+        if rewritten != line {
+            result.count = result.count + 1;
+        }
+        if i > 0 { rebuilt = rebuilt + "\n"; }
+        rebuilt = rebuilt + rewritten;
+        i = i + 1;
+    }
+    result.text = rebuilt;
+    return result;
+}
+
+func RewriteZiaBindLine(line: String,
+                        importingPath: String,
+                        oldNorm: String,
+                        newNorm: String,
+                        oldWasDir: Boolean) -> String {
+    var trimmed = Str.Trim(line);
+    if Str.StartsWith(trimmed, "bind ") == false and Str.StartsWith(trimmed, "bind\t") == false {
+        return line;
+    }
+    var firstQuote = Str.IndexOf(line, "\"");
+    if firstQuote == 0 { return line; }
+    var secondQuote = Str.IndexOfFrom(line, firstQuote + 1, "\"");
+    if secondQuote == 0 { return line; }
+
+    var importPath = Str.MidLen(line, firstQuote + 1, secondQuote - firstQuote - 1);
+    var resolved = ResolveBindPath(importPath, importingPath);
+    var mapped = "";
+    if oldWasDir {
+        var prefix = oldNorm + Path.Sep();
+        if Str.StartsWith(resolved, prefix) {
+            var suffix = Str.Mid(resolved, Str.Length(prefix) + 1);
+            mapped = Path.Join(newNorm, suffix);
+        }
+    } else if resolved == oldNorm {
+        mapped = newNorm;
+    }
+    if mapped == "" { return line; }
+
+    var keepNoExt = Path.Ext(importPath) == "";
+    var replacement = RelativeBindPath(Path.Dir(importingPath), mapped, importPath, keepNoExt);
+    var before = "";
+    if firstQuote > 1 {
+        before = Str.Left(line, firstQuote);
+    } else {
+        before = "\"";
+    }
+    var after = Str.Mid(line, secondQuote);
+    return before + replacement + after;
+}
+
+func ResolveBindPath(importPath: String, importingPath: String) -> String {
+    var candidate = importPath;
+    if Path.IsAbs(candidate) == false {
+        candidate = Path.Join(Path.Dir(importingPath), candidate);
+    }
+    if Path.Ext(candidate) == "" {
+        candidate = candidate + ".zia";
+    }
+    return NormalizeAbsPath(candidate);
+}
+
+func RelativeBindPath(importingDir: String,
+                      targetPath: String,
+                      oldImportPath: String,
+                      keepNoExt: Boolean) -> String {
+    var targetNorm = NormalizeAbsPath(targetPath);
+    if Path.IsAbs(oldImportPath) {
+        return MaybeStripZiaExtension(NormalizeBindSeparators(targetNorm), keepNoExt);
+    }
+
+    var baseParts = PathParts(NormalizeAbsPath(importingDir));
+    var targetParts = PathParts(targetNorm);
+    if Seq.get_Length(baseParts) > 0 and Seq.get_Length(targetParts) > 0 {
+        if Obj.ToString(Seq.Get(baseParts, 0)) != Obj.ToString(Seq.Get(targetParts, 0)) {
+            return MaybeStripZiaExtension(NormalizeBindSeparators(targetNorm), keepNoExt);
+        }
+    }
+
+    var common = 0;
+    while common < Seq.get_Length(baseParts)
+          and common < Seq.get_Length(targetParts)
+          and Obj.ToString(Seq.Get(baseParts, common)) == Obj.ToString(Seq.Get(targetParts, common)) {
+        common = common + 1;
+    }
+
+    var rel = "";
+    var b = common;
+    while b < Seq.get_Length(baseParts) {
+        rel = AppendPathPart(rel, "..");
+        b = b + 1;
+    }
+    var t = common;
+    while t < Seq.get_Length(targetParts) {
+        rel = AppendPathPart(rel, Obj.ToString(Seq.Get(targetParts, t)));
+        t = t + 1;
+    }
+    if rel == "" {
+        rel = Path.Name(targetNorm);
+    }
+    rel = MaybeStripZiaExtension(rel, keepNoExt);
+    if Str.StartsWith(rel, "../") == false and Str.StartsWith(rel, "./") == false {
+        if Str.StartsWith(oldImportPath, "./") {
+            rel = "./" + rel;
+        }
+    }
+    return rel;
+}
+
+func MaybeStripZiaExtension(path: String, keepNoExt: Boolean) -> String {
+    if keepNoExt and Str.EndsWith(path, ".zia") {
+        return Str.Left(path, Str.Length(path) - 4);
+    }
+    return path;
+}
+
+func AppendPathPart(path: String, part: String) -> String {
+    if path == "" { return part; }
+    return path + "/" + part;
+}
+
+func PathParts(path: String) -> Any {
+    var parts = Seq.New();
+    var normalized = NormalizeBindSeparators(path);
+    var raw = Str.Split(normalized, "/");
+    var i = 0;
+    while i < Seq.get_Length(raw) {
+        var part = Obj.ToString(Seq.Get(raw, i));
+        if part != "" and part != "." {
+            Seq.Push(parts, part);
+        }
+        i = i + 1;
+    }
+    return parts;
+}
+
+func NormalizeAbsPath(path: String) -> String {
+    return Path.Norm(Path.Abs(path));
+}
+
+func NormalizeBindSeparators(path: String) -> String {
+    var normalized = Str.Replace(path, "\\", "/");
+    var sep = Path.Sep();
+    if sep != "/" {
+        normalized = Str.Replace(normalized, sep, "/");
+    }
+    return normalized;
+}
+
+func ListContains(items: List, value: String) -> Boolean {
+    var i = 0;
+    while i < items.count() {
+        if Obj.ToString(items.get(i)) == value {
+            return true;
+        }
+        i = i + 1;
+    }
+    return false;
 }

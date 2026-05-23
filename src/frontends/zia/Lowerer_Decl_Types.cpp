@@ -33,6 +33,11 @@ using namespace runtime;
 // Type Layout Pre-Registration (BUG-FE-006 fix)
 //=============================================================================
 
+/// @brief Pre-register layouts for every class/struct/interface in a declaration list.
+/// @param declarations Top-level (or namespace-scoped) declarations to scan.
+/// @details Runs before bodies are lowered so types may reference one another regardless of
+///          source order (BUG-FE-006). Recurses into namespaces, threading the namespace
+///          prefix so nested types register under their qualified names.
 void Lowerer::registerAllTypeLayouts(std::vector<DeclPtr> &declarations) {
     for (auto &decl : declarations) {
         if (decl->kind == DeclKind::Class) {
@@ -56,6 +61,11 @@ void Lowerer::registerAllTypeLayouts(std::vector<DeclPtr> &declarations) {
     }
 }
 
+/// @brief Register the field layout, class id, vtable, and interface set for a class.
+/// @param decl Class declaration AST node.
+/// @details Idempotent (skips if already registered) and skips uninstantiated generics. The
+///          base class is registered first so its members can be inherited; this class then
+///          computes its own field offsets and vtable on top of the inherited layout.
 void Lowerer::registerClassLayout(ClassDecl &decl) {
     // Skip uninstantiated generic types
     if (!decl.genericParams.empty())
@@ -99,6 +109,10 @@ void Lowerer::registerClassLayout(ClassDecl &decl) {
     classTypes_[qualifiedName] = std::move(info);
 }
 
+/// @brief Register an interface's methods and their itable slot indices.
+/// @param decl Interface declaration AST node.
+/// @details Idempotent. Assigns each interface method a stable slot index keyed by
+///          methodSlotKey() so implementing types can populate their itables consistently.
 void Lowerer::registerInterfaceLayout(InterfaceDecl &decl) {
     std::string qualifiedName = declarationName(decl, decl.name);
     if (interfaceTypes_.find(qualifiedName) != interfaceTypes_.end())
@@ -121,6 +135,13 @@ void Lowerer::registerInterfaceLayout(InterfaceDecl &decl) {
     interfaceTypes_[qualifiedName] = std::move(info);
 }
 
+/// @brief Assign instance-field offsets and sizes for a class's own (non-inherited) fields.
+/// @param decl Class declaration providing the field members.
+/// @param info Class type info to extend (offsets continue after any inherited fields).
+/// @param qualifiedName Qualified class name used to look up semantic field types.
+/// @details Static fields are skipped (they become module-level globals). Each field is
+///          aligned and sized via the semantic inline layout so nested structs, tuples, and
+///          fixed-size arrays occupy their full storage; weak fields are pointer-sized.
 void Lowerer::computeClassFieldLayout(ClassDecl &decl,
                                       ClassTypeInfo &info,
                                       const std::string &qualifiedName) {
@@ -161,6 +182,13 @@ void Lowerer::computeClassFieldLayout(ClassDecl &decl,
     }
 }
 
+/// @brief Populate the method map and vtable slot list from a class's own members.
+/// @param decl Class declaration providing method and property members.
+/// @param info Class type info whose vtable/method map are extended.
+/// @param qualifiedName Qualified class name used to mangle method names and slot keys.
+/// @details Non-static methods get (or override) a vtable slot keyed by methodSlotKey();
+///          static methods are recorded in the method map but excluded from the vtable.
+///          Properties are noted as `get_`/`set_` getter/setter names for later synthesis.
 void Lowerer::buildClassVtable(ClassDecl &decl,
                                ClassTypeInfo &info,
                                const std::string &qualifiedName) {
@@ -201,6 +229,11 @@ void Lowerer::buildClassVtable(ClassDecl &decl,
     }
 }
 
+/// @brief Copy a parent class's fields, vtable, and size into a derived class's layout.
+/// @param info Derived class type info to seed (called before its own members are added).
+/// @param parent Already-registered base class type info.
+/// @details Inherited fields keep their parent offsets and the derived total size starts at
+///          the parent's size, so the derived class appends new fields after the base layout.
 void Lowerer::inheritClassMembers(ClassTypeInfo &info, const ClassTypeInfo &parent) {
     for (const auto &parentField : parent.fields) {
         info.fieldIndex[parentField.name] = info.fields.size();
@@ -211,6 +244,11 @@ void Lowerer::inheritClassMembers(ClassTypeInfo &info, const ClassTypeInfo &pare
     info.vtableIndex = parent.vtableIndex;
 }
 
+/// @brief Register the field layout and methods for a value type (`struct`).
+/// @param decl Struct declaration AST node.
+/// @details Idempotent and skips uninstantiated generics. Field offsets start at 0 (structs
+///          have no object header); each field is aligned/sized via the semantic inline
+///          layout, with weak fields treated as pointers. Methods are recorded for lowering.
 void Lowerer::registerStructLayout(StructDecl &decl) {
     // Skip uninstantiated generic types
     if (!decl.genericParams.empty())
@@ -267,6 +305,10 @@ void Lowerer::registerStructLayout(StructDecl &decl) {
     structTypes_[qualifiedName] = std::move(info);
 }
 
+/// @brief No-op placeholder retained for a possible future vtable-pointer dispatch scheme.
+/// @details Virtual dispatch is currently class_id-based rather than vtable-pointer based
+///          (BUG-VL-011); the vtable layout is consumed at compile time by emitItableInit()
+///          and dispatch lowering, so no per-class vtable global is emitted here.
 void Lowerer::emitVtable(const ClassTypeInfo & /*info*/) {
     // BUG-VL-011: Virtual dispatch is now handled via class_id-based dispatch
     // instead of vtable pointers. The vtable info is used at compile time
@@ -287,6 +329,13 @@ std::string itableAdapterKey(const std::string &structName,
 }
 } // namespace
 
+/// @brief Emit the `__zia_iface_init` startup function that wires up runtime type metadata.
+/// @details Called once from the program entry point when interfaces exist. In four phases it
+///          (1) builds struct→interface adapters, (2) registers each class and struct with the
+///          runtime (vtable + base-class id) in base-before-derived order, registers each
+///          interface, (3) binds class itables by resolving each interface slot to the
+///          implementing (or default) method, and (4) binds struct itables through the
+///          adapters. The caller's function/local context is saved and restored around it.
 void Lowerer::emitItableInit() {
     // Skip if no interfaces are defined (no call was emitted in start())
     if (interfaceTypes_.empty())
@@ -519,6 +568,11 @@ void Lowerer::emitItableInit() {
     localTypes_ = std::move(savedLocalTypes);
 }
 
+/// @brief Return the lowered name of an interface method's default implementation.
+/// @param ifaceInfo Interface that owns the method.
+/// @param ifaceMethod Interface method to resolve.
+/// @return The lowered default-impl function name, or "" when the method is abstract
+///         (no body) and therefore has no default to fall back to.
 std::string Lowerer::defaultInterfaceMethodName(const InterfaceTypeInfo &ifaceInfo,
                                                 MethodDecl *ifaceMethod) {
     if (!ifaceMethod || !ifaceMethod->body)
@@ -529,6 +583,15 @@ std::string Lowerer::defaultInterfaceMethodName(const InterfaceTypeInfo &ifaceIn
     return ifaceInfo.name + "." + ifaceMethod->name;
 }
 
+/// @brief Emit (and cache) a thunk that lets a value type satisfy an interface slot.
+/// @param structInfo The implementing value type.
+/// @param ifaceInfo The interface being satisfied.
+/// @param ifaceMethod The interface method signature the slot expects.
+/// @param implMethod The struct method that implements it.
+/// @return The lowered adapter function name (reused if already emitted).
+/// @details Because interface dispatch passes a heap-wrapper `self`, the adapter offsets the
+///          wrapper pointer by kClassFieldsOffset to reach the inline struct payload, then
+///          forwards all arguments to the real struct method and returns its result.
 std::string Lowerer::emitStructInterfaceAdapter(const StructTypeInfo &structInfo,
                                                 const InterfaceTypeInfo &ifaceInfo,
                                                 MethodDecl *ifaceMethod,
@@ -606,6 +669,14 @@ std::string Lowerer::emitStructInterfaceAdapter(const StructTypeInfo &structInfo
 // On-Demand Generic Type Instantiation
 //=============================================================================
 
+/// @brief Look up a struct's type info, instantiating a generic struct on demand.
+/// @param typeName Qualified or unqualified struct name.
+/// @return Pointer to the cached/created StructTypeInfo, or nullptr if it cannot be resolved.
+/// @details Returns a cached entry when present; an unqualified name is matched against a
+///          unique registered suffix (ambiguous matches yield nullptr). Otherwise, if the
+///          name is an instantiated generic, builds its layout from the template with
+///          substituted field types and queues method lowering via
+///          @c pendingStructInstantiations_.
 const StructTypeInfo *Lowerer::getOrCreateStructTypeInfo(const std::string &typeName) {
     // Check existing cache
     auto it = structTypes_.find(typeName);
@@ -693,6 +764,13 @@ const StructTypeInfo *Lowerer::getOrCreateStructTypeInfo(const std::string &type
     return &structTypes_[typeName];
 }
 
+/// @brief Look up a class's type info, instantiating a generic class on demand.
+/// @param typeName Qualified or unqualified class name.
+/// @return Pointer to the cached/created ClassTypeInfo, or nullptr if it cannot be resolved.
+/// @details Mirrors getOrCreateStructTypeInfo() for reference types: cache hit, unique-suffix
+///          match for unqualified names, else build an instantiated generic from its template
+///          (inheriting base members and building the vtable) and queue method lowering via
+///          @c pendingClassInstantiations_.
 const ClassTypeInfo *Lowerer::getOrCreateClassTypeInfo(const std::string &typeName) {
     // Check existing cache
     auto it = classTypes_.find(typeName);

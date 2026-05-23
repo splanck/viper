@@ -759,6 +759,15 @@ void rt_codeeditor_clear_highlights(void *editor) {
     ce->highlight_span_count = 0;
     ce->highlight_span_cap = 0;
     ce->highlight_spans_sorted = true;
+    free(ce->highlight_line_offsets);
+    free(ce->highlight_line_span_indices);
+    ce->highlight_line_offsets = NULL;
+    ce->highlight_line_span_indices = NULL;
+    ce->highlight_line_offsets_cap = 0;
+    ce->highlight_line_span_indices_cap = 0;
+    ce->highlight_line_index_line_count = 0;
+    ce->highlight_line_index_span_count = 0;
+    ce->highlight_line_index_valid = false;
     ce->base.needs_paint = true;
 }
 
@@ -799,6 +808,7 @@ void rt_codeeditor_add_highlight(void *editor,
     s->end_col = ec;
     s->color = (uint32_t)color;
     ce->highlight_spans_sorted = false;
+    ce->highlight_line_index_valid = false;
     ce->base.needs_paint = true;
 }
 
@@ -1714,6 +1724,22 @@ int64_t rt_codeeditor_get_tab_size(void *editor) {
     return ce->tab_width;
 }
 
+/// @brief `CodeEditor.SetInsertSpaces` — choose soft tabs vs hard tabs.
+void rt_codeeditor_set_insert_spaces(void *editor, int64_t enabled) {
+    vg_codeeditor_t *ce = rt_codeeditor_handle_checked(editor);
+    if (!ce)
+        return;
+    ce->use_spaces = enabled != 0;
+}
+
+/// @brief `CodeEditor.GetInsertSpaces` — return soft-tab setting.
+int64_t rt_codeeditor_get_insert_spaces(void *editor) {
+    vg_codeeditor_t *ce = rt_codeeditor_handle_checked(editor);
+    if (!ce)
+        return 0;
+    return ce->use_spaces ? 1 : 0;
+}
+
 /// @brief `CodeEditor.SetWordWrap` — toggle display-only word wrapping.
 void rt_codeeditor_set_word_wrap(void *editor, int64_t enabled) {
     vg_codeeditor_t *ce = rt_codeeditor_handle_checked(editor);
@@ -1722,8 +1748,7 @@ void rt_codeeditor_set_word_wrap(void *editor, int64_t enabled) {
     ce->word_wrap = enabled != 0;
     if (ce->word_wrap)
         ce->scroll_x = 0.0f;
-    ce->base.needs_layout = true;
-    ce->base.needs_paint = true;
+    vg_codeeditor_refresh_layout_state(ce);
 }
 
 /// @brief `CodeEditor.GetWordWrap` — return display-only word wrapping state.
@@ -2252,6 +2277,46 @@ int64_t rt_codeeditor_get_layout_linear_scan_count(void *editor) {
     return rt_codeeditor_perf_i64(total);
 }
 
+/// @brief Return syntax-highlighter invocation count.
+int64_t rt_codeeditor_get_syntax_highlight_call_count(void *editor) {
+    RT_ASSERT_MAIN_THREAD();
+    vg_codeeditor_t *ce = rt_codeeditor_handle_checked(editor);
+    if (!ce)
+        return 0;
+    vg_codeeditor_perf_stats_t stats = vg_codeeditor_get_perf_stats(ce);
+    return rt_codeeditor_perf_i64(stats.line_highlight_calls);
+}
+
+/// @brief Return cached syntax-state line scan count.
+int64_t rt_codeeditor_get_syntax_state_line_scan_count(void *editor) {
+    RT_ASSERT_MAIN_THREAD();
+    vg_codeeditor_t *ce = rt_codeeditor_handle_checked(editor);
+    if (!ce)
+        return 0;
+    vg_codeeditor_perf_stats_t stats = vg_codeeditor_get_perf_stats(ce);
+    return rt_codeeditor_perf_i64(stats.syntax_state_line_scans);
+}
+
+/// @brief Return highlight span checks performed during paint.
+int64_t rt_codeeditor_get_highlight_span_check_count(void *editor) {
+    RT_ASSERT_MAIN_THREAD();
+    vg_codeeditor_t *ce = rt_codeeditor_handle_checked(editor);
+    if (!ce)
+        return 0;
+    vg_codeeditor_perf_stats_t stats = vg_codeeditor_get_perf_stats(ce);
+    return rt_codeeditor_perf_i64(stats.highlight_span_checks);
+}
+
+/// @brief Return bytes copied by full-buffer materializations.
+int64_t rt_codeeditor_get_full_text_copy_byte_count(void *editor) {
+    RT_ASSERT_MAIN_THREAD();
+    vg_codeeditor_t *ce = rt_codeeditor_handle_checked(editor);
+    if (!ce)
+        return 0;
+    vg_codeeditor_perf_stats_t stats = vg_codeeditor_get_perf_stats(ce);
+    return rt_codeeditor_perf_i64(stats.full_text_copy_bytes);
+}
+
 #else /* !VIPER_ENABLE_GRAPHICS */
 
 //=============================================================================
@@ -2620,6 +2685,18 @@ int64_t rt_codeeditor_get_tab_size(void *editor) {
     return 0;
 }
 
+/// @brief Stub: `CodeEditor.SetInsertSpaces` is a no-op without graphics.
+void rt_codeeditor_set_insert_spaces(void *editor, int64_t enabled) {
+    (void)editor;
+    (void)enabled;
+}
+
+/// @brief Stub: returns 1 so headless preference probes match the editor default.
+int64_t rt_codeeditor_get_insert_spaces(void *editor) {
+    (void)editor;
+    return 1;
+}
+
 /// @brief Stub: `CodeEditor.SetWordWrap` is a no-op without graphics.
 void rt_codeeditor_set_word_wrap(void *editor, int64_t enabled) {
     (void)editor;
@@ -2697,6 +2774,30 @@ int64_t rt_codeeditor_get_full_text_copy_count(void *editor) {
 
 /// @brief Stub: returns 0 without graphics.
 int64_t rt_codeeditor_get_layout_linear_scan_count(void *editor) {
+    (void)editor;
+    return 0;
+}
+
+/// @brief Stub: returns 0 without graphics.
+int64_t rt_codeeditor_get_syntax_highlight_call_count(void *editor) {
+    (void)editor;
+    return 0;
+}
+
+/// @brief Stub: returns 0 without graphics.
+int64_t rt_codeeditor_get_syntax_state_line_scan_count(void *editor) {
+    (void)editor;
+    return 0;
+}
+
+/// @brief Stub: returns 0 without graphics.
+int64_t rt_codeeditor_get_highlight_span_check_count(void *editor) {
+    (void)editor;
+    return 0;
+}
+
+/// @brief Stub: returns 0 without graphics.
+int64_t rt_codeeditor_get_full_text_copy_byte_count(void *editor) {
     (void)editor;
     return 0;
 }

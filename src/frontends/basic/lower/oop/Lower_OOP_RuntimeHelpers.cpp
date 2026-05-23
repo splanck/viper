@@ -27,12 +27,21 @@ using Value = il::core::Value;
 using Opcode = il::core::Opcode;
 } // namespace
 
+/// @brief Bind an OOP emission helper to its lowering context (non-owning).
 OopEmitHelper::OopEmitHelper(Lowerer &lowerer) noexcept : lowerer_(lowerer) {}
 
 // -------------------------------------------------------------------------
 // Parameter Initialization
 // -------------------------------------------------------------------------
 
+/// @brief Emit slot allocation and the incoming-value store for one method/procedure parameter.
+/// @param param The parameter declaration.
+/// @param fn The IL function being built (supplies the incoming block-parameter value).
+/// @param paramIdx Index of this parameter's value in @p fn's params.
+/// @param[in,out] paramNames Set of parameter names seen so far (this name is inserted).
+/// @details Allocates a 1-byte slot for BOOLEAN, else 8 bytes; preserves object-class typing so
+///          member calls resolve (BUG-073); marks arrays and stores object/non-object arrays
+///          through the appropriate path (BUG-OOP-038); records the symbol and its slot.
 void OopEmitHelper::emitParamInit(const Param &param,
                                   il::core::Function &fn,
                                   std::size_t paramIdx,
@@ -73,6 +82,12 @@ void OopEmitHelper::emitParamInit(const Param &param,
         lowerer_.emitStore(ilParamTy, slot, incoming);
 }
 
+/// @brief Emit parameter initialization for every parameter of a procedure/method.
+/// @param params The parameter declarations.
+/// @param fn The IL function being built.
+/// @param selfOffset Index offset of the first user parameter (1 for instance methods that take
+///        an implicit `self`, 0 otherwise).
+/// @param[in,out] paramNames Accumulates the initialized parameter names.
 void OopEmitHelper::emitAllParamInits(const std::vector<Param> &params,
                                       il::core::Function &fn,
                                       std::size_t selfOffset,
@@ -86,6 +101,12 @@ void OopEmitHelper::emitAllParamInits(const std::vector<Param> &params,
 // Array Field Initialization
 // -------------------------------------------------------------------------
 
+/// @brief Allocate and initialize the array-typed fields of a newly constructed object.
+/// @param klass The class declaration (provides field extents/types).
+/// @param selfSlotId Slot id holding the `self` pointer.
+/// @details For each array field, computes the total length from inclusive BASIC extents,
+///          allocates the matching runtime array (str/object/i64), and stores the handle into
+///          the field via a GEP at the field's layout offset.
 void OopEmitHelper::emitArrayFieldInits(const ClassDecl &klass, unsigned selfSlotId) {
     const ClassLayout *layout = lowerer_.findClassLayout(klass.name);
     if (!layout)
@@ -136,6 +157,11 @@ void OopEmitHelper::emitArrayFieldInits(const ClassDecl &klass, unsigned selfSlo
 // Method Epilogue
 // -------------------------------------------------------------------------
 
+/// @brief Emit the method exit cleanup that releases owned locals.
+/// @param paramNames Borrowed parameter names — their arrays are not released (BUG-105).
+/// @param excludeFromObjRelease Object locals excluded from release (e.g. the returned value).
+/// @details Releases deferred temporaries, then object locals, then array locals; callers retain
+///          ownership of borrowed parameters.
 void OopEmitHelper::emitMethodEpilogue(
     const std::unordered_set<std::string> &paramNames,
     const std::unordered_set<std::string> &excludeFromObjRelease) {
@@ -150,6 +176,12 @@ void OopEmitHelper::emitMethodEpilogue(
 // Body Statement Lowering
 // -------------------------------------------------------------------------
 
+/// @brief Lower a method/procedure body and branch to its shared exit block.
+/// @param bodyStmts The body statements.
+/// @param exitIdx Block index of the exit (epilogue) block.
+/// @details An empty body branches straight to the exit. Otherwise statements are lowered and,
+///          if control falls through (the current block is not terminated), a branch to the
+///          exit block is appended.
 void OopEmitHelper::emitBodyAndBranchToExit(const std::vector<const Stmt *> &bodyStmts,
                                             std::size_t exitIdx) {
     auto &ctx = lowerer_.context();

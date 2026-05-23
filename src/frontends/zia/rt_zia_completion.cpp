@@ -28,13 +28,18 @@
 #include "support/source_manager.hpp"
 
 #include <algorithm>
+#include <atomic>
 #include <cctype>
 #include <cstring>
+#include <exception>
 #include <filesystem>
+#include <memory>
+#include <mutex>
 #include <optional>
 #include <sstream>
 #include <string>
 #include <string_view>
+#include <thread>
 #include <unordered_map>
 #include <vector>
 
@@ -140,6 +145,20 @@ std::string sourcePathForFile(uint32_t fileId,
     return fallbackPath;
 }
 
+struct DiagnosticRecord {
+    std::string file;
+    int64_t line{0};
+    int64_t column{0};
+    int64_t endLine{0};
+    int64_t endColumn{0};
+    int64_t severity{0};
+    std::string severityName;
+    std::string code;
+    std::string message;
+    std::string stage;
+    std::string help;
+};
+
 void *diagnosticToMap(const il::support::Diagnostic &diagnostic,
                       const il::support::SourceManager &sm,
                       const std::string &fallbackPath) {
@@ -181,7 +200,66 @@ void *diagnosticsToSeq(const il::support::DiagnosticEngine &diagnostics,
     return seq;
 }
 
+DiagnosticRecord diagnosticToRecord(const il::support::Diagnostic &diagnostic,
+                                    const il::support::SourceManager &sm,
+                                    const std::string &fallbackPath) {
+    il::support::SourceLoc start = diagnostic.loc;
+    il::support::SourceLoc end = diagnostic.loc;
+    if (diagnostic.range.isValid()) {
+        if (!start.isValid())
+            start = diagnostic.range.begin;
+        end = diagnostic.range.end;
+    }
+    if (!end.isValid())
+        end = start;
+
+    DiagnosticRecord record;
+    record.file = pathForLocation(start, sm, fallbackPath);
+    record.line = start.line;
+    record.column = start.column;
+    record.endLine = end.line;
+    record.endColumn = end.column;
+    record.severity = diagnosticSeverityCode(diagnostic.severity);
+    record.severityName = std::string(diagnosticSeverityName(diagnostic.severity));
+    record.code = diagnostic.code;
+    record.message = diagnostic.message;
+    record.stage = diagnostic.stage;
+    record.help = diagnostic.help;
+    return record;
+}
+
+void *diagnosticRecordsToSeq(const std::vector<DiagnosticRecord> &diagnostics) {
+    void *seq = rt_seq_new_owned();
+    for (const auto &diagnostic : diagnostics) {
+        void *map = rt_map_new();
+        mapSetStr(map, "file", diagnostic.file);
+        mapSetInt(map, "line", diagnostic.line);
+        mapSetInt(map, "column", diagnostic.column);
+        mapSetInt(map, "endLine", diagnostic.endLine);
+        mapSetInt(map, "endColumn", diagnostic.endColumn);
+        mapSetInt(map, "severity", diagnostic.severity);
+        mapSetStr(map, "severityName", diagnostic.severityName);
+        mapSetStr(map, "code", diagnostic.code);
+        mapSetStr(map, "message", diagnostic.message);
+        mapSetStr(map, "stage", diagnostic.stage);
+        mapSetStr(map, "help", diagnostic.help);
+        rt_seq_push(seq, map);
+        releaseRuntimeObject(map);
+    }
+    return seq;
+}
+
 constexpr int64_t kProjectIndexClassId = INT64_C(-0x460101);
+constexpr int64_t kSemanticJobClassId = INT64_C(-0x460102);
+
+enum class SemanticJobKind : int64_t {
+    Unknown = 0,
+    CompletionItems = 1,
+    SignatureInfo = 2,
+    HoverInfo = 3,
+    Symbols = 4,
+    Diagnostics = 5,
+};
 
 struct IndexedSource {
     std::string path;
@@ -197,6 +275,29 @@ struct ProjectIndex {
 
 struct ProjectIndexHandle {
     ProjectIndex *index{nullptr};
+};
+
+struct SemanticJob {
+    explicit SemanticJob(SemanticJobKind kind) : kind(kind) {}
+
+    SemanticJobKind kind{SemanticJobKind::Unknown};
+    std::atomic<bool> done{false};
+    std::atomic<bool> cancelled{false};
+    std::mutex mutex;
+    std::string error;
+
+    std::vector<CompletionItem> completionItems;
+    std::string signatureDisplay;
+    std::string signatureSource;
+    int signatureLine{1};
+    int signatureCol{0};
+    std::string hoverDisplay;
+    std::string symbols;
+    std::vector<DiagnosticRecord> diagnostics;
+};
+
+struct SemanticJobHandle {
+    std::shared_ptr<SemanticJob> *job{nullptr};
 };
 
 struct IdentifierToken {
@@ -267,12 +368,47 @@ ProjectIndex *asProjectIndex(void *handle) {
     return typed ? typed->index : nullptr;
 }
 
+SemanticJobHandle *asSemanticJobHandle(void *handle) {
+    if (!rt_obj_is_instance(handle, kSemanticJobClassId, sizeof(SemanticJobHandle)))
+        return nullptr;
+    return static_cast<SemanticJobHandle *>(handle);
+}
+
+std::shared_ptr<SemanticJob> asSemanticJob(void *handle) {
+    SemanticJobHandle *typed = asSemanticJobHandle(handle);
+    if (!typed || !typed->job)
+        return {};
+    return *typed->job;
+}
+
 void projectIndexFinalize(void *obj) {
     ProjectIndexHandle *handle = asProjectIndexHandle(obj);
     if (!handle)
         return;
     delete handle->index;
     handle->index = nullptr;
+}
+
+void semanticJobFinalize(void *obj) {
+    SemanticJobHandle *handle = asSemanticJobHandle(obj);
+    if (!handle)
+        return;
+    if (handle->job) {
+        if (*handle->job)
+            (*handle->job)->cancelled.store(true, std::memory_order_release);
+        delete handle->job;
+        handle->job = nullptr;
+    }
+}
+
+void *semanticJobHandleFor(std::shared_ptr<SemanticJob> job) {
+    auto *handle =
+        static_cast<SemanticJobHandle *>(rt_obj_new_i64(kSemanticJobClassId, sizeof(SemanticJobHandle)));
+    if (!handle)
+        return nullptr;
+    handle->job = new std::shared_ptr<SemanticJob>(std::move(job));
+    rt_obj_set_finalizer(handle, semanticJobFinalize);
+    return handle;
 }
 
 std::string symbolKindName(Symbol::Kind kind) {
@@ -699,17 +835,448 @@ void *renameFailureMap(std::string_view reason) {
     releaseRuntimeObject(edits);
     return map;
 }
+
+std::string_view completionKindName(CompletionKind kind) {
+    switch (kind) {
+        case CompletionKind::Keyword:
+            return "keyword";
+        case CompletionKind::Snippet:
+            return "snippet";
+        case CompletionKind::Variable:
+            return "variable";
+        case CompletionKind::Parameter:
+            return "parameter";
+        case CompletionKind::Field:
+            return "field";
+        case CompletionKind::Method:
+            return "method";
+        case CompletionKind::Function:
+            return "function";
+        case CompletionKind::Entity:
+            return "entity";
+        case CompletionKind::Value:
+            return "value";
+        case CompletionKind::Interface:
+            return "interface";
+        case CompletionKind::Module:
+            return "module";
+        case CompletionKind::RuntimeClass:
+            return "runtimeClass";
+        case CompletionKind::Property:
+            return "property";
+    }
+    return "item";
+}
+
+void *completionItemToMap(const CompletionItem &item) {
+    void *map = rt_map_new();
+    mapSetStr(map, "label", item.label);
+    mapSetStr(map, "insertText", item.insertText);
+    mapSetInt(map, "kind", static_cast<int64_t>(item.kind));
+    mapSetStr(map, "kindName", completionKindName(item.kind));
+    mapSetStr(map, "detail", item.detail);
+    mapSetStr(map, "documentation", item.documentation);
+    mapSetStr(map, "source", item.source);
+    mapSetStr(map, "commitCharacters", item.commitCharacters);
+    mapSetBool(map, "isSnippet", item.isSnippet);
+    mapSetInt(map, "cursorOffset", item.cursorOffset);
+    mapSetInt(map, "replacementStartLine", item.replacementStartLine);
+    mapSetInt(map, "replacementStartColumn", item.replacementStartColumn);
+    mapSetInt(map, "replacementEndLine", item.replacementEndLine);
+    mapSetInt(map, "replacementEndColumn", item.replacementEndColumn);
+    return map;
+}
+
+void *completionItemsToSeq(const std::vector<CompletionItem> &items) {
+    void *seq = rt_seq_new_owned();
+    for (const auto &item : items) {
+        void *map = completionItemToMap(item);
+        rt_seq_push(seq, map);
+        releaseRuntimeObject(map);
+    }
+    return seq;
+}
+
+std::string trimAscii(std::string_view text) {
+    size_t start = 0;
+    while (start < text.size() && std::isspace(static_cast<unsigned char>(text[start])))
+        ++start;
+    size_t end = text.size();
+    while (end > start && std::isspace(static_cast<unsigned char>(text[end - 1])))
+        --end;
+    return std::string(text.substr(start, end - start));
+}
+
+int activeParameterForSource(std::string_view source, int line, int col) {
+    size_t cursor = 0;
+    int curLine = 1;
+    while (cursor < source.size() && curLine < line) {
+        if (source[cursor] == '\n')
+            ++curLine;
+        ++cursor;
+    }
+    size_t lineStart = cursor;
+    while (cursor < source.size() && source[cursor] != '\n')
+        ++cursor;
+    size_t at = lineStart + (col < 0 ? 0 : static_cast<size_t>(col));
+    if (at > cursor)
+        at = cursor;
+
+    int depth = 0;
+    size_t open = std::string_view::npos;
+    for (size_t i = at; i > 0; --i) {
+        char c = source[i - 1];
+        if (c == ')')
+            ++depth;
+        else if (c == '(') {
+            if (depth == 0) {
+                open = i - 1;
+                break;
+            }
+            --depth;
+        }
+    }
+    if (open == std::string_view::npos)
+        return 0;
+
+    int param = 0;
+    int nestedParen = 0;
+    int nestedBracket = 0;
+    int nestedBrace = 0;
+    for (size_t i = open + 1; i < at && i < source.size(); ++i) {
+        char c = source[i];
+        if (c == '(')
+            ++nestedParen;
+        else if (c == ')' && nestedParen > 0)
+            --nestedParen;
+        else if (c == '[')
+            ++nestedBracket;
+        else if (c == ']' && nestedBracket > 0)
+            --nestedBracket;
+        else if (c == '{')
+            ++nestedBrace;
+        else if (c == '}' && nestedBrace > 0)
+            --nestedBrace;
+        else if (c == ',' && nestedParen == 0 && nestedBracket == 0 && nestedBrace == 0)
+            ++param;
+    }
+    return param;
+}
+
+std::vector<std::string> splitTopLevelParams(std::string_view params) {
+    std::vector<std::string> out;
+    int nestedParen = 0;
+    int nestedBracket = 0;
+    int nestedBrace = 0;
+    size_t start = 0;
+    for (size_t i = 0; i < params.size(); ++i) {
+        char c = params[i];
+        if (c == '(')
+            ++nestedParen;
+        else if (c == ')' && nestedParen > 0)
+            --nestedParen;
+        else if (c == '[')
+            ++nestedBracket;
+        else if (c == ']' && nestedBracket > 0)
+            --nestedBracket;
+        else if (c == '{')
+            ++nestedBrace;
+        else if (c == '}' && nestedBrace > 0)
+            --nestedBrace;
+        else if (c == ',' && nestedParen == 0 && nestedBracket == 0 && nestedBrace == 0) {
+            out.push_back(trimAscii(params.substr(start, i - start)));
+            start = i + 1;
+        }
+    }
+    std::string tail = trimAscii(params.substr(start));
+    if (!tail.empty())
+        out.push_back(std::move(tail));
+    return out;
+}
+
+void *signatureParametersToSeq(std::string_view signatureLine) {
+    void *seq = rt_seq_new_owned();
+    size_t open = signatureLine.find('(');
+    size_t close = signatureLine.rfind(')');
+    if (open == std::string_view::npos || close == std::string_view::npos || close <= open)
+        return seq;
+
+    auto params = splitTopLevelParams(signatureLine.substr(open + 1, close - open - 1));
+    for (const auto &paramText : params) {
+        if (paramText.empty())
+            continue;
+        void *param = rt_map_new();
+        size_t colon = paramText.find(':');
+        if (colon == std::string::npos) {
+            mapSetStr(param, "name", paramText);
+            mapSetStr(param, "type", "");
+        } else {
+            mapSetStr(param, "name", trimAscii(std::string_view(paramText).substr(0, colon)));
+            mapSetStr(param, "type", trimAscii(std::string_view(paramText).substr(colon + 1)));
+        }
+        mapSetStr(param, "documentation", "");
+        rt_seq_push(seq, param);
+        releaseRuntimeObject(param);
+    }
+    return seq;
+}
+
+void *signatureInfoMap(std::string_view display, std::string_view source, int line, int col) {
+    void *map = rt_map_new();
+    bool available = !display.empty();
+    mapSetBool(map, "available", available);
+    mapSetStr(map, "display", display);
+    mapSetInt(map, "activeParameter", available ? activeParameterForSource(source, line, col) : 0);
+    mapSetInt(map, "activeSignature", 0);
+    mapSetInt(map, "overloadCount", available ? 1 : 0);
+    mapSetStr(map, "documentation", "");
+    mapSetStr(map, "source", "zia");
+
+    std::string firstLine(display.substr(0, display.find('\n')));
+    size_t open = firstLine.find('(');
+    std::string name = open == std::string::npos ? std::string() :
+                                                     trimAscii(std::string_view(firstLine).substr(0, open));
+    mapSetStr(map, "name", name);
+    size_t arrow = firstLine.find("->");
+    std::string returnType = arrow == std::string::npos ?
+                                 std::string() :
+                                 trimAscii(std::string_view(firstLine).substr(arrow + 2));
+    mapSetStr(map, "returnType", returnType);
+    void *params = signatureParametersToSeq(firstLine);
+    mapSetObject(map, "parameters", params);
+    releaseRuntimeObject(params);
+    return map;
+}
+
+void *hoverInfoMap(std::string_view display) {
+    void *map = rt_map_new();
+    bool available = !display.empty();
+    mapSetBool(map, "available", available);
+    mapSetStr(map, "display", display);
+    mapSetStr(map, "documentation", "");
+    mapSetStr(map, "source", "zia");
+
+    std::string text(display);
+    std::string kind;
+    std::string name;
+    std::string type;
+    size_t firstSpace = text.find(' ');
+    size_t colon = text.find(':');
+    if (firstSpace != std::string::npos)
+        kind = trimAscii(std::string_view(text).substr(0, firstSpace));
+    if (firstSpace != std::string::npos && colon != std::string::npos && colon > firstSpace)
+        name = trimAscii(std::string_view(text).substr(firstSpace + 1, colon - firstSpace - 1));
+    if (colon != std::string::npos)
+        type = trimAscii(std::string_view(text).substr(colon + 1));
+    mapSetStr(map, "kind", kind);
+    mapSetStr(map, "name", name);
+    mapSetStr(map, "type", type);
+    mapSetStr(map, "title", name.empty() ? text : name);
+    return map;
+}
+
+std::vector<DiagnosticRecord> diagnosticRecordsForSource(const std::string &source,
+                                                         const std::string &path) {
+    il::support::SourceManager sm;
+    CompilerInput input{.source = source, .path = path};
+    CompilerOptions opts{};
+
+    auto result = parseAndAnalyze(input, opts, sm);
+    if (!result)
+        return {};
+
+    const std::string sourcePath = sourcePathForFile(result->fileId, sm, path);
+    std::vector<DiagnosticRecord> records;
+    records.reserve(result->diagnostics.diagnostics().size());
+    for (const auto &diagnostic : result->diagnostics.diagnostics())
+        records.push_back(diagnosticToRecord(diagnostic, sm, sourcePath));
+    return records;
+}
+
+std::string hoverForSource(const std::string &source, const std::string &path, int64_t line, int64_t col) {
+    int lineIdx = (int)line - 1;
+    int colIdx = (int)col;
+    size_t pos = 0;
+    int curLine = 0;
+    while (curLine < lineIdx && pos < source.size()) {
+        if (source[pos] == '\n')
+            ++curLine;
+        ++pos;
+    }
+    pos += (size_t)colIdx;
+    if (pos >= source.size())
+        return {};
+
+    size_t start = pos;
+    while (start > 0 &&
+           (std::isalnum((unsigned char)source[start - 1]) || source[start - 1] == '_'))
+        --start;
+    size_t end = pos;
+    while (end < source.size() &&
+           (std::isalnum((unsigned char)source[end]) || source[end] == '_'))
+        ++end;
+    if (start == end)
+        return {};
+    std::string ident = source.substr(start, end - start);
+
+    il::support::SourceManager sm;
+    CompilerInput input{.source = source, .path = path};
+    CompilerOptions opts{};
+
+    auto result = parseAndAnalyze(input, opts, sm);
+    if (!result || !result->sema)
+        return {};
+
+    const ScopedSymbol *scoped =
+        result->sema->findSymbolAtPosition(ident, result->fileId, static_cast<uint32_t>(line),
+                                           static_cast<uint32_t>(col + 1));
+    if (!scoped)
+        return {};
+    const Symbol &sym = scoped->symbol;
+
+    std::string kindStr;
+    switch (sym.kind) {
+        case Symbol::Kind::Variable:
+            kindStr = "var";
+            break;
+        case Symbol::Kind::Parameter:
+            kindStr = "param";
+            break;
+        case Symbol::Kind::Function:
+            kindStr = "func";
+            break;
+        case Symbol::Kind::Method:
+            kindStr = "method";
+            break;
+        case Symbol::Kind::Field:
+            kindStr = "field";
+            break;
+        case Symbol::Kind::Type:
+            kindStr = "type";
+            break;
+        case Symbol::Kind::Module:
+            kindStr = "module";
+            break;
+        default:
+            kindStr = "symbol";
+            break;
+    }
+
+    std::string typeStr = sym.type ? sym.type->toDisplayString() : "unknown";
+    std::string hover = kindStr + " " + ident + ": " + typeStr;
+    if (sym.isFinal)
+        hover += " (final)";
+    return hover;
+}
+
+std::string symbolsForSource(const std::string &source, const std::string &path) {
+    il::support::SourceManager sm;
+    CompilerInput input{.source = source, .path = path};
+    CompilerOptions opts{};
+    uint32_t fileId = sm.addFile(path);
+    input.fileId = fileId;
+
+    auto result = parseAndAnalyze(input, opts, sm);
+    if (!result || !result->sema)
+        return {};
+
+    std::ostringstream out;
+    auto globals = result->sema->getGlobalSymbols();
+    for (const auto &sym : globals) {
+        std::string kindStr;
+        switch (sym.kind) {
+            case Symbol::Kind::Variable:
+                kindStr = "variable";
+                break;
+            case Symbol::Kind::Function:
+                kindStr = "function";
+                break;
+            case Symbol::Kind::Type:
+                kindStr = "type";
+                break;
+            case Symbol::Kind::Module:
+                kindStr = "module";
+                break;
+            default:
+                kindStr = "symbol";
+                break;
+        }
+        std::string typeStr = sym.type ? sym.type->toDisplayString() : "";
+        int symLine = sym.decl ? (int)sym.decl->loc.line : 0;
+        out << sym.name << '\t' << kindStr << '\t' << typeStr << '\t' << symLine << '\n';
+    }
+
+    auto types = result->sema->getTypeNames();
+    for (const auto &tn : types)
+        out << tn << '\t' << "type" << '\t' << tn << '\t' << 0 << '\n';
+
+    return out.str();
+}
+
+template <typename Worker>
+void *startSemanticJob(SemanticJobKind kind, Worker worker) {
+    auto job = std::make_shared<SemanticJob>(kind);
+    void *handle = semanticJobHandleFor(job);
+    if (!handle)
+        return nullptr;
+
+    try {
+        std::thread([job, worker = std::move(worker)]() mutable {
+            try {
+                if (!job->cancelled.load(std::memory_order_acquire))
+                    worker(*job);
+            } catch (const std::exception &ex) {
+                std::lock_guard<std::mutex> lock(job->mutex);
+                job->error = ex.what();
+            } catch (...) {
+                std::lock_guard<std::mutex> lock(job->mutex);
+                job->error = "unknown semantic job failure";
+            }
+            job->done.store(true, std::memory_order_release);
+        }).detach();
+    } catch (const std::exception &ex) {
+        std::lock_guard<std::mutex> lock(job->mutex);
+        job->error = ex.what();
+        job->done.store(true, std::memory_order_release);
+    } catch (...) {
+        std::lock_guard<std::mutex> lock(job->mutex);
+        job->error = "failed to start semantic job";
+        job->done.store(true, std::memory_order_release);
+    }
+    return handle;
+}
 } // namespace
 
 extern "C" {
 rt_string rt_zia_complete_for_file(rt_string source, rt_string file_path, int64_t line, int64_t col);
+void *rt_zia_completion_items_for_file(rt_string source, rt_string file_path, int64_t line, int64_t col);
 rt_string rt_zia_signature_help_for_file(
     rt_string source, rt_string file_path, int64_t line, int64_t col);
+void *rt_zia_signature_info_for_file(rt_string source, rt_string file_path, int64_t line, int64_t col);
 rt_string rt_zia_check_for_file(rt_string source, rt_string file_path);
 rt_string rt_zia_hover_for_file(rt_string source, rt_string file_path, int64_t line, int64_t col);
+void *rt_zia_hover_info_for_file(rt_string source, rt_string file_path, int64_t line, int64_t col);
 rt_string rt_zia_symbols_for_file(rt_string source, rt_string file_path);
 void *rt_zia_toolchain_check_for_file(rt_string source, rt_string file_path);
 void *rt_zia_toolchain_compile_for_file(rt_string source, rt_string file_path);
+void *rt_zia_completion_begin_items_for_file(
+    rt_string source, rt_string file_path, int64_t line, int64_t col);
+void *rt_zia_completion_begin_signature_info_for_file(
+    rt_string source, rt_string file_path, int64_t line, int64_t col);
+void *rt_zia_completion_begin_hover_info_for_file(
+    rt_string source, rt_string file_path, int64_t line, int64_t col);
+void *rt_zia_completion_begin_symbols_for_file(rt_string source, rt_string file_path);
+void *rt_zia_toolchain_begin_check_for_file(rt_string source, rt_string file_path);
+int8_t rt_zia_semantic_job_is_done(void *handle);
+int8_t rt_zia_semantic_job_is_error(void *handle);
+rt_string rt_zia_semantic_job_error(void *handle);
+int64_t rt_zia_semantic_job_kind(void *handle);
+void rt_zia_semantic_job_cancel(void *handle);
+void *rt_zia_semantic_job_completion_items(void *handle);
+void *rt_zia_semantic_job_signature_info(void *handle);
+void *rt_zia_semantic_job_hover_info(void *handle);
+rt_string rt_zia_semantic_job_symbols(void *handle);
+void *rt_zia_semantic_job_diagnostics(void *handle);
 void *rt_zia_project_index_new(rt_string root);
 int8_t rt_zia_project_index_is_valid(void *handle);
 int8_t rt_zia_project_index_update_file(void *handle, rt_string file_path, rt_string source);
@@ -751,6 +1318,25 @@ rt_string rt_zia_complete_for_file(rt_string source, rt_string file_path, int64_
     return rt_string_from_bytes(result.c_str(), result.size());
 }
 
+/// @brief Runtime entry point: structured completion items at (@p line, @p col)
+///        in @p source. Returns a Seq<Map> with stable item fields.
+void *rt_zia_completion_items(rt_string source, int64_t line, int64_t col) {
+    std::string sourceStr = toStdString(source);
+    auto items = s_engine.complete(sourceStr, (int)line, (int)col);
+    return completionItemsToSeq(items);
+}
+
+/// @brief As @ref rt_zia_completion_items but with an explicit @p file_path so
+///        relative binds and project-aware source locations can be resolved.
+void *rt_zia_completion_items_for_file(
+    rt_string source, rt_string file_path, int64_t line, int64_t col) {
+    std::string sourceStr = toStdString(source);
+    std::string pathStr = editorPathOrDefault(file_path);
+
+    auto items = s_engine.complete(sourceStr, (int)line, (int)col, pathStr);
+    return completionItemsToSeq(items);
+}
+
 /// @brief Runtime entry point: signature help at (@p line, @p col) with no
 ///        file context (delegates to @ref rt_zia_signature_help_for_file).
 rt_string rt_zia_signature_help(rt_string source, int64_t line, int64_t col) {
@@ -766,6 +1352,22 @@ rt_string rt_zia_signature_help_for_file(
 
     std::string result = s_engine.signatureHelp(sourceStr, (int)line, (int)col, pathStr);
     return rt_string_from_bytes(result.c_str(), result.size());
+}
+
+/// @brief Runtime entry point: structured signature help at (@p line, @p col)
+///        with no file context.
+void *rt_zia_signature_info(rt_string source, int64_t line, int64_t col) {
+    return rt_zia_signature_info_for_file(source, nullptr, line, col);
+}
+
+/// @brief Runtime entry point: structured signature help map for the active
+///        invocation at (@p line, @p col).
+void *rt_zia_signature_info_for_file(
+    rt_string source, rt_string file_path, int64_t line, int64_t col) {
+    std::string sourceStr = toStdString(source);
+    std::string pathStr = editorPathOrDefault(file_path);
+    std::string result = s_engine.signatureHelp(sourceStr, (int)line, (int)col, pathStr);
+    return signatureInfoMap(result, sourceStr, (int)line, (int)col);
 }
 
 /// @brief Runtime entry point: drop the completion engine's cached analysis
@@ -876,6 +1478,171 @@ void *rt_zia_toolchain_compile_for_file(rt_string source, rt_string file_path) {
     mapSetStr(map, "il", ilText);
 
     return map;
+}
+
+// =========================================================================
+// Async semantic jobs — worker threads compute into native C++ records; the
+// UI thread later materializes Viper runtime maps/sequences by polling results.
+// =========================================================================
+void *rt_zia_completion_begin_items_for_file(
+    rt_string source, rt_string file_path, int64_t line, int64_t col) {
+    std::string sourceStr = toStdString(source);
+    std::string pathStr = editorPathOrDefault(file_path);
+    return startSemanticJob(
+        SemanticJobKind::CompletionItems,
+        [sourceStr = std::move(sourceStr), pathStr = std::move(pathStr), line, col](SemanticJob &job) {
+            CompletionEngine engine;
+            auto items = engine.complete(sourceStr, (int)line, (int)col, pathStr);
+            std::lock_guard<std::mutex> lock(job.mutex);
+            if (!job.cancelled.load(std::memory_order_acquire))
+                job.completionItems = std::move(items);
+        });
+}
+
+void *rt_zia_completion_begin_signature_info_for_file(
+    rt_string source, rt_string file_path, int64_t line, int64_t col) {
+    std::string sourceStr = toStdString(source);
+    std::string pathStr = editorPathOrDefault(file_path);
+    return startSemanticJob(
+        SemanticJobKind::SignatureInfo,
+        [sourceStr = std::move(sourceStr), pathStr = std::move(pathStr), line, col](SemanticJob &job) {
+            CompletionEngine engine;
+            std::string display = engine.signatureHelp(sourceStr, (int)line, (int)col, pathStr);
+            std::lock_guard<std::mutex> lock(job.mutex);
+            if (!job.cancelled.load(std::memory_order_acquire)) {
+                job.signatureDisplay = std::move(display);
+                job.signatureSource = sourceStr;
+                job.signatureLine = (int)line;
+                job.signatureCol = (int)col;
+            }
+        });
+}
+
+void *rt_zia_completion_begin_hover_info_for_file(
+    rt_string source, rt_string file_path, int64_t line, int64_t col) {
+    std::string sourceStr = toStdString(source);
+    std::string pathStr = editorPathOrDefault(file_path);
+    return startSemanticJob(
+        SemanticJobKind::HoverInfo,
+        [sourceStr = std::move(sourceStr), pathStr = std::move(pathStr), line, col](SemanticJob &job) {
+            std::string display = hoverForSource(sourceStr, pathStr, line, col);
+            std::lock_guard<std::mutex> lock(job.mutex);
+            if (!job.cancelled.load(std::memory_order_acquire))
+                job.hoverDisplay = std::move(display);
+        });
+}
+
+void *rt_zia_completion_begin_symbols_for_file(rt_string source, rt_string file_path) {
+    std::string sourceStr = toStdString(source);
+    std::string pathStr = editorPathOrDefault(file_path);
+    return startSemanticJob(
+        SemanticJobKind::Symbols,
+        [sourceStr = std::move(sourceStr), pathStr = std::move(pathStr)](SemanticJob &job) {
+            std::string symbols = symbolsForSource(sourceStr, pathStr);
+            std::lock_guard<std::mutex> lock(job.mutex);
+            if (!job.cancelled.load(std::memory_order_acquire))
+                job.symbols = std::move(symbols);
+        });
+}
+
+void *rt_zia_toolchain_begin_check_for_file(rt_string source, rt_string file_path) {
+    std::string sourceStr = toStdString(source);
+    std::string pathStr = editorPathOrDefault(file_path);
+    return startSemanticJob(
+        SemanticJobKind::Diagnostics,
+        [sourceStr = std::move(sourceStr), pathStr = std::move(pathStr)](SemanticJob &job) {
+            auto diagnostics = diagnosticRecordsForSource(sourceStr, pathStr);
+            std::lock_guard<std::mutex> lock(job.mutex);
+            if (!job.cancelled.load(std::memory_order_acquire))
+                job.diagnostics = std::move(diagnostics);
+        });
+}
+
+int8_t rt_zia_semantic_job_is_done(void *handle) {
+    auto job = asSemanticJob(handle);
+    return job && job->done.load(std::memory_order_acquire) ? 1 : 0;
+}
+
+int8_t rt_zia_semantic_job_is_error(void *handle) {
+    auto job = asSemanticJob(handle);
+    if (!job || !job->done.load(std::memory_order_acquire))
+        return 0;
+    std::lock_guard<std::mutex> lock(job->mutex);
+    return job->error.empty() ? 0 : 1;
+}
+
+rt_string rt_zia_semantic_job_error(void *handle) {
+    auto job = asSemanticJob(handle);
+    if (!job)
+        return rt_str_empty();
+    std::lock_guard<std::mutex> lock(job->mutex);
+    return toRtString(job->error);
+}
+
+int64_t rt_zia_semantic_job_kind(void *handle) {
+    auto job = asSemanticJob(handle);
+    return job ? static_cast<int64_t>(job->kind) : 0;
+}
+
+void rt_zia_semantic_job_cancel(void *handle) {
+    auto job = asSemanticJob(handle);
+    if (job)
+        job->cancelled.store(true, std::memory_order_release);
+}
+
+void *rt_zia_semantic_job_completion_items(void *handle) {
+    auto job = asSemanticJob(handle);
+    if (!job || !job->done.load(std::memory_order_acquire) ||
+        job->kind != SemanticJobKind::CompletionItems)
+        return rt_seq_new_owned();
+    std::lock_guard<std::mutex> lock(job->mutex);
+    if (!job->error.empty())
+        return rt_seq_new_owned();
+    return completionItemsToSeq(job->completionItems);
+}
+
+void *rt_zia_semantic_job_signature_info(void *handle) {
+    auto job = asSemanticJob(handle);
+    if (!job || !job->done.load(std::memory_order_acquire) ||
+        job->kind != SemanticJobKind::SignatureInfo)
+        return signatureInfoMap("", "", 1, 0);
+    std::lock_guard<std::mutex> lock(job->mutex);
+    if (!job->error.empty())
+        return signatureInfoMap("", "", 1, 0);
+    return signatureInfoMap(job->signatureDisplay, job->signatureSource, job->signatureLine, job->signatureCol);
+}
+
+void *rt_zia_semantic_job_hover_info(void *handle) {
+    auto job = asSemanticJob(handle);
+    if (!job || !job->done.load(std::memory_order_acquire) ||
+        job->kind != SemanticJobKind::HoverInfo)
+        return hoverInfoMap("");
+    std::lock_guard<std::mutex> lock(job->mutex);
+    if (!job->error.empty())
+        return hoverInfoMap("");
+    return hoverInfoMap(job->hoverDisplay);
+}
+
+rt_string rt_zia_semantic_job_symbols(void *handle) {
+    auto job = asSemanticJob(handle);
+    if (!job || !job->done.load(std::memory_order_acquire) ||
+        job->kind != SemanticJobKind::Symbols)
+        return rt_str_empty();
+    std::lock_guard<std::mutex> lock(job->mutex);
+    if (!job->error.empty())
+        return rt_str_empty();
+    return toRtString(job->symbols);
+}
+
+void *rt_zia_semantic_job_diagnostics(void *handle) {
+    auto job = asSemanticJob(handle);
+    if (!job || !job->done.load(std::memory_order_acquire) ||
+        job->kind != SemanticJobKind::Diagnostics)
+        return rt_seq_new_owned();
+    std::lock_guard<std::mutex> lock(job->mutex);
+    if (!job->error.empty())
+        return rt_seq_new_owned();
+    return diagnosticRecordsToSeq(job->diagnostics);
 }
 
 // =========================================================================
@@ -1136,6 +1903,20 @@ rt_string rt_zia_hover_for_file(rt_string source, rt_string file_path, int64_t l
         hover += " (final)";
 
     return rt_string_from_bytes(hover.c_str(), hover.size());
+}
+
+/// @brief Runtime entry point: structured hover info with no file context.
+void *rt_zia_hover_info(rt_string source, int64_t line, int64_t col) {
+    return rt_zia_hover_info_for_file(source, nullptr, line, col);
+}
+
+/// @brief Runtime entry point: structured hover info for the identifier at
+///        (@p line, @p col).
+void *rt_zia_hover_info_for_file(rt_string source, rt_string file_path, int64_t line, int64_t col) {
+    rt_string hover = rt_zia_hover_for_file(source, file_path, line, col);
+    std::string hoverText = toStdString(hover);
+    rt_string_unref(hover);
+    return hoverInfoMap(hoverText);
 }
 
 // =========================================================================

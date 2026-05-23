@@ -18,6 +18,11 @@ namespace il::frontends::zia {
 // Type Parsing
 //===----------------------------------------------------------------------===//
 
+/// @brief Parse a type, including any trailing optional (`?`) suffixes.
+/// @return The parsed type, or nullptr on error.
+/// @details Guards against runaway recursion (kMaxTypeDepth, 256). Parses a base type via
+///          parseBaseType(), then wraps it in an OptionalType for each trailing `?` (so `T??`
+///          nests two optionals).
 TypePtr Parser::parseType() {
     if (++typeDepth_ > kMaxTypeDepth) {
         --typeDepth_;
@@ -40,6 +45,12 @@ TypePtr Parser::parseType() {
     return base;
 }
 
+/// @brief Parse a base (non-optional) type.
+/// @return The parsed type node, or nullptr on error.
+/// @details Recognizes: `[T]` list shorthand (desugars to `List[T]`); qualified named types
+///          (`Module.Type`); fixed-size arrays `T[N]` (non-negative integer literal count);
+///          generic instantiations `T[Arg, ...]`; tuple types `(A, B)`; and function types
+///          `(A, B) -> C`.
 TypePtr Parser::parseBaseType() {
     // [Type] shorthand for List[Type] — e.g., [Integer] desugars to List[Integer]
     if (check(TokenKind::LBracket)) {

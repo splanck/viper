@@ -21,6 +21,12 @@ using namespace runtime;
 // Pattern Matching Helpers
 //=============================================================================
 
+/// @brief Extract one element of a tuple scrutinee as a pattern value.
+/// @param tuple The lowered tuple value (a pointer to inline storage).
+/// @param index Zero-based element index.
+/// @param elemType Semantic type of the element.
+/// @return The element as a PatternValue. Aggregate elements (struct/fixed-array/tuple) are
+///         returned by address; scalar elements are loaded, and string loads are retained.
 Lowerer::PatternValue Lowerer::emitTupleElement(const PatternValue &tuple,
                                                 size_t index,
                                                 TypeRef elemType) {
@@ -40,6 +46,18 @@ Lowerer::PatternValue Lowerer::emitTupleElement(const PatternValue &tuple,
     return {elemVal, elemType};
 }
 
+/// @brief Emit the branch logic deciding whether @p scrutinee matches @p pattern.
+/// @param pattern The arm pattern to test.
+/// @param scrutinee The value (and its semantic type) being matched.
+/// @param successBlock Block to branch to when the pattern matches.
+/// @param failureBlock Block to branch to when it does not.
+/// @details Recursive over the pattern tree. Wildcard/binding always succeed; literal and
+///          expression patterns emit type-appropriate comparisons (string equals, FP/int
+///          compare, bool extend-and-compare); tuple/constructor patterns chain per-element
+///          tests; constructors special-case `Optional` (Some/None via null check), `Result`
+///          (Ok/Err via runtime helpers) and struct/class field destructuring; OR patterns
+///          chain alternatives so any match jumps to @p successBlock. This routine only tests
+///          — it binds nothing (see emitPatternBindings()).
 void Lowerer::emitPatternTest(const MatchArm::Pattern &pattern,
                               const PatternValue &scrutinee,
                               size_t successBlock,
@@ -336,6 +354,13 @@ void Lowerer::emitPatternTest(const MatchArm::Pattern &pattern,
     }
 }
 
+/// @brief Bind a pattern's variable names to the matched sub-values of @p scrutinee.
+/// @param pattern The arm pattern (already known to match).
+/// @param scrutinee The matched value and its semantic type.
+/// @details Run after emitPatternTest() succeeds. Mirrors that routine's structure: a binding
+///          defines a local; tuple/struct/class/constructor patterns recurse into element or
+///          field sub-values (unwrapping `Optional`/`Result` payloads via the same runtime
+///          helpers used during testing). OR patterns introduce no bindings (sema enforces).
 void Lowerer::emitPatternBindings(const MatchArm::Pattern &pattern, const PatternValue &scrutinee) {
     switch (pattern.kind) {
         case MatchArm::Pattern::Kind::Binding:
@@ -445,6 +470,16 @@ void Lowerer::emitPatternBindings(const MatchArm::Pattern &pattern, const Patter
 // Match Expression Lowering
 //=============================================================================
 
+/// @brief Lower a `match` expression to IL.
+/// @param expr The match expression with its scrutinee and arms.
+/// @return The match result value and IL type (void placeholder for statement-style matches).
+/// @details Lowers the scrutinee once into a reusable slot. For an integer scrutinee whose
+///          arms are all integer literals (plus an optional trailing wildcard) it emits a
+///          single O(1) SwitchI32; otherwise it emits a chain of pattern-test blocks, each
+///          with an optional guard, that branch to per-arm body blocks. Each arm binds its
+///          pattern, lowers its body, and stores the (coerced) result into a shared slot;
+///          local/slot state is saved and restored around every arm. A trailing trap block
+///          handles non-exhaustive fallthrough and is DCE'd away when an arm is irrefutable.
 LowerResult Lowerer::lowerMatchExpr(MatchExpr *expr) {
     if (expr->arms.empty()) {
         return {Value::constInt(0), Type(Type::Kind::Void)};

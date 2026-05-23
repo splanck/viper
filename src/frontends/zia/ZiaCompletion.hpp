@@ -88,7 +88,16 @@ struct CompletionItem {
     std::string insertText; ///< Text inserted into the editor buffer
     CompletionKind kind{CompletionKind::Variable};
     std::string detail;    ///< Type/signature shown right-aligned in popup
+    std::string documentation; ///< Optional documentation text.
+    std::string source;        ///< Source provider, e.g. "scope", "runtime", "keyword".
+    std::string commitCharacters; ///< Characters that can explicitly commit the item.
     int sortPriority{100}; ///< Lower = ranked higher
+    int replacementStartLine{1};
+    int replacementStartColumn{0};
+    int replacementEndLine{1};
+    int replacementEndColumn{0};
+    bool isSnippet{false};
+    int cursorOffset{-1}; ///< Cursor offset after snippet insertion; -1 means after insert text.
 };
 
 /// @brief Serialize a list of items to tab-delimited text for the runtime bridge.
@@ -203,6 +212,9 @@ class CompletionEngine {
     std::vector<CompletionItem> provideModuleMembers(const Sema &sema,
                                                      const std::string &moduleAlias,
                                                      const std::string &prefix) const;
+
+    std::vector<CompletionItem> provideBoundFileModules(const Sema &sema,
+                                                        const std::string &prefix) const;
 
     std::vector<CompletionItem> provideRuntimeMembers(const Sema &sema,
                                                       const std::string &fullClassName,

@@ -18,6 +18,9 @@ namespace il::frontends::zia {
 
 using namespace runtime;
 
+/// @brief Lower each call argument expression in source order.
+/// @param args The call's argument expressions.
+/// @return The lowered values, parallel to @p args (no reordering or coercion applied).
 std::vector<LowerResult> CallArgumentLowerer::lowerSourceArgs(const std::vector<CallArg> &args) {
     std::vector<LowerResult> lowered;
     lowered.reserve(args.size());
@@ -26,6 +29,11 @@ std::vector<LowerResult> CallArgumentLowerer::lowerSourceArgs(const std::vector<
     return lowered;
 }
 
+/// @brief Compute the source-argument indices in resolved parameter order.
+/// @param args The call's argument expressions.
+/// @param binding Sema's argument binding, or null for positional calls.
+/// @return Source indices ordered as fixed parameters followed by variadics; identity order
+///         (0..n-1) when there is no binding.
 std::vector<int>
 CallArgumentLowerer::orderedArgSources(const std::vector<CallArg> &args,
                                        const Sema::CallArgBinding *binding) {
@@ -47,6 +55,15 @@ CallArgumentLowerer::orderedArgSources(const std::vector<CallArg> &args,
     return order;
 }
 
+/// @brief Lower call arguments into final values laid out in parameter order.
+/// @param args The call's argument expressions.
+/// @param paramTypes The callee's parameter types (the last is the element-list type if variadic).
+/// @param params The callee's parameter declarations (for defaults and variadic detection), or null.
+/// @param binding Sema's argument binding; null falls back to positional lowering.
+/// @return The argument values in parameter order, ready to pass to the call.
+/// @details Each fixed argument is coerced to its parameter type; omitted parameters with a
+///          default expression are filled from that default. Variadic parameters collect their
+///          source arguments into a freshly built, boxed runtime list passed as the final value.
 std::vector<Lowerer::Value>
 CallArgumentLowerer::lowerResolvedArgs(const std::vector<CallArg> &args,
                                        const std::vector<TypeRef> &paramTypes,
@@ -116,6 +133,8 @@ CallArgumentLowerer::lowerResolvedArgs(const std::vector<CallArg> &args,
     return finalArgs;
 }
 
+/// @brief Lower a call expression's arguments using its resolved call binding.
+/// @return Argument values in parameter order (see lowerResolvedArgs()).
 std::vector<Lowerer::Value>
 CallArgumentLowerer::lowerResolvedCallArgs(CallExpr *expr,
                                            const std::vector<TypeRef> &paramTypes,
@@ -124,6 +143,8 @@ CallArgumentLowerer::lowerResolvedCallArgs(CallExpr *expr,
         expr->args, paramTypes, params, lowerer_.sema_.callArgBinding(expr));
 }
 
+/// @brief Lower a `new` expression's constructor arguments using its resolved binding.
+/// @return Argument values in parameter order (see lowerResolvedArgs()).
 std::vector<Lowerer::Value>
 CallArgumentLowerer::lowerResolvedNewArgs(NewExpr *expr,
                                           const std::vector<TypeRef> &paramTypes,

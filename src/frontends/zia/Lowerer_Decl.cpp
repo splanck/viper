@@ -35,6 +35,10 @@ using namespace runtime;
 // Declaration Lowering
 //=============================================================================
 
+/// @brief Dispatch a declaration to the type-specific lowering routine for its kind.
+/// @param decl Declaration to lower; null is ignored.
+/// @details Functions, structs, classes, interfaces, globals, namespaces, and enums route to
+///          their dedicated `lower*Decl` methods. Type aliases emit no IL (resolved in sema).
 void Lowerer::lowerDecl(Decl *decl) {
     if (!decl)
         return;
@@ -68,12 +72,20 @@ void Lowerer::lowerDecl(Decl *decl) {
     }
 }
 
+/// @brief Prefix a name with the current namespace, if any.
+/// @param name Unqualified declaration name.
+/// @return `namespacePrefix_.name` inside a namespace, otherwise @p name unchanged.
 std::string Lowerer::qualifyName(const std::string &name) const {
     if (namespacePrefix_.empty())
         return name;
     return namespacePrefix_ + "." + name;
 }
 
+/// @brief Resolve the lowered name to use for a declaration.
+/// @param decl Declaration whose canonical name is wanted.
+/// @param name Fallback unqualified name.
+/// @return The name sema recorded for @p decl (handling collisions/qualification), or the
+///         namespace-qualified @p name when sema has no entry.
 std::string Lowerer::declarationName(const Decl &decl, const std::string &name) const {
     auto it = sema_.semanticDeclNames_.find(&decl);
     if (it != sema_.semanticDeclNames_.end())
@@ -298,6 +310,11 @@ std::optional<il::core::Value> Lowerer::tryFoldNumericConstant(Expr *init) {
 // Final Constant Pre-Registration
 //=============================================================================
 
+/// @brief Pre-compute the integer value of every enum variant in a declaration list.
+/// @param declarations Top-level or namespace-scoped declarations to scan.
+/// @details Variants are I64 constants: values auto-increment from 0 unless an explicit value
+///          resets the running counter. Results are stored in @c enumVariantValues_ keyed by
+///          `<EnumQualifiedName>.<Variant>`. Recurses into namespaces with prefix threading.
 void Lowerer::registerAllEnumValues(std::vector<DeclPtr> &declarations) {
     for (auto &decl : declarations) {
         if (decl->kind == DeclKind::Enum) {
@@ -326,6 +343,12 @@ void Lowerer::registerAllEnumValues(std::vector<DeclPtr> &declarations) {
     }
 }
 
+/// @brief Pre-register all compile-time-foldable `final` constants before expression lowering.
+/// @param declarations Top-level or namespace-scoped declarations to scan.
+/// @details Collects every `final` global with an initializer (recursing namespaces), then
+///          repeatedly folds them via tryFoldNumericConstant() in a fixpoint loop so finals
+///          that reference other finals resolve regardless of declaration order. Non-foldable
+///          finals are left for runtime initialization via lowerGlobalVarDecl().
 void Lowerer::registerAllFinalConstants(std::vector<DeclPtr> &declarations) {
     struct PendingFinal {
         GlobalVarDecl *decl;
@@ -384,6 +407,10 @@ void Lowerer::registerAllFinalConstants(std::vector<DeclPtr> &declarations) {
 // Namespace and Enum Declaration Lowering
 //=============================================================================
 
+/// @brief Lower all declarations nested inside a namespace.
+/// @param decl Namespace declaration AST node.
+/// @details Extends @c namespacePrefix_ for the duration so nested declarations lower under
+///          their qualified names, then restores the previous prefix on exit.
 void Lowerer::lowerNamespaceDecl(NamespaceDecl &decl) {
     ZiaLocationScope locScope(*this, decl.loc);
 
@@ -405,6 +432,11 @@ void Lowerer::lowerNamespaceDecl(NamespaceDecl &decl) {
     namespacePrefix_ = savedPrefix;
 }
 
+/// @brief Lower an enum declaration by registering its variant values.
+/// @param decl Enum declaration AST node.
+/// @details Enums emit no IL structure; each variant is an I64 constant. Values auto-increment
+///          from 0 unless an explicit value resets the counter, and are stored in
+///          @c enumVariantValues_ for use during expression lowering.
 void Lowerer::lowerEnumDecl(EnumDecl &decl) {
     // Enums don't produce IL structures -- each variant is an I64 constant.
     // Just register variant values for later lookup during expression lowering.

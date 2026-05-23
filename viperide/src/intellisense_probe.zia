@@ -4,11 +4,18 @@ bind "ui/app_shell";
 bind "editor/editor_engine";
 bind "editor/completion";
 bind "editor/signature";
+bind "commands/edit_commands";
+bind "core/document_manager";
 
 bind ZiaCompletion = Viper.Zia.Completion;
+bind ZiaToolchain = Viper.Zia.Toolchain;
+bind SemanticJob = Viper.Zia.SemanticJob;
+bind Clock = Viper.Time.Clock;
 bind Terminal = Viper.Terminal;
 bind Str = Viper.String;
 bind Obj = Viper.Core.Object;
+bind Seq = Viper.Collections.Seq;
+bind Map = Viper.Collections.Map;
 
 func fail(shell: app_shell.AppShell, reason: String) {
     shell.Destroy();
@@ -19,6 +26,41 @@ func listContains(items: List, label: String) -> Boolean {
     var i = 0;
     while i < items.count() {
         if Obj.ToString(items.get(i)) == label {
+            return true;
+        }
+        i = i + 1;
+    }
+    return false;
+}
+
+func pumpCompletion(completer: completion.CompletionController, maxTicks: Integer) {
+    var i = 0;
+    while i < maxTicks and completer.isVisible == false {
+        completer.Update("");
+        Clock.Sleep(1);
+        i = i + 1;
+    }
+}
+
+func waitSemanticJob(job: Any, maxTicks: Integer) -> Boolean {
+    if job == null { return false; }
+    var i = 0;
+    while i < maxTicks {
+        if SemanticJob.IsDone(job) {
+            return true;
+        }
+        Clock.Sleep(1);
+        i = i + 1;
+    }
+    return false;
+}
+
+func completionItemsContain(items: Any, label: String) -> Boolean {
+    if items == null { return false; }
+    var i = 0;
+    while i < Seq.get_Length(items) {
+        var item = Seq.Get(items, i);
+        if Map.GetStr(item, "label") == label {
             return true;
         }
         i = i + 1;
@@ -46,6 +88,7 @@ func main() {
     engine.editor.SetCursor(3, 6);
     engine.editor.Focus();
     completer.TriggerCompletion();
+    pumpCompletion(completer, 200);
 
     if completer.isVisible == false or completer.itemCount <= 0 {
         fail(shell, "completion did not open");
@@ -60,10 +103,113 @@ func main() {
         return;
     }
 
-    completer.AcceptSelected();
+    var structured = ZiaCompletion.ItemsForFile(engine.GetTextSnapshot(),
+                                                "intellisense_probe.zia", 4, 6);
+    var foundStructured = false;
+    var s = 0;
+    while s < Seq.get_Length(structured) {
+        var item = Seq.Get(structured, s);
+        if Map.GetStr(item, "label") == "greet" {
+            foundStructured = true;
+            if Map.GetStr(item, "insertText") != "greet"
+               or Map.GetInt(item, "replacementStartColumn") != 4
+               or Map.GetInt(item, "replacementEndColumn") != 6 {
+                fail(shell, "structured completion replacement range");
+                return;
+            }
+        }
+        s = s + 1;
+    }
+    if foundStructured == false {
+        fail(shell, "structured completion missing project function");
+        return;
+    }
+
+    var asyncJob = ZiaCompletion.BeginItemsForFile(engine.GetTextSnapshot(),
+                                                   "intellisense_probe.zia", 4, 6);
+    if waitSemanticJob(asyncJob, 200) == false {
+        fail(shell, "async completion job did not finish");
+        return;
+    }
+    if SemanticJob.IsError(asyncJob) {
+        fail(shell, "async completion error: " + SemanticJob.Error(asyncJob));
+        return;
+    }
+    if completionItemsContain(SemanticJob.CompletionItems(asyncJob), "greet") == false {
+        fail(shell, "async completion missing project function");
+        return;
+    }
+
+    var symbolsJob = ZiaCompletion.BeginSymbolsForFile(engine.GetTextSnapshot(),
+                                                       "intellisense_probe.zia");
+    if waitSemanticJob(symbolsJob, 200) == false {
+        fail(shell, "async symbols job did not finish");
+        return;
+    }
+    if Str.IndexOf(SemanticJob.Symbols(symbolsJob), "greet") == 0 {
+        fail(shell, "async symbols missing project function");
+        return;
+    }
+
+    var badSrc = "module IntelliProbe;\nfunc f() -> Integer { return ; }\n";
+    var diagJob = ZiaToolchain.BeginCheckForFile(badSrc, "intellisense_probe.zia");
+    if waitSemanticJob(diagJob, 200) == false {
+        fail(shell, "async diagnostics job did not finish");
+        return;
+    }
+    if Seq.get_Length(SemanticJob.Diagnostics(diagJob)) == 0 {
+        fail(shell, "async diagnostics missing parser error");
+        return;
+    }
+
+    var snippetItems = ZiaCompletion.ItemsForFile(
+        "module IntelliProbe;\nfunc main() {\n    wh\n}\n",
+        "intellisense_probe.zia", 3, 6);
+    var foundSnippetCursor = false;
+    s = 0;
+    while s < Seq.get_Length(snippetItems) {
+        var snippet = Seq.Get(snippetItems, s);
+        if Map.GetStr(snippet, "label") == "while" and Map.GetBool(snippet, "isSnippet") {
+            foundSnippetCursor = Map.GetInt(snippet, "cursorOffset") > 0;
+        }
+        s = s + 1;
+    }
+    if foundSnippetCursor == false {
+        fail(shell, "snippet completion cursor offset");
+        return;
+    }
+
+    engine.editor.InsertAtCursor("    ");
+    if completer.AcceptTypedTab("\t") == false {
+        fail(shell, "completion tab accept not consumed");
+        return;
+    }
     var line = engine.editor.GetLine(3);
-    if Str.IndexOf(line, "greet") == 0 {
-        fail(shell, "completion accept did not replace prefix");
+    if line != "    greet" {
+        fail(shell, "completion tab accept did not replace prefix cleanly: " + line);
+        return;
+    }
+
+    engine.SetText(
+        "module IntelliProbe;\n"
+        + "func greet(value: Integer) -> Integer { return value; }\n"
+        + "func main() {\n"
+        + "    gr\n"
+        + "}\n");
+    engine.editor.SetCursor(3, 6);
+    completer.TriggerCompletion();
+    pumpCompletion(completer, 200);
+    if Str.IndexOf(completer.SelectedCommitCharacters(), "(") == 0 {
+        fail(shell, "completion missing callable commit character");
+        return;
+    }
+    engine.editor.InsertAtCursor("(");
+    if completer.AcceptIfCommitCharacter("(") == false {
+        fail(shell, "completion commit character not accepted");
+        return;
+    }
+    if Str.IndexOf(engine.editor.GetLine(3), "greet(") == 0 {
+        fail(shell, "completion commit character did not keep typed char");
         return;
     }
 
@@ -84,6 +230,59 @@ func main() {
     var sigText = ZiaCompletion.SignatureHelpForFile(sigSource, "intellisense_probe.zia", 4, 10);
     if Str.IndexOf(sigText, "value: Integer") == 0 or Str.IndexOf(sigText, "label: String") == 0 {
         fail(shell, "signature fallback missing parameter names: " + sigText);
+        return;
+    }
+    var sigInfo = ZiaCompletion.SignatureInfoForFile(sigSource, "intellisense_probe.zia", 4, 10);
+    if Map.GetBool(sigInfo, "available") == false
+       or Map.GetInt(sigInfo, "activeParameter") != 0
+       or Seq.get_Length(Map.Get(sigInfo, "parameters")) != 2 {
+        fail(shell, "structured signature info");
+        return;
+    }
+    var sigJob = ZiaCompletion.BeginSignatureInfoForFile(sigSource, "intellisense_probe.zia", 4, 10);
+    if waitSemanticJob(sigJob, 200) == false {
+        fail(shell, "async signature job did not finish");
+        return;
+    }
+    var asyncSigInfo = SemanticJob.SignatureInfo(sigJob);
+    if Map.GetBool(asyncSigInfo, "available") == false
+       or Seq.get_Length(Map.Get(asyncSigInfo, "parameters")) != 2 {
+        fail(shell, "async structured signature info");
+        return;
+    }
+    if Str.IndexOf(signature.FormatSignatureDisplay(sigInfo), "[value: Integer]") == 0 {
+        fail(shell, "active signature parameter display");
+        return;
+    }
+
+    var docMgr = new document_manager.DocumentManager();
+    engine.SetText("module IntelliProbe;\n    value\n");
+    engine.editor.SetCursor(1, 9);
+    edit_commands.handleToggleLineComment(shell, docMgr, engine);
+    if engine.editor.GetLine(1) != "    // value" {
+        fail(shell, "toggle line comment add");
+        return;
+    }
+    edit_commands.handleToggleLineComment(shell, docMgr, engine);
+    if engine.editor.GetLine(1) != "    value" {
+        fail(shell, "toggle line comment remove");
+        return;
+    }
+    edit_commands.handleDuplicateLine(shell, engine);
+    if engine.editor.GetLine(2) != "    value" {
+        fail(shell, "duplicate line");
+        return;
+    }
+    engine.SetText("one\ntwo\nthree");
+    engine.editor.SetCursor(1, 1);
+    edit_commands.handleMoveLineUp(shell, engine);
+    if engine.editor.GetLine(0) != "two" or engine.editor.GetLine(1) != "one" {
+        fail(shell, "move line up");
+        return;
+    }
+    edit_commands.handleMoveLineDown(shell, engine);
+    if engine.editor.GetLine(0) != "one" or engine.editor.GetLine(1) != "two" {
+        fail(shell, "move line down");
         return;
     }
 

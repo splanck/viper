@@ -25,6 +25,7 @@
 
 namespace il::frontends::basic {
 
+/// @brief Lowercase a string to form the case-insensitive lookup key.
 std::string NamespaceRegistry::toLower(const std::string &str) {
     std::string result;
     result.reserve(str.size());
@@ -34,6 +35,9 @@ std::string NamespaceRegistry::toLower(const std::string &str) {
     return result;
 }
 
+/// @brief Register a namespace by its full dotted name.
+/// @param full The namespace spelling (the first-seen casing is preserved as canonical).
+/// @details Idempotent: re-registering an existing namespace is a no-op.
 void NamespaceRegistry::registerNamespace(const std::string &full) {
     std::string key = toLower(full);
     auto it = namespaces_.find(key);
@@ -46,6 +50,11 @@ void NamespaceRegistry::registerNamespace(const std::string &full) {
     // If already exists, preserve first-seen spelling (no-op).
 }
 
+/// @brief Register a class within a namespace.
+/// @param nsFull Owning namespace (registered if not already present; "" = global).
+/// @param className Simple class name.
+/// @details Stores the fully-qualified name (using the canonical namespace spelling) on the
+///          namespace and records its kind as Class for type lookups.
 void NamespaceRegistry::registerClass(const std::string &nsFull, const std::string &className) {
     // Ensure namespace exists.
     registerNamespace(nsFull);
@@ -70,6 +79,10 @@ void NamespaceRegistry::registerClass(const std::string &nsFull, const std::stri
     types_[typeKey] = TypeKind::Class;
 }
 
+/// @brief Register an interface within a namespace.
+/// @param nsFull Owning namespace (registered if not already present; "" = global).
+/// @param ifaceName Simple interface name.
+/// @details Stores the fully-qualified name on the namespace and records its kind as Interface.
 void NamespaceRegistry::registerInterface(const std::string &nsFull, const std::string &ifaceName) {
     // Ensure namespace exists.
     registerNamespace(nsFull);
@@ -94,16 +107,19 @@ void NamespaceRegistry::registerInterface(const std::string &nsFull, const std::
     types_[typeKey] = TypeKind::Interface;
 }
 
+/// @brief Test whether a namespace is registered (case-insensitive).
 bool NamespaceRegistry::namespaceExists(const std::string &full) const {
     std::string key = toLower(full);
     return namespaces_.find(key) != namespaces_.end();
 }
 
+/// @brief Test whether a fully-qualified type is registered (case-insensitive).
 bool NamespaceRegistry::typeExists(const std::string &qualified) const {
     std::string key = toLower(qualified);
     return types_.find(key) != types_.end();
 }
 
+/// @brief Return the kind (Class/Interface) of a qualified type, or None if unknown.
 NamespaceRegistry::TypeKind NamespaceRegistry::getTypeKind(const std::string &qualified) const {
     std::string key = toLower(qualified);
     auto it = types_.find(key);
@@ -112,6 +128,8 @@ NamespaceRegistry::TypeKind NamespaceRegistry::getTypeKind(const std::string &qu
     return it->second;
 }
 
+/// @brief Return the stored info (canonical spelling, classes, interfaces) for a namespace.
+/// @return Pointer to the NamespaceInfo, or nullptr if the namespace is unknown.
 const NamespaceRegistry::NamespaceInfo *NamespaceRegistry::info(const std::string &full) const {
     std::string key = toLower(full);
     auto it = namespaces_.find(key);
@@ -120,6 +138,10 @@ const NamespaceRegistry::NamespaceInfo *NamespaceRegistry::info(const std::strin
     return &it->second;
 }
 
+/// @brief Pre-register every namespace prefix implied by runtime builtin descriptor names.
+/// @param descs Runtime descriptors (e.g. `Viper.Terminal.PrintI64`).
+/// @details For each dotted name, registers each prefix up to but excluding the final segment
+///          (the function/type), so `USING Viper.Terminal` resolves against builtins.
 void NamespaceRegistry::seedFromRuntimeBuiltins(
     const std::vector<il::runtime::RuntimeDescriptor> &descs) {
     for (const auto &d : descs) {
@@ -147,6 +169,10 @@ void NamespaceRegistry::seedFromRuntimeBuiltins(
     }
 }
 
+/// @brief Pre-register namespace prefixes (including full qnames) for runtime classes.
+/// @param classes Runtime class catalog entries.
+/// @details Unlike seedFromRuntimeBuiltins(), this also registers the full class qname as a
+///          namespace so `USING Viper.String` does not error even though `String` is a class.
 void NamespaceRegistry::seedRuntimeClassNamespaces(
     const std::vector<il::runtime::RuntimeClass> &classes) {
     for (const auto &cls : classes) {

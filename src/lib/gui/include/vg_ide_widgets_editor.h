@@ -191,6 +191,19 @@ typedef struct vg_codeeditor {
     uint64_t revision;       ///< Monotonic content revision; cursor/scroll changes do not affect it
     uint64_t highlight_generation; ///< Monotonic syntax-cache generation.
     vg_codeeditor_perf_stats_t perf_stats; ///< Low-level performance counters.
+    uint64_t layout_generation; ///< Monotonic visual-layout generation.
+    bool has_folded_lines;      ///< True when at least one fold region is collapsed.
+
+    // Cached source-line -> visual-row mapping for wrapped or folded layout.
+    bool layout_cache_valid;
+    uint64_t layout_cache_generation;
+    float layout_cache_content_width;
+    bool layout_cache_word_wrap;
+    int layout_cache_line_count;
+    int layout_cache_total_visual_rows;
+    float layout_cache_total_height;
+    int *layout_cache_prefix_rows; ///< line_count + 1 row-prefix entries.
+    int layout_cache_capacity;     ///< Allocated prefix entry count.
 
     // Undo/redo history
     vg_edit_history_t *history; ///< Edit history for undo/redo
@@ -210,6 +223,15 @@ typedef struct vg_codeeditor {
     int highlight_span_count; ///< Active span count
     int highlight_span_cap;   ///< Allocated capacity
     bool highlight_spans_sorted; ///< True when highlight_spans is ordered by start line/column.
+
+    // Per-line highlight index built from highlight_spans for paint.
+    bool highlight_line_index_valid;
+    int highlight_line_index_line_count;
+    int highlight_line_index_span_count;
+    int *highlight_line_offsets;      ///< line_count + 1 offsets into highlight_line_span_indices.
+    int highlight_line_offsets_cap;   ///< Allocated offset entry count.
+    int *highlight_line_span_indices; ///< Span indices touching each line, grouped by line.
+    int highlight_line_span_indices_cap;
 
     // Gutter icons (breakpoints, diagnostics, etc.)
     struct vg_gutter_icon {

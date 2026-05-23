@@ -49,6 +49,10 @@ void appendClassFieldDecls(Sema &sema,
     }
 }
 
+/// @brief Collect a struct type's non-static field declarations in declaration order.
+/// @param sema Semantic analyzer used to find the struct declaration.
+/// @param typeName Qualified struct type name.
+/// @return The field declarations, or an empty vector if the type is unknown.
 std::vector<const FieldDecl *> collectStructFieldDecls(Sema &sema, const std::string &typeName) {
     std::vector<const FieldDecl *> out;
     StructDecl *decl = sema.findStructDecl(typeName);
@@ -70,6 +74,15 @@ std::vector<const FieldDecl *> collectStructFieldDecls(Sema &sema, const std::st
 // Field Expression Lowering
 //=============================================================================
 
+/// @brief Lower a field-access (`base.field`) expression.
+/// @param expr Field expression.
+/// @return The accessed value and its IL type.
+/// @details Resolves the access in priority order: synthesized property getter (runtime or
+///          user-defined), dotted enum variant, then by base type — enum variant constant,
+///          module-qualified constant/global/function, `Error` fields (kind/message/code/...),
+///          struct/class instance fields, built-in `Length`/`Count` properties for
+///          string/list/map/set, and runtime-class `get_<Prop>` getters. Unknown fields fall
+///          back to a zero value typed from sema (BUG-FE-006 safety net).
 LowerResult Lowerer::lowerField(FieldExpr *expr) {
     auto dottedName = [](Expr *node, std::string &out, auto &self) -> bool {
         if (auto *ident = dynamic_cast<IdentExpr *>(node)) {
@@ -332,6 +345,12 @@ LowerResult Lowerer::lowerField(FieldExpr *expr) {
 // New Expression Lowering
 //=============================================================================
 
+/// @brief Lower a `new T(...)` expression by dispatching on the constructed type.
+/// @param expr New expression.
+/// @return The constructed value (always a pointer) and its IL type.
+/// @details Built-in `List`/`Set`/`Map` route to their runtime constructors; named runtime
+///          (Ptr) classes go to lowerNewRuntimeClass(); value types to lowerNewStruct();
+///          everything else to lowerNewClass().
 LowerResult Lowerer::lowerNew(NewExpr *expr) {
     // Get the type from the new expression
     TypeRef type = sema_.resolveType(expr->type.get());
@@ -367,6 +386,15 @@ LowerResult Lowerer::lowerNew(NewExpr *expr) {
     return lowerNewClass(expr, type);
 }
 
+/// @brief Lower `new` of a runtime (Ptr) class by calling its catalog constructor.
+/// @param expr New expression.
+/// @param type Resolved runtime class type.
+/// @return The constructed object pointer.
+/// @details Resolves the constructor name from the runtime registry, preferring a zero-arg
+///          `NewDefault` for empty argument lists, an arity-matching `.New` overload, or the
+///          class catalog's declared ctor, falling back to the conventional `.New`. Arguments
+///          are lowered in the semantically resolved order and coerced to the descriptor's
+///          parameter types (boxing scalars into Ptr params, widening I64→F64).
 LowerResult Lowerer::lowerNewRuntimeClass(NewExpr *expr, TypeRef type) {
     {
         std::string ctorName;
@@ -443,6 +471,13 @@ LowerResult Lowerer::lowerNewRuntimeClass(NewExpr *expr, TypeRef type) {
     }
 }
 
+/// @brief Lower `new` of a value type (`struct`) into stack-allocated, initialized storage.
+/// @param expr New expression.
+/// @param type Resolved struct type.
+/// @return The initialized struct (by pointer), or nullopt if @p type is not a known struct.
+/// @details Allocas the struct's storage, then either calls its explicit `init` method (self
+///          first) or stores each constructor argument / field default into its field slot,
+///          coercing to the declared field type.
 std::optional<LowerResult> Lowerer::lowerNewStruct(NewExpr *expr, TypeRef type) {
     // Struct types can be instantiated with 'new' just like class types.
     std::string typeName = type->name;
@@ -562,6 +597,15 @@ std::optional<LowerResult> Lowerer::lowerNewStruct(NewExpr *expr, TypeRef type) 
     }
 }
 
+/// @brief Lower `new` of a reference type (`class`) into a heap-allocated, initialized object.
+/// @param expr New expression.
+/// @param type Resolved class type.
+/// @return The constructed object pointer (null pointer if @p type is not a known class).
+/// @details Allocates via `rt_obj_new_i64` (seeding the heap header with the class id and
+///          size so the object is GC/refcount-ready), then either calls the explicit `init`
+///          method or performs inline field initialization from constructor args / field
+///          defaults, boxing struct-typed fields and routing weak fields through
+///          emitFieldStore().
 LowerResult Lowerer::lowerNewClass(NewExpr *expr, TypeRef type) {
     std::string typeName = type->name;
     const ClassTypeInfo *infoPtr = getOrCreateClassTypeInfo(typeName);

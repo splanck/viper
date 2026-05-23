@@ -28,6 +28,14 @@ namespace il::frontends::zia {
 // Type Resolution
 //=============================================================================
 
+/// @brief Resolve a type name to a semantic type.
+/// @param name The (possibly qualified) type name as written in source.
+/// @param useLoc Location of the reference (for file-scoping and diagnostics).
+/// @return The resolved type, or nullptr if the name cannot be resolved.
+/// @details Checks, in order: built-in scalars/collections (PascalCase and lowercase forms),
+///          file-scoped names, accessible type symbols, the type registry, type aliases,
+///          imported namespace symbols, and module-qualified references (`Module.Type`). Raw
+///          `Ptr` is rejected with an error since it is not part of the Zia source surface.
 TypeRef Sema::resolveNamedType(const std::string &name, SourceLoc useLoc) const {
     // Built-in types (accept both PascalCase and lowercase variants)
     if (name == "Integer" || name == "integer" || name == "Int" || name == "int")
@@ -204,6 +212,13 @@ TypeRef Sema::resolveNamedType(const std::string &name, SourceLoc useLoc) const 
     return nullptr;
 }
 
+/// @brief Resolve an AST type node tree to a semantic type.
+/// @param node The type node (named, generic, optional, function, tuple, or fixed-array).
+/// @return The resolved type; `unknown` on error or for a null node.
+/// @details Recursion-guarded (kMaxTypeResolveDepth, 256). Named nodes resolve type parameters
+///          first then delegate to resolveNamedType(); generic nodes build built-in collection
+///          types or instantiate user generics; optional/function/tuple/fixed-array nodes
+///          resolve their components. Unknown names are reported as errors.
 TypeRef Sema::resolveTypeNode(const TypeNode *node) {
     if (!node)
         return types::unknown();
@@ -339,6 +354,14 @@ TypeRef Sema::resolveTypeNode(const TypeNode *node) {
 // Extern Function Registration
 //=============================================================================
 
+/// @brief Register a runtime/extern function as a symbol in the current scope.
+/// @param name Function name.
+/// @param returnType Return type.
+/// @param paramTypes Parameter types.
+/// @param paramNames Parameter names (inherited from a prior extern decl when empty).
+/// @param pointerSafety Optional pointer-safety classification recorded for the function.
+/// @details The symbol is marked extern with no AST declaration; its function type is built
+///          from the parameter and return types.
 void Sema::defineExternFunction(const std::string &name,
                                 TypeRef returnType,
                                 const std::vector<TypeRef> &paramTypes,
@@ -365,6 +388,12 @@ void Sema::defineExternFunction(const std::string &name,
 // Closure Capture Collection
 //=============================================================================
 
+/// @brief Collect the free variables a lambda body captures from its enclosing scope.
+/// @param expr The lambda body expression.
+/// @param lambdaLocals The lambda's own parameters/locals (not captured).
+/// @param[out] captures Receives the captured variable list.
+/// @details Seeds a CaptureContext whose innermost local scope is the lambda's own names, then
+///          walks the body via collectExprCaptures().
 void Sema::collectCaptures(const Expr *expr,
                            const std::set<std::string> &lambdaLocals,
                            std::vector<CapturedVar> &captures) {
@@ -375,6 +404,9 @@ void Sema::collectCaptures(const Expr *expr,
     collectExprCaptures(ctx, expr);
 }
 
+/// @brief Record @p name as a capture if it names an outer variable/parameter.
+/// @details Ignores names bound in any active local scope, and only captures symbols that are
+///          variables or parameters; each name is captured at most once.
 void Sema::recordCapture(CaptureContext &ctx, const std::string &name) {
     for (auto it = ctx.localScopes.rbegin(); it != ctx.localScopes.rend(); ++it) {
         if (it->find(name) != it->end())
@@ -388,6 +420,10 @@ void Sema::recordCapture(CaptureContext &ctx, const std::string &name) {
     ctx.captures.push_back({name});
 }
 
+/// @brief Add a match pattern's binding names to the current capture-tracking scope.
+/// @details Binding patterns introduce a local name (ignoring `Some`/`None` constructors);
+///          tuple/constructor/or patterns recurse into their subpatterns. This prevents
+///          pattern-bound names from being mistaken for captures.
 void Sema::collectPatternBindings(CaptureContext &ctx, const MatchArm::Pattern &pattern) {
     switch (pattern.kind) {
         case MatchArm::Pattern::Kind::Binding:
@@ -407,6 +443,10 @@ void Sema::collectPatternBindings(CaptureContext &ctx, const MatchArm::Pattern &
     }
 }
 
+/// @brief Walk a statement to collect captured variables, tracking nested scopes.
+/// @details Pushes a fresh local scope for each block/loop/branch/handler so names declared
+///          inside (loop variables, `var`s, catch bindings, pattern bindings) are treated as
+///          locals rather than captures, and recurses into sub-statements/expressions.
 void Sema::collectStmtCaptures(CaptureContext &ctx, const Stmt *stmt) {
     if (!stmt)
         return;
@@ -540,6 +580,10 @@ void Sema::collectStmtCaptures(CaptureContext &ctx, const Stmt *stmt) {
     }
 }
 
+/// @brief Walk an expression to collect captured variables.
+/// @details Identifier references are recorded via recordCapture(); compound expressions
+///          recurse into their sub-expressions, and block/match expressions push local scopes.
+///          Nested lambdas are not descended into — they collect their own captures separately.
 void Sema::collectExprCaptures(CaptureContext &ctx, const Expr *e) {
     if (!e)
         return;

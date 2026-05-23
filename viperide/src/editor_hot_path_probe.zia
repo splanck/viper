@@ -83,6 +83,14 @@ func main() {
         fail(shell, "large-file cursor movement copied full text");
         return;
     }
+    if engine.editor.GetSyntaxHighlightCallCount() != 0 {
+        fail(shell, "large-file cursor movement highlighted text");
+        return;
+    }
+    if engine.editor.GetHighlightSpanCheckCount() != 0 {
+        fail(shell, "large-file cursor movement scanned highlight spans");
+        return;
+    }
 
     engine.editor.ResetPerfStats();
     var snapshot1 = engine.GetTextSnapshot();
@@ -116,6 +124,10 @@ func main() {
     var snapshotCopies = engine.editor.GetFullTextCopyCount();
     if snapshotCopies != 1 {
         fail(shell, "edited revision not snapshotted exactly once: " + snapshotCopies);
+        return;
+    }
+    if engine.editor.GetFullTextCopyByteCount() <= 0 {
+        fail(shell, "edited revision snapshot byte counter did not update");
         return;
     }
 
@@ -158,6 +170,23 @@ func main() {
     var indexer = new project_index.ProjectIndexer();
     indexer.EnsureProject(projMgr, docMgr);
     var baseSyncs = indexer.syncCount;
+    indexer.SyncOpenDocuments(docMgr);
+    if indexer.syncCount != baseSyncs {
+        fail(shell, "open document sync repeated unchanged content");
+        return;
+    }
+    doc.content = doc.content + "// dirty tab\n";
+    indexer.SyncOpenDocuments(docMgr);
+    if indexer.syncCount != baseSyncs + 1 {
+        fail(shell, "open document sync missed changed content");
+        return;
+    }
+    indexer.SyncOpenDocuments(docMgr);
+    if indexer.syncCount != baseSyncs + 1 {
+        fail(shell, "open document sync repeated changed content");
+        return;
+    }
+    baseSyncs = indexer.syncCount;
 
     var frame = 0;
     while frame < 20 {
@@ -181,6 +210,32 @@ func main() {
     indexer.SyncActiveWhenIdle(docMgr, engine);
     if indexer.syncCount != editedSyncs + 1 {
         fail(shell, "index sync did not run after idle");
+        return;
+    }
+
+    var large = "";
+    var largeLine = "let value = 42;\n";
+    var largeIdx = 0;
+    while largeIdx < 5000 {
+        large = large + largeLine;
+        largeIdx = largeIdx + 1;
+    }
+    engine.SetText(large);
+    engine.editor.SetWordWrap(0);
+    engine.editor.ResetPerfStats();
+    var moveStart = Viper.Time.GetTickCount();
+    var moveIdx = 0;
+    while moveIdx < 1000 {
+        engine.editor.SetCursor(moveIdx % 5000, 4);
+        moveIdx = moveIdx + 1;
+    }
+    var moveElapsed = Viper.Time.GetTickCount() - moveStart;
+    if moveElapsed > 250 {
+        fail(shell, "large-buffer cursor movement exceeded budget: " + moveElapsed + "ms");
+        return;
+    }
+    if engine.editor.GetFullTextCopyCount() != 0 {
+        fail(shell, "large-buffer cursor movement copied full text");
         return;
     }
 

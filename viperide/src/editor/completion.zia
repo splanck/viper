@@ -5,9 +5,12 @@ bind Viper.Input as Input;
 bind Viper.String as Str;
 bind Viper.Collections.Seq as Seq;
 bind Viper.Core.Object as Obj;
+bind Viper.Collections.Map as Map;
 bind Viper.Zia.Completion as ZiaCompletion;
+bind Viper.Zia.SemanticJob as SemanticJob;
 bind "../editor/zia_query";
 bind "../editor/editor_engine";
+bind "../editor/scheduler";
 
 final COMPLETION_DEBOUNCE_MS = 180;
 
@@ -75,12 +78,33 @@ class CompletionController {
     expose Integer lastCol;
     expose Integer pendingSinceMs;
     expose Boolean pendingQuery;
+    expose scheduler.EditorScheduler workScheduler;
+    expose Any pendingJob;
+    expose Integer pendingJobRevision;
+    expose String pendingJobPath;
+    expose Integer pendingJobLineOffset;
+    expose Integer pendingJobQueryLine;
+    expose Integer pendingJobQueryCol;
+    expose Integer pendingJobCursorLine;
+    expose Integer pendingJobCursorCol;
 
     // Cached semantic result plus the filtered visible insertTexts.
     expose List allLabels;
     expose List allDisplays;
     expose List allInsertTexts;
+    expose List allReplaceStartLines;
+    expose List allReplaceStartCols;
+    expose List allReplaceEndLines;
+    expose List allReplaceEndCols;
+    expose List allCursorOffsets;
+    expose List allCommitCharacters;
     expose List insertTexts;
+    expose List replaceStartLines;
+    expose List replaceStartCols;
+    expose List replaceEndLines;
+    expose List replaceEndCols;
+    expose List cursorOffsets;
+    expose List commitCharacters;
 
     /// @brief Initialize an empty/hidden controller.
     expose func init() {
@@ -93,10 +117,31 @@ class CompletionController {
         lastCol        = -1;
         pendingSinceMs = 0;
         pendingQuery   = false;
+        workScheduler  = null;
+        pendingJob     = null;
+        pendingJobRevision = -1;
+        pendingJobPath = "";
+        pendingJobLineOffset = 0;
+        pendingJobQueryLine = 1;
+        pendingJobQueryCol = 0;
+        pendingJobCursorLine = -1;
+        pendingJobCursorCol = -1;
         allLabels      = new List();
         allDisplays    = new List();
         allInsertTexts = new List();
+        allReplaceStartLines = new List();
+        allReplaceStartCols = new List();
+        allReplaceEndLines = new List();
+        allReplaceEndCols = new List();
+        allCursorOffsets = new List();
+        allCommitCharacters = new List();
         insertTexts    = new List();
+        replaceStartLines = new List();
+        replaceStartCols = new List();
+        replaceEndLines = new List();
+        replaceEndCols = new List();
+        cursorOffsets = new List();
+        commitCharacters = new List();
         engine          = null;
     }
 
@@ -130,6 +175,10 @@ class CompletionController {
         }
     }
 
+    expose func SetScheduler(value: scheduler.EditorScheduler) {
+        workScheduler = value;
+    }
+
     /// @brief Set the active file's path so CompleteForFile can resolve
     ///        relative `bind` paths correctly.
     expose func SetSourcePath(path: String) {
@@ -148,13 +197,17 @@ class CompletionController {
         if enabled == false or editor == null {
             return;
         }
+        if workScheduler != null and engine != null {
+            workScheduler.Queue(scheduler.JOB_COMPLETION, sourcePath, engine.GetRevision(), -1);
+            return;
+        }
         if pendingQuery == false {
             pendingSinceMs = Viper.Time.GetTickCount();
         }
         pendingQuery = true;
     }
 
-    /// @brief Query the engine and show the popup.
+    /// @brief Start a completion query and show the popup when its result lands.
     /// @note Reads cursor coords from `editor`, sends them through
     ///       `CompleteForFile` (path-aware), parses the tab-separated
     ///       result format, populates the listbox, positions the popup
@@ -165,6 +218,14 @@ class CompletionController {
             return;
         }
         pendingQuery = false;
+        StartCompletionJob();
+    }
+
+    hide func StartCompletionJob() {
+        if enabled == false or editor == null {
+            return;
+        }
+        CancelPendingJob();
 
         // Get current source and cursor position
         var text = editor.Text;
@@ -178,51 +239,69 @@ class CompletionController {
         var curLine = editor.CursorLine + 1 + off;  // 1-based + prefix shift
         var curCol  = editor.CursorCol;             // 0-based column
 
-        // Ask the Zia completion engine (returns "" on failure/empty).
-        // Completion items carry no line numbers, so no inbound un-shift.
-        var result = ZiaCompletion.CompleteForFile(qtext, sourcePath, curLine, curCol);
-        if result == "" {
-            Hide();
+        var job = ZiaCompletion.BeginItemsForFile(qtext, sourcePath, curLine, curCol);
+        if job != null {
+            pendingJob = job;
+            pendingJobRevision = editor.Revision;
+            pendingJobPath = sourcePath;
+            pendingJobLineOffset = off;
+            pendingJobQueryLine = curLine;
+            pendingJobQueryCol = curCol;
+            pendingJobCursorLine = editor.CursorLine;
+            pendingJobCursorCol = editor.CursorCol;
             return;
         }
 
+        // Non-graphics/stub runtimes do not provide async jobs; keep the old
+        // structured query as a fallback for probes and tools linked that way.
+        ApplyCompletionItems(ZiaCompletion.ItemsForFile(qtext, sourcePath, curLine, curCol),
+                             off, curLine, curCol);
+    }
+
+    hide func ApplyCompletionItems(items: Any,
+                                   off: Integer,
+                                   curLine: Integer,
+                                   curCol: Integer) {
         // Clear previous state
         allLabels = new List();
         allDisplays = new List();
         allInsertTexts = new List();
+        allReplaceStartLines = new List();
+        allReplaceStartCols = new List();
+        allReplaceEndLines = new List();
+        allReplaceEndCols = new List();
+        allCursorOffsets = new List();
+        allCommitCharacters = new List();
         insertTexts = new List();
+        replaceStartLines = new List();
+        replaceStartCols = new List();
+        replaceEndLines = new List();
+        replaceEndCols = new List();
+        cursorOffsets = new List();
+        commitCharacters = new List();
         itemCount = 0;
 
-        // Parse serialised result: each line is   label\tinsertText\tkind\tdetail
-        var lines = Str.Split(result, "\n");
-        var lineIdx = 0;
-        while lineIdx < Seq.get_Length(lines) {
-            var lineStr = Obj.ToString(Seq.Get(lines, lineIdx));
-            lineIdx = lineIdx + 1;
+        if items == null {
+            Hide();
+            return;
+        }
+        if Seq.get_Length(items) == 0 {
+            Hide();
+            return;
+        }
 
-            if Str.Length(lineStr) == 0 {
-                continue;
-            }
+        var itemIdx = 0;
+        while itemIdx < Seq.get_Length(items) {
+            var item = Seq.Get(items, itemIdx);
+            itemIdx = itemIdx + 1;
 
-            // Split by tabs: [label, insertText, kind, detail]
-            var parts = Str.Split(lineStr, "\t");
-            var nParts = Seq.get_Length(parts);
-            var label = Obj.ToString(Seq.Get(parts, 0));
-            var ins = label;
-            if nParts >= 2 {
-                ins = Obj.ToString(Seq.Get(parts, 1));
-            }
+            var label = Map.GetStr(item, "label");
+            if label == "" { continue; }
+            var ins = Map.GetStr(item, "insertText");
+            if ins == "" { ins = label; }
 
-            // Build display text: [K] label — detail
-            var kindTag = "";
-            if nParts >= 3 {
-                var kindInt = Viper.Core.Convert.ToInt(Obj.ToString(Seq.Get(parts, 2)));
-                kindTag = kindLabel(kindInt);
-            }
-            var detail = "";
-            if nParts >= 4 {
-                detail = Obj.ToString(Seq.Get(parts, 3));
-            }
+            var kindTag = kindLabel(Map.GetInt(item, "kind"));
+            var detail = Map.GetStr(item, "detail");
 
             var displayText = label;
             if kindTag != "" {
@@ -235,6 +314,12 @@ class CompletionController {
             allLabels.Push(label);
             allDisplays.Push(displayText);
             allInsertTexts.Push(ins);
+            allReplaceStartLines.Push(Map.GetIntOr(item, "replacementStartLine", curLine) - 1 - off);
+            allReplaceStartCols.Push(Map.GetIntOr(item, "replacementStartColumn", curCol));
+            allReplaceEndLines.Push(Map.GetIntOr(item, "replacementEndLine", curLine) - 1 - off);
+            allReplaceEndCols.Push(Map.GetIntOr(item, "replacementEndColumn", curCol));
+            allCursorOffsets.Push(Map.GetIntOr(item, "cursorOffset", -1));
+            allCommitCharacters.Push(Map.GetStr(item, "commitCharacters"));
         }
 
         if allLabels.count() == 0 {
@@ -263,9 +348,54 @@ class CompletionController {
         editor.Focus();
     }
 
+    hide func PollPendingJob() -> Boolean {
+        if pendingJob == null { return false; }
+        if SemanticJob.IsDone(pendingJob) == false { return false; }
+
+        var job = pendingJob;
+        pendingJob = null;
+        if SemanticJob.IsError(job) {
+            Hide();
+            return true;
+        }
+
+        if editor == null {
+            return true;
+        }
+        if engine != null and engine.GetRevision() != pendingJobRevision {
+            Hide();
+            return true;
+        }
+        if sourcePath != pendingJobPath {
+            Hide();
+            return true;
+        }
+        if editor.CursorLine != pendingJobCursorLine or editor.CursorCol != pendingJobCursorCol {
+            Hide();
+            return true;
+        }
+
+        var items = SemanticJob.CompletionItems(job);
+        ApplyCompletionItems(items, pendingJobLineOffset, pendingJobQueryLine, pendingJobQueryCol);
+        return true;
+    }
+
+    hide func CancelPendingJob() {
+        if pendingJob != null {
+            SemanticJob.Cancel(pendingJob);
+            pendingJob = null;
+        }
+    }
+
     expose func RebuildVisibleItems(prefix: String) {
         listbox.Clear();
         insertTexts = new List();
+        replaceStartLines = new List();
+        replaceStartCols = new List();
+        replaceEndLines = new List();
+        replaceEndCols = new List();
+        cursorOffsets = new List();
+        commitCharacters = new List();
         itemCount = 0;
 
         var normalizedPrefix = Str.ToLower(prefix);
@@ -277,6 +407,12 @@ class CompletionController {
             if normalizedPrefix == "" or StartsWith(Str.ToLower(label), normalizedPrefix) {
                 listbox.AddItem(display);
                 insertTexts.Push(insertText);
+                replaceStartLines.Push(allReplaceStartLines.get(i));
+                replaceStartCols.Push(allReplaceStartCols.get(i));
+                replaceEndLines.Push(allReplaceEndLines.get(i));
+                replaceEndCols.Push(allReplaceEndCols.get(i));
+                cursorOffsets.Push(allCursorOffsets.get(i));
+                commitCharacters.Push(allCommitCharacters.get(i));
                 itemCount = itemCount + 1;
             }
             i = i + 1;
@@ -294,9 +430,23 @@ class CompletionController {
 
     /// @brief Insert the currently-selected item at the cursor.
     /// @note Looks up the parallel `insertTexts[index]` (the unadorned
-    ///       text), then calls `editor.ReplaceWordAtCursor` which
-    ///       overwrites the partial token under the cursor.
+    ///       text), then applies the completion replacement range.
     expose func AcceptSelected() {
+        AcceptSelectedInternal(false);
+    }
+
+    expose func AcceptTypedTab(typed: String) -> Boolean {
+        if isVisible == false or itemCount == 0 or typed == "" {
+            return false;
+        }
+        if ContainsAny("\t", typed) == false {
+            return false;
+        }
+        AcceptSelectedInternal(true);
+        return true;
+    }
+
+    hide func AcceptSelectedInternal(extendToCursor: Boolean) {
         if isVisible == false or itemCount == 0 {
             return;
         }
@@ -307,9 +457,77 @@ class CompletionController {
         selectedIndex = activeIndex;
         if activeIndex >= 0 and activeIndex < itemCount {
             var ins = Obj.ToString(insertTexts.get(activeIndex));
-            editor.ReplaceWordAtCursor(ins);
+            var startLine = ListIntAt(replaceStartLines, activeIndex, editor.CursorLine);
+            var startCol = ListIntAt(replaceStartCols, activeIndex, editor.CursorCol);
+            var endLine = ListIntAt(replaceEndLines, activeIndex, editor.CursorLine);
+            var endCol = ListIntAt(replaceEndCols, activeIndex, editor.CursorCol);
+            var cursorOffset = ListIntAt(cursorOffsets, activeIndex, -1);
+            if startLine >= 0 and endLine >= startLine {
+                if extendToCursor and editor.CursorLine == endLine and editor.CursorCol > endCol {
+                    endCol = editor.CursorCol;
+                }
+                editor.SetCursorSelection(0, startLine, startCol, endLine, endCol);
+                editor.InsertAtCursor(ins);
+                if cursorOffset >= 0 {
+                    PlaceCursorAtInsertedOffset(startLine, startCol, ins, cursorOffset);
+                }
+            } else {
+                editor.ReplaceWordAtCursor(ins);
+            }
         }
         Hide();
+    }
+
+    expose func AcceptIfCommitCharacter(typed: String) -> Boolean {
+        if isVisible == false or itemCount == 0 or typed == "" {
+            return false;
+        }
+        var activeIndex = listbox.SelectedIndex;
+        if activeIndex < 0 {
+            activeIndex = selectedIndex;
+        }
+        if activeIndex < 0 or activeIndex >= itemCount {
+            return false;
+        }
+        var chars = Obj.ToString(commitCharacters.get(activeIndex));
+        if ContainsAny(chars, typed) == false {
+            return false;
+        }
+        AcceptSelected();
+        return true;
+    }
+
+    expose func SelectedCommitCharacters() -> String {
+        var activeIndex = listbox.SelectedIndex;
+        if activeIndex < 0 {
+            activeIndex = selectedIndex;
+        }
+        if activeIndex < 0 or activeIndex >= itemCount {
+            return "";
+        }
+        return Obj.ToString(commitCharacters.get(activeIndex));
+    }
+
+    hide func PlaceCursorAtInsertedOffset(startLine: Integer,
+                                          startCol: Integer,
+                                          inserted: String,
+                                          cursorOffset: Integer) {
+        var line = startLine;
+        var col = startCol;
+        var consumed = 0;
+        var i = 1;
+        while i <= Str.Length(inserted) and consumed < cursorOffset {
+            var ch = Str.MidLen(inserted, i, 1);
+            if ch == "\n" {
+                line = line + 1;
+                col = 0;
+            } else {
+                col = col + 1;
+            }
+            consumed = consumed + 1;
+            i = i + 1;
+        }
+        editor.SetCursorPositionAt(0, line, col);
     }
 
     /// @brief Move selection one item down (no-op past the last item).
@@ -351,6 +569,7 @@ class CompletionController {
 
     /// @brief Hide the popup and return focus to the editor.
     expose func Hide() {
+        CancelPendingJob();
         isVisible = false;
         popup.SetVisible(0);
         if editor != null {
@@ -363,10 +582,23 @@ class CompletionController {
     /// @return true if an event was consumed (currently always false —
     ///         reserved for future use).
     expose func Update(typed: String) -> Boolean {
+        if PollPendingJob() {
+            return true;
+        }
+
+        if workScheduler != null and engine != null {
+            var revision = engine.GetRevision();
+            if workScheduler.IsDue(scheduler.JOB_COMPLETION, sourcePath, revision) {
+                workScheduler.Complete(scheduler.JOB_COMPLETION);
+                StartCompletionJob();
+                return true;
+            }
+        }
+
         if pendingQuery {
             var now = Viper.Time.GetTickCount();
             if now - pendingSinceMs >= COMPLETION_DEBOUNCE_MS {
-                TriggerCompletion();
+                StartCompletionJob();
                 return true;
             }
         }
@@ -408,6 +640,26 @@ func StartsWith(text: String, prefix: String) -> Boolean {
     if prefix == "" { return true; }
     if Str.Length(text) < Str.Length(prefix) { return false; }
     return Str.Left(text, Str.Length(prefix)) == prefix;
+}
+
+func ContainsAny(characters: String, typed: String) -> Boolean {
+    if characters == "" or typed == "" { return false; }
+    var i = 1;
+    while i <= Str.Length(typed) {
+        var ch = Str.MidLen(typed, i, 1);
+        if Str.IndexOf(characters, ch) != 0 {
+            return true;
+        }
+        i = i + 1;
+    }
+    return false;
+}
+
+func ListIntAt(values: List, index: Integer, fallback: Integer) -> Integer {
+    if index < 0 or index >= values.count() {
+        return fallback;
+    }
+    return Viper.Core.Convert.ToInt(Obj.ToString(values.get(index)));
 }
 
 /// @brief Map a CompletionKind integer to a short bracketed tag.

@@ -34,10 +34,18 @@ class IdeOverlays {
     expose GUI.TextInput fontPathInput;
     expose GUI.Spinner fontSizeSpinner;
     expose GUI.Spinner tabWidthSpinner;
+    expose GUI.Spinner diagnosticsDelaySpinner;
+    expose GUI.Spinner completionDelaySpinner;
     expose GUI.Dropdown themeDropdown;
     expose GUI.Checkbox minimapCheck;
     expose GUI.Checkbox autoCheckCheck;
     expose GUI.Checkbox codeFoldingCheck;
+    expose GUI.Checkbox wordWrapCheck;
+    expose GUI.Checkbox lineNumbersCheck;
+    expose GUI.Checkbox insertSpacesCheck;
+    expose GUI.Checkbox trimWhitespaceCheck;
+    expose GUI.Checkbox finalNewlineCheck;
+    expose GUI.Checkbox autoSaveCheck;
     expose GUI.Checkbox restoreSessionCheck;
     expose GUI.Checkbox restoreLastProjectCheck;
     expose GUI.Checkbox confirmCloseCheck;
@@ -101,6 +109,12 @@ class IdeOverlays {
         if tabWidthSpinner != null {
             tabWidthSpinner.SetValue(appSettings.tabWidth);
         }
+        if diagnosticsDelaySpinner != null {
+            diagnosticsDelaySpinner.SetValue(appSettings.diagnosticsDelayMs);
+        }
+        if completionDelaySpinner != null {
+            completionDelaySpinner.SetValue(appSettings.completionDelayMs);
+        }
         if themeDropdown != null {
             if appSettings.theme == "light" {
                 themeDropdown.SetSelected(1);
@@ -130,6 +144,48 @@ class IdeOverlays {
                 codeFoldingCheck.SetChecked(1);
             } else {
                 codeFoldingCheck.SetChecked(0);
+            }
+        }
+        if wordWrapCheck != null {
+            if appSettings.wordWrap {
+                wordWrapCheck.SetChecked(1);
+            } else {
+                wordWrapCheck.SetChecked(0);
+            }
+        }
+        if lineNumbersCheck != null {
+            if appSettings.lineNumbers {
+                lineNumbersCheck.SetChecked(1);
+            } else {
+                lineNumbersCheck.SetChecked(0);
+            }
+        }
+        if insertSpacesCheck != null {
+            if appSettings.insertSpaces {
+                insertSpacesCheck.SetChecked(1);
+            } else {
+                insertSpacesCheck.SetChecked(0);
+            }
+        }
+        if trimWhitespaceCheck != null {
+            if appSettings.trimTrailingWhitespace {
+                trimWhitespaceCheck.SetChecked(1);
+            } else {
+                trimWhitespaceCheck.SetChecked(0);
+            }
+        }
+        if finalNewlineCheck != null {
+            if appSettings.ensureFinalNewline {
+                finalNewlineCheck.SetChecked(1);
+            } else {
+                finalNewlineCheck.SetChecked(0);
+            }
+        }
+        if autoSaveCheck != null {
+            if appSettings.autoSave {
+                autoSaveCheck.SetChecked(1);
+            } else {
+                autoSaveCheck.SetChecked(0);
             }
         }
         if restoreSessionCheck != null {
@@ -181,6 +237,14 @@ class IdeOverlays {
         return Convert.ToInt("" + tabWidthSpinner.Value);
     }
 
+    expose func ReadDiagnosticsDelayMs() -> Integer {
+        return Convert.ToInt("" + diagnosticsDelaySpinner.Value);
+    }
+
+    expose func ReadCompletionDelayMs() -> Integer {
+        return Convert.ToInt("" + completionDelaySpinner.Value);
+    }
+
     expose func ReadTheme() -> String {
         if themeDropdown.Selected == 1 {
             return "light";
@@ -202,6 +266,30 @@ class IdeOverlays {
 
     expose func ReadCodeFolding() -> Boolean {
         return codeFoldingCheck.IsChecked();
+    }
+
+    expose func ReadWordWrap() -> Boolean {
+        return wordWrapCheck.IsChecked();
+    }
+
+    expose func ReadLineNumbers() -> Boolean {
+        return lineNumbersCheck.IsChecked();
+    }
+
+    expose func ReadInsertSpaces() -> Boolean {
+        return insertSpacesCheck.IsChecked();
+    }
+
+    expose func ReadTrimTrailingWhitespace() -> Boolean {
+        return trimWhitespaceCheck.IsChecked();
+    }
+
+    expose func ReadEnsureFinalNewline() -> Boolean {
+        return finalNewlineCheck.IsChecked();
+    }
+
+    expose func ReadAutoSave() -> Boolean {
+        return autoSaveCheck.IsChecked();
     }
 
     expose func ReadRestoreSession() -> Boolean {
@@ -351,6 +439,48 @@ class IdeOverlays {
         minimapCheck = GUI.Checkbox.New(body, "Show the minimap");
         autoCheckCheck = GUI.Checkbox.New(body, "Run diagnostics while typing");
         codeFoldingCheck = GUI.Checkbox.New(body, "Enable code folding");
+        wordWrapCheck = GUI.Checkbox.New(body, "Wrap long lines");
+        lineNumbersCheck = GUI.Checkbox.New(body, "Show line numbers");
+        insertSpacesCheck = GUI.Checkbox.New(body, "Insert spaces for Tab");
+        trimWhitespaceCheck = GUI.Checkbox.New(body, "Trim trailing whitespace on save");
+        finalNewlineCheck = GUI.Checkbox.New(body, "Ensure final newline on save");
+        autoSaveCheck = GUI.Checkbox.New(body, "Auto-save named files after idle");
+
+        var intelliTitle = GUI.Label.New(body, "IntelliSense");
+        intelliTitle.SetMargin(1);
+        GUI.Label.New(
+            body,
+            "Tune background editor work without changing project language settings.");
+
+        var diagnosticsDelayRow = GUI.HBox.New();
+        diagnosticsDelayRow.SetSpacing(16.0);
+        body.AddChild(diagnosticsDelayRow);
+        var diagnosticsDelayMeta = GUI.VBox.New();
+        diagnosticsDelayMeta.SetSpacing(4.0);
+        diagnosticsDelayMeta.SetSize(FIELD_LABEL_WIDTH, 0);
+        diagnosticsDelayRow.AddChild(diagnosticsDelayMeta);
+        GUI.Label.New(diagnosticsDelayMeta, "Diagnostics delay");
+        GUI.Label.New(diagnosticsDelayMeta, "Idle time before live checks run.");
+        diagnosticsDelaySpinner = GUI.Spinner.New(diagnosticsDelayRow);
+        diagnosticsDelaySpinner.SetRange(100.0, 5000.0);
+        diagnosticsDelaySpinner.SetStep(50.0);
+        diagnosticsDelaySpinner.SetDecimals(0);
+        diagnosticsDelaySpinner.SetSize(130, 0);
+
+        var completionDelayRow = GUI.HBox.New();
+        completionDelayRow.SetSpacing(16.0);
+        body.AddChild(completionDelayRow);
+        var completionDelayMeta = GUI.VBox.New();
+        completionDelayMeta.SetSpacing(4.0);
+        completionDelayMeta.SetSize(FIELD_LABEL_WIDTH, 0);
+        completionDelayRow.AddChild(completionDelayMeta);
+        GUI.Label.New(completionDelayMeta, "Completion delay");
+        GUI.Label.New(completionDelayMeta, "Debounce time for identifier completions.");
+        completionDelaySpinner = GUI.Spinner.New(completionDelayRow);
+        completionDelaySpinner.SetRange(0.0, 2000.0);
+        completionDelaySpinner.SetStep(25.0);
+        completionDelaySpinner.SetDecimals(0);
+        completionDelaySpinner.SetSize(130, 0);
 
         var startupTitle = GUI.Label.New(body, "Startup and safety");
         startupTitle.SetMargin(1);

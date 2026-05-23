@@ -54,6 +54,8 @@ class CommandRegistry {
         Add("saveall", "Save All", "Save all open files", "Ctrl+Shift+S", "", true);
         Add("close", "Close File", "Close the current tab", "Ctrl+W", "", true);
         Add("reload", "Reload File", "Reload file from disk", "Ctrl+Shift+R", "", true);
+        Add("recentfiles", "Recent Files", "Show recently opened files", "Ctrl+K Ctrl+R", "", true);
+        Add("reopenclosed", "Reopen Closed File", "Reopen the most recently closed named file", "Ctrl+Alt+T", "", true);
         Add("find", "Find / Replace", "Open the find bar", "Ctrl+F", "", true);
         Add("goto", "Go To Line", "Jump to a specific line number", "Ctrl+G", "", true);
         Add("build", "Build", "Compile the current file or project", "Ctrl+Shift+B", "", true);
@@ -75,6 +77,16 @@ class CommandRegistry {
         Add("fullscreen", "Toggle Fullscreen", "Enter or exit fullscreen mode", "F11", "", true);
         Add("minimap", "Toggle Minimap", "Show or hide the minimap panel", "Ctrl+Shift+M", "", true);
         Add("settings", "Settings", "View and adjust IDE settings", "Ctrl+,", "", true);
+        Add("keybindings", "Keyboard Shortcuts", "Show active keyboard shortcuts and conflicts", "Ctrl+K Ctrl+S", "", true);
+        Add("copytoolrow", "Copy Tool Row", "Copy the selected row from the active tool panel", "Ctrl+Alt+Y", "", true);
+        Add("clearoutput", "Clear Output", "Clear the build output panel", "Ctrl+Alt+L", "", true);
+        Add("filteroutput", "Filter Output", "Filter build output rows by text", "Ctrl+Alt+F", "", true);
+        Add("toggleoutputwrap", "Toggle Output Wrap", "Wrap long output rows into readable chunks", "Ctrl+Alt+W", "", true);
+        Add("treenewfile", "Explorer: New File", "Create a file in the selected project folder", "Ctrl+Alt+N", "", true);
+        Add("treenewfolder", "Explorer: New Folder", "Create a folder in the selected project folder", "Ctrl+Alt+Shift+N", "", true);
+        Add("treerename", "Explorer: Rename", "Rename the selected project tree item", "Ctrl+Alt+R", "", true);
+        Add("treedelete", "Explorer: Delete", "Delete the selected project tree item", "Ctrl+Alt+D", "", true);
+        Add("treerefresh", "Explorer: Refresh", "Refresh the project tree", "Ctrl+Alt+Shift+R", "", true);
         Add("quickopen", "Quick Open File", "Open a project file by name or path", "Ctrl+P", "", true);
         Add("undo", "Undo", "Undo last action", "Ctrl+Z", "", true);
         Add("redo", "Redo", "Redo last undone action", "Ctrl+Y", "", true);
@@ -95,6 +107,12 @@ class CommandRegistry {
         Add("skipoccurrence", "Skip Occurrence", "Move to the next matching word", "Ctrl+K Ctrl+D", "", true);
         Add("selectalloccurrences", "Select All Occurrences", "Select every matching word", "Ctrl+Shift+L", "", true);
         Add("clearcursors", "Clear Extra Cursors", "Remove secondary cursors", "Escape", "", true);
+        Add("togglelinecomment", "Toggle Line Comment", "Comment or uncomment the active line", "Ctrl+/", "", true);
+        Add("duplicateline", "Duplicate Line", "Duplicate the active line", "Ctrl+Shift+D", "", true);
+        Add("movelineup", "Move Line Up", "Move the active line above the previous line", "Alt+Up", "", true);
+        Add("movelinedown", "Move Line Down", "Move the active line below the next line", "Alt+Down", "", true);
+        Add("formatdocument", "Format Document", "Format the active document when a formatter is available", "Shift+Alt+F", "", true);
+        Add("formatselection", "Format Selection", "Format the selected text when a formatter is available", "", "", true);
     }
 
     expose func InstallShortcuts() {
@@ -151,6 +169,60 @@ class CommandRegistry {
             i = i + 1;
         }
         return false;
+    }
+
+    expose func ShortcutConflictCount() -> Integer {
+        var count = 0;
+        var i = 0;
+        while i < commands.count() {
+            var left = commands.get(i);
+            if left.shortcut != "" {
+                var j = i + 1;
+                while j < commands.count() {
+                    var right = commands.get(j);
+                    if right.shortcut != "" and right.shortcut == left.shortcut {
+                        count = count + 1;
+                    }
+                    j = j + 1;
+                }
+            }
+            i = i + 1;
+        }
+        return count;
+    }
+
+    expose func ShortcutHasConflict(shortcut: String) -> Boolean {
+        if shortcut == "" { return false; }
+        var matches = 0;
+        var i = 0;
+        while i < commands.count() {
+            if commands.get(i).shortcut == shortcut {
+                matches = matches + 1;
+            }
+            i = i + 1;
+        }
+        return matches > 1;
+    }
+
+    expose func ShortcutConflictSummary() -> String {
+        var summary = "";
+        var i = 0;
+        while i < commands.count() {
+            var left = commands.get(i);
+            if left.shortcut != "" {
+                var j = i + 1;
+                while j < commands.count() {
+                    var right = commands.get(j);
+                    if right.shortcut == left.shortcut {
+                        if summary != "" { summary = summary + "\n"; }
+                        summary = summary + left.shortcut + ": " + left.id + " / " + right.id;
+                    }
+                    j = j + 1;
+                }
+            }
+            i = i + 1;
+        }
+        return summary;
     }
 
     expose func IsSupported(cmd: CommandEntry,

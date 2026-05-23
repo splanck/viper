@@ -22,6 +22,7 @@ namespace il::frontends::zia {
 
 namespace {
 
+/// @brief Replace characters invalid in a mangled name (keeping alphanumerics and `.`) with `_`.
 std::string sanitizeMangledPart(std::string text) {
     for (char &ch : text) {
         unsigned char c = static_cast<unsigned char>(ch);
@@ -31,6 +32,9 @@ std::string sanitizeMangledPart(std::string text) {
     return text;
 }
 
+/// @brief Build a mangled-name fragment for one type argument (recursing into nested args).
+/// @return A sanitized string from the type's name/kind, its type arguments, and any fixed-array
+///         count; "unknown" for a null type.
 std::string mangleTypeArg(TypeRef type) {
     if (!type)
         return "unknown";
@@ -57,15 +61,19 @@ std::string mangleTypeArg(TypeRef type) {
 // Type Parameter Substitution Implementation
 //=============================================================================
 
+/// @brief Push a type-parameter → concrete-type substitution scope.
 void Sema::pushTypeParams(const std::map<std::string, TypeRef> &substitutions) {
     typeParamStack_.push_back(substitutions);
 }
 
+/// @brief Pop the innermost substitution scope (must balance a prior pushTypeParams()).
 void Sema::popTypeParams() {
     assert(!typeParamStack_.empty() && "Unbalanced type param stack");
     typeParamStack_.pop_back();
 }
 
+/// @brief Resolve a type-parameter name through the active substitution scopes.
+/// @return The substituted type, or nullptr if @p name is not bound (left unsubstituted).
 TypeRef Sema::lookupTypeParam(const std::string &name) const {
     // Search from innermost to outermost scope
     for (auto it = typeParamStack_.rbegin(); it != typeParamStack_.rend(); ++it) {
@@ -76,6 +84,12 @@ TypeRef Sema::lookupTypeParam(const std::string &name) const {
     return nullptr; // Not found - remains unsubstituted
 }
 
+/// @brief Recursively substitute type parameters in a type using the active scopes.
+/// @param type The type to rewrite.
+/// @return A new type with parameters replaced, or @p type unchanged when nothing applies.
+/// @details Handles bare type parameters, generic type arguments, function parameter/return
+///          types, and optional inner types; reconstructs a type only when a substitution
+///          actually changed something.
 TypeRef Sema::substituteTypeParams(TypeRef type) const {
     if (!type || typeParamStack_.empty())
         return type;
@@ -130,6 +144,10 @@ TypeRef Sema::substituteTypeParams(TypeRef type) const {
     return type;
 }
 
+/// @brief Build the mangled name of a generic instantiation (`base$Arg1$Arg2...`).
+/// @param base Base generic name.
+/// @param args Concrete type arguments.
+/// @return The cache key / lowered name for the instantiation.
 std::string Sema::mangleGenericName(const std::string &base, const std::vector<TypeRef> &args) {
     std::string result = base;
     for (const auto &arg : args) {
@@ -139,10 +157,13 @@ std::string Sema::mangleGenericName(const std::string &base, const std::vector<T
     return result;
 }
 
+/// @brief Record a generic type declaration so it can be instantiated on demand.
 void Sema::registerGenericType(const std::string &name, Decl *decl) {
     genericTypeDecls_[name] = decl;
 }
 
+/// @brief Return the generic parameter names declared by a struct/class/interface/function.
+/// @return The parameter name list, or empty for declarations that take none.
 std::vector<std::string> Sema::getGenericParams(const Decl *decl) {
     switch (decl->kind) {
         case DeclKind::Struct:
@@ -158,6 +179,8 @@ std::vector<std::string> Sema::getGenericParams(const Decl *decl) {
     }
 }
 
+/// @brief Return the per-parameter interface constraints of a generic declaration.
+/// @return Constraint interface names positional to the generic params ("" = unconstrained).
 std::vector<std::string> Sema::getGenericParamConstraints(const Decl *decl) {
     switch (decl->kind) {
         case DeclKind::Struct:
@@ -175,6 +198,13 @@ std::vector<std::string> Sema::getGenericParamConstraints(const Decl *decl) {
     }
 }
 
+/// @brief Verify each type argument satisfies its parameter's interface constraint.
+/// @param params Generic parameter names (for error messages).
+/// @param constraints Per-parameter required interface names ("" = none).
+/// @param args The concrete type arguments.
+/// @param loc Location for diagnostics.
+/// @param subjectName Name of the generic type/function being instantiated.
+/// @return True if all constraints hold; otherwise reports an error and returns false.
 bool Sema::validateGenericConstraints(const std::vector<std::string> &params,
                                       const std::vector<std::string> &constraints,
                                       const std::vector<TypeRef> &args,
@@ -198,6 +228,13 @@ bool Sema::validateGenericConstraints(const std::vector<std::string> &params,
     return true;
 }
 
+/// @brief Analyze a generic type's body under the active substitutions to register a concrete type.
+/// @param decl The generic type declaration (struct/class/interface).
+/// @param mangledName The instantiation's mangled name.
+/// @return The instantiated ViperType, or unknown for an unsupported declaration kind.
+/// @details Registers the instantiated type before analyzing members so self-references resolve,
+///          then records each field/method's substituted type, visibility, and (for classes)
+///          interface/inheritance relationships under `mangledName.member` keys.
 TypeRef Sema::analyzeGenericTypeBody(Decl *decl, const std::string &mangledName) {
     // Create the instantiated type based on declaration kind
     switch (decl->kind) {
@@ -318,6 +355,14 @@ TypeRef Sema::analyzeGenericTypeBody(Decl *decl, const std::string &mangledName)
     }
 }
 
+/// @brief Instantiate a generic type with concrete arguments (memoized).
+/// @param name Base generic type name.
+/// @param args Concrete type arguments.
+/// @param loc Location for diagnostics.
+/// @return The instantiated type, or unknown on error (unknown type, arity/constraint mismatch).
+/// @details Returns a cached instance when present; otherwise validates argument count and
+///          constraints, builds the substitution map, and analyzes the body via
+///          analyzeGenericTypeBody() under that substitution scope, caching the result.
 TypeRef Sema::instantiateGenericType(const std::string &name,
                                      const std::vector<TypeRef> &args,
                                      SourceLoc loc) {
@@ -366,24 +411,31 @@ TypeRef Sema::instantiateGenericType(const std::string &name,
     return instantiated;
 }
 
+/// @brief Record a generic function declaration for on-demand instantiation.
 void Sema::registerGenericFunction(const std::string &name, FunctionDecl *decl) {
     genericFunctionDecls_[name] = decl;
 }
 
+/// @brief Test whether a name refers to a registered generic function.
 bool Sema::isGenericFunction(const std::string &name) const {
     return genericFunctionDecls_.count(name) > 0;
 }
 
+/// @brief Look up a generic function declaration by name.
+/// @return The declaration, or nullptr if none is registered.
 FunctionDecl *Sema::getGenericFunction(const std::string &name) const {
     auto it = genericFunctionDecls_.find(name);
     return it != genericFunctionDecls_.end() ? it->second : nullptr;
 }
 
+/// @brief Look up an ordinary function declaration by name.
+/// @return The declaration, or nullptr if not found.
 FunctionDecl *Sema::getFunctionDecl(const std::string &name) const {
     auto it = functionDecls_.find(name);
     return it != functionDecls_.end() ? it->second : nullptr;
 }
 
+/// @brief Return all overload declarations sharing a function name.
 std::vector<FunctionDecl *> Sema::getFunctionOverloads(const std::string &name) const {
     auto it = functionOverloads_.find(name);
     if (it == functionOverloads_.end())
@@ -391,6 +443,11 @@ std::vector<FunctionDecl *> Sema::getFunctionOverloads(const std::string &name) 
     return it->second;
 }
 
+/// @brief Test whether a type implements (or is) a named interface.
+/// @param type The candidate type.
+/// @param interfaceName Interface name (resolved through aliases before comparison).
+/// @return True if @p type is that interface, or is a class/struct that lists it (resolving
+///         each declared interface name too).
 bool Sema::typeImplementsInterface(TypeRef type, const std::string &interfaceName) const {
     if (!type)
         return false;
@@ -433,6 +490,14 @@ bool Sema::typeImplementsInterface(TypeRef type, const std::string &interfaceNam
     return false;
 }
 
+/// @brief Instantiate a generic function with concrete type arguments (memoized).
+/// @param name Base generic function name.
+/// @param args Concrete type arguments.
+/// @param loc Location for diagnostics.
+/// @return The instantiated function type, or unknown on error.
+/// @details Returns a cached instance when present; otherwise validates arity and constraints,
+///          builds the substitution map, resolves parameter/return types under it, caches the
+///          function type, and defines a callable symbol for the mangled instantiation.
 TypeRef Sema::instantiateGenericFunction(const std::string &name,
                                          const std::vector<TypeRef> &args,
                                          SourceLoc loc) {
@@ -509,6 +574,12 @@ TypeRef Sema::instantiateGenericFunction(const std::string &name,
     return instantiatedType;
 }
 
+/// @brief Re-establish the type-parameter substitution scope for a mangled instantiation.
+/// @param mangledName The instantiation's mangled name.
+/// @return True if a substitution scope was pushed (caller must later popTypeParams()).
+/// @details Used when lowering an instantiation: looks up the saved function/type substitution
+///          map, or reconstructs it by splitting the mangled name on `$` and resolving each
+///          type-argument name against the base declaration's generic parameters.
 bool Sema::pushSubstitutionContext(const std::string &mangledName) {
     auto fnSubst = genericFunctionSubstitutions_.find(mangledName);
     if (fnSubst != genericFunctionSubstitutions_.end()) {

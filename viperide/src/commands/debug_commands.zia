@@ -154,7 +154,7 @@ func Publish(shell: app_shell.AppShell,
              engine: editor_engine.EditorEngine,
              tabs: editor_tabs.EditorTabs,
              session: debug_session.DebugSession) {
-    shell.SetBuildOutput(session.FormatConsole());
+    shell.SetDebugOutput(session.FormatConsole());
     if session.lastType == "stopped" {
         shell.SetStatusLeft("Debug stopped: " + session.lastReason);
         OpenStopLocation(shell, docMgr, engine, tabs, session);

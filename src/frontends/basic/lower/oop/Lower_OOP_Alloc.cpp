@@ -184,6 +184,12 @@ Lowerer::RVal Lowerer::lowerNewExpr(const NewExpr &expr) {
 // OopLoweringContext-aware implementations
 // -------------------------------------------------------------------------
 
+/// @brief Lower a @c NEW expression, pre-warming the OOP context's class-info cache.
+/// @param expr The @c NEW expression.
+/// @param ctx OOP lowering context used to pre-cache the constructor target's class info.
+/// @return Runtime value describing the allocated object pointer.
+/// @details Primes @p ctx with the target class info (benefiting later vtable-init lookups),
+///          then delegates to the single-argument lowerNewExpr().
 Lowerer::RVal Lowerer::lowerNewExpr(const NewExpr &expr, OopLoweringContext &ctx) {
     // Pre-cache the class info for the constructor target.
     // This benefits subsequent lookups during vtable initialization.

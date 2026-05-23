@@ -14,6 +14,7 @@ bind Seq = Viper.Collections.Seq;
 bind Obj = Viper.Core.Object;
 
 final MAX_RECENT_PROJECTS = 10;
+final MAX_RECENT_FILES = 20;
 
 class SessionManager {
     expose String settingsPath;
@@ -65,8 +66,35 @@ class SessionManager {
         }
 
         SaveRecentProjects(ini, projectRoot);
+        SaveRecentFiles(ini, docMgr);
 
         IO.File.WriteAllText(settingsPath, Ini.Format(ini));
+    }
+
+    expose func RecordRecentFile(path: String) {
+        if settingsPath == "" or path == "" or IO.File.Exists(path) == false { return; }
+        Dir.MakeAll(Path.Dir(settingsPath));
+
+        var content = "";
+        if IO.File.Exists(settingsPath) {
+            content = IO.File.ReadAllText(settingsPath);
+        }
+        var ini = Ini.Parse(content);
+        PrependRecentFile(ini, path);
+        IO.File.WriteAllText(settingsPath, Ini.Format(ini));
+    }
+
+    expose func RecentFileCount() -> Integer {
+        if settingsPath == "" or IO.File.Exists(settingsPath) == false { return 0; }
+        var ini = Ini.Parse(IO.File.ReadAllText(settingsPath));
+        return Parse.IntOr(Ini.Get(ini, "recentFiles", "count"), 0);
+    }
+
+    expose func RecentFileAt(index: Integer) -> String {
+        if index < 0 { return ""; }
+        if settingsPath == "" or IO.File.Exists(settingsPath) == false { return ""; }
+        var ini = Ini.Parse(IO.File.ReadAllText(settingsPath));
+        return Ini.Get(ini, "recentFiles", "path." + index);
     }
 
     expose func Restore(docMgr: document_manager.DocumentManager,
@@ -148,5 +176,40 @@ class SessionManager {
             i = i + 1;
         }
         Ini.Set(ini, "recent", "count", "" + written);
+    }
+
+    hide func SaveRecentFiles(ini: Any, docMgr: document_manager.DocumentManager) {
+        if docMgr == null { return; }
+        var i = docMgr.GetCount() - 1;
+        while i >= 0 {
+            var doc = docMgr.documents.get(i);
+            if doc.filePath != "" and doc.isNew == false and IO.File.Exists(doc.filePath) {
+                PrependRecentFile(ini, doc.filePath);
+            }
+            i = i - 1;
+        }
+    }
+
+    hide func PrependRecentFile(ini: Any, path: String) {
+        var oldCount = Parse.IntOr(Ini.Get(ini, "recentFiles", "count"), 0);
+        var oldPaths = Seq.New();
+        var i = 0;
+        while i < oldCount {
+            var oldPath = Ini.Get(ini, "recentFiles", "path." + i);
+            if oldPath != "" and oldPath != path and IO.File.Exists(oldPath) {
+                Seq.Push(oldPaths, oldPath);
+            }
+            i = i + 1;
+        }
+
+        Ini.Set(ini, "recentFiles", "path.0", path);
+        var written = 1;
+        i = 0;
+        while i < Seq.get_Length(oldPaths) and written < MAX_RECENT_FILES {
+            Ini.Set(ini, "recentFiles", "path." + written, Obj.ToString(Seq.Get(oldPaths, i)));
+            written = written + 1;
+            i = i + 1;
+        }
+        Ini.Set(ini, "recentFiles", "count", "" + written);
     }
 }

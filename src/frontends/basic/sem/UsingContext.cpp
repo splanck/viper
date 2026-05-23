@@ -21,6 +21,7 @@
 
 namespace il::frontends::basic {
 
+/// @brief Lowercase a string to form the case-insensitive alias key.
 std::string UsingContext::toLower(std::string_view str) {
     std::string result;
     result.reserve(str.size());
@@ -30,6 +31,12 @@ std::string UsingContext::toLower(std::string_view str) {
     return result;
 }
 
+/// @brief Record a `USING` directive.
+/// @param ns The imported namespace.
+/// @param alias Optional alias (empty when there is no `AS` clause).
+/// @param loc Source location of the directive.
+/// @details Appends to the declaration-order import list and, when an alias is given, registers
+///          it for case-insensitive lookup.
 void UsingContext::add(std::string_view ns, std::string_view alias, il::support::SourceLoc loc) {
     // Append to declaration-order vector.
     Import import;
@@ -45,11 +52,14 @@ void UsingContext::add(std::string_view ns, std::string_view alias, il::support:
     }
 }
 
+/// @brief Test whether an alias was registered (case-insensitive).
 bool UsingContext::hasAlias(std::string_view alias) const {
     std::string key = toLower(alias);
     return alias_.find(key) != alias_.end();
 }
 
+/// @brief Resolve an alias to its namespace.
+/// @return The namespace, or "" if the alias is unknown.
 std::string UsingContext::resolveAlias(std::string_view alias) const {
     std::string key = toLower(alias);
     auto it = alias_.find(key);
@@ -58,6 +68,7 @@ std::string UsingContext::resolveAlias(std::string_view alias) const {
     return it->second;
 }
 
+/// @brief Reset all imports and aliases (e.g. when starting a new file).
 void UsingContext::clear() {
     imports_.clear();
     alias_.clear();

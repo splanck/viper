@@ -47,10 +47,10 @@ bind Viper.GUI;
 
 /// @brief Default editor font size (in points). Used both at construction and as
 ///        the reset target for the "Reset font size" command.
-final DEFAULT_FONT_SIZE = 20;
+final DEFAULT_FONT_SIZE = 15;
 
 /// @brief Old ViperIDE builds persisted small sizes; migrate them upward.
-final MIN_COMFORTABLE_FONT_SIZE = 16;
+final MIN_COMFORTABLE_FONT_SIZE = 12;
 
 /// @brief Settings store with INI-backed persistence.
 class SettingsManager {
@@ -60,9 +60,17 @@ class SettingsManager {
     expose Boolean minimapVisible; // Whether the minimap panel is shown.
     expose Boolean autoCheckOnSave;// Whether live diagnostics run on edit.
     expose Boolean codeFolding;    // Whether the editor offers code-folding regions.
+    expose Boolean wordWrap;       // Whether editor lines wrap within the viewport.
+    expose Boolean lineNumbers;    // Whether the editor gutter shows line numbers.
+    expose Boolean insertSpaces;   // Whether Tab inserts spaces instead of a hard tab.
+    expose Boolean trimTrailingWhitespace; // Trim trailing spaces/tabs when saving.
+    expose Boolean ensureFinalNewline; // Ensure saved text ends with a newline.
+    expose Boolean autoSave;      // Save modified named files after editor idle.
     expose Boolean restoreSession; // Restore open tabs and cursor state on startup.
     expose Boolean restoreLastProject; // Restore last project tree on startup.
     expose Boolean confirmOnExitWithUnsavedChanges; // Guard destructive close paths.
+    expose Integer diagnosticsDelayMs; // Live diagnostics idle delay.
+    expose Integer completionDelayMs;  // Completion debounce delay.
     expose Integer tabWidth;       // Tab width in spaces (2..8).
     expose String  settingsDir;    // ~/.viperide (resolved at SetupPath).
     expose String  settingsPath;   // settingsDir/settings.ini.
@@ -79,9 +87,17 @@ class SettingsManager {
         minimapVisible = false;
         autoCheckOnSave = true;
         codeFolding    = true;
+        wordWrap       = false;
+        lineNumbers    = true;
+        insertSpaces   = true;
+        trimTrailingWhitespace = false;
+        ensureFinalNewline = true;
+        autoSave = false;
         restoreSession = true;
         restoreLastProject = true;
         confirmOnExitWithUnsavedChanges = true;
+        diagnosticsDelayMs = 500;
+        completionDelayMs = 180;
         tabWidth       = 4;
         settingsDir    = "";
         settingsPath   = "";
@@ -150,6 +166,36 @@ class SettingsManager {
             codeFolding = cfStr == "1";
         }
 
+        var wwStr = Ini.Get(ini, "settings", "wordWrap");
+        if wwStr != "" {
+            wordWrap = wwStr == "1";
+        }
+
+        var lnStr = Ini.Get(ini, "settings", "lineNumbers");
+        if lnStr != "" {
+            lineNumbers = lnStr == "1";
+        }
+
+        var isStr = Ini.Get(ini, "settings", "insertSpaces");
+        if isStr != "" {
+            insertSpaces = isStr == "1";
+        }
+
+        var trimStr = Ini.Get(ini, "settings", "trimTrailingWhitespace");
+        if trimStr != "" {
+            trimTrailingWhitespace = trimStr == "1";
+        }
+
+        var finalNewlineStr = Ini.Get(ini, "settings", "ensureFinalNewline");
+        if finalNewlineStr != "" {
+            ensureFinalNewline = finalNewlineStr == "1";
+        }
+
+        var autoSaveStr = Ini.Get(ini, "settings", "autoSave");
+        if autoSaveStr != "" {
+            autoSave = autoSaveStr == "1";
+        }
+
         var rsStr = Ini.Get(ini, "settings", "restoreSession");
         if rsStr != "" {
             restoreSession = rsStr == "1";
@@ -169,6 +215,18 @@ class SettingsManager {
         if twStr != "" {
             var tw = Convert.ToInt(twStr);
             if tw >= 2 and tw <= 8 { tabWidth = tw; }
+        }
+
+        var diagDelayStr = Ini.Get(ini, "settings", "diagnosticsDelayMs");
+        if diagDelayStr != "" {
+            var diagDelay = Convert.ToInt(diagDelayStr);
+            if diagDelay >= 100 and diagDelay <= 5000 { diagnosticsDelayMs = diagDelay; }
+        }
+
+        var completionDelayStr = Ini.Get(ini, "settings", "completionDelayMs");
+        if completionDelayStr != "" {
+            var completionDelay = Convert.ToInt(completionDelayStr);
+            if completionDelay >= 0 and completionDelay <= 2000 { completionDelayMs = completionDelay; }
         }
     }
 
@@ -204,6 +262,36 @@ class SettingsManager {
         } else {
             Ini.Set(ini, "settings", "codeFolding", "0");
         }
+        if wordWrap {
+            Ini.Set(ini, "settings", "wordWrap", "1");
+        } else {
+            Ini.Set(ini, "settings", "wordWrap", "0");
+        }
+        if lineNumbers {
+            Ini.Set(ini, "settings", "lineNumbers", "1");
+        } else {
+            Ini.Set(ini, "settings", "lineNumbers", "0");
+        }
+        if insertSpaces {
+            Ini.Set(ini, "settings", "insertSpaces", "1");
+        } else {
+            Ini.Set(ini, "settings", "insertSpaces", "0");
+        }
+        if trimTrailingWhitespace {
+            Ini.Set(ini, "settings", "trimTrailingWhitespace", "1");
+        } else {
+            Ini.Set(ini, "settings", "trimTrailingWhitespace", "0");
+        }
+        if ensureFinalNewline {
+            Ini.Set(ini, "settings", "ensureFinalNewline", "1");
+        } else {
+            Ini.Set(ini, "settings", "ensureFinalNewline", "0");
+        }
+        if autoSave {
+            Ini.Set(ini, "settings", "autoSave", "1");
+        } else {
+            Ini.Set(ini, "settings", "autoSave", "0");
+        }
         if restoreSession {
             Ini.Set(ini, "settings", "restoreSession", "1");
         } else {
@@ -220,6 +308,8 @@ class SettingsManager {
             Ini.Set(ini, "settings", "confirmOnExitWithUnsavedChanges", "0");
         }
         Ini.Set(ini, "settings", "tabWidth", "" + tabWidth);
+        Ini.Set(ini, "settings", "diagnosticsDelayMs", "" + diagnosticsDelayMs);
+        Ini.Set(ini, "settings", "completionDelayMs", "" + completionDelayMs);
         var content = Ini.Format(ini);
         IO.File.WriteAllText(settingsPath, content);
     }

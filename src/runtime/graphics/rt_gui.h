@@ -2054,6 +2054,16 @@ void rt_codeeditor_set_tab_size(void *editor, int64_t size);
 /// @return Tab width in spaces.
 int64_t rt_codeeditor_get_tab_size(void *editor);
 
+/// @brief Set whether Tab inserts spaces or a hard tab.
+/// @param editor CodeEditor handle.
+/// @param enabled Non-zero to insert spaces.
+void rt_codeeditor_set_insert_spaces(void *editor, int64_t enabled);
+
+/// @brief Check whether Tab inserts spaces.
+/// @param editor CodeEditor handle.
+/// @return 1 if spaces are inserted, 0 for hard tabs.
+int64_t rt_codeeditor_get_insert_spaces(void *editor);
+
 /// @brief Enable or disable display-only word wrapping.
 /// @param editor CodeEditor handle.
 /// @param enabled Non-zero to enable.
@@ -2077,6 +2087,26 @@ int64_t rt_codeeditor_get_full_text_copy_count(void *editor);
 /// @param editor CodeEditor handle.
 /// @return Linear scan count, clamped to INT64_MAX.
 int64_t rt_codeeditor_get_layout_linear_scan_count(void *editor);
+
+/// @brief Return syntax-highlighter invocations from editor paint.
+/// @param editor CodeEditor handle.
+/// @return Highlight call count.
+int64_t rt_codeeditor_get_syntax_highlight_call_count(void *editor);
+
+/// @brief Return syntax-state cache line scans.
+/// @param editor CodeEditor handle.
+/// @return Syntax-state line scan count.
+int64_t rt_codeeditor_get_syntax_state_line_scan_count(void *editor);
+
+/// @brief Return highlight spans inspected during editor paint.
+/// @param editor CodeEditor handle.
+/// @return Highlight span check count.
+int64_t rt_codeeditor_get_highlight_span_check_count(void *editor);
+
+/// @brief Return bytes copied by full-editor text materializations.
+/// @param editor CodeEditor handle.
+/// @return Full-text copied byte count.
+int64_t rt_codeeditor_get_full_text_copy_byte_count(void *editor);
 
 //=========================================================================
 // Phase 5: MessageBox Dialog
@@ -2874,11 +2904,33 @@ rt_string rt_zia_complete(rt_string source, int64_t line, int64_t col);
 /// @brief Run Zia code completion with a source path for relative bind resolution.
 rt_string rt_zia_complete_for_file(rt_string source, rt_string file_path, int64_t line, int64_t col);
 
+/// @brief Run Zia code completion and return structured completion maps.
+void *rt_zia_completion_items(rt_string source, int64_t line, int64_t col);
+
+/// @brief Run path-aware Zia completion and return structured completion maps.
+void *rt_zia_completion_items_for_file(
+    rt_string source, rt_string file_path, int64_t line, int64_t col);
+
+/// @brief Start path-aware completion on a background worker.
+void *rt_zia_completion_begin_items_for_file(
+    rt_string source, rt_string file_path, int64_t line, int64_t col);
+
 /// @brief Return call signature help for the invocation active at the source position.
 rt_string rt_zia_signature_help(rt_string source, int64_t line, int64_t col);
 
 /// @brief Return call signature help with a source path for relative bind resolution.
 rt_string rt_zia_signature_help_for_file(
+    rt_string source, rt_string file_path, int64_t line, int64_t col);
+
+/// @brief Return structured signature help for the invocation active at the source position.
+void *rt_zia_signature_info(rt_string source, int64_t line, int64_t col);
+
+/// @brief Return structured signature help with a source path for relative bind resolution.
+void *rt_zia_signature_info_for_file(
+    rt_string source, rt_string file_path, int64_t line, int64_t col);
+
+/// @brief Start path-aware structured signature help on a background worker.
+void *rt_zia_completion_begin_signature_info_for_file(
     rt_string source, rt_string file_path, int64_t line, int64_t col);
 
 /// @brief Run semantic analysis and return serialized diagnostics for editor tooling.
@@ -2892,6 +2944,9 @@ void *rt_zia_toolchain_check(rt_string source);
 
 /// @brief Run semantic analysis with a source path and return structured diagnostic maps.
 void *rt_zia_toolchain_check_for_file(rt_string source, rt_string file_path);
+
+/// @brief Start path-aware semantic diagnostics on a background worker.
+void *rt_zia_toolchain_begin_check_for_file(rt_string source, rt_string file_path);
 
 /// @brief Compile source to IL and return a structured result map.
 void *rt_zia_toolchain_compile(rt_string source);
@@ -2939,11 +2994,54 @@ rt_string rt_zia_hover(rt_string source, int64_t line, int64_t col);
 /// @brief Return hover information with a source path for relative bind resolution.
 rt_string rt_zia_hover_for_file(rt_string source, rt_string file_path, int64_t line, int64_t col);
 
+/// @brief Return structured hover information for the identifier at the source position.
+void *rt_zia_hover_info(rt_string source, int64_t line, int64_t col);
+
+/// @brief Return structured hover information with a source path for relative bind resolution.
+void *rt_zia_hover_info_for_file(rt_string source, rt_string file_path, int64_t line, int64_t col);
+
+/// @brief Start path-aware structured hover info on a background worker.
+void *rt_zia_completion_begin_hover_info_for_file(
+    rt_string source, rt_string file_path, int64_t line, int64_t col);
+
 /// @brief Return serialized document symbols for the supplied source.
 rt_string rt_zia_symbols(rt_string source);
 
 /// @brief Return document symbols with a source path for relative bind resolution.
 rt_string rt_zia_symbols_for_file(rt_string source, rt_string file_path);
+
+/// @brief Start path-aware document symbol extraction on a background worker.
+void *rt_zia_completion_begin_symbols_for_file(rt_string source, rt_string file_path);
+
+/// @brief Return whether a semantic background job has completed.
+int8_t rt_zia_semantic_job_is_done(void *handle);
+
+/// @brief Return whether a completed semantic background job failed.
+int8_t rt_zia_semantic_job_is_error(void *handle);
+
+/// @brief Return a completed semantic background job's error string, if any.
+rt_string rt_zia_semantic_job_error(void *handle);
+
+/// @brief Return the numeric semantic background job kind.
+int64_t rt_zia_semantic_job_kind(void *handle);
+
+/// @brief Mark a semantic background job as canceled. Running work may finish later.
+void rt_zia_semantic_job_cancel(void *handle);
+
+/// @brief Materialize a completion job result as Seq<Map>.
+void *rt_zia_semantic_job_completion_items(void *handle);
+
+/// @brief Materialize a signature job result as Map.
+void *rt_zia_semantic_job_signature_info(void *handle);
+
+/// @brief Materialize a hover job result as Map.
+void *rt_zia_semantic_job_hover_info(void *handle);
+
+/// @brief Materialize a symbols job result as serialized symbol rows.
+rt_string rt_zia_semantic_job_symbols(void *handle);
+
+/// @brief Materialize a diagnostics job result as Seq<Map>.
+void *rt_zia_semantic_job_diagnostics(void *handle);
 
 /// @brief Flush the cached parse result, forcing a fresh parse on the next call.
 void rt_zia_completion_clear_cache(void);

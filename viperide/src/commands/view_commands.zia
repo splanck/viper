@@ -2,12 +2,18 @@ module view_commands;
 
 bind "../ui/app_shell";
 bind "../core/settings";
+bind "../core/session";
 bind "../editor/editor_engine";
 bind "../editor/diagnostics";
+bind "../commands/command_registry";
 
 bind Viper.GUI;
 bind Convert = Viper.Core.Convert;
 bind Machine = Viper.System.Machine;
+bind Path = Viper.IO.Path;
+bind Str = Viper.String;
+bind Seq = Viper.Collections.Seq;
+bind Obj = Viper.Core.Object;
 
 // ============================================================================
 // MODULE: view_commands
@@ -137,6 +143,21 @@ func applyPersistentSettings(shell: app_shell.AppShell,
     appSettings.ApplyTheme();
     applyEditorFont(shell, engine, appSettings);
     engine.editor.SetTabSize(appSettings.tabWidth);
+    if appSettings.insertSpaces {
+        engine.editor.SetInsertSpaces(1);
+    } else {
+        engine.editor.SetInsertSpaces(0);
+    }
+    if appSettings.wordWrap {
+        engine.editor.SetWordWrap(1);
+    } else {
+        engine.editor.SetWordWrap(0);
+    }
+    if appSettings.lineNumbers {
+        engine.editor.SetShowLineNumbers(1);
+    } else {
+        engine.editor.SetShowLineNumbers(0);
+    }
 
     if appSettings.codeFolding {
         engine.editor.SetAutoFoldDetection(1);
@@ -217,6 +238,92 @@ func handleToggleTheme(appSettings: settings.SettingsManager) {
         GUI.Toast.Info("Switched to dark theme");
     }
     appSettings.Save();
+}
+
+func handleKeybindings(shell: app_shell.AppShell,
+                       registry: command_registry.CommandRegistry) {
+    if shell == null or registry == null { return; }
+    shell.outputListBox.Clear();
+    var conflictCount = registry.ShortcutConflictCount();
+    if conflictCount == 0 {
+        shell.outputListBox.AddItem("Keyboard Shortcuts - no conflicts");
+    } else {
+        shell.outputListBox.AddItem("Keyboard Shortcuts - " + conflictCount + " conflicts");
+        var conflicts = Str.Split(registry.ShortcutConflictSummary(), "\n");
+        var c = 0;
+        while c < Seq.get_Length(conflicts) {
+            shell.outputListBox.AddItem("  conflict: " + Obj.ToString(Seq.Get(conflicts, c)));
+            c = c + 1;
+        }
+    }
+
+    var i = 0;
+    while i < registry.commands.count() {
+        var cmd = registry.commands.get(i);
+        if cmd.shortcut != "" {
+            var marker = " ";
+            if registry.ShortcutHasConflict(cmd.shortcut) { marker = "!"; }
+            shell.outputListBox.AddItem(marker + " " + cmd.shortcut + "  " + cmd.label);
+        }
+        i = i + 1;
+    }
+    shell.outputListBox.SetVisible(1);
+    shell.ShowOutputPanel();
+    shell.SetStatusLeft("Keyboard shortcuts");
+}
+
+func handleCopyToolSelection(shell: app_shell.AppShell) {
+    if shell.CopySelectedToolRow() {
+        GUI.Toast.Success("Copied selected row");
+        shell.SetStatusLeft("Copied selected tool row");
+    } else {
+        GUI.Toast.Info("No tool row selected");
+    }
+}
+
+func handleClearOutput(shell: app_shell.AppShell) {
+    shell.ClearOutputPanel();
+    shell.SetStatusLeft("Output cleared");
+}
+
+func handleFilterOutput(shell: app_shell.AppShell) {
+    var filter = GUI.MessageBox.Prompt("Filter Output", "Show output rows containing:");
+    shell.SetOutputFilter(filter);
+    if filter == "" {
+        shell.SetStatusLeft("Output filter cleared");
+    } else {
+        shell.SetStatusLeft("Output filter: " + filter);
+    }
+}
+
+func handleToggleOutputWrap(shell: app_shell.AppShell) {
+    if shell.ToggleOutputWrap() {
+        shell.SetStatusLeft("Output wrap enabled");
+    } else {
+        shell.SetStatusLeft("Output wrap disabled");
+    }
+}
+
+func handleRecentFiles(shell: app_shell.AppShell,
+                       sessionMgr: session.SessionManager) {
+    shell.outputListBox.Clear();
+    var count = sessionMgr.RecentFileCount();
+    if count <= 0 {
+        shell.outputListBox.AddItem("Recent Files - none");
+    } else {
+        shell.outputListBox.AddItem("Recent Files");
+        var i = 0;
+        while i < count {
+            var path = sessionMgr.RecentFileAt(i);
+            if path != "" {
+                var item = shell.outputListBox.AddItem("  " + Path.Name(path) + "  -  " + path);
+                GUI.ListBox.ItemSetData(item, "file:" + path);
+            }
+            i = i + 1;
+        }
+    }
+    shell.ShowOutputPanel();
+    shell.SetStatusLeft("Recent files");
 }
 
 /// @brief Toggle fullscreen window state.

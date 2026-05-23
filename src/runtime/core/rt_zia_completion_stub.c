@@ -136,6 +136,13 @@ RT_WEAK void *rt_zia_toolchain_check_for_file(rt_string source, rt_string file_p
     return rt_zia_toolchain_check(source);
 }
 
+/// @brief Weak stub: async diagnostics unavailable; return null job.
+RT_WEAK void *rt_zia_toolchain_begin_check_for_file(rt_string source, rt_string file_path) {
+    (void)source;
+    (void)file_path;
+    return NULL;
+}
+
 /// @brief Weak stub: compile unavailable returns a structured failed result
 ///        without source diagnostics.
 RT_WEAK void *rt_zia_toolchain_compile(rt_string source) {
@@ -187,6 +194,12 @@ static void zia_stub_map_set_bool(void *map, const char *key_text, int8_t value)
     rt_string_unref(key);
 }
 
+static void zia_stub_map_set_int(void *map, const char *key_text, int64_t value) {
+    rt_string key = rt_string_from_bytes(key_text, strlen(key_text));
+    rt_map_set_int(map, key, value);
+    rt_string_unref(key);
+}
+
 static void zia_stub_map_set_str(void *map, const char *key_text, const char *value_text) {
     rt_string key = rt_string_from_bytes(key_text, strlen(key_text));
     rt_string value = rt_string_from_bytes(value_text, strlen(value_text));
@@ -199,6 +212,104 @@ static void zia_stub_map_set_obj(void *map, const char *key_text, void *value) {
     rt_string key = rt_string_from_bytes(key_text, strlen(key_text));
     rt_map_set(map, key, value);
     rt_string_unref(key);
+}
+
+static void *zia_stub_completion_items_unavailable(void) {
+    void *seq = rt_seq_new_owned();
+    void *item = rt_map_new();
+    zia_stub_map_set_str(item, "label", "Zia completion unavailable");
+    zia_stub_map_set_str(item, "insertText", "");
+    zia_stub_map_set_int(item, "kind", 8);
+    zia_stub_map_set_str(item, "kindName", "value");
+    zia_stub_map_set_str(item, "detail", "link fe_zia to enable editor completions");
+    zia_stub_map_set_str(item, "documentation", "");
+    zia_stub_map_set_str(item, "source", "unavailable");
+    zia_stub_map_set_str(item, "commitCharacters", "");
+    zia_stub_map_set_bool(item, "isSnippet", 0);
+    zia_stub_map_set_int(item, "replacementStartLine", 1);
+    zia_stub_map_set_int(item, "replacementStartColumn", 0);
+    zia_stub_map_set_int(item, "replacementEndLine", 1);
+    zia_stub_map_set_int(item, "replacementEndColumn", 0);
+    rt_seq_push(seq, item);
+    if (item && rt_obj_release_check0(item))
+        rt_obj_free(item);
+    return seq;
+}
+
+/// @brief Weak stub: returns a structured unavailable completion item.
+RT_WEAK void *rt_zia_completion_items(rt_string source, int64_t line, int64_t col) {
+    (void)source;
+    (void)line;
+    (void)col;
+    return zia_stub_completion_items_unavailable();
+}
+
+/// @brief Weak stub: returns a structured unavailable completion item.
+RT_WEAK void *rt_zia_completion_items_for_file(rt_string source,
+                                               rt_string file_path,
+                                               int64_t line,
+                                               int64_t col) {
+    (void)file_path;
+    return rt_zia_completion_items(source, line, col);
+}
+
+/// @brief Weak stub: async completion unavailable; return null job.
+RT_WEAK void *rt_zia_completion_begin_items_for_file(rt_string source,
+                                                     rt_string file_path,
+                                                     int64_t line,
+                                                     int64_t col) {
+    (void)source;
+    (void)file_path;
+    (void)line;
+    (void)col;
+    return NULL;
+}
+
+static void *zia_stub_signature_unavailable_map(void) {
+    void *params = rt_seq_new_owned();
+    void *result = rt_map_new();
+    zia_stub_map_set_bool(result, "available", 0);
+    zia_stub_map_set_str(result, "display", "");
+    zia_stub_map_set_str(result, "name", "");
+    zia_stub_map_set_str(result, "returnType", "");
+    zia_stub_map_set_int(result, "activeParameter", 0);
+    zia_stub_map_set_int(result, "activeSignature", 0);
+    zia_stub_map_set_int(result, "overloadCount", 0);
+    zia_stub_map_set_str(result, "documentation", "");
+    zia_stub_map_set_str(result, "source", "unavailable");
+    zia_stub_map_set_obj(result, "parameters", params);
+    if (params && rt_obj_release_check0(params))
+        rt_obj_free(params);
+    return result;
+}
+
+/// @brief Weak stub: structured signature help unavailable.
+RT_WEAK void *rt_zia_signature_info(rt_string source, int64_t line, int64_t col) {
+    (void)source;
+    (void)line;
+    (void)col;
+    return zia_stub_signature_unavailable_map();
+}
+
+/// @brief Weak stub: structured signature help unavailable.
+RT_WEAK void *rt_zia_signature_info_for_file(rt_string source,
+                                             rt_string file_path,
+                                             int64_t line,
+                                             int64_t col) {
+    (void)file_path;
+    return rt_zia_signature_info(source, line, col);
+}
+
+/// @brief Weak stub: async signature unavailable; return null job.
+RT_WEAK void *rt_zia_completion_begin_signature_info_for_file(rt_string source,
+                                                              rt_string file_path,
+                                                              int64_t line,
+                                                              int64_t col) {
+    (void)source;
+    (void)file_path;
+    (void)line;
+    (void)col;
+    return NULL;
 }
 
 static void *zia_stub_not_found_map(const char *reason) {
@@ -322,6 +433,48 @@ RT_WEAK rt_string rt_zia_hover_for_file(rt_string source,
     return rt_zia_hover(source, line, col);
 }
 
+static void *zia_stub_hover_unavailable_map(void) {
+    void *result = rt_map_new();
+    zia_stub_map_set_bool(result, "available", 0);
+    zia_stub_map_set_str(result, "display", "");
+    zia_stub_map_set_str(result, "title", "");
+    zia_stub_map_set_str(result, "kind", "");
+    zia_stub_map_set_str(result, "name", "");
+    zia_stub_map_set_str(result, "type", "");
+    zia_stub_map_set_str(result, "documentation", "");
+    zia_stub_map_set_str(result, "source", "unavailable");
+    return result;
+}
+
+/// @brief Weak stub: structured hover unavailable.
+RT_WEAK void *rt_zia_hover_info(rt_string source, int64_t line, int64_t col) {
+    (void)source;
+    (void)line;
+    (void)col;
+    return zia_stub_hover_unavailable_map();
+}
+
+/// @brief Weak stub: structured hover unavailable.
+RT_WEAK void *rt_zia_hover_info_for_file(rt_string source,
+                                         rt_string file_path,
+                                         int64_t line,
+                                         int64_t col) {
+    (void)file_path;
+    return rt_zia_hover_info(source, line, col);
+}
+
+/// @brief Weak stub: async hover unavailable; return null job.
+RT_WEAK void *rt_zia_completion_begin_hover_info_for_file(rt_string source,
+                                                          rt_string file_path,
+                                                          int64_t line,
+                                                          int64_t col) {
+    (void)source;
+    (void)file_path;
+    (void)line;
+    (void)col;
+    return NULL;
+}
+
 /// @brief Weak stub: returns an unavailable symbol payload.
 RT_WEAK rt_string rt_zia_symbols(rt_string source) {
     (void)source;
@@ -334,6 +487,72 @@ RT_WEAK rt_string rt_zia_symbols_for_file(rt_string source, rt_string file_path)
     (void)source;
     (void)file_path;
     return rt_zia_symbols(source);
+}
+
+/// @brief Weak stub: async symbols unavailable; return null job.
+RT_WEAK void *rt_zia_completion_begin_symbols_for_file(rt_string source, rt_string file_path) {
+    (void)source;
+    (void)file_path;
+    return NULL;
+}
+
+/// @brief Weak stub: null async jobs are treated as already done.
+RT_WEAK int8_t rt_zia_semantic_job_is_done(void *handle) {
+    (void)handle;
+    return 1;
+}
+
+/// @brief Weak stub: null async jobs have no error.
+RT_WEAK int8_t rt_zia_semantic_job_is_error(void *handle) {
+    (void)handle;
+    return 0;
+}
+
+/// @brief Weak stub: null async jobs have no error text.
+RT_WEAK rt_string rt_zia_semantic_job_error(void *handle) {
+    (void)handle;
+    return rt_str_empty();
+}
+
+/// @brief Weak stub: null async jobs have no kind.
+RT_WEAK int64_t rt_zia_semantic_job_kind(void *handle) {
+    (void)handle;
+    return 0;
+}
+
+/// @brief Weak stub: cancel is a no-op.
+RT_WEAK void rt_zia_semantic_job_cancel(void *handle) {
+    (void)handle;
+}
+
+/// @brief Weak stub: empty completion result.
+RT_WEAK void *rt_zia_semantic_job_completion_items(void *handle) {
+    (void)handle;
+    return zia_stub_completion_items_unavailable();
+}
+
+/// @brief Weak stub: empty signature result.
+RT_WEAK void *rt_zia_semantic_job_signature_info(void *handle) {
+    (void)handle;
+    return zia_stub_signature_unavailable_map();
+}
+
+/// @brief Weak stub: empty hover result.
+RT_WEAK void *rt_zia_semantic_job_hover_info(void *handle) {
+    (void)handle;
+    return zia_stub_hover_unavailable_map();
+}
+
+/// @brief Weak stub: empty symbol result.
+RT_WEAK rt_string rt_zia_semantic_job_symbols(void *handle) {
+    (void)handle;
+    return rt_str_empty();
+}
+
+/// @brief Weak stub: empty diagnostic result.
+RT_WEAK void *rt_zia_semantic_job_diagnostics(void *handle) {
+    (void)handle;
+    return rt_seq_new_owned();
 }
 
 /// @brief Weak stub: no-op.

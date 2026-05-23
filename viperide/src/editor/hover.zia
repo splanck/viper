@@ -1,11 +1,14 @@
 module hover;
 
 bind "../editor/editor_engine";
+bind "../editor/scheduler";
 
 bind ZiaCompletion = Viper.Zia.Completion;
+bind SemanticJob = Viper.Zia.SemanticJob;
 bind "../editor/zia_query";
 bind Viper.GUI;
 bind Str = Viper.String;
+bind Map = Viper.Collections.Map;
 
 // ============================================================================
 // MODULE: hover
@@ -51,6 +54,14 @@ class HoverController {
     expose Boolean waiting;
     expose String sourcePath;
     expose Boolean enabled;
+    expose scheduler.EditorScheduler workScheduler;
+    expose Any pendingJob;
+    expose Integer pendingRevision;
+    expose String pendingPath;
+    expose Integer pendingLine;
+    expose Integer pendingCol;
+    expose Integer pendingMouseX;
+    expose Integer pendingMouseY;
 
     /// @brief Initialize as hidden, with no dwell in progress.
     expose func init() {
@@ -61,6 +72,18 @@ class HoverController {
         waiting = false;
         sourcePath = "";
         enabled = true;
+        workScheduler = null;
+        pendingJob = null;
+        pendingRevision = -1;
+        pendingPath = "";
+        pendingLine = -1;
+        pendingCol = -1;
+        pendingMouseX = -1;
+        pendingMouseY = -1;
+    }
+
+    expose func SetScheduler(value: scheduler.EditorScheduler) {
+        workScheduler = value;
     }
 
     /// @brief Build the FloatingPanel + Label that render the tooltip.
@@ -108,7 +131,14 @@ class HoverController {
             lastMouseX = mx;
             lastMouseY = my;
             hoverStartMs = Viper.Time.GetTickCount();
+            if workScheduler != null {
+                workScheduler.Queue(scheduler.JOB_HOVER, sourcePath, engine.GetRevision(), -1);
+            }
             waiting = true;
+            return;
+        }
+
+        if PollPendingJob(engine, mx, my) {
             return;
         }
 
@@ -119,12 +149,27 @@ class HoverController {
         if isVisible { return; }
 
         // Check if dwell time reached
-        var now = Viper.Time.GetTickCount();
-        if now - hoverStartMs < HOVER_DELAY_MS { return; }
+        if workScheduler != null {
+            var revision = engine.GetRevision();
+            if workScheduler.IsQueued(scheduler.JOB_HOVER, sourcePath, revision) == false {
+                workScheduler.Queue(scheduler.JOB_HOVER, sourcePath, revision, -1);
+                return;
+            }
+            if workScheduler.IsDue(scheduler.JOB_HOVER, sourcePath, revision) == false {
+                return;
+            }
+            workScheduler.Complete(scheduler.JOB_HOVER);
+        } else {
+            var now = Viper.Time.GetTickCount();
+            if now - hoverStartMs < HOVER_DELAY_MS { return; }
+        }
 
         // Dwell time reached — query hover info
         waiting = false;
+        StartHoverJob(engine, mx, my);
+    }
 
+    hide func StartHoverJob(engine: editor_engine.EditorEngine, mx: Integer, my: Integer) {
         var source = engine.GetTextSnapshot();
         var hoverLine = engine.editor.GetLineAtPixel(my);
         var hoverCol = engine.editor.GetColAtPixel(mx, my);
@@ -136,22 +181,72 @@ class HoverController {
         var curLine = hoverLine + 1 + zia_query.LineOffset(source);  // 1-based + shift
         var curCol  = hoverCol;       // 0-based
 
-        var info = ZiaCompletion.HoverForFile(qsource, sourcePath, curLine, curCol);
-        if info == "" { return; }
+        CancelPendingJob();
+        var job = ZiaCompletion.BeginHoverInfoForFile(qsource, sourcePath, curLine, curCol);
+        if job != null {
+            pendingJob = job;
+            pendingRevision = engine.GetRevision();
+            pendingPath = sourcePath;
+            pendingLine = hoverLine;
+            pendingCol = hoverCol;
+            pendingMouseX = mx;
+            pendingMouseY = my;
+            return;
+        }
+
+        var info = ZiaCompletion.HoverInfoForFile(qsource, sourcePath, curLine, curCol);
+        ApplyHoverInfo(info, mx, my);
+    }
+
+    hide func ApplyHoverInfo(info: Any, mx: Integer, my: Integer) {
+        if info == null { return; }
+        if Map.GetBool(info, "available") == false { return; }
 
         // Show tooltip
-        tooltipLabel.SetText(info);
+        tooltipLabel.SetText(Map.GetStr(info, "display"));
         tooltip.SetPosition(mx + 10.0, my - 25.0);
         tooltip.SetVisible(1);
         isVisible = true;
     }
 
+    hide func PollPendingJob(engine: editor_engine.EditorEngine, mx: Integer, my: Integer) -> Boolean {
+        if pendingJob == null { return false; }
+        if SemanticJob.IsDone(pendingJob) == false { return false; }
+
+        var job = pendingJob;
+        pendingJob = null;
+        if SemanticJob.IsError(job) {
+            return true;
+        }
+        if engine == null or engine.editor == null { return true; }
+        if engine.GetRevision() != pendingRevision or sourcePath != pendingPath {
+            return true;
+        }
+        if mx != pendingMouseX or my != pendingMouseY {
+            return true;
+        }
+        if engine.editor.GetLineAtPixel(my) != pendingLine
+           or engine.editor.GetColAtPixel(mx, my) != pendingCol {
+            return true;
+        }
+        ApplyHoverInfo(SemanticJob.HoverInfo(job), mx, my);
+        return true;
+    }
+
     /// @brief Hide the tooltip and reset the dwell state.
     expose func hideTooltip() {
+        CancelPendingJob();
         if isVisible {
             tooltip.SetVisible(0);
             isVisible = false;
         }
         waiting = false;
+    }
+
+    hide func CancelPendingJob() {
+        if pendingJob != null {
+            SemanticJob.Cancel(pendingJob);
+            pendingJob = null;
+        }
     }
 }

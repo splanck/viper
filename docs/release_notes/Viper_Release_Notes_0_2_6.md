@@ -27,13 +27,13 @@ An alpha-quality hardening cycle, not a feature release. The Zia frontend reache
 
 | Metric | v0.2.5 | v0.2.6 | Delta |
 |---|---|---|---|
-| Commits | — | 177 | +177 |
-| Source files | 2,996 | 3,054 | +58 |
-| Production SLOC | 552K | 611K | +59K |
+| Commits | — | 178 | +178 |
+| Source files | 2,996 | 3,055 | +59 |
+| Production SLOC | 552K | 613K | +61K |
 | Test SLOC | 228K | 259K | +31K |
 | Demo SLOC | 188K | 186K | −2K |
 
-Counts via `scripts/count_sloc.sh` (production 610,626 / test 258,714 / demo 185,633 / source files 3,054). Demo SLOC dropped because ViperIDE moved out of the demo gallery into a standalone top-level project.
+Counts via `scripts/count_sloc.sh` (production 612,603 / test 258,714 / demo 185,633 / source files 3,055). Demo SLOC dropped because ViperIDE moved out of the demo gallery into a standalone top-level project.
 
 ---
 
@@ -125,11 +125,11 @@ Counts via `scripts/count_sloc.sh` (production 610,626 / test 258,714 / demo 185
 
 - `zia` force-loads `fe_zia` so IntelliSense, hover, diagnostics, and symbols hit the real semantic engine instead of the weak `rt_zia_completion_stub.c` stubs; a new highlight bridge feeds the GUI tokenizer the live keyword set from `Lexer::lookupKeyword`.
 - New `Viper.System.Process` / `Process.Handle` streaming surface: argument-vector startup with cwd/env, non-blocking stdout/stderr reads, poll, exit-code, kill, wait, and GC finalization.
-- New `Viper.Zia.Toolchain` (`Check`/`Compile` plus `*ForFile`) returns structured `Seq`/`Map` diagnostic and result records; ViperIDE live diagnostics moved off tab-delimited parsing onto it, with weak-stub parity when `fe_zia` is absent.
+- New `Viper.Zia.Toolchain` (`Check`/`Compile` plus `*ForFile`) returns structured `Seq`/`Map` diagnostic and result records; ViperIDE live diagnostics moved off tab-delimited parsing onto it, with weak-stub parity when `fe_zia` is absent. `Viper.Zia.SemanticJob` adds pollable background completion, signature, hover, symbols, and diagnostics jobs for active editor language services.
 - New `Viper.Zia.ProjectIndex`: an explicit-lifetime project index with dirty-buffer import resolution, structured definition/reference results, and rename workspace-edit generation with visible-collision detection.
 - `Viper.Game.Scene` graduated to a full editable JSON scene document: non-trapping load returning structured diagnostics under enforced resource/overflow limits, typed scene/object properties, a deterministic canonical-v1 round-trip, an isolated `BuildTilemap` render copy, and atomic same-directory save.
 - A prerequisite runtime slice exposes structured primitives for project trees, automation, palettes, and debugger integration: `Workspace.FileIndex`/`Watcher`, `Assets.Resolver`, `Project.Manifest`, `Workspace.Edit`, GUI `TestHarness`/`VirtualList`/`VirtualTree`/`CommandState`/`Accessibility`, `Debug.Protocol`, and `Text.FuzzyMatch`.
-- The ViperIDE app itself moved to a standalone top-level project and gained an argument-vector build/run loop with streamed, cancellable output and clickable diagnostics, persisted gutter breakpoints, content-revision-gated completion/diagnostics/outline, file-tree project operations, and Quick Open. New `Viper.GUI.CodeEditor.Revision` (a content-change probe that ignores cursor/scroll) and `Viper.GUI.TreeView.GetNodeAt(x, y)` (point hit-test) back the editor hot path and context menus. The wired debug protocol is a non-executing placeholder, not real debugging yet.
+- The ViperIDE app itself moved to a standalone top-level project and gained an argument-vector build/run loop with streamed, cancellable output and clickable diagnostics, persisted gutter breakpoints, content-revision-gated background completion/diagnostics/hover/signature/outline, file-tree project operations with previewed Zia bind rewrites during file/folder rename, and Quick Open. New `Viper.GUI.CodeEditor.Revision` (a content-change probe that ignores cursor/scroll) and `Viper.GUI.TreeView.GetNodeAt(x, y)` (point hit-test) back the editor hot path and context menus. A native editor performance pass targets large-file responsiveness — O(1) no-wrap layout, dirty-line syntax caching, a default-off sampled minimap, and revision-keyed text snapshots keep completion, diagnostics, indexing, and search off the keystroke path — guarded by new large-file typing/scroll regression probes. The wired debug protocol is a non-executing placeholder, not real debugging yet.
 
 ### Windows, MSVC, and HiDPI
 
@@ -161,6 +161,6 @@ Demos and docs tracked the runtime work: stale Windows debug/O0 build pins were 
 
 ### Commits
 
-See `git log v0.2.5-dev..HEAD -- .` for the full 177-commit history since v0.2.5.
+See `git log v0.2.5-dev..HEAD -- .` for the full 178-commit history since v0.2.5.
 
 <!-- END DRAFT -->

@@ -30,8 +30,15 @@ namespace il::frontends::basic {
 // MethodDispatchResolver
 // ============================================================================
 
+/// @brief Bind a dispatch resolver to its lowering context (non-owning).
 MethodDispatchResolver::MethodDispatchResolver(Lowerer &lowerer) noexcept : lowerer_(lowerer) {}
 
+/// @brief Check whether a method is accessible from the current class.
+/// @param classInfo The class declaring the method.
+/// @param methodName The method being accessed.
+/// @param loc Call-site location (unused beyond signature symmetry).
+/// @return An error message if the method is private and accessed from outside its class;
+///         otherwise an empty string.
 std::string MethodDispatchResolver::checkAccessControl(const ClassInfo &classInfo,
                                                        const std::string &methodName,
                                                        il::support::SourceLoc loc) {
@@ -44,6 +51,13 @@ std::string MethodDispatchResolver::checkAccessControl(const ClassInfo &classInf
     return {};
 }
 
+/// @brief Resolve a static method call to a concrete dispatch target.
+/// @param classQName Qualified class name.
+/// @param methodName Method name.
+/// @param argTypes Argument types (for overload selection).
+/// @param loc Call-site location for diagnostics.
+/// @return A Resolution: Direct (mangled target) for a user static method, RuntimeCatalog for a
+///         runtime class method, or Unresolved on failure.
 MethodDispatchResolver::Resolution MethodDispatchResolver::resolveStaticCall(
     const std::string &classQName,
     const std::string &methodName,
@@ -92,6 +106,15 @@ MethodDispatchResolver::Resolution MethodDispatchResolver::resolveStaticCall(
     return result;
 }
 
+/// @brief Resolve an instance method call to a concrete dispatch strategy.
+/// @param receiverClassQName Qualified class of the receiver.
+/// @param methodName Method name.
+/// @param argTypes Argument types (for overload selection).
+/// @param isBaseQualified True for `BASE.method(...)` calls (forces direct dispatch to base).
+/// @param loc Call-site location for diagnostics.
+/// @return A Resolution: Virtual (with vtable slot) for an overridable method, or Direct
+///         (mangled target on the declaring/base class); Unresolved (possibly access-denied)
+///         on failure. Return-type kind is filled from the declaring class.
 MethodDispatchResolver::Resolution MethodDispatchResolver::resolveInstanceCall(
     const std::string &receiverClassQName,
     const std::string &methodName,
@@ -177,6 +200,13 @@ MethodDispatchResolver::Resolution MethodDispatchResolver::resolveInstanceCall(
     return result;
 }
 
+/// @brief Resolve an interface method call to its itable slot.
+/// @param interfaceQName Qualified interface name.
+/// @param methodName Method name.
+/// @param argCount Argument count (used to disambiguate same-named slots).
+/// @return An Interface resolution carrying the slot index and interface id, or Unresolved if
+///         the interface or a matching slot is not found. Prefers an arity match, else the
+///         first name match.
 MethodDispatchResolver::Resolution MethodDispatchResolver::resolveInterfaceCall(
     const std::string &interfaceQName, const std::string &methodName, std::size_t argCount) {
     Resolution result;
@@ -232,6 +262,12 @@ MethodDispatchResolver::Resolution MethodDispatchResolver::resolveInterfaceCall(
     return result;
 }
 
+/// @brief Try to resolve a method against the runtime class catalog.
+/// @param classQName Qualified class name.
+/// @param methodName Method name.
+/// @param argCount Argument count.
+/// @return A RuntimeCatalog resolution (with target symbol, return kind, expected args), or
+///         nullopt when @p classQName is not a runtime class or the method is not found.
 std::optional<MethodDispatchResolver::Resolution> MethodDispatchResolver::tryRuntimeCatalog(
     const std::string &classQName, const std::string &methodName, std::size_t argCount) {
     // Check if this is a runtime class
@@ -257,8 +293,18 @@ std::optional<MethodDispatchResolver::Resolution> MethodDispatchResolver::tryRun
 // BoundsCheckEmitter
 // ============================================================================
 
+/// @brief Bind a bounds-check emitter to its lowering context (non-owning).
 BoundsCheckEmitter::BoundsCheckEmitter(Lowerer &lowerer) noexcept : lowerer_(lowerer) {}
 
+/// @brief Emit a runtime array bounds check for an index access.
+/// @param arrHandle The array handle value.
+/// @param index The index value to validate.
+/// @param elemKind Element kind (selects the length helper: str/obj/i64).
+/// @param isObjectArray Whether the array stores objects (uses the obj length helper).
+/// @param loc Source location for diagnostics.
+/// @param labelPrefix Prefix for the generated ok/oob block labels (defaults to "bc").
+/// @details Loads the array length, tests `index < 0 || index >= len`, and branches: the OOB
+///          path calls `rt_arr_oob_panic` and traps; control continues in the ok block.
 void BoundsCheckEmitter::emitBoundsCheck(il::core::Value arrHandle,
                                          il::core::Value index,
                                          Type elemKind,
@@ -335,6 +381,12 @@ void BoundsCheckEmitter::emitBoundsCheck(il::core::Value arrHandle,
     ctx.setCurrent(ok);
 }
 
+/// @brief Flatten multi-dimensional array indices into a single linear (row-major) index.
+/// @param indices One index value per dimension.
+/// @param extents Inclusive upper bounds per dimension (BASIC convention; length = extent + 1).
+/// @param loc Source location for the emitted arithmetic.
+/// @return The linearized index value. Returns the sole index for 1-D arrays, and falls back to
+///         the first index if @p extents and @p indices disagree in rank.
 il::core::Value BoundsCheckEmitter::computeFlattenedIndex(
     const std::vector<il::core::Value> &indices,
     const std::vector<long long> &extents,

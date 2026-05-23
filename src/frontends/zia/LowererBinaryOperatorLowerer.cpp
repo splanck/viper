@@ -18,6 +18,17 @@ namespace il::frontends::zia {
 
 using namespace runtime;
 
+/// @brief Lower a binary expression to IL, selecting the right opcode/runtime helper per type.
+/// @param expr Binary expression.
+/// @return The result value and its IL type.
+/// @details Assignment and short-circuit `and`/`or` are delegated to the Lowerer up front.
+///          Otherwise both operands are lowered, integers are promoted to F64 when mixed with
+///          a float, and the operator is mapped: arithmetic uses checked integer
+///          (`IAddOvf`/`SDivChk0`/...) or floating opcodes; `+` on a string operand concatenates
+///          (stringifying the other side); comparisons use float/signed-int opcodes or string
+///          runtime helpers (`kStringEquals`, `rt_str_lt`, ...) and yield `i1`; bitwise and
+///          shift ops map to their IL opcodes. Non-short-circuit `And`/`Or` here operate
+///          bitwise on zero-extended booleans.
 LowerResult BinaryOperatorLowerer::lowerBinary(BinaryExpr *expr) {
     if (expr->op == BinaryOp::Assign) {
         return lowerer_.lowerAssignment(expr);

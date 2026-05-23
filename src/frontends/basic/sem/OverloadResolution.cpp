@@ -16,12 +16,15 @@
 namespace il::frontends::basic::sem {
 
 namespace {
-// Map semantic Type to AST Type used in OOP signatures for comparison
+/// @brief True if an argument type exactly matches the expected parameter type.
 static inline bool isExactMatch(::il::frontends::basic::Type expect,
                                 ::il::frontends::basic::Type got) noexcept {
     return expect == got;
 }
 
+/// @brief True if @p got widens to @p expect via the only allowed numeric promotion (I64→F64).
+/// @details Integer widening is already canonicalized to I64, so the sole widening here is
+///          passing an INTEGER (I64) argument to a DOUBLE (F64) parameter.
 static inline bool isWideningAllowed(::il::frontends::basic::Type expect,
                                      ::il::frontends::basic::Type got) noexcept {
     // Only numeric widening: int->float64; integer to integer widening already canonicalized to
@@ -30,6 +33,7 @@ static inline bool isWideningAllowed(::il::frontends::basic::Type expect,
             got == ::il::frontends::basic::Type::I64);
 }
 
+/// @brief Format a method signature as `Class.name(TYPE, ...)` for diagnostic messages.
 static inline std::string signatureText(std::string_view qclass,
                                         std::string_view name,
                                         const ClassInfo::MethodInfo &mi) {
@@ -63,6 +67,20 @@ static inline std::string signatureText(std::string_view qclass,
 }
 } // namespace
 
+/// @brief Resolve a method (or property accessor) overload on a class.
+/// @param index OOP index used to look up classes and walk inheritance.
+/// @param qualifiedClass Qualified name of the receiver class.
+/// @param methodName Method name being called (also matched against `get_`/`set_` accessors).
+/// @param isStatic Whether a static or instance method is required.
+/// @param argTypes Argument types at the call site.
+/// @param currentClass Calling class (for private-access checks).
+/// @param de Optional diagnostic emitter for no-match/ambiguous errors.
+/// @param loc Call-site location for diagnostics.
+/// @return The resolved method (with its declaring class for dispatch), or nullopt on failure.
+/// @details Collects candidates across the inheritance chain (most-derived first, honoring
+///          shadowing), filters by static-ness and private access, then ranks viable
+///          arity-matching overloads — exact parameter matches outrank I64→F64 widening.
+///          Reports E_OVERLOAD_NO_MATCH when nothing fits and E_OVERLOAD_AMBIGUOUS on a tie.
 std::optional<ResolvedMethod> resolveMethodOverload(const OopIndex &index,
                                                     std::string_view qualifiedClass,
                                                     std::string_view methodName,

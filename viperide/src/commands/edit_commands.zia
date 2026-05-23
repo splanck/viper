@@ -10,6 +10,8 @@ bind "../services/workspace_edits";
 bind "../commands/file_commands";
 
 bind Viper.GUI;
+bind IO = Viper.IO;
+bind Path = Viper.IO.Path;
 bind Convert = Viper.Core.Convert;
 bind Str = Viper.String;
 bind Seq = Viper.Collections.Seq;
@@ -126,6 +128,7 @@ func handleGoToDefinition(shell: app_shell.AppShell,
 
     file_commands.SaveEditorState(docMgr, engine);
     indexer.SyncActiveNow(docMgr, engine);
+    indexer.SyncOpenDocuments(docMgr);
     var curLine = engine.editor.CursorLine + 1;
     var curCol  = engine.editor.CursorCol;
     var def = indexer.Definition(activeDoc.filePath, activeDoc.content, curLine, curCol);
@@ -163,14 +166,16 @@ func handleFindReferences(shell: app_shell.AppShell,
     }
     file_commands.SaveEditorState(docMgr, engine);
     indexer.SyncActiveNow(docMgr, engine);
+    indexer.SyncOpenDocuments(docMgr);
     var refs = indexer.References(activeDoc.filePath, activeDoc.content, engine.editor.CursorLine + 1, engine.editor.CursorCol);
-    shell.outputListBox.Clear();
+    shell.referencesListBox.Clear();
     if refs == null or Seq.get_Length(refs) == 0 {
-        shell.outputListBox.SetVisible(0);
+        shell.HideReferencesPanel();
         GUI.Toast.Info("No references found");
         return;
     }
     var i = 0;
+    var lastFile = "";
     while i < Seq.get_Length(refs) {
         var ref = Seq.Get(refs, i);
         var file = Map.GetStr(ref, "file");
@@ -183,14 +188,39 @@ func handleFindReferences(shell: app_shell.AppShell,
         if Map.GetBool(ref, "isDefinition") {
             marker = " definition";
         }
+        if file != lastFile {
+            shell.referencesListBox.AddItem(Path.Name(file) + "  —  " + file);
+            lastFile = file;
+        }
+        var preview = ReferencePreviewLine(docMgr, file, line);
         var id = locStore.Add(file, line, col, endLine, endCol,
                               locations.KIND_REFERENCE, name);
-        var item = shell.outputListBox.AddItem(file + ":" + line + ":" + col + marker + "  " + name);
+        var item = shell.referencesListBox.AddItem("  " + line + ":" + col + marker + "  " + preview);
         GUI.ListBox.ItemSetData(item, id);
         i = i + 1;
     }
-    shell.outputListBox.SetVisible(1);
+    shell.referencesListBox.SetVisible(1);
+    shell.ShowReferencesPanel();
     shell.SetStatusLeft("Found " + Seq.get_Length(refs) + " references");
+}
+
+func ReferencePreviewLine(docMgr: document_manager.DocumentManager,
+                          filePath: String,
+                          lineNumber: Integer) -> String {
+    var source = "";
+    if docMgr != null {
+        var idx = docMgr.FindByPath(filePath);
+        if idx >= 0 {
+            source = docMgr.documents.get(idx).content;
+        }
+    }
+    if source == "" and IO.File.Exists(filePath) {
+        source = IO.File.ReadAllText(filePath);
+    }
+    if source == "" { return ""; }
+    var lines = Str.Split(source, "\n");
+    if lineNumber < 1 or lineNumber > Seq.get_Length(lines) { return ""; }
+    return Str.Trim(Obj.ToString(Seq.Get(lines, lineNumber - 1)));
 }
 
 func handleRenameSymbol(shell: app_shell.AppShell,
@@ -217,6 +247,7 @@ func handleRenameSymbol(shell: app_shell.AppShell,
     }
     file_commands.SaveEditorState(docMgr, engine);
     indexer.SyncActiveNow(docMgr, engine);
+    indexer.SyncOpenDocuments(docMgr);
     var rename = indexer.RenameEdits(activeDoc.filePath, activeDoc.content,
                                      engine.editor.CursorLine + 1,
                                      engine.editor.CursorCol,
@@ -317,6 +348,103 @@ func handleClearCursors(shell: app_shell.AppShell,
         engine.editor.ClearCursors();
         shell.SetStatusLeft("Cursors cleared");
     }
+}
+
+func handleToggleLineComment(shell: app_shell.AppShell,
+                             docMgr: document_manager.DocumentManager,
+                             engine: editor_engine.EditorEngine) {
+    if engine == null or engine.editor == null { return; }
+    var lineIdx = engine.editor.CursorLine;
+    var line = engine.editor.GetLine(lineIdx);
+    var marker = "//";
+    var doc = docMgr.GetActive();
+    if doc != null and doc.language == "basic" {
+        marker = "'";
+    }
+
+    var indentLen = LeadingWhitespaceLength(line);
+    var before = "";
+    if indentLen > 0 {
+        before = Str.Left(line, indentLen);
+    }
+    var rest = Str.Mid(line, indentLen + 1);
+    var replacement = "";
+    if Str.StartsWith(rest, marker + " ") {
+        replacement = before + Str.Mid(rest, Str.Length(marker + " ") + 1);
+    } else if Str.StartsWith(rest, marker) {
+        replacement = before + Str.Mid(rest, Str.Length(marker) + 1);
+    } else {
+        replacement = before + marker + " " + rest;
+    }
+
+    engine.editor.SetCursorSelection(0, lineIdx, 0, lineIdx, Str.Length(line));
+    engine.editor.InsertAtCursor(replacement);
+    engine.editor.SetCursor(lineIdx, Str.Length(replacement));
+    shell.SetStatusLeft("Toggled line comment");
+}
+
+func handleDuplicateLine(shell: app_shell.AppShell,
+                         engine: editor_engine.EditorEngine) {
+    if engine == null or engine.editor == null { return; }
+    var lineIdx = engine.editor.CursorLine;
+    var line = engine.editor.GetLine(lineIdx);
+    engine.editor.SetCursor(lineIdx, Str.Length(line));
+    engine.editor.InsertAtCursor("\n" + line);
+    engine.editor.SetCursor(lineIdx + 1, Str.Length(line));
+    shell.SetStatusLeft("Duplicated line");
+}
+
+func handleMoveLineUp(shell: app_shell.AppShell,
+                      engine: editor_engine.EditorEngine) {
+    if engine == null or engine.editor == null { return; }
+    var lineIdx = engine.editor.CursorLine;
+    if lineIdx <= 0 {
+        shell.SetStatusLeft("Line is already at the top");
+        return;
+    }
+    var col = engine.editor.CursorCol;
+    var line = engine.editor.GetLine(lineIdx);
+    var prev = engine.editor.GetLine(lineIdx - 1);
+    engine.editor.SetCursorSelection(0, lineIdx - 1, 0, lineIdx, Str.Length(line));
+    engine.editor.InsertAtCursor(line + "\n" + prev);
+    if col > Str.Length(line) { col = Str.Length(line); }
+    engine.editor.SetCursor(lineIdx - 1, col);
+    shell.SetStatusLeft("Moved line up");
+}
+
+func handleMoveLineDown(shell: app_shell.AppShell,
+                        engine: editor_engine.EditorEngine) {
+    if engine == null or engine.editor == null { return; }
+    var lineIdx = engine.editor.CursorLine;
+    if lineIdx >= engine.editor.LineCount - 1 {
+        shell.SetStatusLeft("Line is already at the bottom");
+        return;
+    }
+    var col = engine.editor.CursorCol;
+    var line = engine.editor.GetLine(lineIdx);
+    var next = engine.editor.GetLine(lineIdx + 1);
+    engine.editor.SetCursorSelection(0, lineIdx, 0, lineIdx + 1, Str.Length(next));
+    engine.editor.InsertAtCursor(next + "\n" + line);
+    if col > Str.Length(line) { col = Str.Length(line); }
+    engine.editor.SetCursor(lineIdx + 1, col);
+    shell.SetStatusLeft("Moved line down");
+}
+
+func handleFormatUnavailable(shell: app_shell.AppShell) {
+    GUI.Toast.Info("No formatter is available for this language yet");
+    shell.SetStatusLeft("Format command unavailable");
+}
+
+func LeadingWhitespaceLength(text: String) -> Integer {
+    var i = 1;
+    while i <= Str.Length(text) {
+        var ch = Str.MidLen(text, i, 1);
+        if ch != " " and ch != "\t" {
+            return i - 1;
+        }
+        i = i + 1;
+    }
+    return Str.Length(text);
 }
 
 func FindNextOccurrence(source: String, word: String, startLine: Integer, startCol: Integer) -> String {

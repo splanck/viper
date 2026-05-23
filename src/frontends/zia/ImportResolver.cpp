@@ -25,6 +25,12 @@
 
 namespace il::frontends::zia {
 
+/// @brief Construct an import resolver.
+/// @param diag Diagnostic engine for reporting import errors.
+/// @param sm Source manager that owns file ids and source text.
+/// @param warningSuppressions Optional per-file warning-suppression scanner (may be null).
+/// @param sourceProvider Optional callback returning in-memory source for a path (e.g. unsaved
+///        editor buffers); when it returns a value the on-disk file is not read.
 ImportResolver::ImportResolver(il::support::DiagnosticEngine &diag,
                                il::support::SourceManager &sm,
                                WarningSuppressions *warningSuppressions,
@@ -33,6 +39,12 @@ ImportResolver::ImportResolver(il::support::DiagnosticEngine &diag,
     : diag_(diag), sm_(sm), warningSuppressions_(warningSuppressions),
       sourceProvider_(std::move(sourceProvider)) {}
 
+/// @brief Resolve all file imports for a root module, merging imported declarations in.
+/// @param module The root module AST (modified in place: imported decls are prepended).
+/// @param modulePath Filesystem path of the root module.
+/// @return True on success; false if any import failed (errors are reported via the diag engine).
+/// @details Resets all resolver state, seeds the path→file-id/module-name maps with the root,
+///          then recursively processes its binds via processModule().
 bool ImportResolver::resolve(ModuleDecl &module, const std::string &modulePath) {
     processedFiles_.clear();
     inProgressFiles_.clear();
@@ -44,11 +56,18 @@ bool ImportResolver::resolve(ModuleDecl &module, const std::string &modulePath) 
     return processModule(module, modulePath, il::support::SourceLoc{}, 0);
 }
 
+/// @brief Normalize a path to a stable, absolute, lexically-normalized form.
+/// @return The canonical path string used as the dedup/cache key for files.
 std::string ImportResolver::normalizePath(const std::string &path) const {
     namespace fs = std::filesystem;
     return fs::absolute(fs::path(path)).lexically_normal().string();
 }
 
+/// @brief Resolve an import path relative to the importing file.
+/// @param importPath The path as written in the `bind` statement.
+/// @param importingFile Path of the file containing the import.
+/// @return The resolved path, defaulting to a `.zia` extension when none is given. Absolute
+///         import paths are used as-is; relative paths are resolved against the importing dir.
 std::string ImportResolver::resolveImportPath(const std::string &importPath,
                                               const std::string &importingFile) const {
     namespace fs = std::filesystem;
@@ -66,6 +85,14 @@ std::string ImportResolver::resolveImportPath(const std::string &importPath,
     return resolved.lexically_normal().string();
 }
 
+/// @brief Read, lex, and parse an imported file into a module AST.
+/// @param path Filesystem path of the file to parse.
+/// @param importLoc Location of the importing `bind` (for error reporting).
+/// @return The parsed module, or nullptr on read/parse error (reported via the diag engine).
+/// @details Source text comes from the @c sourceProvider_ callback when available, otherwise a
+///          process-wide mtime+size-keyed cache, otherwise a fresh disk read (then cached). The
+///          file is registered with the SourceManager, scanned for warning suppressions, and
+///          parsed; a SourceManager file-id overflow is reported as an error.
 std::unique_ptr<ModuleDecl> ImportResolver::parseFile(const std::string &path,
                                                       il::support::SourceLoc importLoc) {
     struct CachedSource {
@@ -158,6 +185,11 @@ std::unique_ptr<ModuleDecl> ImportResolver::parseFile(const std::string &path,
     return module;
 }
 
+/// @brief Report a circular-import error, including the offending import chain.
+/// @param importLoc Location of the import that closes the cycle.
+/// @param normalizedImportPath Normalized path of the file being re-entered.
+/// @details Reconstructs the chain from @c importStack_ (from the first occurrence of the path
+///          to the current top, plus the repeated path) for a readable `a -> b -> a` message.
 void ImportResolver::reportCycle(il::support::SourceLoc importLoc,
                                  const std::string &normalizedImportPath) {
     std::string message = "Circular import detected";
@@ -178,6 +210,17 @@ void ImportResolver::reportCycle(il::support::SourceLoc importLoc,
     diag_.report({il::support::Severity::Error, message, importLoc, "V1000"});
 }
 
+/// @brief Recursively resolve a module's file binds and merge their declarations.
+/// @param module The module being processed (modified in place).
+/// @param modulePath Filesystem path of @p module.
+/// @param viaImportLoc Location of the bind that pulled this module in (for errors).
+/// @param depth Current recursion depth, bounded by kMaxImportDepth.
+/// @return True on success; false on error (depth/file-count limits, parse failure).
+/// @details Tracks processed/in-progress files to make circular binds a no-op rather than an
+///          error (Sema's multi-pass analysis resolves forward references). Each unprocessed
+///          file bind is parsed and processed depth-first; its transitive binds are propagated
+///          to @p module (deduplicated, with paths normalized to absolute) so qualified-name
+///          resolution works, and its declarations are prepended in import order.
 bool ImportResolver::processModule(ModuleDecl &module,
                                    const std::string &modulePath,
                                    il::support::SourceLoc viaImportLoc,

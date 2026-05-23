@@ -22,32 +22,44 @@ using namespace runtime;
 // Literal Expression Lowering
 //=============================================================================
 
+/// @brief Lower an integer literal to a constant I64 value.
 LowerResult Lowerer::lowerIntLiteral(IntLiteralExpr *expr) {
     return {Value::constInt(expr->value), Type(Type::Kind::I64)};
 }
 
+/// @brief Lower a floating-point literal to a constant F64 value.
 LowerResult Lowerer::lowerNumberLiteral(NumberLiteralExpr *expr) {
     return {Value::constFloat(expr->value), Type(Type::Kind::F64)};
 }
 
+/// @brief Lower a string literal to a constant referencing an interned string global.
 LowerResult Lowerer::lowerStringLiteral(StringLiteralExpr *expr) {
     std::string globalName = getStringGlobal(expr->value);
     Value val = emitConstStr(globalName);
     return {val, Type(Type::Kind::Str)};
 }
 
+/// @brief Lower a boolean literal to a constant I1 value.
 LowerResult Lowerer::lowerBoolLiteral(BoolLiteralExpr *expr) {
     return {Value::constBool(expr->value), Type(Type::Kind::I1)};
 }
 
+/// @brief Lower a `null` literal to a null pointer value.
 LowerResult Lowerer::lowerNullLiteral(NullLiteralExpr * /*expr*/) {
     return {Value::null(), Type(Type::Kind::Ptr)};
 }
 
+/// @brief Lower a `unit` literal to the pointer-sized unit singleton (null).
 LowerResult Lowerer::lowerUnitLiteral(UnitLiteralExpr * /*expr*/) {
     return {Value::null(), Type(Type::Kind::Ptr)};
 }
 
+/// @brief Unwrap a `start..end` range and any trailing `.rev()`/`.step(n)` modifiers.
+/// @param expr Candidate expression (a RangeExpr or a chain of modifier calls on one).
+/// @param out Receives the base range plus accumulated reversed flag and step argument.
+/// @return True if @p expr is a range (optionally modified); false otherwise.
+/// @details Recurses through the call chain so `(a..b).rev().step(n)` collapses to a single
+///          RangeModifierInfo. Each `.rev()` toggles direction; `.step(n)` records the stride.
 bool Lowerer::collectRangeModifierChain(Expr *expr, RangeModifierInfo &out) const {
     if (!expr)
         return false;
@@ -78,10 +90,21 @@ bool Lowerer::collectRangeModifierChain(Expr *expr, RangeModifierInfo &out) cons
     return false;
 }
 
+/// @brief Lower a bare range expression (no `.rev()`/`.step()` modifiers).
+/// @param expr Range expression to materialize.
+/// @return A pointer to a freshly built list of the range's elements.
 LowerResult Lowerer::lowerRange(RangeExpr *expr) {
     return lowerRangeWithModifiers(expr, false, nullptr);
 }
 
+/// @brief Materialize a range (with optional reverse/step) into a heap list of I64 elements.
+/// @param expr Range expression providing the start/end bounds and inclusivity.
+/// @param reversed When true, iterate from the high bound down to the low bound.
+/// @param stepArg Optional positive stride expression (defaults to 1; validated at runtime).
+/// @return A pointer to the populated list.
+/// @details Emits a counted loop over scratch cur/end/step slots. Boundary handling is
+///          overflow-safe: the loop exits before stepping past INT64_MIN/MAX, and inclusive
+///          ranges include the final bound. Scratch slots are released at the exit block.
 LowerResult Lowerer::lowerRangeWithModifiers(RangeExpr *expr, bool reversed, Expr *stepArg) {
     Value list = emitCallRet(Type(Type::Kind::Ptr), kListNew, {});
 

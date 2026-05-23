@@ -47,6 +47,18 @@ rt_string rt_zia_complete(rt_string source, int64_t line, int64_t col);
 /// @return Tab-delimited completion items: label\tinsertText\tkindInt\tdetail\n
 rt_string rt_zia_complete_for_file(rt_string source, rt_string file_path, int64_t line, int64_t col);
 
+/// @brief Run Zia completion and return structured completion maps.
+/// @return Viper.Collections.Seq of Viper.Collections.Map completion items.
+void *rt_zia_completion_items(rt_string source, int64_t line, int64_t col);
+
+/// @brief Run path-aware Zia completion and return structured completion maps.
+void *rt_zia_completion_items_for_file(
+    rt_string source, rt_string file_path, int64_t line, int64_t col);
+
+/// @brief Start path-aware completion on a background worker.
+void *rt_zia_completion_begin_items_for_file(
+    rt_string source, rt_string file_path, int64_t line, int64_t col);
+
 /// @brief Return call signature help for the invocation active at the source location.
 /// @param source Zia source text (full file contents).
 /// @param line   1-based line number of the cursor.
@@ -56,6 +68,17 @@ rt_string rt_zia_signature_help(rt_string source, int64_t line, int64_t col);
 
 /// @brief Return call signature help with the real source file path for relative bind resolution.
 rt_string rt_zia_signature_help_for_file(
+    rt_string source, rt_string file_path, int64_t line, int64_t col);
+
+/// @brief Return structured signature help for the invocation active at the source location.
+void *rt_zia_signature_info(rt_string source, int64_t line, int64_t col);
+
+/// @brief Return structured signature help with the real source file path.
+void *rt_zia_signature_info_for_file(
+    rt_string source, rt_string file_path, int64_t line, int64_t col);
+
+/// @brief Start path-aware structured signature help on a background worker.
+void *rt_zia_completion_begin_signature_info_for_file(
     rt_string source, rt_string file_path, int64_t line, int64_t col);
 
 /// @brief Run semantic analysis and return serialized diagnostics for editor tooling.
@@ -73,6 +96,9 @@ void *rt_zia_toolchain_check(rt_string source);
 
 /// @brief Run path-aware semantic analysis and return structured diagnostic maps.
 void *rt_zia_toolchain_check_for_file(rt_string source, rt_string file_path);
+
+/// @brief Start path-aware semantic diagnostics on a background worker.
+void *rt_zia_toolchain_begin_check_for_file(rt_string source, rt_string file_path);
 
 /// @brief Compile source to IL and return a structured result map.
 /// @return Viper.Collections.Map with success, diagnostics, sourcePath, outputPath, and il.
@@ -126,6 +152,16 @@ rt_string rt_zia_hover(rt_string source, int64_t line, int64_t col);
 /// @brief Return hover information with the real source file path for relative bind resolution.
 rt_string rt_zia_hover_for_file(rt_string source, rt_string file_path, int64_t line, int64_t col);
 
+/// @brief Return structured hover information for the identifier at the given source location.
+void *rt_zia_hover_info(rt_string source, int64_t line, int64_t col);
+
+/// @brief Return structured hover information with the real source file path.
+void *rt_zia_hover_info_for_file(rt_string source, rt_string file_path, int64_t line, int64_t col);
+
+/// @brief Start path-aware structured hover info on a background worker.
+void *rt_zia_completion_begin_hover_info_for_file(
+    rt_string source, rt_string file_path, int64_t line, int64_t col);
+
 /// @brief Return serialized document symbols for the supplied source.
 /// @param source Zia source text (full file contents).
 /// @return Tab-delimited symbol rows, or an empty string when no symbols are found.
@@ -133,6 +169,39 @@ rt_string rt_zia_symbols(rt_string source);
 
 /// @brief Return document symbols with the real source file path for relative bind resolution.
 rt_string rt_zia_symbols_for_file(rt_string source, rt_string file_path);
+
+/// @brief Start path-aware document symbol extraction on a background worker.
+void *rt_zia_completion_begin_symbols_for_file(rt_string source, rt_string file_path);
+
+/// @brief Return whether a semantic background job has completed.
+int8_t rt_zia_semantic_job_is_done(void *handle);
+
+/// @brief Return whether a completed semantic background job failed.
+int8_t rt_zia_semantic_job_is_error(void *handle);
+
+/// @brief Return a completed semantic background job's error string, if any.
+rt_string rt_zia_semantic_job_error(void *handle);
+
+/// @brief Return the numeric semantic background job kind.
+int64_t rt_zia_semantic_job_kind(void *handle);
+
+/// @brief Mark a semantic background job as canceled. Running work may finish later.
+void rt_zia_semantic_job_cancel(void *handle);
+
+/// @brief Materialize a completion job result as Seq<Map>.
+void *rt_zia_semantic_job_completion_items(void *handle);
+
+/// @brief Materialize a signature job result as Map.
+void *rt_zia_semantic_job_signature_info(void *handle);
+
+/// @brief Materialize a hover job result as Map.
+void *rt_zia_semantic_job_hover_info(void *handle);
+
+/// @brief Materialize a symbols job result as serialized symbol rows.
+rt_string rt_zia_semantic_job_symbols(void *handle);
+
+/// @brief Materialize a diagnostics job result as Seq<Map>.
+void *rt_zia_semantic_job_diagnostics(void *handle);
 
 /// @brief Flush the cached parse result, forcing a fresh parse on the next call.
 void rt_zia_completion_clear_cache(void);

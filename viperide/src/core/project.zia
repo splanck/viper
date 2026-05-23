@@ -62,6 +62,8 @@ class Project {
     expose String  runArgs;
     expose String  workingDirectory;
     expose String  problemMatcher;
+    /// Optional comma-separated ignore/exclude patterns for tree/search indexing.
+    expose String  ignorePatterns;
     /// Display name from package-name (takes precedence over folder name).
     expose String  packageName;
     /// True if a viper.project file was found and parsed.
@@ -81,6 +83,7 @@ class Project {
         runArgs = "";
         workingDirectory = "";
         problemMatcher = "";
+        ignorePatterns = "";
         packageName = "";
         hasProjectFile = false;
     }
@@ -121,6 +124,7 @@ class Project {
         runArgs = "";
         workingDirectory = "";
         problemMatcher = "";
+        ignorePatterns = "";
         packageName = "";
         hasProjectFile = false;
     }
@@ -168,6 +172,13 @@ class Project {
             if key == "run-args"      { runArgs = value; }
             if key == "working-directory" { workingDirectory = value; }
             if key == "problem-matcher" { problemMatcher = value; }
+            if key == "ignore" or key == "ignore-patterns" or key == "exclude" {
+                if ignorePatterns == "" {
+                    ignorePatterns = value;
+                } else {
+                    ignorePatterns = ignorePatterns + "," + value;
+                }
+            }
             if key == "package-name"  { packageName = value; }
         }
         hasProjectFile = true;

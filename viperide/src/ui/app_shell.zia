@@ -146,12 +146,16 @@ class AppShell {
 
     // Build output panel (below diagnostics; shows raw compiler output)
     expose GUI.ListBox outputListBox;
+    expose GUI.ListBox searchListBox;
+    expose GUI.ListBox referencesListBox;
+    expose GUI.ListBox debugListBox;
 
     // Bottom tool surface tabs
     expose GUI.TabBar toolTabBar;
     expose GUI.Tab toolProblemsTab;
     expose GUI.Tab toolOutputTab;
     expose GUI.Tab toolSearchTab;
+    expose GUI.Tab toolReferencesTab;
     expose GUI.Tab toolDebugTab;
 
     // Context menu for the file tree
@@ -168,6 +172,7 @@ class AppShell {
     expose GUI.MenuItem ctxNewFolder;
     expose GUI.MenuItem ctxSearchFolder;
     expose GUI.MenuItem ctxRunFile;
+    expose GUI.MenuItem ctxSetEntry;
     expose GUI.MenuItem ctxRefresh;
 
     // Status bar + items
@@ -185,6 +190,8 @@ class AppShell {
     expose String lastBuildOutput;
     expose String outputPartialLine;
     expose Any outputPartialItem;
+    expose String outputFilterText;
+    expose Boolean outputWrapLines;
 
     /// @brief Initialize with sidebar visible. Build() must be called next.
     expose func init() {
@@ -195,6 +202,8 @@ class AppShell {
         lastBuildOutput = "";
         outputPartialLine = "";
         outputPartialItem = null;
+        outputFilterText = "";
+        outputWrapLines = false;
     }
 
     /// @brief Construct the full IDE window and every chrome widget.
@@ -388,6 +397,7 @@ class AppShell {
         toolProblemsTab = toolTabBar.AddTab("Problems", 0);
         toolOutputTab = toolTabBar.AddTab("Output", 0);
         toolSearchTab = toolTabBar.AddTab("Search", 0);
+        toolReferencesTab = toolTabBar.AddTab("References", 0);
         toolDebugTab = toolTabBar.AddTab("Debug Console", 0);
         toolTabBar.SetVisible(0);
 
@@ -399,6 +409,18 @@ class AppShell {
         outputListBox = GUI.ListBox.New(editorArea);
         outputListBox.SetVisible(0);
         outputListBox.SetSize(0, 100);
+
+        searchListBox = GUI.ListBox.New(editorArea);
+        searchListBox.SetVisible(0);
+        searchListBox.SetSize(0, 120);
+
+        referencesListBox = GUI.ListBox.New(editorArea);
+        referencesListBox.SetVisible(0);
+        referencesListBox.SetSize(0, 120);
+
+        debugListBox = GUI.ListBox.New(editorArea);
+        debugListBox.SetVisible(0);
+        debugListBox.SetSize(0, 120);
 
         // Context menu for the file tree (populated on right-click)
         treeContextMenu = GUI.ContextMenu.New();
@@ -417,6 +439,7 @@ class AppShell {
         ctxNewFolder = treeContextMenu.AddItem("New Folder...");
         ctxSearchFolder = treeContextMenu.AddItem("Search in Folder...");
         ctxRunFile = treeContextMenu.AddItem("Run This File");
+        ctxSetEntry = treeContextMenu.AddItem("Set as Project Entry");
         treeContextMenu.AddSeparator();
         ctxRefresh = treeContextMenu.AddItem("Refresh");
 
@@ -506,7 +529,14 @@ class AppShell {
         if lastBuildOutput != "" and Str.EndsWith(lastBuildOutput, "\n")
            and Str.StartsWith(output, lastBuildOutput) {
             var delta = Str.Mid(output, Str.Length(lastBuildOutput) + 1);
-            AppendBuildOutput(delta);
+            if outputFilterText == "" and outputWrapLines == false {
+                AppendBuildOutput(delta);
+            } else {
+                outputListBox.Clear();
+                outputPartialLine = "";
+                outputPartialItem = null;
+                AddBuildOutputLines(output);
+            }
             lastBuildOutput = output;
             ShowOutputPanel();
             return;
@@ -540,16 +570,35 @@ class AppShell {
             if isLast and endsWithNewline == false {
                 outputPartialLine = line;
                 if line != "" {
-                    outputPartialItem = outputListBox.AddItem(line);
+                    outputPartialItem = AddOutputDisplayLine(line);
                 }
             } else if line != "" {
-                outputListBox.AddItem(line);
+                AddOutputDisplayLine(line);
             }
             i = i + 1;
         }
 
         lastBuildOutput = lastBuildOutput + output;
         ShowOutputPanel();
+    }
+
+    expose func SetDebugOutput(output: String) {
+        debugListBox.Clear();
+        var text = output;
+        if text == "" {
+            text = "Debug console is idle";
+        }
+        var lines = Str.Split(text, "\n");
+        var n = Seq.get_Length(lines);
+        var i = 0;
+        while i < n {
+            var line = Obj.ToString(Seq.Get(lines, i));
+            if line != "" {
+                debugListBox.AddItem(line);
+            }
+            i = i + 1;
+        }
+        ShowDebugPanel();
     }
 
     func AddBuildOutputLines(output: String) {
@@ -559,23 +608,95 @@ class AppShell {
         while i < n {
             var line = Obj.ToString(Seq.Get(lines, i));
             if line != "" {
-                outputListBox.AddItem(line);
+                AddOutputDisplayLine(line);
             }
             i = i + 1;
         }
     }
 
+    expose func SetOutputFilter(filter: String) {
+        outputFilterText = Str.ToLower(Str.Trim(filter));
+        outputListBox.Clear();
+        outputPartialLine = "";
+        outputPartialItem = null;
+        AddBuildOutputLines(lastBuildOutput);
+        if outputListBox.Count > 0 or outputFilterText != "" {
+            ShowOutputPanel();
+        } else {
+            HideOutputPanel();
+        }
+    }
+
+    expose func ToggleOutputWrap() -> Boolean {
+        outputWrapLines = outputWrapLines == false;
+        outputListBox.Clear();
+        outputPartialLine = "";
+        outputPartialItem = null;
+        AddBuildOutputLines(lastBuildOutput);
+        if outputListBox.Count > 0 {
+            ShowOutputPanel();
+        }
+        return outputWrapLines;
+    }
+
+    expose func ClearOutputPanel() {
+        outputListBox.Clear();
+        lastBuildOutput = "";
+        outputPartialLine = "";
+        outputPartialItem = null;
+        HideOutputPanel();
+    }
+
+    expose func CopySelectedToolRow() -> Boolean {
+        var selected = outputListBox.Selected;
+        if activeSurfaceKind == 3 { selected = searchListBox.Selected; }
+        if activeSurfaceKind == 4 { selected = referencesListBox.Selected; }
+        if activeSurfaceKind == 5 { selected = debugListBox.Selected; }
+        if selected == null { return false; }
+        GUI.Clipboard.SetText(GUI.ListBox.ItemGetText(selected));
+        return true;
+    }
+
+    hide func AddOutputDisplayLine(line: String) -> Any {
+        if outputFilterText != "" and Str.IndexOf(Str.ToLower(line), outputFilterText) == 0 {
+            return null;
+        }
+        if outputWrapLines == false or Str.Length(line) <= 160 {
+            return outputListBox.AddItem(line);
+        }
+
+        var first: Any = null;
+        var start = 1;
+        while start <= Str.Length(line) {
+            var chunk = Str.MidLen(line, start, 160);
+            var item = outputListBox.AddItem(chunk);
+            if first == null { first = item; }
+            start = start + 160;
+        }
+        return first;
+    }
+
     expose func ShowProblemsPanel() {
         toolTabBar.SetVisible(1);
         toolTabBar.SetActive(toolProblemsTab);
+        activeSurfaceKind = 1;
         diagListBox.SetVisible(1);
         outputListBox.SetVisible(0);
+        searchListBox.SetVisible(0);
+        referencesListBox.SetVisible(0);
+        debugListBox.SetVisible(0);
     }
 
     expose func HideProblemsPanel() {
         diagListBox.SetVisible(0);
         if outputListBox.Count > 0 {
             ShowOutputPanel();
+        } else if searchListBox.Count > 0 {
+            ShowSearchPanel();
+        } else if referencesListBox.Count > 0 {
+            ShowReferencesPanel();
+        } else if debugListBox.Count > 0 {
+            ShowDebugPanel();
         } else {
             toolTabBar.SetVisible(0);
         }
@@ -584,14 +705,102 @@ class AppShell {
     expose func ShowOutputPanel() {
         toolTabBar.SetVisible(1);
         toolTabBar.SetActive(toolOutputTab);
+        activeSurfaceKind = 2;
         outputListBox.SetVisible(1);
         diagListBox.SetVisible(0);
+        searchListBox.SetVisible(0);
+        referencesListBox.SetVisible(0);
+        debugListBox.SetVisible(0);
     }
 
     expose func HideOutputPanel() {
         outputListBox.SetVisible(0);
         if diagListBox.Count > 0 {
             ShowProblemsPanel();
+        } else if searchListBox.Count > 0 {
+            ShowSearchPanel();
+        } else if referencesListBox.Count > 0 {
+            ShowReferencesPanel();
+        } else if debugListBox.Count > 0 {
+            ShowDebugPanel();
+        } else {
+            toolTabBar.SetVisible(0);
+        }
+    }
+
+    expose func ShowSearchPanel() {
+        toolTabBar.SetVisible(1);
+        toolTabBar.SetActive(toolSearchTab);
+        activeSurfaceKind = 3;
+        searchListBox.SetVisible(1);
+        diagListBox.SetVisible(0);
+        outputListBox.SetVisible(0);
+        referencesListBox.SetVisible(0);
+        debugListBox.SetVisible(0);
+    }
+
+    expose func HideSearchPanel() {
+        searchListBox.SetVisible(0);
+        if outputListBox.Count > 0 {
+            ShowOutputPanel();
+        } else if diagListBox.Count > 0 {
+            ShowProblemsPanel();
+        } else if referencesListBox.Count > 0 {
+            ShowReferencesPanel();
+        } else if debugListBox.Count > 0 {
+            ShowDebugPanel();
+        } else {
+            toolTabBar.SetVisible(0);
+        }
+    }
+
+    expose func ShowReferencesPanel() {
+        toolTabBar.SetVisible(1);
+        toolTabBar.SetActive(toolReferencesTab);
+        activeSurfaceKind = 4;
+        referencesListBox.SetVisible(1);
+        diagListBox.SetVisible(0);
+        outputListBox.SetVisible(0);
+        searchListBox.SetVisible(0);
+        debugListBox.SetVisible(0);
+    }
+
+    expose func HideReferencesPanel() {
+        referencesListBox.SetVisible(0);
+        if outputListBox.Count > 0 {
+            ShowOutputPanel();
+        } else if diagListBox.Count > 0 {
+            ShowProblemsPanel();
+        } else if searchListBox.Count > 0 {
+            ShowSearchPanel();
+        } else if debugListBox.Count > 0 {
+            ShowDebugPanel();
+        } else {
+            toolTabBar.SetVisible(0);
+        }
+    }
+
+    expose func ShowDebugPanel() {
+        toolTabBar.SetVisible(1);
+        toolTabBar.SetActive(toolDebugTab);
+        activeSurfaceKind = 5;
+        debugListBox.SetVisible(1);
+        diagListBox.SetVisible(0);
+        outputListBox.SetVisible(0);
+        searchListBox.SetVisible(0);
+        referencesListBox.SetVisible(0);
+    }
+
+    expose func HideDebugPanel() {
+        debugListBox.SetVisible(0);
+        if outputListBox.Count > 0 {
+            ShowOutputPanel();
+        } else if diagListBox.Count > 0 {
+            ShowProblemsPanel();
+        } else if searchListBox.Count > 0 {
+            ShowSearchPanel();
+        } else if referencesListBox.Count > 0 {
+            ShowReferencesPanel();
         } else {
             toolTabBar.SetVisible(0);
         }
@@ -605,12 +814,24 @@ class AppShell {
             if diagListBox.Count > 0 { ShowProblemsPanel(); }
         } else if idx == 1 {
             if outputListBox.Count > 0 { ShowOutputPanel(); }
+        } else if idx == 2 {
+            ShowSearchPanel();
+        } else if idx == 3 {
+            ShowReferencesPanel();
+        } else if idx == 4 {
+            ShowDebugPanel();
         } else {
             toolTabBar.SetActive(toolOutputTab);
             if outputListBox.Count > 0 {
                 ShowOutputPanel();
             } else if diagListBox.Count > 0 {
                 ShowProblemsPanel();
+            } else if searchListBox.Count > 0 {
+                ShowSearchPanel();
+            } else if referencesListBox.Count > 0 {
+                ShowReferencesPanel();
+            } else if debugListBox.Count > 0 {
+                ShowDebugPanel();
             }
         }
     }

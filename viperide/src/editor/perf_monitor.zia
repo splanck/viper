@@ -1,0 +1,161 @@
+module perf_monitor;
+
+bind Viper.GUI as GUI;
+bind Env = Viper.System.Environment;
+bind Clock = Viper.Time.Clock;
+bind File = Viper.IO.File;
+bind Log = Viper.Diagnostics.Log;
+
+class PerfMonitor {
+    expose Boolean enabled;
+    expose String logPath;
+    expose Integer frameStartUs;
+    expose Integer lastFlushMs;
+    expose Integer frameCount;
+    expose Integer maxFrameUs;
+    expose Integer totalFrameUs;
+    expose Integer completionUs;
+    expose Integer diagnosticsUs;
+    expose Integer hoverUs;
+    expose Integer signatureUs;
+    expose Integer symbolsUs;
+    expose Integer indexUs;
+    expose Integer searchUs;
+    expose Integer buildUs;
+    expose Integer renderUs;
+
+    expose func init() {
+        enabled = Env.HasVariable("VIPERIDE_PERF") or Env.HasVariable("VIPERIDE_PERF_LOG");
+        logPath = Env.GetVariable("VIPERIDE_PERF_LOG");
+        frameStartUs = 0;
+        lastFlushMs = Viper.Time.GetTickCount();
+        ResetWindow();
+    }
+
+    expose func ResetWindow() {
+        frameCount = 0;
+        maxFrameUs = 0;
+        totalFrameUs = 0;
+        completionUs = 0;
+        diagnosticsUs = 0;
+        hoverUs = 0;
+        signatureUs = 0;
+        symbolsUs = 0;
+        indexUs = 0;
+        searchUs = 0;
+        buildUs = 0;
+        renderUs = 0;
+    }
+
+    expose func BeginFrame() {
+        if enabled == false { return; }
+        frameStartUs = Clock.TicksUs();
+    }
+
+    expose func StartSpan() -> Integer {
+        if enabled == false { return 0; }
+        return Clock.TicksUs();
+    }
+
+    expose func AddCompletion(startUs: Integer) {
+        if enabled and startUs > 0 { completionUs = completionUs + (Clock.TicksUs() - startUs); }
+    }
+
+    expose func AddDiagnostics(startUs: Integer) {
+        if enabled and startUs > 0 { diagnosticsUs = diagnosticsUs + (Clock.TicksUs() - startUs); }
+    }
+
+    expose func AddHover(startUs: Integer) {
+        if enabled and startUs > 0 { hoverUs = hoverUs + (Clock.TicksUs() - startUs); }
+    }
+
+    expose func AddSignature(startUs: Integer) {
+        if enabled and startUs > 0 { signatureUs = signatureUs + (Clock.TicksUs() - startUs); }
+    }
+
+    expose func AddSymbols(startUs: Integer) {
+        if enabled and startUs > 0 { symbolsUs = symbolsUs + (Clock.TicksUs() - startUs); }
+    }
+
+    expose func AddIndex(startUs: Integer) {
+        if enabled and startUs > 0 { indexUs = indexUs + (Clock.TicksUs() - startUs); }
+    }
+
+    expose func AddSearch(startUs: Integer) {
+        if enabled and startUs > 0 { searchUs = searchUs + (Clock.TicksUs() - startUs); }
+    }
+
+    expose func AddBuild(startUs: Integer) {
+        if enabled and startUs > 0 { buildUs = buildUs + (Clock.TicksUs() - startUs); }
+    }
+
+    expose func AddRender(startUs: Integer) {
+        if enabled and startUs > 0 { renderUs = renderUs + (Clock.TicksUs() - startUs); }
+    }
+
+    expose func EndFrame(editor: GUI.CodeEditor) {
+        if enabled == false { return; }
+        var frameUs = Clock.TicksUs() - frameStartUs;
+        totalFrameUs = totalFrameUs + frameUs;
+        if frameUs > maxFrameUs { maxFrameUs = frameUs; }
+        frameCount = frameCount + 1;
+
+        var nowMs = Viper.Time.GetTickCount();
+        if nowMs - lastFlushMs < 1000 { return; }
+
+        var avgUs = 0;
+        if frameCount > 0 {
+            avgUs = totalFrameUs / frameCount;
+        }
+
+        var copyCount = 0;
+        var copyBytes = 0;
+        var layoutScans = 0;
+        var highlightCalls = 0;
+        var syntaxScans = 0;
+        var spanChecks = 0;
+        var lineCount = 0;
+        if editor != null {
+            copyCount = editor.GetFullTextCopyCount();
+            copyBytes = editor.GetFullTextCopyByteCount();
+            layoutScans = editor.GetLayoutLinearScanCount();
+            highlightCalls = editor.GetSyntaxHighlightCallCount();
+            syntaxScans = editor.GetSyntaxStateLineScanCount();
+            spanChecks = editor.GetHighlightSpanCheckCount();
+            lineCount = editor.LineCount;
+        }
+
+        var msg = "ViperIDE perf"
+            + " frames=" + frameCount
+            + " avgFrameUs=" + avgUs
+            + " maxFrameUs=" + maxFrameUs
+            + " renderUs=" + renderUs
+            + " completionUs=" + completionUs
+            + " diagnosticsUs=" + diagnosticsUs
+            + " hoverUs=" + hoverUs
+            + " signatureUs=" + signatureUs
+            + " symbolsUs=" + symbolsUs
+            + " indexUs=" + indexUs
+            + " searchUs=" + searchUs
+            + " buildUs=" + buildUs
+            + " lines=" + lineCount
+            + " fullTextCopies=" + copyCount
+            + " fullTextBytes=" + copyBytes
+            + " layoutScans=" + layoutScans
+            + " highlightCalls=" + highlightCalls
+            + " syntaxStateScans=" + syntaxScans
+            + " highlightSpanChecks=" + spanChecks;
+
+        if logPath != "" {
+            File.AppendLine(logPath, msg);
+        } else {
+            Log.Info(msg);
+        }
+
+        if editor != null {
+            editor.ResetPerfStats();
+        }
+        lastFlushMs = nowMs;
+        ResetWindow();
+    }
+}

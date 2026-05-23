@@ -2,13 +2,16 @@ module signature;
 
 bind "../editor/editor_engine";
 bind "../editor/zia_query";
+bind "../editor/scheduler";
 
 bind Viper.GUI;
 bind ZiaCompletion = Viper.Zia.Completion;
+bind SemanticJob = Viper.Zia.SemanticJob;
 bind Str = Viper.String;
 bind Input = Viper.Input;
 bind Seq = Viper.Collections.Seq;
 bind Obj = Viper.Core.Object;
+bind Map = Viper.Collections.Map;
 
 class SignatureController {
     expose GUI.FloatingPanel panel;
@@ -18,6 +21,12 @@ class SignatureController {
     expose Integer lastRevision;
     expose Integer lastCursorLine;
     expose Integer lastCursorCol;
+    expose scheduler.EditorScheduler workScheduler;
+    expose Any pendingJob;
+    expose Integer pendingRevision;
+    expose String pendingPath;
+    expose Integer pendingLine;
+    expose Integer pendingCol;
 
     expose func init() {
         visible = false;
@@ -25,6 +34,16 @@ class SignatureController {
         lastRevision = -1;
         lastCursorLine = -1;
         lastCursorCol = -1;
+        workScheduler = null;
+        pendingJob = null;
+        pendingRevision = -1;
+        pendingPath = "";
+        pendingLine = -1;
+        pendingCol = -1;
+    }
+
+    expose func SetScheduler(value: scheduler.EditorScheduler) {
+        workScheduler = value;
     }
 
     expose func setup(appRoot: GUI.App) {
@@ -44,6 +63,18 @@ class SignatureController {
         var revision = engine.GetRevision();
         var line = engine.GetCursorLine();
         var col0 = engine.editor.CursorCol;
+        if workScheduler != null {
+            workScheduler.Queue(scheduler.JOB_SIGNATURE, sourcePath, revision, 0);
+            workScheduler.Complete(scheduler.JOB_SIGNATURE);
+        }
+        StartSignatureJob(engine, revision, line, col0);
+    }
+
+    hide func StartSignatureJob(engine: editor_engine.EditorEngine,
+                                revision: Integer,
+                                line: Integer,
+                                col0: Integer) {
+        CancelPendingJob();
         var source = engine.GetTextSnapshot();
         if IsInsideCall(source, line, col0) == false {
             Hide();
@@ -51,13 +82,34 @@ class SignatureController {
         }
         var qsource = zia_query.WrapForQuery(source);
         var qline = line + zia_query.LineOffset(source);
-        var sigInfo = ZiaCompletion.SignatureHelpForFile(qsource, sourcePath, qline, col0);
-        if sigInfo == "" {
+        var job = ZiaCompletion.BeginSignatureInfoForFile(qsource, sourcePath, qline, col0);
+        if job != null {
+            pendingJob = job;
+            pendingRevision = revision;
+            pendingPath = sourcePath;
+            pendingLine = line;
+            pendingCol = col0;
+            return;
+        }
+
+        var sigInfo = ZiaCompletion.SignatureInfoForFile(qsource, sourcePath, qline, col0);
+        ApplySignatureInfo(sigInfo, engine, revision, line, col0);
+    }
+
+    hide func ApplySignatureInfo(sigInfo: Any,
+                                 engine: editor_engine.EditorEngine,
+                                 revision: Integer,
+                                 line: Integer,
+                                 col0: Integer) {
+        if sigInfo == null {
             Hide();
             return;
         }
-        var activeParam = ActiveParameter(source, line, col0);
-        label.SetText(sigInfo + "  [" + (activeParam + 1) + "]");
+        if Map.GetBool(sigInfo, "available") == false {
+            Hide();
+            return;
+        }
+        label.SetText(FormatSignatureDisplay(sigInfo));
         panel.SetPosition(engine.editor.GetCursorPixelX(), engine.editor.GetCursorPixelY() - 28);
         panel.SetVisible(1);
         visible = true;
@@ -67,6 +119,7 @@ class SignatureController {
     }
 
     expose func update(engine: editor_engine.EditorEngine) {
+        PollPendingJob(engine);
         if visible == false { return; }
         if engine == null or engine.editor == null {
             Hide();
@@ -84,27 +137,48 @@ class SignatureController {
             return;
         }
 
-        var source = engine.GetTextSnapshot();
-        if IsInsideCall(source, line, col0) == false {
-            Hide();
-            return;
+        if workScheduler != null {
+            if workScheduler.IsQueued(scheduler.JOB_SIGNATURE, sourcePath, revision) == false {
+                workScheduler.Queue(scheduler.JOB_SIGNATURE, sourcePath, revision, 0);
+                return;
+            }
+            if workScheduler.IsDue(scheduler.JOB_SIGNATURE, sourcePath, revision) == false {
+                return;
+            }
+            workScheduler.Complete(scheduler.JOB_SIGNATURE);
         }
-        var qsource = zia_query.WrapForQuery(source);
-        var qline = line + zia_query.LineOffset(source);
-        var sigInfo = ZiaCompletion.SignatureHelpForFile(qsource, sourcePath, qline, col0);
-        if sigInfo == "" {
+
+        StartSignatureJob(engine, revision, line, col0);
+    }
+
+    hide func PollPendingJob(engine: editor_engine.EditorEngine) -> Boolean {
+        if pendingJob == null { return false; }
+        if SemanticJob.IsDone(pendingJob) == false { return false; }
+
+        var job = pendingJob;
+        pendingJob = null;
+        if SemanticJob.IsError(job) {
             Hide();
-            return;
+            return true;
         }
-        var activeParam = ActiveParameter(source, line, col0);
-        label.SetText(sigInfo + "  [" + (activeParam + 1) + "]");
-        panel.SetPosition(engine.editor.GetCursorPixelX(), engine.editor.GetCursorPixelY() - 28);
-        lastRevision = revision;
-        lastCursorLine = line;
-        lastCursorCol = col0;
+        if engine == null or engine.editor == null { return true; }
+        if engine.GetRevision() != pendingRevision or sourcePath != pendingPath {
+            Hide();
+            return true;
+        }
+        var line = engine.GetCursorLine();
+        var col0 = engine.editor.CursorCol;
+        if line != pendingLine or col0 != pendingCol {
+            Hide();
+            return true;
+        }
+        ApplySignatureInfo(SemanticJob.SignatureInfo(job), engine,
+                           pendingRevision, pendingLine, pendingCol);
+        return true;
     }
 
     expose func Hide() {
+        CancelPendingJob();
         if visible {
             panel.SetVisible(0);
         }
@@ -113,6 +187,47 @@ class SignatureController {
         lastCursorLine = -1;
         lastCursorCol = -1;
     }
+
+    hide func CancelPendingJob() {
+        if pendingJob != null {
+            SemanticJob.Cancel(pendingJob);
+            pendingJob = null;
+        }
+    }
+}
+
+func FormatSignatureDisplay(sigInfo: Any) -> String {
+    if sigInfo == null { return ""; }
+    var display = Map.GetStr(sigInfo, "display");
+    var params = Map.Get(sigInfo, "parameters");
+    var name = Map.GetStr(sigInfo, "name");
+    if name == "" or params == null or Seq.get_Length(params) == 0 {
+        return display + "  [" + (Map.GetInt(sigInfo, "activeParameter") + 1) + "]";
+    }
+
+    var active = Map.GetInt(sigInfo, "activeParameter");
+    var text = name + "(";
+    var i = 0;
+    while i < Seq.get_Length(params) {
+        if i > 0 { text = text + ", "; }
+        var param = Seq.Get(params, i);
+        var paramText = Map.GetStr(param, "name");
+        var paramType = Map.GetStr(param, "type");
+        if paramType != "" {
+            paramText = paramText + ": " + paramType;
+        }
+        if i == active {
+            paramText = "[" + paramText + "]";
+        }
+        text = text + paramText;
+        i = i + 1;
+    }
+    text = text + ")";
+    var returnType = Map.GetStr(sigInfo, "returnType");
+    if returnType != "" {
+        text = text + " -> " + returnType;
+    }
+    return text;
 }
 
 func ActiveParameter(source: String, line: Integer, col0: Integer) -> Integer {

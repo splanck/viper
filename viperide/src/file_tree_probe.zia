@@ -2,6 +2,7 @@ module file_tree_probe;
 
 bind "ui/app_shell";
 bind "core/project_manager";
+bind "core/document_manager";
 
 bind Viper.GUI as GUI;
 bind Terminal = Viper.Terminal;
@@ -9,6 +10,7 @@ bind Dir = Viper.IO.Dir;
 bind File = Viper.IO.File;
 bind Path = Viper.IO.Path;
 bind TempFile = Viper.IO.TempFile;
+bind Str = Viper.String;
 
 func fail(shell: app_shell.AppShell, reason: String) {
     shell.Destroy();
@@ -21,12 +23,28 @@ func main() {
 
     var root = TempFile.CreateDirWithPrefix("viperide_file_tree_");
     var subdir = Path.Join(root, "folder with spaces");
+    var ignoredDir = Path.Join(root, "skipme");
     Dir.MakeAll(subdir);
+    Dir.MakeAll(ignoredDir);
     File.WriteAllText(Path.Join(subdir, "main.zia"), "module TreeProbe;\n");
+    File.WriteAllText(Path.Join(ignoredDir, "ignored.zia"), "module Ignored;\n");
+    File.WriteAllText(Path.Join(root, "viper.project"), "project TreeProbe\nignore skipme/\n");
 
     var projMgr = new project_manager.ProjectManager();
     projMgr.Setup(shell.sidebarTree);
     projMgr.OpenFolder(root);
+    if projMgr.project.ignorePatterns != "skipme/" {
+        fail(shell, "project ignore patterns");
+        return;
+    }
+    var cacheIdx = 0;
+    while cacheIdx < projMgr.CachedFileCount() {
+        if projMgr.CachedFileAt(cacheIdx) == Path.Join(ignoredDir, "ignored.zia") {
+            fail(shell, "ignored file cached");
+            return;
+        }
+        cacheIdx = cacheIdx + 1;
+    }
 
     shell.Poll();
     shell.Render();
@@ -48,6 +66,75 @@ func main() {
     shell.sidebarTree.Select(hit);
     if projMgr.SelectedPath() != root {
         fail(shell, "selected path");
+        return;
+    }
+
+    var entryPath = Path.Join(subdir, "main.zia");
+    if projMgr.SetEntryFile(entryPath) == false {
+        fail(shell, "set project entry");
+        return;
+    }
+    if projMgr.project.entryFile != "folder with spaces/main.zia" {
+        fail(shell, "project entry relative path");
+        return;
+    }
+    if File.Exists(Path.Join(root, "viper.project")) == false {
+        fail(shell, "project manifest created");
+        return;
+    }
+
+    var docMgr = new document_manager.DocumentManager();
+    var openImporter = Path.Join(subdir, "open_importer.zia");
+    var closedImporter = Path.Join(subdir, "closed_importer.zia");
+    File.WriteAllText(openImporter, "module OpenImporter;\nbind \"./main\";\n");
+    File.WriteAllText(closedImporter, "module ClosedImporter;\nbind \"./main\";\n");
+    docMgr.OpenFile(openImporter);
+    if projMgr.PreviewBindRewriteCount(entryPath, "renamed.zia", docMgr) != 2 {
+        fail(shell, "file rename bind preview count");
+        return;
+    }
+    var renamedEntry = projMgr.RenamePath(entryPath, "renamed.zia", docMgr);
+    if renamedEntry != Path.Join(subdir, "renamed.zia") {
+        fail(shell, "file rename path");
+        return;
+    }
+    if projMgr.lastBindRewriteCount != 2 {
+        fail(shell, "file rename bind rewrite count");
+        return;
+    }
+    if projMgr.project.entryFile != "folder with spaces/renamed.zia" {
+        fail(shell, "entry file follows rename");
+        return;
+    }
+    if Str.IndexOf(docMgr.documents.get(0).content, "bind \"./renamed\";") == 0 {
+        fail(shell, "open importer bind rewritten");
+        return;
+    }
+    if Str.IndexOf(File.ReadAllText(closedImporter), "bind \"./renamed\";") == 0 {
+        fail(shell, "closed importer bind rewritten");
+        return;
+    }
+
+    var libDir = Path.Join(subdir, "lib");
+    Dir.MakeAll(libDir);
+    File.WriteAllText(Path.Join(libDir, "helper.zia"), "module Helper;\n");
+    var folderImporter = Path.Join(subdir, "folder_importer.zia");
+    File.WriteAllText(folderImporter, "module FolderImporter;\nbind \"./lib/helper\";\n");
+    if projMgr.PreviewBindRewriteCount(libDir, "renamed lib", docMgr) != 1 {
+        fail(shell, "folder rename bind preview count");
+        return;
+    }
+    var renamedLib = projMgr.RenamePath(libDir, "renamed lib", docMgr);
+    if renamedLib != Path.Join(subdir, "renamed lib") {
+        fail(shell, "folder rename path");
+        return;
+    }
+    if projMgr.lastBindRewriteCount != 1 {
+        fail(shell, "folder rename bind rewrite count");
+        return;
+    }
+    if Str.IndexOf(File.ReadAllText(folderImporter), "bind \"./renamed lib/helper\";") == 0 {
+        fail(shell, "folder importer bind rewritten");
         return;
     }
 

@@ -25,6 +25,18 @@ using DispatchEntry = std::pair<int, std::string>;
 // Virtual Method Dispatch
 //=============================================================================
 
+/// @brief Lower a virtual (overridable) method call via runtime class-id dispatch.
+/// @param entityInfo Static type of the receiver at the call site.
+/// @param slotKey Method slot key identifying the overridable method.
+/// @param ownerType Type that declares the method (used to resolve its signature).
+/// @param method The method declaration being called (may be null).
+/// @param selfValue The receiver value, passed as the first argument.
+/// @param expr The call expression supplying the remaining arguments.
+/// @return The lowered call result (or a void placeholder for void methods).
+/// @details Builds a dispatch table of every class (the receiver type and all its subclasses)
+///          that supplies this slot. With one entry it emits a direct call; with several it
+///          fetches the runtime class id and emits a single O(1) SwitchI32 to per-class call
+///          blocks, storing each result in an alloca and joining at a common end block.
 LowerResult Lowerer::lowerVirtualMethodCall(const ClassTypeInfo &entityInfo,
                                             const std::string &slotKey,
                                             const std::string &ownerType,
@@ -162,6 +174,17 @@ LowerResult Lowerer::lowerVirtualMethodCall(const ClassTypeInfo &entityInfo,
 // Interface Method Dispatch
 //=============================================================================
 
+/// @brief Lower an interface method call via runtime itable lookup.
+/// @param ifaceInfo The interface type whose method is being invoked.
+/// @param slotKey Method slot key identifying the interface method.
+/// @param ownerType Type used to resolve the method signature.
+/// @param method The method declaration being called (may be null).
+/// @param selfValue The receiver value, passed as the first argument.
+/// @param expr The call expression supplying the remaining arguments.
+/// @return The lowered call result (or a void placeholder for void methods).
+/// @details Resolves the method's interface slot index, fetches the receiver's class id and
+///          itable at runtime (`rt_get_interface_impl`), loads the function pointer at
+///          `itable[slot]`, and emits an indirect call through it.
 LowerResult Lowerer::lowerInterfaceMethodCall(const InterfaceTypeInfo &ifaceInfo,
                                               const std::string &slotKey,
                                               const std::string &ownerType,

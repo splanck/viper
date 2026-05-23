@@ -22,6 +22,9 @@ namespace il::frontends::basic {
 
 namespace {
 
+/// @brief Register every prefix of a qualified namespace (`A`, `A.B`, `A.B.C`).
+/// @param registry Namespace registry to populate.
+/// @param qualifiedNs Dotted namespace path; empty is ignored.
 static void ensureNamespaceChain(NamespaceRegistry &registry, const std::string &qualifiedNs) {
     if (qualifiedNs.empty())
         return;
@@ -50,6 +53,7 @@ static void ensureNamespaceChain(NamespaceRegistry &registry, const std::string 
 
 } // namespace
 
+/// @brief Lowercase a string to form the case-insensitive lookup key.
 std::string TypeRegistry::toLower(std::string_view s) {
     std::string out;
     out.reserve(s.size());
@@ -58,6 +62,10 @@ std::string TypeRegistry::toLower(std::string_view s) {
     return out;
 }
 
+/// @brief Classify the runtime class catalog into the registry's type-kind map.
+/// @param classes Runtime class catalog entries.
+/// @details Defaults each class to BuiltinExternalType; promotes `Viper.System.String` to
+///          BuiltinExternalClass and registers the BASIC `Viper.String` compatibility alias.
 void TypeRegistry::seedRuntimeClasses(const std::vector<il::runtime::RuntimeClass> &classes) {
     for (const auto &cls : classes) {
         std::string key = toLower(cls.qname);
@@ -74,6 +82,10 @@ void TypeRegistry::seedRuntimeClasses(const std::vector<il::runtime::RuntimeClas
     kinds_[toLower("Viper.String")] = TypeKind::BuiltinExternalType;
 }
 
+/// @brief Return the registered kind of a qualified type name.
+/// @param qualifiedName Type name (the BASIC alias `string` resolves to `Viper.String`, or
+///        `Viper.System.String` as a fallback).
+/// @return The type kind, or TypeKind::Unknown if not registered.
 TypeKind TypeRegistry::kindOf(std::string_view qualifiedName) const {
     std::string key = toLower(qualifiedName);
     if (key == "string") {
@@ -93,11 +105,17 @@ TypeKind TypeRegistry::kindOf(std::string_view qualifiedName) const {
     return it->second;
 }
 
+/// @brief Return the process-wide runtime TypeRegistry singleton.
 TypeRegistry &runtimeTypeRegistry() {
     static TypeRegistry reg;
     return reg;
 }
 
+/// @brief Seed a namespace registry with the canonical built-in runtime types.
+/// @param registry Namespace registry to populate.
+/// @details Registers a minimal catalog (Object, String, StringBuilder, File, List) into their
+///          namespaces (creating the namespace chain first), plus the `Viper`/`Viper.Console`
+///          namespaces so `USING` of builtin procedure groups resolves.
 void seedRuntimeTypeCatalog(NamespaceRegistry &registry) {
     // Seed a minimal catalog of built-in runtime types. Canonical names live
     // under Viper.* and are defined by the runtime class catalog

@@ -35,6 +35,12 @@ using namespace runtime;
 // Expression Lowering Dispatcher
 //=============================================================================
 
+/// @brief Central expression dispatcher: lower any AST expression to an IL value.
+/// @param expr Expression to lower; null yields a poison value.
+/// @return The lowered value and its IL type.
+/// @details Guards against runaway recursion (kMaxLowerDepth, 512) and installs a location
+///          scope for diagnostics, then switches on the expression kind to the matching
+///          `lower*` routine. Unknown kinds produce a poison value rather than crashing.
 LowerResult Lowerer::lowerExpr(Expr *expr) {
     if (!expr)
         return poisonValue({}, "V-ZIA-LOWER-NULL-EXPR", "null expression reached lowering");
@@ -147,6 +153,15 @@ LowerResult Lowerer::lowerExpr(Expr *expr) {
 // Identifier Expression Lowering
 //=============================================================================
 
+/// @brief Lower an identifier reference to its current IL value.
+/// @param expr Identifier expression.
+/// @return The loaded value and IL type, or a diagnostic + placeholder if unresolved.
+/// @details Resolves the name in priority order: slot-based mutable local, plain local,
+///          implicit `self.field` inside a struct/class method, module-level constant,
+///          module-level variable, auto-evaluated property getter, and finally a defined or
+///          extern function (yielding its address for use as a function pointer). Optional
+///          storage that is used at its inner type is unwrapped here. An unknown identifier is
+///          reported (V3000).
 LowerResult Lowerer::lowerIdent(IdentExpr *expr) {
     std::string resolvedName = sema_.resolvedIdentifierName(expr);
     if (resolvedName.empty())
@@ -291,6 +306,13 @@ LowerResult Lowerer::lowerIdent(IdentExpr *expr) {
 // Ternary Expression Lowering
 //=============================================================================
 
+/// @brief Lower a ternary `cond ? then : else` expression.
+/// @param expr Ternary expression.
+/// @return The selected branch value and its IL type (void placeholder for void results).
+/// @details Allocates a result slot, branches into then/else blocks that each store their
+///          value, and reloads at the merge block. When the result type is optional but a
+///          branch produced a non-optional value, that branch is wrapped via
+///          emitOptionalWrap(). Reference-typed results are scheduled for deferred release.
 LowerResult Lowerer::lowerTernary(TernaryExpr *expr) {
     auto cond = lowerExpr(expr->condition.get());
     TypeRef resultType = sema_.typeOf(expr);
@@ -384,6 +406,12 @@ LowerResult Lowerer::lowerTernary(TernaryExpr *expr) {
 // If-Expression Lowering
 //=============================================================================
 
+/// @brief Lower an `if`/`else` used as a value-producing expression.
+/// @param expr If-expression with then/else branches.
+/// @return The selected branch value and its IL type (void placeholder for void results).
+/// @details Structurally identical to lowerTernary(): a result slot plus then/else/merge
+///          blocks, optional-wrapping of a non-optional branch when the result type is
+///          optional, and deferred release for reference-typed results.
 LowerResult Lowerer::lowerIfExpr(IfExpr *expr) {
     auto cond = lowerExpr(expr->condition.get());
     TypeRef resultType = sema_.typeOf(expr);

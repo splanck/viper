@@ -1,9 +1,11 @@
 module symbols;
 
 bind "../editor/editor_engine";
+bind "../editor/scheduler";
 bind "../ui/app_shell";
 
 bind ZiaCompletion = Viper.Zia.Completion;
+bind SemanticJob = Viper.Zia.SemanticJob;
 bind "../editor/zia_query";
 bind Viper.GUI;
 bind Str = Viper.String;
@@ -50,6 +52,12 @@ class SymbolOutline {
     expose Integer lastRevision;
     expose Boolean visible;
     expose Boolean enabled;
+    expose scheduler.EditorScheduler workScheduler;
+    expose Any pendingJob;
+    expose Integer pendingRevision;
+    expose String pendingPath;
+    expose String pendingSource;
+    expose Integer pendingLineOffset;
 
     /// @brief Initialize hidden with empty caches.
     expose func init() {
@@ -59,6 +67,16 @@ class SymbolOutline {
         lastRevision = -1;
         visible = false;
         enabled = true;
+        workScheduler = null;
+        pendingJob = null;
+        pendingRevision = -1;
+        pendingPath = "";
+        pendingSource = "";
+        pendingLineOffset = 0;
+    }
+
+    expose func SetScheduler(value: scheduler.EditorScheduler) {
+        workScheduler = value;
     }
 
     /// @brief Construct the listbox inside `parent`. Hidden by default.
@@ -75,6 +93,7 @@ class SymbolOutline {
             sourcePath = path;
             lastPath = "";
             lastRevision = -1;
+            CancelPendingJob();
         }
     }
 
@@ -83,6 +102,7 @@ class SymbolOutline {
         if enabled == false {
             symbolList.SetVisible(0);
             visible = false;
+            CancelPendingJob();
         }
     }
 
@@ -96,6 +116,7 @@ class SymbolOutline {
             lastRevision = -1;
         } else {
             symbolList.SetVisible(0);
+            CancelPendingJob();
         }
     }
 
@@ -106,19 +127,80 @@ class SymbolOutline {
         if engine == null or engine.editor == null { return; }
 
         var revision = engine.GetRevision();
-        if revision == lastRevision and sourcePath == lastPath { return; }
-        var source = engine.GetTextSnapshot();
-        lastSource = source;
-        lastPath = sourcePath;
-        lastRevision = revision;
+        if pendingJob != null {
+            if revision != pendingRevision or sourcePath != pendingPath {
+                CancelPendingJob();
+            } else {
+                PollPendingJob();
+                return;
+            }
+        }
 
-        symbolList.Clear();
+        if revision == lastRevision and sourcePath == lastPath { return; }
+
+        if workScheduler != null {
+            if workScheduler.IsQueued(scheduler.JOB_SYMBOLS, sourcePath, revision) == false {
+                workScheduler.Queue(scheduler.JOB_SYMBOLS, sourcePath, revision, -1);
+                return;
+            }
+            if workScheduler.IsDue(scheduler.JOB_SYMBOLS, sourcePath, revision) == false {
+                return;
+            }
+            workScheduler.Complete(scheduler.JOB_SYMBOLS);
+        }
+
+        StartSymbolJob(engine, revision);
+    }
+
+    hide func StartSymbolJob(engine: editor_engine.EditorEngine, revision: Integer) {
+        var source = engine.GetTextSnapshot();
 
         // Synthetic-module prefix for buffers lacking a `module` line; symbol
         // line numbers come back shifted and must be un-shifted below.
         var qsource = zia_query.WrapForQuery(source);
         var lineOff = zia_query.LineOffset(source);
+        CancelPendingJob();
+        var job = ZiaCompletion.BeginSymbolsForFile(qsource, sourcePath);
+        if job != null {
+            pendingJob = job;
+            pendingRevision = revision;
+            pendingPath = sourcePath;
+            pendingSource = source;
+            pendingLineOffset = lineOff;
+            return;
+        }
+
         var raw = ZiaCompletion.SymbolsForFile(qsource, sourcePath);
+        ApplySymbols(raw, lineOff, source, sourcePath, revision);
+    }
+
+    hide func PollPendingJob() -> Boolean {
+        if pendingJob == null { return false; }
+        if SemanticJob.IsDone(pendingJob) == false { return false; }
+
+        var job = pendingJob;
+        pendingJob = null;
+        if SemanticJob.IsError(job) {
+            return true;
+        }
+        if sourcePath != pendingPath {
+            return true;
+        }
+        ApplySymbols(SemanticJob.Symbols(job), pendingLineOffset,
+                     pendingSource, pendingPath, pendingRevision);
+        return true;
+    }
+
+    hide func ApplySymbols(raw: String,
+                           lineOff: Integer,
+                           source: String,
+                           path: String,
+                           revision: Integer) {
+        lastSource = source;
+        lastPath = path;
+        lastRevision = revision;
+
+        symbolList.Clear();
         if raw == "" { return; }
 
         var lines = Str.Split(raw, "\n");
@@ -163,6 +245,13 @@ class SymbolOutline {
                     engine.GoToLine(lineNum);
                 }
             }
+        }
+    }
+
+    hide func CancelPendingJob() {
+        if pendingJob != null {
+            SemanticJob.Cancel(pendingJob);
+            pendingJob = null;
         }
     }
 }

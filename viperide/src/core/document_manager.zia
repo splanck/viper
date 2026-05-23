@@ -3,6 +3,7 @@ module document_manager;
 bind "document";
 bind "../services/file_utils";
 
+bind Obj = Viper.Core.Object;
 bind IO = Viper.IO;
 bind Path = Viper.IO.Path;
 
@@ -51,12 +52,14 @@ class DocumentManager {
     expose List[document.Document] documents;  // All open documents, in tab order.
     expose Integer activeIndex;                // Index of active document (-1 = none).
     expose Integer untitledCount;              // Monotonic counter for "Untitled N" naming.
+    expose List recentlyClosedPaths;           // Most-recently closed named files.
 
     /// @brief Initialize with no open documents.
     expose func init() {
         documents = [];
         activeIndex = -1;
         untitledCount = 0;
+        recentlyClosedPaths = [];
     }
 
     /// @brief Create a new untitled document and activate it.
@@ -209,6 +212,10 @@ class DocumentManager {
     expose func CloseDocument(index: Integer) -> Boolean {
         if index < 0 or index >= documents.count() { return false; }
         var wasActive = index == activeIndex;
+        var closingDoc = documents.get(index);
+        if closingDoc.filePath != "" {
+            RecordRecentlyClosed(closingDoc.filePath);
+        }
         documents.removeAt(index);
         if documents.count() == 0 {
             activeIndex = -1;
@@ -252,5 +259,41 @@ class DocumentManager {
     /// @brief Number of open documents.
     expose func GetCount() -> Integer {
         return documents.count();
+    }
+
+    expose func RecentlyClosedCount() -> Integer {
+        return recentlyClosedPaths.count();
+    }
+
+    expose func RecentlyClosedAt(index: Integer) -> String {
+        if index < 0 or index >= recentlyClosedPaths.count() { return ""; }
+        return Obj.ToString(recentlyClosedPaths.get(index));
+    }
+
+    expose func PopRecentlyClosedPath() -> String {
+        while recentlyClosedPaths.count() > 0 {
+            var path = Obj.ToString(recentlyClosedPaths.get(0));
+            recentlyClosedPaths.removeAt(0);
+            if path != "" and IO.File.Exists(path) {
+                return path;
+            }
+        }
+        return "";
+    }
+
+    hide func RecordRecentlyClosed(path: String) {
+        if path == "" { return; }
+        var i = 0;
+        while i < recentlyClosedPaths.count() {
+            if Obj.ToString(recentlyClosedPaths.get(i)) == path {
+                recentlyClosedPaths.removeAt(i);
+            } else {
+                i = i + 1;
+            }
+        }
+        recentlyClosedPaths.insert(0, path);
+        while recentlyClosedPaths.count() > 20 {
+            recentlyClosedPaths.removeAt(recentlyClosedPaths.count() - 1);
+        }
     }
 }

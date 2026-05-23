@@ -2,12 +2,14 @@ module phase0_phase1_probe;
 
 bind "commands/command_registry";
 bind "commands/edit_commands";
+bind "commands/file_commands";
 bind "commands/search_commands";
 bind "core/document";
 bind "core/document_manager";
 bind "core/project";
 bind "editor/language_service";
 bind "editor/project_index";
+bind "editor/scheduler";
 bind "editor/signature";
 bind "services/file_utils";
 bind "services/locations";
@@ -90,12 +92,40 @@ func main() {
     if assertTrue(search_commands.LineMatches("Alpha", "alpha", true, false) == false,
                   "case-sensitive search") == false { return; }
 
+    var registry = new command_registry.CommandRegistry();
+    if assertTrue(registry.ShortcutConflictCount() == 0,
+                  "default keybindings have no conflicts") == false { return; }
+    registry.Add("probe.conflict", "Probe Conflict", "Intentional conflict", "Ctrl+S", "", true);
+    if assertTrue(registry.ShortcutConflictCount() == 1
+                  and registry.ShortcutHasConflict("Ctrl+S")
+                  and Str.IndexOf(registry.ShortcutConflictSummary(), "save") != 0,
+                  "keybinding conflict detection reports duplicates") == false { return; }
+
+    var workScheduler = new scheduler.EditorScheduler();
+    var firstGen = workScheduler.Queue(scheduler.JOB_DIAGNOSTICS, "a.zia", 1, 0);
+    var secondGen = workScheduler.Queue(scheduler.JOB_DIAGNOSTICS, "a.zia", 2, 0);
+    if assertTrue(workScheduler.IsCurrent(scheduler.JOB_DIAGNOSTICS, firstGen) == false
+                  and workScheduler.IsCurrent(scheduler.JOB_DIAGNOSTICS, secondGen)
+                  and workScheduler.QueuedGeneration(scheduler.JOB_DIAGNOSTICS) == secondGen,
+                  "scheduler generations reject stale jobs") == false { return; }
+    workScheduler.Cancel(scheduler.JOB_DIAGNOSTICS);
+    if assertTrue(workScheduler.IsCurrent(scheduler.JOB_DIAGNOSTICS, secondGen) == false
+                  and workScheduler.QueuedGeneration(scheduler.JOB_DIAGNOSTICS) == 0,
+                  "scheduler cancel invalidates queued generation") == false { return; }
+
     var defaultSettings = new settings.SettingsManager();
     if assertTrue(defaultSettings.fontSize == settings.DEFAULT_FONT_SIZE
-                  and settings.DEFAULT_FONT_SIZE == 20,
+                  and settings.DEFAULT_FONT_SIZE == 15,
                   "default editor font size is readable") == false { return; }
     if assertTrue(defaultSettings.minimapVisible == false,
                   "minimap defaults off until large-file renderer is incremental") == false { return; }
+    if assertTrue(defaultSettings.wordWrap == false and defaultSettings.lineNumbers,
+                  "editor view settings have stable defaults") == false { return; }
+    if assertTrue(defaultSettings.insertSpaces
+                  and defaultSettings.ensureFinalNewline
+                  and defaultSettings.autoSave == false
+                  and defaultSettings.trimTrailingWhitespace == false,
+                  "editor save settings have stable defaults") == false { return; }
 
     var sigSource = "module Demo;\nfunc f() { outer(inner(a, b), c); }\n";
     if assertTrue(signature.ActiveParameter(sigSource, 2, 27) == 1,
@@ -126,13 +156,47 @@ func main() {
     File.WriteAllText(filePath, "module Main;\nfunc start() {\n    var oldName = 1;\n    var useName = oldName;\n}\n");
 
     var tinySettingsPath = Path.Join(root, "tiny-settings.ini");
-    File.WriteAllText(tinySettingsPath, "[settings]\nfontSize=15\n");
+    File.WriteAllText(tinySettingsPath, "[settings]\nfontSize=8\n");
     var tinySettings = new settings.SettingsManager();
     tinySettings.settingsDir = root;
     tinySettings.settingsPath = tinySettingsPath;
     tinySettings.Load();
     if assertTrue(tinySettings.fontSize == settings.DEFAULT_FONT_SIZE,
                   "tiny persisted font size migrates to readable default") == false { return; }
+
+    var viewSettingsPath = Path.Join(root, "view-settings.ini");
+    File.WriteAllText(viewSettingsPath,
+        "[settings]\nwordWrap=1\nlineNumbers=0\ninsertSpaces=0\n"
+        + "trimTrailingWhitespace=1\nensureFinalNewline=0\nautoSave=1\n"
+        + "diagnosticsDelayMs=750\ncompletionDelayMs=90\n");
+    var viewSettings = new settings.SettingsManager();
+    viewSettings.settingsDir = root;
+    viewSettings.settingsPath = viewSettingsPath;
+    viewSettings.Load();
+    if assertTrue(viewSettings.wordWrap and viewSettings.lineNumbers == false
+                  and viewSettings.insertSpaces == false
+                  and viewSettings.trimTrailingWhitespace
+                  and viewSettings.ensureFinalNewline == false
+                  and viewSettings.autoSave
+                  and viewSettings.diagnosticsDelayMs == 750
+                  and viewSettings.completionDelayMs == 90,
+                  "view settings load from persistent preferences") == false { return; }
+    viewSettings.Save();
+    var viewSettingsIni = Ini.Parse(File.ReadAllText(viewSettingsPath));
+    if assertTrue(Ini.Get(viewSettingsIni, "settings", "wordWrap") == "1"
+                  and Ini.Get(viewSettingsIni, "settings", "lineNumbers") == "0",
+                  "view settings save to persistent preferences") == false { return; }
+    if assertTrue(Ini.Get(viewSettingsIni, "settings", "insertSpaces") == "0"
+                  and Ini.Get(viewSettingsIni, "settings", "trimTrailingWhitespace") == "1"
+                  and Ini.Get(viewSettingsIni, "settings", "ensureFinalNewline") == "0"
+                  and Ini.Get(viewSettingsIni, "settings", "autoSave") == "1"
+                  and Ini.Get(viewSettingsIni, "settings", "diagnosticsDelayMs") == "750"
+                  and Ini.Get(viewSettingsIni, "settings", "completionDelayMs") == "90",
+                  "editor behavior settings save to persistent preferences") == false { return; }
+
+    file_commands.SetSaveFormatOptions(true, true);
+    if assertTrue(file_commands.ApplySaveTextRules("one  \n\t\nthree\t") == "one\n\nthree\n",
+                  "save formatting trims trailing whitespace and final newline") == false { return; }
 
     var settingsPath = Path.Join(root, "settings.ini");
     File.WriteAllText(settingsPath,
@@ -143,6 +207,7 @@ func main() {
     var sessMgr = new session.SessionManager();
     sessMgr.Setup(settingsPath);
     var sessionDocMgr = new document_manager.DocumentManager();
+    sessionDocMgr.OpenFile(filePath);
     var sessionProjMgr = new project_manager.ProjectManager();
     sessionProjMgr.project = new project.Project();
     sessionProjMgr.project.Open(projectRoot);
@@ -158,6 +223,13 @@ func main() {
                   and Ini.Get(savedIni, "recent", "path.0") == projectRoot
                   and Ini.Get(savedIni, "recent", "path.1") == "/old/project",
                   "session save prepends recent project history") == false { return; }
+    if assertTrue(Ini.Get(savedIni, "recentFiles", "count") == "1"
+                  and Ini.Get(savedIni, "recentFiles", "path.0") == filePath,
+                  "session save records recent file history") == false { return; }
+    sessionDocMgr.CloseDocument(0);
+    if assertTrue(sessionDocMgr.RecentlyClosedCount() == 1
+                  and sessionDocMgr.PopRecentlyClosedPath() == filePath,
+                  "document manager tracks recently closed named files") == false { return; }
 
     var settingsOnlyPath = Path.Join(root, "settings-only.ini");
     File.WriteAllText(settingsOnlyPath, "[settings]\ntheme=dark\nfontSize=15\n");

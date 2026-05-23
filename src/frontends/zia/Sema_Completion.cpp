@@ -22,6 +22,7 @@
 /// - `getTypeNames()`       — names of all class/struct/interface declarations
 /// - `getBoundModuleNames()` — short aliases from `bind Namespace as Alias;`
 /// - `getModuleExports(mod)` — exported symbols of a bound file module
+/// - `getBoundFileModuleNames()` — file-module roots usable for `Module.`
 ///
 /// @see Sema.hpp for declarations and documentation.
 /// @see ZiaAnalysis.hpp for parseAndAnalyze(), which creates the Sema object.
@@ -39,6 +40,10 @@ namespace il::frontends::zia {
 // getGlobalSymbols
 // ---------------------------------------------------------------------------
 
+/// @brief Return all symbols in the global (module-level) scope.
+/// @return Top-level functions, type constructors, bound runtime identifiers, and globals.
+/// @details Reads `scopes_[0]` (the module scope built during analyze()); function-local
+///          variables are not present, having been popped when their blocks were analyzed.
 std::vector<Symbol> Sema::getGlobalSymbols() const {
     std::vector<Symbol> result;
     if (scopes_.empty())
@@ -58,6 +63,12 @@ std::vector<Symbol> Sema::getGlobalSymbols() const {
 // getMembersOf
 // ---------------------------------------------------------------------------
 
+/// @brief Return the members (fields and methods) of a type, for completion.
+/// @param type The receiver type.
+/// @return Member symbols; empty for non-aggregate types.
+/// @details Runtime (Ptr) classes delegate to getRuntimeMembers(). User-defined
+///          class/struct/interface members are gathered from @c fieldTypes_/@c methodTypes_,
+///          which are keyed `TypeName.member`.
 std::vector<Symbol> Sema::getMembersOf(const TypeRef &type) const {
     std::vector<Symbol> result;
     if (!type)
@@ -110,6 +121,11 @@ std::vector<Symbol> Sema::getMembersOf(const TypeRef &type) const {
 // getRuntimeMembers
 // ---------------------------------------------------------------------------
 
+/// @brief Return the methods and properties of a runtime class, for completion.
+/// @param className Qualified runtime class name (e.g. `Viper.GUI.Canvas`).
+/// @return Member symbols (methods as functions, properties as fields); empty if unknown.
+/// @details Looks the class up in the RuntimeRegistry catalog and converts each method's
+///          parsed signature and each property's IL type token into Zia type references.
 std::vector<Symbol> Sema::getRuntimeMembers(const std::string &className) const {
     std::vector<Symbol> result;
     const auto &catalog = il::runtime::RuntimeRegistry::instance().rawCatalog();
@@ -172,6 +188,7 @@ std::vector<Symbol> Sema::getRuntimeMembers(const std::string &className) const 
 // getTypeNames
 // ---------------------------------------------------------------------------
 
+/// @brief Return the names of all declared classes, structs, and interfaces.
 std::vector<std::string> Sema::getTypeNames() const {
     std::vector<std::string> names;
     names.reserve(classDecls_.size() + structDecls_.size() + interfaceDecls_.size());
@@ -190,6 +207,8 @@ std::vector<std::string> Sema::getTypeNames() const {
 // getBoundModuleNames
 // ---------------------------------------------------------------------------
 
+/// @brief Return the short aliases introduced by `bind Namespace as Alias;`.
+/// @return The alias identifiers users can type before `.` (keys of @c aliasToNamespace_).
 std::vector<std::string> Sema::getBoundModuleNames() const {
     std::vector<std::string> names;
     // aliasToNamespace_ maps short alias → full namespace path.
@@ -205,6 +224,9 @@ std::vector<std::string> Sema::getBoundModuleNames() const {
 // getModuleExports
 // ---------------------------------------------------------------------------
 
+/// @brief Return the exported symbols of a bound file module.
+/// @param moduleName Name of the bound module.
+/// @return Its exported symbols, or empty if the module is unknown.
 std::vector<Symbol> Sema::getModuleExports(const std::string &moduleName) const {
     std::vector<Symbol> result;
     auto it = moduleExports_.find(moduleName);
@@ -219,9 +241,25 @@ std::vector<Symbol> Sema::getModuleExports(const std::string &moduleName) const 
 }
 
 // ---------------------------------------------------------------------------
+// getBoundFileModuleNames
+// ---------------------------------------------------------------------------
+
+/// @brief Return the file-module root names usable as a `Module.` completion prefix.
+std::vector<std::string> Sema::getBoundFileModuleNames() const {
+    std::vector<std::string> names;
+    names.reserve(moduleExports_.size());
+    for (const auto &[moduleName, _] : moduleExports_)
+        names.push_back(moduleName);
+    return names;
+}
+
+// ---------------------------------------------------------------------------
 // resolveModuleAlias
 // ---------------------------------------------------------------------------
 
+/// @brief Resolve a bound alias to its full namespace path.
+/// @param alias The short alias (e.g. from `bind Viper.GUI as G;`).
+/// @return The full namespace path, or an empty string if the alias is unknown.
 std::string Sema::resolveModuleAlias(const std::string &alias) const {
     auto it = aliasToNamespace_.find(alias);
     if (it == aliasToNamespace_.end())
@@ -233,6 +271,11 @@ std::string Sema::resolveModuleAlias(const std::string &alias) const {
 // getNamespaceClasses
 // ---------------------------------------------------------------------------
 
+/// @brief Return the immediate child class/sub-namespace names under a namespace prefix.
+/// @param nsPrefix Namespace prefix (e.g. `Viper.GUI`).
+/// @return Distinct immediate children (e.g. `Canvas`, `App`), for `Namespace.` completion.
+/// @details Scans the runtime catalog for qualified names beginning with `nsPrefix.` and
+///          extracts the first identifier after the prefix, de-duplicating results.
 std::vector<std::string> Sema::getNamespaceClasses(const std::string &nsPrefix) const {
     std::vector<std::string> result;
     const std::string nsWithDot = nsPrefix + ".";

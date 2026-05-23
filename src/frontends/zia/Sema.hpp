@@ -1533,6 +1533,10 @@ class Sema {
     /// @return All exported symbols from the module, or empty if not found.
     std::vector<Symbol> getModuleExports(const std::string &moduleName) const;
 
+    /// @brief Get names of all file modules bound into the current source.
+    /// @return Module names that can be used as `ModuleName.` completion roots.
+    std::vector<std::string> getBoundFileModuleNames() const;
+
     /// @brief Resolve a bound alias to its full namespace path.
     /// @param alias Short alias name (e.g., "Math" from `bind Viper.Math as Math;`).
     /// @return Full namespace string (e.g., "Viper.Math"), or empty if not found.

@@ -306,6 +306,34 @@ func compute() -> Number {    var r = Math.Sq
     EXPECT_FALSE(items.empty());
 }
 
+TEST(CompletionEngine, BoundFileModuleNameAndExports) {
+    const fs::path tempRoot = fs::temp_directory_path() / "zia_completion_bound_file_modules";
+    fs::remove_all(tempRoot);
+
+    writeFile(tempRoot / "dep.zia", R"(module Dep;
+expose func exportedThing() -> Integer { return 1; }
+func hiddenThing() -> Integer { return 0; }
+)");
+
+    const std::string source = R"(module Main;
+bind "./dep";
+
+func main() {
+    var value = Dep.exportedThing();
+}
+)";
+
+    CompletionEngine engine;
+    auto [moduleLine, moduleCol] = lineColAfter(source, "var value = De");
+    auto modules = engine.complete(source, moduleLine, moduleCol, (tempRoot / "main.zia").string(), 0);
+    EXPECT_TRUE(hasKind(modules, "Dep", CompletionKind::Module));
+
+    auto [memberLine, memberCol] = lineColAfter(source, "Dep.exp");
+    auto members = engine.complete(source, memberLine, memberCol, (tempRoot / "main.zia").string(), 0);
+    EXPECT_TRUE(hasKind(members, "exportedThing", CompletionKind::Function));
+    EXPECT_FALSE(hasLabel(members, "hiddenThing"));
+}
+
 TEST(CompletionEngine, SignatureHelp_UserMethod) {
     const std::string source = R"(
 module Test;

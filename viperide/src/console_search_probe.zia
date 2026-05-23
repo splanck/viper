@@ -3,8 +3,10 @@ module console_search_probe;
 bind "ui/app_shell";
 bind "commands/search_commands";
 bind "core/document_manager";
+bind "core/project_manager";
 bind "services/locations";
 
+bind GUI = Viper.GUI;
 bind Terminal = Viper.Terminal;
 bind File = Viper.IO.File;
 bind Path = Viper.IO.Path;
@@ -62,6 +64,34 @@ func main() {
         return;
     }
 
+    shell.SetBuildOutput("error one\nwarning two\ninfo three\n");
+    shell.SetOutputFilter("warning");
+    if shell.outputListBox.Count != 1 {
+        fail(shell, "output filter rows");
+        return;
+    }
+    shell.SetOutputFilter("");
+    if shell.outputListBox.Count != 3 {
+        fail(shell, "output filter clear");
+        return;
+    }
+    shell.SetBuildOutput("abcdefghijklmnopqrstuvwxyzabcdefghijklmnopqrstuvwxyzabcdefghijklmnopqrstuvwxyzabcdefghijklmnopqrstuvwxyzabcdefghijklmnopqrstuvwxyzabcdefghijklmnopqrstuvwxyzabcdefghijklmnopqrstuvwxyzabcdefghijklmnopqrstuvwxyz\n");
+    shell.ToggleOutputWrap();
+    if shell.outputListBox.Count < 2 {
+        fail(shell, "output wrap rows");
+        return;
+    }
+    shell.outputListBox.SelectIndex(0);
+    if shell.CopySelectedToolRow() == false or GUI.Clipboard.GetText() == "" {
+        fail(shell, "copy output row");
+        return;
+    }
+    shell.ClearOutputPanel();
+    if shell.outputListBox.Count != 0 {
+        fail(shell, "clear output helper");
+        return;
+    }
+
     if search_commands.LineMatches("Alpha beta", "alpha", false, false) == false {
         fail(shell, "case-insensitive search");
         return;
@@ -112,6 +142,37 @@ func main() {
     }
     if searcher.resultCount != 40 {
         fail(shell, "cooperative search final count");
+        return;
+    }
+    if shell.searchListBox.Count != 80 or shell.searchListBox.IsVisible() == 0 {
+        fail(shell, "search panel rows");
+        return;
+    }
+
+    var projMgr = new project_manager.ProjectManager();
+    projMgr.Setup(shell.sidebarTree);
+    projMgr.OpenFolder(root);
+    var cachedSearcher = new search_commands.SearchController();
+    if cachedSearcher.StartCachedDirect(shell, projMgr, root, "needle", ".zia", false, false) == false {
+        fail(shell, "start cached search");
+        return;
+    }
+    while cachedSearcher.active {
+        cachedSearcher.Pump(shell, docMgr, locStore);
+    }
+    if cachedSearcher.resultCount != 40 {
+        fail(shell, "cached search final count");
+        return;
+    }
+    shell.SetDebugOutput("debug one\ndebug two\n");
+    if shell.debugListBox.Count != 2 or shell.debugListBox.IsVisible() == 0 {
+        fail(shell, "debug console rows");
+        return;
+    }
+    shell.referencesListBox.AddItem("main.zia");
+    shell.ShowReferencesPanel();
+    if shell.referencesListBox.IsVisible() == 0 or shell.toolTabBar.GetActiveIndex() != 3 {
+        fail(shell, "references panel rows");
         return;
     }
 

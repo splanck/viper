@@ -64,6 +64,10 @@
 // uncomfortably fast scroll. Half-line per delta unit feels closer to the
 // platform-native cadence of Safari, VS Code, and Sublime.
 #define CODEEDITOR_MOUSE_WHEEL_LINES 0.3f
+// Prevent malicious or accidental all-document highlight spans from allocating
+// unbounded line-index storage. Normal diagnostics/find highlights are far below
+// this because they usually touch one source line each.
+#define CODEEDITOR_HIGHLIGHT_LINE_INDEX_MAX_ENTRIES 2000000
 
 //=============================================================================
 // Forward Declarations
@@ -75,6 +79,12 @@ static void codeeditor_paint(vg_widget_t *widget, void *canvas);
 static bool codeeditor_handle_event(vg_widget_t *widget, vg_event_t *event);
 static bool codeeditor_can_focus(vg_widget_t *widget);
 static void codeeditor_on_focus(vg_widget_t *widget, bool gained);
+static void codeeditor_draw_highlight_underline(void *canvas,
+                                                float x,
+                                                float y,
+                                                float width,
+                                                float line_height,
+                                                uint32_t color);
 
 static bool ensure_line_capacity(vg_codeeditor_t *editor, int needed);
 static bool ensure_text_capacity(vg_code_line_t *line, size_t needed);
@@ -93,14 +103,28 @@ static void codeeditor_perf_add(uint64_t *counter, uint64_t amount) {
     }
 }
 
-static bool codeeditor_has_hidden_lines(const vg_codeeditor_t *editor) {
-    if (!editor || editor->fold_region_count <= 0)
-        return false;
+static void codeeditor_bump_layout_generation(vg_codeeditor_t *editor) {
+    if (!editor)
+        return;
+    editor->layout_generation =
+        editor->layout_generation == UINT64_MAX ? 1 : editor->layout_generation + 1;
+    editor->layout_cache_valid = false;
+}
+
+static void codeeditor_refresh_fold_summary(vg_codeeditor_t *editor) {
+    if (!editor)
+        return;
+    editor->has_folded_lines = false;
     for (int i = 0; i < editor->fold_region_count; i++) {
-        if (editor->fold_regions[i].folded)
-            return true;
+        if (editor->fold_regions[i].folded) {
+            editor->has_folded_lines = true;
+            return;
+        }
     }
-    return false;
+}
+
+static bool codeeditor_has_hidden_lines(const vg_codeeditor_t *editor) {
+    return editor ? editor->has_folded_lines : false;
 }
 
 static int codeeditor_clamp_line_index(const vg_codeeditor_t *editor, int line) {
@@ -225,11 +249,32 @@ static int highlight_span_compare(const void *lhs, const void *rhs) {
     return 0;
 }
 
+static void codeeditor_invalidate_highlight_line_index(vg_codeeditor_t *editor) {
+    if (!editor)
+        return;
+    editor->highlight_line_index_valid = false;
+}
+
+static void codeeditor_free_highlight_line_index(vg_codeeditor_t *editor) {
+    if (!editor)
+        return;
+    free(editor->highlight_line_offsets);
+    free(editor->highlight_line_span_indices);
+    editor->highlight_line_offsets = NULL;
+    editor->highlight_line_span_indices = NULL;
+    editor->highlight_line_offsets_cap = 0;
+    editor->highlight_line_span_indices_cap = 0;
+    editor->highlight_line_index_line_count = 0;
+    editor->highlight_line_index_span_count = 0;
+    editor->highlight_line_index_valid = false;
+}
+
 static void codeeditor_sort_highlight_spans(vg_codeeditor_t *editor) {
     if (!editor || editor->highlight_spans_sorted)
         return;
     if (editor->highlight_span_count <= 1) {
         editor->highlight_spans_sorted = true;
+        codeeditor_invalidate_highlight_line_index(editor);
         return;
     }
     qsort(editor->highlight_spans,
@@ -237,6 +282,176 @@ static void codeeditor_sort_highlight_spans(vg_codeeditor_t *editor) {
           sizeof(*editor->highlight_spans),
           highlight_span_compare);
     editor->highlight_spans_sorted = true;
+    codeeditor_invalidate_highlight_line_index(editor);
+}
+
+static bool codeeditor_highlight_line_range_for_span(const vg_codeeditor_t *editor,
+                                                     const struct vg_highlight_span *span,
+                                                     int *out_start,
+                                                     int *out_end) {
+    if (!editor || !span || editor->line_count <= 0)
+        return false;
+
+    int start = span->start_line;
+    int end = span->end_line;
+    if (end < 0 || start >= editor->line_count)
+        return false;
+    if (start < 0)
+        start = 0;
+    if (end >= editor->line_count)
+        end = editor->line_count - 1;
+    if (end < start)
+        return false;
+
+    if (out_start)
+        *out_start = start;
+    if (out_end)
+        *out_end = end;
+    return true;
+}
+
+static bool codeeditor_ensure_highlight_line_index(vg_codeeditor_t *editor) {
+    if (!editor)
+        return false;
+
+    codeeditor_sort_highlight_spans(editor);
+
+    if (editor->highlight_line_index_valid &&
+        editor->highlight_line_index_line_count == editor->line_count &&
+        editor->highlight_line_index_span_count == editor->highlight_span_count)
+        return true;
+
+    editor->highlight_line_index_valid = false;
+    editor->highlight_line_index_line_count = 0;
+    editor->highlight_line_index_span_count = 0;
+
+    if (editor->line_count < 0)
+        return false;
+    int offset_count = editor->line_count + 1;
+    if (offset_count <= 0)
+        return false;
+
+    if (offset_count > editor->highlight_line_offsets_cap) {
+        if ((size_t)offset_count > SIZE_MAX / sizeof(int))
+            return false;
+        int *offsets =
+            (int *)realloc(editor->highlight_line_offsets, (size_t)offset_count * sizeof(int));
+        if (!offsets)
+            return false;
+        editor->highlight_line_offsets = offsets;
+        editor->highlight_line_offsets_cap = offset_count;
+    }
+
+    memset(editor->highlight_line_offsets, 0, (size_t)offset_count * sizeof(int));
+
+    size_t total_entries = 0;
+    for (int s = 0; s < editor->highlight_span_count; s++) {
+        int start = 0;
+        int end = 0;
+        if (!codeeditor_highlight_line_range_for_span(editor, &editor->highlight_spans[s], &start, &end))
+            continue;
+        size_t coverage = (size_t)(end - start + 1);
+        if (coverage > CODEEDITOR_HIGHLIGHT_LINE_INDEX_MAX_ENTRIES - total_entries)
+            return false;
+        total_entries += coverage;
+        for (int line = start; line <= end; line++)
+            editor->highlight_line_offsets[line + 1]++;
+    }
+
+    for (int line = 1; line < offset_count; line++)
+        editor->highlight_line_offsets[line] += editor->highlight_line_offsets[line - 1];
+
+    if ((int)total_entries > editor->highlight_line_span_indices_cap) {
+        if (total_entries > SIZE_MAX / sizeof(int))
+            return false;
+        int *indices =
+            (int *)realloc(editor->highlight_line_span_indices, total_entries * sizeof(int));
+        if (!indices && total_entries > 0)
+            return false;
+        editor->highlight_line_span_indices = indices;
+        editor->highlight_line_span_indices_cap = (int)total_entries;
+    }
+
+    int *write_offsets = NULL;
+    if (offset_count > 0) {
+        if ((size_t)offset_count > SIZE_MAX / sizeof(int))
+            return false;
+        write_offsets = (int *)malloc((size_t)offset_count * sizeof(int));
+        if (!write_offsets)
+            return false;
+        memcpy(write_offsets, editor->highlight_line_offsets, (size_t)offset_count * sizeof(int));
+    }
+
+    for (int s = 0; s < editor->highlight_span_count; s++) {
+        int start = 0;
+        int end = 0;
+        if (!codeeditor_highlight_line_range_for_span(editor, &editor->highlight_spans[s], &start, &end))
+            continue;
+        for (int line = start; line <= end; line++)
+            editor->highlight_line_span_indices[write_offsets[line]++] = s;
+    }
+
+    free(write_offsets);
+    editor->highlight_line_index_line_count = editor->line_count;
+    editor->highlight_line_index_span_count = editor->highlight_span_count;
+    editor->highlight_line_index_valid = true;
+    return true;
+}
+
+static void codeeditor_paint_highlights_for_line(vg_codeeditor_t *editor,
+                                                 void *canvas,
+                                                 int line,
+                                                 int segment_start,
+                                                 int segment_len,
+                                                 float content_x,
+                                                 float row_y,
+                                                 float scroll_x,
+                                                 bool wrapped) {
+    if (!editor || line < 0 || line >= editor->line_count || editor->highlight_span_count <= 0)
+        return;
+
+    bool indexed = codeeditor_ensure_highlight_line_index(editor);
+    int begin = 0;
+    int end = editor->highlight_span_count;
+    if (indexed && editor->highlight_line_offsets && line + 1 <= editor->highlight_line_index_line_count) {
+        begin = editor->highlight_line_offsets[line];
+        end = editor->highlight_line_offsets[line + 1];
+    }
+
+    size_t line_len = editor->lines[line].length;
+    for (int entry = begin; entry < end; entry++) {
+        codeeditor_perf_add(&editor->perf_stats.highlight_span_checks, 1);
+        int span_index = indexed ? editor->highlight_line_span_indices[entry] : entry;
+        struct vg_highlight_span *span = &editor->highlight_spans[span_index];
+        if (!indexed) {
+            if (span->start_line > line)
+                break;
+            if (line < span->start_line || line > span->end_line)
+                continue;
+        }
+
+        int span_start = (line == span->start_line) ? span->start_col : 0;
+        int span_end = (line == span->end_line) ? span->end_col : (int)line_len;
+        if (span_end <= span_start)
+            span_end = span_start + 1;
+
+        if (!wrapped) {
+            float span_x = content_x + (float)span_start * editor->char_width - scroll_x;
+            float span_w = (float)(span_end - span_start) * editor->char_width;
+            codeeditor_draw_highlight_underline(
+                canvas, span_x, row_y, span_w, editor->line_height, span->color);
+            continue;
+        }
+
+        int overlap_start = span_start > segment_start ? span_start : segment_start;
+        int overlap_end = span_end < segment_start + segment_len ? span_end : segment_start + segment_len;
+        if (overlap_end <= overlap_start)
+            continue;
+        float span_x = content_x + (float)(overlap_start - segment_start) * editor->char_width;
+        float span_w = (float)(overlap_end - overlap_start) * editor->char_width;
+        codeeditor_draw_highlight_underline(
+            canvas, span_x, row_y, span_w, editor->line_height, span->color);
+    }
 }
 
 /// @brief Grows @p line->text to hold at least @p needed bytes, doubling from INITIAL_TEXT_CAPACITY.
@@ -462,6 +677,7 @@ static void codeeditor_clear_highlight_spans(vg_codeeditor_t *editor) {
     editor->highlight_span_count = 0;
     editor->highlight_span_cap = 0;
     editor->highlight_spans_sorted = true;
+    codeeditor_free_highlight_line_index(editor);
 }
 
 /// @brief Ensures the colors buffer for @p line_idx is sized, then invokes the syntax highlighter callback.
@@ -668,22 +884,46 @@ static int codeeditor_visible_anchor_line(const vg_codeeditor_t *editor, int lin
 static int codeeditor_next_visible_line(const vg_codeeditor_t *editor, int line) {
     if (!editor || editor->line_count <= 0)
         return -1;
-    for (int next = line + 1; next < editor->line_count; next++) {
-        if (!codeeditor_line_is_hidden(editor, next))
-            return next;
+
+    int next = line + 1;
+    bool changed = true;
+    while (changed && next < editor->line_count) {
+        changed = false;
+        for (int i = 0; i < editor->fold_region_count; i++) {
+            const struct vg_fold_region *region = &editor->fold_regions[i];
+            if (!region->folded)
+                continue;
+            if (line == region->start_line && next <= region->end_line) {
+                next = region->end_line + 1;
+                changed = true;
+            } else if (next > region->start_line && next <= region->end_line) {
+                next = region->end_line + 1;
+                changed = true;
+            }
+        }
     }
-    return editor->line_count;
+    return next < editor->line_count ? next : editor->line_count;
 }
 
 /// @brief Returns the index of the previous visible line before @p line, or -1 if none exists.
 VG_UNUSED static int codeeditor_prev_visible_line(const vg_codeeditor_t *editor, int line) {
     if (!editor || editor->line_count <= 0)
         return -1;
-    for (int prev = line - 1; prev >= 0; prev--) {
-        if (!codeeditor_line_is_hidden(editor, prev))
-            return prev;
+    int prev = line - 1;
+    bool changed = true;
+    while (changed && prev >= 0) {
+        changed = false;
+        for (int i = 0; i < editor->fold_region_count; i++) {
+            const struct vg_fold_region *region = &editor->fold_regions[i];
+            if (!region->folded)
+                continue;
+            if (prev > region->start_line && prev <= region->end_line) {
+                prev = region->start_line;
+                changed = true;
+            }
+        }
     }
-    return -1;
+    return prev >= 0 ? prev : -1;
 }
 
 /// @brief Recomputes editor->gutter_width as the sum of the line-number and fold-gutter widths.
@@ -732,6 +972,74 @@ static int codeeditor_visual_rows_for_line(const vg_codeeditor_t *editor,
     return codeeditor_wrapped_rows_for_line(editor, line, content_width);
 }
 
+static bool codeeditor_layout_cache_ensure(const vg_codeeditor_t *editor, float content_width) {
+    if (!editor)
+        return false;
+
+    vg_codeeditor_t *mutable_editor = (vg_codeeditor_t *)editor;
+    if (mutable_editor->layout_cache_valid &&
+        mutable_editor->layout_cache_generation == mutable_editor->layout_generation &&
+        mutable_editor->layout_cache_content_width == content_width &&
+        mutable_editor->layout_cache_word_wrap == mutable_editor->word_wrap &&
+        mutable_editor->layout_cache_line_count == mutable_editor->line_count)
+        return true;
+
+    int needed = mutable_editor->line_count + 1;
+    if (needed < 1)
+        needed = 1;
+    if (mutable_editor->layout_cache_capacity < needed) {
+        int *rows = realloc(mutable_editor->layout_cache_prefix_rows, (size_t)needed * sizeof(int));
+        if (!rows)
+            return false;
+        mutable_editor->layout_cache_prefix_rows = rows;
+        mutable_editor->layout_cache_capacity = needed;
+    }
+
+    int total_rows = 0;
+    mutable_editor->layout_cache_prefix_rows[0] = 0;
+    for (int i = 0; i < mutable_editor->line_count; i++) {
+        int line_rows = codeeditor_visual_rows_for_line(mutable_editor, i, content_width);
+        if (line_rows < 0)
+            line_rows = 0;
+        if (line_rows > INT_MAX - total_rows)
+            total_rows = INT_MAX;
+        else
+            total_rows += line_rows;
+        mutable_editor->layout_cache_prefix_rows[i + 1] = total_rows;
+    }
+
+    mutable_editor->layout_cache_valid = true;
+    mutable_editor->layout_cache_generation = mutable_editor->layout_generation;
+    mutable_editor->layout_cache_content_width = content_width;
+    mutable_editor->layout_cache_word_wrap = mutable_editor->word_wrap;
+    mutable_editor->layout_cache_line_count = mutable_editor->line_count;
+    mutable_editor->layout_cache_total_visual_rows = total_rows;
+    mutable_editor->layout_cache_total_height = (float)total_rows * mutable_editor->line_height;
+    return true;
+}
+
+static int codeeditor_cached_row_count_for_line(const vg_codeeditor_t *editor,
+                                                float content_width,
+                                                int line) {
+    if (!editor || line < 0 || line >= editor->line_count)
+        return 0;
+    if (!codeeditor_layout_cache_ensure(editor, content_width))
+        return codeeditor_visual_rows_for_line(editor, line, content_width);
+    return editor->layout_cache_prefix_rows[line + 1] - editor->layout_cache_prefix_rows[line];
+}
+
+static int codeeditor_last_visible_line_from_cache(const vg_codeeditor_t *editor, float content_width) {
+    if (!editor || editor->line_count <= 0)
+        return 0;
+    if (!codeeditor_layout_cache_ensure(editor, content_width))
+        return codeeditor_visible_anchor_line(editor, editor->line_count - 1);
+    for (int line = editor->line_count - 1; line >= 0; line--) {
+        if (editor->layout_cache_prefix_rows[line + 1] > editor->layout_cache_prefix_rows[line])
+            return line;
+    }
+    return 0;
+}
+
 /// @brief Returns the total document height in pixels for the given @p content_width (sums all visual rows).
 static float codeeditor_total_content_height_for_width(const vg_codeeditor_t *editor,
                                                        float content_width) {
@@ -741,6 +1049,9 @@ static float codeeditor_total_content_height_for_width(const vg_codeeditor_t *ed
     if (!editor->word_wrap && !codeeditor_has_hidden_lines(editor))
         return (float)editor->line_count * editor->line_height;
 
+    if (codeeditor_layout_cache_ensure(editor, content_width))
+        return editor->layout_cache_total_height;
+
     float total_rows = 0.0f;
     for (int i = 0; i < editor->line_count; i++) {
         codeeditor_perf_add(&((vg_codeeditor_t *)editor)->perf_stats.total_height_linear_scans, 1);
@@ -749,7 +1060,7 @@ static float codeeditor_total_content_height_for_width(const vg_codeeditor_t *ed
     return total_rows * editor->line_height;
 }
 
-/// @brief Computes the drawable content width, iterating up to 3 passes to account for vertical scrollbar visibility.
+/// @brief Computes the drawable content width without triggering document-height scans.
 static float codeeditor_content_draw_width(const vg_codeeditor_t *editor, const vg_widget_t *widget) {
     if (!editor || !widget)
         return 0.0f;
@@ -760,18 +1071,10 @@ static float codeeditor_content_draw_width(const vg_codeeditor_t *editor, const 
     if (!editor->word_wrap)
         return base_width;
 
-    float content_width = base_width;
-    for (int pass = 0; pass < 3; pass++) {
-        float total_height = codeeditor_total_content_height_for_width(editor, content_width);
-        float next_width =
-            base_width - ((total_height > widget->height) ? CODEEDITOR_SCROLLBAR_WIDTH : 0.0f);
-        if (next_width < 0.0f)
-            next_width = 0.0f;
-        if (next_width == content_width)
-            break;
-        content_width = next_width;
-    }
-    return content_width;
+    float minimum_height = (float)editor->line_count * editor->line_height;
+    float content_width =
+        base_width - ((minimum_height > widget->height) ? CODEEDITOR_SCROLLBAR_WIDTH : 0.0f);
+    return content_width > 0.0f ? content_width : 0.0f;
 }
 
 /// @brief Returns total document height using the resolved content draw width for the given widget bounds.
@@ -786,6 +1089,9 @@ static int codeeditor_total_visual_rows_for_width(const vg_codeeditor_t *editor,
 
     if (!editor->word_wrap && !codeeditor_has_hidden_lines(editor))
         return editor->line_count;
+
+    if (codeeditor_layout_cache_ensure(editor, content_width))
+        return editor->layout_cache_total_visual_rows;
 
     int total_rows = 0;
     for (int i = 0; i < editor->line_count; i++) {
@@ -864,6 +1170,13 @@ static int codeeditor_visual_row_for_position(const vg_codeeditor_t *editor,
         line = editor->line_count - 1;
     line = codeeditor_visible_anchor_line(editor, line);
 
+    if (codeeditor_layout_cache_ensure(editor, content_width)) {
+        int visual_row = editor->layout_cache_prefix_rows[line];
+        int wrapped_row = 0;
+        codeeditor_visual_offset_for_position(editor, content_width, line, col, &wrapped_row, NULL);
+        return visual_row + wrapped_row;
+    }
+
     int visual_row = 0;
     for (int i = 0; i < line; i++) {
         codeeditor_perf_add(&((vg_codeeditor_t *)editor)->perf_stats.visual_row_linear_scans, 1);
@@ -900,6 +1213,41 @@ static void codeeditor_locate_visual_row(const vg_codeeditor_t *editor,
         return;
     }
 
+    if (codeeditor_layout_cache_ensure(editor, content_width)) {
+        int total_rows = editor->layout_cache_total_visual_rows;
+        if (total_rows <= 0) {
+            if (out_line)
+                *out_line = 0;
+            if (out_row_in_line)
+                *out_row_in_line = 0;
+            return;
+        }
+        if (visual_row >= total_rows)
+            visual_row = total_rows - 1;
+
+        int lo = 0;
+        int hi = editor->line_count - 1;
+        int found = codeeditor_last_visible_line_from_cache(editor, content_width);
+        while (lo <= hi) {
+            int mid = lo + (hi - lo) / 2;
+            int start = editor->layout_cache_prefix_rows[mid];
+            int end = editor->layout_cache_prefix_rows[mid + 1];
+            if (visual_row < start) {
+                hi = mid - 1;
+            } else if (visual_row >= end || end == start) {
+                lo = mid + 1;
+            } else {
+                found = mid;
+                break;
+            }
+        }
+        if (out_line)
+            *out_line = found;
+        if (out_row_in_line)
+            *out_row_in_line = visual_row - editor->layout_cache_prefix_rows[found];
+        return;
+    }
+
     int accumulated = 0;
     for (int line = 0; line < editor->line_count; line++) {
         codeeditor_perf_add(&((vg_codeeditor_t *)editor)->perf_stats.locate_visual_row_linear_scans, 1);
@@ -917,10 +1265,10 @@ static void codeeditor_locate_visual_row(const vg_codeeditor_t *editor,
     }
 
     if (out_line)
-        *out_line = codeeditor_visible_anchor_line(editor, editor->line_count - 1);
+        *out_line = codeeditor_last_visible_line_from_cache(editor, content_width);
     if (out_row_in_line) {
         int last_rows = codeeditor_visual_rows_for_line(
-            editor, codeeditor_visible_anchor_line(editor, editor->line_count - 1), content_width);
+            editor, codeeditor_last_visible_line_from_cache(editor, content_width), content_width);
         *out_row_in_line = last_rows > 0 ? last_rows - 1 : 0;
     }
 }
@@ -1129,6 +1477,8 @@ static void ensure_cursor_visible(vg_codeeditor_t *editor) {
 void vg_codeeditor_refresh_layout_state(vg_codeeditor_t *editor) {
     if (!editor)
         return;
+    codeeditor_bump_layout_generation(editor);
+    codeeditor_refresh_fold_summary(editor);
     update_gutter_width(editor);
     codeeditor_adjust_hidden_cursors(editor);
     codeeditor_clamp_scroll(editor, &editor->base);
@@ -1275,6 +1625,19 @@ static void edit_history_end_group(vg_edit_history_t *history) {
         return;
     history->is_grouping = false;
     history->current_group = 0;
+}
+
+/// @brief Rewrite the cursor-after position of the latest undo operation.
+/// @details Used by paired-character insertion: the edit still owns the full
+///          inserted range, but redo should leave the cursor between the pair.
+static void edit_history_update_latest_cursor_after(vg_edit_history_t *history, int line, int col) {
+    if (!history || history->current_index == 0 || history->current_index != history->count)
+        return;
+    vg_edit_op_t *op = history->operations[history->current_index - 1];
+    if (!op || op->group_id != 0)
+        return;
+    op->cursor_line_after = line;
+    op->cursor_col_after = col;
 }
 
 /// @brief Allocates a new vg_edit_op_t, strdup'ing old_text and new_text, with group_id initialised to 0.
@@ -1864,7 +2227,25 @@ vg_codeeditor_t *vg_codeeditor_create(vg_widget_t *parent) {
     editor->modified = false;
     editor->revision = 1;
     editor->highlight_generation = 1;
+    editor->layout_generation = 1;
+    editor->has_folded_lines = false;
+    editor->layout_cache_valid = false;
+    editor->layout_cache_generation = 0;
+    editor->layout_cache_content_width = 0.0f;
+    editor->layout_cache_word_wrap = false;
+    editor->layout_cache_line_count = 0;
+    editor->layout_cache_total_visual_rows = 0;
+    editor->layout_cache_total_height = 0.0f;
+    editor->layout_cache_prefix_rows = NULL;
+    editor->layout_cache_capacity = 0;
     editor->highlight_spans_sorted = true;
+    editor->highlight_line_index_valid = false;
+    editor->highlight_line_index_line_count = 0;
+    editor->highlight_line_index_span_count = 0;
+    editor->highlight_line_offsets = NULL;
+    editor->highlight_line_offsets_cap = 0;
+    editor->highlight_line_span_indices = NULL;
+    editor->highlight_line_span_indices_cap = 0;
 
     // Create undo/redo history
     editor->history = edit_history_create();
@@ -1920,6 +2301,12 @@ static void codeeditor_destroy(vg_widget_t *widget) {
     editor->fold_regions = NULL;
     editor->fold_region_count = 0;
     editor->fold_region_cap = 0;
+    editor->has_folded_lines = false;
+
+    free(editor->layout_cache_prefix_rows);
+    editor->layout_cache_prefix_rows = NULL;
+    editor->layout_cache_capacity = 0;
+    editor->layout_cache_valid = false;
 
     free(editor->extra_cursors);
     editor->extra_cursors = NULL;
@@ -2152,22 +2539,8 @@ static void codeeditor_paint(vg_widget_t *widget, void *canvas) {
                                editor->current_line_bg);
             }
 
-            for (int s = 0; s < editor->highlight_span_count; s++) {
-                codeeditor_perf_add(&editor->perf_stats.highlight_span_checks, 1);
-                struct vg_highlight_span *span = &editor->highlight_spans[s];
-                if (span->start_line > i)
-                    break;
-                if (i < span->start_line || i > span->end_line)
-                    continue;
-                int col_start = (i == span->start_line) ? span->start_col : 0;
-                int col_end = (i == span->end_line) ? span->end_col : (int)editor->lines[i].length;
-                if (col_end <= col_start)
-                    col_end = col_start + 1;
-                float span_x = content_x + col_start * editor->char_width - editor->scroll_x;
-                float span_w = (col_end - col_start) * editor->char_width;
-                codeeditor_draw_highlight_underline(
-                    canvas, span_x, line_y, span_w, editor->line_height, span->color);
-            }
+            codeeditor_paint_highlights_for_line(
+                editor, canvas, i, 0, (int)editor->lines[i].length, content_x, line_y, editor->scroll_x, false);
 
             if (editor->has_selection && (widget->state & VG_STATE_FOCUSED)) {
                 int sel_start_line = editor->selection.start_line;
@@ -2292,7 +2665,7 @@ static void codeeditor_paint(vg_widget_t *widget, void *canvas) {
         while (line < editor->line_count && row_y < widget->y + widget->height) {
             if (line >= 0 && line < editor->line_count) {
                 size_t line_len = editor->lines[line].length;
-                int row_count = codeeditor_visual_rows_for_line(editor, line, content_width);
+                int row_count = codeeditor_cached_row_count_for_line(editor, content_width, line);
                 if (row_count == 0) {
                     line = codeeditor_next_visible_line(editor, line);
                     row_in_line = 0;
@@ -2314,27 +2687,8 @@ static void codeeditor_paint(vg_widget_t *widget, void *canvas) {
                                    editor->current_line_bg);
                 }
 
-                for (int s = 0; s < editor->highlight_span_count; s++) {
-                    codeeditor_perf_add(&editor->perf_stats.highlight_span_checks, 1);
-                    struct vg_highlight_span *span = &editor->highlight_spans[s];
-                    if (span->start_line > line)
-                        break;
-                    if (line < span->start_line || line > span->end_line)
-                        continue;
-                    int span_start = (line == span->start_line) ? span->start_col : 0;
-                    int span_end = (line == span->end_line) ? span->end_col : (int)line_len;
-                    if (span_end <= span_start)
-                        span_end = span_start + 1;
-                    int overlap_start = span_start > seg_start ? span_start : seg_start;
-                    int overlap_end = span_end < seg_start + seg_len ? span_end : seg_start + seg_len;
-                    if (overlap_end <= overlap_start)
-                        continue;
-                    float span_x =
-                        content_x + (float)(overlap_start - seg_start) * editor->char_width;
-                    float span_w = (float)(overlap_end - overlap_start) * editor->char_width;
-                    codeeditor_draw_highlight_underline(
-                        canvas, span_x, row_y, span_w, editor->line_height, span->color);
-                }
+                codeeditor_paint_highlights_for_line(
+                    editor, canvas, line, seg_start, seg_len, content_x, row_y, 0.0f, true);
 
                 if (editor->has_selection && (widget->state & VG_STATE_FOCUSED)) {
                     int sel_start_line = editor->selection.start_line;
@@ -2565,7 +2919,7 @@ static void codeeditor_paint(vg_widget_t *widget, void *canvas) {
             codeeditor_locate_visual_row(editor, content_width, first_visual_row, &line, &row_in_line);
             float row_y = widget->y - row_offset;
             while (line < editor->line_count && row_y < widget->y + widget->height) {
-                int row_count = codeeditor_visual_rows_for_line(editor, line, content_width);
+                int row_count = codeeditor_cached_row_count_for_line(editor, content_width, line);
                 if (row_count == 0) {
                     line = codeeditor_next_visible_line(editor, line);
                     row_in_line = 0;
@@ -2723,6 +3077,139 @@ static bool codeeditor_codepoint_is_text(uint32_t cp) {
         (cp >= 0xF0000 && cp <= 0xFFFFD) ||
         (cp >= 0x100000 && cp <= 0x10FFFD))
         return false;
+    return true;
+}
+
+static int codeeditor_leading_indent_len(const char *text, size_t len) {
+    int i = 0;
+    while ((size_t)i < len && (text[i] == ' ' || text[i] == '\t'))
+        i++;
+    return i;
+}
+
+static int codeeditor_last_nonspace_before(const char *text, int col) {
+    int i = col - 1;
+    while (i >= 0 && (text[i] == ' ' || text[i] == '\t'))
+        i--;
+    return i;
+}
+
+static bool codeeditor_opener_adds_indent(char ch) {
+    return ch == '{' || ch == '(' || ch == '[';
+}
+
+static void codeeditor_insert_newline_with_indent(vg_codeeditor_t *editor) {
+    if (!editor)
+        return;
+    if (!editor->auto_indent || editor->has_selection || editor->extra_cursor_count > 0 ||
+        editor->cursor_line < 0 || editor->cursor_line >= editor->line_count) {
+        vg_codeeditor_insert_text(editor, "\n");
+        return;
+    }
+
+    vg_code_line_t *line = &editor->lines[editor->cursor_line];
+    int line_len = line->length > (size_t)INT_MAX ? INT_MAX : (int)line->length;
+    int col = editor->cursor_col;
+    if (col < 0)
+        col = 0;
+    if (col > line_len)
+        col = line_len;
+
+    int indent_len = codeeditor_leading_indent_len(line->text, line->length);
+    int extra_indent_len = 0;
+    int last_nonspace = codeeditor_last_nonspace_before(line->text, col);
+    if (last_nonspace >= 0 && codeeditor_opener_adds_indent(line->text[last_nonspace])) {
+        extra_indent_len = editor->use_spaces ? editor->tab_width : 1;
+        if (extra_indent_len < 1)
+            extra_indent_len = 1;
+        if (extra_indent_len > 16)
+            extra_indent_len = 16;
+    }
+
+    size_t insert_len = 1u + (size_t)indent_len + (size_t)extra_indent_len;
+    char *insert = malloc(insert_len + 1u);
+    if (!insert) {
+        vg_codeeditor_insert_text(editor, "\n");
+        return;
+    }
+
+    char *p = insert;
+    *p++ = '\n';
+    if (indent_len > 0) {
+        memcpy(p, line->text, (size_t)indent_len);
+        p += indent_len;
+    }
+    if (extra_indent_len > 0) {
+        if (editor->use_spaces) {
+            memset(p, ' ', (size_t)extra_indent_len);
+            p += extra_indent_len;
+        } else {
+            *p++ = '\t';
+        }
+    }
+    *p = '\0';
+
+    vg_codeeditor_insert_text(editor, insert);
+    free(insert);
+}
+
+static char codeeditor_closing_for_opener(char opener) {
+    switch (opener) {
+        case '(':
+            return ')';
+        case '[':
+            return ']';
+        case '{':
+            return '}';
+        case '"':
+            return '"';
+        case '\'':
+            return '\'';
+        default:
+            return '\0';
+    }
+}
+
+static bool codeeditor_is_pair_closer(char ch) {
+    return ch == ')' || ch == ']' || ch == '}' || ch == '"' || ch == '\'';
+}
+
+static bool codeeditor_try_skip_pair_closer(vg_codeeditor_t *editor, char ch) {
+    if (!editor || editor->has_selection || editor->extra_cursor_count > 0)
+        return false;
+    if (!codeeditor_is_pair_closer(ch))
+        return false;
+    if (editor->cursor_line < 0 || editor->cursor_line >= editor->line_count)
+        return false;
+    vg_code_line_t *line = &editor->lines[editor->cursor_line];
+    if (editor->cursor_col < 0 || editor->cursor_col >= (int)line->length)
+        return false;
+    if (line->text[editor->cursor_col] != ch)
+        return false;
+    editor->cursor_col++;
+    editor->cursor_visible = true;
+    editor->base.needs_paint = true;
+    return true;
+}
+
+static bool codeeditor_try_insert_pair(vg_codeeditor_t *editor, char opener) {
+    if (!editor || editor->has_selection || editor->extra_cursor_count > 0)
+        return false;
+    char closer = codeeditor_closing_for_opener(opener);
+    if (closer == '\0')
+        return false;
+
+    char pair[3] = {opener, closer, '\0'};
+    int line_before = editor->cursor_line;
+    int col_before = editor->cursor_col;
+    vg_codeeditor_insert_text(editor, pair);
+
+    editor->cursor_line = line_before;
+    editor->cursor_col = col_before + 1;
+    edit_history_update_latest_cursor_after(editor->history, editor->cursor_line, editor->cursor_col);
+    ensure_cursor_visible(editor);
+    editor->cursor_visible = true;
+    editor->base.needs_paint = true;
     return true;
 }
 
@@ -3267,10 +3754,25 @@ static bool codeeditor_handle_event(vg_widget_t *widget, vg_event_t *event) {
                     }
                     break;
                 case VG_KEY_HOME:
-                    editor->cursor_col = 0;
+                    if (editor->cursor_line >= 0 && editor->cursor_line < editor->line_count) {
+                        vg_code_line_t *line = &editor->lines[editor->cursor_line];
+                        int first_text_col = codeeditor_leading_indent_len(line->text, line->length);
+                        editor->cursor_col = editor->cursor_col == first_text_col ? 0 : first_text_col;
+                    } else {
+                        editor->cursor_col = 0;
+                    }
                     break;
                 case VG_KEY_END:
-                    editor->cursor_col = (int)editor->lines[editor->cursor_line].length;
+                    if (editor->cursor_line >= 0 && editor->cursor_line < editor->line_count) {
+                        vg_code_line_t *line = &editor->lines[editor->cursor_line];
+                        int end_col = (int)line->length;
+                        int last_text_col = end_col;
+                        while (last_text_col > 0 &&
+                               (line->text[last_text_col - 1] == ' ' ||
+                                line->text[last_text_col - 1] == '\t'))
+                            last_text_col--;
+                        editor->cursor_col = editor->cursor_col == last_text_col ? end_col : last_text_col;
+                    }
                     break;
                 case VG_KEY_PAGE_UP: {
                     int visible_lines = (int)(widget->height / editor->line_height);
@@ -3290,7 +3792,7 @@ static bool codeeditor_handle_event(vg_widget_t *widget, vg_event_t *event) {
                     delete_backspace_targets(editor);
                     break;
                 case VG_KEY_ENTER:
-                    vg_codeeditor_insert_text(editor, "\n");
+                    codeeditor_insert_newline_with_indent(editor);
                     break;
                 case VG_KEY_TAB:
                     if (editor->use_spaces) {
@@ -3333,6 +3835,16 @@ static bool codeeditor_handle_event(vg_widget_t *widget, vg_event_t *event) {
             if (!editor->read_only && printable) {
                 if (cp < 0x80) {
                     char text[2] = {(char)cp, '\0'};
+                    if (codeeditor_try_skip_pair_closer(editor, text[0])) {
+                        ensure_cursor_visible(editor);
+                        widget->needs_paint = true;
+                        return true;
+                    }
+                    if (codeeditor_try_insert_pair(editor, text[0])) {
+                        ensure_cursor_visible(editor);
+                        widget->needs_paint = true;
+                        return true;
+                    }
                     vg_codeeditor_insert_text(editor, text);
                 } else {
                     char utf8[5] = {0};

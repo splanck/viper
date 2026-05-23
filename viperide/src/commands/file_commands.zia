@@ -14,8 +14,12 @@ bind Path = Viper.IO.Path;
 bind Dir = Viper.IO.Dir;
 bind Exec = Viper.System.Exec;
 bind Str = Viper.String;
+bind Seq = Viper.Collections.Seq;
+bind Obj = Viper.Core.Object;
 
 var confirmDirtyClose = true;
+var trimTrailingWhitespaceOnSave = false;
+var ensureFinalNewlineOnSave = true;
 
 // ============================================================================
 // MODULE: file_commands
@@ -100,6 +104,7 @@ func handleSave(shell: app_shell.AppShell,
         var savePath = FileDialog.Save(
                 "Save File", "", file_utils.SaveDialogFilter(saveDoc.kind, saveDoc.language), saveDoc.fileName);
             if savePath != "" {
+                NormalizeDocumentForSave(docMgr, engine, docMgr.activeIndex);
                 docMgr.SaveAs(savePath);
                 tabs.SetTitle(docMgr.activeIndex, saveDoc.fileName);
                 tabs.SetTooltip(docMgr.activeIndex, saveDoc.filePath);
@@ -112,6 +117,7 @@ func handleSave(shell: app_shell.AppShell,
             }
         } else {
             if confirmOverwriteExternal(shell, docMgr, docMgr.activeIndex) {
+                NormalizeDocumentForSave(docMgr, engine, docMgr.activeIndex);
                 docMgr.SaveActive();
                 tabs.SetModified(docMgr.activeIndex, false);
                 engine.ClearModified();
@@ -133,6 +139,7 @@ func handleSaveAs(shell: app_shell.AppShell,
         var saveAsPath = FileDialog.Save(
             "Save As", "", file_utils.SaveDialogFilter(saveAsDoc.kind, saveAsDoc.language), saveAsDoc.fileName);
         if saveAsPath != "" {
+            NormalizeDocumentForSave(docMgr, engine, docMgr.activeIndex);
             docMgr.SaveAs(saveAsPath);
             tabs.SetTitle(docMgr.activeIndex, saveAsDoc.fileName);
             tabs.SetTooltip(docMgr.activeIndex, saveAsDoc.filePath);
@@ -161,6 +168,7 @@ func handleSaveAll(shell: app_shell.AppShell,
                 var savePath = FileDialog.Save(
                     "Save " + doc.fileName, "", file_utils.SaveDialogFilter(doc.kind, doc.language), doc.fileName);
                 if savePath != "" {
+                    NormalizeDocumentForSave(docMgr, engine, i);
                     if docMgr.SaveDocumentAs(i, savePath) {
                         tabs.SetTitle(i, doc.fileName);
                         tabs.SetTooltip(i, doc.filePath);
@@ -169,6 +177,7 @@ func handleSaveAll(shell: app_shell.AppShell,
                     }
                 }
             } else if confirmOverwriteExternal(shell, docMgr, i) {
+                NormalizeDocumentForSave(docMgr, engine, i);
                 if docMgr.SaveDocument(i) {
                     tabs.SetModified(i, false);
                     savedCount = savedCount + 1;
@@ -256,6 +265,88 @@ func handleExit(shell: app_shell.AppShell,
 
 func SetConfirmDirtyClose(enabled: Boolean) {
     confirmDirtyClose = enabled;
+}
+
+func SetSaveFormatOptions(trimWhitespace: Boolean,
+                          finalNewline: Boolean) {
+    trimTrailingWhitespaceOnSave = trimWhitespace;
+    ensureFinalNewlineOnSave = finalNewline;
+}
+
+func AutoSaveActive(shell: app_shell.AppShell,
+                    docMgr: document_manager.DocumentManager,
+                    engine: editor_engine.EditorEngine,
+                    tabs: editor_tabs.EditorTabs) -> Boolean {
+    if shell == null or docMgr == null or engine == null { return false; }
+    SaveEditorState(docMgr, engine);
+    var doc = docMgr.GetActive();
+    if doc == null { return false; }
+    if doc.isNew or doc.isModified == false { return false; }
+    if docMgr.HasExternalChange(docMgr.activeIndex) {
+        shell.SetStatusLeft("Auto-save paused: file changed on disk");
+        return false;
+    }
+    NormalizeDocumentForSave(docMgr, engine, docMgr.activeIndex);
+    if docMgr.SaveActive() {
+        tabs.SetModified(docMgr.activeIndex, false);
+        engine.ClearModified();
+        shell.SetStatusLeft("Auto-saved: " + doc.fileName);
+        return true;
+    }
+    return false;
+}
+
+func NormalizeDocumentForSave(docMgr: document_manager.DocumentManager,
+                              engine: editor_engine.EditorEngine,
+                              index: Integer) {
+    if docMgr == null or index < 0 or index >= docMgr.GetCount() { return; }
+    var doc = docMgr.documents.get(index);
+    var normalized = ApplySaveTextRules(doc.content);
+    if normalized != doc.content {
+        doc.content = normalized;
+        doc.isModified = true;
+        if index == docMgr.activeIndex and engine != null and engine.editor != null {
+            engine.SetText(normalized);
+        }
+    }
+}
+
+func ApplySaveTextRules(text: String) -> String {
+    var result = text;
+    var eol = "\n";
+    if Str.IndexOf(text, "\r\n") != 0 { eol = "\r\n"; }
+
+    if trimTrailingWhitespaceOnSave {
+        var lines = Str.Split(result, "\n");
+        result = "";
+        var i = 0;
+        while i < Seq.get_Length(lines) {
+            var line = Obj.ToString(Seq.Get(lines, i));
+            if Str.EndsWith(line, "\r") {
+                line = Str.Left(line, Str.Length(line) - 1);
+            }
+            line = TrimLineRightWhitespace(line);
+            if i > 0 { result = result + eol; }
+            result = result + line;
+            i = i + 1;
+        }
+    }
+
+    if ensureFinalNewlineOnSave and Str.EndsWith(result, "\n") == false {
+        result = result + eol;
+    }
+    return result;
+}
+
+func TrimLineRightWhitespace(line: String) -> String {
+    var end = Str.Length(line);
+    while end > 0 {
+        var ch = Str.MidLen(line, end, 1);
+        if ch != " " and ch != "\t" { break; }
+        end = end - 1;
+    }
+    if end <= 0 { return ""; }
+    return Str.Left(line, end);
 }
 
 /// @brief Open `path` (deduping if already open), wire up the tab,

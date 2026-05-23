@@ -462,17 +462,18 @@ static const char *const kKeywords[] = {
 struct SnippetData {
     const char *label;
     const char *insertText;
+    int cursorOffset;
 };
 
 static const SnippetData kSnippets[] = {
-    {"if", "if  {\n    \n}"},
-    {"if-else", "if  {\n    \n} else {\n    \n}"},
-    {"while", "while  {\n    \n}"},
-    {"for", "for i in 0..n {\n    \n}"},
-    {"for-in", "for item in  {\n    \n}"},
-    {"func", "func name() {\n    \n}"},
-    {"class", "class Name {\n    expose func init() {\n    }\n}"},
-    {nullptr, nullptr},
+    {"if", "if  {\n    \n}", 3},
+    {"if-else", "if  {\n    \n} else {\n    \n}", 3},
+    {"while", "while  {\n    \n}", 6},
+    {"for", "for i in 0..n {\n    \n}", 14},
+    {"for-in", "for item in  {\n    \n}", 12},
+    {"func", "func name() {\n    \n}", 10},
+    {"class", "class Name {\n    expose func init() {\n    }\n}", 11},
+    {nullptr, nullptr, -1},
 };
 
 // ---------------------------------------------------------------------------
@@ -687,6 +688,7 @@ std::vector<CompletionItem> CompletionEngine::provideKeywords(const std::string 
         item.label = kKeywords[i];
         item.insertText = kKeywords[i];
         item.kind = CompletionKind::Keyword;
+        item.source = "keyword";
         item.sortPriority = 50;
         items.push_back(std::move(item));
     }
@@ -702,7 +704,10 @@ std::vector<CompletionItem> CompletionEngine::provideSnippets(const std::string 
         item.insertText = kSnippets[i].insertText;
         item.kind = CompletionKind::Snippet;
         item.detail = "snippet";
-        item.sortPriority = 60;
+        item.source = "snippet";
+        item.isSnippet = true;
+        item.cursorOffset = kSnippets[i].cursorOffset;
+        item.sortPriority = 40;
         items.push_back(std::move(item));
     }
     filterByPrefix(items, prefix);
@@ -719,6 +724,9 @@ std::vector<CompletionItem> CompletionEngine::provideScopeSymbols(const Sema &se
         item.insertText = sym.name;
         item.kind = kindFromSymbol(sym);
         item.detail = typeDetail(sym.type);
+        item.source = sym.isExtern ? "runtime" : "scope";
+        if (item.kind == CompletionKind::Function || item.kind == CompletionKind::Method)
+            item.commitCharacters = "(";
         item.sortPriority = 10;
         items.push_back(std::move(item));
     }
@@ -749,6 +757,14 @@ std::vector<CompletionItem> CompletionEngine::provideMemberCompletions(const Sem
     }
     if (parts.empty())
         return items;
+
+    // File binds expose exported symbols through their module name. Completing
+    // `Lib.` should list the bound file's exported functions/types.
+    if (parts.size() == 1) {
+        auto moduleMembers = provideModuleMembers(sema, parts[0], ctx.prefix);
+        if (!moduleMembers.empty())
+            return moduleMembers;
+    }
 
     // ── Step 2: check whether the first part is a bound namespace alias ──────
     // e.g. "GUI"        → resolves to "Viper.GUI"
@@ -803,6 +819,9 @@ std::vector<CompletionItem> CompletionEngine::provideMemberCompletions(const Sem
         item.insertText = sym.name;
         item.kind = kindFromSymbol(sym);
         item.detail = typeDetail(sym.type);
+        item.source = sym.isExtern ? "runtime" : "member";
+        if (item.kind == CompletionKind::Function || item.kind == CompletionKind::Method)
+            item.commitCharacters = "(";
         item.sortPriority = 5;
         items.push_back(std::move(item));
     }
@@ -819,6 +838,7 @@ std::vector<CompletionItem> CompletionEngine::provideTypeNames(const Sema &sema,
         item.label = name;
         item.insertText = name;
         item.kind = CompletionKind::Entity;
+        item.source = "type";
         item.sortPriority = 20;
         items.push_back(std::move(item));
     }
@@ -836,7 +856,28 @@ std::vector<CompletionItem> CompletionEngine::provideModuleMembers(
         item.insertText = sym.name;
         item.kind = kindFromSymbol(sym);
         item.detail = typeDetail(sym.type);
+        item.source = "module";
+        if (item.kind == CompletionKind::Function || item.kind == CompletionKind::Method)
+            item.commitCharacters = "(";
         item.sortPriority = 5;
+        items.push_back(std::move(item));
+    }
+    filterByPrefix(items, prefix);
+    return items;
+}
+
+std::vector<CompletionItem> CompletionEngine::provideBoundFileModules(
+    const Sema &sema, const std::string &prefix) const {
+    std::vector<CompletionItem> items;
+    auto modules = sema.getBoundFileModuleNames();
+    for (const auto &moduleName : modules) {
+        CompletionItem item;
+        item.label = moduleName;
+        item.insertText = moduleName;
+        item.kind = CompletionKind::Module;
+        item.detail = "module";
+        item.source = "module";
+        item.sortPriority = 12;
         items.push_back(std::move(item));
     }
     filterByPrefix(items, prefix);
@@ -857,6 +898,9 @@ std::vector<CompletionItem> CompletionEngine::provideRuntimeMembers(
         else
             item.kind = CompletionKind::Property;
         item.detail = typeDetail(sym.type);
+        item.source = "runtime";
+        if (item.kind == CompletionKind::Method)
+            item.commitCharacters = "(";
         item.sortPriority = 5;
         items.push_back(std::move(item));
     }
@@ -873,6 +917,7 @@ std::vector<CompletionItem> CompletionEngine::provideNamespaceMembers(
         item.label = name;
         item.insertText = name;
         item.kind = CompletionKind::RuntimeClass;
+        item.source = "runtime";
         item.sortPriority = 5;
         items.push_back(std::move(item));
     }
@@ -1048,6 +1093,8 @@ std::vector<CompletionItem> CompletionEngine::complete(
                 const Sema &sema = *analysis->sema;
                 auto scope = provideScopeSymbols(sema, ctx.prefix);
                 items.insert(items.end(), scope.begin(), scope.end());
+                auto modules = provideBoundFileModules(sema, ctx.prefix);
+                items.insert(items.end(), modules.begin(), modules.end());
                 auto types = provideTypeNames(sema, ctx.prefix);
                 items.insert(items.end(), types.begin(), types.end());
             }
@@ -1063,6 +1110,14 @@ std::vector<CompletionItem> CompletionEngine::complete(
     // ── Post-processing ──────────────────────────────────────────────────────
     rank(items, ctx.prefix);
     deduplicate(items);
+
+    for (auto &item : items) {
+        item.replacementStartLine = ctx.line;
+        item.replacementStartColumn = ctx.replaceStart;
+        item.replacementEndLine = ctx.line;
+        item.replacementEndColumn = ctx.col;
+        item.isSnippet = item.isSnippet || item.kind == CompletionKind::Snippet;
+    }
 
     if (maxResults > 0 && static_cast<int>(items.size()) > maxResults)
         items.resize(static_cast<size_t>(maxResults));

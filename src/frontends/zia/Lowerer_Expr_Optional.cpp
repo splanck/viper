@@ -41,6 +41,13 @@ bool isCountLikeProperty(const std::string &name) {
 // Coalesce Expression Lowering
 //=============================================================================
 
+/// @brief Lower a null-coalescing expression (`left ?? right`).
+/// @param expr Coalesce expression.
+/// @return The unwrapped left value when present, otherwise the right value.
+/// @details Optionals use a nullable-pointer representation, so the left value is stored and
+///          reloaded as I64 for a null comparison. On the non-null path the (boxed) payload is
+///          unwrapped; on the null path the right operand is evaluated. Both paths store into
+///          a result slot reloaded at the merge block; reference results are deferred-released.
 LowerResult Lowerer::lowerCoalesce(CoalesceExpr *expr) {
     // Get the type to determine how to handle the coalesce
     TypeRef leftType = sema_.typeOf(expr->left.get());
@@ -162,6 +169,13 @@ LowerResult Lowerer::lowerCoalesce(CoalesceExpr *expr) {
 // Optional Chain Expression Lowering
 //=============================================================================
 
+/// @brief Lower an optional-chaining field access (`base?.field`).
+/// @param expr Optional-chain expression.
+/// @return An optional-typed result: null when the base is null, else the field re-wrapped.
+/// @details Null-checks the optional base; the null path stores null. The has-value path
+///          unwraps the base and reads @p field — instance fields, struct/class properties,
+///          built-in count/length accessors for list/map/set/string, or runtime-class getters
+///          — then re-wraps the loaded value as optional. Both paths merge through a slot.
 LowerResult Lowerer::lowerOptionalChain(OptionalChainExpr *expr) {
     auto base = lowerExpr(expr->base.get());
     TypeRef baseType = sema_.typeOf(expr->base.get());
@@ -346,6 +360,14 @@ LowerResult Lowerer::lowerOptionalChain(OptionalChainExpr *expr) {
     return {resultValue, resultIlType};
 }
 
+/// @brief Lower an optional-chaining method call (`base?.method(...)`).
+/// @param callee The optional-chain callee carrying the receiver base.
+/// @param expr The call expression supplying arguments.
+/// @return An optional-typed result: null when the base is null, else the wrapped call result.
+/// @details Null-checks the optional receiver; the null path stores null (and is a no-op for
+///          void methods). The has-value path unwraps the receiver and dispatches through the
+///          appropriate path — interface itable, class virtual dispatch, or a direct method
+///          call — then wraps a non-void result as optional. Paths merge through a slot.
 LowerResult Lowerer::lowerOptionalMethodCall(OptionalChainExpr *callee, CallExpr *expr) {
     auto base = lowerExpr(callee->base.get());
     TypeRef baseType = sema_.typeOf(callee->base.get());
@@ -457,6 +479,14 @@ LowerResult Lowerer::lowerOptionalMethodCall(OptionalChainExpr *callee, CallExpr
 // Try Expression Lowering
 //=============================================================================
 
+/// @brief Lower a postfix `?` try/propagation expression.
+/// @param expr Try expression.
+/// @return The unwrapped success/inner value when present.
+/// @details For a `Result` operand, branches on `IsOk`: the error path returns the Result from
+///          the current function early; the ok path unwraps via the type-appropriate
+///          `Viper.Result.Unwrap*` helper. For an `Optional` operand, a null operand returns
+///          early (null or void, matching the function's return type) and a present value is
+///          unwrapped.
 LowerResult Lowerer::lowerTry(TryExpr *expr) {
     auto operand = lowerExpr(expr->operand.get());
     TypeRef operandType = sema_.typeOf(expr->operand.get());
@@ -565,6 +595,12 @@ LowerResult Lowerer::lowerTry(TryExpr *expr) {
 // Force-Unwrap Expression Lowering
 //=============================================================================
 
+/// @brief Lower a force-unwrap expression (`expr!`).
+/// @param expr Force-unwrap expression.
+/// @return The unwrapped inner value.
+/// @details Null-checks the optional operand and traps if it is null; otherwise unwraps and
+///          returns the inner value. Non-optional operands pass through unchanged (sema should
+///          already have rejected those).
 LowerResult Lowerer::lowerForceUnwrap(ForceUnwrapExpr *expr) {
     auto operand = lowerExpr(expr->operand.get());
 
@@ -630,6 +666,12 @@ LowerResult Lowerer::lowerForceUnwrap(ForceUnwrapExpr *expr) {
 // Await Expression Lowering
 //=============================================================================
 
+/// @brief Lower an `await` expression.
+/// @param expr Await expression whose operand produces a future.
+/// @return The resolved payload, unboxed to the awaited type.
+/// @details Lowers the future operand and calls `Viper.Threads.Future.Get`, which blocks until
+///          the future resolves. Struct or non-pointer payloads are unboxed to their IL type;
+///          pointer/any/void payloads are returned as-is.
 LowerResult Lowerer::lowerAwait(AwaitExpr *expr) {
     // Lower the future-producing operand expression.
     auto futureResult = lowerExpr(expr->operand.get());

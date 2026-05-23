@@ -3,11 +3,13 @@ module project_index;
 bind "../core/document_manager";
 bind "../core/project_manager";
 bind "../editor/editor_engine";
+bind "../editor/scheduler";
 
 bind ProjectIndex = Viper.Zia.ProjectIndex;
 bind FileIndex = Viper.Workspace.FileIndex;
 bind Seq = Viper.Collections.Seq;
 bind Map = Viper.Collections.Map;
+bind Obj = Viper.Core.Object;
 bind IO = Viper.IO;
 
 final INDEX_IDLE_MS = 350;
@@ -27,6 +29,9 @@ class ProjectIndexer {
     expose Integer pendingIndexPos;
     expose Boolean indexing;
     expose Integer indexedFileCount;
+    expose scheduler.EditorScheduler workScheduler;
+    expose List syncedOpenPaths;
+    expose List syncedOpenContents;
 
     expose func init() {
         handle = null;
@@ -42,6 +47,12 @@ class ProjectIndexer {
         pendingIndexPos = 0;
         indexing = false;
         indexedFileCount = 0;
+        syncedOpenPaths = new List();
+        syncedOpenContents = new List();
+    }
+
+    expose func SetScheduler(value: scheduler.EditorScheduler) {
+        workScheduler = value;
     }
 
     expose func EnsureProject(projMgr: project_manager.ProjectManager,
@@ -92,6 +103,8 @@ class ProjectIndexer {
         pendingIndexPos = 0;
         indexing = false;
         indexedFileCount = 0;
+        syncedOpenPaths = new List();
+        syncedOpenContents = new List();
     }
 
     expose func StartIndexWorkspace() {
@@ -145,11 +158,35 @@ class ProjectIndexer {
         while i < docMgr.GetCount() {
             var doc = docMgr.documents.get(i);
             if doc.language == "zia" and doc.filePath != "" {
-                ProjectIndex.UpdateFile(handle, doc.filePath, doc.content);
-                syncCount = syncCount + 1;
+                var syncedIdx = FindSyncedOpenPath(doc.filePath);
+                var needsSync = true;
+                if syncedIdx >= 0 and Obj.ToString(syncedOpenContents.get(syncedIdx)) == doc.content {
+                    needsSync = false;
+                }
+                if needsSync {
+                    ProjectIndex.UpdateFile(handle, doc.filePath, doc.content);
+                    if syncedIdx >= 0 {
+                        syncedOpenPaths.removeAt(syncedIdx);
+                        syncedOpenContents.removeAt(syncedIdx);
+                    }
+                    syncedOpenPaths.add(doc.filePath);
+                    syncedOpenContents.add(doc.content);
+                    syncCount = syncCount + 1;
+                }
             }
             i = i + 1;
         }
+    }
+
+    expose func FindSyncedOpenPath(path: String) -> Integer {
+        var i = 0;
+        while i < syncedOpenPaths.count() {
+            if Obj.ToString(syncedOpenPaths.get(i)) == path {
+                return i;
+            }
+            i = i + 1;
+        }
+        return -1;
     }
 
     expose func SyncActiveNow(docMgr: document_manager.DocumentManager,
@@ -165,6 +202,13 @@ class ProjectIndexer {
 
         doc.content = engine.GetTextSnapshot();
         ProjectIndex.UpdateFile(handle, doc.filePath, doc.content);
+        var syncedIdx = FindSyncedOpenPath(doc.filePath);
+        if syncedIdx >= 0 {
+            syncedOpenPaths.removeAt(syncedIdx);
+            syncedOpenContents.removeAt(syncedIdx);
+        }
+        syncedOpenPaths.add(doc.filePath);
+        syncedOpenContents.add(doc.content);
         syncedActivePath = doc.filePath;
         syncedActiveRevision = revision;
         pendingActivePath = "";
@@ -185,15 +229,28 @@ class ProjectIndexer {
         var revision = engine.GetRevision();
         if doc.filePath == syncedActivePath and revision == syncedActiveRevision { return false; }
 
-        var now = Viper.Time.GetTickCount();
-        if doc.filePath != pendingActivePath or revision != pendingActiveRevision {
-            pendingActivePath = doc.filePath;
-            pendingActiveRevision = revision;
-            pendingSinceMs = now;
-            return false;
-        }
-        if now - pendingSinceMs < INDEX_IDLE_MS {
-            return false;
+        if workScheduler != null {
+            if workScheduler.IsQueued(scheduler.JOB_INDEX_SYNC, doc.filePath, revision) == false {
+                workScheduler.Queue(scheduler.JOB_INDEX_SYNC, doc.filePath, revision, -1);
+                pendingActivePath = doc.filePath;
+                pendingActiveRevision = revision;
+                return false;
+            }
+            if workScheduler.IsDue(scheduler.JOB_INDEX_SYNC, doc.filePath, revision) == false {
+                return false;
+            }
+            workScheduler.Complete(scheduler.JOB_INDEX_SYNC);
+        } else {
+            var now = Viper.Time.GetTickCount();
+            if doc.filePath != pendingActivePath or revision != pendingActiveRevision {
+                pendingActivePath = doc.filePath;
+                pendingActiveRevision = revision;
+                pendingSinceMs = now;
+                return false;
+            }
+            if now - pendingSinceMs < INDEX_IDLE_MS {
+                return false;
+            }
         }
         return SyncActiveNow(docMgr, engine);
     }
@@ -215,7 +272,7 @@ class ProjectIndexer {
                            line: Integer,
                            col: Integer) -> Any {
         if valid == false { return null; }
-        FinishPendingIndex();
+        PumpIndex(INDEX_FILES_PER_FRAME);
         return ProjectIndex.Definition(handle, path, source, line, col);
     }
 
@@ -224,7 +281,7 @@ class ProjectIndexer {
                            line: Integer,
                            col: Integer) -> Any {
         if valid == false { return null; }
-        FinishPendingIndex();
+        PumpIndex(INDEX_FILES_PER_FRAME);
         return ProjectIndex.References(handle, path, source, line, col);
     }
 
@@ -234,7 +291,7 @@ class ProjectIndexer {
                             col: Integer,
                             newName: String) -> Any {
         if valid == false { return null; }
-        FinishPendingIndex();
+        PumpIndex(INDEX_FILES_PER_FRAME);
         return ProjectIndex.RenameEdits(handle, path, source, line, col, newName);
     }
 }
