@@ -52,6 +52,9 @@ namespace {
 // file content do not re-parse.
 CompletionEngine s_engine;
 
+constexpr int kMaxSemanticWorkerJobs = 2;
+std::atomic<int> g_activeSemanticWorkerJobs{0};
+
 std::string toStdString(rt_string value) {
     const char *cstr = value ? rt_string_cstr(value) : "";
     size_t len = value ? (size_t)rt_str_len(value) : 0;
@@ -157,6 +160,13 @@ struct DiagnosticRecord {
     std::string message;
     std::string stage;
     std::string help;
+    bool hasFixit{false};
+    std::string fixitMessage;
+    std::string fixitReplacement;
+    int64_t fixitStartLine{0};
+    int64_t fixitStartColumn{0};
+    int64_t fixitEndLine{0};
+    int64_t fixitEndColumn{0};
 };
 
 void *diagnosticToMap(const il::support::Diagnostic &diagnostic,
@@ -185,6 +195,24 @@ void *diagnosticToMap(const il::support::Diagnostic &diagnostic,
     mapSetStr(map, "message", diagnostic.message);
     mapSetStr(map, "stage", diagnostic.stage);
     mapSetStr(map, "help", diagnostic.help);
+    const bool hasFixit = !diagnostic.fixits.empty();
+    mapSetBool(map, "hasFixit", hasFixit);
+    if (hasFixit) {
+        const auto &fixit = diagnostic.fixits.front();
+        mapSetStr(map, "fixitMessage", fixit.message);
+        mapSetStr(map, "fixitReplacement", fixit.replacement);
+        mapSetInt(map, "fixitStartLine", fixit.range.begin.line);
+        mapSetInt(map, "fixitStartColumn", fixit.range.begin.column);
+        mapSetInt(map, "fixitEndLine", fixit.range.end.line);
+        mapSetInt(map, "fixitEndColumn", fixit.range.end.column);
+    } else {
+        mapSetStr(map, "fixitMessage", "");
+        mapSetStr(map, "fixitReplacement", "");
+        mapSetInt(map, "fixitStartLine", 0);
+        mapSetInt(map, "fixitStartColumn", 0);
+        mapSetInt(map, "fixitEndLine", 0);
+        mapSetInt(map, "fixitEndColumn", 0);
+    }
     return map;
 }
 
@@ -225,6 +253,16 @@ DiagnosticRecord diagnosticToRecord(const il::support::Diagnostic &diagnostic,
     record.message = diagnostic.message;
     record.stage = diagnostic.stage;
     record.help = diagnostic.help;
+    record.hasFixit = !diagnostic.fixits.empty();
+    if (record.hasFixit) {
+        const auto &fixit = diagnostic.fixits.front();
+        record.fixitMessage = fixit.message;
+        record.fixitReplacement = fixit.replacement;
+        record.fixitStartLine = fixit.range.begin.line;
+        record.fixitStartColumn = fixit.range.begin.column;
+        record.fixitEndLine = fixit.range.end.line;
+        record.fixitEndColumn = fixit.range.end.column;
+    }
     return record;
 }
 
@@ -243,6 +281,13 @@ void *diagnosticRecordsToSeq(const std::vector<DiagnosticRecord> &diagnostics) {
         mapSetStr(map, "message", diagnostic.message);
         mapSetStr(map, "stage", diagnostic.stage);
         mapSetStr(map, "help", diagnostic.help);
+        mapSetBool(map, "hasFixit", diagnostic.hasFixit);
+        mapSetStr(map, "fixitMessage", diagnostic.fixitMessage);
+        mapSetStr(map, "fixitReplacement", diagnostic.fixitReplacement);
+        mapSetInt(map, "fixitStartLine", diagnostic.fixitStartLine);
+        mapSetInt(map, "fixitStartColumn", diagnostic.fixitStartColumn);
+        mapSetInt(map, "fixitEndLine", diagnostic.fixitEndLine);
+        mapSetInt(map, "fixitEndColumn", diagnostic.fixitEndColumn);
         rt_seq_push(seq, map);
         releaseRuntimeObject(map);
     }
@@ -289,10 +334,11 @@ struct SemanticJob {
     std::vector<CompletionItem> completionItems;
     std::string signatureDisplay;
     std::string signatureSource;
+    std::string signatureDocumentation;
     int signatureLine{1};
     int signatureCol{0};
     std::string hoverDisplay;
-    std::string hoverSource;
+    std::string hoverDocumentation;
     std::string symbols;
     std::vector<DiagnosticRecord> diagnostics;
 };
@@ -300,6 +346,34 @@ struct SemanticJob {
 struct SemanticJobHandle {
     std::shared_ptr<SemanticJob> *job{nullptr};
 };
+
+bool tryAcquireSemanticWorkerSlot() {
+    int active = g_activeSemanticWorkerJobs.load(std::memory_order_acquire);
+    while (active < kMaxSemanticWorkerJobs) {
+        if (g_activeSemanticWorkerJobs.compare_exchange_weak(
+                active, active + 1, std::memory_order_acq_rel, std::memory_order_acquire))
+            return true;
+    }
+    return false;
+}
+
+void releaseSemanticWorkerSlot() {
+    g_activeSemanticWorkerJobs.fetch_sub(1, std::memory_order_acq_rel);
+}
+
+void finishSemanticJob(const std::shared_ptr<SemanticJob> &job) {
+    job->done.store(true, std::memory_order_release);
+    releaseSemanticWorkerSlot();
+}
+
+void completeSemanticJobWithError(const std::shared_ptr<SemanticJob> &job,
+                                  std::string message) {
+    {
+        std::lock_guard<std::mutex> lock(job->mutex);
+        job->error = std::move(message);
+    }
+    job->done.store(true, std::memory_order_release);
+}
 
 struct IdentifierToken {
     std::string text;
@@ -937,10 +1011,8 @@ bool declarationLineMatchesName(std::string_view line, std::string_view name) {
         "var ",
     };
     for (std::string_view keyword : keywords) {
-        if (startsWithAscii(text, keyword)) {
-            std::string ident = readIdentifier(text, keyword.size());
-            return ident == std::string(name);
-        }
+        if (startsWithAscii(text, keyword))
+            return readIdentifier(text, keyword.size()) == std::string(name);
     }
     return false;
 }
@@ -969,6 +1041,40 @@ std::string docCommentBeforeLine(const std::vector<std::string> &lines, size_t d
     return doc;
 }
 
+std::string docCommentBeforeLoc(const il::support::SourceManager &sm,
+                                il::support::SourceLoc loc) {
+    if (!loc.isValid() || loc.line <= 1)
+        return {};
+
+    std::vector<std::string> docs;
+    uint32_t line = loc.line - 1;
+    while (line > 0) {
+        std::string text = trimAscii(sm.getLine(loc.file_id, line));
+        if (startsWithAscii(text, "///")) {
+            docs.push_back(trimAscii(std::string_view(text).substr(3)));
+        } else {
+            break;
+        }
+        --line;
+    }
+
+    std::string doc;
+    for (auto it = docs.rbegin(); it != docs.rend(); ++it) {
+        if (!doc.empty())
+            doc += "\n";
+        doc += *it;
+    }
+    return doc;
+}
+
+std::string documentationForSymbolLoc(const il::support::SourceManager &sm,
+                                      const Symbol &sym) {
+    il::support::SourceLoc loc = sym.loc.isValid() ? sym.loc : il::support::SourceLoc{};
+    if (!loc.isValid() && sym.decl)
+        loc = sym.decl->loc;
+    return docCommentBeforeLoc(sm, loc);
+}
+
 std::string declarationDocumentationForName(std::string_view source, std::string_view name) {
     if (source.empty() || name.empty())
         return {};
@@ -987,6 +1093,124 @@ std::string declarationDocumentationForName(std::string_view source, std::string
             return docCommentBeforeLine(lines, i);
     }
     return {};
+}
+
+std::string signatureNameFromDisplay(std::string_view display) {
+    std::string firstLine(display.substr(0, display.find('\n')));
+    size_t open = firstLine.find('(');
+    if (open == std::string::npos)
+        return {};
+    return trimAscii(std::string_view(firstLine).substr(0, open));
+}
+
+std::string firstDisplayLine(std::string_view display) {
+    return std::string(display.substr(0, display.find('\n')));
+}
+
+std::string documentationFromDisplayTail(std::string_view display) {
+    size_t pos = display.find('\n');
+    if (pos == std::string_view::npos)
+        return {};
+    ++pos;
+
+    std::string doc;
+    while (pos <= display.size()) {
+        size_t next = display.find('\n', pos);
+        std::string_view line =
+            next == std::string_view::npos ? display.substr(pos) : display.substr(pos, next - pos);
+        std::string trimmed = trimAscii(line);
+        if (!trimmed.empty() && trimmed.rfind("parameter ", 0) != 0) {
+            if (!doc.empty())
+                doc += "\n";
+            doc += trimmed;
+        }
+        if (next == std::string_view::npos)
+            break;
+        pos = next + 1;
+    }
+    return doc;
+}
+
+std::string hoverNameFromDisplay(std::string_view display) {
+    std::string text = firstDisplayLine(display);
+    size_t firstSpace = text.find(' ');
+    size_t colon = text.find(':');
+    if (firstSpace == std::string::npos || colon == std::string::npos || colon <= firstSpace)
+        return {};
+    return trimAscii(std::string_view(text).substr(firstSpace + 1, colon - firstSpace - 1));
+}
+
+bool isIdentByte(char c) {
+    return std::isalnum(static_cast<unsigned char>(c)) || c == '_';
+}
+
+std::string qualifierBeforeIdentifier(std::string_view source, size_t identStart) {
+    if (identStart == 0 || source[identStart - 1] != '.')
+        return {};
+
+    size_t end = identStart - 1;
+    size_t start = end;
+    while (start > 0 && isIdentByte(source[start - 1]))
+        --start;
+    if (start == end)
+        return {};
+    return std::string(source.substr(start, end - start));
+}
+
+bool symbolNameMatchesIdentifier(const Symbol &sym, std::string_view ident) {
+    if (sym.name == ident)
+        return true;
+    size_t dot = sym.name.rfind('.');
+    return dot != std::string::npos && std::string_view(sym.name).substr(dot + 1) == ident;
+}
+
+std::optional<Symbol> moduleExportSymbolAt(const Sema &sema,
+                                           std::string_view source,
+                                           size_t identStart,
+                                           std::string_view ident) {
+    std::string moduleName = qualifierBeforeIdentifier(source, identStart);
+    if (moduleName.empty())
+        return std::nullopt;
+
+    for (const auto &sym : sema.getModuleExports(moduleName)) {
+        if (symbolNameMatchesIdentifier(sym, ident))
+            return sym;
+    }
+    return std::nullopt;
+}
+
+std::string hoverKindForSymbol(const Symbol &sym) {
+    switch (sym.kind) {
+        case Symbol::Kind::Variable:
+            return "var";
+        case Symbol::Kind::Parameter:
+            return "param";
+        case Symbol::Kind::Function:
+            return "func";
+        case Symbol::Kind::Method:
+            return "method";
+        case Symbol::Kind::Field:
+            return "field";
+        case Symbol::Kind::Type:
+            return "type";
+        case Symbol::Kind::Module:
+            return "module";
+        default:
+            return "symbol";
+    }
+}
+
+std::string formatHoverForSymbol(const il::support::SourceManager &sm,
+                                 const Symbol &sym,
+                                 std::string_view displayName) {
+    std::string typeStr = sym.type ? sym.type->toDisplayString() : "unknown";
+    std::string hover = hoverKindForSymbol(sym) + " " + std::string(displayName) + ": " + typeStr;
+    if (sym.isFinal)
+        hover += " (final)";
+    std::string doc = documentationForSymbolLoc(sm, sym);
+    if (!doc.empty())
+        hover += "\n" + doc;
+    return hover;
 }
 
 int activeParameterForSource(std::string_view source, int line, int col) {
@@ -1103,18 +1327,21 @@ void *signatureParametersToSeq(std::string_view signatureLine) {
     return seq;
 }
 
-void *signatureInfoMap(std::string_view display, std::string_view source, int line, int col) {
+void *signatureInfoMap(std::string_view display,
+                       std::string_view source,
+                       int line,
+                       int col,
+                       std::string_view documentation,
+                       bool computeDocumentation) {
     void *map = rt_map_new();
     bool available = !display.empty();
     mapSetBool(map, "available", available);
-    mapSetStr(map, "display", display);
+    std::string firstLine = firstDisplayLine(display);
+    mapSetStr(map, "display", firstLine);
     mapSetInt(map, "activeParameter", available ? activeParameterForSource(source, line, col) : 0);
     mapSetInt(map, "activeSignature", 0);
     mapSetInt(map, "overloadCount", available ? 1 : 0);
-    std::string firstLine(display.substr(0, display.find('\n')));
-    size_t open = firstLine.find('(');
-    std::string name = open == std::string::npos ? std::string() :
-                                                     trimAscii(std::string_view(firstLine).substr(0, open));
+    std::string name = signatureNameFromDisplay(firstLine);
     mapSetStr(map, "name", name);
     size_t arrow = firstLine.find("->");
     std::string returnType = arrow == std::string::npos ?
@@ -1124,18 +1351,27 @@ void *signatureInfoMap(std::string_view display, std::string_view source, int li
     void *params = signatureParametersToSeq(firstLine);
     mapSetObject(map, "parameters", params);
     releaseRuntimeObject(params);
-    mapSetStr(map, "documentation", declarationDocumentationForName(source, name));
+    std::string doc(documentation);
+    if (doc.empty())
+        doc = documentationFromDisplayTail(display);
+    if (computeDocumentation && doc.empty())
+        doc = declarationDocumentationForName(source, name);
+    mapSetStr(map, "documentation", doc);
     mapSetStr(map, "source", "zia");
     return map;
 }
 
-void *hoverInfoMap(std::string_view display, std::string_view source) {
+void *hoverInfoMap(std::string_view display,
+                   std::string_view source,
+                   std::string_view documentation,
+                   bool computeDocumentation) {
     void *map = rt_map_new();
     bool available = !display.empty();
     mapSetBool(map, "available", available);
-    mapSetStr(map, "display", display);
+    std::string firstLine = firstDisplayLine(display);
+    mapSetStr(map, "display", firstLine);
 
-    std::string text(display);
+    std::string text = firstLine;
     std::string kind;
     std::string name;
     std::string type;
@@ -1151,7 +1387,12 @@ void *hoverInfoMap(std::string_view display, std::string_view source) {
     mapSetStr(map, "name", name);
     mapSetStr(map, "type", type);
     mapSetStr(map, "title", name.empty() ? text : name);
-    mapSetStr(map, "documentation", declarationDocumentationForName(source, name));
+    std::string doc(documentation);
+    if (doc.empty())
+        doc = documentationFromDisplayTail(display);
+    if (computeDocumentation && doc.empty())
+        doc = declarationDocumentationForName(source, name);
+    mapSetStr(map, "documentation", doc);
     mapSetStr(map, "source", "zia");
     return map;
 }
@@ -1189,12 +1430,10 @@ std::string hoverForSource(const std::string &source, const std::string &path, i
         return {};
 
     size_t start = pos;
-    while (start > 0 &&
-           (std::isalnum((unsigned char)source[start - 1]) || source[start - 1] == '_'))
+    while (start > 0 && isIdentByte(source[start - 1]))
         --start;
     size_t end = pos;
-    while (end < source.size() &&
-           (std::isalnum((unsigned char)source[end]) || source[end] == '_'))
+    while (end < source.size() && isIdentByte(source[end]))
         ++end;
     if (start == end)
         return {};
@@ -1211,43 +1450,13 @@ std::string hoverForSource(const std::string &source, const std::string &path, i
     const ScopedSymbol *scoped =
         result->sema->findSymbolAtPosition(ident, result->fileId, static_cast<uint32_t>(line),
                                            static_cast<uint32_t>(col + 1));
-    if (!scoped)
-        return {};
-    const Symbol &sym = scoped->symbol;
+    if (scoped)
+        return formatHoverForSymbol(sm, scoped->symbol, ident);
 
-    std::string kindStr;
-    switch (sym.kind) {
-        case Symbol::Kind::Variable:
-            kindStr = "var";
-            break;
-        case Symbol::Kind::Parameter:
-            kindStr = "param";
-            break;
-        case Symbol::Kind::Function:
-            kindStr = "func";
-            break;
-        case Symbol::Kind::Method:
-            kindStr = "method";
-            break;
-        case Symbol::Kind::Field:
-            kindStr = "field";
-            break;
-        case Symbol::Kind::Type:
-            kindStr = "type";
-            break;
-        case Symbol::Kind::Module:
-            kindStr = "module";
-            break;
-        default:
-            kindStr = "symbol";
-            break;
-    }
+    if (auto exportSym = moduleExportSymbolAt(*result->sema, source, start, ident))
+        return formatHoverForSymbol(sm, *exportSym, ident);
 
-    std::string typeStr = sym.type ? sym.type->toDisplayString() : "unknown";
-    std::string hover = kindStr + " " + ident + ": " + typeStr;
-    if (sym.isFinal)
-        hover += " (final)";
-    return hover;
+    return {};
 }
 
 std::string symbolsForSource(const std::string &source, const std::string &path) {
@@ -1301,6 +1510,11 @@ void *startSemanticJob(SemanticJobKind kind, Worker worker) {
     if (!handle)
         return nullptr;
 
+    if (!tryAcquireSemanticWorkerSlot()) {
+        completeSemanticJobWithError(job, "semantic worker pool busy");
+        return handle;
+    }
+
     try {
         std::thread([job, worker = std::move(worker)]() mutable {
             try {
@@ -1313,16 +1527,14 @@ void *startSemanticJob(SemanticJobKind kind, Worker worker) {
                 std::lock_guard<std::mutex> lock(job->mutex);
                 job->error = "unknown semantic job failure";
             }
-            job->done.store(true, std::memory_order_release);
+            finishSemanticJob(job);
         }).detach();
     } catch (const std::exception &ex) {
-        std::lock_guard<std::mutex> lock(job->mutex);
-        job->error = ex.what();
-        job->done.store(true, std::memory_order_release);
+        releaseSemanticWorkerSlot();
+        completeSemanticJobWithError(job, ex.what());
     } catch (...) {
-        std::lock_guard<std::mutex> lock(job->mutex);
-        job->error = "failed to start semantic job";
-        job->done.store(true, std::memory_order_release);
+        releaseSemanticWorkerSlot();
+        completeSemanticJobWithError(job, "failed to start semantic job");
     }
     return handle;
 }
@@ -1448,7 +1660,7 @@ void *rt_zia_signature_info_for_file(
     std::string sourceStr = toStdString(source);
     std::string pathStr = editorPathOrDefault(file_path);
     std::string result = s_engine.signatureHelp(sourceStr, (int)line, (int)col, pathStr);
-    return signatureInfoMap(result, sourceStr, (int)line, (int)col);
+    return signatureInfoMap(result, sourceStr, (int)line, (int)col, "", true);
 }
 
 /// @brief Runtime entry point: drop the completion engine's cached analysis
@@ -1589,10 +1801,13 @@ void *rt_zia_completion_begin_signature_info_for_file(
         [sourceStr = std::move(sourceStr), pathStr = std::move(pathStr), line, col](SemanticJob &job) {
             CompletionEngine engine;
             std::string display = engine.signatureHelp(sourceStr, (int)line, (int)col, pathStr);
+            std::string documentation =
+                declarationDocumentationForName(sourceStr, signatureNameFromDisplay(display));
             std::lock_guard<std::mutex> lock(job.mutex);
             if (!job.cancelled.load(std::memory_order_acquire)) {
                 job.signatureDisplay = std::move(display);
                 job.signatureSource = sourceStr;
+                job.signatureDocumentation = std::move(documentation);
                 job.signatureLine = (int)line;
                 job.signatureCol = (int)col;
             }
@@ -1607,10 +1822,12 @@ void *rt_zia_completion_begin_hover_info_for_file(
         SemanticJobKind::HoverInfo,
         [sourceStr = std::move(sourceStr), pathStr = std::move(pathStr), line, col](SemanticJob &job) {
             std::string display = hoverForSource(sourceStr, pathStr, line, col);
+            std::string documentation =
+                declarationDocumentationForName(sourceStr, hoverNameFromDisplay(display));
             std::lock_guard<std::mutex> lock(job.mutex);
             if (!job.cancelled.load(std::memory_order_acquire)) {
                 job.hoverDisplay = std::move(display);
-                job.hoverSource = sourceStr;
+                job.hoverDocumentation = std::move(documentation);
             }
         });
 }
@@ -1688,22 +1905,27 @@ void *rt_zia_semantic_job_signature_info(void *handle) {
     auto job = asSemanticJob(handle);
     if (!job || !job->done.load(std::memory_order_acquire) ||
         job->kind != SemanticJobKind::SignatureInfo)
-        return signatureInfoMap("", "", 1, 0);
+        return signatureInfoMap("", "", 1, 0, "", false);
     std::lock_guard<std::mutex> lock(job->mutex);
     if (!job->error.empty())
-        return signatureInfoMap("", "", 1, 0);
-    return signatureInfoMap(job->signatureDisplay, job->signatureSource, job->signatureLine, job->signatureCol);
+        return signatureInfoMap("", "", 1, 0, "", false);
+    return signatureInfoMap(job->signatureDisplay,
+                            job->signatureSource,
+                            job->signatureLine,
+                            job->signatureCol,
+                            job->signatureDocumentation,
+                            false);
 }
 
 void *rt_zia_semantic_job_hover_info(void *handle) {
     auto job = asSemanticJob(handle);
     if (!job || !job->done.load(std::memory_order_acquire) ||
         job->kind != SemanticJobKind::HoverInfo)
-        return hoverInfoMap("", "");
+        return hoverInfoMap("", "", "", false);
     std::lock_guard<std::mutex> lock(job->mutex);
     if (!job->error.empty())
-        return hoverInfoMap("", "");
-    return hoverInfoMap(job->hoverDisplay, job->hoverSource);
+        return hoverInfoMap("", "", "", false);
+    return hoverInfoMap(job->hoverDisplay, "", job->hoverDocumentation, false);
 }
 
 rt_string rt_zia_semantic_job_symbols(void *handle) {
@@ -1922,12 +2144,10 @@ rt_string rt_zia_hover_for_file(rt_string source, rt_string file_path, int64_t l
 
     // Find word boundaries
     size_t start = pos;
-    while (start > 0 && (std::isalnum((unsigned char)sourceStr[start - 1]) ||
-                          sourceStr[start - 1] == '_'))
+    while (start > 0 && isIdentByte(sourceStr[start - 1]))
         --start;
     size_t end = pos;
-    while (end < sourceStr.size() && (std::isalnum((unsigned char)sourceStr[end]) ||
-                                       sourceStr[end] == '_'))
+    while (end < sourceStr.size() && isIdentByte(sourceStr[end]))
         ++end;
     if (start == end)
         return rt_string_from_bytes("", 0);
@@ -1947,43 +2167,13 @@ rt_string rt_zia_hover_for_file(rt_string source, rt_string file_path, int64_t l
     const ScopedSymbol *scoped =
         result->sema->findSymbolAtPosition(ident, result->fileId, static_cast<uint32_t>(line),
                                            static_cast<uint32_t>(col + 1));
-    if (!scoped)
+    std::string hover;
+    if (scoped)
+        hover = formatHoverForSymbol(sm, scoped->symbol, ident);
+    else if (auto exportSym = moduleExportSymbolAt(*result->sema, sourceStr, start, ident))
+        hover = formatHoverForSymbol(sm, *exportSym, ident);
+    else
         return rt_string_from_bytes("", 0);
-    const Symbol &sym = scoped->symbol;
-
-    // Format: "kind name: type"
-    std::string kindStr;
-    switch (sym.kind) {
-        case Symbol::Kind::Variable:
-            kindStr = "var";
-            break;
-        case Symbol::Kind::Parameter:
-            kindStr = "param";
-            break;
-        case Symbol::Kind::Function:
-            kindStr = "func";
-            break;
-        case Symbol::Kind::Method:
-            kindStr = "method";
-            break;
-        case Symbol::Kind::Field:
-            kindStr = "field";
-            break;
-        case Symbol::Kind::Type:
-            kindStr = "type";
-            break;
-        case Symbol::Kind::Module:
-            kindStr = "module";
-            break;
-        default:
-            kindStr = "symbol";
-            break;
-    }
-
-    std::string typeStr = sym.type ? sym.type->toDisplayString() : "unknown";
-    std::string hover = kindStr + " " + ident + ": " + typeStr;
-    if (sym.isFinal)
-        hover += " (final)";
 
     return rt_string_from_bytes(hover.c_str(), hover.size());
 }
@@ -2000,7 +2190,7 @@ void *rt_zia_hover_info_for_file(rt_string source, rt_string file_path, int64_t 
     rt_string hover = rt_zia_hover_for_file(source, file_path, line, col);
     std::string hoverText = toStdString(hover);
     rt_string_unref(hover);
-    return hoverInfoMap(hoverText, sourceStr);
+    return hoverInfoMap(hoverText, sourceStr, "", true);
 }
 
 // =========================================================================

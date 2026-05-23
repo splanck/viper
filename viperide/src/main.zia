@@ -85,7 +85,6 @@ final WIN_WIDTH = 1280;
 final WIN_HEIGHT = 800;
 final WINDOW_SIZE_PERCENT = 72;  // % of monitor size on first launch.
 final AUTO_SAVE_IDLE_MS = 1500;
-final INDEX_AUTO_PUMP_INTERVAL_MS = 250;
 
 /// @brief Program entry point. Constructs the IDE and runs the main loop.
 func main() {
@@ -232,7 +231,6 @@ func main() {
     var lastBreakpointVersion = -1;
     var autoSaveRevision = engine.GetRevision();
     var autoSaveDueMs = 0;
-    var lastIndexPumpMs = 0;
 
     // ========================================================================
     // Main event loop
@@ -259,6 +257,11 @@ func main() {
             activeToolPath = activeToolDoc.filePath;
             activeService = languageServices.ForDocument(activeToolDoc);
         }
+        var activeProjectName = "";
+        if projMgr != null and projMgr.project != null and projMgr.project.isOpen {
+            activeProjectName = projMgr.project.name;
+        }
+        shell.SetWorkspaceStatus(activeProjectName, activeService.name);
         if activeService.name != lastServiceName {
             commandRegistry.PopulatePalette(shell.commandPalette, activeService);
             commandRegistry.ApplyCapabilities(activeService);
@@ -273,15 +276,13 @@ func main() {
         sigCtrl.setSourcePath(activeToolPath);
         symbolOutline.setSourcePath(activeToolPath);
         symbolOutline.setEnabled(activeService.canDocumentSymbols);
-        symbolOutline.setSemanticFoldingEnabled(appSettings.codeFolding and activeService.canDocumentSymbols,
+        symbolOutline.setSemanticFoldingEnabled(appSettings.codeFolding
+                                                and activeService.canDocumentSymbols
+                                                and symbolOutline.visible,
                                                 engine);
+        var typedThisFrame = Input.Keyboard.GetText();
         var perfSpan = perfMon.StartSpan();
         indexer.EnsureProject(projMgr, docMgr);
-        var indexNowMs = Viper.Time.GetTickCount();
-        if indexNowMs - lastIndexPumpMs >= INDEX_AUTO_PUMP_INTERVAL_MS {
-            indexer.PumpIndex(1);
-            lastIndexPumpMs = indexNowMs;
-        }
         perfMon.AddIndex(perfSpan);
         if activeToolDoc != null {
             if lastBreakpointPath != activeToolDoc.filePath or lastBreakpointVersion != breakpointStore.version {
@@ -295,8 +296,6 @@ func main() {
             lastBreakpointVersion = breakpointStore.version;
         }
         debug_commands.PumpGutter(shell, docMgr, engine, breakpointStore);
-
-        var typedThisFrame = Input.Keyboard.GetText();
 
         if completer.isVisible {
             if Input.Keyboard.WasPressed(Input.Keyboard.get_KEY_TAB()) {
@@ -317,6 +316,8 @@ func main() {
             } else if completer.AcceptTypedTab(typedThisFrame) {
                 typedThisFrame = "";
             } else if completer.AcceptIfEditorInsertedTab() {
+                typedThisFrame = "";
+            } else if completer.AcceptHeldTabKey(Input.Keyboard.IsDown(Input.Keyboard.get_KEY_TAB())) {
                 typedThisFrame = "";
             } else if typedThisFrame != "" {
                 completer.AcceptIfCommitCharacter(typedThisFrame);
@@ -354,11 +355,17 @@ func main() {
         // Dot / paren triggers must come from text input, not cursor motion.
         var curCursorLine = engine.GetCursorLine();
         var curCursorCol  = engine.GetCursorCol();
-        if Str.IndexOf(typedThisFrame, ".") != 0 {
+        var typedDot = Str.IndexOf(typedThisFrame, ".") != 0;
+        var typedIdentifier = HasIdentifierInput(typedThisFrame);
+        var suppressAutoCompletion = false;
+        if typedDot or typedIdentifier {
+            suppressAutoCompletion = completer.ShouldSuppressAutoTrigger();
+        }
+        if typedDot and suppressAutoCompletion == false {
             perfSpan = perfMon.StartSpan();
             completer.TriggerCompletion();
             perfMon.AddCompletion(perfSpan);
-        } else if HasIdentifierInput(typedThisFrame) {
+        } else if typedIdentifier and suppressAutoCompletion == false {
             completer.ScheduleCompletion();
         }
         if Str.IndexOf(typedThisFrame, "(") != 0 {
@@ -661,9 +668,11 @@ func main() {
         if triggeredNoMenu("movelinedown", cpSelected)                   { edit_commands.handleMoveLineDown(shell, engine); }
         if triggeredNoMenu("organizebinds", cpSelected)                  { edit_commands.handleOrganizeBinds(shell, docMgr, engine); }
         if triggeredNoMenu("suppressdiagnostic", cpSelected)             { edit_commands.handleSuppressDiagnostic(shell, docMgr, engine); }
+        if triggeredNoMenu("applydiagnosticfix", cpSelected)             { edit_commands.handleApplyDiagnosticFix(shell, docMgr, engine); }
+        if triggeredNoMenu("createmissingbind", cpSelected)              { edit_commands.handleCreateMissingBind(shell, docMgr, engine, projMgr); }
         if triggeredNoMenu("trimtrailingwhitespace", cpSelected)          { edit_commands.handleTrimTrailingWhitespace(shell, docMgr, engine); }
-        if triggeredNoMenu("formatdocument", cpSelected)                 { edit_commands.handleFormatUnavailable(shell); }
-        if triggeredNoMenu("formatselection", cpSelected)                { edit_commands.handleFormatUnavailable(shell); }
+        if triggeredNoMenu("formatdocument", cpSelected)                 { edit_commands.handleFormatDocument(shell, docMgr, engine); }
+        if triggeredNoMenu("formatselection", cpSelected)                { edit_commands.handleFormatSelection(shell, docMgr, engine); }
 
         // Error navigation (F8 / Shift+F8)
         if triggeredNoMenu("nexterror", cpSelected) {
@@ -1011,7 +1020,7 @@ func main() {
         perfSpan = perfMon.StartSpan();
         shell.Render();
         perfMon.AddRender(perfSpan);
-        perfMon.EndFrame(engine.editor);
+        perfMon.EndFrame(engine.editor, indexer);
     }
 
     // ========================================================================

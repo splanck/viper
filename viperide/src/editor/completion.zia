@@ -132,6 +132,7 @@ class CompletionController {
     expose Integer workspacePendingLineOffset;
     expose String visiblePrefix;
     expose Integer workspaceLastPumpMs;
+    expose Boolean tabAcceptKeyDown;
 
     /// @brief Initialize an empty/hidden controller.
     expose func init() {
@@ -187,6 +188,7 @@ class CompletionController {
         workspacePendingLineOffset = 0;
         visiblePrefix = FILTER_PREFIX_UNSET;
         workspaceLastPumpMs = 0;
+        tabAcceptKeyDown = false;
     }
 
     /// @brief Construct the popup panel and embed a ListBox.
@@ -236,10 +238,21 @@ class CompletionController {
     }
 
     expose func SetEnabled(value: Boolean) {
+        if enabled == value {
+            return;
+        }
         enabled = value;
         if enabled == false {
             Hide();
         }
+    }
+
+    expose func ShouldSuppressAutoTrigger() -> Boolean {
+        if editor == null {
+            return false;
+        }
+        return ShouldSuppressAutoCompletionLine(editor.GetLine(editor.CursorLine),
+                                                editor.CursorCol);
     }
 
     /// @brief Schedule a semantic completion query after the typing debounce.
@@ -498,6 +511,7 @@ class CompletionController {
         if isVisible == false or itemCount == 0 {
             return false;
         }
+        tabAcceptKeyDown = true;
         AcceptSelectedInternal(true);
         return true;
     }
@@ -509,8 +523,25 @@ class CompletionController {
         if ContainsAny("\t", typed) == false {
             return false;
         }
+        tabAcceptKeyDown = true;
         AcceptSelectedInternal(true);
         return true;
+    }
+
+    expose func AcceptHeldTabKey(tabDown: Boolean) -> Boolean {
+        if tabDown == false {
+            tabAcceptKeyDown = false;
+            return false;
+        }
+        if tabAcceptKeyDown {
+            return false;
+        }
+        tabAcceptKeyDown = true;
+        return AcceptTabKey();
+    }
+
+    expose func MarkTabKeyHandled() {
+        tabAcceptKeyDown = true;
     }
 
     /// @brief Accept after the focused editor consumed Tab as indentation.
@@ -558,6 +589,7 @@ class CompletionController {
         }
 
         AcceptSelectedInternal(true);
+        tabAcceptKeyDown = true;
         return true;
     }
 
@@ -702,6 +734,10 @@ class CompletionController {
     /// @return true if an event was consumed (currently always false —
     ///         reserved for future use).
     expose func Update(typed: String) -> Boolean {
+        if Input.Keyboard.IsDown(Input.Keyboard.get_KEY_TAB()) == false {
+            tabAcceptKeyDown = false;
+        }
+
         if typed == "" and isVisible == false and pendingQuery == false and pendingJob == null
            and workspacePendingJob != null {
             var nowMs = Viper.Time.GetTickCount();
@@ -1100,6 +1136,36 @@ func IsOnlyIndentWhitespace(text: String) -> Boolean {
         i = i + 1;
     }
     return true;
+}
+
+expose func ShouldSuppressAutoCompletionLine(line: String, cursorCol: Integer) -> Boolean {
+    var limit = cursorCol;
+    if limit < 0 { limit = 0; }
+    if limit > Str.Length(line) { limit = Str.Length(line); }
+
+    var inString = false;
+    var escaped = false;
+    var i = 1;
+    while i <= limit {
+        var ch = Str.MidLen(line, i, 1);
+        if inString {
+            if escaped {
+                escaped = false;
+            } else if ch == "\\" {
+                escaped = true;
+            } else if ch == "\"" {
+                inString = false;
+            }
+        } else {
+            if ch == "\"" {
+                inString = true;
+            } else if ch == "/" and i < limit and Str.MidLen(line, i + 1, 1) == "/" {
+                return true;
+            }
+        }
+        i = i + 1;
+    }
+    return inString;
 }
 
 func ListIntAt(values: List, index: Integer, fallback: Integer) -> Integer {

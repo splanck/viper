@@ -92,18 +92,22 @@ and search exclusions on top of hard excludes and `.gitignore`.
   pointer selection drag, auto-indent, bracket/quote pair insertion, line
   and block comment toggle, matching-pair highlight, duplicate line, move line
   up/down, expand/shrink selection, semantic fold regions for Zia symbols,
-  Organize Binds, Trim Trailing Whitespace, word wrap, and minimap
+  Organize Binds, Trim Trailing Whitespace, Format Document/Selection for Zia
+  and text buffers, word wrap, and minimap
 - Revision-gated editor controllers with background semantic jobs for
-  completion, diagnostics, signature help, hover, and outline refresh, plus idle
-  project-index sync
+  completion, diagnostics, signature help, hover, and outline refresh, plus
+  lazy project-index sync for explicit navigation/refactor commands
 - Zia IntelliSense using path-aware structured completion/signature/hover APIs,
-  editor-focus-safe popup filtering, dot triggers, identifier debounce, snippet
-  cursor placement metadata, callable commit characters, workspace-symbol
+  editor-focus-safe popup filtering and Tab/Enter acceptance, dot triggers,
+  identifier debounce, snippet cursor placement metadata, callable commit
+  characters, workspace-symbol
   completion from an on-demand async project file cache, compact docs/source
   metadata display from Zia declaration doc comments for completion,
   signature help, and hover, stale-result rejection, and explicit `Ctrl+Space`
 - Live diagnostics through structured toolchain records and background checks,
-  plus explicit Run Check Now and Suppress Warning commands
+  plus explicit Run Check Now, Suppress Warning, Apply Diagnostic Fix-It, and
+  Create Missing Bind commands for known runtime aliases and unambiguous
+  project-file binds
 - Hover tooltips for type, signature, docs, and source information, delayed
   until dwell and resolved through background jobs
 - Project-aware Zia definition, references, incoming/outgoing call lookup, and
@@ -112,8 +116,8 @@ and search exclusions on top of hard excludes and `.gitignore`.
   preview rows
 - Language-service capability routing so BASIC/text/scene files do not invoke Zia semantic APIs
 - File explorer with recursive tree view, right-click node targeting, Open/Open With Text Editor, duplicate, copy path, copy relative path, search in folder, run file, set project entry, refresh, keyboard commands for common tree actions, project-specific ignore patterns, and OS-aware reveal
-- File-tree rename/delete operations that update open documents; rename previews
-  and rewrites affected quoted Zia file binds
+- File-tree rename/delete operations that update open documents and recent-file
+  history; rename previews and rewrites affected quoted Zia file binds
 - Tabbed editing with modified indicators and close buttons
 - Find/replace bar with match count and navigation
 - Project search and folder-scoped search with grouped file headers,
@@ -127,7 +131,8 @@ and search exclusions on top of hard excludes and `.gitignore`.
 - Project-aware build/run configurations using argument-vector process jobs
 - Streamed build/run output with cancellable jobs, append-preserving output
   updates, filter/wrap/copy/clear commands, selected-row/range copy,
-  auto-scroll lock, severity-colored rows, clickable diagnostics, and lightweight
+  auto-scroll lock, severity-colored rows, clickable diagnostics, status-bar
+  project/language/job/diagnostics state, and lightweight
   Problems/Output/Search/References/Debug Console tabs
 - Debug UI controls with persisted breakpoints and a dedicated Debug Console tab
   wired to the current non-executing `Viper.Debug.Protocol` placeholder
@@ -160,8 +165,18 @@ ViperIDE is organized as a small layered app:
 The editor performance probe is registered as `zia_viperide_editor_hot_path`.
 It verifies that `Viper.GUI.CodeEditor.Revision` changes on content edits and
 undo/redo, remains stable for cursor-only movement, avoids repeated open-document
-index syncs, and enforces large-buffer cursor-movement copy/timing budgets. The
-native `test_vg_codeeditor_perf` target also guards 50k-line navigation,
+index syncs, asserts project-index update counters stay quiet for unchanged
+buffers, verifies hidden semantic folding does not recompute on every edit, and
+enforces large-buffer cursor-movement copy/timing budgets. The
+opt-in `VIPERIDE_PERF_LOG` output includes frame/controller timing, editor
+counters, and `projectIndexUpdates` / `projectIndexBytes` so dogfood sessions can
+attribute index churn. Project indexing is lazy for explicit navigation/refactor
+commands, skips oversized sources and hidden workspace/cache trees, and uses
+cached `.gitignore` patterns so project walks do not reread ignore files per
+path.
+Native semantic jobs are capped so stale
+completion/diagnostic/signature/hover/symbol work cannot pile up behind typing.
+The native `test_vg_codeeditor_perf` target also guards 50k-line navigation,
 folded/wrapped layout caches, highlight span indexing, typing bursts, and large
 selection paths against full-buffer copies and layout scans, with wall-clock
 budgets for 5k/20k typing-plus-paint, 50k scroll/paint, pointer selection drag,

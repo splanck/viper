@@ -3,11 +3,13 @@ module edit_commands;
 bind "../ui/app_shell";
 bind "../editor/editor_engine";
 bind "../core/document_manager";
+bind "../core/project_manager";
 bind "../editor/editor_tabs";
 bind "../editor/project_index";
 bind "../services/locations";
 bind "../services/workspace_edits";
 bind "../commands/file_commands";
+bind "../editor/quick_fixes";
 
 bind Viper.GUI;
 bind IO = Viper.IO;
@@ -1029,6 +1031,75 @@ func handleTrimTrailingWhitespace(shell: app_shell.AppShell,
     shell.SetStatusLeft("Trimmed trailing whitespace");
 }
 
+func handleFormatDocument(shell: app_shell.AppShell,
+                          docMgr: document_manager.DocumentManager,
+                          engine: editor_engine.EditorEngine) {
+    if engine == null or engine.editor == null { return; }
+    var doc = docMgr.GetActive();
+    if doc == null {
+        GUI.Toast.Info("No active document");
+        return;
+    }
+
+    var source = engine.GetTextSnapshot();
+    var formatted = FormatDocumentText(doc!.language, source,
+                                       engine.editor.GetTabSize(),
+                                       engine.editor.GetInsertSpaces() != 0);
+    if formatted == "" and source != "" {
+        handleFormatUnavailable(shell);
+        return;
+    }
+    if formatted == source {
+        shell.SetStatusLeft("Document already formatted");
+        return;
+    }
+
+    ReplaceWholeDocument(engine, formatted);
+    file_commands.SaveEditorState(docMgr, engine);
+    doc!.isModified = true;
+    shell.SetStatusLeft("Formatted document");
+}
+
+func handleFormatSelection(shell: app_shell.AppShell,
+                           docMgr: document_manager.DocumentManager,
+                           engine: editor_engine.EditorEngine) {
+    if engine == null or engine.editor == null { return; }
+    var doc = docMgr.GetActive();
+    if doc == null {
+        GUI.Toast.Info("No active document");
+        return;
+    }
+    if engine.editor.CursorHasSelection(0) == 0 {
+        GUI.Toast.Info("No selection to format");
+        shell.SetStatusLeft("Format Selection needs a selection");
+        return;
+    }
+
+    var source = engine.GetTextSnapshot();
+    var startLine = engine.editor.GetSelectionStartLineAt(0);
+    var endLine = engine.editor.GetSelectionEndLineAt(0);
+    var endCol = engine.editor.GetSelectionEndColAt(0);
+    if endLine > startLine and endCol == 0 {
+        endLine = endLine - 1;
+    }
+    var formatted = FormatDocumentRangeText(doc!.language, source, startLine, endLine,
+                                            engine.editor.GetTabSize(),
+                                            engine.editor.GetInsertSpaces() != 0);
+    if formatted == "" and source != "" {
+        handleFormatUnavailable(shell);
+        return;
+    }
+    if formatted == source {
+        shell.SetStatusLeft("Selection already formatted");
+        return;
+    }
+
+    ReplaceWholeDocument(engine, formatted);
+    file_commands.SaveEditorState(docMgr, engine);
+    doc!.isModified = true;
+    shell.SetStatusLeft("Formatted selection");
+}
+
 func handleSuppressDiagnostic(shell: app_shell.AppShell,
                               docMgr: document_manager.DocumentManager,
                               engine: editor_engine.EditorEngine) {
@@ -1058,6 +1129,455 @@ func handleSuppressDiagnostic(shell: app_shell.AppShell,
     engine.editor.SetCursor(engine.editor.CursorLine, 0);
     engine.editor.InsertAtCursor(indent + "// @suppress(" + code + ")\n");
     shell.SetStatusLeft("Suppressed warning " + code);
+}
+
+func handleApplyDiagnosticFix(shell: app_shell.AppShell,
+                              docMgr: document_manager.DocumentManager,
+                              engine: editor_engine.EditorEngine) {
+    if engine == null or engine.editor == null { return; }
+    var doc = docMgr.GetActive();
+    if doc == null or doc.language != "zia" {
+        GUI.Toast.Info("Diagnostic fix-its are only available for Zia files");
+        shell.SetStatusLeft("Apply Fix-It unavailable");
+        return;
+    }
+
+    var source = engine.GetTextSnapshot();
+    var records = ZiaToolchain.CheckForFile(source, doc!.filePath);
+    var targetLine = engine.editor.CursorLine + 1;
+    var fix = DiagnosticFixItAt(records, targetLine);
+    if fix == null {
+        shell.SetStatusLeft("No diagnostic fix-it at cursor");
+        return;
+    }
+
+    var startLine = Map.GetInt(fix, "fixitStartLine") - 1;
+    var startCol = Map.GetInt(fix, "fixitStartColumn") - 1;
+    var endLine = Map.GetInt(fix, "fixitEndLine") - 1;
+    var endCol = Map.GetInt(fix, "fixitEndColumn") - 1;
+    if startLine < 0 { startLine = targetLine - 1; }
+    if endLine < startLine { endLine = startLine; }
+    if startCol < 0 { startCol = 0; }
+    if endCol < startCol { endCol = startCol; }
+
+    engine.editor.SetCursorSelection(0, startLine, startCol, endLine, endCol);
+    engine.editor.InsertAtCursor(Map.GetStr(fix, "fixitReplacement"));
+    file_commands.SaveEditorState(docMgr, engine);
+    doc!.isModified = true;
+
+    var label = Map.GetStr(fix, "fixitMessage");
+    if label == "" { label = "Applied diagnostic fix-it"; }
+    shell.SetStatusLeft(label);
+}
+
+func handleCreateMissingBind(shell: app_shell.AppShell,
+                             docMgr: document_manager.DocumentManager,
+                             engine: editor_engine.EditorEngine,
+                             projMgr: project_manager.ProjectManager) {
+    if engine == null or engine.editor == null { return; }
+    var doc = docMgr.GetActive();
+    if doc == null or doc.language != "zia" {
+        GUI.Toast.Info("Create Missing Bind is only available for Zia files");
+        shell.SetStatusLeft("Create Missing Bind unavailable");
+        return;
+    }
+
+    var source = engine.GetTextSnapshot();
+    var records = ZiaToolchain.CheckForFile(source, doc!.filePath);
+    var targetLine = engine.editor.CursorLine + 1;
+    var name = MissingRuntimeBindIdentifierAt(records, targetLine);
+    var updated = source;
+    var status = "";
+
+    if name != "" {
+        updated = CreateMissingRuntimeBindText(source, name);
+        if updated == source {
+            shell.SetStatusLeft("Runtime bind already exists");
+            return;
+        }
+        status = "Added " + quick_fixes.RuntimeBindLineForIdentifier(name);
+    } else {
+        name = MissingUndefinedIdentifierAt(records, targetLine);
+        var bindPath = ProjectBindPathForIdentifier(name, doc!.filePath, projMgr, docMgr);
+        if bindPath == "" {
+            shell.SetStatusLeft("No safe missing bind at cursor");
+            return;
+        }
+        updated = CreateMissingProjectBindText(source, bindPath);
+        if updated == source {
+            shell.SetStatusLeft("Project bind already exists");
+            return;
+        }
+        status = "Added bind \"" + bindPath + "\";";
+    }
+
+    var cursorLine = engine.editor.CursorLine;
+    var cursorCol = engine.editor.CursorCol;
+    ReplaceWholeDocument(engine, updated);
+    engine.editor.SetCursor(cursorLine + 1, cursorCol);
+    file_commands.SaveEditorState(docMgr, engine);
+    doc!.isModified = true;
+    shell.SetStatusLeft(status);
+}
+
+func DiagnosticFixItAt(records: Any,
+                       targetLine: Integer) -> Any {
+    if records == null { return null; }
+    var firstFix: Any = null;
+    var i = 0;
+    while i < Seq.get_Length(records) {
+        var record = Seq.Get(records, i);
+        i = i + 1;
+        if Map.GetBool(record, "hasFixit") {
+            if firstFix == null { firstFix = record; }
+            if Map.GetInt(record, "line") == targetLine {
+                return record;
+            }
+        }
+    }
+    return firstFix;
+}
+
+func MissingRuntimeBindIdentifierAt(records: Any,
+                                    targetLine: Integer) -> String {
+    if records == null { return ""; }
+    var firstName = "";
+    var i = 0;
+    while i < Seq.get_Length(records) {
+        var record = Seq.Get(records, i);
+        i = i + 1;
+        var name = quick_fixes.MissingRuntimeBindIdentifierForRecord(record);
+        if name != "" {
+            if firstName == "" { firstName = name; }
+            if Map.GetInt(record, "line") == targetLine {
+                return name;
+            }
+        }
+    }
+    return firstName;
+}
+
+func MissingUndefinedIdentifierAt(records: Any,
+                                  targetLine: Integer) -> String {
+    if records == null { return ""; }
+    var firstName = "";
+    var i = 0;
+    while i < Seq.get_Length(records) {
+        var record = Seq.Get(records, i);
+        i = i + 1;
+        var name = quick_fixes.UndefinedIdentifierForRecord(record);
+        if name != "" {
+            if firstName == "" { firstName = name; }
+            if Map.GetInt(record, "line") == targetLine {
+                return name;
+            }
+        }
+    }
+    return firstName;
+}
+
+expose func CreateMissingRuntimeBindText(source: String,
+                                         identifier: String) -> String {
+    var bindLine = quick_fixes.RuntimeBindLineForIdentifier(identifier);
+    if bindLine == "" { return source; }
+    if SourceHasBindAlias(source, identifier) { return source; }
+    return InsertTopBindLineText(source, bindLine);
+}
+
+expose func CreateMissingProjectBindText(source: String,
+                                         bindPath: String) -> String {
+    if bindPath == "" { return source; }
+    if SourceHasFileBind(source, bindPath) { return source; }
+    return InsertTopBindLineText(source, "bind \"" + bindPath + "\";");
+}
+
+func InsertTopBindLineText(source: String,
+                           bindLine: String) -> String {
+    var eol = "\n";
+    if Str.IndexOf(source, "\r\n") != 0 { eol = "\r\n"; }
+    var lines = Str.Split(source, "\n");
+    var count = Seq.get_Length(lines);
+    var insertAt = 0;
+    var i = 0;
+    while i < count {
+        var line = StripTrailingCr(Obj.ToString(Seq.Get(lines, i)));
+        var trimmed = Str.Trim(line);
+        if Str.StartsWith(trimmed, "module ") {
+            insertAt = i + 1;
+            break;
+        }
+        i = i + 1;
+    }
+
+    while insertAt < count {
+        var existing = StripTrailingCr(Obj.ToString(Seq.Get(lines, insertAt)));
+        var trimmedExisting = Str.Trim(existing);
+        if IsZiaBindLine(trimmedExisting) {
+            insertAt = insertAt + 1;
+            continue;
+        }
+        break;
+    }
+
+    var output = new List();
+    var out = 0;
+    while out < count {
+        if out == insertAt {
+            output.add(bindLine);
+        }
+        output.add(StripTrailingCr(Obj.ToString(Seq.Get(lines, out))));
+        out = out + 1;
+    }
+    if insertAt >= count {
+        output.add(bindLine);
+    }
+    return JoinStringList(output, eol);
+}
+
+func ProjectBindPathForIdentifier(identifier: String,
+                                  importingPath: String,
+                                  projMgr: project_manager.ProjectManager,
+                                  docMgr: document_manager.DocumentManager) -> String {
+    if identifier == "" or importingPath == "" { return ""; }
+    if projMgr == null or projMgr.project == null or projMgr.project.isOpen == false {
+        return "";
+    }
+
+    var candidatePath = "";
+    var matches = 0;
+    var i = 0;
+    while i < projMgr.CachedFileCount() {
+        var filePath = projMgr.CachedFileAt(i);
+        i = i + 1;
+        if IsProjectBindCandidate(filePath, importingPath, identifier, docMgr) {
+            candidatePath = filePath;
+            matches = matches + 1;
+            if matches > 1 { return ""; }
+        }
+    }
+
+    if docMgr != null {
+        var d = 0;
+        while d < docMgr.GetCount() {
+            var doc = docMgr.documents.get(d);
+            d = d + 1;
+            if doc.filePath == "" or doc.filePath == importingPath { continue; }
+            if Str.ToLower(Path.Ext(doc.filePath)) != ".zia" { continue; }
+            if ProjectFileDefinesIdentifier(doc.content, identifier) {
+                if candidatePath != doc.filePath {
+                    candidatePath = doc.filePath;
+                    matches = matches + 1;
+                    if matches > 1 { return ""; }
+                }
+            }
+        }
+    }
+
+    if matches != 1 { return ""; }
+    return RelativeProjectBindPath(Path.Dir(importingPath), candidatePath);
+}
+
+func IsProjectBindCandidate(filePath: String,
+                            importingPath: String,
+                            identifier: String,
+                            docMgr: document_manager.DocumentManager) -> Boolean {
+    if filePath == "" or filePath == importingPath { return false; }
+    if Str.ToLower(Path.Ext(filePath)) != ".zia" { return false; }
+    var content = "";
+    if docMgr != null {
+        var idx = docMgr.FindByPath(filePath);
+        if idx >= 0 {
+            content = docMgr.documents.get(idx).content;
+        }
+    }
+    if content == "" and IO.File.Exists(filePath) {
+        content = IO.File.ReadAllText(filePath);
+    }
+    if content == "" { return false; }
+    return ProjectFileDefinesIdentifier(content, identifier);
+}
+
+expose func ProjectFileDefinesIdentifier(source: String,
+                                         identifier: String) -> Boolean {
+    if source == "" or identifier == "" { return false; }
+    var lines = Str.Split(source, "\n");
+    var depth = 0;
+    var i = 0;
+    while i < Seq.get_Length(lines) {
+        var line = StripTrailingCr(Obj.ToString(Seq.Get(lines, i)));
+        var trimmed = Str.Trim(line);
+        if depth == 0 {
+            var name = TopLevelZiaDeclarationName(trimmed);
+            if name == identifier { return true; }
+        }
+        depth = depth + ZiaBraceDelta(line);
+        if depth < 0 { depth = 0; }
+        i = i + 1;
+    }
+    return false;
+}
+
+func TopLevelZiaDeclarationName(trimmed: String) -> String {
+    if trimmed == "" or Str.StartsWith(trimmed, "//") or Str.StartsWith(trimmed, "/*") {
+        return "";
+    }
+    if Str.StartsWith(trimmed, "module ") {
+        return ReadIdentifierAt(trimmed, Str.Length("module ") + 1);
+    }
+
+    var line = trimmed;
+    line = StripLeadingDeclarationModifier(line, "expose");
+    line = StripLeadingDeclarationModifier(line, "async");
+    line = StripLeadingDeclarationModifier(line, "foreign");
+    line = StripLeadingDeclarationModifier(line, "weak");
+
+    if Str.StartsWith(line, "func ") {
+        return ReadIdentifierAt(line, Str.Length("func ") + 1);
+    }
+    if Str.StartsWith(line, "class ") {
+        return ReadIdentifierAt(line, Str.Length("class ") + 1);
+    }
+    if Str.StartsWith(line, "struct ") {
+        return ReadIdentifierAt(line, Str.Length("struct ") + 1);
+    }
+    if Str.StartsWith(line, "interface ") {
+        return ReadIdentifierAt(line, Str.Length("interface ") + 1);
+    }
+    if Str.StartsWith(line, "enum ") {
+        return ReadIdentifierAt(line, Str.Length("enum ") + 1);
+    }
+    if Str.StartsWith(line, "final ") {
+        return ReadIdentifierAt(line, Str.Length("final ") + 1);
+    }
+    if Str.StartsWith(line, "var ") {
+        return ReadIdentifierAt(line, Str.Length("var ") + 1);
+    }
+    return "";
+}
+
+func StripLeadingDeclarationModifier(line: String, modifier: String) -> String {
+    var prefix = modifier + " ";
+    if Str.StartsWith(line, prefix) {
+        return Str.Trim(Str.Mid(line, Str.Length(prefix) + 1));
+    }
+    return line;
+}
+
+func ReadIdentifierAt(text: String, startPos: Integer) -> String {
+    var pos = startPos;
+    var name = "";
+    while pos <= Str.Length(text) {
+        var ch = Str.MidLen(text, pos, 1);
+        if name == "" {
+            if IsIdentStart(ch) == false { return ""; }
+        } else if IsIdentPart(ch) == false {
+            break;
+        }
+        name = name + ch;
+        pos = pos + 1;
+    }
+    return name;
+}
+
+func RelativeProjectBindPath(importingDir: String,
+                             targetPath: String) -> String {
+    var baseParts = ProjectPathParts(ProjectNormalizeAbsPath(importingDir));
+    var targetParts = ProjectPathParts(ProjectNormalizeAbsPath(targetPath));
+    var common = 0;
+    while common < Seq.get_Length(baseParts)
+          and common < Seq.get_Length(targetParts)
+          and Obj.ToString(Seq.Get(baseParts, common)) == Obj.ToString(Seq.Get(targetParts, common)) {
+        common = common + 1;
+    }
+
+    var rel = "";
+    var b = common;
+    while b < Seq.get_Length(baseParts) {
+        rel = AppendProjectPathPart(rel, "..");
+        b = b + 1;
+    }
+    var t = common;
+    while t < Seq.get_Length(targetParts) {
+        rel = AppendProjectPathPart(rel, Obj.ToString(Seq.Get(targetParts, t)));
+        t = t + 1;
+    }
+    if rel == "" {
+        rel = Path.Name(targetPath);
+    }
+    if Str.EndsWith(rel, ".zia") {
+        rel = Str.Left(rel, Str.Length(rel) - 4);
+    }
+    if Str.StartsWith(rel, "../") == false and Str.StartsWith(rel, "./") == false {
+        rel = "./" + rel;
+    }
+    return ProjectNormalizeBindSeparators(rel);
+}
+
+func ProjectPathParts(path: String) -> Any {
+    var parts = Seq.New();
+    var raw = Str.Split(ProjectNormalizeBindSeparators(path), "/");
+    var i = 0;
+    while i < Seq.get_Length(raw) {
+        var part = Obj.ToString(Seq.Get(raw, i));
+        if part != "" and part != "." {
+            Seq.Push(parts, part);
+        }
+        i = i + 1;
+    }
+    return parts;
+}
+
+func AppendProjectPathPart(path: String, part: String) -> String {
+    if path == "" { return part; }
+    return path + "/" + part;
+}
+
+func ProjectNormalizeAbsPath(path: String) -> String {
+    return Path.Norm(Path.Abs(path));
+}
+
+func ProjectNormalizeBindSeparators(path: String) -> String {
+    var normalized = Str.Replace(path, "\\", "/");
+    var sep = Path.Sep();
+    if sep != "/" {
+        normalized = Str.Replace(normalized, sep, "/");
+    }
+    return normalized;
+}
+
+func SourceHasBindAlias(source: String,
+                        identifier: String) -> Boolean {
+    var lines = Str.Split(source, "\n");
+    var prefix = "bind " + identifier + " = ";
+    var aliasSuffix = " as " + identifier + ";";
+    var i = 0;
+    while i < Seq.get_Length(lines) {
+        var trimmed = Str.Trim(StripTrailingCr(Obj.ToString(Seq.Get(lines, i))));
+        if Str.StartsWith(trimmed, prefix) { return true; }
+        if Str.EndsWith(trimmed, aliasSuffix) { return true; }
+        i = i + 1;
+    }
+    return false;
+}
+
+func SourceHasFileBind(source: String,
+                       bindPath: String) -> Boolean {
+    var lines = Str.Split(source, "\n");
+    var expected = "bind \"" + bindPath + "\";";
+    var i = 0;
+    while i < Seq.get_Length(lines) {
+        var trimmed = Str.Trim(StripTrailingCr(Obj.ToString(Seq.Get(lines, i))));
+        if trimmed == expected { return true; }
+        i = i + 1;
+    }
+    return false;
+}
+
+func StripTrailingCr(line: String) -> String {
+    if Str.EndsWith(line, "\r") {
+        return Str.Left(line, Str.Length(line) - 1);
+    }
+    return line;
 }
 
 func SuppressibleDiagnosticCodeAt(records: Any, targetLine: Integer) -> String {
@@ -1140,6 +1660,213 @@ expose func TrimTrailingWhitespaceText(source: String) -> String {
         i = i + 1;
     }
     return result;
+}
+
+expose func FormatDocumentText(language: String,
+                               source: String,
+                               tabSize: Integer,
+                               insertSpaces: Boolean) -> String {
+    if language == "zia" {
+        return FormatZiaText(source, tabSize, insertSpaces);
+    }
+    if language == "text" {
+        return TrimTrailingWhitespaceText(source);
+    }
+    return "";
+}
+
+expose func FormatDocumentRangeText(language: String,
+                                    source: String,
+                                    startLine: Integer,
+                                    endLine: Integer,
+                                    tabSize: Integer,
+                                    insertSpaces: Boolean) -> String {
+    if language == "zia" {
+        return FormatZiaRangeText(source, startLine, endLine, tabSize, insertSpaces);
+    }
+    if language == "text" {
+        return TrimTrailingWhitespaceRangeText(source, startLine, endLine);
+    }
+    return "";
+}
+
+expose func FormatZiaText(source: String,
+                          tabSize: Integer,
+                          insertSpaces: Boolean) -> String {
+    var lines = Str.Split(source, "\n");
+    return FormatZiaRangeText(source, 0, Seq.get_Length(lines) - 1, tabSize, insertSpaces);
+}
+
+expose func FormatZiaRangeText(source: String,
+                               startLine: Integer,
+                               endLine: Integer,
+                               tabSize: Integer,
+                               insertSpaces: Boolean) -> String {
+    var lines = Str.Split(source, "\n");
+    var count = Seq.get_Length(lines);
+    if count == 0 { return source; }
+    var rangeStart = startLine;
+    var rangeEnd = endLine;
+    if rangeStart < 0 { rangeStart = 0; }
+    if rangeEnd >= count { rangeEnd = count - 1; }
+    if rangeEnd < rangeStart { return source; }
+
+    var indentLevel = ZiaIndentBeforeLine(lines, rangeStart);
+    var output = new List();
+    var i = 0;
+    while i < count {
+        var line = Obj.ToString(Seq.Get(lines, i));
+        if Str.EndsWith(line, "\r") {
+            line = Str.Left(line, Str.Length(line) - 1);
+        }
+        if i >= rangeStart and i <= rangeEnd {
+            var formatted = FormatZiaLine(line, indentLevel, tabSize, insertSpaces);
+            output.add(formatted);
+            indentLevel = indentLevel + ZiaBraceDelta(line);
+            if indentLevel < 0 { indentLevel = 0; }
+        } else {
+            output.add(line);
+        }
+        i = i + 1;
+    }
+
+    var eol = "\n";
+    if Str.IndexOf(source, "\r\n") != 0 { eol = "\r\n"; }
+    return JoinStringList(output, eol);
+}
+
+func TrimTrailingWhitespaceRangeText(source: String,
+                                     startLine: Integer,
+                                     endLine: Integer) -> String {
+    var lines = Str.Split(source, "\n");
+    var count = Seq.get_Length(lines);
+    if count == 0 { return source; }
+    var rangeStart = startLine;
+    var rangeEnd = endLine;
+    if rangeStart < 0 { rangeStart = 0; }
+    if rangeEnd >= count { rangeEnd = count - 1; }
+    if rangeEnd < rangeStart { return source; }
+
+    var output = new List();
+    var i = 0;
+    while i < count {
+        var line = Obj.ToString(Seq.Get(lines, i));
+        var hadCr = false;
+        if Str.EndsWith(line, "\r") {
+            hadCr = true;
+            line = Str.Left(line, Str.Length(line) - 1);
+        }
+        if i >= rangeStart and i <= rangeEnd {
+            line = TrimLineRightWhitespace(line);
+        }
+        if hadCr { line = line + "\r"; }
+        output.add(line);
+        i = i + 1;
+    }
+    return JoinStringList(output, "\n");
+}
+
+func FormatZiaLine(line: String,
+                   indentLevel: Integer,
+                   tabSize: Integer,
+                   insertSpaces: Boolean) -> String {
+    var trimmed = Str.Trim(line);
+    if trimmed == "" { return ""; }
+
+    var outIndent = indentLevel - LeadingCloseBraceCount(trimmed);
+    if outIndent < 0 { outIndent = 0; }
+    return IndentText(outIndent, tabSize, insertSpaces) + trimmed;
+}
+
+func ZiaIndentBeforeLine(lines: Any,
+                         targetLine: Integer) -> Integer {
+    var indent = 0;
+    var i = 0;
+    while i < targetLine and i < Seq.get_Length(lines) {
+        var line = Obj.ToString(Seq.Get(lines, i));
+        if Str.EndsWith(line, "\r") {
+            line = Str.Left(line, Str.Length(line) - 1);
+        }
+        indent = indent + ZiaBraceDelta(line);
+        if indent < 0 { indent = 0; }
+        i = i + 1;
+    }
+    return indent;
+}
+
+func LeadingCloseBraceCount(trimmed: String) -> Integer {
+    var count = 0;
+    var i = 1;
+    while i <= Str.Length(trimmed) and Str.MidLen(trimmed, i, 1) == "}" {
+        count = count + 1;
+        i = i + 1;
+    }
+    return count;
+}
+
+func ZiaBraceDelta(line: String) -> Integer {
+    var delta = 0;
+    var inString = false;
+    var escape = false;
+    var i = 1;
+    while i <= Str.Length(line) {
+        var ch = Str.MidLen(line, i, 1);
+        var next = "";
+        if i < Str.Length(line) {
+            next = Str.MidLen(line, i + 1, 1);
+        }
+
+        if inString {
+            if escape {
+                escape = false;
+            } else if ch == "\\" {
+                escape = true;
+            } else if ch == "\"" {
+                inString = false;
+            }
+            i = i + 1;
+            continue;
+        }
+
+        if ch == "/" and next == "/" {
+            break;
+        }
+        if ch == "\"" {
+            inString = true;
+        } else if ch == "{" {
+            delta = delta + 1;
+        } else if ch == "}" {
+            delta = delta - 1;
+        }
+        i = i + 1;
+    }
+    return delta;
+}
+
+func IndentText(level: Integer,
+                tabSize: Integer,
+                insertSpaces: Boolean) -> String {
+    if level <= 0 { return ""; }
+    var width = tabSize;
+    if width < 1 { width = 4; }
+
+    var unit = "\t";
+    if insertSpaces {
+        unit = "";
+        var s = 0;
+        while s < width {
+            unit = unit + " ";
+            s = s + 1;
+        }
+    }
+
+    var text = "";
+    var i = 0;
+    while i < level {
+        text = text + unit;
+        i = i + 1;
+    }
+    return text;
 }
 
 func TrimLineRightWhitespace(line: String) -> String {

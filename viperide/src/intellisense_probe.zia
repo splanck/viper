@@ -6,6 +6,7 @@ bind "editor/completion";
 bind "editor/signature";
 bind "editor/hover";
 bind "editor/symbols";
+bind "editor/diagnostics";
 bind "editor/project_index";
 bind "commands/edit_commands";
 bind "core/document_manager";
@@ -52,6 +53,17 @@ func pumpCompletion(completer: completion.CompletionController, maxTicks: Intege
     }
 }
 
+func pumpSignature(sigCtrl: signature.SignatureController,
+                   engine: editor_engine.EditorEngine,
+                   maxTicks: Integer) {
+    var i = 0;
+    while i < maxTicks and sigCtrl.visible == false {
+        sigCtrl.update(engine);
+        Clock.Sleep(1);
+        i = i + 1;
+    }
+}
+
 func waitSemanticJob(job: Any, maxTicks: Integer) -> Boolean {
     if job == null { return false; }
     var i = 0;
@@ -82,6 +94,7 @@ func main() {
     var shell = new app_shell.AppShell();
     var engine = new editor_engine.EditorEngine();
     var completer = new completion.CompletionController();
+    var sigCtrl = new signature.SignatureController();
     var docMgr = new document_manager.DocumentManager();
     var projMgr = new project_manager.ProjectManager();
 
@@ -92,6 +105,8 @@ func main() {
     completer.SetEngine(engine);
     completer.SetWorkspaceContext(projMgr, docMgr);
     completer.SetSourcePath("intellisense_probe.zia");
+    sigCtrl.setup(shell.app);
+    sigCtrl.setSourcePath("intellisense_probe.zia");
 
     engine.SetText(
         "module IntelliProbe;\n"
@@ -147,6 +162,49 @@ func main() {
        or Str.IndexOf(completionDisplay, "Greets a value for display") == 0
        or Str.IndexOf(completionDisplay, "[scope]") == 0 {
         fail(shell, "completion metadata display");
+        return;
+    }
+    if completion.ShouldSuppressAutoCompletionLine("    // gr", 9) == false {
+        fail(shell, "completion auto trigger not suppressed in line comment");
+        return;
+    }
+    if completion.ShouldSuppressAutoCompletionLine("    var text = \"gr", 18) == false {
+        fail(shell, "completion auto trigger not suppressed in string");
+        return;
+    }
+    if completion.ShouldSuppressAutoCompletionLine("    var text = \"gr\".", 20) {
+        fail(shell, "completion auto trigger suppressed after closed string");
+        return;
+    }
+    engine.SetText("module IntelliProbe;\nfunc main() {\n    // gr\n}\n");
+    engine.editor.SetCursor(2, 9);
+    if completer.ShouldSuppressAutoTrigger() == false {
+        fail(shell, "completion controller auto trigger context");
+        return;
+    }
+    engine.SetText(
+        "module IntelliProbe;\n"
+        + "func greet(value: Integer) -> Integer { return value; }\n"
+        + "func main() {\n"
+        + "    gr\n"
+        + "}\n");
+    engine.editor.SetCursor(3, 6);
+    var typeItems = ZiaCompletion.ItemsForFile(
+        "module IntelliProbe;\nfunc main() {\n    var typed: I = 0;\n}\n",
+        "intellisense_probe.zia",
+        3,
+        16);
+    if completionItemsContain(typeItems, "Integer") == false {
+        fail(shell, "type annotation completion after spaced colon");
+        return;
+    }
+    var newItems = ZiaCompletion.ItemsForFile(
+        "module IntelliProbe;\nclass LocalThing {\n}\nfunc main() {\n    var make = new Lo();\n}\n",
+        "intellisense_probe.zia",
+        5,
+        21);
+    if completionItemsContain(newItems, "LocalThing") == false {
+        fail(shell, "new expression type completion");
         return;
     }
 
@@ -273,6 +331,150 @@ func main() {
         fail(shell, "suppress warning undo");
         return;
     }
+    var fixSource = "module FixProbe;\n"
+        + "func greet() -> Integer { return 1; }\n"
+        + "func main() {\n"
+        + "    grete();\n"
+        + "}\n";
+    var fixRecords = ZiaToolchain.CheckForFile(fixSource, "intellisense_probe.zia");
+    var fixRecord = edit_commands.DiagnosticFixItAt(fixRecords, 4);
+    if fixRecord == null or Map.GetBool(fixRecord, "hasFixit") == false
+       or Map.GetStr(fixRecord, "fixitReplacement") != "greet" {
+        fail(shell, "diagnostic fixit record");
+        return;
+    }
+    if diagnostics.ProblemActionForDiagnosticRecord(fixRecord) == "No quick fix" {
+        fail(shell, "diagnostic fixit problem action");
+        return;
+    }
+    engine.SetText(fixSource);
+    if docMgr.GetActive() != null {
+        docMgr.GetActive()!.language = "zia";
+    }
+    engine.editor.SetCursor(3, 6);
+    edit_commands.handleApplyDiagnosticFix(shell, docMgr, engine);
+    if Str.IndexOf(engine.GetTextSnapshot(), "greet();") == 0 {
+        fail(shell, "apply diagnostic fixit command");
+        return;
+    }
+    engine.editor.Undo();
+    if engine.GetTextSnapshot() != fixSource {
+        fail(shell, "apply diagnostic fixit undo");
+        return;
+    }
+    var missingBindSource = "module MissingBindProbe;\n"
+        + "func main() {\n"
+        + "    Terminal.Say(\"hi\");\n"
+        + "}\n";
+    var missingBindRecords = ZiaToolchain.CheckForFile(missingBindSource,
+                                                       "intellisense_probe.zia");
+    var missingBindName = edit_commands.MissingRuntimeBindIdentifierAt(missingBindRecords, 3);
+    if missingBindName != "Terminal" {
+        fail(shell, "missing runtime bind diagnostic");
+        return;
+    }
+    var missingBindRecord: Any = null;
+    var mb = 0;
+    while mb < Seq.get_Length(missingBindRecords) {
+        var candidateMissingBind = Seq.Get(missingBindRecords, mb);
+        if Map.GetInt(candidateMissingBind, "line") == 3 {
+            missingBindRecord = candidateMissingBind;
+        }
+        mb = mb + 1;
+    }
+    if diagnostics.ProblemActionForDiagnosticRecord(missingBindRecord) != "Create Missing Bind" {
+        fail(shell, "missing runtime bind problem action");
+        return;
+    }
+    var expectedMissingBind = "module MissingBindProbe;\n"
+        + "bind Terminal = Viper.Terminal;\n"
+        + "func main() {\n"
+        + "    Terminal.Say(\"hi\");\n"
+        + "}\n";
+    if edit_commands.CreateMissingRuntimeBindText(missingBindSource, "Terminal")
+       != expectedMissingBind {
+        fail(shell, "missing runtime bind helper");
+        return;
+    }
+    engine.SetText(missingBindSource);
+    if docMgr.GetActive() != null {
+        docMgr.GetActive()!.language = "zia";
+    }
+    engine.editor.SetCursor(2, 8);
+    edit_commands.handleCreateMissingBind(shell, docMgr, engine, projMgr);
+    if engine.GetTextSnapshot() != expectedMissingBind {
+        fail(shell, "create missing bind command");
+        return;
+    }
+    engine.editor.Undo();
+    if engine.GetTextSnapshot() != missingBindSource {
+        fail(shell, "create missing bind undo");
+        return;
+    }
+
+    if edit_commands.ProjectFileDefinesIdentifier(
+        "module HelperModule;\nexpose func helperValue() -> Integer { return 1; }\n",
+        "helperValue") == false {
+        fail(shell, "project bind symbol detector");
+        return;
+    }
+
+    var projectBindRoot = TempFile.CreateDirWithPrefix("viperide_missing_project_bind_");
+    var projectBindMain = Path.Join(projectBindRoot, "main.zia");
+    var projectBindHelper = Path.Join(projectBindRoot, "helper.zia");
+    var projectBindSource = "module ProjectBindMain;\n"
+        + "func main() -> Integer {\n"
+        + "    return helperValue();\n"
+        + "}\n";
+    var projectBindExpected = "module ProjectBindMain;\n"
+        + "bind \"./helper\";\n"
+        + "func main() -> Integer {\n"
+        + "    return helperValue();\n"
+        + "}\n";
+    File.WriteAllText(projectBindMain, projectBindSource);
+    File.WriteAllText(projectBindHelper,
+        "module HelperModule;\nexpose func helperValue() -> Integer { return 1; }\n");
+    projMgr.OpenFolder(projectBindRoot);
+    docMgr.OpenFile(projectBindMain);
+    if docMgr.GetActive() != null {
+        docMgr.GetActive()!.language = "zia";
+    }
+    engine.SetText(projectBindSource);
+    engine.editor.SetCursor(2, 12);
+    if edit_commands.CreateMissingProjectBindText(projectBindSource, "./helper")
+       != projectBindExpected {
+        fail(shell, "missing project bind helper");
+        return;
+    }
+    edit_commands.handleCreateMissingBind(shell, docMgr, engine, projMgr);
+    if engine.GetTextSnapshot() != projectBindExpected {
+        fail(shell, "create missing project bind command");
+        return;
+    }
+    engine.editor.Undo();
+    if engine.GetTextSnapshot() != projectBindSource {
+        fail(shell, "create missing project bind undo");
+        return;
+    }
+
+    File.WriteAllText(Path.Join(projectBindRoot, "other.zia"),
+        "module OtherHelper;\nexpose func sharedThing() -> Integer { return 2; }\n");
+    File.WriteAllText(projectBindHelper,
+        "module HelperModule;\nexpose func sharedThing() -> Integer { return 1; }\n");
+    projMgr.OpenFolder(projectBindRoot);
+    var ambiguousSource = "module ProjectBindMain;\n"
+        + "func main() -> Integer {\n"
+        + "    return sharedThing();\n"
+        + "}\n";
+    engine.SetText(ambiguousSource);
+    engine.editor.SetCursor(2, 12);
+    edit_commands.handleCreateMissingBind(shell, docMgr, engine, projMgr);
+    if engine.GetTextSnapshot() != ambiguousSource {
+        fail(shell, "ambiguous project bind should not edit");
+        return;
+    }
+    projMgr.CloseProject();
+    Dir.RemoveAll(projectBindRoot);
 
     var snippetItems = ZiaCompletion.ItemsForFile(
         "module IntelliProbe;\nfunc main() {\n    wh\n}\n",
@@ -359,6 +561,51 @@ func main() {
     engine.editor.SetCursor(3, 6);
     completer.TriggerCompletion();
     pumpCompletion(completer, 200);
+    engine.editor.InsertAtCursor("    ");
+    if completer.AcceptHeldTabKey(true) == false {
+        fail(shell, "completion held tab fallback not consumed");
+        return;
+    }
+    line = engine.editor.GetLine(3);
+    if line != "    greet" {
+        fail(shell, "completion held tab fallback did not replace prefix cleanly: " + line);
+        return;
+    }
+
+    engine.SetText(
+        "module IntelliProbe;\n"
+        + "func greet(value: Integer) -> Integer { return value; }\n"
+        + "func main() {\n"
+        + "    gr\n"
+        + "}\n");
+    engine.editor.SetCursor(3, 6);
+    completer.TriggerCompletion();
+    pumpCompletion(completer, 200);
+    completer.MarkTabKeyHandled();
+    if completer.AcceptHeldTabKey(true) {
+        fail(shell, "completion held tab fallback repeated while key held");
+        return;
+    }
+    completer.AcceptHeldTabKey(false);
+    if completer.AcceptHeldTabKey(true) == false {
+        fail(shell, "completion held tab fallback did not rearm after release");
+        return;
+    }
+    line = engine.editor.GetLine(3);
+    if line != "    greet" {
+        fail(shell, "completion held tab fallback rearm did not accept");
+        return;
+    }
+
+    engine.SetText(
+        "module IntelliProbe;\n"
+        + "func greet(value: Integer) -> Integer { return value; }\n"
+        + "func main() {\n"
+        + "    gr\n"
+        + "}\n");
+    engine.editor.SetCursor(3, 6);
+    completer.TriggerCompletion();
+    pumpCompletion(completer, 200);
     if Str.IndexOf(completer.SelectedCommitCharacters(), "(") == 0 {
         fail(shell, "completion missing callable commit character");
         return;
@@ -414,6 +661,37 @@ func main() {
         fail(shell, "active signature parameter display");
         return;
     }
+    engine.SetText(sigSource);
+    engine.editor.SetCursor(3, 10);
+    sigCtrl.trigger(engine);
+    pumpSignature(sigCtrl, engine, 200);
+    if sigCtrl.visible == false {
+        fail(shell, "signature controller did not show after open paren");
+        return;
+    }
+    sigCtrl.Hide();
+    var commaSigSource = "module IntelliProbe;\n"
+        + "func greet(value: Integer, label: String) -> Integer { return value; }\n"
+        + "func main() {\n"
+        + "    greet(1, \n"
+        + "}\n";
+    engine.SetText(commaSigSource);
+    engine.editor.SetCursor(3, 13);
+    sigCtrl.trigger(engine);
+    pumpSignature(sigCtrl, engine, 200);
+    if sigCtrl.visible == false {
+        fail(shell, "signature controller did not show after comma");
+        return;
+    }
+    var commaSigInfo = ZiaCompletion.SignatureInfoForFile(commaSigSource,
+                                                          "intellisense_probe.zia",
+                                                          4,
+                                                          13);
+    if Map.GetInt(commaSigInfo, "activeParameter") != 1 {
+        fail(shell, "signature comma active parameter");
+        return;
+    }
+    sigCtrl.Hide();
     var displaySig = Map.New();
     Map.SetStr(displaySig, "display", "greet(value: Integer) -> Integer");
     Map.SetStr(displaySig, "documentation", "Returns the original value.");
@@ -450,6 +728,50 @@ func main() {
         fail(shell, "hover declaration documentation");
         return;
     }
+    var boundDocsRoot = TempFile.CreateDirWithPrefix("viperide_bound_docs_");
+    var boundDepPath = Path.Join(boundDocsRoot, "dep.zia");
+    var boundMainPath = Path.Join(boundDocsRoot, "main.zia");
+    File.WriteAllText(boundDepPath,
+        "module Dep;\n"
+        + "/// Exported helper docs.\n"
+        + "expose func exportedThing(count: Integer) -> Integer { return count; }\n");
+    var boundMainSource = "module Main;\n"
+        + "bind \"./dep\";\n"
+        + "func main() {\n"
+        + "    Dep.exportedThing(1);\n"
+        + "}\n";
+    File.WriteAllText(boundMainPath, boundMainSource);
+    var boundSig = ZiaCompletion.SignatureInfoForFile(boundMainSource, boundMainPath, 4, 22);
+    if Str.IndexOf(Map.GetStr(boundSig, "documentation"), "Exported helper docs.") == 0 {
+        fail(shell, "bound signature declaration documentation");
+        return;
+    }
+    var boundSigJob = ZiaCompletion.BeginSignatureInfoForFile(boundMainSource, boundMainPath, 4, 22);
+    if waitSemanticJob(boundSigJob, 200) == false {
+        fail(shell, "async bound signature job did not finish");
+        return;
+    }
+    var boundAsyncSig = SemanticJob.SignatureInfo(boundSigJob);
+    if Str.IndexOf(Map.GetStr(boundAsyncSig, "documentation"), "Exported helper docs.") == 0 {
+        fail(shell, "async bound signature declaration documentation");
+        return;
+    }
+    var boundHover = ZiaCompletion.HoverInfoForFile(boundMainSource, boundMainPath, 4, 10);
+    if Str.IndexOf(Map.GetStr(boundHover, "documentation"), "Exported helper docs.") == 0 {
+        fail(shell, "bound hover declaration documentation");
+        return;
+    }
+    var boundHoverJob = ZiaCompletion.BeginHoverInfoForFile(boundMainSource, boundMainPath, 4, 10);
+    if waitSemanticJob(boundHoverJob, 200) == false {
+        fail(shell, "async bound hover job did not finish");
+        return;
+    }
+    var boundAsyncHover = SemanticJob.HoverInfo(boundHoverJob);
+    if Str.IndexOf(Map.GetStr(boundAsyncHover, "documentation"), "Exported helper docs.") == 0 {
+        fail(shell, "async bound hover declaration documentation");
+        return;
+    }
+    Dir.RemoveAll(boundDocsRoot);
 
     var foldSource = "module IntelliProbe;\n"
         + "func alpha() -> Integer {\n"
@@ -805,6 +1127,78 @@ func main() {
     engine.editor.Undo();
     if engine.GetTextSnapshot() != "one\ntwo\nthree" {
         fail(shell, "move line down undo");
+        return;
+    }
+    var messyFormat = "module FormatProbe;\n"
+        + "func main() {\n"
+        + "var x = 1;\n"
+        + "if x {\n"
+        + "Terminal.Say(\"{\");\n"
+        + "}\n"
+        + "}\n";
+    var expectedFormat = "module FormatProbe;\n"
+        + "func main() {\n"
+        + "    var x = 1;\n"
+        + "    if x {\n"
+        + "        Terminal.Say(\"{\");\n"
+        + "    }\n"
+        + "}\n";
+    if edit_commands.FormatZiaText(messyFormat, 4, true) != expectedFormat {
+        fail(shell, "format zia helper");
+        return;
+    }
+    if docMgr.GetActive() != null {
+        docMgr.GetActive()!.language = "zia";
+    }
+    engine.SetText(messyFormat);
+    edit_commands.handleFormatDocument(shell, docMgr, engine);
+    if engine.GetTextSnapshot() != expectedFormat {
+        fail(shell, "format document command");
+        return;
+    }
+    engine.editor.Undo();
+    if engine.GetTextSnapshot() != messyFormat {
+        fail(shell, "format document undo");
+        return;
+    }
+    var messySelection = "module FormatProbe;\n"
+        + "func main() {\n"
+        + "var x = 1;\n"
+        + "if x {\n"
+        + "Terminal.Say(\"}\");\n"
+        + "}\n"
+        + "}\n";
+    var expectedSelection = "module FormatProbe;\n"
+        + "func main() {\n"
+        + "    var x = 1;\n"
+        + "    if x {\n"
+        + "        Terminal.Say(\"}\");\n"
+        + "    }\n"
+        + "}\n";
+    engine.SetText(messySelection);
+    engine.editor.SetCursorSelection(0, 2, 0, 5, 1);
+    edit_commands.handleFormatSelection(shell, docMgr, engine);
+    if engine.GetTextSnapshot() != expectedSelection {
+        fail(shell, "format selection command");
+        return;
+    }
+    if docMgr.GetActive() != null {
+        docMgr.GetActive()!.language = "text";
+    }
+    engine.SetText("alpha   \nbeta   \n");
+    engine.editor.SetCursorSelection(0, 0, 0, 0, 8);
+    edit_commands.handleFormatSelection(shell, docMgr, engine);
+    if engine.GetTextSnapshot() != "alpha\nbeta   \n" {
+        fail(shell, "format text selection");
+        return;
+    }
+    if docMgr.GetActive() != null {
+        docMgr.GetActive()!.language = "basic";
+    }
+    engine.SetText(messyFormat);
+    edit_commands.handleFormatDocument(shell, docMgr, engine);
+    if engine.GetTextSnapshot() != messyFormat {
+        fail(shell, "format unsupported basic");
         return;
     }
 

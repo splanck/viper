@@ -58,10 +58,9 @@ Product gaps:
 - The UI shell is more complete than earlier passes credited: menu bar, toolbar,
   status bar with cursor info, breadcrumb, command palette, tabs, minimap,
   diagnostics/output panels, a welcome/empty state, and a bottom tool tab strip
-  all exist. The remaining gaps are specific, not wholesale: no explicit activity
-  bar, the toolbar shows no live build/run state, the status bar has no
-  severity-colored diagnostics summary, and the Search/Debug tabs are still
-  list-backed work surfaces rather than rich tool views.
+  all exist. The remaining gaps are specific, not wholesale: no explicit
+  activity bar, and the Search/Debug tabs are still list-backed work surfaces
+  rather than rich tool views.
 - BASIC support is honest but thin: syntax/build text editing without semantic
   language services in ViperIDE.
 - The debugger UI is a placeholder against a non-executing protocol and must not
@@ -96,20 +95,26 @@ Performance risks still present:
   remaining native risks are broader multi-cursor/gutter/fold auto-detection
   audits and manual latency validation against real editing sessions.
 - Completion, signature help, hover, symbols, and diagnostics now queue native
-  background semantic jobs and poll results on the UI thread. They still take a
-  revision-keyed source snapshot when a job starts, so snapshot cost and real
-  latency still need dogfood validation.
-- Project opening now indexes `.zia` files cooperatively in frame-sized slices,
-  Quick Open uses the maintained project-tree file cache, and project search
-  discovers paths plus scans file contents in frame-sized slices with
-  cancellation.
+  background semantic jobs and poll results on the UI thread. The native bridge
+  caps concurrent semantic workers so cancelled/stale jobs cannot pile up during
+  typing. They still take a revision-keyed source snapshot when a job starts, so
+  snapshot cost and real latency still need dogfood validation.
+- Project opening now avoids automatic workspace parsing on the UI hot path.
+  Explicit Definition/References/Rename commands lazily start the project index,
+  pump only bounded slices before querying, skip oversized sources, and sync
+  dirty open Zia buffers first. Quick Open uses the maintained project-tree file
+  cache, hidden workspace/cache directories are excluded from project walks,
+  `.gitignore` patterns are cached per root instead of reread for every file,
+  and project search discovers paths plus scans file contents in frame-sized
+  slices with cancellation.
 - Build/debug output still stores a whole accumulated output string for final
   diagnostics parsing, but active build/run streaming now exposes deltas to the
   UI instead of repainting from the full string every frame.
 - `VIPERIDE_PERF` / `VIPERIDE_PERF_LOG` now records frame, controller,
-  full-buffer copy, layout-scan, syntax, and highlight counters. Automated native
-  and IDE probes guard the known hot paths, but the final release gate still
-  needs a manual latency report from dogfooding.
+  project-index update count/bytes, full-buffer copy, layout-scan, syntax, and
+  highlight counters. Automated native and IDE probes guard the known hot paths,
+  but the final release gate still needs a manual latency report from
+  dogfooding.
 
 Code evidence from this audit (paths verified against the current nested tree;
 the IDE sources moved into `editor/`, `commands/`, `build/`, `core/`, `ui/`):
@@ -124,10 +129,11 @@ the IDE sources moved into `editor/`, `commands/`, `build/`, `core/`, `ui/`):
   revision-keyed snapshots, and `Viper.Zia.SemanticJob` handles so semantic
   analysis runs on worker threads and stale results are dropped by
   revision/path/cursor checks before touching UI state.
-- `viperide/src/editor/project_index.zia` has cooperative workspace indexing.
-  Definition/References/Rename pump only a bounded index slice before querying,
-  and open dirty Zia documents sync before project queries without repeatedly
-  pushing unchanged buffers.
+- `viperide/src/editor/project_index.zia` has lazy cooperative workspace
+  indexing. Definition/References/Rename start indexing only when explicitly
+  requested, pump only a bounded index slice before querying, and open dirty Zia
+  documents sync before project queries without repeatedly pushing unchanged
+  buffers.
 - `viperide/src/commands/search_commands.zia` discovers direct/fallback search
   paths incrementally and scans contents cooperatively; cached project searches
   skip discovery by using the project-tree file cache.
@@ -304,16 +310,19 @@ Current implementation status:
   syncs the active Zia buffer after idle or immediately before semantic
   navigation/refactor actions.
 - Native `CodeEditor` performance counters track layout scans, syntax-highlight
-  calls, highlight-span checks, full-buffer copies, and copied bytes. Zia can now
-  read the aggregate layout scan count plus the syntax/highlight/copy counters
-  needed by ViperIDE probes and perf logging.
+  calls, highlight-span checks, full-buffer copies, and copied bytes. The
+  project indexer tracks update count and source bytes pushed per perf window.
+  Zia can now read the aggregate layout scan count plus the
+  syntax/highlight/copy/index counters needed by ViperIDE probes and perf
+  logging.
 - The no-wrap/no-fold editor path avoids whole-document layout scans for content
   height, visual-row lookup, scroll-top lookup, cursor movement, and scroll-to
   operations.
 - `EditorEngine.GetTextSnapshot()` is revision-keyed, so repeated semantic
   controllers share one full-buffer materialization per content revision.
-- Project indexing opens cooperatively in frame-sized slices and Quick Open uses
-  the maintained project-tree file cache instead of fresh enumeration.
+- Project indexing starts lazily for explicit project navigation/refactor
+  commands and pumps frame-sized slices. Quick Open uses the maintained
+  project-tree file cache instead of fresh enumeration.
 - Project/folder search now scans file contents cooperatively over multiple
   frames and can be canceled, instead of reading every file in one command
   handler.
@@ -328,7 +337,9 @@ Current implementation status:
   visible instead of drawing one bar for every line.
 - Added `zia_viperide_editor_hot_path` to verify revision behavior for set
   text, insert, undo, redo, cursor-only movement, idle index sync, and a
-  20k-line cursor-movement smoke.
+  20k-line cursor-movement smoke. It also verifies project-index update
+  counters/bytes increment only when content is actually pushed and reset cleanly
+  between perf windows.
 - Added native `test_vg_codeeditor_perf` for 50k-line no-wrap cursor/scroll,
   folded/wrapped layout-cache regressions, highlight span indexing, typing-burst
   and large-selection copy/layout guards, full-text copy counter behavior, and
@@ -353,7 +364,7 @@ Latest pass notes:
 - Added native large-file coverage for folded and wrapped layout-cache paths.
 - Added an opt-in ViperIDE perf monitor (`VIPERIDE_PERF` or
   `VIPERIDE_PERF_LOG`) that records frame/render/controller timings plus editor
-  counters without recompiling.
+  and project-index update counters without recompiling.
 - Added a shared `EditorScheduler` and wired completion, diagnostics, signature,
   hover, symbols, and active project-index sync through it. Completion,
   diagnostics, signature, hover, and symbols now start native background
@@ -381,7 +392,15 @@ Latest pass notes:
 - Semantic fold-region refresh now reuses a pre-split source line table and caps
   generated regions per pass so symbol-heavy files cannot spend unbounded time
   registering fold regions on the UI thread; `zia_viperide_editor_hot_path`
-  includes a fold-generation budget.
+  includes a fold-generation budget and verifies hidden folding no longer
+  recomputes semantic fold regions on every edit.
+- Native semantic jobs now have a small worker cap so diagnostics, completion,
+  signature, hover, and symbols cannot spawn unbounded detached compiler work
+  when edits invalidate older jobs. Project indexing no longer auto-pumps from
+  the frame loop; explicit project-index commands start indexing lazily, pump
+  bounded slices, skip oversized source files, and `FileIndex` hard-excludes
+  hidden workspace paths so project roots do not traverse local tool/cache
+  worktrees.
 - Still open after this pass: manual latency report, richer semantic quality,
   and real-window frame-budget evidence beyond the native headless timing gate.
 
@@ -466,6 +485,9 @@ Current implementation status:
   while preserving the typed character for signature-help triggers.
 - Snippet completions now carry cursor-offset metadata through the runtime
   record and acceptance path so the cursor lands inside the inserted snippet.
+- Completion context detection now recognizes spaced type annotations such as
+  `var value: I` and `new` expressions, and the IntelliSense probe covers both
+  type-name completion paths.
 - Completion now executes through a background semantic job after trigger or
   debounce; stale results are dropped if the revision, path, or cursor changes
   before the job completes.
@@ -478,9 +500,11 @@ Current implementation status:
 - ViperIDE now maintains a frame-sliced workspace-symbol cache from the project
   file cache and merges matching project functions/types/modules into
   completion results after local semantic items, including dirty open documents.
+- Automatic completion triggers are suppressed inside line comments and open
+  string literals; explicit completion remains available.
 - Still open: richer receiver/member ranking, runtime API documentation content,
-  signature/hover documentation content, and deeper semantic scoring across
-  workspace candidates.
+  broader project/imported signature-hover documentation, and deeper semantic
+  scoring across workspace candidates.
 
 ### E2 - Signature Help and Hover
 
@@ -545,8 +569,10 @@ Current implementation status:
   stale revision/path/cursor or mouse-position results ignored before display.
 - Bound-file module-export signature fallback now preserves exported parameter
   names in native completion coverage.
-- Still open: overload navigation, runtime/imported declaration documentation in
-  signature/hover, and broader imported or project declaration fallback beyond
+- Bound-file module-export signature and hover results now propagate adjacent
+  `///` declaration documentation through synchronous and async structured maps.
+- Still open: overload navigation, runtime API declaration documentation in
+  signature/hover, and broader imported/project declaration fallback beyond
   bound-file exports.
 
 ### E3 - Diagnostics, Problems, and Code Actions
@@ -590,19 +616,34 @@ Current implementation status:
 - Added `Run Check Now` (`Ctrl+Alt+C`) to intentionally bypass the idle debounce.
 - Diagnostics now start `BeginCheckForFile` background jobs after idle and apply
   records only when the result still matches the active revision/path.
-- Problems rows now include severity, file, line, code, message, and a disabled
-  quick-fix placeholder/action column, while retaining structured click
-  locations.
+- Problems rows now include severity, source, file, line, code, message, and an
+  action column, while retaining structured click locations.
 - Added a safe `Organize Binds` code action/command for Zia files; it sorts and
   deduplicates the leading bind block as a single editor edit and remains
   hidden/unsupported for BASIC/text files through language-service capabilities.
 - Added a safe `Suppress Warning` command for Zia warnings; it inserts a
   `// @suppress(Wxxx)` comment above the warning at the cursor as one undoable
   editor edit.
+- Suppressible Zia warning rows now surface `Suppress Warning` in the Problems
+  action column instead of the generic no-fix placeholder; diagnostics without a
+  safe implemented action still show `No quick fix`.
+- Zia diagnostics now carry the first language-proposed fix-it through
+  `Viper.Zia.Toolchain` records. Problems rows show the fix-it label when one is
+  available, and `Apply Diagnostic Fix-It` (`Ctrl+.`) applies the first fix-it at
+  the cursor as an undoable editor edit.
+- `Create Missing Bind` recognizes undefined identifiers that exactly match
+  known Viper runtime namespace aliases, inserts the corresponding `bind Alias =
+  Viper.Namespace;` line into the top bind block, and leaves unrelated undefined
+  identifiers without an unsafe quick fix.
+- `Create Missing Bind` also scans the open project file cache and dirty open
+  Zia documents for a missing top-level declaration or module name, inserting a
+  relative `bind "./file";` only when exactly one project file candidate exists.
+  Ambiguous matches intentionally leave the editor unchanged.
 - Added a safe `Trim Trailing Whitespace` command; it removes trailing spaces
   and tabs as one undoable editor edit.
-- Still open: a richer Problems surface and language-proposed quick fixes such
-  as create missing bind/import.
+- Still open: a richer Problems surface and broader language-proposed quick
+  fixes beyond compiler-provided fix-its, known runtime namespace binds, and
+  unambiguous project-file binds.
 
 ### E4 - Project Navigation and Refactoring
 
@@ -782,8 +823,11 @@ Current implementation status:
   manifest update, selection data path, file/folder rename bind rewrite preview,
   open-document bind rewrites, closed-file bind rewrites, and project-entry
   rename follow-up.
-- Still open: richer project-tree manual checklist evidence and broader
-  diagnostics/location invalidation after tree moves.
+- File/folder rename now retargets open documents and recently closed file
+  history, while delete removes stale recently closed paths under the deleted
+  file/folder. Tree operations also clear stale Problems/Search/References
+  locations and rebuild the project index after moves.
+- Still open: richer project-tree manual checklist evidence.
 
 ### E6 - Console, Search, and Tool Panels
 
@@ -860,6 +904,8 @@ Current implementation status:
 - Runtime `ListBox.ItemSetTextColor()` now lets list-backed tool rows carry
   severity colors. Problems rows color error/warning/info severity, and build
   output colors parsed diagnostics plus common success/failure/warning lines.
+- Runtime `StatusBarItem.SetTextColor()` lets the shell color the diagnostics
+  summary by worst active severity while preserving the compact status-bar text.
 - Still open: richer multi-column/rich-console result UI beyond colored rows.
 
 ### E7 - Settings and Preferences
@@ -982,8 +1028,10 @@ Current implementation status:
 - Command palette entries now use concise categories such as File, Edit, Search,
   Navigate, Refactor, Build, Debug, View, Settings, Output, and Explorer instead
   of leaking long command descriptions into the category prefix.
-- Still open: the broader visual system pass, icon/tooltips polish, richer
-  status/toolbar state, and manual compact/wide layout evidence.
+- Toolbar and status chrome now expose active build/run job state plus compact
+  project, language-service, and diagnostics state.
+- Still open: the broader visual system pass, icon/tooltips polish, and manual
+  compact/wide layout evidence.
 
 ### E9 - BASIC and Multi-Language Honesty
 
@@ -1054,9 +1102,15 @@ Current implementation status:
   expression before the whole line.
 - `zia_viperide_intellisense` now audits single-step undo for block-comment
   toggles, duplicate line, and move-line commands.
-- Format commands remain disabled/no-op with clear user feedback until a real
-  formatter backend exists.
-- Still open: full AST-aware expansion and a formatter backend.
+- Format Document / Format Selection now use an initial formatter backend:
+  Zia gets brace-aware indentation that respects the editor tab-size /
+  insert-spaces settings and ignores braces in strings/comments, text selections
+  get trailing-whitespace cleanup, and BASIC remains an explicit unsupported
+  path until a BASIC formatter exists.
+- `zia_viperide_intellisense` now audits Zia document formatting, selection
+  formatting, text selection whitespace cleanup, unsupported BASIC formatting,
+  and formatter undo.
+- Still open: full AST-aware expansion and a full AST-backed formatter.
 
 ## 6. Revised Recovery Milestones
 
@@ -1093,16 +1147,17 @@ Gate:
 - manual latency report listing the top five measured offenders
 
 Current status: partially implemented. `CodeEditor` now exposes native/runtime
-hot-path counters to Zia, the
-editor hot-path probe asserts no full-buffer copies for cursor-only
-movement/snapshot reuse, and `test_vg_codeeditor_perf` covers a 50k-line no-wrap
+hot-path counters to Zia, `ProjectIndexer` records update count and source bytes
+pushed into the semantic index, the editor hot-path probe asserts no full-buffer
+copies for cursor-only movement/snapshot reuse and no index counter churn for
+unchanged open buffers, and `test_vg_codeeditor_perf` covers a 50k-line no-wrap
 cursor/scroll path, folded/wrapped large-file cache paths, typing bursts, large
 selections, explicit 5k/20k typing-plus-paint wall-clock budgets, 50k
 scroll/paint budgets, pointer selection-drag budgets, and a dedicated minimap
 paint budget. An opt-in `PerfMonitor` logs frame/render/controller timings with
-editor counters when `VIPERIDE_PERF` or `VIPERIDE_PERF_LOG` is set. Still
-missing: manual top-five latency report and real-window dogfood timing across
-large projects.
+editor counters plus `projectIndexUpdates` and `projectIndexBytes` when
+`VIPERIDE_PERF` or `VIPERIDE_PERF_LOG` is set. Still missing: manual top-five
+latency report and real-window dogfood timing across large projects.
 
 ### Milestone P0B - Fix Native CodeEditor Hot Paths
 
@@ -1233,16 +1288,17 @@ help now visually marks the active parameter in the popup text, and completion,
 signature, and hover display structured documentation/source metadata when it is
 provided. Completion documentation is now populated from adjacent `///` comments
 for current-file declarations and bound-file exports, and signature/hover maps
-populate documentation for current-source declarations. Completion, signature,
-hover, diagnostics, and symbols run semantic analysis on native background jobs
-and poll results on the UI thread. Definition, References, and Rename no longer
-block to drain the full pending index before querying. Bound file module roots
-and exported members now have native completion coverage, visible
-locals/parameters rank above globals, workspace-symbol completions are merged
-from a frame-sliced project cache after local semantic results, and bound-file
-exported signature fallback preserves parameter names. The remaining gaps are
-semantic quality: richer receiver/member ranking, overload navigation, runtime
-API docs, imported/project signature-hover docs, and deeper workspace scoring.
+populate documentation for current-source declarations plus bound-file module
+exports. Completion, signature, hover, diagnostics, and symbols run semantic
+analysis on native background jobs and poll results on the UI thread.
+Definition, References, and Rename no longer block to drain the full pending
+index before querying. Bound file module roots and exported members now have
+native completion coverage, visible locals/parameters rank above globals,
+workspace-symbol completions are merged from a frame-sliced project cache after
+local semantic results, and bound-file exported signature fallback preserves
+parameter names. The remaining gaps are semantic quality: richer receiver/member
+ranking, overload navigation, runtime API docs, broader imported/project
+signature-hover docs, and deeper workspace scoring.
 
 ### Milestone P2 - Refactor and Project Explorer
 
@@ -1325,9 +1381,10 @@ Gate:
 Current status: partial. Font defaults/migration, editor behavior preferences,
 per-section default reset helpers, compact/wide layout smoke, auto-save,
 save-time whitespace preferences, scheduler delay preferences, a
-keybindings/conflict view, categorized command palette entries, and disabled
-command explanations exist; the visual system and final preferences UX are still
-below the target bar.
+keybindings/conflict view, live build/run toolbar/menu state, categorized command
+palette entries, disabled command explanations, and compact status-bar project,
+language-service, job, and diagnostics state exist; the visual system and final
+preferences UX are still below the target bar.
 
 ### Milestone P5 - Dogfood Release Gate
 
@@ -1396,9 +1453,83 @@ Latest automated evidence (2026-05-23):
   `ctest --test-dir build -R '^zia_viperide_console_search$' --output-on-failure`.
 - Passed command palette category regression:
   `ctest --test-dir build -R '^zia_viperide_phase0_phase1$' --output-on-failure`.
+- Passed project-index perf counter regression:
+  `ctest --test-dir build -R '^zia_viperide_editor_hot_path$' --output-on-failure`.
+- Passed perf-log smoke with `VIPERIDE_PERF_LOG=/tmp/viperide_perf_index.log`,
+  confirming `projectIndexUpdates` and `projectIndexBytes` appear in real
+  ViperIDE frame logs.
+- Passed interactive perf smoke after the hidden-folding fix with
+  `VIPERIDE_PERF_LOG=/tmp/viperide_interactive_perf_after.log`; the saved-session
+  text-input window dropped `symbolsUs` from about 40 ms before the fix to
+  sub-0.1 ms after the fix.
+- Passed focused ViperIDE and Zia semantic regressions:
+  `ctest --test-dir build -R '^(zia_viperide_editor_hot_path|zia_viperide_intellisense|zia_viperide_console_search)$' --output-on-failure`
+  and
+  `ctest --test-dir build -R '^(test_zia_completion|test_zia_completion_engine|test_rt_zia_completion_stub|native_smoke_viperide_completion_arm64)$' --output-on-failure`.
+- Passed full release-gate CTest:
+  `ctest --test-dir build --output-on-failure` with 1695/1695 tests passing
+  and only the expected skipped tests (`macos_toolchain_installer_smoke`,
+  `test_rt_audio_unavailable`).
+- Passed responsiveness regression gates after the semantic-worker/index-idle
+  fix:
+  `ctest --test-dir build -R '^(test_rt_ide_workspace|zia_viperide_editor_hot_path|zia_viperide_intellisense|zia_viperide_console_search)$' --output-on-failure`.
+- Passed post-fix perf smoke with
+  `VIPERIDE_PERF_LOG=/tmp/viperide_perf_fix.log`; the restored 427-line session
+  stayed near frame cadence with no full-text copies and project-index work
+  draining to zero after startup.
+- Passed Problems action/source-column regression:
+  `ctest --test-dir build -R '^(zia_viperide_console_search|zia_viperide_intellisense)$' --output-on-failure`.
+- Passed live build/run toolbar/menu state regression:
+  `ctest --test-dir build -R '^zia_viperide_console_search$' --output-on-failure`.
+- Passed hidden-worktree/file-index regression and post-cache startup smoke:
+  `ctest --test-dir build -R '^(test_rt_ide_workspace|zia_viperide_editor_hot_path|zia_viperide_console_search|zia_viperide_intellisense|test_rt_gui_ide|test_rt_gui_runtime)$' --output-on-failure`;
+  `VIPERIDE_PERF_LOG=/tmp/viperide_perf_after_ignore_cache.log` stayed at
+  frame cadence with no full-text copies while automatic index work remained
+  bounded.
+- Passed severity-colored diagnostics status summary regression through
+  `zia_viperide_console_search` plus graphics/non-graphics GUI runtime tests.
+- Passed tree move/delete stale-state regression:
+  `ctest --test-dir build -R '^(zia_viperide_phase0_phase1|zia_viperide_file_tree|zia_viperide_console_search|zia_viperide_editor_hot_path)$' --output-on-failure`.
+- Passed project/language/job status chrome regression:
+  `ctest --test-dir build -R '^(zia_viperide_console_search|zia_viperide_phase0_phase1|zia_viperide_file_tree)$' --output-on-failure`.
+- Passed formatter command regression:
+  `ctest --test-dir build -R '^zia_viperide_intellisense$' --output-on-failure`.
+- Passed diagnostic fix-it regression:
+  `cmake --build build --target zia -j 8` followed by
+  `ctest --test-dir build -R '^zia_viperide_intellisense$' --output-on-failure`.
+- Passed missing-runtime-bind quick-fix regression:
+  `ctest --test-dir build -R '^zia_viperide_intellisense$' --output-on-failure`.
+- Passed missing-project-bind quick-fix regression:
+  `ctest --test-dir build -R '^(zia_viperide_intellisense|zia_viperide_editor_hot_path|zia_viperide_console_search)$' --output-on-failure`.
 - Passed `./scripts/build_ide.sh`, producing `viperide/bin/viperide`.
-- Still missing for this release gate: full `ctest --test-dir build
-  --output-on-failure` and the manual dogfood report.
+- Passed responsiveness regression after removing automatic frame-loop project
+  indexing and making controller enabled-state setters idempotent:
+  `ctest --test-dir build -R '^(test_vg_tier2_fixes|zia_viperide_phase0_phase1|zia_viperide_editor_hot_path|zia_viperide_intellisense)$' --output-on-failure`.
+- Passed interactive perf smoke with
+  `VIPERIDE_PERF_LOG=/tmp/viperide_perf_responsive.log`; the restored 427-line
+  session stayed at frame cadence after simulated typing, with project-index
+  updates dropping to zero after startup/open-doc sync.
+- Passed completion Tab-acceptance regression, including the native-editor
+  consumed-Tab fallback and held-key latch:
+  `ctest --test-dir build -R '^(zia_viperide_intellisense|zia_viperide_phase0_phase1|zia_viperide_editor_hot_path)$' --output-on-failure`.
+- Verified the editor font default remains 15 points through
+  `zia_viperide_phase0_phase1`.
+- Passed signature-help controller regression for popup visibility after `(`
+  and `,`, plus comma active-parameter tracking:
+  `ctest --test-dir build -R '^zia_viperide_intellisense$' --output-on-failure`.
+- Passed automatic-completion context regression for line comments and string
+  literals:
+  `ctest --test-dir build -R '^(zia_viperide_intellisense|zia_viperide_editor_hot_path)$' --output-on-failure`.
+- Passed spaced type-annotation and `new` expression completion regression:
+  `cmake --build build --target zia -j 8`, `./scripts/build_ide.sh`, and
+  `ctest --test-dir build -R '^(test_zia_completion_engine|zia_viperide_intellisense)$' --output-on-failure`.
+- Passed bound-file signature/hover declaration documentation regression:
+  `cmake --build build --target zia -j 8` and
+  `ctest --test-dir build -R '^(test_zia_completion_engine|zia_viperide_intellisense)$' --output-on-failure`.
+- Passed post-documentation hot-path focused regression and standalone rebuild:
+  `ctest --test-dir build -R '^(zia_viperide_editor_hot_path|zia_viperide_intellisense)$' --output-on-failure`
+  and `./scripts/build_ide.sh`.
+- Still missing for this release gate: the manual dogfood report.
 
 ## 7. Documentation Updates Required Per Milestone
 

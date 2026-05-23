@@ -57,6 +57,8 @@ typedef struct vg_statusbar_item {
     char *tooltip;                 ///< Tooltip text (owned)
     float min_width;               ///< Minimum width (0 = auto)
     float max_width;               ///< Maximum width (0 = unlimited)
+    uint32_t text_color;            ///< Optional per-item text color.
+    bool has_text_color;            ///< True when text_color overrides the status bar default.
     bool visible;                  ///< Is item visible
     float progress;                ///< Progress value (0-1) for progress items
     void *user_data;               ///< User data
@@ -165,6 +167,11 @@ void vg_statusbar_clear_zone(vg_statusbar_t *sb, vg_statusbar_zone_t zone);
 /// @param item Item to modify.
 /// @param text New text (copied internally).
 void vg_statusbar_item_set_text(vg_statusbar_item_t *item, const char *text);
+
+/// @brief Set a per-item text color override.
+/// @param item  Item to modify.
+/// @param color Text color as 0xRRGGBB.
+void vg_statusbar_item_set_text_color(vg_statusbar_item_t *item, uint32_t color);
 
 /// @brief Set the hover tooltip for a status bar item.
 /// @param item    Item to modify.

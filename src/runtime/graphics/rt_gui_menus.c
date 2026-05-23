@@ -1070,6 +1070,15 @@ void rt_statusbaritem_set_text(void *item, rt_string text) {
     free(ctext);
 }
 
+/// @brief Set the text color of the statusbaritem.
+void rt_statusbaritem_set_text_color(void *item, int64_t color) {
+    RT_ASSERT_MAIN_THREAD();
+    vg_statusbar_item_t *sbi = rt_statusbaritem_checked(item);
+    if (!sbi)
+        return;
+    vg_statusbar_item_set_text_color(sbi, (uint32_t)color);
+}
+
 /// @brief Get the text of the statusbaritem.
 rt_string rt_statusbaritem_get_text(void *item) {
     RT_ASSERT_MAIN_THREAD();
@@ -1931,6 +1940,12 @@ int64_t rt_statusbar_is_visible(void *bar) {
 void rt_statusbaritem_set_text(void *item, rt_string text) {
     (void)item;
     (void)text;
+}
+
+/// @brief Set the text color of the statusbaritem.
+void rt_statusbaritem_set_text_color(void *item, int64_t color) {
+    (void)item;
+    (void)color;
 }
 
 /// @brief Get the text of the statusbaritem.

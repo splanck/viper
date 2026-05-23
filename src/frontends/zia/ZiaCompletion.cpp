@@ -627,11 +627,28 @@ CompletionEngine::Context CompletionEngine::extractContext(std::string_view src,
             return sv.size() >= n && sv.substr(sv.size() - n) == suffix;
         };
 
-        if (endsWith(before, "new "))
+        auto trimRight = [](std::string_view sv) -> std::string_view {
+            while (!sv.empty() && std::isspace(static_cast<unsigned char>(sv.back())))
+                sv.remove_suffix(1);
+            return sv;
+        };
+
+        auto endsWithWord = [](std::string_view sv, const char *word) -> bool {
+            size_t n = std::strlen(word);
+            if (sv.size() < n || sv.substr(sv.size() - n) != word)
+                return false;
+            if (sv.size() == n)
+                return true;
+            return !isIdentChar(sv[sv.size() - n - 1]);
+        };
+
+        std::string_view beforeTrimmed = trimRight(before);
+
+        if (endsWith(before, "new ") || endsWithWord(beforeTrimmed, "new"))
             ctx.trigger = TriggerKind::AfterNew;
         else if (endsWith(before, "return "))
             ctx.trigger = TriggerKind::AfterReturn;
-        else if (triggerPos >= 0 && lineUpToCursor[triggerPos] == ':')
+        else if (!beforeTrimmed.empty() && beforeTrimmed.back() == ':')
             ctx.trigger = TriggerKind::AfterColon;
         else
             ctx.trigger = TriggerKind::CtrlSpace;
@@ -1239,6 +1256,11 @@ std::string CompletionEngine::signatureHelp(std::string_view source,
     auto addFunctionSymbol = [&](const Symbol &sym) {
         std::string formatted =
             formatFunctionSignature(call.name, sym.type, call.activeParameter, &sym.paramNames);
+        if (!formatted.empty()) {
+            std::string doc = documentationForSymbol(sm_.get(), sym);
+            if (!doc.empty())
+                formatted += "\n" + doc;
+        }
         if (!formatted.empty() && seen.insert(formatted).second)
             signatures.push_back(std::move(formatted));
     };

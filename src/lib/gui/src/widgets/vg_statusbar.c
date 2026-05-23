@@ -326,13 +326,14 @@ static void statusbar_draw_item(vg_statusbar_t *sb,
         case VG_STATUSBAR_ITEM_TEXT:
         case VG_STATUSBAR_ITEM_BUTTON:
             if (item->text) {
+                uint32_t text_color = item->has_text_color ? item->text_color : sb->text_color;
                 vg_font_draw_text(canvas,
                                   sb->font,
                                   sb->font_size,
                                   x + sb->item_padding,
                                   text_y,
                                   item->text,
-                                  sb->text_color);
+                                  text_color);
             }
             break;
 
@@ -751,6 +752,9 @@ void vg_statusbar_clear_zone(vg_statusbar_t *sb, vg_statusbar_zone_t zone) {
 void vg_statusbar_item_set_text(vg_statusbar_item_t *item, const char *text) {
     if (!vg_statusbar_item_is_live(item))
         return;
+    if ((!item->text && (!text || text[0] == '\0')) ||
+        (item->text && text && strcmp(item->text, text) == 0))
+        return;
 
     char *copy = text ? strdup(text) : NULL;
     if (text && !copy)
@@ -761,12 +765,30 @@ void vg_statusbar_item_set_text(vg_statusbar_item_t *item, const char *text) {
         vg_widget_invalidate_layout(&item->owner->base);
 }
 
+/// @brief Set a per-item text color override.
+///
+/// @param item  The item to update; may be NULL.
+/// @param color Text color as 0xRRGGBB.
+void vg_statusbar_item_set_text_color(vg_statusbar_item_t *item, uint32_t color) {
+    if (!vg_statusbar_item_is_live(item))
+        return;
+    if (item->has_text_color && item->text_color == color)
+        return;
+    item->text_color = color;
+    item->has_text_color = true;
+    if (item->owner)
+        item->owner->base.needs_paint = true;
+}
+
 /// @brief Set the hover tooltip string for a status bar item.
 ///
 /// @param item    The item to update; may be NULL.
 /// @param tooltip Tooltip text; copied internally, may be NULL to clear.
 void vg_statusbar_item_set_tooltip(vg_statusbar_item_t *item, const char *tooltip) {
     if (!vg_statusbar_item_is_live(item))
+        return;
+    if ((!item->tooltip && (!tooltip || tooltip[0] == '\0')) ||
+        (item->tooltip && tooltip && strcmp(item->tooltip, tooltip) == 0))
         return;
 
     char *copy = tooltip ? strdup(tooltip) : NULL;

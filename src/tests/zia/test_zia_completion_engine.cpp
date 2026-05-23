@@ -423,6 +423,7 @@ TEST(CompletionEngine, SignatureHelp_BoundFileModuleExportUsesParameterNames) {
     fs::remove_all(tempRoot);
 
     writeFile(tempRoot / "dep.zia", R"(module Dep;
+/// Exported helper docs.
 expose func exportedThing(count: Integer, label: String) -> Integer { return count; }
 )");
 
@@ -440,6 +441,7 @@ func main() {
 
     EXPECT_TRUE(help.find("exportedThing(count: Integer, label: String) -> Integer") !=
                 std::string::npos);
+    EXPECT_TRUE(help.find("Exported helper docs.") != std::string::npos);
 }
 
 TEST(CompletionEngine, SignatureHelp_RuntimeAliasMethod) {

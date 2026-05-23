@@ -76,6 +76,9 @@ static void test_file_index_and_ignore() {
     write_file(root / "src/main.zia", "module Main;\n");
     write_file(root / "assets/tiles.png", "png");
     write_file(root / "build/generated.zia", "skip");
+    write_file(root / ".cache/generated.zia", "skip");
+    write_file(root / ".claude/worktrees/agent/src/copied.zia", "skip");
+    write_file(root / ".secret.zia", "skip");
     write_file(root / "ignored/hidden.zia", "skip");
     write_file(root / "keep.tmp", "keep");
 
@@ -86,6 +89,9 @@ static void test_file_index_and_ignore() {
     assert(seq_contains_relative(entries, "assets/tiles.png"));
     assert(seq_contains_relative(entries, "keep.tmp"));
     assert(!seq_contains_relative(entries, "build/generated.zia"));
+    assert(!seq_contains_relative(entries, ".cache/generated.zia"));
+    assert(!seq_contains_relative(entries, ".claude/worktrees/agent/src/copied.zia"));
+    assert(!seq_contains_relative(entries, ".secret.zia"));
     assert(!seq_contains_relative(entries, "ignored/hidden.zia"));
 
     assert(rt_workspace_file_index_should_ignore(

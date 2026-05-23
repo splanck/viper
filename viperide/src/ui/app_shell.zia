@@ -184,6 +184,10 @@ class AppShell {
     // Status bar + items
     expose GUI.StatusBar statusBar;
     expose GUI.StatusBarItem cursorItem;   // clickable Ln/Col display (center zone)
+    expose GUI.StatusBarItem projectItem;  // right-zone project name
+    expose GUI.StatusBarItem languageItem; // right-zone active language service
+    expose GUI.StatusBarItem jobItem;      // right-zone build/run job state
+    expose GUI.StatusBarItem diagnosticsItem; // right-zone diagnostics summary
 
     // Command palette (Ctrl+Shift+P)
     expose GUI.CommandPalette commandPalette;
@@ -199,6 +203,11 @@ class AppShell {
     expose String outputFilterText;
     expose Boolean outputWrapLines;
     expose Boolean outputAutoScroll;
+    expose String lastDiagnosticsStatus;
+    expose Integer lastDiagnosticsColor;
+    expose String lastProjectStatus;
+    expose String lastLanguageStatus;
+    expose String lastBuildJobStatus;
 
     /// @brief Initialize with sidebar visible. Build() must be called next.
     expose func init() {
@@ -212,6 +221,11 @@ class AppShell {
         outputFilterText = "";
         outputWrapLines = false;
         outputAutoScroll = true;
+        lastDiagnosticsStatus = "Diagnostics: clean";
+        lastDiagnosticsColor = TOOL_COLOR_SUCCESS;
+        lastProjectStatus = "No project";
+        lastLanguageStatus = "Lang: text";
+        lastBuildJobStatus = "Job: idle";
     }
 
     /// @brief Construct the full IDE window and every chrome widget.
@@ -357,6 +371,7 @@ class AppShell {
         tbDebugStep = toolbar.AddButtonWithText("", "→", "Step Over (F10)");
         toolbar.AddSeparator();
         tbFind    = toolbar.AddButtonWithText("", "?",  "Find (Ctrl+F)");
+        SetBuildJobActive(false, "");
 
         // ====================================================================
         // SplitPane — sidebar (left) + editor area (right)
@@ -462,6 +477,15 @@ class AppShell {
         statusBar = GUI.StatusBar.New(mainVBox);
         statusBar.SetLeftText("Ready");
         cursorItem = statusBar.AddText("Ln 1, Col 1", 1);   // zone 1 = center
+        projectItem = statusBar.AddText("No project", 2);
+        projectItem.SetTooltip("Active project");
+        languageItem = statusBar.AddText("Lang: text", 2);
+        languageItem.SetTooltip("Active language service");
+        jobItem = statusBar.AddText("Job: idle", 2);
+        jobItem.SetTooltip("Build/run job state");
+        diagnosticsItem = statusBar.AddText("Diagnostics: clean", 2);
+        diagnosticsItem.SetTextColor(TOOL_COLOR_SUCCESS);
+        diagnosticsItem.SetTooltip("Live diagnostics summary");
         statusBar.SetRightText("ViperIDE");
 
         // ====================================================================
@@ -510,6 +534,81 @@ class AppShell {
     /// @brief Set the status bar's right text (language / EOL indicator).
     expose func SetStatusRight(text: String) {
         statusBar.SetRightText(text);
+    }
+
+    expose func SetWorkspaceStatus(projectName: String,
+                                   languageName: String) {
+        var projectText = "No project";
+        if projectName != "" {
+            projectText = "Project: " + projectName;
+        }
+        var languageText = "Lang: " + FormatLanguageName(languageName);
+        if projectText == lastProjectStatus and languageText == lastLanguageStatus {
+            return;
+        }
+        lastProjectStatus = projectText;
+        lastLanguageStatus = languageText;
+        if projectItem != null {
+            projectItem.SetText(projectText);
+            projectItem.SetTooltip(projectText);
+        }
+        if languageItem != null {
+            languageItem.SetText(languageText);
+            languageItem.SetTooltip(languageText);
+        }
+    }
+
+    expose func SetDiagnosticsSummary(errors: Integer,
+                                      warnings: Integer,
+                                      notes: Integer) {
+        var text = FormatDiagnosticsSummary(errors, warnings, notes);
+        var color = DiagnosticsSummaryColor(errors, warnings, notes);
+        if text == lastDiagnosticsStatus and color == lastDiagnosticsColor {
+            return;
+        }
+        lastDiagnosticsStatus = text;
+        lastDiagnosticsColor = color;
+        if diagnosticsItem != null {
+            diagnosticsItem.SetText(text);
+            diagnosticsItem.SetTextColor(color);
+            diagnosticsItem.SetTooltip(text);
+        }
+    }
+
+    expose func SetBuildJobActive(active: Boolean, name: String) {
+        var enabled = 1;
+        var stopEnabled = 0;
+        var jobName = name;
+        if jobName == "" { jobName = "job"; }
+        if active {
+            enabled = 0;
+            stopEnabled = 1;
+            lastBuildJobStatus = "Job: " + jobName;
+        } else {
+            lastBuildJobStatus = "Job: idle";
+        }
+
+        if tbBuild != null { tbBuild.SetEnabled(enabled); }
+        if tbRun != null { tbRun.SetEnabled(enabled); }
+        if tbDebug != null { tbDebug.SetEnabled(enabled); }
+        if tbStop != null {
+            tbStop.SetEnabled(stopEnabled);
+            if active {
+                tbStop.SetTooltip("Stop " + jobName + " (Shift+F5)");
+            } else {
+                tbStop.SetTooltip("No running job");
+            }
+        }
+
+        if miBuild != null { miBuild.SetEnabled(enabled); }
+        if miBuildAndRun != null { miBuildAndRun.SetEnabled(enabled); }
+        if miRun != null { miRun.SetEnabled(enabled); }
+        if miDebugStart != null { miDebugStart.SetEnabled(enabled); }
+        if miStop != null { miStop.SetEnabled(stopEnabled); }
+        if jobItem != null {
+            jobItem.SetText(lastBuildJobStatus);
+            jobItem.SetTooltip(lastBuildJobStatus);
+        }
     }
 
     /// @brief Set the breadcrumb path; auto-hides when path is empty.
@@ -723,11 +822,12 @@ class AppShell {
 
     expose func BeginProblems() {
         diagListBox.Clear();
-        var header = diagListBox.AddItem("Severity | File | Line | Code | Message | Action");
+        var header = diagListBox.AddItem("Severity | Source | File | Line | Code | Message | Action");
         GUI.ListBox.ItemSetTextColor(header, TOOL_COLOR_MUTED);
     }
 
     expose func AddProblem(severity: String,
+                           source: String,
                            filePath: String,
                            line: Integer,
                            column: Integer,
@@ -738,7 +838,9 @@ class AppShell {
         if displayCode == "" { displayCode = "-"; }
         var displayAction = action;
         if displayAction == "" { displayAction = "No quick fix"; }
-        var item = diagListBox.AddItem(severity + " | " + filePath + " | "
+        var displaySource = source;
+        if displaySource == "" { displaySource = "-"; }
+        var item = diagListBox.AddItem(severity + " | " + displaySource + " | " + filePath + " | "
                                        + line + ":" + column + " | " + displayCode
                                        + " | " + message + " | " + displayAction);
         ApplyProblemSeverityColor(item, severity);
@@ -767,6 +869,49 @@ class AppShell {
         } else if Str.IndexOf(lower, "success") != 0 or Str.IndexOf(lower, "passed") != 0 {
             GUI.ListBox.ItemSetTextColor(item, TOOL_COLOR_SUCCESS);
         }
+    }
+
+    expose func FormatDiagnosticsSummary(errors: Integer,
+                                         warnings: Integer,
+                                         notes: Integer) -> String {
+        if errors <= 0 and warnings <= 0 and notes <= 0 {
+            return "Diagnostics: clean";
+        }
+
+        var text = "Diagnostics:";
+        if errors > 0 {
+            text = text + " " + errors + " error";
+            if errors != 1 { text = text + "s"; }
+        }
+        if warnings > 0 {
+            if text != "Diagnostics:" { text = text + ","; }
+            text = text + " " + warnings + " warning";
+            if warnings != 1 { text = text + "s"; }
+        }
+        if notes > 0 {
+            if text != "Diagnostics:" { text = text + ","; }
+            text = text + " " + notes + " note";
+            if notes != 1 { text = text + "s"; }
+        }
+        return text;
+    }
+
+    expose func DiagnosticsSummaryColor(errors: Integer,
+                                        warnings: Integer,
+                                        notes: Integer) -> Integer {
+        if errors > 0 { return TOOL_COLOR_ERROR; }
+        if warnings > 0 { return TOOL_COLOR_WARNING; }
+        if notes > 0 { return TOOL_COLOR_INFO; }
+        return TOOL_COLOR_SUCCESS;
+    }
+
+    expose func FormatLanguageName(languageName: String) -> String {
+        var lang = Str.ToLower(languageName);
+        if lang == "zia" { return "Zia"; }
+        if lang == "basic" { return "BASIC"; }
+        if lang == "scene" { return "Scene"; }
+        if lang == "" { return "text"; }
+        return lang;
     }
 
     expose func FinishProblems(problemCount: Integer) {

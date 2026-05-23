@@ -1,5 +1,7 @@
 module perf_monitor;
 
+bind "../editor/project_index";
+
 bind Viper.GUI as GUI;
 bind Env = Viper.System.Environment;
 bind Clock = Viper.Time.Clock;
@@ -23,6 +25,8 @@ class PerfMonitor {
     expose Integer searchUs;
     expose Integer buildUs;
     expose Integer renderUs;
+    expose Integer projectIndexUpdates;
+    expose Integer projectIndexBytes;
 
     expose func init() {
         enabled = Env.HasVariable("VIPERIDE_PERF") or Env.HasVariable("VIPERIDE_PERF_LOG");
@@ -45,6 +49,8 @@ class PerfMonitor {
         searchUs = 0;
         buildUs = 0;
         renderUs = 0;
+        projectIndexUpdates = 0;
+        projectIndexBytes = 0;
     }
 
     expose func BeginFrame() {
@@ -93,7 +99,8 @@ class PerfMonitor {
         if enabled and startUs > 0 { renderUs = renderUs + (Clock.TicksUs() - startUs); }
     }
 
-    expose func EndFrame(editor: GUI.CodeEditor) {
+    expose func EndFrame(editor: GUI.CodeEditor,
+                         indexer: project_index.ProjectIndexer) {
         if enabled == false { return; }
         var frameUs = Clock.TicksUs() - frameStartUs;
         totalFrameUs = totalFrameUs + frameUs;
@@ -124,6 +131,10 @@ class PerfMonitor {
             spanChecks = editor.GetHighlightSpanCheckCount();
             lineCount = editor.LineCount;
         }
+        if indexer != null {
+            projectIndexUpdates = projectIndexUpdates + indexer.updateCount;
+            projectIndexBytes = projectIndexBytes + indexer.updateBytes;
+        }
 
         var msg = "ViperIDE perf"
             + " frames=" + frameCount
@@ -138,6 +149,8 @@ class PerfMonitor {
             + " indexUs=" + indexUs
             + " searchUs=" + searchUs
             + " buildUs=" + buildUs
+            + " projectIndexUpdates=" + projectIndexUpdates
+            + " projectIndexBytes=" + projectIndexBytes
             + " lines=" + lineCount
             + " fullTextCopies=" + copyCount
             + " fullTextBytes=" + copyBytes
@@ -154,6 +167,9 @@ class PerfMonitor {
 
         if editor != null {
             editor.ResetPerfStats();
+        }
+        if indexer != null {
+            indexer.ResetPerfStats();
         }
         lastFlushMs = nowMs;
         ResetWindow();

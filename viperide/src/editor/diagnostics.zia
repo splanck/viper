@@ -5,6 +5,7 @@ bind "../editor/editor_engine";
 bind "../editor/scheduler";
 bind "../build/diagnostic";
 bind "../services/locations";
+bind "../editor/quick_fixes";
 
 bind ZiaToolchain = Viper.Zia.Toolchain;
 bind SemanticJob = Viper.Zia.SemanticJob;
@@ -12,6 +13,7 @@ bind "../editor/zia_query";
 bind Seq = Viper.Collections.Seq;
 bind Map = Viper.Collections.Map;
 bind Viper.GUI;
+bind Str = Viper.String;
 
 // ============================================================================
 // MODULE: diagnostics
@@ -68,6 +70,9 @@ class LiveDiagnostics {
     expose Integer pendingJobRevision;
     expose String pendingJobPath;
     expose Integer pendingJobLineOffset;
+    expose Integer lastErrorCount;
+    expose Integer lastWarningCount;
+    expose Integer lastNoteCount;
 
     /// @brief Initialize as enabled, with no pending work and empty caches.
     expose func init() {
@@ -85,6 +90,9 @@ class LiveDiagnostics {
         pendingJobRevision = -1;
         pendingJobPath = "";
         pendingJobLineOffset = 0;
+        lastErrorCount = 0;
+        lastWarningCount = 0;
+        lastNoteCount = 0;
     }
 
     expose func SetScheduler(value: scheduler.EditorScheduler) {
@@ -222,13 +230,19 @@ class LiveDiagnostics {
         if Seq.get_Length(records) == 0 {
             // Clean — clear all markers and highlights
             shell.ClearProblemsPanel();
+            shell.SetDiagnosticsSummary(0, 0, 0);
             shell.minimap.ClearMarkers();
             engine.editor.ClearHighlights();
+            lastErrorCount = 0;
+            lastWarningCount = 0;
+            lastNoteCount = 0;
             return 0;
         }
 
         // Emit diagnostics
         var errorCount = 0;
+        var warningCount = 0;
+        var noteCount = 0;
         var shownCount = 0;
         shell.BeginProblems();
         shell.minimap.ClearMarkers();
@@ -260,11 +274,13 @@ class LiveDiagnostics {
             }
 
             if sev == 0 { errorCount = errorCount + 1; }
+            if sev == 1 { warningCount = warningCount + 1; }
+            if sev == 2 { noteCount = noteCount + 1; }
 
             var displayPath = diagPath;
             if displayPath == "" { displayPath = sourcePath; }
-            var item = shell.AddProblem(sevLabel, displayPath, diagLine, diagCol, code, msg,
-                                        "No quick fix");
+            var item = shell.AddProblem(sevLabel, "zia", displayPath, diagLine, diagCol,
+                                        code, msg, ProblemActionForDiagnosticRecord(record));
             shownCount = shownCount + 1;
             var locId = locStore.Add(displayPath, diagLine, diagCol, endLine, endCol,
                                      locations.KIND_DIAGNOSTIC, msg);
@@ -282,6 +298,10 @@ class LiveDiagnostics {
         }
 
         shell.FinishProblems(shownCount);
+        shell.SetDiagnosticsSummary(errorCount, warningCount, noteCount);
+        lastErrorCount = errorCount;
+        lastWarningCount = warningCount;
+        lastNoteCount = noteCount;
 
         return errorCount;
     }
@@ -320,4 +340,23 @@ class LiveDiagnostics {
             pendingJob = null;
         }
     }
+}
+
+expose func ProblemActionForDiagnostic(severity: Integer, code: String) -> String {
+    if severity == 1 and IsSuppressibleDiagnosticCode(code) {
+        return "Suppress Warning";
+    }
+    return "No quick fix";
+}
+
+expose func ProblemActionForDiagnosticRecord(record: Any) -> String {
+    if record == null { return "No quick fix"; }
+    var quickAction = quick_fixes.ProblemActionForDiagnosticRecord(record);
+    if quickAction != "No quick fix" { return quickAction; }
+    return ProblemActionForDiagnostic(Map.GetInt(record, "severity"),
+                                      Map.GetStr(record, "code"));
+}
+
+func IsSuppressibleDiagnosticCode(code: String) -> Boolean {
+    return Str.Length(code) >= 2 and Str.Left(code, 1) == "W";
 }

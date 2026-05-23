@@ -124,6 +124,8 @@ class CommandRegistry {
         Add("movelinedown", "Move Line Down", "Move the active line below the next line", "Alt+Down", "", true);
         Add("organizebinds", "Organize Binds", "Sort and deduplicate the leading Zia bind block", "Shift+Alt+O", "diagnostics", true);
         Add("suppressdiagnostic", "Suppress Warning", "Insert a Zia suppression comment for the warning at the cursor", "", "diagnostics", true);
+        Add("applydiagnosticfix", "Apply Diagnostic Fix-It", "Apply the first language-proposed diagnostic fix at the cursor", "Ctrl+.", "diagnostics", true);
+        Add("createmissingbind", "Create Missing Bind", "Add a safe runtime bind for an undefined Viper namespace alias", "", "diagnostics", true);
         Add("trimtrailingwhitespace", "Trim Trailing Whitespace", "Remove trailing spaces and tabs from the active document", "Shift+Alt+T", "", true);
         Add("formatdocument", "Format Document", "Format the active document when a formatter is available", "Shift+Alt+F", "", true);
         Add("formatselection", "Format Selection", "Format the selected text when a formatter is available", "", "", true);
@@ -316,7 +318,8 @@ class CommandRegistry {
            or id == "symboloutline" {
             return "Navigate";
         }
-        if id == "rename" or id == "organizebinds" or id == "suppressdiagnostic" {
+        if id == "rename" or id == "organizebinds" or id == "suppressdiagnostic"
+           or id == "applydiagnosticfix" or id == "createmissingbind" {
             return "Refactor";
         }
         if id == "build" or id == "buildrun" or id == "run" or id == "stopjob" {

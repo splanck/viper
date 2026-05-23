@@ -6,6 +6,7 @@ bind "commands/search_commands";
 bind "core/document_manager";
 bind "core/project_manager";
 bind "core/settings";
+bind "editor/diagnostics";
 bind "services/locations";
 
 bind GUI = Viper.GUI;
@@ -23,6 +24,27 @@ func fail(shell: app_shell.AppShell, reason: String) {
 func main() {
     var shell = new app_shell.AppShell();
     shell.Build("ViperIDE Console Search Probe", 800, 520);
+
+    if shell.lastProjectStatus != "No project"
+       or shell.lastLanguageStatus != "Lang: text"
+       or shell.jobItem.GetText() != "Job: idle" {
+        fail(shell, "initial status chrome");
+        return;
+    }
+    shell.SetWorkspaceStatus("Demo", "zia");
+    if shell.lastProjectStatus != "Project: Demo"
+       or shell.lastLanguageStatus != "Lang: Zia"
+       or shell.projectItem.GetText() != "Project: Demo"
+       or shell.languageItem.GetText() != "Lang: Zia" {
+        fail(shell, "workspace status chrome");
+        return;
+    }
+    shell.SetWorkspaceStatus("", "basic");
+    if shell.lastProjectStatus != "No project"
+       or shell.lastLanguageStatus != "Lang: BASIC" {
+        fail(shell, "workspace status fallback");
+        return;
+    }
 
     shell.SetBuildOutput("line one\n");
     if shell.outputListBox.Count != 1 {
@@ -129,9 +151,30 @@ func main() {
         fail(shell, "clear output helper");
         return;
     }
+    if shell.tbStop.IsEnabled() != 0 or shell.tbBuild.IsEnabled() == 0 {
+        fail(shell, "initial build toolbar state");
+        return;
+    }
+    shell.SetBuildJobActive(true, "Build");
+    if shell.tbBuild.IsEnabled() != 0 or shell.tbRun.IsEnabled() != 0
+       or shell.tbStop.IsEnabled() == 0 or shell.miBuild.IsEnabled() != 0
+       or shell.miStop.IsEnabled() == 0 or shell.lastBuildJobStatus != "Job: Build"
+       or shell.jobItem.GetText() != "Job: Build" {
+        fail(shell, "active build toolbar state");
+        return;
+    }
+    shell.SetBuildJobActive(false, "");
+    if shell.tbBuild.IsEnabled() == 0 or shell.tbRun.IsEnabled() == 0
+       or shell.tbStop.IsEnabled() != 0 or shell.miBuild.IsEnabled() == 0
+       or shell.miStop.IsEnabled() != 0 or shell.lastBuildJobStatus != "Job: idle"
+       or shell.jobItem.GetText() != "Job: idle" {
+        fail(shell, "idle build toolbar state");
+        return;
+    }
 
     shell.BeginProblems();
-    var prob = shell.AddProblem("error", "src/main.zia", 12, 4, "V-ZIA", "expected token", "");
+    var prob = shell.AddProblem("error", "zia", "src/main.zia", 12, 4,
+                                "V-ZIA", "expected token", "");
     GUI.ListBox.ItemSetData(prob, "loc|src/main.zia|12|4|12|5|diagnostic|expected token");
     shell.FinishProblems(1);
     if shell.diagListBox.Count != 2 or shell.diagListBox.IsVisible() == 0 {
@@ -141,6 +184,26 @@ func main() {
     shell.diagListBox.SelectIndex(1);
     if Str.IndexOf(GUI.ListBox.ItemGetText(shell.diagListBox.Selected), "No quick fix") == 0 {
         fail(shell, "problems code action placeholder");
+        return;
+    }
+    if diagnostics.ProblemActionForDiagnostic(1, "W000") != "Suppress Warning" {
+        fail(shell, "problems suppress warning action");
+        return;
+    }
+    if diagnostics.ProblemActionForDiagnostic(0, "E000") != "No quick fix" {
+        fail(shell, "problems no quick fix action");
+        return;
+    }
+    shell.SetDiagnosticsSummary(1, 2, 0);
+    if shell.lastDiagnosticsStatus != "Diagnostics: 1 error, 2 warnings"
+       or shell.lastDiagnosticsColor != shell.DiagnosticsSummaryColor(1, 2, 0) {
+        fail(shell, "diagnostics status summary");
+        return;
+    }
+    shell.SetDiagnosticsSummary(0, 0, 0);
+    if shell.lastDiagnosticsStatus != "Diagnostics: clean"
+       or shell.lastDiagnosticsColor != shell.DiagnosticsSummaryColor(0, 0, 0) {
+        fail(shell, "diagnostics clean status summary");
         return;
     }
     shell.ClearProblemsPanel();

@@ -170,10 +170,15 @@ func main() {
 
     var indexer = new project_index.ProjectIndexer();
     indexer.EnsureProject(projMgr, docMgr);
+    indexer.ResetPerfStats();
     var baseSyncs = indexer.syncCount;
     indexer.SyncOpenDocuments(docMgr);
     if indexer.syncCount != baseSyncs {
         fail(shell, "open document sync repeated unchanged content");
+        return;
+    }
+    if indexer.updateCount != 0 or indexer.updateBytes != 0 {
+        fail(shell, "unchanged open document updated project index counters");
         return;
     }
     doc.content = doc.content + "// dirty tab\n";
@@ -182,9 +187,18 @@ func main() {
         fail(shell, "open document sync missed changed content");
         return;
     }
+    if indexer.updateCount != 1 or indexer.updateBytes < Str.Length(doc.content) {
+        fail(shell, "open document project index counters");
+        return;
+    }
+    indexer.ResetPerfStats();
     indexer.SyncOpenDocuments(docMgr);
     if indexer.syncCount != baseSyncs + 1 {
         fail(shell, "open document sync repeated changed content");
+        return;
+    }
+    if indexer.updateCount != 0 or indexer.updateBytes != 0 {
+        fail(shell, "project index counters reset or unchanged sync");
         return;
     }
     baseSyncs = indexer.syncCount;
@@ -211,6 +225,10 @@ func main() {
     indexer.SyncActiveWhenIdle(docMgr, engine);
     if indexer.syncCount != editedSyncs + 1 {
         fail(shell, "index sync did not run after idle");
+        return;
+    }
+    if indexer.updateCount != 1 or indexer.updateBytes <= 0 {
+        fail(shell, "active idle sync project index counters");
         return;
     }
 
@@ -264,6 +282,36 @@ func main() {
     }
     if foldElapsedMs > 250 {
         fail(shell, "semantic fold generation exceeded budget: " + foldElapsedMs + "ms");
+        return;
+    }
+
+    var hiddenOutline = new symbols.SymbolOutline();
+    hiddenOutline.setSourcePath("fold_perf.zia");
+    hiddenOutline.setSemanticFoldingEnabled(true, engine);
+    var hiddenFoldTicks = 0;
+    while hiddenFoldTicks < 20 {
+        hiddenOutline.update(engine);
+        Clock.Sleep(1);
+        hiddenFoldTicks = hiddenFoldTicks + 1;
+    }
+    if hiddenOutline.foldedPath != "" {
+        fail(shell, "hidden semantic folding ran while outline hidden");
+        return;
+    }
+
+    var visibleOutline = new symbols.SymbolOutline();
+    visibleOutline.setup(shell.editorArea);
+    visibleOutline.setSourcePath("fold_perf.zia");
+    visibleOutline.toggle();
+    visibleOutline.setSemanticFoldingEnabled(true, engine);
+    var foldPumpTicks = 0;
+    while visibleOutline.foldedPath == "" and foldPumpTicks < 200 {
+        visibleOutline.update(engine);
+        Clock.Sleep(1);
+        foldPumpTicks = foldPumpTicks + 1;
+    }
+    if visibleOutline.foldedPath != "fold_perf.zia" {
+        fail(shell, "visible semantic folding initial refresh");
         return;
     }
 

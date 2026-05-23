@@ -1812,6 +1812,35 @@ TEST(statusbar_item_mutators_invalidate_owner) {
     vg_widget_destroy(&sb->base);
 }
 
+TEST(statusbar_item_mutators_skip_unchanged_values) {
+    vg_statusbar_t *sb = vg_statusbar_create(NULL);
+    ASSERT_NOT_NULL(sb);
+    vg_statusbar_item_t *item = vg_statusbar_add_text(sb, VG_STATUSBAR_ZONE_LEFT, "Idle");
+    ASSERT_NOT_NULL(item);
+
+    sb->base.needs_layout = false;
+    sb->base.needs_paint = false;
+    vg_statusbar_item_set_text(item, "Idle");
+    ASSERT_FALSE(sb->base.needs_layout);
+    ASSERT_FALSE(sb->base.needs_paint);
+
+    vg_statusbar_item_set_tooltip(item, "Active project");
+    sb->base.needs_layout = false;
+    sb->base.needs_paint = false;
+    vg_statusbar_item_set_tooltip(item, "Active project");
+    ASSERT_FALSE(sb->base.needs_layout);
+    ASSERT_FALSE(sb->base.needs_paint);
+
+    vg_statusbar_item_set_text_color(item, 0x123456);
+    sb->base.needs_layout = false;
+    sb->base.needs_paint = false;
+    vg_statusbar_item_set_text_color(item, 0x123456);
+    ASSERT_FALSE(sb->base.needs_layout);
+    ASSERT_FALSE(sb->base.needs_paint);
+
+    vg_widget_destroy(&sb->base);
+}
+
 TEST(dropdown_mutators_invalidate_and_adjust_indices) {
     vg_dropdown_t *dd = vg_dropdown_create(NULL);
     ASSERT_NOT_NULL(dd);
@@ -2216,6 +2245,7 @@ int main(void) {
     RUN(toolbar_keyboard_end_focuses_overflow_button);
     RUN(statusbar_hit_testing_uses_local_coords);
     RUN(statusbar_item_mutators_invalidate_owner);
+    RUN(statusbar_item_mutators_skip_unchanged_values);
     RUN(dropdown_mutators_invalidate_and_adjust_indices);
     RUN(dropdown_closed_key_opens_popup);
     RUN(dropdown_typeahead_selects_matching_closed_item);

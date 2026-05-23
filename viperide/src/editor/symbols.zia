@@ -107,6 +107,9 @@ class SymbolOutline {
     }
 
     expose func setEnabled(value: Boolean) {
+        if enabled == value {
+            return;
+        }
         enabled = value;
         if enabled == false {
             symbolList.SetVisible(0);
@@ -147,7 +150,7 @@ class SymbolOutline {
     ///        buffer revision or active path changes; otherwise no-op.
     expose func update(engine: editor_engine.EditorEngine) {
         if enabled == false { return; }
-        if visible == false and semanticFoldingEnabled == false { return; }
+        if visible == false { return; }
         if engine == null or engine.editor == null { return; }
 
         var revision = engine.GetRevision();

@@ -1565,6 +1565,11 @@ int64_t rt_statusbar_is_visible(void *bar);
 /// @param text New text.
 void rt_statusbaritem_set_text(void *item, rt_string text);
 
+/// @brief Set status bar item text color.
+/// @param item StatusBarItem handle.
+/// @param color Text color as 0xRRGGBB.
+void rt_statusbaritem_set_text_color(void *item, int64_t color);
+
 /// @brief Get status bar item text.
 /// @param item StatusBarItem handle.
 /// @return Item text.
