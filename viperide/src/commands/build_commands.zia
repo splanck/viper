@@ -215,10 +215,19 @@ func PopulateBuildOutput(shell: app_shell.AppShell,
             var item = shell.outputListBox.AddItem(line);
             var diag = buildSys.ParseDiagnosticLine(line);
             if diag != null {
+                if diag.severity == diagnostic.SEV_WARNING {
+                    GUI.ListBox.ItemSetTextColor(item, WARNING_MARKER_COLOR);
+                } else if diag.severity == diagnostic.SEV_INFO {
+                    GUI.ListBox.ItemSetTextColor(item, INFO_MARKER_COLOR);
+                } else {
+                    GUI.ListBox.ItemSetTextColor(item, ERROR_MARKER_COLOR);
+                }
                 var locId = locStore.Add(diag.filePath, diag.line, diag.column,
                                          diag.line, diag.column + 1,
                                          locations.KIND_BUILD, diag.message);
                 GUI.ListBox.ItemSetData(item, locId);
+            } else {
+                shell.ApplyOutputLineColor(item, line);
             }
         }
         i = i + 1;

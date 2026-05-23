@@ -1296,6 +1296,23 @@ static void test_runtime_listbox_selected_text_copies_multi_selection(void) {
     printf("test_runtime_listbox_selected_text_copies_multi_selection: PASSED\n");
 }
 
+static void test_runtime_listbox_item_text_color_override(void) {
+    vg_listbox_t *listbox = vg_listbox_create(NULL);
+    assert(listbox);
+    void *item_handle = rt_listbox_add_item(listbox, rt_const_cstr("error row"));
+    vg_listbox_item_t *item = rt_gui_listbox_item_from_handle(item_handle);
+    assert(item);
+    assert(item->has_text_color == false);
+
+    rt_listbox_item_set_text_color(item_handle, 0xE06C75);
+    assert(item->has_text_color);
+    assert(item->text_color == 0xE06C75u);
+    assert(listbox->base.needs_paint);
+
+    vg_widget_destroy(&listbox->base);
+    printf("test_runtime_listbox_item_text_color_override: PASSED\n");
+}
+
 static void test_treeview_selection_changed_reports_removal_and_clear(void) {
     vg_treeview_t *tree = vg_treeview_create(NULL);
     assert(tree);
@@ -1338,6 +1355,7 @@ static void test_removed_listbox_and_treeview_handles_are_inert(void) {
     assert(rt_str_len(rt_listbox_item_get_text(item)) == 0);
     assert(rt_str_len(rt_listbox_item_get_data(item)) == 0);
     rt_listbox_item_set_text(item, rt_const_cstr("ignored"));
+    rt_listbox_item_set_text_color(item, 0xE06C75);
     rt_listbox_select(listbox, item);
     assert(rt_listbox_get_selected(listbox) == NULL);
 
@@ -2675,6 +2693,7 @@ int main(void) {
     test_listbox_selection_changed_is_edge_triggered();
     test_runtime_listbox_select_index_rejects_out_of_range_indices();
     test_runtime_listbox_selected_text_copies_multi_selection();
+    test_runtime_listbox_item_text_color_override();
     test_treeview_selection_changed_reports_removal_and_clear();
     test_removed_listbox_and_treeview_handles_are_inert();
     test_listbox_and_treeview_reject_foreign_child_handles();

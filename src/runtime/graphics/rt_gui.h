@@ -831,6 +831,11 @@ void rt_listbox_item_set_text(void *item, rt_string text);
 /// @param data String data to store.
 void rt_listbox_item_set_data(void *item, rt_string data);
 
+/// @brief Set a custom text color for a list box item.
+/// @param item ListBox item handle.
+/// @param color RGB/RGBA color value interpreted by the active backend.
+void rt_listbox_item_set_text_color(void *item, int64_t color);
+
 /// @brief Get user data stored in a list box item.
 /// @param item ListBox item handle.
 /// @return Stored string data.

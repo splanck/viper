@@ -480,8 +480,10 @@ typedef struct vg_listbox_item {
     struct vg_listbox *owner; ///< Owning listbox while the item is live
     char *text;          ///< Item text (owned)
     size_t text_len;     ///< Item text length in bytes
+    uint32_t text_color; ///< Optional text color override
     void *user_data;     ///< User data
     bool owns_user_data; ///< Free user_data when the item is destroyed
+    bool has_text_color; ///< Whether text_color overrides the listbox text color
     bool selected;       ///< Is item selected
     struct vg_listbox_item *next;
     struct vg_listbox_item *prev;
@@ -606,6 +608,11 @@ vg_listbox_item_t *vg_listbox_get_selected(vg_listbox_t *listbox);
 /// @param item Item handle to test.
 /// @return true if the item is still live; false if it has been removed or the listbox destroyed.
 bool vg_listbox_item_is_live(const vg_listbox_item_t *item);
+
+/// @brief Override the rendered text color for one item.
+/// @param item  Live ListBox item.
+/// @param color RGB/RGBA color value interpreted by the active backend.
+void vg_listbox_item_set_text_color(vg_listbox_item_t *item, uint32_t color);
 
 /// @brief Set the font used for item text rendering.
 /// @param listbox ListBox widget.

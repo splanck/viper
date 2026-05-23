@@ -5,6 +5,12 @@ bind Viper.Collections.Seq as Seq;
 bind Obj = Viper.Core.Object;
 bind Str = Viper.String;
 
+final TOOL_COLOR_ERROR = 14707829;   // 0xE06C75
+final TOOL_COLOR_WARNING = 15911349; // 0xF2C76D
+final TOOL_COLOR_INFO = 6662382;     // 0x65A5EE
+final TOOL_COLOR_SUCCESS = 10264905; // 0x9CD67D
+final TOOL_COLOR_MUTED = 10066329;   // 0x999999
+
 // ============================================================================
 // MODULE: app_shell
 // PURPOSE: Top-level UI layout for ViperIDE. Owns the GUI.App window and
@@ -688,6 +694,7 @@ class AppShell {
         }
         if outputWrapLines == false or Str.Length(line) <= 160 {
             var item = outputListBox.AddItem(line);
+            ApplyOutputLineColor(item, line);
             if outputAutoScroll and outputListBox.Count > 0 {
                 outputListBox.SelectIndex(outputListBox.Count - 1);
             }
@@ -699,6 +706,7 @@ class AppShell {
         while start <= Str.Length(line) {
             var chunk = Str.MidLen(line, start, 160);
             var item = outputListBox.AddItem(chunk);
+            ApplyOutputLineColor(item, line);
             if first == null { first = item; }
             if outputAutoScroll and outputListBox.Count > 0 {
                 outputListBox.SelectIndex(outputListBox.Count - 1);
@@ -715,7 +723,8 @@ class AppShell {
 
     expose func BeginProblems() {
         diagListBox.Clear();
-        diagListBox.AddItem("Severity | File | Line | Code | Message | Action");
+        var header = diagListBox.AddItem("Severity | File | Line | Code | Message | Action");
+        GUI.ListBox.ItemSetTextColor(header, TOOL_COLOR_MUTED);
     }
 
     expose func AddProblem(severity: String,
@@ -729,9 +738,35 @@ class AppShell {
         if displayCode == "" { displayCode = "-"; }
         var displayAction = action;
         if displayAction == "" { displayAction = "No quick fix"; }
-        return diagListBox.AddItem(severity + " | " + filePath + " | "
-                                   + line + ":" + column + " | " + displayCode
-                                   + " | " + message + " | " + displayAction);
+        var item = diagListBox.AddItem(severity + " | " + filePath + " | "
+                                       + line + ":" + column + " | " + displayCode
+                                       + " | " + message + " | " + displayAction);
+        ApplyProblemSeverityColor(item, severity);
+        return item;
+    }
+
+    expose func ApplyProblemSeverityColor(item: Any, severity: String) {
+        if item == null { return; }
+        var sev = Str.ToLower(severity);
+        if sev == "error" {
+            GUI.ListBox.ItemSetTextColor(item, TOOL_COLOR_ERROR);
+        } else if sev == "warning" or sev == "warn" {
+            GUI.ListBox.ItemSetTextColor(item, TOOL_COLOR_WARNING);
+        } else {
+            GUI.ListBox.ItemSetTextColor(item, TOOL_COLOR_INFO);
+        }
+    }
+
+    expose func ApplyOutputLineColor(item: Any, line: String) {
+        if item == null { return; }
+        var lower = Str.ToLower(line);
+        if Str.IndexOf(lower, "error") != 0 or Str.IndexOf(lower, "failed") != 0 {
+            GUI.ListBox.ItemSetTextColor(item, TOOL_COLOR_ERROR);
+        } else if Str.IndexOf(lower, "warning") != 0 or Str.IndexOf(lower, "warn") != 0 {
+            GUI.ListBox.ItemSetTextColor(item, TOOL_COLOR_WARNING);
+        } else if Str.IndexOf(lower, "success") != 0 or Str.IndexOf(lower, "passed") != 0 {
+            GUI.ListBox.ItemSetTextColor(item, TOOL_COLOR_SUCCESS);
+        }
     }
 
     expose func FinishProblems(problemCount: Integer) {

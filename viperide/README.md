@@ -121,7 +121,7 @@ and search exclusions on top of hard excludes and `.gitignore`.
 - Project-aware build/run configurations using argument-vector process jobs
 - Streamed build/run output with cancellable jobs, append-preserving output
   updates, filter/wrap/copy/clear commands, selected-row/range copy,
-  auto-scroll lock, clickable diagnostics, and lightweight
+  auto-scroll lock, severity-colored rows, clickable diagnostics, and lightweight
   Problems/Output/Search/References/Debug Console tabs
 - Debug UI controls with persisted breakpoints and a dedicated Debug Console tab
   wired to the current non-executing `Viper.Debug.Protocol` placeholder

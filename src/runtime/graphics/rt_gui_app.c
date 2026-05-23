@@ -1287,8 +1287,8 @@ void *rt_gui_app_new(rt_string title, int64_t width, int64_t height) {
 /// @details Tries the embedded JetBrains Mono Regular first (always available
 ///          because it's compiled into the binary). If that fails, falls back to
 ///          well-known system font paths on macOS, Linux, and Windows. The font
-///          size is scaled by the window's HiDPI factor so glyphs render at
-///          native resolution (e.g., 28 px on a 2x Retina display for 14 pt text).
+///          size is stored in logical points; the window/canvas backend owns
+///          HiDPI coordinate scaling.
 ///          Once loaded, the font is marked as owned by the app and freed in
 ///          rt_gui_app_destroy. Subsequent calls are no-ops if the font is
 ///          already loaded.
@@ -1302,12 +1302,7 @@ void rt_gui_ensure_default_font(void) {
         vg_font_load(vg_embedded_font_data, (size_t)vg_embedded_font_size);
     if (s_current_app->default_font) {
         s_current_app->default_font_owned = 1;
-        // Scale the raster size by the HiDPI factor so glyphs are rendered at
-        // native resolution (e.g. 28 px on a 2× Retina display for 14 pt text).
-        float _scale = s_current_app->window ? vgfx_window_get_scale(s_current_app->window) : 1.0f;
-        if (!isfinite(_scale) || _scale <= 0.0f)
-            _scale = 1.0f;
-        s_current_app->default_font_size = 14.0f * _scale;
+        s_current_app->default_font_size = 14.0f;
         return;
     }
 
@@ -1324,11 +1319,7 @@ void rt_gui_ensure_default_font(void) {
         s_current_app->default_font = vg_font_load_file(font_paths[i]);
         if (s_current_app->default_font) {
             s_current_app->default_font_owned = 1;
-            float _scale =
-                s_current_app->window ? vgfx_window_get_scale(s_current_app->window) : 1.0f;
-            if (!isfinite(_scale) || _scale <= 0.0f)
-                _scale = 1.0f;
-            s_current_app->default_font_size = 14.0f * _scale;
+            s_current_app->default_font_size = 14.0f;
             break;
         }
     }
@@ -2130,8 +2121,7 @@ void *rt_gui_app_get_root(void *app_ptr) {
 ///          current frame.
 /// @param app_ptr Pointer to the app.
 /// @param font    New font to use (vg_font_t*).
-/// @param size    Font size in logical points; stored as physical pixels after
-///                applying the window scale factor.
+/// @param size    Font size in logical points.
 void rt_gui_app_set_font(void *app_ptr, void *font, double size) {
     RT_ASSERT_MAIN_THREAD();
     rt_gui_app_t *app = rt_gui_app_handle_checked(app_ptr);
@@ -2143,12 +2133,8 @@ void rt_gui_app_set_font(void *app_ptr, void *font, double size) {
         return;
     vg_font_t *old_font = app->default_font;
     int old_owned = app->default_font_owned;
-    float _scale = app->window ? vgfx_window_get_scale(app->window) : 1.0f;
-    if (!isfinite(_scale) || _scale <= 0.0f)
-        _scale = 1.0f;
-    double logical_size = rt_gui_sanitize_font_size(size, 14.0);
     app->default_font = new_font;
-    app->default_font_size = (float)logical_size * _scale;
+    app->default_font_size = (float)rt_gui_sanitize_font_size(size, 14.0);
     app->default_font_owned = 0;
 
     if (app->root && app->default_font) {

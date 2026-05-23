@@ -914,22 +914,18 @@ void rt_app_set_window_size(void *app, int64_t w, int64_t h) {
 }
 
 /// @brief Return the default font size for the app window in logical points.
-/// @details The stored value is in physical pixels (scaled by the HiDPI factor);
-///          this function divides by the current scale factor to return logical pt.
 /// @return Font size in logical points, defaulting to 14.0 if the app is invalid.
 double rt_app_get_font_size(void *app) {
     RT_ASSERT_MAIN_THREAD();
     rt_gui_app_t *gui_app = rt_app_checked(app);
     if (!gui_app)
         return 14.0;
-    // Return logical pt size — divide stored physical pixels by HiDPI scale.
-    float _s = rt_app_window_scale(gui_app);
-    return (double)(gui_app->default_font_size / _s);
+    return (double)gui_app->default_font_size;
 }
 
 /// @brief Set the default font size for the app window in logical points.
-/// @details Clamps `size` to [6, 72] pt, then multiplies by the HiDPI scale
-///          factor before storing, so the physical-pixel value tracks display density.
+/// @details Clamps `size` to [6, 72] pt before storing. The window/canvas
+///          backend owns HiDPI coordinate scaling.
 /// @param app  App handle.
 /// @param size Desired font size in logical points.
 void rt_app_set_font_size(void *app, double size) {
@@ -942,9 +938,7 @@ void rt_app_set_font_size(void *app, double size) {
         size = 6.0;
     if (size > 72.0)
         size = 72.0;
-    // Store physical pixels — multiply logical pt size by HiDPI scale.
-    float _s = rt_app_window_scale(gui_app);
-    gui_app->default_font_size = (float)size * _s;
+    gui_app->default_font_size = (float)size;
     rt_gui_reapply_default_font(gui_app);
 }
 

@@ -1437,6 +1437,17 @@ rt_string rt_listbox_item_get_data(void *item) {
     return rt_gui_string_data_to_rt_string(it->user_data);
 }
 
+/// @brief Override a listbox item's text color.
+void rt_listbox_item_set_text_color(void *item, int64_t color) {
+    RT_ASSERT_MAIN_THREAD();
+    if (!item)
+        return;
+    vg_listbox_item_t *it = rt_gui_listbox_item_from_handle(item);
+    if (!it)
+        return;
+    vg_listbox_item_set_text_color(it, (uint32_t)color);
+}
+
 /// @brief Set the font of the listbox.
 void rt_listbox_set_font(void *listbox, void *font, double size) {
     RT_ASSERT_MAIN_THREAD();
@@ -2314,6 +2325,12 @@ void rt_listbox_item_set_data(void *item, rt_string data) {
 rt_string rt_listbox_item_get_data(void *item) {
     (void)item;
     return rt_str_empty();
+}
+
+/// @brief Stub: graphics disabled — no listbox item exists.
+void rt_listbox_item_set_text_color(void *item, int64_t color) {
+    (void)item;
+    (void)color;
 }
 
 /// @brief Set the font of the listbox.

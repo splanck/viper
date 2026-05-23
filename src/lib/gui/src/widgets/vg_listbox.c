@@ -122,6 +122,15 @@ bool vg_listbox_item_is_live(const vg_listbox_item_t *item) {
     return item && item->magic == VG_LISTBOX_ITEM_MAGIC && item->owner != NULL;
 }
 
+/// @brief Override the text color for one live item.
+void vg_listbox_item_set_text_color(vg_listbox_item_t *item, uint32_t color) {
+    if (!vg_listbox_item_is_live(item))
+        return;
+    item->text_color = color;
+    item->has_text_color = true;
+    item->owner->base.needs_paint = true;
+}
+
 /// @brief Frees the text string inside @p item and zeroes its length, leaving the item struct itself intact.
 static void listbox_free_item_payload(vg_listbox_item_t *item) {
     if (!item)
@@ -133,6 +142,8 @@ static void listbox_free_item_payload(vg_listbox_item_t *item) {
         free(item->user_data);
     item->user_data = NULL;
     item->owns_user_data = false;
+    item->has_text_color = false;
+    item->text_color = 0;
 }
 
 /// @brief Frees @p item's payload and then frees the item struct itself.
@@ -686,7 +697,7 @@ static void listbox_paint(vg_widget_t *widget, void *canvas) {
                                   widget->x + text_padding,
                                   listbox_text_baseline(lb, item_y, ih),
                                   item->text,
-                                  lb->text_color);
+                                  item->has_text_color ? item->text_color : lb->text_color);
                 if (text_clip_w > 0 && text_clip_h > 0)
                     vgfx_set_clip(win, x, y, w, h);
             }

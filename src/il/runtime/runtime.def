@@ -2358,6 +2358,7 @@ RT_FUNC(GuiListBoxItemGetText, rt_listbox_item_get_text, "Viper.GUI.ListBox.Item
 RT_FUNC(GuiListBoxItemSetText, rt_listbox_item_set_text, "Viper.GUI.ListBox.ItemSetText", "void(obj,str)")
 RT_FUNC(GuiListBoxItemGetData, rt_listbox_item_get_data, "Viper.GUI.ListBox.ItemGetData", "str(obj)")
 RT_FUNC(GuiListBoxItemSetData, rt_listbox_item_set_data, "Viper.GUI.ListBox.ItemSetData", "void(obj,str)")
+RT_FUNC(GuiListBoxItemSetTextColor, rt_listbox_item_set_text_color, "Viper.GUI.ListBox.ItemSetTextColor", "void(obj,i64)")
 RT_FUNC(GuiListBoxSetFont,     rt_listbox_set_font,     "Viper.GUI.ListBox.SetFont",      "void(obj,obj,f64)")
 
 //=============================================================================
@@ -9232,6 +9233,7 @@ RT_CLASS_BEGIN("Viper.GUI.ListBox", GuiListBox, "obj", GuiListBoxNew)
     RT_METHOD("ItemSetText", "void(obj,str)", GuiListBoxItemSetText)
     RT_METHOD("ItemGetData", "str(obj)", GuiListBoxItemGetData)
     RT_METHOD("ItemSetData", "void(obj,str)", GuiListBoxItemSetData)
+    RT_METHOD("ItemSetTextColor", "void(obj,i64)", GuiListBoxItemSetTextColor)
     RT_METHOD("SetFont", "void(obj,f64)", GuiListBoxSetFont)
     RT_METHOD("Focus", "void()", GuiWidgetFocus)
     RT_METHOD("Destroy", "void()", GuiWidgetDestroy)

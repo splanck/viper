@@ -179,12 +179,31 @@ func main() {
         return;
     }
 
+    if completer.AcceptTabKey() == false {
+        fail(shell, "completion tab key accept not consumed");
+        return;
+    }
+    var line = engine.editor.GetLine(3);
+    if line != "    greet" {
+        fail(shell, "completion tab key accept did not replace prefix cleanly: " + line);
+        return;
+    }
+
+    engine.SetText(
+        "module IntelliProbe;\n"
+        + "func greet(value: Integer) -> Integer { return value; }\n"
+        + "func main() {\n"
+        + "    gr\n"
+        + "}\n");
+    engine.editor.SetCursor(3, 6);
+    completer.TriggerCompletion();
+    pumpCompletion(completer, 200);
     engine.editor.InsertAtCursor("    ");
     if completer.AcceptTypedTab("\t") == false {
         fail(shell, "completion tab accept not consumed");
         return;
     }
-    var line = engine.editor.GetLine(3);
+    line = engine.editor.GetLine(3);
     if line != "    greet" {
         fail(shell, "completion tab accept did not replace prefix cleanly: " + line);
         return;

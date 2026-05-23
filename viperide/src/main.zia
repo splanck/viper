@@ -292,7 +292,7 @@ func main() {
 
         if completer.isVisible {
             if Input.Keyboard.WasPressed(Input.Keyboard.get_KEY_TAB()) {
-                completer.AcceptTypedTab("\t");
+                completer.AcceptTabKey();
                 typedThisFrame = "";
             } else if Input.Keyboard.WasPressed(Input.Keyboard.get_KEY_ENTER()) {
                 completer.AcceptSelected();
@@ -308,7 +308,7 @@ func main() {
                 typedThisFrame = "";
             } else if completer.AcceptTypedTab(typedThisFrame) {
                 typedThisFrame = "";
-            } else if typedThisFrame == "" and completer.AcceptIfEditorInsertedTab() {
+            } else if completer.AcceptIfEditorInsertedTab() {
                 typedThisFrame = "";
             } else if typedThisFrame != "" {
                 completer.AcceptIfCommitCharacter(typedThisFrame);

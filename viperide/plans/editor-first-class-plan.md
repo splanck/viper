@@ -800,7 +800,10 @@ Current implementation status:
   toggled/locked without losing the user's selected row.
 - Search results now include file header rows, while individual matches keep
   structured location ids for path-safe navigation.
-- Still open: severity styling and richer multi-column/rich-console result UI.
+- Runtime `ListBox.ItemSetTextColor()` now lets list-backed tool rows carry
+  severity colors. Problems rows color error/warning/info severity, and build
+  output colors parsed diagnostics plus common success/failure/warning lines.
+- Still open: richer multi-column/rich-console result UI beyond colored rows.
 
 ### E7 - Settings and Preferences
 
@@ -1262,6 +1265,8 @@ Latest automated evidence (2026-05-23):
   `ctest --test-dir build -R '^(test_vg_codeeditor_perf|zia_viperide_phase0_phase1|zia_viperide_editor_hot_path|zia_viperide_intellisense|zia_viperide_console_search)$' --output-on-failure`.
 - Passed adjacent runtime/project gates:
   `ctest --test-dir build -R '^(test_rt_gui_runtime|test_rt_gui_ide|zia_viperide_file_tree|zia_viperide_phase2_phase3)$' --output-on-failure`.
+- Passed focused regression after editor/tester feedback:
+  `ctest --test-dir build -R '^(test_rt_gui_runtime|zia_viperide_intellisense|zia_viperide_console_search)$' --output-on-failure`.
 - Passed `./scripts/build_ide.sh`, producing `viperide/bin/viperide`.
 - Still missing for this release gate: full `ctest --test-dir build
   --output-on-failure` and the manual dogfood report.

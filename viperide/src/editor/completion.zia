@@ -442,6 +442,14 @@ class CompletionController {
         AcceptSelectedInternal(false);
     }
 
+    expose func AcceptTabKey() -> Boolean {
+        if isVisible == false or itemCount == 0 {
+            return false;
+        }
+        AcceptSelectedInternal(true);
+        return true;
+    }
+
     expose func AcceptTypedTab(typed: String) -> Boolean {
         if isVisible == false or itemCount == 0 or typed == "" {
             return false;
