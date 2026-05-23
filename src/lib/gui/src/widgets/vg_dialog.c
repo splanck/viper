@@ -1787,9 +1787,15 @@ void vg_dialog_set_on_close(vg_dialog_t *dialog,
 void vg_dialog_set_font(vg_dialog_t *dialog, vg_font_t *font, float size) {
     if (!dialog)
         return;
+    float font_size = size > 0 ? size : vg_theme_get_current()->typography.size_normal;
+    float title_font_size = font_size + dialog_ui_scale();
+    if (dialog->font == font && dialog->font_size == font_size &&
+        dialog->title_font_size == title_font_size) {
+        return;
+    }
     dialog->font = font;
-    dialog->font_size = size > 0 ? size : vg_theme_get_current()->typography.size_normal;
-    dialog->title_font_size = dialog->font_size + dialog_ui_scale();
+    dialog->font_size = font_size;
+    dialog->title_font_size = title_font_size;
     dialog->base.needs_layout = true;
     dialog->base.needs_paint = true;
 }

@@ -33,6 +33,7 @@
 #include "frontends/zia/Sema.hpp"
 #include "il/runtime/classes/RuntimeClasses.hpp"
 #include <algorithm>
+#include <sstream>
 #include <unordered_set>
 
 namespace il::frontends::zia {
@@ -58,6 +59,70 @@ int compareToolLoc(const SourceLoc &a, const SourceLoc &b) {
     if (a.column != b.column)
         return a.column < b.column ? -1 : 1;
     return 0;
+}
+
+std::string displayType(const TypeRef &type) {
+    return type ? type->toDisplayString() : "Unknown";
+}
+
+std::string runtimeCallableSignature(const std::string &name,
+                                     const TypeRef &type,
+                                     const std::vector<std::string> &paramNames) {
+    if (!type || type->kind != TypeKindSem::Function)
+        return name;
+
+    std::ostringstream out;
+    out << name << "(";
+    auto params = type->paramTypes();
+    for (size_t i = 0; i < params.size(); ++i) {
+        if (i > 0)
+            out << ", ";
+        if (i < paramNames.size() && !paramNames[i].empty())
+            out << paramNames[i];
+        else
+            out << "arg" << (i + 1);
+        out << ": " << displayType(params[i]);
+    }
+    out << ") -> " << displayType(type->returnType());
+    return out.str();
+}
+
+std::vector<std::string> memberParamNamesFromExtern(const Symbol *externSym, size_t memberArity) {
+    if (!externSym || externSym->paramNames.empty())
+        return {};
+    if (externSym->paramNames.size() == memberArity)
+        return externSym->paramNames;
+    if (externSym->paramNames.size() == memberArity + 1)
+        return {externSym->paramNames.begin() + 1, externSym->paramNames.end()};
+    return {};
+}
+
+std::string runtimeMethodDocumentation(const std::string &className,
+                                       const std::string &methodName,
+                                       const char *target,
+                                       const TypeRef &type,
+                                       const std::vector<std::string> &paramNames) {
+    std::ostringstream out;
+    out << "Runtime method " << className << "." << methodName << ".\n";
+    out << "Signature: " << runtimeCallableSignature(methodName, type, paramNames);
+    if (target && *target)
+        out << "\nTarget: " << target;
+    return out.str();
+}
+
+std::string runtimePropertyDocumentation(const std::string &className,
+                                         const il::runtime::RuntimeProperty &prop,
+                                         const TypeRef &type) {
+    std::ostringstream out;
+    out << "Runtime property " << className << "." << (prop.name ? prop.name : "");
+    if (prop.readonly)
+        out << " (read-only)";
+    out << ".\nType: " << displayType(type);
+    if (prop.getter && *prop.getter)
+        out << "\nGetter: " << prop.getter;
+    if (prop.setter && *prop.setter)
+        out << "\nSetter: " << prop.setter;
+    return out.str();
 }
 
 } // namespace
@@ -147,6 +212,24 @@ std::vector<Symbol> Sema::getVisibleSymbolsAtPosition(uint32_t fileId,
     for (const auto &candidate : candidates) {
         if (seen.insert(candidate.symbol.name).second)
             result.push_back(candidate.symbol);
+    }
+    return result;
+}
+
+std::vector<Symbol> Sema::getFunctionOverloadSymbols(const std::string &name) const {
+    std::vector<Symbol> result;
+    for (auto *decl : getFunctionOverloads(name)) {
+        if (!decl)
+            continue;
+        Symbol sym;
+        sym.kind = Symbol::Kind::Function;
+        sym.name = decl->name;
+        sym.type = functionTypeForDecl(*decl);
+        sym.decl = decl;
+        sym.loc = decl->loc;
+        sym.isExported = decl->isExported;
+        sym.paramNames = paramNamesFor(decl->params);
+        result.push_back(std::move(sym));
     }
     return result;
 }
@@ -273,6 +356,18 @@ std::vector<Symbol> Sema::getRuntimeMembers(const std::string &className) const 
         sym.name = method.name;
         sym.type = types::function(std::move(paramTypes), retType);
         sym.isExtern = true;
+        if (const Symbol *externSym = [&]() -> const Symbol * {
+                if (!method.target || scopes_.empty())
+                    return nullptr;
+                const auto &symbols = scopes_[0]->getSymbols();
+                auto it = symbols.find(method.target);
+                return it == symbols.end() ? nullptr : &it->second;
+            }()) {
+            sym.paramNames =
+                memberParamNamesFromExtern(externSym, sym.type ? sym.type->paramTypes().size() : 0);
+        }
+        sym.documentation = runtimeMethodDocumentation(
+            className, method.name, method.target, sym.type, sym.paramNames);
         result.push_back(sym);
     }
 
@@ -290,6 +385,7 @@ std::vector<Symbol> Sema::getRuntimeMembers(const std::string &className) const 
         sym.type = propType;
         sym.isFinal = prop.readonly;
         sym.isExtern = true;
+        sym.documentation = runtimePropertyDocumentation(className, prop, sym.type);
         result.push_back(sym);
     }
 

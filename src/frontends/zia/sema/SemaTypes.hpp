@@ -99,6 +99,10 @@ struct Symbol {
     /// support named arguments consistently across user code and runtime APIs.
     std::vector<std::string> paramNames;
 
+    /// @brief Optional documentation text for symbols without source comments.
+    /// @details Runtime symbols populate this from generated runtime metadata.
+    std::string documentation;
+
     /// @brief Source location of the definition when available.
     SourceLoc loc{};
 };

@@ -296,10 +296,13 @@ static std::string docCommentBefore(const il::support::SourceManager &sm,
 
 static std::string documentationForSymbol(const il::support::SourceManager *sm,
                                           const Symbol &sym) {
+    if (!sym.documentation.empty())
+        return sym.documentation;
     if (!sm)
         return {};
-    il::support::SourceLoc loc = sym.loc.isValid() ? sym.loc :
-                                                       (sym.decl ? sym.decl->loc : il::support::SourceLoc{});
+    il::support::SourceLoc loc = sym.loc.isValid() ? sym.loc : il::support::SourceLoc{};
+    if (!loc.isValid() && sym.decl)
+        loc = sym.decl->loc;
     return docCommentBefore(*sm, loc);
 }
 
@@ -1005,6 +1008,7 @@ std::vector<CompletionItem> CompletionEngine::provideRuntimeMembers(
         else
             item.kind = CompletionKind::Property;
         item.detail = typeDetail(sym.type);
+        item.documentation = documentationForSymbol(sm_.get(), sym);
         item.source = "runtime";
         if (item.kind == CompletionKind::Method)
             item.commitCharacters = "(";
@@ -1024,6 +1028,7 @@ std::vector<CompletionItem> CompletionEngine::provideNamespaceMembers(
         item.label = name;
         item.insertText = name;
         item.kind = CompletionKind::RuntimeClass;
+        item.documentation = "Runtime class " + nsPrefix + "." + name + ".";
         item.source = "runtime";
         item.sortPriority = 5;
         items.push_back(std::move(item));
@@ -1272,6 +1277,11 @@ std::string CompletionEngine::signatureHelp(std::string_view source,
         }
     };
 
+    auto addFunctionDeclOverloads = [&]() {
+        for (const auto &sym : sema.getFunctionOverloadSymbols(call.name))
+            addFunctionSymbol(sym);
+    };
+
     auto runtimeClassNameFromReceiver = [&](const std::string &receiver) -> std::string {
         auto parts = splitDotted(receiver);
         if (parts.empty())
@@ -1293,6 +1303,8 @@ std::string CompletionEngine::signatureHelp(std::string_view source,
     };
 
     if (call.receiverExpr.empty()) {
+        addFunctionDeclOverloads();
+
         if (const ScopedSymbol *scoped = sema.findSymbolAtPosition(
                 call.name,
                 analysis->fileId,

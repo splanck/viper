@@ -995,6 +995,8 @@ void vg_notification_manager_set_position(vg_notification_manager_t *mgr,
 void vg_notification_manager_set_font(vg_notification_manager_t *mgr, vg_font_t *font, float size) {
     if (!mgr)
         return;
+    if (mgr->font == font && mgr->font_size == size && mgr->title_font_size == size + 2)
+        return;
     mgr->font = font;
     mgr->font_size = size;
     mgr->title_font_size = size + 2;

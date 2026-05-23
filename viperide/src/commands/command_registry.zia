@@ -111,6 +111,9 @@ class CommandRegistry {
         Add("workspacesymbols", "Workspace Symbols", "Find symbols across project files", "Ctrl+T", "symbols", true);
         Add("symboloutline", "Symbol Outline", "Toggle document symbol list", "Ctrl+Shift+O", "symbols", true);
         Add("completion_trigger", "Trigger Completion", "Show completion suggestions", "Ctrl+Space", "completion", false);
+        Add("signature_trigger", "Trigger Signature Help", "Show signature help at the cursor", "Ctrl+Shift+Space", "signature", true);
+        Add("signaturenextoverload", "Signature: Next Overload", "Show the next signature overload", "Ctrl+Alt+Down", "signature", true);
+        Add("signatureprevoverload", "Signature: Previous Overload", "Show the previous signature overload", "Ctrl+Alt+Up", "signature", true);
         Add("addnextoccurrence", "Add Next Occurrence", "Add a cursor at the next matching word", "Ctrl+D", "", true);
         Add("skipoccurrence", "Skip Occurrence", "Move to the next matching word", "Ctrl+K Ctrl+D", "", true);
         Add("selectalloccurrences", "Select All Occurrences", "Select every matching word", "Ctrl+Shift+L", "", true);
@@ -315,7 +318,8 @@ class CommandRegistry {
         if id == "quickopen" or id == "goto" or id == "gotodef"
            or id == "findrefs" or id == "incomingcalls" or id == "outgoingcalls"
            or id == "nexterror" or id == "preverror" or id == "workspacesymbols"
-           or id == "symboloutline" {
+           or id == "symboloutline" or id == "signature_trigger"
+           or id == "signaturenextoverload" or id == "signatureprevoverload" {
             return "Navigate";
         }
         if id == "rename" or id == "organizebinds" or id == "suppressdiagnostic"

@@ -340,6 +340,28 @@ func compute() -> Number {    var r = Math.Sq
     EXPECT_FALSE(items.empty());
 }
 
+TEST(CompletionEngine, RuntimeMemberCompletionCarriesDocumentation) {
+    const std::string source = R"(
+module Test;
+
+bind Viper.Terminal as Terminal;
+
+func main() {
+    Terminal.Sa
+}
+)";
+    CompletionEngine engine;
+    auto [line, col] = lineColAfter(source, "Terminal.Sa");
+    auto items = engine.complete(source, line, col, "<test>", 0);
+    const CompletionItem *say = findItem(items, "Say");
+    ASSERT_NE(say, nullptr);
+    EXPECT_TRUE(say->documentation.find("Runtime method Viper.Terminal.Say.") !=
+                std::string::npos);
+    EXPECT_TRUE(say->documentation.find("Signature: Say(s: String) -> Void") !=
+                std::string::npos);
+    EXPECT_TRUE(say->documentation.find("Target: Viper.Terminal.Say") != std::string::npos);
+}
+
 TEST(CompletionEngine, BoundFileModuleNameAndExports) {
     const fs::path tempRoot = fs::temp_directory_path() / "zia_completion_bound_file_modules";
     fs::remove_all(tempRoot);
@@ -418,6 +440,25 @@ func main() {
     EXPECT_TRUE(help.find("parameter 1 of 2") != std::string::npos);
 }
 
+TEST(CompletionEngine, SignatureHelp_CurrentSourceOverloadsIncludesAll) {
+    const std::string source = R"(
+module Test;
+
+func mix(value: Integer) -> Integer { return value; }
+func mix(text: String) -> String { return text; }
+
+func main() {
+    mix(1);
+}
+)";
+    auto [line, col] = lineColAfter(source, "mix(");
+    CompletionEngine engine;
+    std::string help = engine.signatureHelp(source, line, col, "<test>");
+
+    EXPECT_TRUE(help.find("mix(value: Integer) -> Integer") != std::string::npos);
+    EXPECT_TRUE(help.find("mix(text: String) -> String") != std::string::npos);
+}
+
 TEST(CompletionEngine, SignatureHelp_BoundFileModuleExportUsesParameterNames) {
     const fs::path tempRoot = fs::temp_directory_path() / "zia_signature_bound_file_modules";
     fs::remove_all(tempRoot);
@@ -458,7 +499,8 @@ func main() {
     CompletionEngine engine;
     std::string help = engine.signatureHelp(source, line, col, "<test>");
 
-    EXPECT_TRUE(help.find("Say(arg1: String) -> Void") != std::string::npos);
+    EXPECT_TRUE(help.find("Say(s: String) -> Void") != std::string::npos);
+    EXPECT_TRUE(help.find("Runtime method Viper.Terminal.Say.") != std::string::npos);
 }
 
 } // anonymous namespace

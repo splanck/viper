@@ -64,11 +64,13 @@ class LiveDiagnostics {
     expose String  lastCheckedPath;
     expose Integer pendingRevision;
     expose String  pendingPath;
+    expose Integer pendingGeneration;
     expose Integer lastCheckedRevision;
     expose scheduler.EditorScheduler workScheduler;
     expose Any pendingJob;
     expose Integer pendingJobRevision;
     expose String pendingJobPath;
+    expose Integer pendingJobGeneration;
     expose Integer pendingJobLineOffset;
     expose Integer lastErrorCount;
     expose Integer lastWarningCount;
@@ -84,11 +86,13 @@ class LiveDiagnostics {
         lastCheckedPath = "";
         pendingRevision = -1;
         pendingPath = "";
+        pendingGeneration = 0;
         lastCheckedRevision = -1;
         workScheduler = null;
         pendingJob = null;
         pendingJobRevision = -1;
         pendingJobPath = "";
+        pendingJobGeneration = 0;
         pendingJobLineOffset = 0;
         lastErrorCount = 0;
         lastWarningCount = 0;
@@ -109,6 +113,7 @@ class LiveDiagnostics {
             pending = false;
             pendingRevision = -1;
             pendingPath = "";
+            pendingGeneration = 0;
             lastCheckedRevision = -1;
             CancelPendingJob();
         }
@@ -141,7 +146,7 @@ class LiveDiagnostics {
 
         if workScheduler != null {
             if workScheduler.IsQueued(scheduler.JOB_DIAGNOSTICS, sourcePath, revision) == false {
-                workScheduler.Queue(scheduler.JOB_DIAGNOSTICS, sourcePath, revision, -1);
+                pendingGeneration = workScheduler.Queue(scheduler.JOB_DIAGNOSTICS, sourcePath, revision, -1);
                 pending = true;
                 pendingRevision = revision;
                 pendingPath = sourcePath;
@@ -150,6 +155,7 @@ class LiveDiagnostics {
             if workScheduler.IsDue(scheduler.JOB_DIAGNOSTICS, sourcePath, revision) == false {
                 return 0;
             }
+            pendingGeneration = workScheduler.QueuedGeneration(scheduler.JOB_DIAGNOSTICS);
             workScheduler.Complete(scheduler.JOB_DIAGNOSTICS);
         } else {
             var now = Viper.Time.GetTickCount();
@@ -157,6 +163,7 @@ class LiveDiagnostics {
                 pending = true;
                 pendingRevision = revision;
                 pendingPath = sourcePath;
+                pendingGeneration = 0;
                 lastEditMs = now;
                 return 0;
             }
@@ -167,15 +174,17 @@ class LiveDiagnostics {
             }
         }
 
-        return StartDiagnosticsJob(engine, shell, locStore, revision);
+        return StartDiagnosticsJob(engine, shell, locStore, revision, pendingGeneration);
     }
 
     hide func StartDiagnosticsJob(engine: editor_engine.EditorEngine,
                                   shell: app_shell.AppShell,
                                   locStore: locations.LocationStore,
-                                  revision: Integer) -> Integer {
+                                  revision: Integer,
+                                  generation: Integer) -> Integer {
         var source = engine.GetTextSnapshot();
         pending = false;
+        pendingGeneration = 0;
         lastCheckedSource = source;
 
         // Synthetic-module prefix for buffers lacking a `module` line;
@@ -188,6 +197,7 @@ class LiveDiagnostics {
             pendingJob = job;
             pendingJobRevision = revision;
             pendingJobPath = sourcePath;
+            pendingJobGeneration = generation;
             pendingJobLineOffset = lineOff;
             return 0;
         }
@@ -210,6 +220,10 @@ class LiveDiagnostics {
             return 0;
         }
         if engine.GetRevision() != pendingJobRevision or sourcePath != pendingJobPath {
+            return 0;
+        }
+        if workScheduler != null and pendingJobGeneration > 0
+           and workScheduler.IsCurrent(scheduler.JOB_DIAGNOSTICS, pendingJobGeneration) == false {
             return 0;
         }
 
@@ -315,6 +329,7 @@ class LiveDiagnostics {
         pending = false;
         pendingRevision = -1;
         pendingPath = "";
+        pendingGeneration = 0;
         CancelPendingJob();
     }
 
@@ -327,9 +342,10 @@ class LiveDiagnostics {
         pending = true;
         pendingRevision = engine.GetRevision();
         pendingPath = sourcePath;
+        pendingGeneration = 0;
         lastEditMs = Viper.Time.GetTickCount() - DEBOUNCE_MS;
         if workScheduler != null {
-            workScheduler.Queue(scheduler.JOB_DIAGNOSTICS, sourcePath, pendingRevision, 0);
+            pendingGeneration = workScheduler.Queue(scheduler.JOB_DIAGNOSTICS, sourcePath, pendingRevision, 0);
         }
         return update(engine, shell, locStore);
     }
@@ -339,6 +355,7 @@ class LiveDiagnostics {
             SemanticJob.Cancel(pendingJob);
             pendingJob = null;
         }
+        pendingJobGeneration = 0;
     }
 }
 

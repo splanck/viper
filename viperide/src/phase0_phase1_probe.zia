@@ -69,7 +69,9 @@ func main() {
     if assertTrue(registry.IsKnown("rename"), "rename command registered") == false { return; }
     if assertTrue(registry.Find("save").category == "File"
                   and registry.Find("rename").category == "Refactor"
-                  and registry.Find("searchproject").category == "Search",
+                  and registry.Find("searchproject").category == "Search"
+                  and registry.Find("signature_trigger").category == "Navigate"
+                  and registry.Find("signaturenextoverload").category == "Navigate",
                   "command palette categories assigned") == false { return; }
 
     var langMgr = new language_service.LanguageServiceManager();
@@ -87,6 +89,10 @@ func main() {
     if assertTrue(registry.IsExecutable("rename", basicService) == false
                   and registry.IsExecutable("rename", ziaService),
                   "command registry gates language capabilities") == false { return; }
+    if assertTrue(registry.IsExecutable("signaturenextoverload", basicService) == false
+                  and registry.IsExecutable("signatureprevoverload", ziaService)
+                  and registry.IsExecutable("signature_trigger", ziaService),
+                  "signature overload commands gate language capabilities") == false { return; }
     var disabledReason = registry.DisabledReason("rename", basicService);
     if assertTrue(Str.IndexOf(disabledReason, "Rename Symbol is unavailable") != 0
                   and Str.IndexOf(disabledReason, "BASIC") != 0

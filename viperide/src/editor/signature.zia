@@ -29,6 +29,8 @@ class SignatureController {
     expose String pendingPath;
     expose Integer pendingLine;
     expose Integer pendingCol;
+    expose Any currentSignatureInfo;
+    expose Integer activeOverloadIndex;
 
     expose func init() {
         visible = false;
@@ -42,6 +44,8 @@ class SignatureController {
         pendingPath = "";
         pendingLine = -1;
         pendingCol = -1;
+        currentSignatureInfo = null;
+        activeOverloadIndex = 0;
     }
 
     expose func SetScheduler(value: scheduler.EditorScheduler) {
@@ -66,6 +70,10 @@ class SignatureController {
         var line = engine.GetCursorLine();
         var col0 = engine.editor.CursorCol;
         if workScheduler != null {
+            if pendingJob != null {
+                workScheduler.Queue(scheduler.JOB_SIGNATURE, sourcePath, revision, -1);
+                return;
+            }
             workScheduler.Queue(scheduler.JOB_SIGNATURE, sourcePath, revision, 0);
             workScheduler.Complete(scheduler.JOB_SIGNATURE);
         }
@@ -76,7 +84,12 @@ class SignatureController {
                                 revision: Integer,
                                 line: Integer,
                                 col0: Integer) {
-        CancelPendingJob();
+        if pendingJob != null {
+            if workScheduler != null {
+                workScheduler.Queue(scheduler.JOB_SIGNATURE, sourcePath, revision, -1);
+            }
+            return;
+        }
         var source = engine.GetTextSnapshot();
         if IsInsideCall(source, line, col0) == false {
             Hide();
@@ -111,7 +124,9 @@ class SignatureController {
             Hide();
             return;
         }
-        label.SetText(FormatSignatureDisplay(sigInfo));
+        currentSignatureInfo = sigInfo;
+        activeOverloadIndex = Map.GetInt(sigInfo, "activeSignature");
+        label.SetText(FormatSignatureDisplayAt(sigInfo, activeOverloadIndex));
         panel.SetPosition(engine.editor.GetCursorPixelX(), engine.editor.GetCursorPixelY() - 28);
         panel.SetVisible(1);
         visible = true;
@@ -131,6 +146,12 @@ class SignatureController {
             Hide();
             return;
         }
+        if Input.Keyboard.Ctrl() and Input.Keyboard.WasPressed(Input.Keyboard.get_KEY_DOWN()) {
+            if NextOverload() { return; }
+        }
+        if Input.Keyboard.Ctrl() and Input.Keyboard.WasPressed(Input.Keyboard.get_KEY_UP()) {
+            if PreviousOverload() { return; }
+        }
 
         var revision = engine.GetRevision();
         var line = engine.GetCursorLine();
@@ -141,7 +162,7 @@ class SignatureController {
 
         if workScheduler != null {
             if workScheduler.IsQueued(scheduler.JOB_SIGNATURE, sourcePath, revision) == false {
-                workScheduler.Queue(scheduler.JOB_SIGNATURE, sourcePath, revision, 0);
+                workScheduler.Queue(scheduler.JOB_SIGNATURE, sourcePath, revision, -1);
                 return;
             }
             if workScheduler.IsDue(scheduler.JOB_SIGNATURE, sourcePath, revision) == false {
@@ -188,6 +209,29 @@ class SignatureController {
         lastRevision = -1;
         lastCursorLine = -1;
         lastCursorCol = -1;
+        currentSignatureInfo = null;
+        activeOverloadIndex = 0;
+    }
+
+    expose func NextOverload() -> Boolean {
+        return NavigateOverload(1);
+    }
+
+    expose func PreviousOverload() -> Boolean {
+        return NavigateOverload(-1);
+    }
+
+    hide func NavigateOverload(delta: Integer) -> Boolean {
+        if currentSignatureInfo == null { return false; }
+        var count = Map.GetInt(currentSignatureInfo, "overloadCount");
+        if count <= 1 { return false; }
+        activeOverloadIndex = activeOverloadIndex + delta;
+        if activeOverloadIndex >= count { activeOverloadIndex = 0; }
+        if activeOverloadIndex < 0 { activeOverloadIndex = count - 1; }
+        if label != null {
+            label.SetText(FormatSignatureDisplayAt(currentSignatureInfo, activeOverloadIndex));
+        }
+        return true;
     }
 
     hide func CancelPendingJob() {
@@ -199,13 +243,31 @@ class SignatureController {
 }
 
 func FormatSignatureDisplay(sigInfo: Any) -> String {
+    return FormatSignatureDisplayAt(sigInfo, Map.GetInt(sigInfo, "activeSignature"));
+}
+
+func FormatSignatureDisplayAt(sigInfo: Any, overloadIndex: Integer) -> String {
     if sigInfo == null { return ""; }
-    var display = Map.GetStr(sigInfo, "display");
-    var params = Map.Get(sigInfo, "parameters");
-    var name = Map.GetStr(sigInfo, "name");
+    var overloadCount = Map.GetInt(sigInfo, "overloadCount");
+    var activeIndex = overloadIndex;
+    var sigRecord = sigInfo;
+    var overloads = Map.Get(sigInfo, "overloads");
+    if overloads != null and Seq.get_Length(overloads) > 0 {
+        if activeIndex < 0 { activeIndex = 0; }
+        if activeIndex >= Seq.get_Length(overloads) { activeIndex = Seq.get_Length(overloads) - 1; }
+        sigRecord = Seq.Get(overloads, activeIndex);
+    }
+
+    var display = Map.GetStr(sigRecord, "display");
+    var params = Map.Get(sigRecord, "parameters");
+    var name = Map.GetStr(sigRecord, "name");
+    var documentation = Map.GetStr(sigRecord, "documentation");
+    if documentation == "" {
+        documentation = Map.GetStr(sigInfo, "documentation");
+    }
     if name == "" or params == null or Seq.get_Length(params) == 0 {
         return AddSignatureMetadata(display + "  [" + (Map.GetInt(sigInfo, "activeParameter") + 1) + "]",
-                                    Map.GetStr(sigInfo, "documentation"),
+                                    documentation,
                                     Map.GetStr(sigInfo, "source"));
     }
 
@@ -227,12 +289,15 @@ func FormatSignatureDisplay(sigInfo: Any) -> String {
         i = i + 1;
     }
     text = text + ")";
-    var returnType = Map.GetStr(sigInfo, "returnType");
+    var returnType = Map.GetStr(sigRecord, "returnType");
     if returnType != "" {
         text = text + " -> " + returnType;
     }
+    if overloadCount > 1 {
+        text = text + "  " + (activeIndex + 1) + "/" + overloadCount;
+    }
     return AddSignatureMetadata(text,
-                                Map.GetStr(sigInfo, "documentation"),
+                                documentation,
                                 Map.GetStr(sigInfo, "source"));
 }
 

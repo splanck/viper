@@ -322,6 +322,87 @@ static bool rt_gui_widget_tree_needs_layout(const vg_widget_t *widget) {
     return false;
 }
 
+/// @brief Test whether any widget in a subtree has its paint-dirty flag set.
+/// @details Hidden overlay roots can be paint-dirty after being dismissed; that
+///          still requires one full repaint to erase their previous pixels.
+static bool rt_gui_widget_tree_needs_paint(const vg_widget_t *widget) {
+    if (!widget)
+        return false;
+    if (widget->needs_paint)
+        return true;
+    if (!widget->visible)
+        return false;
+    for (const vg_widget_t *node = widget; node;) {
+        if (node != widget && node->needs_paint)
+            return true;
+        if (node->visible && node->first_child) {
+            node = node->first_child;
+            continue;
+        }
+        while (node && node != widget && !node->next_sibling)
+            node = node->parent;
+        if (!node || node == widget)
+            break;
+        node = node->next_sibling;
+    }
+    return false;
+}
+
+/// @brief Clear paint-dirty flags after a complete full-window repaint.
+static void rt_gui_widget_tree_clear_paint(vg_widget_t *widget) {
+    if (!widget)
+        return;
+    widget->needs_paint = false;
+    for (vg_widget_t *child = widget->first_child; child; child = child->next_sibling)
+        rt_gui_widget_tree_clear_paint(child);
+}
+
+static bool rt_gui_app_overlays_need_paint(const rt_gui_app_t *app) {
+    if (!app)
+        return false;
+    for (int i = 0; i < app->command_palette_count; i++) {
+        if (app->command_palettes[i] &&
+            rt_gui_widget_tree_needs_paint(&app->command_palettes[i]->base)) {
+            return true;
+        }
+    }
+    for (int i = 0; i < app->dialog_count; i++) {
+        if (app->dialog_stack[i] && rt_gui_widget_tree_needs_paint(&app->dialog_stack[i]->base))
+            return true;
+    }
+    if (app->notification_manager && rt_gui_widget_tree_needs_paint(&app->notification_manager->base))
+        return true;
+    vg_tooltip_manager_t *tooltip_mgr = vg_tooltip_manager_get();
+    if (tooltip_mgr && tooltip_mgr->active_tooltip &&
+        rt_gui_widget_tree_needs_paint(&tooltip_mgr->active_tooltip->base)) {
+        return true;
+    }
+    if (app->manual_tooltip && rt_gui_widget_tree_needs_paint(&app->manual_tooltip->base))
+        return true;
+    return false;
+}
+
+static void rt_gui_app_clear_paint_flags(rt_gui_app_t *app) {
+    if (!app)
+        return;
+    rt_gui_widget_tree_clear_paint(app->root);
+    for (int i = 0; i < app->command_palette_count; i++) {
+        if (app->command_palettes[i])
+            rt_gui_widget_tree_clear_paint(&app->command_palettes[i]->base);
+    }
+    for (int i = 0; i < app->dialog_count; i++) {
+        if (app->dialog_stack[i])
+            rt_gui_widget_tree_clear_paint(&app->dialog_stack[i]->base);
+    }
+    if (app->notification_manager)
+        rt_gui_widget_tree_clear_paint(&app->notification_manager->base);
+    vg_tooltip_manager_t *tooltip_mgr = vg_tooltip_manager_get();
+    if (tooltip_mgr && tooltip_mgr->active_tooltip)
+        rt_gui_widget_tree_clear_paint(&tooltip_mgr->active_tooltip->base);
+    if (app->manual_tooltip)
+        rt_gui_widget_tree_clear_paint(&app->manual_tooltip->base);
+}
+
 /// @brief Apply a HiDPI scale factor to all size-sensitive theme fields.
 /// @details Multiplies typography sizes, spacing constants, button/input
 ///          heights, padding, and scrollbar width by the given scale. This
@@ -1990,14 +2071,77 @@ void rt_gui_app_render(void *app_ptr) {
     }
     app->last_render_time_ms = now_ms;
 
+    bool did_layout = false;
+    bool size_changed = false;
     if (app->root) {
-        bool size_changed = app->last_layout_width != win_w || app->last_layout_height != win_h;
+        size_changed = app->last_layout_width != win_w || app->last_layout_height != win_h;
         if (size_changed || rt_gui_widget_tree_needs_layout(app->root)) {
             vg_widget_layout(app->root, (float)win_w, (float)win_h);
             app->last_layout_width = win_w;
             app->last_layout_height = win_h;
+            did_layout = true;
         }
         rt_gui_tick_widget_tree(app->root, dt);
+    }
+
+    size_changed = app->last_layout_width != win_w || app->last_layout_height != win_h;
+    for (int i = 0; i < app->command_palette_count; i++) {
+        vg_commandpalette_t *palette = app->command_palettes[i];
+        if (!palette || !palette->is_visible)
+            continue;
+        rt_gui_tick_widget_tree(&palette->base, dt);
+        rt_gui_layout_command_palette(app, palette, win_w, win_h);
+    }
+
+    for (int i = 0; i < app->dialog_count; i++) {
+        vg_dialog_t *dlg = app->dialog_stack[i];
+        if (!dlg || !dlg->is_open)
+            continue;
+        rt_gui_tick_widget_tree(&dlg->base, dt);
+        if (app->default_font) {
+            vg_dialog_set_font(dlg, app->default_font, app->default_font_size);
+        }
+        if (dlg->base.measured_width < 1.0f || dlg->base.needs_layout) {
+            vg_widget_measure(&dlg->base, (float)win_w, (float)win_h);
+        }
+        float ref_x = 0.0f;
+        float ref_y = 0.0f;
+        float ref_w = (float)win_w;
+        float ref_h = (float)win_h;
+        if (dlg->modal_parent) {
+            vg_widget_get_screen_bounds(dlg->modal_parent, &ref_x, &ref_y, &ref_w, &ref_h);
+        }
+        float dw = dlg->base.measured_width;
+        float dh = dlg->base.measured_height;
+        vg_widget_arrange(
+            &dlg->base, ref_x + (ref_w - dw) / 2.0f, ref_y + (ref_h - dh) / 2.0f, dw, dh);
+    }
+
+    if (app->notification_manager) {
+        app->notification_manager->base.x = 0.0f;
+        app->notification_manager->base.y = 0.0f;
+        app->notification_manager->base.width = (float)win_w;
+        app->notification_manager->base.height = (float)win_h;
+        vg_notification_manager_update(app->notification_manager, now_ms);
+    }
+
+    vg_tooltip_manager_t *tooltip_mgr = vg_tooltip_manager_get();
+    vg_tooltip_manager_update(tooltip_mgr, now_ms);
+    if (tooltip_mgr->active_tooltip && tooltip_mgr->active_tooltip->is_visible && app->default_font) {
+        tooltip_mgr->active_tooltip->font = app->default_font;
+        tooltip_mgr->active_tooltip->font_size = app->default_font_size;
+    }
+    if (app->manual_tooltip && app->manual_tooltip->is_visible && app->default_font) {
+        app->manual_tooltip->font = app->default_font;
+        app->manual_tooltip->font_size = app->default_font_size;
+    }
+
+    bool root_needs_paint = rt_gui_widget_tree_needs_paint(app->root);
+    bool overlays_need_paint = rt_gui_app_overlays_need_paint(app);
+    if (!did_layout && !size_changed && !root_needs_paint && !overlays_need_paint) {
+        vgfx_pump_events(app->window);
+        rt_sleep_ms(16);
+        return;
     }
 
     // Clear with theme background
@@ -2023,8 +2167,6 @@ void rt_gui_app_render(void *app_ptr) {
         vg_commandpalette_t *palette = app->command_palettes[i];
         if (!palette || !palette->is_visible)
             continue;
-        rt_gui_tick_widget_tree(&palette->base, dt);
-        rt_gui_layout_command_palette(app, palette, win_w, win_h);
         if (palette->base.vtable && palette->base.vtable->paint) {
             palette->base.vtable->paint(&palette->base, (void *)app->window);
         }
@@ -2034,35 +2176,12 @@ void rt_gui_app_render(void *app_ptr) {
         vg_dialog_t *dlg = app->dialog_stack[i];
         if (!dlg || !dlg->is_open)
             continue;
-        rt_gui_tick_widget_tree(&dlg->base, dt);
-        if (app->default_font) {
-            vg_dialog_set_font(dlg, app->default_font, app->default_font_size);
-        }
-        if (dlg->base.measured_width < 1.0f || dlg->base.needs_layout) {
-            vg_widget_measure(&dlg->base, (float)win_w, (float)win_h);
-        }
-        float ref_x = 0.0f;
-        float ref_y = 0.0f;
-        float ref_w = (float)win_w;
-        float ref_h = (float)win_h;
-        if (dlg->modal_parent) {
-            vg_widget_get_screen_bounds(dlg->modal_parent, &ref_x, &ref_y, &ref_w, &ref_h);
-        }
-        float dw = dlg->base.measured_width;
-        float dh = dlg->base.measured_height;
-        vg_widget_arrange(
-            &dlg->base, ref_x + (ref_w - dw) / 2.0f, ref_y + (ref_h - dh) / 2.0f, dw, dh);
         if (dlg->base.vtable && dlg->base.vtable->paint) {
             dlg->base.vtable->paint(&dlg->base, (void *)app->window);
         }
     }
 
     if (app->notification_manager) {
-        app->notification_manager->base.x = 0.0f;
-        app->notification_manager->base.y = 0.0f;
-        app->notification_manager->base.width = (float)win_w;
-        app->notification_manager->base.height = (float)win_h;
-        vg_notification_manager_update(app->notification_manager, now_ms);
         if (app->notification_manager->base.vtable &&
             app->notification_manager->base.vtable->paint) {
             app->notification_manager->base.vtable->paint(&app->notification_manager->base,
@@ -2070,13 +2189,7 @@ void rt_gui_app_render(void *app_ptr) {
         }
     }
 
-    vg_tooltip_manager_t *tooltip_mgr = vg_tooltip_manager_get();
-    vg_tooltip_manager_update(tooltip_mgr, now_ms);
     if (tooltip_mgr->active_tooltip && tooltip_mgr->active_tooltip->is_visible) {
-        if (app->default_font) {
-            tooltip_mgr->active_tooltip->font = app->default_font;
-            tooltip_mgr->active_tooltip->font_size = app->default_font_size;
-        }
         vg_widget_measure(&tooltip_mgr->active_tooltip->base, (float)win_w, (float)win_h);
         if (tooltip_mgr->active_tooltip->base.vtable &&
             tooltip_mgr->active_tooltip->base.vtable->paint) {
@@ -2094,6 +2207,7 @@ void rt_gui_app_render(void *app_ptr) {
     }
 
     // Present
+    rt_gui_app_clear_paint_flags(app);
     vgfx_update(app->window);
 }
 

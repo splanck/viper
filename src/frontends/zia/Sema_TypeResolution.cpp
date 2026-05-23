@@ -366,18 +366,23 @@ void Sema::defineExternFunction(const std::string &name,
                                 TypeRef returnType,
                                 const std::vector<TypeRef> &paramTypes,
                                 const std::vector<std::string> &paramNames,
-                                std::optional<RuntimePointerSafety> pointerSafety) {
+                                std::optional<RuntimePointerSafety> pointerSafety,
+                                const std::string &documentation) {
     Symbol sym;
     sym.kind = Symbol::Kind::Function;
     sym.name = name;
     sym.type = types::function(paramTypes, returnType);
     sym.isExtern = true;
     sym.decl = nullptr; // No AST declaration for extern functions
+    if (!documentation.empty())
+        sym.documentation = documentation;
     if (!paramNames.empty()) {
         sym.paramNames = paramNames;
     } else if (Symbol *existing = currentScope_->lookupLocal(name);
                existing && existing->isExtern && existing->kind == Symbol::Kind::Function) {
         sym.paramNames = existing->paramNames;
+        if (sym.documentation.empty())
+            sym.documentation = existing->documentation;
     }
     if (pointerSafety)
         runtimePointerSafety_[name] = std::move(*pointerSafety);

@@ -90,6 +90,20 @@ func completionItemsContain(items: Any, label: String) -> Boolean {
     return false;
 }
 
+func completionItemDocumentationContains(items: Any, label: String, needle: String) -> Boolean {
+    if items == null { return false; }
+    var i = 0;
+    while i < Seq.get_Length(items) {
+        var item = Seq.Get(items, i);
+        if Map.GetStr(item, "label") == label
+           and Str.IndexOf(Map.GetStr(item, "documentation"), needle) > 0 {
+            return true;
+        }
+        i = i + 1;
+    }
+    return false;
+}
+
 func main() {
     var shell = new app_shell.AppShell();
     var engine = new editor_engine.EditorEngine();
@@ -661,6 +675,53 @@ func main() {
         fail(shell, "active signature parameter display");
         return;
     }
+    var overloadSource = "module OverloadProbe;\n"
+        + "func mix(value: Integer) -> Integer { return value; }\n"
+        + "func mix(text: String) -> String { return text; }\n"
+        + "func main() {\n"
+        + "    mix(1);\n"
+        + "}\n";
+    var overloadSig = ZiaCompletion.SignatureInfoForFile(overloadSource,
+                                                         "intellisense_probe.zia",
+                                                         5,
+                                                         8);
+    if Map.GetInt(overloadSig, "overloadCount") != 2 {
+        fail(shell, "signature overload count");
+        return;
+    }
+    var overloads = Map.Get(overloadSig, "overloads");
+    if overloads == null or Seq.get_Length(overloads) != 2 {
+        fail(shell, "signature overload records");
+        return;
+    }
+    if Str.IndexOf(signature.FormatSignatureDisplay(overloadSig), "1/2") == 0 {
+        fail(shell, "signature overload display");
+        return;
+    }
+    var secondOverloadDisplay = signature.FormatSignatureDisplayAt(overloadSig, 1);
+    if Str.IndexOf(secondOverloadDisplay, "2/2") == 0
+       or Str.IndexOf(secondOverloadDisplay, "text: String") == 0 {
+        fail(shell, "signature overload display at index");
+        return;
+    }
+    engine.SetText(overloadSource);
+    engine.editor.SetCursor(4, 8);
+    sigCtrl.trigger(engine);
+    pumpSignature(sigCtrl, engine, 200);
+    if sigCtrl.visible == false
+       or Map.GetInt(sigCtrl.currentSignatureInfo, "overloadCount") != 2 {
+        fail(shell, "signature controller overload metadata");
+        return;
+    }
+    if sigCtrl.NextOverload() == false or sigCtrl.activeOverloadIndex != 1 {
+        fail(shell, "signature controller next overload");
+        return;
+    }
+    if sigCtrl.PreviousOverload() == false or sigCtrl.activeOverloadIndex != 0 {
+        fail(shell, "signature controller previous overload");
+        return;
+    }
+    sigCtrl.Hide();
     engine.SetText(sigSource);
     engine.editor.SetCursor(3, 10);
     sigCtrl.trigger(engine);
@@ -726,6 +787,71 @@ func main() {
     var docHover = ZiaCompletion.HoverInfoForFile(docSource, "intellisense_probe.zia", 5, 6);
     if Str.IndexOf(Map.GetStr(docHover, "documentation"), "Adds one to the value.") == 0 {
         fail(shell, "hover declaration documentation");
+        return;
+    }
+    var runtimeDocSource = "module RuntimeDocProbe;\n"
+        + "bind Viper.Terminal as Terminal;\n"
+        + "func main() {\n"
+        + "    Terminal.Say(\"hi\");\n"
+        + "}\n";
+    var runtimeItems = ZiaCompletion.ItemsForFile(runtimeDocSource,
+                                                  "intellisense_probe.zia",
+                                                  4,
+                                                  15);
+    if completionItemDocumentationContains(runtimeItems,
+                                           "Say",
+                                           "Runtime method Viper.Terminal.Say.") == false {
+        fail(shell, "runtime completion documentation");
+        return;
+    }
+    var runtimeSig = ZiaCompletion.SignatureInfoForFile(runtimeDocSource,
+                                                        "intellisense_probe.zia",
+                                                        4,
+                                                        17);
+    if Str.IndexOf(Map.GetStr(runtimeSig, "display"), "Say(s: String) -> Void") == 0 {
+        fail(shell, "runtime signature display");
+        return;
+    }
+    if Str.IndexOf(Map.GetStr(runtimeSig, "documentation"),
+                   "Runtime method Viper.Terminal.Say.") == 0 {
+        fail(shell, "runtime signature documentation");
+        return;
+    }
+    var runtimeSigJob = ZiaCompletion.BeginSignatureInfoForFile(runtimeDocSource,
+                                                                "intellisense_probe.zia",
+                                                                4,
+                                                                17);
+    if waitSemanticJob(runtimeSigJob, 200) == false {
+        fail(shell, "async runtime signature job did not finish");
+        return;
+    }
+    var runtimeAsyncSig = SemanticJob.SignatureInfo(runtimeSigJob);
+    if Str.IndexOf(Map.GetStr(runtimeAsyncSig, "documentation"),
+                   "Runtime method Viper.Terminal.Say.") == 0 {
+        fail(shell, "async runtime signature documentation");
+        return;
+    }
+    var runtimeHover = ZiaCompletion.HoverInfoForFile(runtimeDocSource,
+                                                      "intellisense_probe.zia",
+                                                      4,
+                                                      14);
+    if Str.IndexOf(Map.GetStr(runtimeHover, "documentation"),
+                   "Runtime method Viper.Terminal.Say.") == 0 {
+        fail(shell, "runtime hover documentation");
+        return;
+    }
+    var runtimeHoverJob = ZiaCompletion.BeginHoverInfoForFile(runtimeDocSource,
+                                                              "intellisense_probe.zia",
+                                                              4,
+                                                              14);
+    if waitSemanticJob(runtimeHoverJob, 200) == false {
+        fail(shell, "async runtime hover job did not finish");
+        return;
+    }
+    var runtimeAsyncHover = SemanticJob.HoverInfo(runtimeHoverJob);
+    if Str.IndexOf(Map.GetStr(runtimeAsyncHover, "documentation"),
+                   "Runtime method Viper.Terminal.Say.") == 0 {
+        fail(shell, "async runtime hover documentation");
         return;
     }
     var boundDocsRoot = TempFile.CreateDirWithPrefix("viperide_bound_docs_");

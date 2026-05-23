@@ -270,7 +270,7 @@ func main() {
         completer.SetSourcePath(activeToolPath);
         completer.SetEnabled(activeService.canComplete);
         liveDiag.setSourcePath(activeToolPath);
-        liveDiag.enabled = activeService.canDiagnose;
+        liveDiag.enabled = appSettings.autoCheckOnSave and activeService.canDiagnose;
         hoverCtrl.setSourcePath(activeToolPath);
         hoverCtrl.setEnabled(activeService.canHover);
         sigCtrl.setSourcePath(activeToolPath);
@@ -350,6 +350,11 @@ func main() {
             perfSpan = perfMon.StartSpan();
             completer.TriggerCompletion();
             perfMon.AddCompletion(perfSpan);
+        }
+        if Shortcuts.WasTriggered("signature_trigger") != 0 {
+            perfSpan = perfMon.StartSpan();
+            sigCtrl.trigger(engine);
+            perfMon.AddSignature(perfSpan);
         }
 
         // Dot / paren triggers must come from text input, not cursor motion.
@@ -689,6 +694,15 @@ func main() {
             } else {
                 shell.SetStatusLeft("Diagnostics complete");
             }
+        }
+        if cpSelected == "signature_trigger" {
+            sigCtrl.trigger(engine);
+        }
+        if triggeredNoMenu("signaturenextoverload", cpSelected) {
+            sigCtrl.NextOverload();
+        }
+        if triggeredNoMenu("signatureprevoverload", cpSelected) {
+            sigCtrl.PreviousOverload();
         }
 
         // FindBar per-frame updates

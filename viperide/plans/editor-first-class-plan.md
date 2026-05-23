@@ -401,8 +401,24 @@ Latest pass notes:
   bounded slices, skip oversized source files, and `FileIndex` hard-excludes
   hidden workspace paths so project roots do not traverse local tool/cache
   worktrees.
+- Signature-help refresh now debounces follow-up cursor/revision updates and
+  does not cancel/restart a semantic signature job while one is still running.
+  This prevents typing inside an argument list from saturating the semantic
+  worker slots with stale parse jobs.
+- Runtime extern documentation is no longer generated during generic semantic
+  initialization. Diagnostics/type-check jobs keep the runtime symbol table
+  lightweight, while completion/signature/hover still surface generated runtime
+  metadata where it is actually displayed.
+- The main loop now preserves the user's "Run diagnostics while typing" setting
+  instead of re-enabling live diagnostics every frame from language capability
+  alone.
+- The GUI runtime now clears paint-dirty flags after full repaints and skips
+  framebuffer present/repaint work on idle frames, pumping OS events plus a short
+  sleep instead. Overlay font setters also avoid marking themselves dirty when
+  the font is unchanged, so idle editor frames no longer force whole-window
+  redraws.
 - Still open after this pass: manual latency report, richer semantic quality,
-  and real-window frame-budget evidence beyond the native headless timing gate.
+  and longer manual stress coverage across large workspaces.
 
 Manual checklist:
 
@@ -502,9 +518,9 @@ Current implementation status:
   completion results after local semantic items, including dirty open documents.
 - Automatic completion triggers are suppressed inside line comments and open
   string literals; explicit completion remains available.
-- Still open: richer receiver/member ranking, runtime API documentation content,
-  broader project/imported signature-hover documentation, and deeper semantic
-  scoring across workspace candidates.
+- Still open: richer receiver/member ranking, authored runtime API prose beyond
+  generated metadata docs, broader project/imported signature-hover
+  documentation, and deeper semantic scoring across workspace candidates.
 
 ### E2 - Signature Help and Hover
 
@@ -550,7 +566,9 @@ Manual checklist:
 Current implementation status:
 
 - Signature help triggers on `(` and `,`, tracks nested active parameters, and is
-  covered by the IntelliSense probe.
+  covered by the IntelliSense probe. It also has an explicit
+  command-palette/shortcut trigger (`Trigger Signature Help`, `Ctrl+Shift+Space`)
+  gated to languages with signature-help support.
 - Signature help has a current-file source fallback for incomplete calls such as
   `foo(`, so locally declared functions can show real parameter names before
   semantic analysis succeeds.
@@ -571,9 +589,18 @@ Current implementation status:
   names in native completion coverage.
 - Bound-file module-export signature and hover results now propagate adjacent
   `///` declaration documentation through synchronous and async structured maps.
-- Still open: overload navigation, runtime API declaration documentation in
-  signature/hover, and broader imported/project declaration fallback beyond
-  bound-file exports.
+- Runtime API completion, signature help, and hover now surface generated
+  documentation from runtime metadata: class/member/property names, generated
+  parameter names, signatures, and canonical runtime targets.
+- Signature help now returns structured overload records and overload counts for
+  current-source overloads, and the popup marks the active overload as `1/N`.
+- Signature overloads can be cycled from the popup keyboard path and through
+  command-palette/shortcut commands (`Signature: Next Overload` /
+  `Signature: Previous Overload`); the command registry gates these commands to
+  languages with signature-help support and the IntelliSense probe covers the
+  controller navigation path.
+- Still open: authored runtime API prose beyond generated metadata docs, and
+  broader imported/project declaration fallback beyond bound-file exports.
 
 ### E3 - Diagnostics, Problems, and Code Actions
 
@@ -616,6 +643,12 @@ Current implementation status:
 - Added `Run Check Now` (`Ctrl+Alt+C`) to intentionally bypass the idle debounce.
 - Diagnostics now start `BeginCheckForFile` background jobs after idle and apply
   records only when the result still matches the active revision/path.
+- Diagnostic jobs now also carry the scheduler generation that queued the work,
+  so canceled or superseded diagnostic generations are rejected before applying
+  Problems rows, minimap markers, or inline highlights.
+- Live diagnostics now remain disabled when the persisted auto-check setting is
+  off; language capability no longer overrides the user's performance setting
+  each frame.
 - Problems rows now include severity, source, file, line, code, message, and an
   action column, while retaining structured click locations.
 - Added a safe `Organize Binds` code action/command for Zia files; it sorts and
@@ -1287,18 +1320,20 @@ incomplete-call signature fallback with real parameter names exist. Signature
 help now visually marks the active parameter in the popup text, and completion,
 signature, and hover display structured documentation/source metadata when it is
 provided. Completion documentation is now populated from adjacent `///` comments
-for current-file declarations and bound-file exports, and signature/hover maps
-populate documentation for current-source declarations plus bound-file module
-exports. Completion, signature, hover, diagnostics, and symbols run semantic
-analysis on native background jobs and poll results on the UI thread.
+for current-file declarations and bound-file exports. Signature/hover maps
+populate documentation for current-source declarations, bound-file module
+exports, and runtime APIs from generated metadata docs. Completion, signature,
+hover, diagnostics, and symbols run semantic analysis on native background jobs
+and poll results on the UI thread.
 Definition, References, and Rename no longer block to drain the full pending
 index before querying. Bound file module roots and exported members now have
 native completion coverage, visible locals/parameters rank above globals,
 workspace-symbol completions are merged from a frame-sliced project cache after
 local semantic results, and bound-file exported signature fallback preserves
-parameter names. The remaining gaps are semantic quality: richer receiver/member
-ranking, overload navigation, runtime API docs, broader imported/project
-signature-hover docs, and deeper workspace scoring.
+parameter names. Signature overload navigation now has keyboard/controller and
+command-palette coverage. The remaining gaps are semantic quality: richer
+receiver/member ranking, authored runtime API docs beyond generated metadata,
+broader imported/project signature-hover docs, and deeper workspace scoring.
 
 ### Milestone P2 - Refactor and Project Explorer
 
@@ -1526,6 +1561,33 @@ Latest automated evidence (2026-05-23):
 - Passed bound-file signature/hover declaration documentation regression:
   `cmake --build build --target zia -j 8` and
   `ctest --test-dir build -R '^(test_zia_completion_engine|zia_viperide_intellisense)$' --output-on-failure`.
+- Passed runtime metadata documentation regression for completion, signature
+  help, synchronous hover, and async signature/hover:
+  `cmake --build build --target test_zia_completion_engine zia -j 8` and
+  `ctest --test-dir build -R '^(test_zia_completion_engine|zia_viperide_intellisense)$' --output-on-failure`.
+- Passed post-runtime-docs editor hot-path regression and standalone rebuild:
+  `ctest --test-dir build -R '^(test_zia_completion_engine|zia_viperide_intellisense|zia_viperide_editor_hot_path)$' --output-on-failure`
+  and `./scripts/build_ide.sh`.
+- Passed signature-overload structured-map regression:
+  `cmake --build build --target test_zia_completion_engine zia -j 8` and
+  `ctest --test-dir build -R '^(test_zia_completion_engine|zia_viperide_intellisense)$' --output-on-failure`.
+- Passed post-overload hot-path regression and standalone rebuild:
+  `ctest --test-dir build -R '^(test_zia_completion_engine|zia_viperide_intellisense|zia_viperide_editor_hot_path)$' --output-on-failure`
+  and `./scripts/build_ide.sh`.
+- Passed post-responsiveness regression and standalone rebuild after removing
+  eager runtime-doc generation from semantic initialization and preserving the
+  auto-check setting:
+  `cmake --build build --target zia test_zia_completion_engine -j 8`,
+  `ctest --test-dir build -R '^(test_zia_completion_engine|zia_viperide_phase0_phase1|zia_viperide_intellisense|zia_viperide_editor_hot_path)$' --output-on-failure`,
+  `git diff --check`, and `./scripts/build_ide.sh`.
+- Passed idle-render responsiveness regression after adding dirty-frame skipping
+  to the GUI runtime:
+  `cmake --build build --target viper test_rt_gui_runtime test_vg_tier2_fixes test_vg_widgets_new -j 8`,
+  `ctest --test-dir build -R '^(test_rt_gui_runtime|test_vg_tier2_fixes|test_vg_widgets_new|test_zia_completion_engine|zia_viperide_phase0_phase1|zia_viperide_intellisense|zia_viperide_editor_hot_path)$' --output-on-failure`,
+  `git diff --check`, and `./scripts/build_ide.sh`. A production-mode idle run
+  with `VIPERIDE_PERF_LOG=/tmp/viperide_perf_final.log viperide/bin/viperide`
+  measured about 4.5% CPU via `ps`, down from about 40% before the runtime
+  relink.
 - Passed post-documentation hot-path focused regression and standalone rebuild:
   `ctest --test-dir build -R '^(zia_viperide_editor_hot_path|zia_viperide_intellisense)$' --output-on-failure`
   and `./scripts/build_ide.sh`.

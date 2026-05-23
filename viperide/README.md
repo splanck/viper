@@ -102,8 +102,10 @@ and search exclusions on top of hard excludes and `.gitignore`.
   identifier debounce, snippet cursor placement metadata, callable commit
   characters, workspace-symbol
   completion from an on-demand async project file cache, compact docs/source
-  metadata display from Zia declaration doc comments for completion,
-  signature help, and hover, stale-result rejection, and explicit `Ctrl+Space`
+  metadata display from Zia declaration doc comments and generated runtime
+  metadata for completion, signature help, and hover, structured signature
+  overload counts with overload navigation commands, stale-result rejection, and
+  explicit `Ctrl+Space` completion / `Ctrl+Shift+Space` signature-help triggers
 - Live diagnostics through structured toolchain records and background checks,
   plus explicit Run Check Now, Suppress Warning, Apply Diagnostic Fix-It, and
   Create Missing Bind commands for known runtime aliases and unambiguous

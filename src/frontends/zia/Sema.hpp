@@ -920,7 +920,8 @@ class Sema {
                               TypeRef returnType,
                               const std::vector<TypeRef> &paramTypes = {},
                               const std::vector<std::string> &paramNames = {},
-                              std::optional<RuntimePointerSafety> pointerSafety = std::nullopt);
+                              std::optional<RuntimePointerSafety> pointerSafety = std::nullopt,
+                              const std::string &documentation = {});
 
     /// @}
     //=========================================================================
@@ -1503,6 +1504,11 @@ class Sema {
     std::vector<Symbol> getVisibleSymbolsAtPosition(uint32_t fileId,
                                                     uint32_t line,
                                                     uint32_t col) const;
+
+    /// @brief Get user-defined function overloads as tooling symbols.
+    /// @param name Function name as written in source.
+    /// @return One function symbol per overload, preserving parameter names.
+    std::vector<Symbol> getFunctionOverloadSymbols(const std::string &name) const;
 
     /// @brief Find the most relevant symbol at a given cursor position.
     /// @param name The identifier name to look up.

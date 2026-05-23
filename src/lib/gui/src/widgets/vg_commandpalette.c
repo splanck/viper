@@ -836,6 +836,8 @@ void vg_commandpalette_set_callbacks(vg_commandpalette_t *palette,
 void vg_commandpalette_set_font(vg_commandpalette_t *palette, vg_font_t *font, float size) {
     if (!palette)
         return;
+    if (palette->font == font && palette->font_size == size)
+        return;
 
     palette->font = font;
     palette->font_size = size;

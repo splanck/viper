@@ -838,8 +838,11 @@ void vg_statusbar_set_font(vg_statusbar_t *sb, vg_font_t *font, float size) {
     if (!sb)
         return;
 
+    float font_size = size > 0 ? size : vg_theme_get_current()->typography.size_small;
+    if (sb->font == font && sb->font_size == font_size)
+        return;
     sb->font = font;
-    sb->font_size = size > 0 ? size : vg_theme_get_current()->typography.size_small;
+    sb->font_size = font_size;
     sb->base.needs_layout = true;
     sb->base.needs_paint = true;
 }

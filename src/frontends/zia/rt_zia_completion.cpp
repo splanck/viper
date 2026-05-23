@@ -1069,6 +1069,8 @@ std::string docCommentBeforeLoc(const il::support::SourceManager &sm,
 
 std::string documentationForSymbolLoc(const il::support::SourceManager &sm,
                                       const Symbol &sym) {
+    if (!sym.documentation.empty())
+        return sym.documentation;
     il::support::SourceLoc loc = sym.loc.isValid() ? sym.loc : il::support::SourceLoc{};
     if (!loc.isValid() && sym.decl)
         loc = sym.decl->loc;
@@ -1131,6 +1133,67 @@ std::string documentationFromDisplayTail(std::string_view display) {
     return doc;
 }
 
+bool looksLikeSignatureLine(std::string_view line) {
+    std::string trimmed = trimAscii(line);
+    if (trimmed.empty() || trimmed.rfind("parameter ", 0) == 0)
+        return false;
+    size_t open = trimmed.find('(');
+    if (open == std::string::npos)
+        return false;
+    size_t colon = trimmed.find(':');
+    return colon == std::string::npos || colon > open;
+}
+
+std::vector<std::string> splitSignatureDisplays(std::string_view display) {
+    std::vector<std::string> blocks;
+    std::string current;
+    size_t pos = 0;
+    while (pos <= display.size()) {
+        size_t next = display.find('\n', pos);
+        std::string_view line =
+            next == std::string_view::npos ? display.substr(pos) : display.substr(pos, next - pos);
+        if (looksLikeSignatureLine(line) && !current.empty()) {
+            blocks.push_back(std::move(current));
+            current.clear();
+        }
+        if (!line.empty()) {
+            if (!current.empty())
+                current += "\n";
+            current.append(line);
+        }
+        if (next == std::string_view::npos)
+            break;
+        pos = next + 1;
+    }
+    if (!current.empty())
+        blocks.push_back(std::move(current));
+    return blocks;
+}
+
+void *signatureParametersToSeq(std::string_view signatureLine);
+
+void *signatureOverloadsToSeq(const std::vector<std::string> &overloads) {
+    void *seq = rt_seq_new_owned();
+    for (const auto &overload : overloads) {
+        std::string firstLine = firstDisplayLine(overload);
+        void *map = rt_map_new();
+        mapSetStr(map, "display", firstLine);
+        mapSetStr(map, "name", signatureNameFromDisplay(firstLine));
+        size_t arrow = firstLine.find("->");
+        std::string returnType = arrow == std::string::npos ?
+                                     std::string() :
+                                     trimAscii(std::string_view(firstLine).substr(arrow + 2));
+        mapSetStr(map, "returnType", returnType);
+        mapSetStr(map, "documentation", documentationFromDisplayTail(overload));
+        void *params = signatureParametersToSeq(firstLine);
+        mapSetObject(map, "parameters", params);
+        releaseRuntimeObject(params);
+        rt_seq_push(seq, map);
+        releaseRuntimeObject(map);
+    }
+    return seq;
+}
+
 std::string hoverNameFromDisplay(std::string_view display) {
     std::string text = firstDisplayLine(display);
     size_t firstSpace = text.find(' ');
@@ -1173,6 +1236,50 @@ std::optional<Symbol> moduleExportSymbolAt(const Sema &sema,
         return std::nullopt;
 
     for (const auto &sym : sema.getModuleExports(moduleName)) {
+        if (symbolNameMatchesIdentifier(sym, ident))
+            return sym;
+    }
+    return std::nullopt;
+}
+
+std::vector<std::string> splitDottedIdentifier(std::string_view text) {
+    std::vector<std::string> parts;
+    std::string part;
+    for (char c : text) {
+        if (c == '.') {
+            if (!part.empty())
+                parts.push_back(part);
+            part.clear();
+        } else {
+            part += c;
+        }
+    }
+    if (!part.empty())
+        parts.push_back(part);
+    return parts;
+}
+
+std::optional<Symbol> runtimeMemberSymbolAt(const Sema &sema,
+                                            std::string_view source,
+                                            size_t identStart,
+                                            std::string_view ident) {
+    std::string qualifier = qualifierBeforeIdentifier(source, identStart);
+    if (qualifier.empty())
+        return std::nullopt;
+
+    auto parts = splitDottedIdentifier(qualifier);
+    if (parts.empty())
+        return std::nullopt;
+
+    std::string className = sema.resolveModuleAlias(parts[0]);
+    if (!className.empty()) {
+        for (size_t i = 1; i < parts.size(); ++i)
+            className += "." + parts[i];
+    } else {
+        className = qualifier;
+    }
+
+    for (const auto &sym : sema.getRuntimeMembers(className)) {
         if (symbolNameMatchesIdentifier(sym, ident))
             return sym;
     }
@@ -1336,11 +1443,16 @@ void *signatureInfoMap(std::string_view display,
     void *map = rt_map_new();
     bool available = !display.empty();
     mapSetBool(map, "available", available);
-    std::string firstLine = firstDisplayLine(display);
+    std::vector<std::string> overloads = available ? splitSignatureDisplays(display) :
+                                                     std::vector<std::string>{};
+    if (available && overloads.empty())
+        overloads.push_back(std::string(display));
+    std::string activeDisplay = overloads.empty() ? std::string() : overloads.front();
+    std::string firstLine = firstDisplayLine(activeDisplay);
     mapSetStr(map, "display", firstLine);
     mapSetInt(map, "activeParameter", available ? activeParameterForSource(source, line, col) : 0);
     mapSetInt(map, "activeSignature", 0);
-    mapSetInt(map, "overloadCount", available ? 1 : 0);
+    mapSetInt(map, "overloadCount", static_cast<int64_t>(overloads.size()));
     std::string name = signatureNameFromDisplay(firstLine);
     mapSetStr(map, "name", name);
     size_t arrow = firstLine.find("->");
@@ -1351,9 +1463,12 @@ void *signatureInfoMap(std::string_view display,
     void *params = signatureParametersToSeq(firstLine);
     mapSetObject(map, "parameters", params);
     releaseRuntimeObject(params);
+    void *overloadSeq = signatureOverloadsToSeq(overloads);
+    mapSetObject(map, "overloads", overloadSeq);
+    releaseRuntimeObject(overloadSeq);
     std::string doc(documentation);
     if (doc.empty())
-        doc = documentationFromDisplayTail(display);
+        doc = documentationFromDisplayTail(activeDisplay);
     if (computeDocumentation && doc.empty())
         doc = declarationDocumentationForName(source, name);
     mapSetStr(map, "documentation", doc);
@@ -1455,6 +1570,9 @@ std::string hoverForSource(const std::string &source, const std::string &path, i
 
     if (auto exportSym = moduleExportSymbolAt(*result->sema, source, start, ident))
         return formatHoverForSymbol(sm, *exportSym, ident);
+
+    if (auto runtimeSym = runtimeMemberSymbolAt(*result->sema, source, start, ident))
+        return formatHoverForSymbol(sm, *runtimeSym, ident);
 
     return {};
 }
@@ -2172,6 +2290,8 @@ rt_string rt_zia_hover_for_file(rt_string source, rt_string file_path, int64_t l
         hover = formatHoverForSymbol(sm, scoped->symbol, ident);
     else if (auto exportSym = moduleExportSymbolAt(*result->sema, sourceStr, start, ident))
         hover = formatHoverForSymbol(sm, *exportSym, ident);
+    else if (auto runtimeSym = runtimeMemberSymbolAt(*result->sema, sourceStr, start, ident))
+        hover = formatHoverForSymbol(sm, *runtimeSym, ident);
     else
         return rt_string_from_bytes("", 0);
 
