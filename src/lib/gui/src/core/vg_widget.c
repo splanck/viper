@@ -394,6 +394,7 @@ static void clear_interactive_state_recursive(vg_widget_t *widget) {
             break;
         case VG_WIDGET_CODEEDITOR:
             ((vg_codeeditor_t *)widget)->scrollbar_dragging = false;
+            ((vg_codeeditor_t *)widget)->selection_dragging = false;
             break;
         default:
             break;

@@ -89,8 +89,9 @@ and search exclusions on top of hard excludes and `.gitignore`.
 ## Features
 
 - Code editor with syntax highlighting, line numbers, undo/redo, smart Home/End,
-  auto-indent, bracket/quote pair insertion, line comment toggle, duplicate line,
-  move line up/down, word wrap, and minimap
+  pointer selection drag, auto-indent, bracket/quote pair insertion, line
+  and block comment toggle, matching-pair highlight, duplicate line, move line
+  up/down, expand/shrink selection, word wrap, and minimap
 - Revision-gated editor controllers with background semantic jobs for
   completion, diagnostics, signature help, hover, and outline refresh, plus idle
   project-index sync
@@ -115,16 +116,20 @@ and search exclusions on top of hard excludes and `.gitignore`.
   available, and structured location ids instead of `path:line` parsing
 - Quick Open by project file name/path fragment (`Ctrl+P`), plus recent-file
   and recently closed-tab reopen workflows
+- Workspace symbol search by project symbol fragment (`Ctrl+T`) with structured
+  result locations and dirty-open-document awareness
 - Project-aware build/run configurations using argument-vector process jobs
 - Streamed build/run output with cancellable jobs, append-preserving output
-  updates, filter/wrap/copy/clear commands, clickable diagnostics, and
-  lightweight Problems/Output/Search/References/Debug Console tabs
+  updates, filter/wrap/copy/clear commands, selected-row/range copy,
+  auto-scroll lock, clickable diagnostics, and lightweight
+  Problems/Output/Search/References/Debug Console tabs
 - Debug UI controls with persisted breakpoints and a dedicated Debug Console tab
   wired to the current non-executing `Viper.Debug.Protocol` placeholder
 - Command palette for keyboard-driven workflow
 - Persistent settings in `~/.viperide/settings.ini`, with editor behavior
   controls, auto-save, save-time whitespace controls, IntelliSense delay
-  controls, configurable editor font size, and legacy tiny font-size migration
+  controls, configurable editor font size, per-section default resets, and
+  legacy tiny font-size migration
 - Keyboard-shortcuts view with duplicate shortcut detection
 - Session restore for open files, active tab, cursor/scroll state, and last project
 - File watcher for external changes
@@ -150,7 +155,9 @@ undo/redo, remains stable for cursor-only movement, avoids repeated open-documen
 index syncs, and enforces large-buffer cursor-movement copy/timing budgets. The
 native `test_vg_codeeditor_perf` target also guards 50k-line navigation,
 folded/wrapped layout caches, highlight span indexing, typing bursts, and large
-selection paths against full-buffer copies and layout scans.
+selection paths against full-buffer copies and layout scans, with wall-clock
+budgets for 5k/20k typing-plus-paint, 50k scroll/paint, pointer selection drag,
+and minimap paint.
 
 The Phase 0/1 regression probe is registered as `zia_viperide_phase0_phase1`.
 It covers document kind detection, command id consistency, structured locations,

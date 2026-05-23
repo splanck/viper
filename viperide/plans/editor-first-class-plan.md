@@ -328,12 +328,14 @@ Current implementation status:
   20k-line cursor-movement smoke.
 - Added native `test_vg_codeeditor_perf` for 50k-line no-wrap cursor/scroll,
   folded/wrapped layout-cache regressions, highlight span indexing, typing-burst
-  and large-selection copy/layout guards, and full-text copy counter behavior.
+  and large-selection copy/layout guards, full-text copy counter behavior, and
+  wall-clock 5k/20k typing-plus-paint, 50k scroll/paint, pointer selection-drag,
+  and minimap paint budgets.
 - This is not complete. Current coverage proves several hot-path invariants, not
   full user-perceived responsiveness.
-- Still open: native editor paint/input timing with wall-clock budgets,
-  real pointer-driven selection-drag and scroll benchmarks, dedicated minimap
-  timing, and manual latency profiling on real projects.
+- Still open: manual latency profiling on real projects, real-window/canvas paint
+  timing beyond the headless native paint path, and dogfood validation with
+  diagnostics, outline, minimap, and output panes visible.
 
 Latest pass notes:
 
@@ -370,9 +372,11 @@ Latest pass notes:
 - `EditorScheduler` now exposes per-kind generation/current/cancel helpers so
   future async work can reject stale completions, diagnostics, symbols, hover,
   signature, index, search, or quick-open jobs.
-- Still open after this pass: manual latency report, pointer-driven
-  selection-drag benchmarks, minimap-specific timing, richer semantic quality,
-  and explicit wall-clock typing/paint/input budgets.
+- Added native wall-clock gates for 5k/20k typing-plus-paint, 50k scroll/paint,
+  pointer-driven selection drag, and minimap paint. These are headless native
+  gates, not a substitute for dogfooding the real window.
+- Still open after this pass: manual latency report, richer semantic quality,
+  and real-window frame-budget evidence beyond the native headless timing gate.
 
 Manual checklist:
 
@@ -458,8 +462,10 @@ Current implementation status:
   module root, and `Module.` lists exported symbols from the bound file. Native
   `test_zia_completion_engine` covers module-name and exported-symbol
   completion.
-- Still open: richer ranking across locals/fields/project symbols beyond the
-  bound-file module/export path.
+- Native completion ranking now prefers visible locals and parameters over
+  current-file globals.
+- Still open: richer ranking across fields/receiver members and project symbols
+  beyond the bound-file module/export path.
 
 ### E2 - Signature Help and Hover
 
@@ -518,8 +524,10 @@ Current implementation status:
   active-parameter display.
 - Signature and hover semantic queries now run as background semantic jobs, with
   stale revision/path/cursor or mouse-position results ignored before display.
-- Still open: overload navigation, richer docs display, and imported/project
-  declaration parameter-name fallback.
+- Bound-file module-export signature fallback now preserves exported parameter
+  names in native completion coverage.
+- Still open: overload navigation, richer docs display, and broader imported or
+  project declaration fallback beyond bound-file exports.
 
 ### E3 - Diagnostics, Problems, and Code Actions
 
@@ -562,7 +570,11 @@ Current implementation status:
 - Added `Run Check Now` (`Ctrl+Alt+C`) to intentionally bypass the idle debounce.
 - Diagnostics now start `BeginCheckForFile` background jobs after idle and apply
   records only when the result still matches the active revision/path.
-- Still open: dedicated Problems surface with columns and real code actions.
+- Problems rows now include severity, file, line, code, message, and a disabled
+  quick-fix placeholder/action column, while retaining structured click
+  locations.
+- Still open: a richer Problems surface and real code actions beyond the
+  disabled placeholder state.
 
 ### E4 - Project Navigation and Refactoring
 
@@ -639,12 +651,15 @@ Current implementation status:
 - Find References now emits grouped file headers and preview lines into a
   dedicated References bottom-panel tab, with structured location ids on
   clickable reference rows.
+- Workspace symbol search (`Ctrl+T`) scans the maintained project file state,
+  uses dirty open Zia documents, and emits structured result locations.
 - File/folder rename now previews the number of Zia bind paths that will change,
   allows cancel before moving the file/folder, updates quoted file-bind paths in
   open and closed project `.zia` files, and keeps `viper.project` entry paths in
   sync.
-- Still open: undo grouping per affected document, richer rename conflict
-  display, and extract/inline refactors.
+- Still open: call hierarchy, semantic folding, inlay hints, undo grouping per
+  affected document, richer rename conflict display, and extract/inline
+  refactors.
 
 ### E5 - File Tree and Workspace UX
 
@@ -780,10 +795,12 @@ Current implementation status:
   for final parsing.
 - Output supports selected-row copy, clear, text filtering, and fixed-width wrap
   toggling through commands.
+- Output/tool-panel listboxes now support multi-select range copy through a
+  runtime `ListBox.GetSelectedText()` binding, and output auto-scroll can be
+  toggled/locked without losing the user's selected row.
 - Search results now include file header rows, while individual matches keep
   structured location ids for path-safe navigation.
-- Still open: range copy, severity styling, auto-scroll lock, and richer
-  multi-column result UI.
+- Still open: severity styling and richer multi-column/rich-console result UI.
 
 ### E7 - Settings and Preferences
 
@@ -846,8 +863,11 @@ Current implementation status:
 - Added a keyboard-shortcuts command/list view with conflict detection.
 - Auto-save is settings-backed and saves modified named files after editor idle;
   it pauses rather than overwriting if the file changed on disk.
-- Still open: full preferences dialog sections, per-section restore defaults,
-  and automated layout smoke.
+- Preferences now expose grouped defaults reset helpers for Appearance, Editing,
+  IntelliSense, and Startup, and the console/search probe covers compact and
+  wide layout smoke.
+- Still open: replacing the floating overlay with the final polished preferences
+  dialog/side-panel surface.
 
 ### E8 - Visual Design and Interaction Polish
 
@@ -944,6 +964,23 @@ Tests:
 
 Sequencing: starts after P1 (fast editor + structured IntelliSense), per §6.
 
+Current implementation status:
+
+- Native `CodeEditor` now supports auto-indent on newline, bracket/paren/quote
+  auto-close with skip-over, matching-pair highlight, smart Home/End, and
+  pointer-driven selection drag. `test_vg_codeeditor_perf` covers auto-indent
+  undo grouping, pair auto-close/skip undo behavior, same-line and multi-line
+  pair highlight resolution, and pointer selection-drag performance.
+- ViperIDE edit commands cover line comment toggle, duplicate line, move line
+  up/down, block comment toggle for Zia/text selections, and save-time
+  trailing-whitespace/final-newline behavior behind settings.
+- Expand/Shrink Selection now provides a predictable word -> line -> document
+  selection ladder, with shrink reversing back toward the originating word.
+- Format commands remain disabled/no-op with clear user feedback until a real
+  formatter backend exists.
+- Still open: semantic/syntax-node-aware expand selection, formatter backend,
+  and broader undo grouping audits for multi-line editor commands.
+
 ## 6. Revised Recovery Milestones
 
 Order (preserves the perf-first gating in §4):
@@ -982,12 +1019,13 @@ Current status: partially implemented. `CodeEditor` now exposes native/runtime
 hot-path counters to Zia, the
 editor hot-path probe asserts no full-buffer copies for cursor-only
 movement/snapshot reuse, and `test_vg_codeeditor_perf` covers a 50k-line no-wrap
-cursor/scroll path, folded/wrapped large-file cache paths, typing bursts, and
-large selections. An opt-in `PerfMonitor` logs frame/render/controller timings
-with editor counters when `VIPERIDE_PERF` or `VIPERIDE_PERF_LOG` is set. Still
-missing: native paint/input/minimap wall-clock timing, pointer-driven selection
-drag benchmarks, explicit budget recording, and a manual top-five latency
-report.
+cursor/scroll path, folded/wrapped large-file cache paths, typing bursts, large
+selections, explicit 5k/20k typing-plus-paint wall-clock budgets, 50k
+scroll/paint budgets, pointer selection-drag budgets, and a dedicated minimap
+paint budget. An opt-in `PerfMonitor` logs frame/render/controller timings with
+editor counters when `VIPERIDE_PERF` or `VIPERIDE_PERF_LOG` is set. Still
+missing: manual top-five latency report and real-window dogfood timing across
+large projects.
 
 ### Milestone P0B - Fix Native CodeEditor Hot Paths
 
@@ -1020,9 +1058,10 @@ edited line's syntax cache, Zia block-comment state is cached per line,
 highlight spans are indexed by line, and the minimap is off by default plus
 sampled when visible. The folded/wrapped layout paths cache visual-row prefix
 data by layout generation and content width, and wrap-mode content width no
-longer runs three full height passes. Still missing: full paint/input
-benchmarks, word-wrap edit-local prefix maintenance instead of full cache rebuild
-on layout invalidations, and measured minimap budgets.
+longer runs three full height passes. Native headless wall-clock gates now cover
+typing-plus-paint, scroll/paint, pointer selection drag, and minimap paint. Still
+missing: word-wrap edit-local prefix maintenance instead of full cache rebuild
+on layout invalidations and real-window/canvas paint validation.
 
 ### Milestone P0C - Semantic Work Scheduler
 
@@ -1115,9 +1154,11 @@ help now visually marks the active parameter in the popup text. Completion,
 signature, hover, diagnostics, and symbols run semantic analysis on native
 background jobs and poll results on the UI thread. Definition, References, and
 Rename no longer block to drain the full pending index before querying. Bound
-file module roots and exported members now have native completion coverage. The
-remaining gaps are semantic quality: richer ranking/project-symbol inclusion
-beyond bound-file exports and project/imported parameter-name fallback.
+file module roots and exported members now have native completion coverage,
+visible locals/parameters rank above globals, and bound-file exported signature
+fallback preserves parameter names. The remaining gaps are semantic quality:
+richer receiver/member ranking, broader project-symbol inclusion beyond
+bound-file exports, overload navigation, and richer documentation display.
 
 ### Milestone P2 - Refactor and Project Explorer
 
@@ -1168,11 +1209,12 @@ Gate:
 - manual build/run/search/output checklist
 
 Current status: partial. Output append preservation, folder search, Quick Open,
-cooperative direct/cached file discovery and content search, delta-based active
-job output, and lightweight Problems/Output/Search/References/Debug Console tab
-surfaces exist. Output selected-row copy, clear, filter, and wrap toggles are
-implemented, and search results have file grouping. The console/search surfaces
-are still list-backed and not first-class rich panes.
+workspace symbols, cooperative direct/cached file discovery and content search,
+delta-based active job output, auto-scroll lock, range copy, and lightweight
+Problems/Output/Search/References/Debug Console tab surfaces exist. Output
+selected-row/range copy, clear, filter, and wrap toggles are implemented, and
+search results have file grouping. The console/search surfaces are still
+list-backed and not first-class rich panes.
 
 ### Milestone P4 - Preferences, Visual System, and Shell UX
 
@@ -1196,9 +1238,10 @@ Gate:
 - screenshot/manual checklist at compact and wide sizes
 
 Current status: partial. Font defaults/migration, editor behavior preferences,
-auto-save, save-time whitespace preferences, scheduler delay preferences, and a
-keybindings/conflict view exist; the visual system and preferences UX are still
-below the target bar.
+per-section default reset helpers, compact/wide layout smoke, auto-save,
+save-time whitespace preferences, scheduler delay preferences, and a
+keybindings/conflict view exist; the visual system and final preferences UX are
+still below the target bar.
 
 ### Milestone P5 - Dogfood Release Gate
 
@@ -1212,6 +1255,16 @@ Gate:
   refactor, project tree, search, build/run, settings, session restore, and
   crash-free launch
 - all P0/P1 dogfood defects fixed before scene editor planning resumes
+
+Latest automated evidence (2026-05-23):
+
+- Passed focused editor/tool gates:
+  `ctest --test-dir build -R '^(test_vg_codeeditor_perf|zia_viperide_phase0_phase1|zia_viperide_editor_hot_path|zia_viperide_intellisense|zia_viperide_console_search)$' --output-on-failure`.
+- Passed adjacent runtime/project gates:
+  `ctest --test-dir build -R '^(test_rt_gui_runtime|test_rt_gui_ide|zia_viperide_file_tree|zia_viperide_phase2_phase3)$' --output-on-failure`.
+- Passed `./scripts/build_ide.sh`, producing `viperide/bin/viperide`.
+- Still missing for this release gate: full `ctest --test-dir build
+  --output-on-failure` and the manual dogfood report.
 
 ## 7. Documentation Updates Required Per Milestone
 

@@ -68,6 +68,8 @@
 // unbounded line-index storage. Normal diagnostics/find highlights are far below
 // this because they usually touch one source line each.
 #define CODEEDITOR_HIGHLIGHT_LINE_INDEX_MAX_ENTRIES 2000000
+#define CODEEDITOR_PAIR_HIGHLIGHT_FILL 0x6638BDF8u
+#define CODEEDITOR_PAIR_HIGHLIGHT_BORDER 0xFF38BDF8u
 
 //=============================================================================
 // Forward Declarations
@@ -85,6 +87,15 @@ static void codeeditor_draw_highlight_underline(void *canvas,
                                                 float width,
                                                 float line_height,
                                                 uint32_t color);
+static void codeeditor_paint_pair_highlight_for_segment(vg_codeeditor_t *editor,
+                                                        void *canvas,
+                                                        int line,
+                                                        int segment_start,
+                                                        int segment_len,
+                                                        float content_x,
+                                                        float row_y,
+                                                        float scroll_x,
+                                                        bool wrapped);
 
 static bool ensure_line_capacity(vg_codeeditor_t *editor, int needed);
 static bool ensure_text_capacity(vg_code_line_t *line, size_t needed);
@@ -92,6 +103,7 @@ static void insert_text_at_internal(vg_codeeditor_t *editor, int line, int col, 
 static void delete_text_range_internal(
     vg_codeeditor_t *editor, int start_line, int start_col, int end_line, int end_col);
 static void codeeditor_adjust_hidden_cursors(vg_codeeditor_t *editor);
+static int codeeditor_prev_byte_boundary(const vg_codeeditor_t *editor, int line, int byte_col);
 
 static void codeeditor_perf_add(uint64_t *counter, uint64_t amount) {
     if (!counter)
@@ -451,6 +463,241 @@ static void codeeditor_paint_highlights_for_line(vg_codeeditor_t *editor,
         float span_w = (float)(overlap_end - overlap_start) * editor->char_width;
         codeeditor_draw_highlight_underline(
             canvas, span_x, row_y, span_w, editor->line_height, span->color);
+    }
+}
+
+static bool codeeditor_pair_info(char ch, char *out_match, int *out_direction) {
+    char match = '\0';
+    int direction = 0;
+    switch (ch) {
+        case '(':
+            match = ')';
+            direction = 1;
+            break;
+        case '[':
+            match = ']';
+            direction = 1;
+            break;
+        case '{':
+            match = '}';
+            direction = 1;
+            break;
+        case ')':
+            match = '(';
+            direction = -1;
+            break;
+        case ']':
+            match = '[';
+            direction = -1;
+            break;
+        case '}':
+            match = '{';
+            direction = -1;
+            break;
+        default:
+            return false;
+    }
+    if (out_match)
+        *out_match = match;
+    if (out_direction)
+        *out_direction = direction;
+    return true;
+}
+
+static bool codeeditor_byte_at(const vg_codeeditor_t *editor, int line, int col, char *out_ch) {
+    if (out_ch)
+        *out_ch = '\0';
+    if (!editor || line < 0 || line >= editor->line_count)
+        return false;
+    const vg_code_line_t *code_line = &editor->lines[line];
+    if (!code_line->text || col < 0 || col >= (int)code_line->length)
+        return false;
+    if (out_ch)
+        *out_ch = code_line->text[col];
+    return true;
+}
+
+static bool codeeditor_find_matching_pair_forward(const vg_codeeditor_t *editor,
+                                                  int line,
+                                                  int col,
+                                                  char opener,
+                                                  char closer,
+                                                  int *out_line,
+                                                  int *out_col) {
+    int depth = 1;
+    for (int l = line; l < editor->line_count; l++) {
+        const vg_code_line_t *code_line = &editor->lines[l];
+        int c = l == line ? col + 1 : 0;
+        while (code_line->text && c < (int)code_line->length) {
+            char ch = code_line->text[c];
+            if (ch == opener) {
+                depth++;
+            } else if (ch == closer) {
+                depth--;
+                if (depth == 0) {
+                    if (out_line)
+                        *out_line = l;
+                    if (out_col)
+                        *out_col = c;
+                    return true;
+                }
+            }
+            c++;
+        }
+    }
+    return false;
+}
+
+static bool codeeditor_find_matching_pair_backward(const vg_codeeditor_t *editor,
+                                                   int line,
+                                                   int col,
+                                                   char closer,
+                                                   char opener,
+                                                   int *out_line,
+                                                   int *out_col) {
+    int depth = 1;
+    for (int l = line; l >= 0; l--) {
+        const vg_code_line_t *code_line = &editor->lines[l];
+        int c = l == line ? col - 1 : (int)code_line->length - 1;
+        while (code_line->text && c >= 0) {
+            char ch = code_line->text[c];
+            if (ch == closer) {
+                depth++;
+            } else if (ch == opener) {
+                depth--;
+                if (depth == 0) {
+                    if (out_line)
+                        *out_line = l;
+                    if (out_col)
+                        *out_col = c;
+                    return true;
+                }
+            }
+            c--;
+        }
+    }
+    return false;
+}
+
+static void codeeditor_update_pair_match_cache(vg_codeeditor_t *editor) {
+    if (!editor)
+        return;
+    if (editor->pair_match_cache_valid &&
+        editor->pair_match_revision == editor->revision &&
+        editor->pair_match_cursor_line == editor->cursor_line &&
+        editor->pair_match_cursor_col == editor->cursor_col)
+        return;
+
+    editor->pair_match_cache_valid = true;
+    editor->pair_match_revision = editor->revision;
+    editor->pair_match_cursor_line = editor->cursor_line;
+    editor->pair_match_cursor_col = editor->cursor_col;
+    editor->pair_match_active = false;
+    editor->pair_anchor_line = -1;
+    editor->pair_anchor_col = -1;
+    editor->pair_peer_line = -1;
+    editor->pair_peer_col = -1;
+
+    int line = editor->cursor_line;
+    int col = editor->cursor_col;
+    char ch = '\0';
+    if (!codeeditor_byte_at(editor, line, col, &ch) || !codeeditor_pair_info(ch, NULL, NULL)) {
+        int prev_col = codeeditor_prev_byte_boundary(editor, line, col);
+        if (prev_col == col || !codeeditor_byte_at(editor, line, prev_col, &ch) ||
+            !codeeditor_pair_info(ch, NULL, NULL)) {
+            return;
+        }
+        col = prev_col;
+    }
+
+    char match = '\0';
+    int direction = 0;
+    if (!codeeditor_pair_info(ch, &match, &direction))
+        return;
+
+    int peer_line = -1;
+    int peer_col = -1;
+    bool found = direction > 0
+                     ? codeeditor_find_matching_pair_forward(editor, line, col, ch, match, &peer_line, &peer_col)
+                     : codeeditor_find_matching_pair_backward(editor, line, col, ch, match, &peer_line, &peer_col);
+    if (!found)
+        return;
+
+    editor->pair_match_active = true;
+    editor->pair_anchor_line = line;
+    editor->pair_anchor_col = col;
+    editor->pair_peer_line = peer_line;
+    editor->pair_peer_col = peer_col;
+}
+
+static void codeeditor_draw_pair_cell(vg_codeeditor_t *editor,
+                                      void *canvas,
+                                      int col,
+                                      int segment_start,
+                                      int segment_len,
+                                      float content_x,
+                                      float row_y,
+                                      float scroll_x,
+                                      bool wrapped) {
+    if (!editor)
+        return;
+    if (wrapped && (col < segment_start || col >= segment_start + segment_len))
+        return;
+    float x = wrapped ? content_x + (float)(col - segment_start) * editor->char_width
+                      : content_x + (float)col * editor->char_width - scroll_x;
+    float y = row_y + 1.0f;
+    float h = editor->line_height - 2.0f;
+    if (h < 1.0f)
+        h = editor->line_height;
+    vgfx_fill_rect((vgfx_window_t)canvas,
+                   (int32_t)x,
+                   (int32_t)y,
+                   (int32_t)editor->char_width,
+                   (int32_t)h,
+                   CODEEDITOR_PAIR_HIGHLIGHT_FILL);
+    vgfx_rect((vgfx_window_t)canvas,
+              (int32_t)x,
+              (int32_t)y,
+              (int32_t)editor->char_width,
+              (int32_t)h,
+              CODEEDITOR_PAIR_HIGHLIGHT_BORDER);
+}
+
+static void codeeditor_paint_pair_highlight_for_segment(vg_codeeditor_t *editor,
+                                                        void *canvas,
+                                                        int line,
+                                                        int segment_start,
+                                                        int segment_len,
+                                                        float content_x,
+                                                        float row_y,
+                                                        float scroll_x,
+                                                        bool wrapped) {
+    if (!editor || !(editor->base.state & VG_STATE_FOCUSED))
+        return;
+    codeeditor_update_pair_match_cache(editor);
+    if (!editor->pair_match_active)
+        return;
+    if (line == editor->pair_anchor_line) {
+        codeeditor_draw_pair_cell(editor,
+                                  canvas,
+                                  editor->pair_anchor_col,
+                                  segment_start,
+                                  segment_len,
+                                  content_x,
+                                  row_y,
+                                  scroll_x,
+                                  wrapped);
+    }
+    if (line == editor->pair_peer_line) {
+        codeeditor_draw_pair_cell(editor,
+                                  canvas,
+                                  editor->pair_peer_col,
+                                  segment_start,
+                                  segment_len,
+                                  content_x,
+                                  row_y,
+                                  scroll_x,
+                                  wrapped);
     }
 }
 
@@ -2541,6 +2788,8 @@ static void codeeditor_paint(vg_widget_t *widget, void *canvas) {
 
             codeeditor_paint_highlights_for_line(
                 editor, canvas, i, 0, (int)editor->lines[i].length, content_x, line_y, editor->scroll_x, false);
+            codeeditor_paint_pair_highlight_for_segment(
+                editor, canvas, i, 0, (int)editor->lines[i].length, content_x, line_y, editor->scroll_x, false);
 
             if (editor->has_selection && (widget->state & VG_STATE_FOCUSED)) {
                 int sel_start_line = editor->selection.start_line;
@@ -2688,6 +2937,8 @@ static void codeeditor_paint(vg_widget_t *widget, void *canvas) {
                 }
 
                 codeeditor_paint_highlights_for_line(
+                    editor, canvas, line, seg_start, seg_len, content_x, row_y, 0.0f, true);
+                codeeditor_paint_pair_highlight_for_segment(
                     editor, canvas, line, seg_start, seg_len, content_x, row_y, 0.0f, true);
 
                 if (editor->has_selection && (widget->state & VG_STATE_FOCUSED)) {
@@ -3504,6 +3755,13 @@ static bool codeeditor_handle_event(vg_widget_t *widget, vg_event_t *event) {
                 widget->needs_paint = true;
                 return true;
             }
+            if (editor->selection_dragging) {
+                editor->selection_dragging = false;
+                if (vg_widget_get_input_capture() == widget)
+                    vg_widget_release_input_capture();
+                widget->needs_paint = true;
+                return true;
+            }
             break;
 
         case VG_EVENT_MOUSE_MOVE:
@@ -3523,6 +3781,27 @@ static bool codeeditor_handle_event(vg_widget_t *widget, vg_event_t *event) {
                     editor->scroll_y = (target_thumb_y / thumb_travel) * max_scroll;
                 }
                 codeeditor_clamp_scroll(editor, widget);
+                widget->needs_paint = true;
+                return true;
+            }
+            if (editor->selection_dragging) {
+                int line = 0;
+                int col = 0;
+                codeeditor_local_point_to_position(
+                    editor, widget, event->mouse.x, event->mouse.y, &line, &col);
+                editor->selection.start_line = editor->selection_anchor_line;
+                editor->selection.start_col = editor->selection_anchor_col;
+                editor->selection.end_line = line;
+                editor->selection.end_col = col;
+                editor->cursor_line = line;
+                editor->cursor_col = col;
+                editor->has_selection =
+                    compare_positions(editor->selection.start_line,
+                                      editor->selection.start_col,
+                                      editor->selection.end_line,
+                                      editor->selection.end_col) != 0;
+                editor->cursor_visible = true;
+                ensure_cursor_visible(editor);
                 widget->needs_paint = true;
                 return true;
             }
@@ -3625,6 +3904,12 @@ static bool codeeditor_handle_event(vg_widget_t *widget, vg_event_t *event) {
             editor->cursor_col = col;
             editor->has_selection = false;
             clear_extra_cursor_selections(editor);
+            if (event->mouse.button == VG_MOUSE_LEFT) {
+                editor->selection_dragging = true;
+                editor->selection_anchor_line = line;
+                editor->selection_anchor_col = col;
+                vg_widget_set_input_capture(widget);
+            }
             editor->cursor_visible = true;
             widget->needs_paint = true;
             return true;

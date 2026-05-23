@@ -110,7 +110,10 @@ class CommandRegistry {
         Add("skipoccurrence", "Skip Occurrence", "Move to the next matching word", "Ctrl+K Ctrl+D", "", true);
         Add("selectalloccurrences", "Select All Occurrences", "Select every matching word", "Ctrl+Shift+L", "", true);
         Add("clearcursors", "Clear Extra Cursors", "Remove secondary cursors", "Escape", "", true);
+        Add("expandselection", "Expand Selection", "Grow selection from word to line to document", "Shift+Alt+Right", "", true);
+        Add("shrinkselection", "Shrink Selection", "Shrink selection from document to line to word", "Shift+Alt+Left", "", true);
         Add("togglelinecomment", "Toggle Line Comment", "Comment or uncomment the active line", "Ctrl+/", "", true);
+        Add("toggleblockcomment", "Toggle Block Comment", "Wrap or unwrap the selection in a block comment", "Shift+Alt+A", "", true);
         Add("duplicateline", "Duplicate Line", "Duplicate the active line", "Ctrl+Shift+D", "", true);
         Add("movelineup", "Move Line Up", "Move the active line above the previous line", "Alt+Up", "", true);
         Add("movelinedown", "Move Line Down", "Move the active line below the next line", "Alt+Down", "", true);

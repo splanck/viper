@@ -288,6 +288,70 @@ func main() {
         fail(shell, "toggle line comment remove");
         return;
     }
+    engine.SetText("module IntelliProbe;\n    value\n");
+    engine.editor.SetCursor(1, 9);
+    edit_commands.handleToggleBlockComment(shell, docMgr, engine);
+    if engine.editor.GetLine(1) != "    /* value */" {
+        fail(shell, "toggle block comment add line");
+        return;
+    }
+    edit_commands.handleToggleBlockComment(shell, docMgr, engine);
+    if engine.editor.GetLine(1) != "    value" {
+        fail(shell, "toggle block comment remove line");
+        return;
+    }
+    engine.SetText("alpha beta");
+    engine.editor.SetCursorSelection(0, 0, 0, 0, 5);
+    edit_commands.handleToggleBlockComment(shell, docMgr, engine);
+    if engine.editor.GetLine(0) != "/* alpha */ beta" {
+        fail(shell, "toggle block comment add selection");
+        return;
+    }
+    engine.editor.SetCursorSelection(0, 0, 0, 0, 11);
+    edit_commands.handleToggleBlockComment(shell, docMgr, engine);
+    if engine.editor.GetLine(0) != "alpha beta" {
+        fail(shell, "toggle block comment remove selection");
+        return;
+    }
+    engine.SetText("alpha beta\ngamma");
+    engine.editor.SetCursor(0, 2);
+    edit_commands.handleExpandSelection(shell, engine);
+    if engine.editor.CursorHasSelection(0) == 0
+       or engine.editor.GetSelectionStartLineAt(0) != 0
+       or engine.editor.GetSelectionStartColAt(0) != 0
+       or engine.editor.GetSelectionEndColAt(0) != 5 {
+        fail(shell, "expand selection word");
+        return;
+    }
+    edit_commands.handleExpandSelection(shell, engine);
+    if engine.editor.GetSelectionEndColAt(0) != 10 {
+        fail(shell, "expand selection line");
+        return;
+    }
+    edit_commands.handleExpandSelection(shell, engine);
+    if engine.editor.GetSelectionEndLineAt(0) != 1
+       or engine.editor.GetSelectionEndColAt(0) != 5 {
+        fail(shell, "expand selection document");
+        return;
+    }
+    edit_commands.handleShrinkSelection(shell, engine);
+    if engine.editor.GetSelectionEndLineAt(0) != 0
+       or engine.editor.GetSelectionEndColAt(0) != 10 {
+        fail(shell, "shrink selection line");
+        return;
+    }
+    edit_commands.handleShrinkSelection(shell, engine);
+    if engine.editor.GetSelectionEndColAt(0) != 5 {
+        fail(shell, "shrink selection word");
+        return;
+    }
+    edit_commands.handleShrinkSelection(shell, engine);
+    if engine.editor.CursorHasSelection(0) != 0 {
+        fail(shell, "shrink selection collapse");
+        return;
+    }
+    engine.SetText("module IntelliProbe;\n    value\n");
+    engine.editor.SetCursor(1, 9);
     edit_commands.handleDuplicateLine(shell, engine);
     if engine.editor.GetLine(2) != "    value" {
         fail(shell, "duplicate line");

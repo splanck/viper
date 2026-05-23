@@ -636,7 +636,10 @@ func main() {
         if triggeredNoMenu("skipoccurrence", cpSelected)                 { edit_commands.handleSkipOccurrence(shell, engine); }
         if triggeredNoMenu("selectalloccurrences", cpSelected)           { edit_commands.handleSelectAllOccurrences(shell, engine); }
         if triggeredNoMenu("clearcursors", cpSelected)                   { edit_commands.handleClearCursors(shell, engine); }
+        if triggeredNoMenu("expandselection", cpSelected)                { edit_commands.handleExpandSelection(shell, engine); }
+        if triggeredNoMenu("shrinkselection", cpSelected)                { edit_commands.handleShrinkSelection(shell, engine); }
         if triggeredNoMenu("togglelinecomment", cpSelected)              { edit_commands.handleToggleLineComment(shell, docMgr, engine); }
+        if triggeredNoMenu("toggleblockcomment", cpSelected)             { edit_commands.handleToggleBlockComment(shell, docMgr, engine); }
         if triggeredNoMenu("duplicateline", cpSelected)                  { edit_commands.handleDuplicateLine(shell, engine); }
         if triggeredNoMenu("movelineup", cpSelected)                     { edit_commands.handleMoveLineUp(shell, engine); }
         if triggeredNoMenu("movelinedown", cpSelected)                   { edit_commands.handleMoveLineDown(shell, engine); }

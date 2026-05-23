@@ -350,6 +350,59 @@ func handleClearCursors(shell: app_shell.AppShell,
     }
 }
 
+func handleExpandSelection(shell: app_shell.AppShell,
+                           engine: editor_engine.EditorEngine) {
+    if engine == null or engine.editor == null { return; }
+    if engine.editor.CursorHasSelection(0) == 0 {
+        if SelectWordAt(engine, engine.editor.CursorLine, engine.editor.CursorCol) {
+            shell.SetStatusLeft("Selected word");
+            return;
+        }
+        SelectLine(engine, engine.editor.CursorLine);
+        shell.SetStatusLeft("Selected line");
+        return;
+    }
+
+    var startLine = engine.editor.GetSelectionStartLineAt(0);
+    var startCol = engine.editor.GetSelectionStartColAt(0);
+    var endLine = engine.editor.GetSelectionEndLineAt(0);
+    var endCol = engine.editor.GetSelectionEndColAt(0);
+    if startLine == endLine and IsWholeLineSelection(engine, startLine, startCol, endCol) == false {
+        SelectLine(engine, startLine);
+        shell.SetStatusLeft("Selected line");
+        return;
+    }
+    SelectDocument(engine);
+    shell.SetStatusLeft("Selected document");
+}
+
+func handleShrinkSelection(shell: app_shell.AppShell,
+                           engine: editor_engine.EditorEngine) {
+    if engine == null or engine.editor == null { return; }
+    if engine.editor.CursorHasSelection(0) == 0 {
+        shell.SetStatusLeft("No selection to shrink");
+        return;
+    }
+
+    var startLine = engine.editor.GetSelectionStartLineAt(0);
+    var startCol = engine.editor.GetSelectionStartColAt(0);
+    var endLine = engine.editor.GetSelectionEndLineAt(0);
+    var endCol = engine.editor.GetSelectionEndColAt(0);
+    if IsWholeDocumentSelection(engine, startLine, startCol, endLine, endCol) {
+        SelectLine(engine, startLine);
+        shell.SetStatusLeft("Shrank to line");
+        return;
+    }
+    if startLine == endLine and IsWholeLineSelection(engine, startLine, startCol, endCol) {
+        if SelectWordAt(engine, startLine, startCol) {
+            shell.SetStatusLeft("Shrank to word");
+            return;
+        }
+    }
+    engine.editor.SetCursor(startLine, startCol);
+    shell.SetStatusLeft("Collapsed selection");
+}
+
 func handleToggleLineComment(shell: app_shell.AppShell,
                              docMgr: document_manager.DocumentManager,
                              engine: editor_engine.EditorEngine) {
@@ -381,6 +434,105 @@ func handleToggleLineComment(shell: app_shell.AppShell,
     engine.editor.InsertAtCursor(replacement);
     engine.editor.SetCursor(lineIdx, Str.Length(replacement));
     shell.SetStatusLeft("Toggled line comment");
+}
+
+func handleToggleBlockComment(shell: app_shell.AppShell,
+                              docMgr: document_manager.DocumentManager,
+                              engine: editor_engine.EditorEngine) {
+    if engine == null or engine.editor == null { return; }
+    var doc = docMgr.GetActive();
+    if doc != null and doc.language == "basic" {
+        GUI.Toast.Info("Block comments are unavailable for BASIC");
+        shell.SetStatusLeft("Block comment unavailable");
+        return;
+    }
+
+    if engine.editor.CursorHasSelection(0) != 0 {
+        var startLine = engine.editor.GetSelectionStartLineAt(0);
+        var startCol = engine.editor.GetSelectionStartColAt(0);
+        var endLine = engine.editor.GetSelectionEndLineAt(0);
+        var endCol = engine.editor.GetSelectionEndColAt(0);
+        var selected = engine.editor.GetSelectedText();
+        if selected == "" {
+            shell.SetStatusLeft("No selection to block comment");
+            return;
+        }
+        var replacement = ToggleBlockCommentText(selected);
+        engine.editor.SetCursorSelection(0, startLine, startCol, endLine, endCol);
+        engine.editor.InsertAtCursor(replacement);
+        shell.SetStatusLeft("Toggled block comment");
+        return;
+    }
+
+    var lineIdx = engine.editor.CursorLine;
+    var line = engine.editor.GetLine(lineIdx);
+    var indentLen = LeadingWhitespaceLength(line);
+    var before = "";
+    if indentLen > 0 {
+        before = Str.Left(line, indentLen);
+    }
+    var rest = Str.Mid(line, indentLen + 1);
+    var replacement = before + ToggleBlockCommentText(rest);
+    engine.editor.SetCursorSelection(0, lineIdx, 0, lineIdx, Str.Length(line));
+    engine.editor.InsertAtCursor(replacement);
+    engine.editor.SetCursor(lineIdx, Str.Length(replacement));
+    shell.SetStatusLeft("Toggled block comment");
+}
+
+func ToggleBlockCommentText(text: String) -> String {
+    if IsBlockCommented(text) {
+        return RemoveBlockCommentText(text);
+    }
+    if Str.IndexOf(text, "\n") != 0 {
+        return "/*\n" + text + "\n*/";
+    }
+    return "/* " + text + " */";
+}
+
+func IsBlockCommented(text: String) -> Boolean {
+    var trimmed = Str.Trim(text);
+    return Str.StartsWith(trimmed, "/*") and Str.EndsWith(trimmed, "*/");
+}
+
+func RemoveBlockCommentText(text: String) -> String {
+    var first = Str.IndexOf(text, "/*");
+    var last = Str.LastIndexOf(text, "*/");
+    if first == 0 or last == 0 or last <= first {
+        return text;
+    }
+
+    var before = "";
+    if first > 1 {
+        before = Str.Left(text, first - 1);
+    }
+    var middleStart = first + 2;
+    var middleLen = last - middleStart;
+    var middle = "";
+    if middleLen > 0 {
+        middle = Str.MidLen(text, middleStart, middleLen);
+    }
+    middle = StripSingleCommentPadding(middle);
+
+    var after = "";
+    if last + 2 <= Str.Length(text) {
+        after = Str.Mid(text, last + 2);
+    }
+    return before + middle + after;
+}
+
+func StripSingleCommentPadding(text: String) -> String {
+    var result = text;
+    if Str.StartsWith(result, "\n") {
+        result = Str.Mid(result, 2);
+    } else if Str.StartsWith(result, " ") {
+        result = Str.Mid(result, 2);
+    }
+    if Str.EndsWith(result, "\n") and Str.Length(result) > 0 {
+        result = Str.Left(result, Str.Length(result) - 1);
+    } else if Str.EndsWith(result, " ") and Str.Length(result) > 0 {
+        result = Str.Left(result, Str.Length(result) - 1);
+    }
+    return result;
 }
 
 func handleDuplicateLine(shell: app_shell.AppShell,
@@ -445,6 +597,78 @@ func LeadingWhitespaceLength(text: String) -> Integer {
         i = i + 1;
     }
     return Str.Length(text);
+}
+
+func SelectWordAt(engine: editor_engine.EditorEngine,
+                  lineIdx: Integer,
+                  col: Integer) -> Boolean {
+    if engine == null or engine.editor == null { return false; }
+    if lineIdx < 0 or lineIdx >= engine.editor.LineCount { return false; }
+    var line = engine.editor.GetLine(lineIdx);
+    var len = Str.Length(line);
+    if len == 0 { return false; }
+    var pos = col + 1;
+    if pos < 1 { pos = 1; }
+    if pos > len { pos = len; }
+
+    var ch = Str.MidLen(line, pos, 1);
+    if IsIdentPart(ch) == false and pos > 1 {
+        pos = pos - 1;
+        ch = Str.MidLen(line, pos, 1);
+    }
+    if IsIdentPart(ch) == false { return false; }
+
+    var start = pos;
+    while start > 1 and IsIdentPart(Str.MidLen(line, start - 1, 1)) {
+        start = start - 1;
+    }
+    var end = pos;
+    while end <= len and IsIdentPart(Str.MidLen(line, end, 1)) {
+        end = end + 1;
+    }
+    engine.editor.SetCursorSelection(0, lineIdx, start - 1, lineIdx, end - 1);
+    return true;
+}
+
+func SelectLine(engine: editor_engine.EditorEngine, lineIdx: Integer) {
+    if engine == null or engine.editor == null { return; }
+    var targetLine = lineIdx;
+    if targetLine < 0 { targetLine = 0; }
+    if targetLine >= engine.editor.LineCount { targetLine = engine.editor.LineCount - 1; }
+    if targetLine < 0 { return; }
+    var line = engine.editor.GetLine(targetLine);
+    engine.editor.SetCursorSelection(0, targetLine, 0, targetLine, Str.Length(line));
+}
+
+func SelectDocument(engine: editor_engine.EditorEngine) {
+    if engine == null or engine.editor == null { return; }
+    var lastLine = engine.editor.LineCount - 1;
+    if lastLine < 0 { return; }
+    var last = engine.editor.GetLine(lastLine);
+    engine.editor.SetCursorSelection(0, 0, 0, lastLine, Str.Length(last));
+}
+
+func IsWholeLineSelection(engine: editor_engine.EditorEngine,
+                          lineIdx: Integer,
+                          startCol: Integer,
+                          endCol: Integer) -> Boolean {
+    if engine == null or engine.editor == null { return false; }
+    if lineIdx < 0 or lineIdx >= engine.editor.LineCount { return false; }
+    return startCol == 0 and endCol == Str.Length(engine.editor.GetLine(lineIdx));
+}
+
+func IsWholeDocumentSelection(engine: editor_engine.EditorEngine,
+                              startLine: Integer,
+                              startCol: Integer,
+                              endLine: Integer,
+                              endCol: Integer) -> Boolean {
+    if engine == null or engine.editor == null { return false; }
+    var lastLine = engine.editor.LineCount - 1;
+    if lastLine < 0 { return false; }
+    return startLine == 0
+       and startCol == 0
+       and endLine == lastLine
+       and endCol == Str.Length(engine.editor.GetLine(lastLine));
 }
 
 func FindNextOccurrence(source: String, word: String, startLine: Integer, startCol: Integer) -> String {
