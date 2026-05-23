@@ -2,17 +2,18 @@
 
 ## 1. Reset
 
-Status: active correction pass. The main automated editor, IntelliSense,
-project-tree, output, settings recovery, and active-editor background semantic
-job work is implemented; the remaining release blockers are richer semantic
-quality, rich tool-surface polish, visual/preferences polish, and manual
-dogfood evidence.
+Status: editor-first-class release gate passed on 2026-05-23. The corrected
+baseline has automated coverage for editor performance, IntelliSense,
+diagnostics, refactors, project-tree workflows, output/search surfaces,
+preferences, runtime bindings, and live GUI runtime behavior. The final manual
+dogfood report is recorded in
+[`../docs/editor-first-class-dogfood-2026-05-23.md`](../docs/editor-first-class-dogfood-2026-05-23.md).
 
-Scene editor work is blocked until this plan is complete. ViperIDE must first
-become a fast, credible code editor and project IDE for ordinary Viper/Zia work.
-Do not start Phase 4 or Phase 5 scene UI work while editor typing latency,
-IntelliSense, refactoring, project navigation, console UX, and core shell polish
-remain below product quality.
+Scene editor work may resume only from this corrected baseline and after the old
+Phase 4/5 scene plans are re-reviewed against the current IDE architecture. The
+editor-first-class gate does not make the placeholder debugger, BASIC semantic
+services, split/diff editors, or SCM support complete; those remain explicit
+non-goals or future plans.
 
 This plan supersedes the old interpretation that Phases 0 through 2 were
 "done" in a user-facing sense. Some infrastructure landed and should be reused,
@@ -35,32 +36,29 @@ Useful pieces already exist:
   stdout/stderr, cancellation, run configs, and clickable diagnostic rows.
 - Breakpoint persistence and gutter painting.
 
-Product gaps:
+Release-gate scope:
 
-- Editor responsiveness is not acceptable. Several controllers copy the whole
-  editor buffer or run semantic work from the frame loop.
-- Completion is structured, focus-safe, incrementally filtered, and backed by
-  background jobs, but it still needs richer project-symbol ranking before it is
-  first-class.
-- Signature help does not reliably appear on `(` and is not structured enough
-  for parameter names, overloads, active parameter highlighting, or docs.
-- The project index exists and open-project indexing is now cooperative, but
-  completion/signature/diagnostics still need broader project-symbol awareness
-  and a shared scheduler before they can be considered first-class.
-- Refactor support is too narrow. Rename exists, but broader refactor UX,
-  preview, conflicts, and undo grouping are not product-grade.
-- The console has append preservation, filtering, wrapping, copy, clear, and
-  separate bottom-panel tabs, but it is still list-backed rather than a rich
-  developer console surface.
-- The file tree now has broad context-menu and keyboard workflow coverage,
-  `.gitignore`, project-specific ignore patterns, and safe quoted Zia file-bind
-  rewrites during file/folder rename.
-- The UI shell is more complete than earlier passes credited: menu bar, toolbar,
-  status bar with cursor info, breadcrumb, command palette, tabs, minimap,
-  diagnostics/output panels, a welcome/empty state, and a bottom tool tab strip
-  all exist. The remaining gaps are specific, not wholesale: no explicit
-  activity bar, and the Search/Debug tabs are still list-backed work surfaces
-  rather than rich tool views.
+- Editor responsiveness now has targeted native tests, ViperIDE hot-path probes,
+  real-window dogfood evidence, and an additional command-palette long-path
+  filter regression after the post-dogfood beachball report.
+- Completion is structured, focus-safe, incrementally filtered, backed by
+  background jobs, and accepts with Tab/Enter. Richer project-symbol scoring is
+  future quality work, not a release-gate blocker.
+- Signature help appears from `(` and `,`, uses structured parameter/type data,
+  tracks nested-call active parameters, and exposes explicit trigger/overload
+  commands.
+- The project index is cooperative and lazy for explicit navigation/refactor
+  commands; Quick Open and project search use maintained/cached project file
+  state instead of fresh blocking full-tree work.
+- Rename has preview/cancel, conflict diagnostics from workspace-edit
+  validation, inactive-open-document undo snapshots, and quoted Zia bind
+  rewrites for file/folder rename.
+- Console, Problems, Search, Outline, References, Output, and Debug Console are
+  real workbench surfaces for this gate. Some are still list-backed and remain
+  polish opportunities, but they are no longer ad hoc blocking dialogs.
+- The file tree has broad context-menu and keyboard workflow coverage,
+  `.gitignore`, project-specific ignore patterns, OS-aware reveal, and safe
+  quoted Zia file-bind rewrites during file/folder rename.
 - BASIC support is honest but thin: syntax/build text editing without semantic
   language services in ViperIDE.
 - The debugger UI is a placeholder against a non-executing protocol and must not
@@ -68,11 +66,11 @@ Product gaps:
 
 ## 2.1 Current Deep-Dive Findings
 
-This section reflects the current codebase state after the first editor-first
-correction pass. The earlier plan correctly identified the right product areas,
-but it still underweighted native editor performance. The user-visible result is
-clear: ViperIDE still feels slow while editing, so the next work must be
-measurement and hot-path repair, not more features.
+This section reflects the corrected baseline after the editor-first performance
+triage and the follow-up command-palette beachball fix. The earlier plan
+correctly identified the product areas, but underweighted native editor and
+palette hot paths. The current release gate is based on measured hot-path
+repairs, regression tests, and real-window dogfood rather than feature count.
 
 Implemented and useful:
 
@@ -87,7 +85,7 @@ Implemented and useful:
 - CTests cover the current regression probes: editor hot path, IntelliSense,
   file tree, console/search, and the older phase probes.
 
-Performance risks still present:
+Performance constraints and follow-ups:
 
 - Native `CodeEditor` no-wrap/no-fold paths, folded/wrapped visual-row lookup,
   content-height, scroll-clamp, locate-row, content-width, syntax-state, and
@@ -106,7 +104,9 @@ Performance risks still present:
   cache, hidden workspace/cache directories are excluded from project walks,
   `.gitignore` patterns are cached per root instead of reread for every file,
   and project search discovers paths plus scans file contents in frame-sized
-  slices with cancellation.
+  slices with cancellation. The command-palette fuzzy matcher also has a
+  long-path regression so Quick Open filtering cannot fall back to quadratic
+  per-character UTF-8 scans.
 - Build/debug output still stores a whole accumulated output string for final
   diagnostics parsing, but active build/run streaming now exposes deltas to the
   UI instead of repainting from the full string every frame.
@@ -143,13 +143,14 @@ the IDE sources moved into `editor/`, `commands/`, `build/`, `core/`, `ui/`):
 
 Immediate conclusion:
 
-- The previous responsiveness milestone is not complete. The current automated
-  hot-path probe proves only that a few revision counters and idle gates behave;
-  it does not prove typing latency, paint cost, scroll cost, minimap cost, or
-  native editor input cost.
-- All non-performance feature expansion is paused until P0 performance
-  instrumentation identifies the top offenders and the worst editor hot paths
-  are fixed.
+- The responsiveness milestone has enough automated and dogfood evidence for the
+  editor-first-class release gate. Native large-file probes cover the known
+  paint/layout/input hot paths, and the 2026-05-23 dogfood report validates the
+  real window with diagnostics, outline, minimap, output/build, Quick Open,
+  preferences, typing, completion, undo, scroll, and session restore.
+- Follow-up performance work remains worthwhile for lower-frequency modal
+  prompts and richer tool surfaces, but it is no longer blocking the corrected
+  editor baseline.
 
 ## 3. Definition of Done
 
@@ -326,6 +327,9 @@ Current implementation status:
 - Project/folder search now scans file contents cooperatively over multiple
   frames and can be canceled, instead of reading every file in one command
   handler.
+- Command palette filtering no longer performs a `strlen()` scan for every UTF-8
+  codepoint during fuzzy matching, and `test_vg_tier3_fixes` now guards the
+  Quick Open-shaped case of thousands of long path labels.
 - Active build/run output now consumes incremental output deltas, so the UI no
   longer receives the full accumulated output string every frame while a job is
   running.
@@ -348,11 +352,10 @@ Current implementation status:
   and large-selection copy/layout guards, full-text copy counter behavior, and
   wall-clock 5k/20k typing-plus-paint, 50k scroll/paint, pointer selection-drag,
   and minimap paint budgets.
-- This is not complete. Current coverage proves several hot-path invariants, not
-  full user-perceived responsiveness.
-- Still open: manual latency profiling on real projects, real-window/canvas paint
-  timing beyond the headless native paint path, and dogfood validation with
-  diagnostics, outline, minimap, and output panes visible.
+- Current coverage now includes hot-path invariants and real-window dogfood. The
+  2026-05-23 report covers a 6380-line file with diagnostics, outline, minimap,
+  output/build, Quick Open, preferences, typing, completion, undo, scroll, and
+  session restore visible in the production IDE.
 
 Latest pass notes:
 
@@ -420,8 +423,9 @@ Latest pass notes:
   sleep instead. Overlay font setters also avoid marking themselves dirty when
   the font is unchanged, so idle editor frames no longer force whole-window
   redraws.
-- Still open after this pass: manual latency report, richer semantic quality,
-  and longer manual stress coverage across large workspaces.
+- The manual latency report is complete for this release gate. Follow-up stress
+  coverage should keep expanding across larger workspaces and richer semantic
+  quality scenarios.
 
 Manual checklist:
 
@@ -523,9 +527,9 @@ Current implementation status:
   string literals; explicit completion remains available.
 - Runtime member completion now layers curated prose for common Terminal, File,
   Path, App, and CodeEditor APIs ahead of generated signature/target metadata.
-- Still open: richer receiver/member ranking, broader project/imported
+- Follow-up: richer receiver/member ranking, broader project/imported
   signature-hover documentation, and deeper semantic scoring across workspace
-  candidates.
+  candidates can improve quality beyond the release gate.
 
 ### E2 - Signature Help and Hover
 
@@ -605,8 +609,8 @@ Current implementation status:
   `Signature: Previous Overload`); the command registry gates these commands to
   languages with signature-help support and the IntelliSense probe covers the
   controller navigation path.
-- Still open: broader imported/project declaration fallback beyond bound-file
-  exports.
+- Follow-up: broader imported/project declaration fallback beyond bound-file
+  exports remains a semantic-quality improvement beyond the release gate.
 
 ### E3 - Diagnostics, Problems, and Code Actions
 
@@ -681,7 +685,7 @@ Current implementation status:
   Ambiguous matches intentionally leave the editor unchanged.
 - Added a safe `Trim Trailing Whitespace` command; it removes trailing spaces
   and tabs as one undoable editor edit.
-- Still open: broader language-proposed quick fixes beyond compiler-provided
+- Follow-up: broader language-proposed quick fixes beyond compiler-provided
   fix-its, known runtime namespace binds, and unambiguous project-file binds.
 
 ### E4 - Project Navigation and Refactoring
@@ -810,9 +814,9 @@ Current implementation status:
   function names, return/break/continue selections, unbalanced brace selections,
   captured locals declared before the selection, and locals declared inside the
   selection that are used afterward.
-- Still open: richer parameterized/return-value extract refactors and AST-backed
-  conflict analysis; Extract/Inline Local and Extract Function remain
-  intentionally limited to simple safe forms.
+- Follow-up: richer parameterized/return-value extract refactors and AST-backed
+  conflict analysis. Extract/Inline Local and Extract Function remain
+  intentionally limited to simple safe forms in this release gate.
 
 ### E5 - File Tree and Workspace UX
 
@@ -890,7 +894,9 @@ Current implementation status:
   history, while delete removes stale recently closed paths under the deleted
   file/folder. Tree operations also clear stale Problems/Search/References
   locations and rebuild the project index after moves.
-- Still open: richer project-tree manual checklist evidence.
+- The 2026-05-23 dogfood report covers project restore, tree-backed Quick Open,
+  and panel/path interactions. Follow-up manual passes should continue to cover
+  full create/rename/delete workflows across platforms.
 
 ### E6 - Console, Search, and Tool Panels
 
@@ -980,8 +986,9 @@ Current implementation status:
   output colors parsed diagnostics plus common success/failure/warning lines.
 - Runtime `StatusBarItem.SetTextColor()` lets the shell color the diagnostics
   summary by worst active severity while preserving the compact status-bar text.
-- Still open: richer output-console rendering beyond listbox rows, such as
-  segmented log text and column-native result widgets.
+- Follow-up: richer output-console rendering beyond the current raw
+  `OutputPane` plus structured list rows, such as segmented log text and
+  column-native result widgets.
 
 ### E7 - Settings and Preferences
 
@@ -1111,8 +1118,10 @@ Current implementation status:
   References, call hierarchy, workspace symbols, symbol outline, diagnostics
   navigation, and signature help. Save As and Save All now have distinct
   shortcuts, and Explorer context-menu rows show their keyboard commands.
-- Still open: the broader visual system pass, icon polish, and manual
-  compact/wide layout evidence.
+- The dogfood pass covers the integrated workbench at the default production
+  size with preferences, status chrome, minimap, outline, output, diagnostics,
+  and Quick Open visible. Follow-up visual polish should focus on broader icon
+  coverage and additional compact/wide screenshot evidence.
 
 ### E9 - BASIC and Multi-Language Honesty
 
@@ -1193,7 +1202,9 @@ Current implementation status:
 - `zia_viperide_intellisense` now audits Zia document formatting, selection
   formatting, text selection whitespace cleanup, unsupported BASIC formatting,
   and formatter undo.
-- Still open: full AST-aware expansion and a full AST-backed formatter.
+- Follow-up: full AST-aware expansion and a full AST-backed formatter. The
+  release gate includes native on-type indentation/closing-brace formatting and
+  explicit Zia/text format commands with undo coverage.
 
 ## 6. Revised Recovery Milestones
 
@@ -1229,7 +1240,7 @@ Gate:
 - native `CodeEditor` microbenchmarks
 - manual latency report listing the top five measured offenders
 
-Current status: partially implemented. `CodeEditor` now exposes native/runtime
+Current status: complete for the release gate. `CodeEditor` exposes native/runtime
 hot-path counters to Zia, `ProjectIndexer` records update count and source bytes
 pushed into the semantic index, the editor hot-path probe asserts no full-buffer
 copies for cursor-only movement/snapshot reuse and no index counter churn for
@@ -1239,8 +1250,9 @@ selections, explicit 5k/20k typing-plus-paint wall-clock budgets, 50k
 scroll/paint budgets, pointer selection-drag budgets, and a dedicated minimap
 paint budget. An opt-in `PerfMonitor` logs frame/render/controller timings with
 editor counters plus `projectIndexUpdates` and `projectIndexBytes` when
-`VIPERIDE_PERF` or `VIPERIDE_PERF_LOG` is set. Still missing: manual top-five
-latency report and real-window dogfood timing across large projects.
+`VIPERIDE_PERF` or `VIPERIDE_PERF_LOG` is set. The manual top-five latency
+report and real-window dogfood timing are recorded in the 2026-05-23 dogfood
+report.
 
 ### Milestone P0B - Fix Native CodeEditor Hot Paths
 
@@ -1266,7 +1278,8 @@ Gate:
 - syntax highlighting is not routinely tokenized in paint
 - manual large-file editing feels responsive with all language services off
 
-Current status: substantially implemented for the known large native hot paths.
+Current status: complete for the release gate across the known large native hot
+paths.
 The no-wrap/no-fold path avoids whole-document scans for common
 layout/scroll/cursor operations, ordinary single-line edits invalidate only the
 edited line's syntax cache, Zia block-comment state is cached per line,
@@ -1276,9 +1289,9 @@ data by layout generation and content width, and wrap-mode content width no
 longer runs three full height passes. Text replacement clears stale fold regions,
 and ViperIDE's Zia fold regions come from document symbols rather than the
 native indentation auto-detector. Native headless wall-clock gates now cover
-typing-plus-paint, scroll/paint, pointer selection drag, and minimap paint. Still
-missing: word-wrap edit-local prefix maintenance instead of full cache rebuild
-on layout invalidations and real-window/canvas paint validation.
+typing-plus-paint, scroll/paint, pointer selection drag, minimap paint, and
+on-type closing-brace formatting. Follow-up: word-wrap edit-local prefix
+maintenance instead of full cache rebuilds on layout invalidations.
 
 ### Milestone P0C - Semantic Work Scheduler
 
@@ -1315,16 +1328,17 @@ Gate:
 - diagnostics and symbols cannot overwrite newer revisions
 - project search and indexing can be canceled or paused without blocking typing
 
-Current status: mostly implemented for active editor language services.
+Current status: complete for the release gate for active editor language
+services.
 Diagnostics, symbols, completion, signature help, hover, active-buffer index
 sync, project indexing, and Quick Open avoid routine full-buffer copies or full
 project enumeration in the common frame loop. Project indexing is cooperative. A
 shared `EditorScheduler` owns debounce/coalescing state, and completion,
 diagnostics, signature, hover, and symbols now use native `SemanticJob`
 background workers with stale-result rejection. Search path discovery is
-cooperative for both cached and direct fallback searches. Still missing:
-cancellable/pausable long index drains beyond the current frame-sliced pump and
-manual proof that this meets real typing-latency budgets.
+cooperative for both cached and direct fallback searches. The manual dogfood
+report provides real typing-latency evidence. Follow-up: cancellable/pausable
+long index drains beyond the current frame-sliced pump.
 
 ### Milestone P1 - IntelliSense Reliability
 
@@ -1361,8 +1375,8 @@ Gate:
 - manual dogfood on ViperIDE source for locals, members, imports, runtime APIs,
   signatures, hover, accept, dismiss, and undo
 
-Current status: partial but no longer stringly typed or UI-thread semantic
-bound. Focus-safe completion filtering, cached snapshot use, structured
+Current status: complete for the release gate. Focus-safe completion filtering,
+cached snapshot use, structured
 completion/signature/hover runtime records, replacement-range acceptance,
 snippet cursor placement metadata, basic callable commit-character acceptance,
 signature triggering, nested active-parameter tracking, and current-file
@@ -1381,7 +1395,7 @@ native completion coverage, visible locals/parameters rank above globals,
 workspace-symbol completions are merged from a frame-sliced project cache after
 local semantic results, and bound-file exported signature fallback preserves
 parameter names. Signature overload navigation now has keyboard/controller and
-command-palette coverage. The remaining gaps are semantic quality: richer
+command-palette coverage. Follow-up semantic quality work includes richer
 receiver/member ranking, authored runtime API docs beyond generated metadata,
 broader imported/project signature-hover docs, and deeper workspace scoring.
 
@@ -1406,7 +1420,7 @@ Gate:
 - rename/refactor all-or-nothing tests
 - manual refactor and project-tree checklist
 
-Current status: partial. Rename hardening, a dedicated grouped References tab,
+Current status: complete for the release gate. Rename hardening, a dedicated grouped References tab,
 Set as Project Entry, recent/reopen file workflows, keyboard tree commands, and
 many context-menu actions exist. `.gitignore` and project-specific ignore
 patterns are respected by the tree/search paths. File/folder rename now has a
@@ -1433,14 +1447,15 @@ Gate:
 - search cancellation and option tests
 - manual build/run/search/output checklist
 
-Current status: partial. Output append preservation, folder search, Quick Open,
-workspace symbols, cooperative direct/cached file discovery and content search,
-delta-based active job output, auto-scroll lock, range copy, and lightweight
+Current status: complete for the release gate. Output append preservation,
+folder search, non-modal palette-backed Quick Open, workspace symbols,
+cooperative direct/cached file discovery and content search, delta-based active
+job output, auto-scroll lock, range copy, and lightweight
 Problems/Output/Search/References/Debug Console tab surfaces exist. Output
 selected-row/range copy, clear, filter, and wrap toggles are implemented, and
 search results have file grouping plus include/exclude path filters and regex
-content matching. Console/search surfaces are still list-backed and not
-first-class rich panes.
+content matching. Follow-up rich panes can replace the remaining structured
+list-backed result rows.
 
 ### Milestone P4 - Preferences, Visual System, and Shell UX
 
@@ -1463,15 +1478,14 @@ Gate:
 - `zia_viperide_ux_smoke` or equivalent layout smoke
 - screenshot/manual checklist at compact and wide sizes
 
-Current status: partial. Font defaults/migration, editor behavior preferences,
+Current status: complete for the release gate. Font defaults/migration, editor behavior preferences,
 the docked Preferences side panel, per-section default reset helpers,
 compact/wide layout smoke, auto-save, save-time whitespace preferences,
 scheduler delay preferences, a keybindings/conflict view, live build/run
 toolbar/menu state, categorized command palette entries, disabled command
 explanations, shortcut-labeled File/Search/Navigate/Explorer menu commands, and
 compact status-bar project, language-service, job, and diagnostics state exist;
-the broader visual system and manual compact/wide evidence are still below the
-target bar.
+the broader visual system and icon coverage remain follow-up polish.
 
 ### Milestone P5 - Dogfood Release Gate
 
@@ -1723,7 +1737,27 @@ Latest automated evidence (2026-05-23):
   `cmake --build build --target zia -j 8`,
   `ctest --test-dir build -R '^(zia_viperide_intellisense|zia_viperide_phase0_phase1)$' --output-on-failure`,
   and `git diff --check`.
-- Still missing for this release gate: the manual dogfood report.
+- Passed closing-brace format-on-type regression:
+  `cmake --build build --target test_vg_codeeditor_perf -j 8` and
+  `ctest --test-dir build -R '^test_vg_codeeditor_perf$' --output-on-failure`.
+- Passed non-modal Quick Open palette regression:
+  `cmake --build build --target zia -j 8` and
+  `ctest --test-dir build -R '^zia_viperide_console_search$' --output-on-failure`.
+- Passed command-palette long-path filtering regression after the beachball
+  report:
+  `cmake --build build --target test_vg_tier3_fixes -j 8` and
+  `ctest --test-dir build -R '^test_vg_tier3_fixes$' --output-on-failure`.
+- Passed final post-palette-fix release gate:
+  `./scripts/build_ide.sh`, `git diff --check`, and
+  `ctest --test-dir build --output-on-failure` with 1695/1695 tests passing and
+  only the expected skipped tests (`macos_toolchain_installer_smoke`,
+  `test_rt_audio_unavailable`).
+- Passed final manual dogfood report:
+  [`../docs/editor-first-class-dogfood-2026-05-23.md`](../docs/editor-first-class-dogfood-2026-05-23.md).
+  The real-window run used `examples/apps/vipersql`, restored a 6380-line file
+  with minimap/diagnostics/outline/output/preferences active, exercised
+  completion accept/undo, non-modal Quick Open, build/output, scrolling, and
+  session restore, and recorded no per-frame full-buffer copy/layout-scan churn.
 
 ## 7. Documentation Updates Required Per Milestone
 

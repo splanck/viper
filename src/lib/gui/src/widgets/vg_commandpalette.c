@@ -72,24 +72,23 @@ static uint32_t commandpalette_decode_utf8(const char **cursor) {
     const unsigned char *s = (const unsigned char *)*cursor;
     if (!s || !*s)
         return 0;
-    size_t remaining = strlen((const char *)s);
     if (s[0] < 0x80) {
         *cursor += 1;
         return s[0];
     }
-    if (remaining >= 2 && (s[0] & 0xE0) == 0xC0 && (s[1] & 0xC0) == 0x80) {
+    if ((s[0] & 0xE0) == 0xC0 && s[1] && (s[1] & 0xC0) == 0x80) {
         uint32_t cp = ((uint32_t)(s[0] & 0x1F) << 6) | (uint32_t)(s[1] & 0x3F);
         *cursor += 2;
         return cp >= 0x80 ? cp : 0xFFFD;
     }
-    if (remaining >= 3 && (s[0] & 0xF0) == 0xE0 && (s[1] & 0xC0) == 0x80 &&
+    if ((s[0] & 0xF0) == 0xE0 && s[1] && s[2] && (s[1] & 0xC0) == 0x80 &&
         (s[2] & 0xC0) == 0x80) {
         uint32_t cp = ((uint32_t)(s[0] & 0x0F) << 12) | ((uint32_t)(s[1] & 0x3F) << 6) |
                       (uint32_t)(s[2] & 0x3F);
         *cursor += 3;
         return cp >= 0x800 && !(cp >= 0xD800 && cp <= 0xDFFF) ? cp : 0xFFFD;
     }
-    if (remaining >= 4 && (s[0] & 0xF8) == 0xF0 && (s[1] & 0xC0) == 0x80 &&
+    if ((s[0] & 0xF8) == 0xF0 && s[1] && s[2] && s[3] && (s[1] & 0xC0) == 0x80 &&
         (s[2] & 0xC0) == 0x80 && (s[3] & 0xC0) == 0x80) {
         uint32_t cp = ((uint32_t)(s[0] & 0x07) << 18) | ((uint32_t)(s[1] & 0x3F) << 12) |
                       ((uint32_t)(s[2] & 0x3F) << 6) | (uint32_t)(s[3] & 0x3F);

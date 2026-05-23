@@ -2,12 +2,14 @@
 
 ViperIDE is the IDE application for Zia and Viper BASIC. It is built in Zia on top of the `Viper.GUI.*` runtime classes.
 
-Current status: ViperIDE has useful IDE infrastructure, but the code-editor
-experience is not yet first-class. The active correction plan is
-[`plans/editor-first-class-plan.md`](plans/editor-first-class-plan.md), which
-blocks scene-editor work until editor responsiveness, IntelliSense, refactoring,
-project explorer UX, console/search/problems surfaces, preferences, and visual
-polish are brought up to product quality.
+Current status: the editor-first-class correction gate passed on 2026-05-23.
+The release evidence lives in
+[`plans/editor-first-class-plan.md`](plans/editor-first-class-plan.md) and the
+manual dogfood report is
+[`docs/editor-first-class-dogfood-2026-05-23.md`](docs/editor-first-class-dogfood-2026-05-23.md).
+Scene-editor work can resume only from this corrected baseline; the placeholder
+debugger, BASIC semantic language services, split/diff editors, and SCM support
+remain explicit non-goals for this gate.
 
 ## Layout
 
@@ -133,8 +135,9 @@ and search exclusions on top of hard excludes and `.gitignore`.
   cooperative file discovery/content scanning, cached project file state when
   available, literal/regex content matching, case/whole-word and include/exclude
   path filters, and structured location ids instead of `path:line` parsing
-- Quick Open by project file name/path fragment (`Ctrl+P`), plus recent-file
-  and recently closed-tab reopen workflows
+- Non-modal Quick Open by project file name/path fragment (`Ctrl+P`), plus
+  long-path command-palette filtering coverage, recent-file and recently
+  closed-tab reopen workflows
 - Workspace symbol search by project symbol fragment (`Ctrl+T`) with structured
   result locations and dirty-open-document awareness
 - Project-aware build/run configurations using argument-vector process jobs

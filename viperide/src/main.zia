@@ -230,6 +230,7 @@ func main() {
     var prevCursorCol  = 1;
     var minimapVisible = appSettings.minimapVisible;
     var lastServiceName = "";
+    var paletteMode = "commands";
     var lastBreakpointPath = "";
     var lastBreakpointVersion = -1;
     var autoSaveRevision = engine.GetRevision();
@@ -266,7 +267,9 @@ func main() {
         }
         shell.SetWorkspaceStatus(activeProjectName, activeService.name);
         if activeService.name != lastServiceName {
-            commandRegistry.PopulatePalette(shell.commandPalette, activeService);
+            if paletteMode == "commands" {
+                commandRegistry.PopulatePalette(shell.commandPalette, activeService);
+            }
             commandRegistry.ApplyCapabilities(activeService);
             lastServiceName = activeService.name;
         }
@@ -407,15 +410,32 @@ func main() {
         // ====================================================================
         var cpSelected = "";
         if shell.commandPalette.WasSelected() != 0 {
-            cpSelected = commandRegistry.NormalizeId(shell.commandPalette.GetSelected());
-            if cpSelected != "" and commandRegistry.IsExecutable(cpSelected, activeService) == false {
-                var disabledReason = commandRegistry.DisabledReason(cpSelected, activeService);
-                shell.SetStatusLeft(disabledReason);
-                GUI.Toast.Info(disabledReason);
-                cpSelected = "";
+            var rawPaletteSelection = shell.commandPalette.GetSelected();
+            if paletteMode == "quickopen" {
+                search_commands.HandleQuickOpenPaletteSelection(shell, projMgr, docMgr, engine, tabs,
+                                                                rawPaletteSelection);
+                paletteMode = "commands";
+                shell.commandPalette.SetPlaceholder("Type a command...");
+                commandRegistry.PopulatePalette(shell.commandPalette, activeService);
+            } else {
+                cpSelected = commandRegistry.NormalizeId(rawPaletteSelection);
+                if cpSelected != "" and commandRegistry.IsExecutable(cpSelected, activeService) == false {
+                    var disabledReason = commandRegistry.DisabledReason(cpSelected, activeService);
+                    shell.SetStatusLeft(disabledReason);
+                    GUI.Toast.Info(disabledReason);
+                    cpSelected = "";
+                }
             }
         }
+        if paletteMode != "commands" and shell.commandPalette.IsVisible() == 0 {
+            paletteMode = "commands";
+            shell.commandPalette.SetPlaceholder("Type a command...");
+            commandRegistry.PopulatePalette(shell.commandPalette, activeService);
+        }
         if Shortcuts.WasTriggered("palette") != 0 {
+            paletteMode = "commands";
+            shell.commandPalette.SetPlaceholder("Type a command...");
+            commandRegistry.PopulatePalette(shell.commandPalette, activeService);
             shell.commandPalette.Show();
         }
 
@@ -752,7 +772,11 @@ func main() {
         if triggeredNoMenu("treedelete", cpSelected)                           { TreeDelete(shell, projMgr, docMgr, engine, tabs, indexer, locStore); }
         if triggeredNoMenu("treerefresh", cpSelected)                          { projMgr.RefreshTree(); indexer.EnsureProject(projMgr, docMgr); shell.SetStatusLeft("Project tree refreshed"); }
         if shell.miAbout.WasClicked() != 0                                     { overlays.OpenAbout(shell); }
-        if triggeredMenu("quickopen", shell.miQuickOpen, cpSelected) { search_commands.handleQuickOpen(shell, projMgr, docMgr, engine, tabs); }
+        if triggeredMenu("quickopen", shell.miQuickOpen, cpSelected) {
+            if search_commands.ShowQuickOpenPalette(shell, projMgr) {
+                paletteMode = "quickopen";
+            }
+        }
         if triggeredMenu("searchproject", shell.miSearchProject, cpSelected) { search_commands.handleProjectSearchAsync(shell, projMgr, docMgr, engine, locStore, searcher); }
         if triggeredMenu("workspacesymbols", shell.miWorkspaceSymbols, cpSelected) { search_commands.handleWorkspaceSymbols(shell, projMgr, docMgr, engine, locStore); }
         if triggeredMenu("symboloutline", shell.miSymbolOutline, cpSelected) { symbolOutline.toggle(); }

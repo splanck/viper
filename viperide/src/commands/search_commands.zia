@@ -45,6 +45,7 @@ bind FileIndex = Viper.Workspace.FileIndex;
 
 final SEARCH_FILES_PER_FRAME = 16;
 final SEARCH_DISCOVERY_DIRS_PER_FRAME = 8;
+final QUICK_OPEN_ID_PREFIX = "quickopen:";
 
 class SearchMatch {
     expose Boolean matched;
@@ -763,6 +764,59 @@ func handleQuickOpen(shell: app_shell.AppShell,
 
     file_commands.OpenFileAtPath(shell, docMgr, engine, tabs, bestPath);
     shell.SetStatusLeft("Opened: " + projMgr.RelativePath(bestPath));
+}
+
+expose func ShowQuickOpenPalette(shell: app_shell.AppShell,
+                                 projMgr: project_manager.ProjectManager) -> Boolean {
+    if shell == null or shell.commandPalette == null { return false; }
+    if projMgr.project == null or projMgr.project.isOpen == false {
+        GUI.Toast.Warning("Open a project folder first");
+        return false;
+    }
+    if projMgr.CachedFileCount() == 0 {
+        GUI.Toast.Info("Project file cache is empty; refresh the project tree");
+        return false;
+    }
+
+    shell.commandPalette.Clear();
+    shell.commandPalette.SetPlaceholder("Open file by name or path...");
+
+    var i = 0;
+    while i < projMgr.CachedFileCount() {
+        var filePath = projMgr.CachedFileAt(i);
+        shell.commandPalette.AddCommandWithShortcut(QuickOpenCommandId(filePath),
+                                                    projMgr.RelativePath(filePath),
+                                                    "Files",
+                                                    "");
+        i = i + 1;
+    }
+
+    shell.commandPalette.Show();
+    shell.SetStatusLeft("Quick Open: type a file name or path");
+    return true;
+}
+
+expose func HandleQuickOpenPaletteSelection(shell: app_shell.AppShell,
+                                            projMgr: project_manager.ProjectManager,
+                                            docMgr: document_manager.DocumentManager,
+                                            engine: editor_engine.EditorEngine,
+                                            tabs: editor_tabs.EditorTabs,
+                                            selected: String) -> Boolean {
+    var path = QuickOpenPathFromCommandId(selected);
+    if path == "" { return false; }
+    file_commands.OpenFileAtPath(shell, docMgr, engine, tabs, path);
+    shell.SetStatusLeft("Opened: " + projMgr.RelativePath(path));
+    return true;
+}
+
+expose func QuickOpenCommandId(path: String) -> String {
+    return QUICK_OPEN_ID_PREFIX + path;
+}
+
+expose func QuickOpenPathFromCommandId(id: String) -> String {
+    if Str.StartsWith(id, QUICK_OPEN_ID_PREFIX) == false { return ""; }
+    var prefixLen = Str.Length(QUICK_OPEN_ID_PREFIX);
+    return Str.MidLen(id, prefixLen + 1, Str.Length(id) - prefixLen);
 }
 
 func handleWorkspaceSymbols(shell: app_shell.AppShell,

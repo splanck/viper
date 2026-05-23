@@ -36,6 +36,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <time.h>
 
 //=============================================================================
 // Test Harness
@@ -827,6 +828,41 @@ TEST(commandpalette_keeps_selected_result_visible) {
     vg_commandpalette_destroy(palette);
 }
 
+TEST(commandpalette_filters_many_long_paths_without_quadratic_scan) {
+    vg_commandpalette_t *palette = vg_commandpalette_create();
+    ASSERT_NOT_NULL(palette);
+
+    char label[768];
+    for (int i = 0; i < 4096; i++) {
+        char id[32];
+        snprintf(id, sizeof(id), "file.%d", i);
+        memset(label, 'a', sizeof(label) - 1);
+        label[sizeof(label) - 1] = '\0';
+        snprintf(label,
+                 sizeof(label),
+                 "src/aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa/"
+                 "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb/"
+                 "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc/"
+                 "dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd/"
+                 "file_%04d.zia",
+                 i);
+        ASSERT_NOT_NULL(vg_commandpalette_add_command(palette, id, label, NULL, NULL, NULL));
+    }
+
+    vg_commandpalette_show(palette);
+    ASSERT_EQ(palette->filtered_count, (size_t)4096);
+
+    clock_t start = clock();
+    vg_event_t query = make_char_event('q');
+    ASSERT_TRUE(palette->base.vtable->handle_event(&palette->base, &query));
+    double elapsed_ms = ((double)(clock() - start) * 1000.0) / (double)CLOCKS_PER_SEC;
+
+    ASSERT_EQ(palette->filtered_count, (size_t)0);
+    ASSERT(elapsed_ms < 1000.0);
+
+    vg_commandpalette_destroy(palette);
+}
+
 TEST(filedialog_save_field_supports_cursor_editing_and_list_scroll) {
     vg_filedialog_t *dialog = vg_filedialog_create(VG_FILEDIALOG_SAVE);
     ASSERT_NOT_NULL(dialog);
@@ -1034,6 +1070,7 @@ int main(void) {
     RUN(event_dispatch_synthesizes_double_click_for_widget);
     RUN(contextmenu_show_for_widget_uses_screen_bounds_and_capture);
     RUN(commandpalette_keeps_selected_result_visible);
+    RUN(commandpalette_filters_many_long_paths_without_quadratic_scan);
     RUN(filedialog_save_field_supports_cursor_editing_and_list_scroll);
 
     printf("\nFEAT-006: Tab Order\n");

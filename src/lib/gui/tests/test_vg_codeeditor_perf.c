@@ -722,6 +722,45 @@ static void test_pair_autoclose_skip_and_undo(void) {
     vg_widget_destroy(&editor->base);
 }
 
+static void test_closing_brace_formats_indent_on_type(void) {
+    vg_codeeditor_t *editor = vg_codeeditor_create(NULL);
+    assert(editor != NULL);
+
+    vg_codeeditor_set_text(editor, "{\n        ");
+    vg_codeeditor_set_cursor(editor, 1, 8);
+    send_key_char(editor, '}');
+    char *text = vg_codeeditor_get_text(editor);
+    assert(strcmp(text, "{\n    }") == 0);
+    free(text);
+    assert(editor->cursor_line == 1);
+    assert(editor->cursor_col == 5);
+
+    vg_codeeditor_undo(editor);
+    text = vg_codeeditor_get_text(editor);
+    assert(strcmp(text, "{\n        ") == 0);
+    free(text);
+    assert(editor->cursor_line == 1);
+    assert(editor->cursor_col == 8);
+
+    vg_codeeditor_set_text(editor, "{\n    }");
+    vg_codeeditor_set_cursor(editor, 1, 4);
+    send_key_char(editor, '}');
+    text = vg_codeeditor_get_text(editor);
+    assert(strcmp(text, "{\n}") == 0);
+    free(text);
+    assert(editor->cursor_line == 1);
+    assert(editor->cursor_col == 1);
+
+    vg_codeeditor_undo(editor);
+    text = vg_codeeditor_get_text(editor);
+    assert(strcmp(text, "{\n    }") == 0);
+    free(text);
+    assert(editor->cursor_line == 1);
+    assert(editor->cursor_col == 4);
+
+    vg_widget_destroy(&editor->base);
+}
+
 int main(void) {
     test_nowrap_large_file_navigation_avoids_linear_scans();
     test_full_text_copy_counter();
@@ -737,6 +776,7 @@ int main(void) {
     test_minimap_wall_clock_budget();
     test_auto_indent_newline_is_single_undo_step();
     test_pair_autoclose_skip_and_undo();
+    test_closing_brace_formats_indent_on_type();
     printf("test_vg_codeeditor_perf: PASSED\n");
     return 0;
 }

@@ -3563,6 +3563,74 @@ static bool codeeditor_is_pair_closer(char ch) {
     return ch == ')' || ch == ']' || ch == '}' || ch == '"' || ch == '\'';
 }
 
+static bool codeeditor_is_whitespace_span(const char *text, int start, int end) {
+    if (!text || start < 0 || end < start)
+        return false;
+    for (int i = start; i < end; i++) {
+        if (text[i] != ' ' && text[i] != '\t')
+            return false;
+    }
+    return true;
+}
+
+static bool codeeditor_try_format_closing_brace(vg_codeeditor_t *editor) {
+    if (!editor || !editor->auto_indent || editor->has_selection ||
+        editor->extra_cursor_count > 0)
+        return false;
+    if (editor->cursor_line < 0 || editor->cursor_line >= editor->line_count)
+        return false;
+
+    vg_code_line_t *line = &editor->lines[editor->cursor_line];
+    int line_len = line->length > (size_t)INT_MAX ? INT_MAX : (int)line->length;
+    int col = editor->cursor_col;
+    if (col < 0 || col > line_len)
+        return false;
+    if (col == 0)
+        return false;
+    if (!codeeditor_is_whitespace_span(line->text, 0, col))
+        return false;
+
+    int remove_start = col;
+    if (remove_start > 0 && line->text[remove_start - 1] == '\t') {
+        remove_start--;
+    } else {
+        int spaces_to_remove = editor->tab_width;
+        if (spaces_to_remove < 1)
+            spaces_to_remove = 1;
+        if (spaces_to_remove > 16)
+            spaces_to_remove = 16;
+        int removed = 0;
+        while (remove_start > 0 && removed < spaces_to_remove &&
+               line->text[remove_start - 1] == ' ') {
+            remove_start--;
+            removed++;
+        }
+    }
+    if (remove_start == col)
+        return false;
+
+    int replace_end = col;
+    if (replace_end < line_len && line->text[replace_end] == '}')
+        replace_end++;
+    if (!codeeditor_is_whitespace_span(line->text, replace_end, line_len))
+        return false;
+    replace_end = line_len;
+
+    vg_edit_target_t target = {0};
+    int target_count = 0;
+    add_edit_target(&target,
+                    &target_count,
+                    0,
+                    editor->cursor_line,
+                    editor->cursor_col,
+                    editor->cursor_line,
+                    remove_start,
+                    editor->cursor_line,
+                    replace_end);
+    apply_edit_targets(editor, &target, target_count, "}");
+    return true;
+}
+
 static bool codeeditor_try_skip_pair_closer(vg_codeeditor_t *editor, char ch) {
     if (!editor || editor->has_selection || editor->extra_cursor_count > 0)
         return false;
@@ -4258,6 +4326,11 @@ static bool codeeditor_handle_event(vg_widget_t *widget, vg_event_t *event) {
             if (!editor->read_only && printable) {
                 if (cp < 0x80) {
                     char text[2] = {(char)cp, '\0'};
+                    if (text[0] == '}' && codeeditor_try_format_closing_brace(editor)) {
+                        ensure_cursor_visible(editor);
+                        widget->needs_paint = true;
+                        return true;
+                    }
                     if (codeeditor_try_skip_pair_closer(editor, text[0])) {
                         ensure_cursor_visible(editor);
                         widget->needs_paint = true;

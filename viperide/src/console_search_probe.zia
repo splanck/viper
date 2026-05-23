@@ -334,6 +334,13 @@ func main() {
         fail(shell, "quick open path prefix");
         return;
     }
+    var quickOpenPath = "/tmp/project/src/main.zia";
+    var quickOpenId = search_commands.QuickOpenCommandId(quickOpenPath);
+    if search_commands.QuickOpenPathFromCommandId(quickOpenId) != quickOpenPath
+       or search_commands.QuickOpenPathFromCommandId("build") != "" {
+        fail(shell, "quick open palette command id");
+        return;
+    }
     if search_commands.SearchGlobMatches("src/main.zia", "src/*.zia") == false
        or search_commands.SearchGlobMatches("src/main.zia", "main.*") == false
        or search_commands.SearchGlobMatches("src/main.zia", "test*.zia") {
