@@ -160,9 +160,12 @@ func applyPersistentSettings(shell: app_shell.AppShell,
     }
 
     if appSettings.codeFolding {
-        engine.editor.SetAutoFoldDetection(1);
-    } else {
+        engine.editor.SetShowFoldGutter(1);
         engine.editor.SetAutoFoldDetection(0);
+    } else {
+        engine.editor.SetShowFoldGutter(0);
+        engine.editor.SetAutoFoldDetection(0);
+        engine.editor.ClearFoldRegions();
     }
 
     liveDiag.enabled = appSettings.autoCheckOnSave;

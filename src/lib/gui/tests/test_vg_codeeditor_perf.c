@@ -249,6 +249,30 @@ static void test_full_text_copy_counter(void) {
     vg_widget_destroy(&editor->base);
 }
 
+static void test_set_text_clears_stale_fold_regions(void) {
+    vg_codeeditor_t *editor = vg_codeeditor_create(NULL);
+    assert(editor != NULL);
+    vg_codeeditor_set_text(editor, "one\ntwo\nthree");
+
+    editor->fold_regions = (struct vg_fold_region *)calloc(1, sizeof(*editor->fold_regions));
+    assert(editor->fold_regions != NULL);
+    editor->fold_region_cap = 1;
+    editor->fold_region_count = 1;
+    editor->fold_regions[0].start_line = 0;
+    editor->fold_regions[0].end_line = 2;
+    editor->fold_regions[0].folded = true;
+    vg_codeeditor_refresh_layout_state(editor);
+    assert(editor->has_folded_lines);
+
+    vg_codeeditor_set_text(editor, "replacement");
+    assert(editor->fold_regions == NULL);
+    assert(editor->fold_region_count == 0);
+    assert(editor->fold_region_cap == 0);
+    assert(!editor->has_folded_lines);
+
+    vg_widget_destroy(&editor->base);
+}
+
 static void test_folded_large_file_navigation_uses_layout_cache(void) {
     enum { line_count = 50000 };
     char *text = make_lines(line_count);
@@ -701,6 +725,7 @@ static void test_pair_autoclose_skip_and_undo(void) {
 int main(void) {
     test_nowrap_large_file_navigation_avoids_linear_scans();
     test_full_text_copy_counter();
+    test_set_text_clears_stale_fold_regions();
     test_folded_large_file_navigation_uses_layout_cache();
     test_wrapped_large_file_navigation_uses_layout_cache();
     test_highlight_span_paint_uses_line_index();

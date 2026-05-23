@@ -582,6 +582,107 @@ func handleMoveLineDown(shell: app_shell.AppShell,
     shell.SetStatusLeft("Moved line down");
 }
 
+func handleOrganizeBinds(shell: app_shell.AppShell,
+                         docMgr: document_manager.DocumentManager,
+                         engine: editor_engine.EditorEngine) {
+    if engine == null or engine.editor == null { return; }
+    var doc = docMgr.GetActive();
+    if doc == null or doc.language != "zia" {
+        GUI.Toast.Info("Organize Binds is available for Zia files");
+        shell.SetStatusLeft("Organize Binds unavailable");
+        return;
+    }
+
+    var source = engine.GetTextSnapshot();
+    var organized = OrganizeZiaBindsText(source);
+    if organized == source {
+        shell.SetStatusLeft("Binds already organized");
+        return;
+    }
+
+    var lastLine = engine.editor.LineCount - 1;
+    if lastLine < 0 { return; }
+    var last = engine.editor.GetLine(lastLine);
+    engine.editor.SetCursorSelection(0, 0, 0, lastLine, Str.Length(last));
+    engine.editor.InsertAtCursor(organized);
+    shell.SetStatusLeft("Organized Zia binds");
+}
+
+expose func OrganizeZiaBindsText(source: String) -> String {
+    var lines = Str.Split(source, "\n");
+    var output = new List();
+    var binds = new List();
+    var i = 0;
+    var seenBind = false;
+
+    while i < Seq.get_Length(lines) {
+        var line = Obj.ToString(Seq.Get(lines, i));
+        var trimmed = Str.Trim(line);
+        if IsZiaBindLine(trimmed) {
+            InsertUniqueSortedBind(binds, line);
+            seenBind = true;
+            i = i + 1;
+            continue;
+        }
+        if seenBind {
+            break;
+        }
+        output.add(line);
+        i = i + 1;
+    }
+
+    if binds.count() == 0 {
+        return source;
+    }
+
+    var b = 0;
+    while b < binds.count() {
+        output.add(Obj.ToString(binds.get(b)));
+        b = b + 1;
+    }
+
+    while i < Seq.get_Length(lines) {
+        output.add(Obj.ToString(Seq.Get(lines, i)));
+        i = i + 1;
+    }
+
+    return JoinStringList(output, "\n");
+}
+
+func IsZiaBindLine(trimmed: String) -> Boolean {
+    return Str.StartsWith(trimmed, "bind ") and Str.EndsWith(trimmed, ";");
+}
+
+func InsertUniqueSortedBind(binds: List, line: String) {
+    var key = Str.ToLower(Str.Trim(line));
+    var i = 0;
+    while i < binds.count() {
+        var existing = Str.ToLower(Str.Trim(Obj.ToString(binds.get(i))));
+        if existing == key {
+            return;
+        }
+        if existing > key {
+            binds.insert(i, line);
+            return;
+        }
+        i = i + 1;
+    }
+    binds.add(line);
+}
+
+func JoinStringList(items: List, separator: String) -> String {
+    var result = "";
+    var i = 0;
+    while i < items.count() {
+        if i > 0 {
+            result = result + separator;
+        }
+        result = result + Obj.ToString(items.get(i));
+        i = i + 1;
+    }
+    return result;
+}
+
 func handleFormatUnavailable(shell: app_shell.AppShell) {
     GUI.Toast.Info("No formatter is available for this language yet");
     shell.SetStatusLeft("Format command unavailable");

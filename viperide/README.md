@@ -91,14 +91,16 @@ and search exclusions on top of hard excludes and `.gitignore`.
 - Code editor with syntax highlighting, line numbers, undo/redo, smart Home/End,
   pointer selection drag, auto-indent, bracket/quote pair insertion, line
   and block comment toggle, matching-pair highlight, duplicate line, move line
-  up/down, expand/shrink selection, word wrap, and minimap
+  up/down, expand/shrink selection, semantic fold regions for Zia symbols,
+  Organize Binds, word wrap, and minimap
 - Revision-gated editor controllers with background semantic jobs for
   completion, diagnostics, signature help, hover, and outline refresh, plus idle
   project-index sync
 - Zia IntelliSense using path-aware structured completion/signature/hover APIs,
   editor-focus-safe popup filtering, dot triggers, identifier debounce, snippet
-  cursor placement metadata, callable commit characters, stale-result rejection,
-  and explicit `Ctrl+Space`
+  cursor placement metadata, callable commit characters, workspace-symbol
+  completion from the project file cache, stale-result rejection, and explicit
+  `Ctrl+Space`
 - Live diagnostics through structured toolchain records and background checks,
   plus an explicit Run Check Now command
 - Hover tooltips for type and signature information, delayed until dwell and

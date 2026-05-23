@@ -248,8 +248,11 @@ Required changes:
     height passes in wrap mode.
   - add line/wrap prefix-sum or Fenwick-style indexing if word-wrap remains
     supported for large files
-  - audit auto-fold detection (O(n^2) worst case) and per-line gutter-icon and
-    extra-cursor paint loops for large multi-cursor/folded buffers
+  - DONE: Zia code folding is now fed by document symbols instead of the
+    indentation auto-detector in the active IDE path; text replacement clears
+    stale native fold regions.
+  - audit per-line gutter-icon and extra-cursor paint loops for large
+    multi-cursor/folded buffers
   - move syntax highlighting out of paint into dirty-line/versioned caches (DONE:
     edited lines invalidate individually; block-comment state cached per line)
   - index highlight spans by line range instead of scanning every span for every
@@ -464,8 +467,11 @@ Current implementation status:
   completion.
 - Native completion ranking now prefers visible locals and parameters over
   current-file globals.
-- Still open: richer ranking across fields/receiver members and project symbols
-  beyond the bound-file module/export path.
+- ViperIDE now maintains a frame-sliced workspace-symbol cache from the project
+  file cache and merges matching project functions/types/modules into
+  completion results after local semantic items, including dirty open documents.
+- Still open: richer receiver/member ranking, documentation display, and deeper
+  semantic scoring across workspace candidates.
 
 ### E2 - Signature Help and Hover
 
@@ -573,8 +579,11 @@ Current implementation status:
 - Problems rows now include severity, file, line, code, message, and a disabled
   quick-fix placeholder/action column, while retaining structured click
   locations.
-- Still open: a richer Problems surface and real code actions beyond the
-  disabled placeholder state.
+- Added a safe `Organize Binds` code action/command for Zia files; it sorts and
+  deduplicates the leading bind block as a single editor edit and remains
+  hidden/unsupported for BASIC/text files through language-service capabilities.
+- Still open: a richer Problems surface and additional real code actions beyond
+  organize binds.
 
 ### E4 - Project Navigation and Refactoring
 
@@ -653,13 +662,15 @@ Current implementation status:
   clickable reference rows.
 - Workspace symbol search (`Ctrl+T`) scans the maintained project file state,
   uses dirty open Zia documents, and emits structured result locations.
+- Zia code folding now derives fold regions from document symbols and brace
+  ranges, so the active IDE path no longer depends on the native indentation
+  auto-fold detector for semantic source files.
 - File/folder rename now previews the number of Zia bind paths that will change,
   allows cancel before moving the file/folder, updates quoted file-bind paths in
   open and closed project `.zia` files, and keeps `viper.project` entry paths in
   sync.
-- Still open: call hierarchy, semantic folding, inlay hints, undo grouping per
-  affected document, richer rename conflict display, and extract/inline
-  refactors.
+- Still open: call hierarchy, inlay hints, undo grouping per affected document,
+  richer rename conflict display, and extract/inline refactors.
 
 ### E5 - File Tree and Workspace UX
 
@@ -1061,7 +1072,9 @@ edited line's syntax cache, Zia block-comment state is cached per line,
 highlight spans are indexed by line, and the minimap is off by default plus
 sampled when visible. The folded/wrapped layout paths cache visual-row prefix
 data by layout generation and content width, and wrap-mode content width no
-longer runs three full height passes. Native headless wall-clock gates now cover
+longer runs three full height passes. Text replacement clears stale fold regions,
+and ViperIDE's Zia fold regions come from document symbols rather than the
+native indentation auto-detector. Native headless wall-clock gates now cover
 typing-plus-paint, scroll/paint, pointer selection drag, and minimap paint. Still
 missing: word-wrap edit-local prefix maintenance instead of full cache rebuild
 on layout invalidations and real-window/canvas paint validation.
@@ -1158,10 +1171,11 @@ signature, hover, diagnostics, and symbols run semantic analysis on native
 background jobs and poll results on the UI thread. Definition, References, and
 Rename no longer block to drain the full pending index before querying. Bound
 file module roots and exported members now have native completion coverage,
-visible locals/parameters rank above globals, and bound-file exported signature
-fallback preserves parameter names. The remaining gaps are semantic quality:
-richer receiver/member ranking, broader project-symbol inclusion beyond
-bound-file exports, overload navigation, and richer documentation display.
+visible locals/parameters rank above globals, workspace-symbol completions are
+merged from a frame-sliced project cache after local semantic results, and
+bound-file exported signature fallback preserves parameter names. The remaining
+gaps are semantic quality: richer receiver/member ranking, overload navigation,
+and richer documentation display.
 
 ### Milestone P2 - Refactor and Project Explorer
 
@@ -1267,6 +1281,14 @@ Latest automated evidence (2026-05-23):
   `ctest --test-dir build -R '^(test_rt_gui_runtime|test_rt_gui_ide|zia_viperide_file_tree|zia_viperide_phase2_phase3)$' --output-on-failure`.
 - Passed focused regression after editor/tester feedback:
   `ctest --test-dir build -R '^(test_rt_gui_runtime|zia_viperide_intellisense|zia_viperide_console_search)$' --output-on-failure`.
+- Passed semantic folding/editor regression:
+  `ctest --test-dir build -R '^(test_vg_codeeditor_perf|zia_viperide_intellisense)$' --output-on-failure`.
+- Passed workspace-symbol completion regression:
+  `ctest --test-dir build -R '^zia_viperide_intellisense$' --output-on-failure`.
+- Passed focused semantic/editor/tool regression:
+  `ctest --test-dir build -R '^(test_vg_codeeditor_perf|zia_viperide_intellisense|zia_viperide_console_search)$' --output-on-failure`.
+- Passed organize-binds code-action regression:
+  `ctest --test-dir build -R '^zia_viperide_intellisense$' --output-on-failure`.
 - Passed `./scripts/build_ide.sh`, producing `viperide/bin/viperide`.
 - Still missing for this release gate: full `ctest --test-dir build
   --output-on-failure` and the manual dogfood report.

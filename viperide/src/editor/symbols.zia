@@ -58,6 +58,9 @@ class SymbolOutline {
     expose String pendingPath;
     expose String pendingSource;
     expose Integer pendingLineOffset;
+    expose Boolean semanticFoldingEnabled;
+    expose String foldedPath;
+    expose Integer foldedRevision;
 
     /// @brief Initialize hidden with empty caches.
     expose func init() {
@@ -73,6 +76,9 @@ class SymbolOutline {
         pendingPath = "";
         pendingSource = "";
         pendingLineOffset = 0;
+        semanticFoldingEnabled = false;
+        foldedPath = "";
+        foldedRevision = -1;
     }
 
     expose func SetScheduler(value: scheduler.EditorScheduler) {
@@ -106,6 +112,20 @@ class SymbolOutline {
         }
     }
 
+    expose func setSemanticFoldingEnabled(value: Boolean,
+                                          engine: editor_engine.EditorEngine) {
+        if semanticFoldingEnabled == value { return; }
+        semanticFoldingEnabled = value;
+        foldedPath = "";
+        foldedRevision = -1;
+        if engine != null and engine.editor != null {
+            engine.editor.ClearFoldRegions();
+        }
+        if semanticFoldingEnabled == false {
+            CancelPendingJob();
+        }
+    }
+
     /// @brief Toggle visibility. When showing, force a refresh so the
     ///        list reflects the current buffer.
     expose func toggle() {
@@ -123,7 +143,8 @@ class SymbolOutline {
     /// @brief Per-frame refresh. Re-queries `SymbolsForFile` when the
     ///        buffer revision or active path changes; otherwise no-op.
     expose func update(engine: editor_engine.EditorEngine) {
-        if enabled == false or visible == false { return; }
+        if enabled == false { return; }
+        if visible == false and semanticFoldingEnabled == false { return; }
         if engine == null or engine.editor == null { return; }
 
         var revision = engine.GetRevision();
@@ -131,12 +152,15 @@ class SymbolOutline {
             if revision != pendingRevision or sourcePath != pendingPath {
                 CancelPendingJob();
             } else {
-                PollPendingJob();
+                PollPendingJob(engine);
                 return;
             }
         }
 
-        if revision == lastRevision and sourcePath == lastPath { return; }
+        if revision == lastRevision and sourcePath == lastPath {
+            if semanticFoldingEnabled == false { return; }
+            if revision == foldedRevision and sourcePath == foldedPath { return; }
+        }
 
         if workScheduler != null {
             if workScheduler.IsQueued(scheduler.JOB_SYMBOLS, sourcePath, revision) == false {
@@ -171,10 +195,10 @@ class SymbolOutline {
         }
 
         var raw = ZiaCompletion.SymbolsForFile(qsource, sourcePath);
-        ApplySymbols(raw, lineOff, source, sourcePath, revision);
+        ApplySymbols(engine, raw, lineOff, source, sourcePath, revision);
     }
 
-    hide func PollPendingJob() -> Boolean {
+    hide func PollPendingJob(engine: editor_engine.EditorEngine) -> Boolean {
         if pendingJob == null { return false; }
         if SemanticJob.IsDone(pendingJob) == false { return false; }
 
@@ -186,12 +210,13 @@ class SymbolOutline {
         if sourcePath != pendingPath {
             return true;
         }
-        ApplySymbols(SemanticJob.Symbols(job), pendingLineOffset,
+        ApplySymbols(engine, SemanticJob.Symbols(job), pendingLineOffset,
                      pendingSource, pendingPath, pendingRevision);
         return true;
     }
 
-    hide func ApplySymbols(raw: String,
+    hide func ApplySymbols(engine: editor_engine.EditorEngine,
+                           raw: String,
                            lineOff: Integer,
                            source: String,
                            path: String,
@@ -199,6 +224,14 @@ class SymbolOutline {
         lastSource = source;
         lastPath = path;
         lastRevision = revision;
+
+        if semanticFoldingEnabled and engine != null {
+            ApplySemanticFoldRegions(engine, raw, lineOff, source);
+            foldedPath = path;
+            foldedRevision = revision;
+        }
+
+        if visible == false { return; }
 
         symbolList.Clear();
         if raw == "" { return; }
@@ -254,4 +287,96 @@ class SymbolOutline {
             pendingJob = null;
         }
     }
+}
+
+expose func ApplySemanticFoldRegions(engine: editor_engine.EditorEngine,
+                                     raw: String,
+                                     lineOff: Integer,
+                                     source: String) -> Integer {
+    if engine == null or engine.editor == null { return 0; }
+
+    engine.editor.ClearFoldRegions();
+    if raw == "" or source == "" { return 0; }
+
+    var added = 0;
+    var rows = Str.Split(raw, "\n");
+    var i = 0;
+    while i < Seq.get_Length(rows) {
+        var row = Obj.ToString(Seq.Get(rows, i));
+        i = i + 1;
+        if row == "" { continue; }
+
+        var parts = Str.Split(row, "\t");
+        if Seq.get_Length(parts) < 4 { continue; }
+
+        var kind = Obj.ToString(Seq.Get(parts, 1));
+        if kind != "function" and kind != "type" { continue; }
+
+        var symLineText = Obj.ToString(Seq.Get(parts, 3));
+        if symLineText == "0" { continue; }
+
+        var startLine = Convert.ToInt(symLineText) - lineOff;
+        if startLine < 1 { continue; }
+
+        var endLine = SemanticFoldEndLine(source, startLine);
+        if endLine > startLine {
+            engine.editor.AddFoldRegion(startLine - 1, endLine - 1);
+            added = added + 1;
+        }
+    }
+    return added;
+}
+
+expose func SemanticFoldEndLine(source: String, startLine: Integer) -> Integer {
+    var lines = Str.Split(source, "\n");
+    var startIdx = startLine - 1;
+    if startIdx < 0 or startIdx >= Seq.get_Length(lines) { return startLine; }
+
+    var depth = 0;
+    var seenOpen = false;
+    var i = startIdx;
+    while i < Seq.get_Length(lines) {
+        var line = Obj.ToString(Seq.Get(lines, i));
+        var pos = 1;
+        var inString = false;
+        while pos <= Str.Length(line) {
+            var ch = Str.MidLen(line, pos, 1);
+            var next = "";
+            if pos < Str.Length(line) {
+                next = Str.MidLen(line, pos + 1, 1);
+            }
+
+            if inString {
+                if ch == "\\" {
+                    pos = pos + 2;
+                    continue;
+                }
+                if ch == "\"" {
+                    inString = false;
+                }
+            } else {
+                if ch == "/" and next == "/" {
+                    break;
+                }
+                if ch == "\"" {
+                    inString = true;
+                } else if ch == "{" {
+                    depth = depth + 1;
+                    seenOpen = true;
+                } else if ch == "}" {
+                    if seenOpen {
+                        depth = depth - 1;
+                        if depth <= 0 {
+                            return i + 1;
+                        }
+                    }
+                }
+            }
+
+            pos = pos + 1;
+        }
+        i = i + 1;
+    }
+
+    return startLine;
 }

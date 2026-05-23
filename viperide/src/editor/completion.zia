@@ -11,8 +11,14 @@ bind Viper.Zia.SemanticJob as SemanticJob;
 bind "../editor/zia_query";
 bind "../editor/editor_engine";
 bind "../editor/scheduler";
+bind "../core/project_manager";
+bind "../core/document_manager";
+bind IO = Viper.IO;
+bind Path = Viper.IO.Path;
 
 final COMPLETION_DEBOUNCE_MS = 180;
+final WORKSPACE_SYMBOL_FILES_PER_FRAME = 1;
+final MAX_WORKSPACE_COMPLETION_ITEMS = 80;
 
 // ============================================================================
 // MODULE: completion
@@ -106,6 +112,17 @@ class CompletionController {
     expose List replaceEndCols;
     expose List cursorOffsets;
     expose List commitCharacters;
+    expose project_manager.ProjectManager workspaceProject;
+    expose document_manager.DocumentManager workspaceDocs;
+    expose String workspaceRoot;
+    expose Integer workspaceFileCount;
+    expose Integer workspaceFileIndex;
+    expose Boolean workspaceCacheReady;
+    expose List workspaceLabels;
+    expose List workspaceKinds;
+    expose List workspaceTypes;
+    expose List workspacePaths;
+    expose List workspaceLines;
 
     /// @brief Initialize an empty/hidden controller.
     expose func init() {
@@ -145,6 +162,17 @@ class CompletionController {
         cursorOffsets = new List();
         commitCharacters = new List();
         engine          = null;
+        workspaceProject = null;
+        workspaceDocs = null;
+        workspaceRoot = "";
+        workspaceFileCount = -1;
+        workspaceFileIndex = 0;
+        workspaceCacheReady = false;
+        workspaceLabels = new List();
+        workspaceKinds = new List();
+        workspaceTypes = new List();
+        workspacePaths = new List();
+        workspaceLines = new List();
     }
 
     /// @brief Construct the popup panel and embed a ListBox.
@@ -179,6 +207,12 @@ class CompletionController {
 
     expose func SetScheduler(value: scheduler.EditorScheduler) {
         workScheduler = value;
+    }
+
+    expose func SetWorkspaceContext(project: project_manager.ProjectManager,
+                                    docs: document_manager.DocumentManager) {
+        workspaceProject = project;
+        workspaceDocs = docs;
     }
 
     /// @brief Set the active file's path so CompleteForFile can resolve
@@ -283,46 +317,40 @@ class CompletionController {
         commitCharacters = new List();
         itemCount = 0;
 
-        if items == null {
-            Hide();
-            return;
-        }
-        if Seq.get_Length(items) == 0 {
-            Hide();
-            return;
-        }
+        if items != null {
+            var itemIdx = 0;
+            while itemIdx < Seq.get_Length(items) {
+                var item = Seq.Get(items, itemIdx);
+                itemIdx = itemIdx + 1;
 
-        var itemIdx = 0;
-        while itemIdx < Seq.get_Length(items) {
-            var item = Seq.Get(items, itemIdx);
-            itemIdx = itemIdx + 1;
+                var label = Map.GetStr(item, "label");
+                if label == "" { continue; }
+                var ins = Map.GetStr(item, "insertText");
+                if ins == "" { ins = label; }
 
-            var label = Map.GetStr(item, "label");
-            if label == "" { continue; }
-            var ins = Map.GetStr(item, "insertText");
-            if ins == "" { ins = label; }
+                var kindTag = kindLabel(Map.GetInt(item, "kind"));
+                var detail = Map.GetStr(item, "detail");
 
-            var kindTag = kindLabel(Map.GetInt(item, "kind"));
-            var detail = Map.GetStr(item, "detail");
+                var displayText = label;
+                if kindTag != "" {
+                    displayText = kindTag + " " + label;
+                }
+                if detail != "" {
+                    displayText = displayText + "  — " + detail;
+                }
 
-            var displayText = label;
-            if kindTag != "" {
-                displayText = kindTag + " " + label;
+                allLabels.Push(label);
+                allDisplays.Push(displayText);
+                allInsertTexts.Push(ins);
+                allReplaceStartLines.Push(Map.GetIntOr(item, "replacementStartLine", curLine) - 1 - off);
+                allReplaceStartCols.Push(Map.GetIntOr(item, "replacementStartColumn", curCol));
+                allReplaceEndLines.Push(Map.GetIntOr(item, "replacementEndLine", curLine) - 1 - off);
+                allReplaceEndCols.Push(Map.GetIntOr(item, "replacementEndColumn", curCol));
+                allCursorOffsets.Push(Map.GetIntOr(item, "cursorOffset", -1));
+                allCommitCharacters.Push(Map.GetStr(item, "commitCharacters"));
             }
-            if detail != "" {
-                displayText = displayText + "  — " + detail;
-            }
-
-            allLabels.Push(label);
-            allDisplays.Push(displayText);
-            allInsertTexts.Push(ins);
-            allReplaceStartLines.Push(Map.GetIntOr(item, "replacementStartLine", curLine) - 1 - off);
-            allReplaceStartCols.Push(Map.GetIntOr(item, "replacementStartColumn", curCol));
-            allReplaceEndLines.Push(Map.GetIntOr(item, "replacementEndLine", curLine) - 1 - off);
-            allReplaceEndCols.Push(Map.GetIntOr(item, "replacementEndColumn", curCol));
-            allCursorOffsets.Push(Map.GetIntOr(item, "cursorOffset", -1));
-            allCommitCharacters.Push(Map.GetStr(item, "commitCharacters"));
         }
+        AddWorkspaceSymbolCompletions(off, curLine, curCol);
 
         if allLabels.count() == 0 {
             Hide();
@@ -650,6 +678,8 @@ class CompletionController {
     /// @return true if an event was consumed (currently always false —
     ///         reserved for future use).
     expose func Update(typed: String) -> Boolean {
+        PumpWorkspaceSymbolCache(WORKSPACE_SYMBOL_FILES_PER_FRAME);
+
         if PollPendingJob() {
             return true;
         }
@@ -701,6 +731,257 @@ class CompletionController {
         }
 
         return false;
+    }
+
+    expose func PumpWorkspaceSymbolCache(maxFiles: Integer) -> Integer {
+        if workspaceProject == null or workspaceProject.project == null or workspaceProject.project.isOpen == false {
+            ClearWorkspaceSymbolCache();
+            return 0;
+        }
+
+        var root = workspaceProject.project.rootPath;
+        var fileCount = workspaceProject.CachedFileCount();
+        if root != workspaceRoot or fileCount != workspaceFileCount {
+            workspaceRoot = root;
+            workspaceFileCount = fileCount;
+            workspaceFileIndex = 0;
+            workspaceCacheReady = false;
+            workspaceLabels = new List();
+            workspaceKinds = new List();
+            workspaceTypes = new List();
+            workspacePaths = new List();
+            workspaceLines = new List();
+        }
+
+        if workspaceCacheReady { return 0; }
+
+        var limit = maxFiles;
+        if limit <= 0 { limit = WORKSPACE_SYMBOL_FILES_PER_FRAME; }
+
+        var processed = 0;
+        while workspaceFileIndex < workspaceFileCount and processed < limit {
+            var filePath = workspaceProject.CachedFileAt(workspaceFileIndex);
+            workspaceFileIndex = workspaceFileIndex + 1;
+            processed = processed + 1;
+
+            if Str.ToLower(Path.Ext(filePath)) != ".zia" { continue; }
+            var content = WorkspaceContentFor(filePath);
+            if content == "" { continue; }
+            AddRawWorkspaceSymbolsToCache(filePath,
+                                          ZiaCompletion.SymbolsForFile(zia_query.WrapForQuery(content), filePath),
+                                          zia_query.LineOffset(content));
+        }
+
+        if workspaceFileIndex >= workspaceFileCount {
+            workspaceCacheReady = true;
+        }
+        return processed;
+    }
+
+    hide func ClearWorkspaceSymbolCache() {
+        workspaceRoot = "";
+        workspaceFileCount = -1;
+        workspaceFileIndex = 0;
+        workspaceCacheReady = false;
+        workspaceLabels = new List();
+        workspaceKinds = new List();
+        workspaceTypes = new List();
+        workspacePaths = new List();
+        workspaceLines = new List();
+    }
+
+    hide func WorkspaceContentFor(filePath: String) -> String {
+        if workspaceDocs != null {
+            var idx = workspaceDocs.FindByPath(filePath);
+            if idx >= 0 {
+                return workspaceDocs.documents.get(idx).content;
+            }
+        }
+        if IO.File.Exists(filePath) {
+            return IO.File.ReadAllText(filePath);
+        }
+        return "";
+    }
+
+    hide func AddRawWorkspaceSymbolsToCache(filePath: String,
+                                            raw: String,
+                                            lineOff: Integer) {
+        if raw == "" { return; }
+        var rows = Str.Split(raw, "\n");
+        var i = 0;
+        while i < Seq.get_Length(rows) {
+            var row = Obj.ToString(Seq.Get(rows, i));
+            i = i + 1;
+            if row == "" { continue; }
+
+            var parts = Str.Split(row, "\t");
+            if Seq.get_Length(parts) < 4 { continue; }
+
+            var name = Obj.ToString(Seq.Get(parts, 0));
+            var kind = Obj.ToString(Seq.Get(parts, 1));
+            var typeText = Obj.ToString(Seq.Get(parts, 2));
+            var lineText = Obj.ToString(Seq.Get(parts, 3));
+            if name == "" or lineText == "0" { continue; }
+
+            var symbolLine = Viper.Core.Convert.ToInt(lineText) - lineOff;
+            if symbolLine < 1 { continue; }
+            if WorkspaceCacheContains(name, filePath, symbolLine) { continue; }
+
+            workspaceLabels.Push(name);
+            workspaceKinds.Push(kind);
+            workspaceTypes.Push(typeText);
+            workspacePaths.Push(filePath);
+            workspaceLines.Push("" + symbolLine);
+        }
+    }
+
+    hide func WorkspaceCacheContains(name: String,
+                                     filePath: String,
+                                     line: Integer) -> Boolean {
+        var i = 0;
+        while i < workspaceLabels.count() {
+            if Obj.ToString(workspaceLabels.get(i)) == name
+               and Obj.ToString(workspacePaths.get(i)) == filePath
+               and Viper.Core.Convert.ToInt(Obj.ToString(workspaceLines.get(i))) == line {
+                return true;
+            }
+            i = i + 1;
+        }
+        return false;
+    }
+
+    hide func AddWorkspaceSymbolCompletions(off: Integer,
+                                            curLine: Integer,
+                                            curCol: Integer) {
+        if workspaceProject == null or workspaceProject.project == null or workspaceProject.project.isOpen == false {
+            return;
+        }
+
+        var prefix = CurrentPrefix();
+        if IsMemberAccessCompletion(prefix) {
+            return;
+        }
+
+        var actualLine = curLine - 1 - off;
+        if actualLine < 0 { actualLine = 0; }
+        var startCol = curCol - Str.Length(prefix);
+        if startCol < 0 { startCol = 0; }
+
+        var added = 0;
+        added = added + AddOpenWorkspaceSymbolCompletions(prefix, actualLine, startCol, curCol,
+                                                          MAX_WORKSPACE_COMPLETION_ITEMS);
+
+        var i = 0;
+        while i < workspaceLabels.count() and added < MAX_WORKSPACE_COMPLETION_ITEMS {
+            var label = Obj.ToString(workspaceLabels.get(i));
+            var path = Obj.ToString(workspacePaths.get(i));
+            if path != sourcePath and WorkspaceSymbolMatchesPrefix(label, prefix)
+               and LabelAlreadyListed(label) == false {
+                AddWorkspaceCompletion(label,
+                                       Obj.ToString(workspaceKinds.get(i)),
+                                       Obj.ToString(workspaceTypes.get(i)),
+                                       path,
+                                       actualLine,
+                                       startCol,
+                                       curCol);
+                added = added + 1;
+            }
+            i = i + 1;
+        }
+    }
+
+    hide func AddOpenWorkspaceSymbolCompletions(prefix: String,
+                                                actualLine: Integer,
+                                                startCol: Integer,
+                                                curCol: Integer,
+                                                limit: Integer) -> Integer {
+        if workspaceDocs == null { return 0; }
+        var added = 0;
+        var i = 0;
+        while i < workspaceDocs.GetCount() and added < limit {
+            var doc = workspaceDocs.documents.get(i);
+            i = i + 1;
+            if doc.language != "zia" or doc.filePath == "" or doc.filePath == sourcePath { continue; }
+
+            var raw = ZiaCompletion.SymbolsForFile(zia_query.WrapForQuery(doc.content), doc.filePath);
+            var rows = Str.Split(raw, "\n");
+            var lineOff = zia_query.LineOffset(doc.content);
+            var r = 0;
+            while r < Seq.get_Length(rows) and added < limit {
+                var row = Obj.ToString(Seq.Get(rows, r));
+                r = r + 1;
+                if row == "" { continue; }
+                var parts = Str.Split(row, "\t");
+                if Seq.get_Length(parts) < 4 { continue; }
+                var label = Obj.ToString(Seq.Get(parts, 0));
+                var lineText = Obj.ToString(Seq.Get(parts, 3));
+                if label == "" or lineText == "0" { continue; }
+                var symbolLine = Viper.Core.Convert.ToInt(lineText) - lineOff;
+                if symbolLine < 1 { continue; }
+                if WorkspaceSymbolMatchesPrefix(label, prefix) and LabelAlreadyListed(label) == false {
+                    AddWorkspaceCompletion(label,
+                                           Obj.ToString(Seq.Get(parts, 1)),
+                                           Obj.ToString(Seq.Get(parts, 2)),
+                                           doc.filePath,
+                                           actualLine,
+                                           startCol,
+                                           curCol);
+                    added = added + 1;
+                }
+            }
+        }
+        return added;
+    }
+
+    hide func AddWorkspaceCompletion(label: String,
+                                     kind: String,
+                                     typeText: String,
+                                     filePath: String,
+                                     actualLine: Integer,
+                                     startCol: Integer,
+                                     curCol: Integer) {
+        var detail = "workspace";
+        if typeText != "" {
+            detail = typeText + "  -  workspace";
+        }
+        if workspaceProject != null and workspaceProject.project != null and workspaceProject.project.isOpen {
+            detail = detail + "  " + workspaceProject.RelativePath(filePath);
+        }
+
+        allLabels.Push(label);
+        allDisplays.Push(kindLabel(WorkspaceKindCode(kind)) + " " + label + "  -  " + detail);
+        allInsertTexts.Push(label);
+        allReplaceStartLines.Push(actualLine);
+        allReplaceStartCols.Push(startCol);
+        allReplaceEndLines.Push(actualLine);
+        allReplaceEndCols.Push(curCol);
+        allCursorOffsets.Push(-1);
+        allCommitCharacters.Push("");
+    }
+
+    hide func LabelAlreadyListed(label: String) -> Boolean {
+        var i = 0;
+        while i < allLabels.count() {
+            if Obj.ToString(allLabels.get(i)) == label {
+                return true;
+            }
+            i = i + 1;
+        }
+        return false;
+    }
+
+    hide func WorkspaceSymbolMatchesPrefix(label: String, prefix: String) -> Boolean {
+        if prefix == "" { return true; }
+        return StartsWith(Str.ToLower(label), Str.ToLower(prefix));
+    }
+
+    hide func IsMemberAccessCompletion(prefix: String) -> Boolean {
+        if editor == null { return false; }
+        var startCol = editor.CursorCol - Str.Length(prefix);
+        if startCol <= 0 { return false; }
+        var line = editor.GetLine(editor.CursorLine);
+        if Str.Length(line) < startCol { return false; }
+        return Str.MidLen(line, startCol, 1) == ".";
     }
 }
 
@@ -770,4 +1051,12 @@ func kindLabel(k: Integer) -> String {
     if k == 11 { return "[RT]"; }  // Runtime class
     if k == 12 { return "[P]"; }   // Property
     return "";
+}
+
+func WorkspaceKindCode(kind: String) -> Integer {
+    if kind == "function" { return 6; }
+    if kind == "variable" { return 2; }
+    if kind == "type" { return 11; }
+    if kind == "module" { return 10; }
+    return 7;
 }

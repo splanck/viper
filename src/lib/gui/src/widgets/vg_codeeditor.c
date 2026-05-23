@@ -4265,6 +4265,11 @@ void vg_codeeditor_set_text_bytes(vg_codeeditor_t *editor, const char *text, siz
     editor->scroll_y = 0;
     editor->modified = false;
     editor->zia_block_comment_depth = 0;
+    free(editor->fold_regions);
+    editor->fold_regions = NULL;
+    editor->fold_region_count = 0;
+    editor->fold_region_cap = 0;
+    editor->has_folded_lines = false;
     edit_history_clear(editor->history);
 
     codeeditor_bump_revision(editor);

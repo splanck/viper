@@ -122,6 +122,7 @@ func main() {
     completer.Setup(engine.editor, shell.app);
     completer.SetEngine(engine);
     completer.SetScheduler(editorScheduler);
+    completer.SetWorkspaceContext(projMgr, docMgr);
 
     // Real-time diagnostics (errors-as-you-type)
     var liveDiag = new diagnostics.LiveDiagnostics();
@@ -270,6 +271,8 @@ func main() {
         sigCtrl.setSourcePath(activeToolPath);
         symbolOutline.setSourcePath(activeToolPath);
         symbolOutline.setEnabled(activeService.canDocumentSymbols);
+        symbolOutline.setSemanticFoldingEnabled(appSettings.codeFolding and activeService.canDocumentSymbols,
+                                                engine);
         var perfSpan = perfMon.StartSpan();
         indexer.EnsureProject(projMgr, docMgr);
         indexer.PumpIndex(8);
@@ -643,6 +646,7 @@ func main() {
         if triggeredNoMenu("duplicateline", cpSelected)                  { edit_commands.handleDuplicateLine(shell, engine); }
         if triggeredNoMenu("movelineup", cpSelected)                     { edit_commands.handleMoveLineUp(shell, engine); }
         if triggeredNoMenu("movelinedown", cpSelected)                   { edit_commands.handleMoveLineDown(shell, engine); }
+        if triggeredNoMenu("organizebinds", cpSelected)                  { edit_commands.handleOrganizeBinds(shell, docMgr, engine); }
         if triggeredNoMenu("formatdocument", cpSelected)                 { edit_commands.handleFormatUnavailable(shell); }
         if triggeredNoMenu("formatselection", cpSelected)                { edit_commands.handleFormatUnavailable(shell); }
 

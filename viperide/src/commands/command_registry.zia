@@ -117,6 +117,7 @@ class CommandRegistry {
         Add("duplicateline", "Duplicate Line", "Duplicate the active line", "Ctrl+Shift+D", "", true);
         Add("movelineup", "Move Line Up", "Move the active line above the previous line", "Alt+Up", "", true);
         Add("movelinedown", "Move Line Down", "Move the active line below the next line", "Alt+Down", "", true);
+        Add("organizebinds", "Organize Binds", "Sort and deduplicate the leading Zia bind block", "Shift+Alt+O", "diagnostics", true);
         Add("formatdocument", "Format Document", "Format the active document when a formatter is available", "Shift+Alt+F", "", true);
         Add("formatselection", "Format Selection", "Format the selected text when a formatter is available", "", "", true);
     }
