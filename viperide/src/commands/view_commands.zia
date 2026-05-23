@@ -273,8 +273,8 @@ func handleKeybindings(shell: app_shell.AppShell,
 
 func handleCopyToolSelection(shell: app_shell.AppShell) {
     if shell.CopySelectedToolRow() {
-        GUI.Toast.Success("Copied selected row");
-        shell.SetStatusLeft("Copied selected tool row");
+        GUI.Toast.Success("Copied selected rows");
+        shell.SetStatusLeft("Copied selected tool rows");
     } else {
         GUI.Toast.Info("No tool row selected");
     }

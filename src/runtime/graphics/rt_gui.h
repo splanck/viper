@@ -799,6 +799,16 @@ int64_t rt_listbox_get_selected_index(void *listbox);
 /// @param index Item index (0-based).
 void rt_listbox_select_index(void *listbox, int64_t index);
 
+/// @brief Enable or disable multi-row selection for a list box.
+/// @param listbox ListBox widget handle.
+/// @param enabled Non-zero to allow Ctrl/Shift range selection.
+void rt_listbox_set_multi_select(void *listbox, int64_t enabled);
+
+/// @brief Return selected row text joined by newlines.
+/// @param listbox ListBox widget handle.
+/// @return Newline-delimited selected row text, or empty when nothing is selected.
+rt_string rt_listbox_get_selected_text(void *listbox);
+
 /// @brief Check if selection changed since last check (polling pattern).
 /// @param listbox ListBox widget handle.
 /// @return 1 if selection changed, 0 otherwise.

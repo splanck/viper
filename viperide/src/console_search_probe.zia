@@ -89,6 +89,15 @@ func main() {
         fail(shell, "copy output row");
         return;
     }
+    shell.outputListBox.Clear();
+    var rangeA = shell.outputListBox.AddItem("range one");
+    var rangeB = shell.outputListBox.AddItem("range two");
+    shell.outputListBox.Select(rangeA);
+    shell.outputListBox.Select(rangeB);
+    if shell.CopySelectedToolRow() == false or GUI.Clipboard.GetText() != "range one\nrange two" {
+        fail(shell, "copy output selected range");
+        return;
+    }
     if shell.CopyOutputText() == false or Str.IndexOf(GUI.Clipboard.GetText(), "abcdefghijklmnopqrstuvwxyz") == 0 {
         fail(shell, "copy full output text");
         return;

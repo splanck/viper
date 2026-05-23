@@ -404,23 +404,28 @@ class AppShell {
         toolTabBar.SetVisible(0);
 
         diagListBox = GUI.ListBox.New(editorArea);
+        diagListBox.SetMultiSelect(1);
         diagListBox.SetVisible(0);
         diagListBox.SetSize(0, 120);
 
         // Build output panel (hidden until a build runs; shows raw compiler stdout/stderr)
         outputListBox = GUI.ListBox.New(editorArea);
+        outputListBox.SetMultiSelect(1);
         outputListBox.SetVisible(0);
         outputListBox.SetSize(0, 100);
 
         searchListBox = GUI.ListBox.New(editorArea);
+        searchListBox.SetMultiSelect(1);
         searchListBox.SetVisible(0);
         searchListBox.SetSize(0, 120);
 
         referencesListBox = GUI.ListBox.New(editorArea);
+        referencesListBox.SetMultiSelect(1);
         referencesListBox.SetVisible(0);
         referencesListBox.SetSize(0, 120);
 
         debugListBox = GUI.ListBox.New(editorArea);
+        debugListBox.SetMultiSelect(1);
         debugListBox.SetVisible(0);
         debugListBox.SetSize(0, 120);
 
@@ -667,12 +672,13 @@ class AppShell {
     }
 
     expose func CopySelectedToolRow() -> Boolean {
-        var selected = outputListBox.Selected;
-        if activeSurfaceKind == 3 { selected = searchListBox.Selected; }
-        if activeSurfaceKind == 4 { selected = referencesListBox.Selected; }
-        if activeSurfaceKind == 5 { selected = debugListBox.Selected; }
-        if selected == null { return false; }
-        GUI.Clipboard.SetText(GUI.ListBox.ItemGetText(selected));
+        var selectedText = outputListBox.GetSelectedText();
+        if activeSurfaceKind == 1 { selectedText = diagListBox.GetSelectedText(); }
+        if activeSurfaceKind == 3 { selectedText = searchListBox.GetSelectedText(); }
+        if activeSurfaceKind == 4 { selectedText = referencesListBox.GetSelectedText(); }
+        if activeSurfaceKind == 5 { selectedText = debugListBox.GetSelectedText(); }
+        if selectedText == "" { return false; }
+        GUI.Clipboard.SetText(selectedText);
         return true;
     }
 

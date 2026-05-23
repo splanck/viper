@@ -1216,6 +1216,148 @@ void rt_listbox_select_index(void *listbox, int64_t index) {
     vg_listbox_select_index(lb, idx);
 }
 
+/// @brief Enable or disable Ctrl/Shift multi-row selection.
+void rt_listbox_set_multi_select(void *listbox, int64_t enabled) {
+    RT_ASSERT_MAIN_THREAD();
+    vg_listbox_t *lb = rt_listbox_checked(listbox);
+    if (!lb)
+        return;
+
+    const bool want_multi = enabled != 0;
+    if (lb->multi_select == want_multi)
+        return;
+
+    if (want_multi) {
+        lb->multi_select = true;
+        return;
+    }
+
+    lb->multi_select = false;
+    if (lb->virtual_mode) {
+        size_t keep = vg_listbox_get_selected_index(lb);
+        bool changed = false;
+        if (lb->selection_bitmap) {
+            for (size_t i = 0; i < lb->selection_bitmap_size; ++i) {
+                if (lb->selection_bitmap[i])
+                    changed = true;
+                lb->selection_bitmap[i] = false;
+            }
+        }
+        lb->selected_index = SIZE_MAX;
+        lb->anchor_selected_index = SIZE_MAX;
+        if (keep != SIZE_MAX && keep < lb->total_item_count) {
+            vg_listbox_select_index(lb, keep);
+            return;
+        }
+        if (changed) {
+            lb->selection_revision++;
+            lb->base.needs_paint = true;
+        }
+        return;
+    }
+
+    vg_listbox_item_t *keep = lb->selected;
+    if (!keep) {
+        for (vg_listbox_item_t *item = lb->first_item; item; item = item->next) {
+            if (item->selected) {
+                keep = item;
+                break;
+            }
+        }
+    }
+    vg_listbox_select(lb, keep);
+}
+
+static bool rt_listbox_append_selected_text(char **buffer,
+                                            size_t *length,
+                                            size_t *capacity,
+                                            bool *first,
+                                            const char *text,
+                                            size_t text_len) {
+    if (!buffer || !length || !capacity || !first)
+        return false;
+    size_t prefix = *first ? 0u : 1u;
+    if (text_len > SIZE_MAX - *length - prefix)
+        return false;
+    size_t needed = *length + prefix + text_len;
+    if (needed + 1 > *capacity) {
+        size_t next_cap = *capacity ? *capacity : 64u;
+        while (next_cap < needed + 1) {
+            if (next_cap > SIZE_MAX / 2) {
+                next_cap = needed + 1;
+                break;
+            }
+            next_cap *= 2u;
+        }
+        char *next = (char *)realloc(*buffer, next_cap);
+        if (!next)
+            return false;
+        *buffer = next;
+        *capacity = next_cap;
+    }
+    if (!*first)
+        (*buffer)[(*length)++] = '\n';
+    if (text_len > 0 && text)
+        memcpy(*buffer + *length, text, text_len);
+    *length += text_len;
+    (*buffer)[*length] = '\0';
+    *first = false;
+    return true;
+}
+
+/// @brief Return selected row text joined by newlines.
+rt_string rt_listbox_get_selected_text(void *listbox) {
+    RT_ASSERT_MAIN_THREAD();
+    vg_listbox_t *lb = rt_listbox_checked(listbox);
+    if (!lb)
+        return rt_str_empty();
+
+    char *buffer = NULL;
+    size_t length = 0;
+    size_t capacity = 0;
+    bool first = true;
+
+    if (lb->virtual_mode) {
+        if (lb->selection_bitmap && lb->data_provider) {
+            for (size_t i = 0; i < lb->total_item_count && i < lb->selection_bitmap_size; ++i) {
+                if (!lb->selection_bitmap[i])
+                    continue;
+                const char *text = "";
+                lb->data_provider(&lb->base, i, &text, NULL, lb->data_provider_user_data);
+                if (!text)
+                    text = "";
+                if (!rt_listbox_append_selected_text(
+                        &buffer, &length, &capacity, &first, text, strlen(text))) {
+                    free(buffer);
+                    return rt_str_empty();
+                }
+            }
+        }
+    } else {
+        for (vg_listbox_item_t *item = lb->first_item; item; item = item->next) {
+            if (!item->selected)
+                continue;
+            if (!rt_listbox_append_selected_text(&buffer,
+                                                 &length,
+                                                 &capacity,
+                                                 &first,
+                                                 item->text ? item->text : "",
+                                                 item->text ? item->text_len : 0u)) {
+                free(buffer);
+                return rt_str_empty();
+            }
+        }
+    }
+
+    if (first) {
+        free(buffer);
+        return rt_str_empty();
+    }
+    rt_string result = rt_string_from_bytes(buffer ? buffer : "", length);
+    free(buffer);
+    return result;
+}
+
 /// @brief Check if the listbox selection changed since the last call (edge-triggered).
 int64_t rt_listbox_was_selection_changed(void *listbox) {
     RT_ASSERT_MAIN_THREAD();
@@ -2130,6 +2272,18 @@ int64_t rt_listbox_get_selected_index(void *listbox) {
 void rt_listbox_select_index(void *listbox, int64_t index) {
     (void)listbox;
     (void)index;
+}
+
+/// @brief Stub: graphics disabled — no listbox selection exists.
+void rt_listbox_set_multi_select(void *listbox, int64_t enabled) {
+    (void)listbox;
+    (void)enabled;
+}
+
+/// @brief Stub: graphics disabled — no selected row text exists.
+rt_string rt_listbox_get_selected_text(void *listbox) {
+    (void)listbox;
+    return rt_str_empty();
 }
 
 /// @brief Check if the listbox selection changed since the last call (edge-triggered).

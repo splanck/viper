@@ -1271,6 +1271,31 @@ static void test_runtime_listbox_select_index_rejects_out_of_range_indices(void)
     printf("test_runtime_listbox_select_index_rejects_out_of_range_indices: PASSED\n");
 }
 
+static void test_runtime_listbox_selected_text_copies_multi_selection(void) {
+    vg_listbox_t *listbox = vg_listbox_create(NULL);
+    assert(listbox);
+    vg_listbox_item_t *first = vg_listbox_add_item(listbox, "first", NULL);
+    vg_listbox_item_t *second = vg_listbox_add_item(listbox, "second", NULL);
+    vg_listbox_item_t *third = vg_listbox_add_item(listbox, "third", NULL);
+    assert(first && second && third);
+
+    rt_listbox_set_multi_select(listbox, 1);
+    rt_listbox_select(listbox, rt_gui_wrap_listbox_item(first));
+    rt_listbox_select(listbox, rt_gui_wrap_listbox_item(third));
+    rt_string selected = rt_listbox_get_selected_text(listbox);
+    assert(strcmp(rt_string_cstr(selected), "first\nthird") == 0);
+    rt_string_unref(selected);
+
+    rt_listbox_set_multi_select(listbox, 0);
+    selected = rt_listbox_get_selected_text(listbox);
+    assert(strcmp(rt_string_cstr(selected), "third") == 0);
+    rt_string_unref(selected);
+
+    (void)second;
+    vg_widget_destroy(&listbox->base);
+    printf("test_runtime_listbox_selected_text_copies_multi_selection: PASSED\n");
+}
+
 static void test_treeview_selection_changed_reports_removal_and_clear(void) {
     vg_treeview_t *tree = vg_treeview_create(NULL);
     assert(tree);
@@ -2649,6 +2674,7 @@ int main(void) {
     test_treeview_and_listbox_data_preserve_embedded_nuls();
     test_listbox_selection_changed_is_edge_triggered();
     test_runtime_listbox_select_index_rejects_out_of_range_indices();
+    test_runtime_listbox_selected_text_copies_multi_selection();
     test_treeview_selection_changed_reports_removal_and_clear();
     test_removed_listbox_and_treeview_handles_are_inert();
     test_listbox_and_treeview_reject_foreign_child_handles();
