@@ -301,6 +301,18 @@ static uint32_t particle_alpha_over_rgba(uint32_t dst, uint32_t src) {
     return (r << 24) | (g << 16) | (b << 8) | oa;
 }
 
+/// @brief Overflow-safe disc coverage test for arbitrary int64 centers.
+static int8_t particle_point_in_disc_i64(int64_t x,
+                                         int64_t y,
+                                         int64_t cx,
+                                         int64_t cy,
+                                         int64_t radius) {
+    long double dx = (long double)x - (long double)cx;
+    long double dy = (long double)y - (long double)cy;
+    long double rr = (long double)radius * (long double)radius;
+    return dx * dx + dy * dy <= rr;
+}
+
 /// @brief Draw a filled, alpha-blended disc of @p radius at (cx, cy) into a
 ///        Pixels buffer, compositing each covered pixel via
 ///        particle_alpha_over_rgba (clipped to the buffer bounds).
@@ -328,13 +340,9 @@ static void rt_particle_draw_disc_blended(
     if (max_y >= height)
         max_y = height - 1;
 
-    int64_t rr = radius * radius;
     for (int64_t y = min_y; y <= max_y; ++y) {
-        int64_t dy = y - cy;
-        int64_t dy2 = dy * dy;
         for (int64_t x = min_x; x <= max_x; ++x) {
-            int64_t dx = x - cx;
-            if (dx * dx + dy2 > rr)
+            if (!particle_point_in_disc_i64(x, y, cx, cy, radius))
                 continue;
             uint32_t dst = (uint32_t)rt_pixels_get(pixels, x, y);
             rt_pixels_set(pixels, x, y, (int64_t)particle_alpha_over_rgba(dst, src));

@@ -114,6 +114,15 @@ static int find_clip(animstate_impl *a, int64_t state_id) {
     return -1;
 }
 
+/// @brief True if @p frame is inside a clip's inclusive frame range.
+static int8_t animstate_frame_in_clip(const anim_clip_t *c, int64_t frame) {
+    if (!c)
+        return 0;
+    if (c->start_frame <= c->end_frame)
+        return frame >= c->start_frame && frame <= c->end_frame;
+    return frame <= c->start_frame && frame >= c->end_frame;
+}
+
 /// @brief Make @p clip_idx the active clip, resetting frame/event playback
 ///        state. A negative index stops playback.
 static void apply_clip(animstate_impl *a, int clip_idx) {
@@ -149,9 +158,11 @@ static int8_t animstate_crossed_frame(int64_t start,
     if (!loop)
         return 0;
     if (start <= end && current_frame < prev_frame)
-        return event_frame >= start && event_frame <= current_frame;
+        return (event_frame > prev_frame && event_frame <= end) ||
+               (event_frame >= start && event_frame <= current_frame);
     if (start > end && current_frame > prev_frame)
-        return event_frame <= start && event_frame >= current_frame;
+        return (event_frame < prev_frame && event_frame >= end) ||
+               (event_frame <= start && event_frame >= current_frame);
     return 0;
 }
 
@@ -538,6 +549,8 @@ int8_t rt_animstate_add_event(void *asm_, int64_t state_id, int64_t frame, int64
     if (idx < 0)
         return 0;
     anim_clip_t *c = &a->clips[idx];
+    if (!animstate_frame_in_clip(c, frame))
+        return 0;
     if (c->event_count >= ANIMSTATE_MAX_EVENTS_PER_STATE)
         return 0;
     int8_t slot = c->event_count++;

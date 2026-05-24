@@ -714,7 +714,7 @@ rt_string rt_dialogue_get_speaker(void *dlg) {
 /// @brief Draw the dialogue.
 void rt_dialogue_draw(void *dlg, void *canvas) {
     rt_dialogue_impl *d = checked_dialogue(dlg, "Dialogue.Draw: expected Viper.Game.Dialogue");
-    if (!d || !canvas)
+    if (!d || !canvas || !rt_canvas_is_handle(canvas))
         return;
     if (!d->active || d->current_line >= d->line_count)
         return;

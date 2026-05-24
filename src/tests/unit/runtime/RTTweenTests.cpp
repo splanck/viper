@@ -5,6 +5,7 @@
 
 #include "rt_tween.h"
 #include <cassert>
+#include <cfloat>
 #include <cmath>
 #include <cstdio>
 
@@ -157,6 +158,15 @@ TEST(nonfinite_inputs_are_sanitized) {
     rt_tween_destroy(tw);
 }
 
+TEST(large_opposite_signed_endpoints_stay_finite) {
+    rt_tween tw = rt_tween_new();
+    rt_tween_start(tw, -DBL_MAX, DBL_MAX, 2, RT_EASE_LINEAR);
+    rt_tween_update(tw);
+    ASSERT(std::isfinite(rt_tween_value(tw)));
+    ASSERT_NEAR(rt_tween_value(tw), 0.0, 1.0);
+    rt_tween_destroy(tw);
+}
+
 /// @brief Main.
 int main() {
     printf("RTTweenTests:\n");
@@ -169,6 +179,7 @@ int main() {
     RUN_TEST(ease_functions);
     RUN_TEST(lerp_i64);
     RUN_TEST(nonfinite_inputs_are_sanitized);
+    RUN_TEST(large_opposite_signed_endpoints_stay_finite);
 
     printf("\n%d tests passed, %d tests failed\n", tests_passed, tests_failed);
     return tests_failed > 0 ? 1 : 0;

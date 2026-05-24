@@ -29,8 +29,11 @@
 #include "rt_internal.h"
 #include "rt_object.h"
 #include "rt_pixels.h"
+#include "rt_string.h"
 #include <cassert>
+#include <cstdint>
 #include <cstdio>
+#include <cstring>
 
 // Trap handler for runtime
 extern "C" void vm_trap(const char *msg) {
@@ -510,6 +513,59 @@ static void test_gamebutton_null_text_and_border(void) {
 }
 
 //=============================================================================
+// UITextInput / UIDropdown tests
+//=============================================================================
+
+static void test_textinput_set_text_stops_at_embedded_nul(void) {
+    TEST("UITextInput SetText keeps C-string invariant");
+    const char bytes[] = {'A', '\0', 'B'};
+    void *input = rt_uitextinput_new(0, 0, 100, 20);
+    rt_uitextinput_set_text(input, rt_string_from_bytes(bytes, sizeof(bytes)));
+
+    assert(rt_uitextinput_text_length(input) == 1);
+    assert(std::strcmp(rt_string_cstr(rt_uitextinput_get_text(input)), "A") == 0);
+    PASS();
+}
+
+static void test_textinput_typed_nul_is_ignored(void) {
+    TEST("UITextInput typed NUL bytes are ignored");
+    const char bytes[] = {'A', '\0', 'B'};
+    void *input = rt_uitextinput_new(0, 0, 100, 20);
+    rt_uitextinput_set_focused(input, 1);
+
+    assert(rt_uitextinput_handle_text(input, rt_string_from_bytes(bytes, sizeof(bytes))) == 1);
+    assert(rt_uitextinput_text_length(input) == 2);
+    assert(std::strcmp(rt_string_cstr(rt_uitextinput_get_text(input)), "AB") == 0);
+    PASS();
+}
+
+static void test_textinput_max_codepoints_truncates_existing_text(void) {
+    TEST("UITextInput MaxCodepoints truncates existing text");
+    void *input = rt_uitextinput_new(0, 0, 100, 20);
+    rt_uitextinput_set_text(input, rt_const_cstr("abcd"));
+
+    rt_uitextinput_set_max_codepoints(input, 2);
+    assert(rt_uitextinput_text_length(input) == 2);
+    assert(std::strcmp(rt_string_cstr(rt_uitextinput_get_text(input)), "ab") == 0);
+
+    rt_uitextinput_set_max_codepoints(input, 1);
+    assert(rt_uitextinput_text_length(input) == 1);
+    assert(std::strcmp(rt_string_cstr(rt_uitextinput_get_text(input)), "a") == 0);
+    PASS();
+}
+
+static void test_dropdown_popup_hit_test_saturates_y(void) {
+    TEST("UIDropdown popup hit-test saturates Y coordinate");
+    void *dropdown = rt_uidropdown_new(0, INT64_MAX - 5, 20, 10);
+    rt_uidropdown_add_option(dropdown, rt_const_cstr("Only"));
+    rt_uidropdown_open(dropdown);
+
+    assert(rt_uidropdown_handle_click(dropdown, 1, INT64_MAX) == 1);
+    assert(rt_uidropdown_get_selected(dropdown) == 0);
+    PASS();
+}
+
+//=============================================================================
 // Main
 //=============================================================================
 
@@ -559,6 +615,12 @@ int main() {
     test_gamebutton_creation_and_position();
     test_gamebutton_size_visible_and_text_scale();
     test_gamebutton_null_text_and_border();
+
+    // TextInput / Dropdown
+    test_textinput_set_text_stops_at_embedded_nul();
+    test_textinput_typed_nul_is_ignored();
+    test_textinput_max_codepoints_truncates_existing_text();
+    test_dropdown_popup_hit_test_saturates_y();
 
     printf("\n  %d/%d tests passed\n", tests_passed, tests_total);
     assert(tests_passed == tests_total);

@@ -194,7 +194,7 @@ Editable single-line text field with UTF-8-safe cursoring, selection, placeholde
 
 | Property | Type | Access | Description |
 |----------|------|--------|-------------|
-| `Text` | String | Read/Write | Current text, truncated to the internal 511-byte buffer on codepoint boundaries |
+| `Text` | String | Read/Write | Current text, truncated to the internal 511-byte buffer on codepoint boundaries; embedded NUL bytes terminate the stored visible text |
 | `Visible` | Boolean | Read/Write | Visibility toggle |
 | `Enabled` | Boolean | Read/Write | Input enable toggle |
 | `Focused` | Boolean | Read/Write | Keyboard focus |
@@ -213,7 +213,7 @@ Editable single-line text field with UTF-8-safe cursoring, selection, placeholde
 | `HasSelection()` / `GetSelectedText()` | `Boolean()` / `String()` | Query selected text |
 | `DeleteSelection()` | `Void()` | Delete selected text |
 | `HandleKey(key, shift)` | `Integer(Integer, Boolean)` | Handle arrows, home/end, backspace/delete, and select-all key code 1 |
-| `HandleText(text)` | `Integer(String)` | Insert typed text when enabled and focused; returns 1 on change |
+| `HandleText(text)` | `Integer(String)` | Insert typed text when enabled and focused, ignoring embedded NUL bytes; returns 1 on change |
 | `HandleMouseClick(x, y, shift)` / `HandleMouseDrag(x, y)` | `Void(...)` | Focus and update cursor/selection from mouse input |
 | `SetCursorColor(color)` | `Void(Integer)` | Set caret color |
 | `SetSelectionColor(color)` | `Void(Integer)` | Set selection highlight color |

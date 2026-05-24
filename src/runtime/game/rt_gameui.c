@@ -1750,11 +1750,13 @@ static void textinput_set_bytes(rt_uitextinput_impl *ti, const char *text, size_
         return;
     if (!text)
         len = 0;
+    else
+        len = ui_visible_len(text, len);
     len = ui_utf8_trunc_len(text, len, RT_UITEXTINPUT_MAX_BYTES - 1);
     if (ti->max_codepoints > 0)
         len = ui_utf8_trunc_codepoints(text, len, (size_t)ti->max_codepoints);
     if (len > 0)
-        memcpy(ti->text, text, len);
+        memmove(ti->text, text, len);
     ti->text[len] = '\0';
     ti->text_bytes = (int64_t)len;
     ti->cursor_byte = ti->text_bytes;
@@ -1832,7 +1834,8 @@ static int8_t textinput_insert_bytes(rt_uitextinput_impl *ti, const char *src, s
             break;
         if ((int64_t)cp_len > (RT_UITEXTINPUT_MAX_BYTES - 1) - ti->text_bytes)
             break;
-        if (!ti->multiline && (src[accepted] == '\n' || src[accepted] == '\r')) {
+        if (src[accepted] == '\0' ||
+            (!ti->multiline && (src[accepted] == '\n' || src[accepted] == '\r'))) {
             accepted += cp_len;
             continue;
         }
@@ -1874,9 +1877,11 @@ static void textinput_move_cursor(rt_uitextinput_impl *ti, int64_t byte_pos, int
 static int64_t textinput_byte_from_mouse(rt_uitextinput_impl *ti, int64_t mx) {
     if (!ti || ti->text_bytes <= 0)
         return 0;
-    int64_t local = mx - ti->x - 4;
-    if (local <= 0)
+    int64_t origin = ui_add_sat_i64(ti->x, 4);
+    if (mx <= origin)
         return 0;
+    uint64_t local_offset = (uint64_t)mx - (uint64_t)origin;
+    int64_t local = local_offset > (uint64_t)INT64_MAX ? INT64_MAX : (int64_t)local_offset;
     int64_t pos = 0;
     int64_t best = ti->text_bytes;
     while (pos < ti->text_bytes) {
@@ -3008,8 +3013,10 @@ int8_t rt_uidropdown_handle_click(void *ptr, int64_t mx, int64_t my) {
         dd->open = !dd->open;
         return 1;
     }
-    if (dd->open && ui_point_inside(dd->x, dd->y + dd->h, dd->w, dd->h * dd->option_count, mx, my)) {
-        int64_t idx = (my - (dd->y + dd->h)) / dd->h;
+    int64_t list_y = ui_add_sat_i64(dd->y, dd->h);
+    int64_t list_h = dd->h * dd->option_count;
+    if (dd->open && ui_point_inside(dd->x, list_y, dd->w, list_h, mx, my)) {
+        int64_t idx = (my - list_y) / dd->h;
         if (idx >= 0 && idx < dd->option_count)
             dd->selected = idx;
         dd->open = 0;
@@ -3060,7 +3067,7 @@ void rt_uidropdown_draw(void *ptr, void *canvas) {
                    dd->y + dd->h / 2 - 2, dd->caret_color);
     if (dd->open) {
         for (int64_t i = 0; i < dd->option_count; i++) {
-            int64_t y = dd->y + dd->h * (i + 1);
+            int64_t y = ui_add_sat_i64(dd->y, dd->h * (i + 1));
             rt_canvas_box(canvas, dd->x, y, dd->w, dd->h,
                           i == dd->selected ? dd->selected_bg_color : dd->bg_color);
             rt_canvas_frame(canvas, dd->x, y, dd->w, dd->h, dd->border_color);
@@ -3144,8 +3151,8 @@ void rt_uitooltip_update(void *ptr, int64_t mx, int64_t my, int8_t hovered_targe
         return;
     t->target_x = mx;
     t->target_y = my;
-    t->x = mx + 14;
-    t->y = my + 18;
+    t->x = ui_add_sat_i64(mx, 14);
+    t->y = ui_add_sat_i64(my, 18);
     if (!hovered_target) {
         t->hovered = 0;
         t->hover_elapsed_ms = 0;
@@ -3170,9 +3177,9 @@ void rt_uitooltip_draw(void *ptr, void *canvas) {
     int64_t ch = rt_canvas_height(canvas);
     int64_t x = t->x;
     int64_t y = t->y;
-    if (x + w > cw)
+    if (ui_add_sat_i64(x, w) > cw)
         x = cw - w;
-    if (y + h > ch)
+    if (ui_add_sat_i64(y, h) > ch)
         y = ch - h;
     if (x < 0)
         x = 0;

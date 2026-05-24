@@ -281,7 +281,7 @@ void rt_achievement_update(rt_achievement ach, int64_t dt) {
 void rt_achievement_draw(rt_achievement ach, void *canvas) {
     rt_string title;
     ach = checked_achievement(ach, "AchievementTracker.Draw: expected Viper.Game.AchievementTracker");
-    if (!ach || !canvas || ach->notify_id < 0)
+    if (!ach || !canvas || !rt_canvas_is_handle(canvas) || ach->notify_id < 0)
         return;
 
     int64_t id = ach->notify_id;

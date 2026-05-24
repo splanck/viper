@@ -96,6 +96,10 @@ extern "C" int64_t rt_canvas_text_height(void) {
     return 8;
 }
 
+extern "C" int8_t rt_canvas_is_handle(void *canvas) {
+    return canvas != nullptr;
+}
+
 extern "C" int64_t rt_bitmapfont_text_width(void *font, rt_string text) {
     auto *fake = static_cast<FakeFont *>(font);
     return fake ? count_codepoints(rt_string_cstr(text)) * fake->glyph_width : 0;

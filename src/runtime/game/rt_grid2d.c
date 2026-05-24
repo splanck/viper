@@ -200,7 +200,7 @@ int8_t rt_grid2d_copy_from(rt_grid2d dest, rt_grid2d src) {
     }
 
     int64_t size = dest->width * dest->height;
-    memcpy(dest->data, src->data, (size_t)size * sizeof(int64_t));
+    memmove(dest->data, src->data, (size_t)size * sizeof(int64_t));
     return 1;
 }
 
