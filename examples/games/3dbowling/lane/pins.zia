@@ -198,7 +198,10 @@ class PinManager {
             var dz = pz - homeZ.get(i);
             var disp = Sqrt(dx * dx + dz * dz);
 
-            if (knocked.get(i) == false && impacted.get(i)) {
+            if (knocked.get(i) == false && impacted.get(i) == false &&
+                disp > config.PIN_KNOCKDOWN_DISPLACEMENT * 1.15) {
+                markKnocked(i, dx, dz, vx, vz, ax, az);
+            } else if (knocked.get(i) == false && impacted.get(i)) {
                 if (disp > config.PIN_KNOCKDOWN_DISPLACEMENT ||
                     (speed > config.PIN_KNOCKDOWN_SPEED &&
                      disp > config.PIN_KNOCKDOWN_SPEED_DISPLACEMENT) ||

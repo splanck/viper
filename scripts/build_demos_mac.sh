@@ -224,7 +224,6 @@ build_demo() {
 }
 
 echo -e "${CYAN}Building Viper demos with native assembler + linker (arm64)${NC}"
-echo -e "${CYAN}Zero external tools — no cc, no ld, no codesign${NC}"
 if [[ $SKIP_RUN -eq 0 ]]; then
     echo -e "${CYAN}Run validation: launch from ./examples/bin with timeout=${RUN_TIMEOUT_DEFAULT}s${NC}"
 fi

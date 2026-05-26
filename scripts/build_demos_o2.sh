@@ -108,7 +108,6 @@ build_demo() {
 }
 
 echo -e "${CYAN}Building Viper demos with native assembler + linker (arm64) at -O2${NC}"
-echo -e "${CYAN}Zero external tools — no cc, no ld, no codesign${NC}"
 echo "=============================================="
 echo ""
 

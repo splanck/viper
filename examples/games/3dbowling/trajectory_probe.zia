@@ -53,13 +53,14 @@ func processImpacts(world: Physics3DWorld, pinMgr: PinManager, rackArmed: Boolea
 
 func updateGutter(ballObj: Ball, sawBallPin: Boolean) {
     if (ballObj.thrown() == false || ballObj.gutterBall()) { return; }
+    if (config.GUTTER_ENABLED == 0) { return; }
     if (sawBallPin) { return; }
     var pos = ballObj.getPosition();
     var px = Vec3.get_X(pos);
     var py = Vec3.get_Y(pos);
     var pz = Vec3.get_Z(pos);
     var laneHalf = config.LANE_WIDTH / 2.0;
-    var overhangEdge = laneHalf + config.GUTTER_DETECT_OVERHANG;
+    var overhangEdge = laneHalf + config.LANE_GUTTER_W * 0.72;
     var side = 0;
     if (pz > config.GUTTER_DETECT_Z && pz < config.GUTTER_DETECT_END_Z) {
         if (px < -overhangEdge) { side = -1; }
@@ -69,7 +70,11 @@ func updateGutter(ballObj: Ball, sawBallPin: Boolean) {
             if (px > laneHalf - config.BALL_RADIUS * 0.03) { side = 1; }
         }
     }
-    if (py < config.GUTTER_Y && side == 0) {
+    if (py < config.GUTTER_Y &&
+        pz > config.GUTTER_DETECT_Z &&
+        pz < config.GUTTER_DETECT_END_Z &&
+        Abs(px) > laneHalf + config.LANE_GUTTER_W * 0.28 &&
+        side == 0) {
         if (px < 0.0) { side = -1; }
         else { side = 1; }
     }
@@ -115,6 +120,7 @@ func checkBallRoll() -> Boolean {
         var friction = laneObj.getFrictionAt(ballObj.getPosX(), ballObj.getPosZ());
         ballObj.updateMotion(config.PHYSICS_DT, friction, laneObj.getOilEndZ());
         Physics3DWorld.Step(world, config.PHYSICS_DT);
+        ballObj.stabilizeLaneRoll();
     }
 
     var vel = ballObj.getVelocity();
@@ -151,10 +157,16 @@ func runShot(label: String, aim: Float, power: Float, spin: Float) -> Integer {
 
     var sawBallPin = false;
     var step = 0;
+    var minLaneY = 999.0;
     while (step < 1800 && ballObj.getPosZ() < config.PIN_Z_OFFSET + 2.0 && ballObj.gutterBall() == false) {
         var friction = laneObj.getFrictionAt(ballObj.getPosX(), ballObj.getPosZ());
         ballObj.updateMotion(config.PHYSICS_DT, friction, laneObj.getOilEndZ());
         Physics3DWorld.Step(world, config.PHYSICS_DT);
+        ballObj.stabilizeLaneRoll();
+        var lanePos = ballObj.getPosition();
+        if (ballObj.getPosZ() < config.LANE_STABILIZE_END_Z && Vec3.get_Y(lanePos) < minLaneY) {
+            minLaneY = Vec3.get_Y(lanePos);
+        }
         if (processImpacts(world, pinMgr, sawBallPin)) { sawBallPin = true; }
         updateGutter(ballObj, sawBallPin);
         pinMgr.updateKnockdowns(config.PHYSICS_DT);
@@ -175,8 +187,16 @@ func runShot(label: String, aim: Float, power: Float, spin: Float) -> Integer {
     var knocked = pinMgr.countTotalKnocked();
     Terminal.Say(label + ": knocked=" + toString(knocked)
         + " sawBallPin=" + toString(sawBallPin)
+        + " gutter=" + toString(ballObj.gutterBall())
+        + " minLaneY=" + toString(minLaneY)
         + " ballX=" + toString(ballObj.getPosX())
         + " ballZ=" + toString(ballObj.getPosZ()));
+    if (ballObj.gutterBall() && sawBallPin == false) {
+        return -100;
+    }
+    if (minLaneY < config.BALL_RADIUS + config.BALL_START_Y_OFFSET - 0.004) {
+        return -200;
+    }
     return knocked;
 }
 
@@ -191,9 +211,12 @@ func main() {
     }
 
     var center = runShot("center-full", 0.0, 1.0, 0.0);
-    var leftPocket = runShot("left-pocket", -config.AIM_MAX * 0.55, 0.92, 0.42);
-    var rightPocket = runShot("right-pocket", config.AIM_MAX * 0.55, 0.92, -0.42);
-    var edge = runShot("forgiving-edge", config.AIM_MAX, 0.72, config.SPIN_MAX);
+    var leftPocket = runShot("left-pocket", -config.AIM_MAX * 0.50, config.THROW_POWER_MAX, config.SPIN_MAX * 0.58);
+    var rightPocket = runShot("right-pocket", config.AIM_MAX * 0.50, config.THROW_POWER_MAX, -config.SPIN_MAX * 0.58);
+    var tapRelease = runShot("tap-release", 0.0, config.THROW_POWER_MAX * 0.04, 0.0);
+    var edge = runShot("forgiving-edge", config.AIM_MAX, config.THROW_POWER_MAX * 0.72, config.SPIN_MAX);
+    var hardLeft = runShot("hard-left-controls", -config.AIM_MAX, config.THROW_POWER_MAX * 0.55, -config.SPIN_MAX);
+    var hardRight = runShot("hard-right-controls", config.AIM_MAX, config.THROW_POWER_MAX * 0.55, config.SPIN_MAX);
 
     if (center < 5) {
         Terminal.Say("RESULT: fail center shot did not reach the rack");
@@ -207,8 +230,20 @@ func main() {
         Terminal.Say("RESULT: fail right pocket shot underperformed");
         return;
     }
+    if (tapRelease < 3) {
+        Terminal.Say("RESULT: fail tap-release shot stopped or sank before the rack");
+        return;
+    }
     if (edge < 3) {
         Terminal.Say("RESULT: fail max aim edge shot became too punishing");
+        return;
+    }
+    if (hardLeft < 1) {
+        Terminal.Say("RESULT: fail hard-left controls became an automatic gutter");
+        return;
+    }
+    if (hardRight < 1) {
+        Terminal.Say("RESULT: fail hard-right controls became an automatic gutter");
         return;
     }
 

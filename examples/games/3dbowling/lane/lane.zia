@@ -147,14 +147,20 @@ class LaneBuilder {
         var totalLen = config.LANE_LENGTH + config.LANE_APPROACH;
 
         laneMesh = Mesh3D.NewBox(config.LANE_WIDTH, 0.05, totalLen);
-        laneMat = Material3D.NewColor(config.LANE_COLOR_R, config.LANE_COLOR_G, config.LANE_COLOR_B);
+        laneMat = Material3D.NewPBR(config.LANE_COLOR_R, config.LANE_COLOR_G, config.LANE_COLOR_B);
+        Material3D.set_Metallic(laneMat, 0.0);
+        Material3D.set_Roughness(laneMat, 0.32);
         Material3D.SetShininess(laneMat, config.LANE_SHININESS);
         boardMesh = Mesh3D.NewBox(config.LANE_WIDTH / (config.LANE_BOARD_COUNT + 0.0) * 0.92, 0.006, totalLen);
-        boardLightMat = Material3D.NewColor(
+        boardLightMat = Material3D.NewPBR(
             config.LANE_BOARD_LIGHT_R, config.LANE_BOARD_LIGHT_G, config.LANE_BOARD_LIGHT_B);
+        Material3D.set_Metallic(boardLightMat, 0.0);
+        Material3D.set_Roughness(boardLightMat, 0.36);
         Material3D.SetShininess(boardLightMat, config.LANE_SHININESS);
-        boardDarkMat = Material3D.NewColor(
+        boardDarkMat = Material3D.NewPBR(
             config.LANE_BOARD_DARK_R, config.LANE_BOARD_DARK_G, config.LANE_BOARD_DARK_B);
+        Material3D.set_Metallic(boardDarkMat, 0.0);
+        Material3D.set_Roughness(boardDarkMat, 0.42);
         Material3D.SetShininess(boardDarkMat, config.LANE_SHININESS * 0.82);
 
         var oilLen = oilEndZ - config.OIL_START_Z;
@@ -162,7 +168,7 @@ class LaneBuilder {
         oilMesh = Mesh3D.NewBox(config.LANE_WIDTH - 0.02, 0.005, oilLen);
         oilMat = Material3D.NewColor(config.LANE_OIL_COLOR_R, config.LANE_OIL_COLOR_G, config.LANE_OIL_COLOR_B);
         Material3D.SetShininess(oilMat, config.LANE_OIL_SHININESS);
-        Material3D.set_Alpha(oilMat, 0.6);
+        Material3D.set_Alpha(oilMat, 0.34);
 
         pinDeckMesh = Mesh3D.NewBox(config.LANE_WIDTH - 0.02, 0.008, 1.9);
         pinDeckMat = Material3D.NewColor(config.PIN_DECK_COLOR_R, config.PIN_DECK_COLOR_G, config.PIN_DECK_COLOR_B);
@@ -197,7 +203,7 @@ class LaneBuilder {
         sidePanelMat = Material3D.NewColor(config.ROOM_WALL_R, config.ROOM_WALL_G, config.ROOM_WALL_B);
         Material3D.SetShininess(sidePanelMat, 8.0);
 
-        pinsetterMesh = Mesh3D.NewBox(backW, 0.92, 1.4);
+        pinsetterMesh = Mesh3D.NewBox(backW, 0.34, 0.72);
         pinsetterMat = Material3D.NewColor(0.22, 0.20, 0.18);
         Material3D.SetShininess(pinsetterMat, 22.0);
 
@@ -253,7 +259,7 @@ class LaneBuilder {
         ceilingXform = Mat4.Translate(0.0, 4.9, laneCenterZ);
         sidePanelLeftXform = Mat4.Translate(-4.48, 1.9, laneCenterZ);
         sidePanelRightXform = Mat4.Translate(4.48, 1.9, laneCenterZ);
-        pinsetterXform = Mat4.Translate(0.0, 1.62, config.PIN_Z_OFFSET + 0.72);
+        pinsetterXform = Mat4.Translate(0.0, 2.34, config.PIN_Z_OFFSET + 1.85);
         approachXform = Mat4.Translate(0.0, -0.02, -config.LANE_APPROACH / 2.0);
         foulLineXform = Mat4.Translate(0.0, 0.0, 0.0);
     }
@@ -360,6 +366,7 @@ class LaneBuilder {
         Canvas3D.DrawMesh(canvas, laneMesh, laneXform, laneMat);
         drawLaneBoards(canvas);
         Canvas3D.DrawMesh(canvas, oilMesh, oilXform, oilMat);
+        drawLaneBoardSeams(canvas);
         Canvas3D.DrawMesh(canvas, pinDeckMesh, pinDeckXform, pinDeckMat);
         Canvas3D.DrawMesh(canvas, gutterMesh, gutterLeftXform, gutterMat);
         Canvas3D.DrawMesh(canvas, gutterMesh, gutterRightXform, gutterMat);
@@ -387,6 +394,17 @@ class LaneBuilder {
             } else {
                 Canvas3D.DrawMesh(canvas, boardMesh, xform, boardDarkMat);
             }
+        }
+    }
+
+    hide func drawLaneBoardSeams(canvas: Canvas3D) {
+        var boardW = config.LANE_WIDTH / (config.LANE_BOARD_COUNT + 0.0);
+        for (var bi: Integer = 1; bi < config.LANE_BOARD_COUNT; bi = bi + 1) {
+            var bx = -config.LANE_WIDTH / 2.0 + (bi + 0.0) * boardW;
+            Canvas3D.DrawLine3D(canvas,
+                new Vec3(bx, 0.026, -config.LANE_APPROACH),
+                new Vec3(bx, 0.026, config.LANE_LENGTH),
+                0x6E4A2B);
         }
     }
 

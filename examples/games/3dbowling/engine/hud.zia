@@ -107,27 +107,36 @@ class HUD {
         Canvas3D.DrawRect2D(canvas, meterX - 1, meterY - 1,
             config.METER_W + 2, config.METER_H + 2, config.HUD_COLOR_DARK);
 
-        var fillW = Convert.NumToInt(power * (config.METER_W + 0.0));
+        var displayPower = power / config.THROW_POWER_MAX;
+        if (displayPower < 0.0) { displayPower = 0.0; }
+        if (displayPower > 1.0) { displayPower = 1.0; }
+
+        var sweetX = meterX + Convert.NumToInt(config.METER_W * 0.58);
+        var sweetW = Convert.NumToInt(config.METER_W * 0.24);
+        Canvas3D.DrawRect2D(canvas, sweetX, meterY + 2, sweetW, config.METER_H - 4, 0x285C3C);
+
+        var fillW = Convert.NumToInt(displayPower * (config.METER_W + 0.0));
         var meterColor = config.METER_COLOR_LOW;
-        if (power > config.METER_THRESHOLD_MID) { meterColor = config.METER_COLOR_MID; }
-        if (power > config.METER_THRESHOLD_HIGH) { meterColor = config.METER_COLOR_HIGH; }
+        if (displayPower > config.METER_THRESHOLD_MID) { meterColor = config.METER_COLOR_MID; }
+        if (displayPower > config.METER_THRESHOLD_HIGH) { meterColor = config.METER_COLOR_HIGH; }
         Canvas3D.DrawRect2D(canvas, meterX, meterY, fillW, config.METER_H, meterColor);
 
         var pct = "--";
         if (charging || power > 0.0) {
-            pct = toString(Convert.NumToInt(power * 100.0)) + "%";
+            pct = toString(Convert.NumToInt(displayPower * 100.0)) + "%";
         }
         Canvas3D.DrawText2D(canvas, meterX + config.METER_W + 18, meterY + 2, pct, config.HUD_COLOR_WHITE);
 
         var spinX = panelX + 18;
         var spinY = panelY + 66;
         Canvas3D.DrawText2D(canvas, spinX, spinY - 14, "CURVE", config.HUD_COLOR_GRAY);
+        var spinBarW = config.SPIN_INDICATOR_W + 34;
         Canvas3D.DrawRect2D(canvas, spinX + 66, spinY - 3,
-            config.SPIN_INDICATOR_W, config.SPIN_INDICATOR_H, config.HUD_COLOR_DARK);
-        var centerX = spinX + 66 + config.SPIN_INDICATOR_W / 2;
+            spinBarW, config.SPIN_INDICATOR_H, config.HUD_COLOR_DARK);
+        var centerX = spinX + 66 + spinBarW / 2;
         Canvas3D.DrawRect2D(canvas, centerX, spinY - 3, 1, config.SPIN_INDICATOR_H, config.HUD_COLOR_GRAY);
 
-        var spinOffset = Convert.NumToInt(spin * ((config.SPIN_INDICATOR_W / 2) + 0.0));
+        var spinOffset = Convert.NumToInt((spin / config.SPIN_MAX) * ((spinBarW / 2) + 0.0));
         var markerX = centerX + spinOffset;
         var markerColor = config.HUD_COLOR_CYAN;
         if (spin < 0.0) { markerColor = 0xFF8844; }
@@ -135,9 +144,10 @@ class HUD {
             config.SPIN_INDICATOR_H + 2, markerColor);
 
         var aimPct = aimX / config.AIM_MAX;
-        var aimXPos = panelX + 218 + Convert.NumToInt(aimPct * 38.0);
-        Canvas3D.DrawText2D(canvas, panelX + 214, spinY - 14, "AIM", config.HUD_COLOR_GRAY);
-        Canvas3D.DrawRect2D(canvas, panelX + 214, spinY - 3, 76, 2, config.HUD_COLOR_DARK);
+        var aimXPos = panelX + 232 + Convert.NumToInt(aimPct * 46.0);
+        Canvas3D.DrawText2D(canvas, panelX + 228, spinY - 14, "AIM", config.HUD_COLOR_GRAY);
+        Canvas3D.DrawRect2D(canvas, panelX + 228, spinY - 3, 92, 2, config.HUD_COLOR_DARK);
+        Canvas3D.DrawRect2D(canvas, panelX + 273, spinY - 7, 2, 10, config.HUD_COLOR_GRAY);
         Canvas3D.DrawRect2D(canvas, aimXPos - 2, spinY - 8, 4, 12, config.HUD_COLOR_WHITE);
     }
 

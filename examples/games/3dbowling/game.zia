@@ -540,7 +540,7 @@ class BowlingGame {
                 power = 0.0;
             }
             power = power + dt * config.THROW_POWER_RATE;
-            if (power > 1.0) { power = 1.0; }
+            if (power > config.THROW_POWER_MAX) { power = config.THROW_POWER_MAX; }
         } else if (charging) {
             charging = false;
             ballObj.setSpin(spin);
@@ -553,7 +553,7 @@ class BowlingGame {
             skidMarkTimer = 0.0;
             accumulator = 0.0;
             gameState = config.STATE_ROLLING;
-            camCtrl.setFollowMode();
+            camCtrl.setRollMode();
         }
 
         ballObj.setAimPosition(aimX);
@@ -568,6 +568,7 @@ class BowlingGame {
         var friction = laneObj.getFrictionAt(ballObj.getPosX(), ballObj.getPosZ());
         ballObj.updateMotion(dt, friction, laneObj.getOilEndZ());
         Physics3DWorld.Step(physWorld, dt);
+        ballObj.stabilizeLaneRoll();
         pinMgr.updateKnockdowns(dt);
         handlePinImpacts();
         updateTriggerZones();
@@ -578,7 +579,7 @@ class BowlingGame {
         }
 
         particleMgr.updateLaneDust(ballObj.getPosX(), ballObj.getPosZ());
-        camCtrl.updateFollow(ballObj.getPosX(), ballObj.getPosZ(), dt);
+        camCtrl.updateRoll(dt);
 
         if (ballObj.hasPastPins() ||
             (ballHitPinsThisRoll && ballObj.getPosZ() > config.PIN_Z_OFFSET - 1.2) ||
@@ -588,7 +589,7 @@ class BowlingGame {
             accumulator = 0.0;
             settleTimer = config.SETTLE_TIME;
             gameState = config.STATE_SETTLING;
-            camCtrl.setOverheadMode();
+            camCtrl.setRollMode();
         }
     }
 
@@ -598,6 +599,7 @@ class BowlingGame {
         Physics3DWorld.Step(physWorld, dt);
         pinMgr.updateKnockdowns(dt);
         handlePinImpacts();
+        camCtrl.updateRoll(dt);
 
         settleTimer = settleTimer - dt;
         if (pinMgr.allSettled() && settleTimer < config.SETTLE_TIME - 0.4) {
@@ -613,6 +615,7 @@ class BowlingGame {
     /// @brief Poll the gutter + pin-deck triggers; update ball state accordingly.
     hide func updateTriggerZones() {
         if (ballObj.thrown() == false) { return; }
+        if (config.GUTTER_ENABLED == 0) { return; }
         if (ballHitPinsThisRoll) { return; }
 
         var pos = ballObj.getPosition();
@@ -620,7 +623,7 @@ class BowlingGame {
         var py = Vec3.get_Y(pos);
         var pz = Vec3.get_Z(pos);
         var laneHalf = config.LANE_WIDTH / 2.0;
-        var overhangEdge = laneHalf + config.GUTTER_DETECT_OVERHANG;
+        var overhangEdge = laneHalf + config.LANE_GUTTER_W * 0.72;
         var inLeftGutter = false;
         var inRightGutter = false;
         if (pz > config.GUTTER_DETECT_Z && pz < config.GUTTER_DETECT_END_Z) {
@@ -631,7 +634,13 @@ class BowlingGame {
                 if (px > laneHalf - config.BALL_RADIUS * 0.03) { inRightGutter = true; }
             }
         }
-        var inGutter = inLeftGutter || inRightGutter || py < config.GUTTER_Y;
+        var inGutter = inLeftGutter || inRightGutter;
+        if (py < config.GUTTER_Y &&
+            pz > config.GUTTER_DETECT_Z &&
+            pz < config.GUTTER_DETECT_END_Z &&
+            Abs(px) > laneHalf + config.LANE_GUTTER_W * 0.28) {
+            inGutter = true;
+        }
         if (inGutter && gutterLatched == false) {
             gutterLatched = true;
             var gutterSide = 1;
@@ -919,8 +928,8 @@ class BowlingGame {
 
         if (gameState == config.STATE_ROLLING || gameState == config.STATE_SETTLING || gameState == config.STATE_CELEBRATING) {
             if (camCtrl.getMode() == camera.MODE_OVERHEAD) {
-                camCtrl.setFollowMode();
-                hudObj.showMessage("Follow camera", config.HUD_COLOR_CYAN, config.MSG_DURATION_SHORT);
+                camCtrl.setRollMode();
+                hudObj.showMessage("Lane camera", config.HUD_COLOR_CYAN, config.MSG_DURATION_SHORT);
             } else {
                 camCtrl.setOverheadMode();
                 hudObj.showMessage("Overhead camera", config.HUD_COLOR_CYAN, config.MSG_DURATION_SHORT);

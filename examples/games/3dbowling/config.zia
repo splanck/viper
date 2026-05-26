@@ -70,19 +70,20 @@ var WINDOW_TITLE: String = "3D Bowling";
 // =========================================================================
 // Camera
 // =========================================================================
-var CAMERA_FOV: Float = 50.0;
+var CAMERA_FOV: Float = 34.0;
 var CAMERA_NEAR: Float = 0.1;
 var CAMERA_FAR: Float = 200.0;
 
-var CAM_AIM_HEIGHT: Float = 1.72;
-var CAM_AIM_BEHIND: Float = 4.35;
-var CAM_AIM_LOOK_Z: Float = 12.6;
-var CAM_AIM_LOOK_Y: Float = 0.42;
+var CAM_AIM_HEIGHT: Float = 1.46;
+var CAM_AIM_BEHIND: Float = 3.05;
+var CAM_AIM_LOOK_Z: Float = 15.15;
+var CAM_AIM_LOOK_Y: Float = 0.34;
 
-var CAM_FOLLOW_HEIGHT: Float = 1.72;
-var CAM_FOLLOW_DIST: Float = 2.8;
-var CAM_FOLLOW_LOOK_AHEAD: Float = 4.8;
 var CAM_FOLLOW_SMOOTH: Float = 6.6;
+var CAM_ROLL_HEIGHT: Float = 1.36;
+var CAM_ROLL_BEHIND: Float = 2.92;
+var CAM_ROLL_LOOK_Z: Float = 15.65;
+var CAM_ROLL_LOOK_Y: Float = 0.31;
 
 var CAM_OVER_HEIGHT: Float = 5.8;
 
@@ -164,22 +165,22 @@ var RESET_DROP_HEIGHT: Float = 2.6;
 // Ball
 // =========================================================================
 var BALL_MASS_LIGHT: Float = 4.5;
-var BALL_SPEED_MAX_LIGHT: Float = 12.8;
-var BALL_HOOK_LIGHT: Float = 1.72;
+var BALL_SPEED_MAX_LIGHT: Float = 6.25;
+var BALL_HOOK_LIGHT: Float = 1.16;
 var BALL_COLOR_LIGHT_R: Float = 0.07;
 var BALL_COLOR_LIGHT_G: Float = 0.52;
 var BALL_COLOR_LIGHT_B: Float = 0.92;
 
 var BALL_MASS_MEDIUM: Float = 6.0;
-var BALL_SPEED_MAX_MEDIUM: Float = 11.4;
-var BALL_HOOK_MEDIUM: Float = 1.34;
+var BALL_SPEED_MAX_MEDIUM: Float = 5.95;
+var BALL_HOOK_MEDIUM: Float = 0.98;
 var BALL_COLOR_MEDIUM_R: Float = 0.10;
 var BALL_COLOR_MEDIUM_G: Float = 0.66;
 var BALL_COLOR_MEDIUM_B: Float = 0.54;
 
 var BALL_MASS_HEAVY: Float = 7.3;
-var BALL_SPEED_MAX_HEAVY: Float = 10.3;
-var BALL_HOOK_HEAVY: Float = 1.04;
+var BALL_SPEED_MAX_HEAVY: Float = 5.70;
+var BALL_HOOK_HEAVY: Float = 0.82;
 var BALL_COLOR_HEAVY_R: Float = 0.88;
 var BALL_COLOR_HEAVY_G: Float = 0.18;
 var BALL_COLOR_HEAVY_B: Float = 0.28;
@@ -197,30 +198,38 @@ var BALL_HEAVY: Integer = 2;
 // =========================================================================
 // Throw Mechanics
 // =========================================================================
-var THROW_SPEED_MIN: Float = 6.4;
-var THROW_POWER_RATE: Float = 0.78;
-var AIM_SPEED: Float = 1.05;
-var AIM_MAX: Float = 0.26;
+var THROW_SPEED_MIN: Float = 3.15;
+var THROW_POWER_RATE: Float = 0.34;
+var THROW_POWER_MAX: Float = 0.72;
+var AIM_SPEED: Float = 0.46;
+var AIM_MAX: Float = 0.16;
 var AIM_RELEASE_ANGLE: Float = 0.11;
-var SPIN_RATE: Float = 0.92;
-var SPIN_MAX: Float = 0.46;
+var SPIN_RATE: Float = 0.48;
+var SPIN_MAX: Float = 0.32;
 var SPIN_VISUAL_SPEED: Float = 7.0;
 var BALL_AXIS_SPIN_SPEED: Float = 2.6;
-var BACKEND_HOOK_FORCE: Float = 2.15;
-var EARLY_HOOK_FORCE: Float = 0.08;
+var BACKEND_HOOK_FORCE: Float = 0.58;
+var EARLY_HOOK_FORCE: Float = 0.0;
 var SPIN_DECAY_OIL: Float = 0.07;
-var SPIN_DECAY_DRY: Float = 0.32;
-var SIDE_DRAG: Float = 0.46;
+var SPIN_DECAY_DRY: Float = 0.38;
+var SIDE_DRAG: Float = 0.92;
+var LANE_ASSIST_EDGE_RATIO: Float = 0.34;
+var LANE_ASSIST_FORCE: Float = 54.0;
+var LANE_ASSIST_DAMP: Float = 4.8;
+var LANE_SAFE_HALF_WIDTH: Float = 0.34;
+var LANE_STABILIZE_END_Z: Float = PIN_Z_OFFSET - 0.18;
+var GUTTER_ENABLED: Integer = 0;
 
 var BALL_START_X: Float = 0.0;
-var BALL_START_Y_OFFSET: Float = 0.01;
+var BALL_START_Y_OFFSET: Float = 0.026;
 var BALL_START_Z: Float = -1.5;
 var BALL_THROW_Z: Float = -0.85;
-var BALL_RELEASE_X_SCALE: Float = 0.32;
-var BALL_TARGET_X_SCALE: Float = 0.56;
+var BALL_RELEASE_X_SCALE: Float = 0.16;
+var BALL_TARGET_X_SCALE: Float = 0.30;
 var BALL_TARGET_Z: Float = PIN_Z_OFFSET - 0.95;
-var BALL_SIDE_SPEED_SCALE: Float = 0.82;
-var BALL_SIDE_SPEED_MAX: Float = 0.62;
+var BALL_SIDE_SPEED_SCALE: Float = 0.18;
+var BALL_SIDE_SPEED_MAX: Float = 0.10;
+var BALL_ROLL_MIN_SPEED: Float = 3.28;
 var BALL_DECK_IMPACT_SLOWDOWN: Float = 0.86;
 var BALL_DECK_IMPACT_SIDE_DAMP: Float = 0.82;
 
@@ -228,8 +237,8 @@ var GUTTER_Y: Float = -0.11;
 var GUTTER_TRIGGER_WIDTH: Float = 0.04;
 var GUTTER_EXIT_Z: Float = PIN_Z_OFFSET + 2.8;
 var GUTTER_DETECT_Z: Float = 0.80;
-var GUTTER_DETECT_END_Z: Float = PIN_Z_OFFSET - 1.20;
-var GUTTER_DETECT_OVERHANG: Float = 0.07;
+var GUTTER_DETECT_END_Z: Float = PIN_Z_OFFSET - 2.80;
+var GUTTER_DETECT_OVERHANG: Float = 0.28;
 
 // =========================================================================
 // Physics

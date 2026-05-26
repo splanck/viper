@@ -64,6 +64,7 @@ class Ball {
     hide Mesh3D ballHoleMesh;
     hide Mesh3D guideMesh;
     hide Mesh3D targetMesh;
+    hide Mesh3D targetHaloMesh;
     hide Material3D ballMat;
     hide Material3D ballHoleMat;
     hide Material3D guideMat;
@@ -89,7 +90,9 @@ class Ball {
         applyBallStats();
 
         ballMesh = Mesh3D.NewSphere(config.BALL_RADIUS, 16);
-        ballMat = Material3D.NewColor(colorR, colorG, colorB);
+        ballMat = Material3D.NewPBR(colorR, colorG, colorB);
+        Material3D.set_Metallic(ballMat, 0.04);
+        Material3D.set_Roughness(ballMat, 0.18);
         Material3D.SetShininess(ballMat, config.BALL_SHININESS);
         ballHoleMesh = Mesh3D.NewSphere(config.BALL_RADIUS * 0.16, 8);
         ballHoleMat = Material3D.NewColor(0.015, 0.018, 0.022);
@@ -98,7 +101,8 @@ class Ball {
         guideMat = Material3D.NewColor(0.05, 0.92, 0.96);
         Material3D.SetEmissiveColor(guideMat, 0.08, 0.34, 0.36);
         Material3D.set_Alpha(guideMat, 0.82);
-        targetMesh = Mesh3D.NewSphere(0.076, 12);
+        targetMesh = Mesh3D.NewSphere(0.082, 12);
+        targetHaloMesh = Mesh3D.NewSphere(0.038, 8);
         targetMat = Material3D.NewColor(1.0, 0.82, 0.22);
         Material3D.SetEmissiveColor(targetMat, 0.18, 0.12, 0.02);
 
@@ -189,7 +193,13 @@ class Ball {
     ///          in a straight line until the hook (in updateMotion)
     ///          curves it.
     expose func doThrow(aimX: Float, power: Float) {
-        var throwSpeed = config.THROW_SPEED_MIN + power * (maxSpeed - config.THROW_SPEED_MIN);
+        var launchPower = power;
+        if (launchPower < 0.0) { launchPower = 0.0; }
+        if (launchPower > config.THROW_POWER_MAX) { launchPower = config.THROW_POWER_MAX; }
+        var powerPct = launchPower / config.THROW_POWER_MAX;
+        if (powerPct > 1.0) { powerPct = 1.0; }
+        var easedPower = powerPct * powerPct * (3.0 - 2.0 * powerPct);
+        var throwSpeed = config.THROW_SPEED_MIN + easedPower * (maxSpeed - config.THROW_SPEED_MIN);
         var clampedAimX = aimX;
         if (clampedAimX < -config.AIM_MAX) { clampedAimX = -config.AIM_MAX; }
         if (clampedAimX > config.AIM_MAX) { clampedAimX = config.AIM_MAX; }
@@ -204,7 +214,7 @@ class Ball {
         if (targetClamp < releaseClamp) { targetClamp = releaseClamp; }
 
         var releaseX = aimPct * releaseClamp * config.BALL_RELEASE_X_SCALE;
-        var targetX = aimPct * targetClamp * config.BALL_TARGET_X_SCALE + spinAmount * 0.10;
+        var targetX = aimPct * targetClamp * config.BALL_TARGET_X_SCALE + spinAmount * 0.055;
         if (targetX < -targetClamp) { targetX = -targetClamp; }
         if (targetX > targetClamp) { targetX = targetClamp; }
 
@@ -233,7 +243,7 @@ class Ball {
 
         isInGutter = false;
         hasBeenThrown = true;
-        Say("Thrown! Power: " + toString(Convert.NumToInt(power * 100.0))
+        Say("Thrown! Power: " + toString(Convert.NumToInt(powerPct * 100.0))
             + "%  Shape: " + toString(Convert.NumToInt(spinAmount * 100.0)));
     }
 
@@ -267,7 +277,36 @@ class Ball {
             (config.EARLY_HOOK_FORCE + backend * config.BACKEND_HOOK_FORCE) * frictionPct;
         hookForce = hookForce * (0.55 + frictionPct * 0.35);
         var dragForce = -vx * config.SIDE_DRAG * (0.8 + frictionPct);
-        Physics3DBody.ApplyForce(body, hookForce + dragForce, 0.0, 0.0);
+        var laneHalf = config.LANE_WIDTH / 2.0;
+        var edgeStart = laneHalf * config.LANE_ASSIST_EDGE_RATIO;
+        var edgeLimit = laneHalf + config.GUTTER_DETECT_OVERHANG;
+        var assistForce = 0.0;
+        if (z > config.GUTTER_DETECT_Z && z < config.GUTTER_DETECT_END_Z && Abs(x) > edgeStart) {
+            var edgePct = (Abs(x) - edgeStart) / (edgeLimit - edgeStart + 0.0001);
+            if (edgePct < 0.0) { edgePct = 0.0; }
+            if (edgePct > 1.0) { edgePct = 1.0; }
+            var edgeSign = 1.0;
+            if (x < 0.0) { edgeSign = -1.0; }
+            assistForce = -edgeSign * config.LANE_ASSIST_FORCE * edgePct * edgePct;
+            dragForce = dragForce - vx * config.LANE_ASSIST_DAMP * edgePct;
+        }
+        Physics3DBody.ApplyForce(body, hookForce + dragForce + assistForce, 0.0, 0.0);
+
+        if (z > config.GUTTER_DETECT_Z && z < config.PIN_Z_OFFSET - 0.75 && Abs(x) > config.LANE_SAFE_HALF_WIDTH) {
+            var safeSign = 1.0;
+            if (x < 0.0) { safeSign = -1.0; }
+            var safeX = safeSign * config.LANE_SAFE_HALF_WIDTH;
+            var correctedVx = vx;
+            if (correctedVx * safeSign > 0.0) {
+                correctedVx = -correctedVx * 0.18;
+            } else {
+                correctedVx = correctedVx * 0.35;
+            }
+            Physics3DBody.SetPosition(body, safeX, Vec3.get_Y(pos), z);
+            Physics3DBody.SetVelocity(body, correctedVx, Vec3.get_Y(vel), vz);
+            x = safeX;
+            vx = correctedVx;
+        }
 
         var spinDecay = config.SPIN_DECAY_OIL + (config.SPIN_DECAY_DRY - config.SPIN_DECAY_OIL) * frictionPct;
         if (spinAmount > 0.0) {
@@ -286,6 +325,41 @@ class Ball {
         if (x > config.LANE_WIDTH) {
             spinAmount = spinAmount * 0.95;
         }
+    }
+
+    /// @brief Arcade lane guard: keep normal throws rolling on the lane.
+    expose func stabilizeLaneRoll() {
+        if (hasBeenThrown == false || isInGutter) { return; }
+
+        var pos = Physics3DBody.get_Position(body);
+        var x = Vec3.get_X(pos);
+        var z = Vec3.get_Z(pos);
+        if (z < config.BALL_THROW_Z - 0.08 || z > config.LANE_STABILIZE_END_Z) { return; }
+
+        var vel = Physics3DBody.get_Velocity(body);
+        var vx = Vec3.get_X(vel);
+        var vz = Vec3.get_Z(vel);
+        var safeX = x;
+        if (safeX < -config.LANE_SAFE_HALF_WIDTH) { safeX = -config.LANE_SAFE_HALF_WIDTH; }
+        if (safeX > config.LANE_SAFE_HALF_WIDTH) { safeX = config.LANE_SAFE_HALF_WIDTH; }
+        var wasClamped = Abs(safeX - x) > 0.0001;
+
+        if (wasClamped) {
+            vx = vx * 0.22;
+            if (safeX < 0.0 && vx < 0.0) { vx = 0.0 - vx * 0.16; }
+            if (safeX > 0.0 && vx > 0.0) { vx = 0.0 - vx * 0.16; }
+        }
+
+        var rollY = config.BALL_RADIUS + config.BALL_START_Y_OFFSET;
+        Physics3DBody.SetPosition(body, safeX, rollY, z);
+
+        if (vz < config.BALL_ROLL_MIN_SPEED) { vz = config.BALL_ROLL_MIN_SPEED; }
+        if (vz > maxSpeed * 1.03) { vz = maxSpeed * 1.03; }
+        Physics3DBody.SetVelocity(body, vx, 0.0, vz);
+        Physics3DBody.SetAngularVelocity(body,
+            vz / config.BALL_RADIUS,
+            spinAmount * config.BALL_AXIS_SPIN_SPEED,
+            -vx / config.BALL_RADIUS);
     }
 
     /// @brief Apply a slight slowdown when the ball enters the pin deck
@@ -433,19 +507,36 @@ class Ball {
         if (targetClamp < releaseClamp) { targetClamp = releaseClamp; }
 
         var releaseX = aimPct * releaseClamp * config.BALL_RELEASE_X_SCALE;
-        var targetX = aimPct * targetClamp * config.BALL_TARGET_X_SCALE + spinPreview * 0.10;
+        var targetX = aimPct * targetClamp * config.BALL_TARGET_X_SCALE + spinPreview * 0.055;
         if (targetX < -targetClamp) { targetX = -targetClamp; }
         if (targetX > targetClamp) { targetX = targetClamp; }
 
         var guideStartZ = config.BALL_THROW_Z + 0.26;
+        Canvas3D.DrawLine3D(canvas,
+            new Vec3(-config.LANE_SAFE_HALF_WIDTH, 0.035, guideStartZ),
+            new Vec3(-config.LANE_SAFE_HALF_WIDTH, 0.035, config.BALL_TARGET_Z + 0.45),
+            0x286878);
+        Canvas3D.DrawLine3D(canvas,
+            new Vec3(config.LANE_SAFE_HALF_WIDTH, 0.035, guideStartZ),
+            new Vec3(config.LANE_SAFE_HALF_WIDTH, 0.035, config.BALL_TARGET_Z + 0.45),
+            0x286878);
+        Canvas3D.DrawLine3D(canvas,
+            new Vec3(releaseX, 0.052, guideStartZ),
+            new Vec3(targetX, 0.052, config.BALL_TARGET_Z),
+            0xFFD166);
         for (var i: Integer = 0; i <= 12; i = i + 1) {
             var t = (i + 0.0) / 12.0;
             var z = guideStartZ + (config.BALL_TARGET_Z - guideStartZ) * t;
-            var hook = spinPreview * 0.07 * t * t;
+            var hook = spinPreview * 0.035 * t * t;
             var x = releaseX + (targetX - releaseX) * t + hook;
             Canvas3D.DrawMesh(canvas, guideMesh, Mat4.Translate(x, 0.035, z), guideMat);
         }
-        Canvas3D.DrawMesh(canvas, targetMesh, Mat4.Translate(targetX, 0.04, config.BALL_TARGET_Z), targetMat);
+        Canvas3D.DrawMesh(canvas, targetMesh, Mat4.Translate(targetX, 0.05, config.BALL_TARGET_Z), targetMat);
+        Canvas3D.DrawSphereWire(canvas, new Vec3(targetX, 0.06, config.BALL_TARGET_Z), 0.18, 0xFFD166);
+        Canvas3D.DrawMesh(canvas, targetHaloMesh, Mat4.Translate(targetX - 0.12, 0.04, config.BALL_TARGET_Z), targetMat);
+        Canvas3D.DrawMesh(canvas, targetHaloMesh, Mat4.Translate(targetX + 0.12, 0.04, config.BALL_TARGET_Z), targetMat);
+        Canvas3D.DrawMesh(canvas, targetHaloMesh, Mat4.Translate(targetX, 0.04, config.BALL_TARGET_Z - 0.18), targetMat);
+        Canvas3D.DrawMesh(canvas, targetHaloMesh, Mat4.Translate(targetX, 0.04, config.BALL_TARGET_Z + 0.18), targetMat);
     }
 
     /// @brief Render the ball with translation + yaw + spin rotation.
