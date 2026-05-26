@@ -28,6 +28,7 @@
 #include "../audio/rt_ogg.h"
 #include "rt_avi.h"
 #include "rt_canvas3d_internal.h"
+#include "rt_object.h"
 #include "rt_string.h"
 #include "rt_theora.h"
 #include "rt_ycbcr.h"
@@ -40,11 +41,10 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#if !defined(_WIN32)
+#include <sys/types.h>
+#endif
 
-extern void *rt_obj_new_i64(int64_t class_id, int64_t byte_size);
-extern void rt_obj_set_finalizer(void *obj, void (*fn)(void *));
-extern int rt_obj_release_check0(void *obj);
-extern void rt_obj_free(void *obj);
 #include "rt_trap.h"
 extern const char *rt_string_cstr(rt_string str);
 extern void *rt_pixels_new(int64_t width, int64_t height);
@@ -57,6 +57,15 @@ typedef struct {
     int64_t width, height;
     uint32_t *data;
 } px_view;
+
+// Keep video file loading large-file safe on platforms where long is 32-bit.
+#if defined(_WIN32)
+#define video_fseek(fp, off, whence) _fseeki64((fp), (off), (whence))
+#define video_ftell(fp) _ftelli64((fp))
+#else
+#define video_fseek(fp, off, whence) fseeko((fp), (off_t)(off), (whence))
+#define video_ftell(fp) ftello((fp))
+#endif
 
 /*==========================================================================
  * Standard JPEG DHT tables (Annex K of ITU-T T.81)
@@ -566,6 +575,45 @@ typedef struct {
     void *frame_decode;  /* Pixels — scratch for decode (may be reallocated) */
 } rt_videoplayer;
 
+static rt_videoplayer *videoplayer_checked(void *obj) {
+    if (!obj || !rt_obj_is_instance(obj, RT_VIDEOPLAYER_CLASS_ID, sizeof(rt_videoplayer)))
+        return NULL;
+    return (rt_videoplayer *)obj;
+}
+
+static void release_owned_ref(void **slot) {
+    if (!slot || !*slot)
+        return;
+    if (rt_obj_release_check0(*slot))
+        rt_obj_free(*slot);
+    *slot = NULL;
+}
+
+static double videoplayer_clamp_seconds(const rt_videoplayer *vp, double seconds) {
+    if (!isfinite(seconds)) {
+        if (seconds > 0.0 && vp && isfinite(vp->duration) && vp->duration >= 0.0)
+            return vp->duration;
+        return 0.0;
+    }
+    if (seconds < 0.0)
+        return 0.0;
+    if (vp && isfinite(vp->duration) && vp->duration >= 0.0 && seconds > vp->duration)
+        return vp->duration;
+    return seconds;
+}
+
+static int32_t videoplayer_frame_index_at(const rt_videoplayer *vp, double seconds) {
+    if (!vp || vp->total_frames <= 0 || !isfinite(seconds) || !isfinite(vp->fps) ||
+        vp->fps <= 0.0)
+        return -1;
+    long double frame = (long double)seconds * (long double)vp->fps;
+    if (frame < 0.0L)
+        return -1;
+    if (frame >= (long double)INT32_MAX)
+        return INT32_MAX;
+    return (int32_t)frame;
+}
+
 /// @brief Decode a Theora granulepos into a sequential frame index.
 ///
 /// Theora packs `(intra_frame_count, interframe_count)` into the
@@ -825,7 +873,9 @@ static int ogv_decode_until_frame(rt_videoplayer *vp, int32_t target_frame) {
 
 /// @brief GC finalizer for the videoplayer — releases the ogg reader, decoder, frame buffers, audio track.
 static void videoplayer_finalizer(void *obj) {
-    rt_videoplayer *vp = (rt_videoplayer *)obj;
+    rt_videoplayer *vp = videoplayer_checked(obj);
+    if (!vp)
+        return;
     if (vp->container_type == 0)
         avi_free(&vp->avi);
 #ifdef VIPER_ENABLE_AUDIO
@@ -835,6 +885,8 @@ static void videoplayer_finalizer(void *obj) {
     if (vp->ogg_reader)
         ogg_reader_free(vp->ogg_reader);
     theora_decoder_free(&vp->theora);
+    release_owned_ref(&vp->frame_display);
+    release_owned_ref(&vp->frame_decode);
     free(vp->file_data);
     vp->file_data = NULL;
 }
@@ -869,11 +921,17 @@ void *rt_videoplayer_open(rt_string path) {
     if (!f)
         return NULL;
 
-    fseek(f, 0, SEEK_END);
-    long file_len = ftell(f);
-    fseek(f, 0, SEEK_SET);
+    if (video_fseek(f, 0, SEEK_END) != 0) {
+        fclose(f);
+        return NULL;
+    }
+    int64_t file_len = video_ftell(f);
+    if (video_fseek(f, 0, SEEK_SET) != 0) {
+        fclose(f);
+        return NULL;
+    }
 
-    if (file_len <= 12 || file_len > 512L * 1024 * 1024) { /* 512 MB limit */
+    if (file_len <= 12 || file_len > INT64_C(512) * 1024 * 1024) { /* 512 MB limit */
         fclose(f);
         return NULL;
     }
@@ -903,7 +961,8 @@ void *rt_videoplayer_open(rt_string path) {
     }
 
     /* Create VideoPlayer object */
-    rt_videoplayer *vp = (rt_videoplayer *)rt_obj_new_i64(0, (int64_t)sizeof(rt_videoplayer));
+    rt_videoplayer *vp = (rt_videoplayer *)rt_obj_new_i64(RT_VIDEOPLAYER_CLASS_ID,
+                                                          (int64_t)sizeof(rt_videoplayer));
     if (!vp) {
         free(data);
         return NULL;
@@ -945,7 +1004,6 @@ void *rt_videoplayer_open(rt_string path) {
 
     vp->container_type = 0;
     if (avi_parse(&vp->avi, data, (size_t)file_len) != 0) {
-        free(data);
         if (rt_obj_release_check0(vp))
             rt_obj_free(vp);
         return NULL;
@@ -976,6 +1034,7 @@ void *rt_videoplayer_open(rt_string path) {
                            src->data,
                            (size_t)(dst->width * dst->height) * sizeof(uint32_t));
             }
+            release_owned_ref(&decoded);
         }
         vp->current_frame = 0;
     }
@@ -985,9 +1044,9 @@ void *rt_videoplayer_open(rt_string path) {
 
 /// @brief Begin (or resume) playback. Subsequent `update` calls advance time.
 void rt_videoplayer_play(void *obj) {
-    if (!obj)
+    rt_videoplayer *vp = videoplayer_checked(obj);
+    if (!vp)
         return;
-    rt_videoplayer *vp = (rt_videoplayer *)obj;
     vp->playing = 1;
 #ifdef VIPER_ENABLE_AUDIO
     if (vp->container_type == 1)
@@ -997,9 +1056,9 @@ void rt_videoplayer_play(void *obj) {
 
 /// @brief Pause playback at the current frame. `update` becomes a no-op until `play`.
 void rt_videoplayer_pause(void *obj) {
-    if (!obj)
+    rt_videoplayer *vp = videoplayer_checked(obj);
+    if (!vp)
         return;
-    rt_videoplayer *vp = (rt_videoplayer *)obj;
     vp->playing = 0;
 #ifdef VIPER_ENABLE_AUDIO
     if (vp->container_type == 1)
@@ -1009,9 +1068,9 @@ void rt_videoplayer_pause(void *obj) {
 
 /// @brief Stop playback and rewind to frame 0. The currently displayed frame remains visible.
 void rt_videoplayer_stop(void *obj) {
-    if (!obj)
+    rt_videoplayer *vp = videoplayer_checked(obj);
+    if (!vp)
         return;
-    rt_videoplayer *vp = (rt_videoplayer *)obj;
     vp->playing = 0;
     vp->position = 0.0;
     vp->current_frame = -1;
@@ -1030,16 +1089,13 @@ void rt_videoplayer_stop(void *obj) {
 /// keyframe also decodes from that keyframe forward. The audio
 /// track is reseeked to match.
 void rt_videoplayer_seek(void *obj, double seconds) {
-    if (!obj)
+    rt_videoplayer *vp = videoplayer_checked(obj);
+    if (!vp)
         return;
-    rt_videoplayer *vp = (rt_videoplayer *)obj;
-    if (seconds < 0.0)
-        seconds = 0.0;
-    if (seconds > vp->duration)
-        seconds = vp->duration;
+    seconds = videoplayer_clamp_seconds(vp, seconds);
     vp->position = seconds;
     if (vp->container_type == 1) {
-        int32_t target = (int32_t)(vp->position * vp->fps);
+        int32_t target = videoplayer_frame_index_at(vp, vp->position);
         if (target >= vp->total_frames)
             target = vp->total_frames > 0 ? vp->total_frames - 1 : -1;
         vp->current_frame = -1;
@@ -1059,9 +1115,9 @@ void rt_videoplayer_seek(void *obj, double seconds) {
 /// running below the video's framerate (drops decode time but
 /// keeps audio in sync). At end-of-stream, sets `playing = 0`.
 void rt_videoplayer_update(void *obj, double dt) {
-    if (!obj || !isfinite(dt) || dt <= 0.0)
+    rt_videoplayer *vp = videoplayer_checked(obj);
+    if (!vp || !isfinite(dt) || dt <= 0.0)
         return;
-    rt_videoplayer *vp = (rt_videoplayer *)obj;
     if (!vp->playing)
         return;
 
@@ -1072,17 +1128,18 @@ void rt_videoplayer_update(void *obj, double dt) {
         } else
 #endif
         {
-            vp->position += dt;
+            vp->position = videoplayer_clamp_seconds(vp, vp->position + dt);
         }
     } else {
-        vp->position += dt;
+        vp->position = videoplayer_clamp_seconds(vp, vp->position + dt);
     }
 
     /* Determine target frame */
-    int32_t target = (int32_t)(vp->position * vp->fps);
-    if (target >= vp->total_frames) {
+    int32_t target = videoplayer_frame_index_at(vp, vp->position);
+    if (target < 0 || target >= vp->total_frames) {
         vp->playing = 0;
-        vp->position = vp->duration;
+        if (isfinite(vp->duration) && vp->duration >= 0.0)
+            vp->position = vp->duration;
 #ifdef VIPER_ENABLE_AUDIO
         if (vp->container_type == 1)
             videoplayer_stop_audio(vp);
@@ -1116,6 +1173,7 @@ void rt_videoplayer_update(void *obj, double dt) {
                     memcpy(dst->data,
                            src->data,
                            (size_t)(dst->width * dst->height) * sizeof(uint32_t));
+                release_owned_ref(&decoded);
             }
         }
         vp->current_frame = target;
@@ -1124,7 +1182,8 @@ void rt_videoplayer_update(void *obj, double dt) {
 
 /// @brief Set the audio mix volume in [0.0, 1.0]. Clamped at the bounds.
 void rt_videoplayer_set_volume(void *obj, double vol) {
-    if (!obj)
+    rt_videoplayer *vp = videoplayer_checked(obj);
+    if (!vp)
         return;
     if (!isfinite(vol))
         vol = 0.0;
@@ -1132,7 +1191,6 @@ void rt_videoplayer_set_volume(void *obj, double vol) {
         vol = 0.0;
     if (vol > 1.0)
         vol = 1.0;
-    rt_videoplayer *vp = (rt_videoplayer *)obj;
     vp->volume = vol;
 #ifdef VIPER_ENABLE_AUDIO
     if (vp->container_type == 1)
@@ -1142,24 +1200,27 @@ void rt_videoplayer_set_volume(void *obj, double vol) {
 
 /// @brief Pixel width of the video frame (post-crop).
 int64_t rt_videoplayer_get_width(void *obj) {
-    return obj ? ((rt_videoplayer *)obj)->width : 0;
+    rt_videoplayer *vp = videoplayer_checked(obj);
+    return vp ? vp->width : 0;
 }
 
 /// @brief Pixel height of the video frame (post-crop).
 int64_t rt_videoplayer_get_height(void *obj) {
-    return obj ? ((rt_videoplayer *)obj)->height : 0;
+    rt_videoplayer *vp = videoplayer_checked(obj);
+    return vp ? vp->height : 0;
 }
 
 /// @brief Total duration of the video in seconds (computed at open time from `last_granule`).
 double rt_videoplayer_get_duration(void *obj) {
-    return obj ? ((rt_videoplayer *)obj)->duration : 0.0;
+    rt_videoplayer *vp = videoplayer_checked(obj);
+    return vp ? vp->duration : 0.0;
 }
 
 /// @brief Current playback position in seconds.
 double rt_videoplayer_get_position(void *obj) {
-    if (!obj)
+    rt_videoplayer *vp = videoplayer_checked(obj);
+    if (!vp)
         return 0.0;
-    rt_videoplayer *vp = (rt_videoplayer *)obj;
 #ifdef VIPER_ENABLE_AUDIO
     if (vp->container_type == 1 && vp->audio_track && vp->audio_started &&
         rt_music_is_playing(vp->audio_track)) {
@@ -1171,13 +1232,15 @@ double rt_videoplayer_get_position(void *obj) {
 
 /// @brief 1 if currently playing, 0 if paused / stopped / at EOF.
 int64_t rt_videoplayer_get_is_playing(void *obj) {
-    return obj ? ((rt_videoplayer *)obj)->playing : 0;
+    rt_videoplayer *vp = videoplayer_checked(obj);
+    return vp ? vp->playing : 0;
 }
 
 /// @brief Return the currently-displayed Pixels frame (NULL until first frame decodes).
 /// The returned pointer is owned by the player — borrow only, don't free.
 void *rt_videoplayer_get_frame(void *obj) {
-    return obj ? ((rt_videoplayer *)obj)->frame_display : NULL;
+    rt_videoplayer *vp = videoplayer_checked(obj);
+    return vp ? vp->frame_display : NULL;
 }
 
 #else

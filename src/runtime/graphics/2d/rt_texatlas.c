@@ -229,6 +229,10 @@ void rt_texatlas_add(void *atlas, void *name, int64_t x, int64_t y, int64_t w, i
     const char *cname = rt_string_cstr(name);
     if (!cname)
         return;
+    if (!*cname) {
+        rt_trap("TextureAtlas.Add: name must not be empty");
+        return;
+    }
     if (strlen(cname) >= TEXATLAS_NAME_LEN) {
         rt_trap("TextureAtlas.Add: name too long (max 31 bytes)");
         return;

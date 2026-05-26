@@ -57,7 +57,7 @@ Measurement and Canvas text helpers validate that the supplied handle is a `Bitm
 
 ## Viper.Graphics.SpriteFont
 
-`SpriteFont` is the game-facing alias for `BitmapFont`. It exposes the same loaders, properties, and `TextWidth(text)` method, but `SpriteFont.LoadBDF(path)` and `SpriteFont.LoadPSF(path)` are typed as returning `SpriteFont`.
+`SpriteFont` is the game-facing alias for `BitmapFont`. It exposes the same loaders, properties, and `TextWidth(text)` method. `SpriteFont.LoadBDF(path)` and `SpriteFont.LoadPSF(path)` return runtime handles tagged as `SpriteFont`, and all `BitmapFont` measurement and Canvas text methods accept either `BitmapFont` or `SpriteFont` handles.
 
 ---
 

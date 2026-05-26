@@ -208,6 +208,12 @@ static int64_t tilemap_mul_saturating(int64_t a, int64_t b) {
     return a * b;
 }
 
+static int64_t tilemap_scale_dimension(int64_t dim, int64_t scale_percent) {
+    int64_t scaled = tilemap_mul_saturating(dim, scale_percent);
+    scaled /= 100;
+    return scaled <= 0 ? 1 : scaled;
+}
+
 /// @brief Clip a 1-D span [*start, *start + *length) so it fits within [0, limit).
 /// @details Adjusts *start and *length in-place: negative starts are advanced to 0 (consuming
 ///          the leading skipped tiles from *length); spans that extend past @p limit are
@@ -551,8 +557,8 @@ static void rt_tilemap_draw_region_layer_impl(rt_tilemap_impl *tilemap,
     int64_t tw = tilemap->tile_width;
     int64_t th = tilemap->tile_height;
 
-    int64_t end_y = view_y + view_h;
-    int64_t end_x = view_x + view_w;
+    int64_t end_y = tilemap_add_saturating(view_y, view_h);
+    int64_t end_x = tilemap_add_saturating(view_x, view_w);
     for (int64_t ty = view_y; ty < end_y; ty++) {
         for (int64_t tx = view_x; tx < end_x; tx++) {
             int64_t tile_index =
@@ -589,8 +595,8 @@ static int64_t rt_tilemap_count_drawn_region_layer_impl(rt_tilemap_impl *tilemap
         return 0;
 
     int64_t count = 0;
-    int64_t end_y = view_y + view_h;
-    int64_t end_x = view_x + view_w;
+    int64_t end_y = tilemap_add_saturating(view_y, view_h);
+    int64_t end_x = tilemap_add_saturating(view_x, view_w);
     for (int64_t ty = view_y; ty < end_y; ty++) {
         for (int64_t tx = view_x; tx < end_x; tx++) {
             int64_t tile_index =
@@ -699,12 +705,8 @@ void rt_tilemap_draw_scaled(void *tilemap_ptr,
     if (!tilemap)
         return;
 
-    int64_t dst_w = tilemap->tile_width * scale_percent / 100;
-    int64_t dst_h = tilemap->tile_height * scale_percent / 100;
-    if (dst_w <= 0)
-        dst_w = 1;
-    if (dst_h <= 0)
-        dst_h = 1;
+    int64_t dst_w = tilemap_scale_dimension(tilemap->tile_width, scale_percent);
+    int64_t dst_h = tilemap_scale_dimension(tilemap->tile_height, scale_percent);
 
     int64_t first_x = 0;
     int64_t first_y = 0;
@@ -716,8 +718,8 @@ void rt_tilemap_draw_scaled(void *tilemap_ptr,
                               &first_y, &vis_h))
         return;
 
-    int64_t end_y = first_y + vis_h;
-    int64_t end_x = first_x + vis_w;
+    int64_t end_y = tilemap_add_saturating(first_y, vis_h);
+    int64_t end_x = tilemap_add_saturating(first_x, vis_w);
     for (int32_t li = 0; li < tilemap->layer_count; li++) {
         tm_layer *layer = &tilemap->layers[li];
         if (!layer->visible || !layer->tiles)
@@ -735,8 +737,8 @@ void rt_tilemap_draw_scaled(void *tilemap_ptr,
                 if (tile_index <= 0 || tile_index > tile_count)
                     continue;
                 int64_t ti = tile_index - 1;
-                int64_t sx = (ti % tileset_cols) * tilemap->tile_width;
-                int64_t sy = (ti / tileset_cols) * tilemap->tile_height;
+                int64_t sx = tilemap_mul_saturating(ti % tileset_cols, tilemap->tile_width);
+                int64_t sy = tilemap_mul_saturating(ti / tileset_cols, tilemap->tile_height);
                 void *tile = rt_pixels_new(tilemap->tile_width, tilemap->tile_height);
                 if (!tile)
                     continue;
@@ -744,8 +746,11 @@ void rt_tilemap_draw_scaled(void *tilemap_ptr,
                                tilemap->tile_height);
                 void *scaled = rt_pixels_scale(tile, dst_w, dst_h);
                 if (scaled) {
-                    rt_canvas_blit(canvas_ptr, tx * dst_w + offset_x, ty * dst_h + offset_y,
-                                   scaled);
+                    int64_t screen_x =
+                        tilemap_add_saturating(tilemap_mul_saturating(tx, dst_w), offset_x);
+                    int64_t screen_y =
+                        tilemap_add_saturating(tilemap_mul_saturating(ty, dst_h), offset_y);
+                    rt_canvas_blit(canvas_ptr, screen_x, screen_y, scaled);
                     tilemap_release_temp(scaled);
                 }
                 tilemap_release_temp(tile);
@@ -814,12 +819,8 @@ int64_t rt_tilemap_count_drawn_visible_scaled(
     rt_tilemap_impl *tilemap = tilemap_checked(tilemap_ptr, NULL);
     if (!tilemap)
         return 0;
-    int64_t dst_w = tilemap->tile_width * scale_percent / 100;
-    int64_t dst_h = tilemap->tile_height * scale_percent / 100;
-    if (dst_w <= 0)
-        dst_w = 1;
-    if (dst_h <= 0)
-        dst_h = 1;
+    int64_t dst_w = tilemap_scale_dimension(tilemap->tile_width, scale_percent);
+    int64_t dst_h = tilemap_scale_dimension(tilemap->tile_height, scale_percent);
     int64_t first_x = 0;
     int64_t first_y = 0;
     int64_t vis_w = 0;
@@ -846,14 +847,10 @@ void *rt_tilemap_hit_test_scaled(void *tilemap_ptr,
     int8_t in_bounds = 0;
     int64_t tile = 0;
     if (tilemap && scale_percent > 0) {
-        int64_t dst_w = tilemap->tile_width * scale_percent / 100;
-        int64_t dst_h = tilemap->tile_height * scale_percent / 100;
-        if (dst_w <= 0)
-            dst_w = 1;
-        if (dst_h <= 0)
-            dst_h = 1;
-        tx = tilemap_floor_div(screen_x - offset_x, dst_w);
-        ty = tilemap_floor_div(screen_y - offset_y, dst_h);
+        int64_t dst_w = tilemap_scale_dimension(tilemap->tile_width, scale_percent);
+        int64_t dst_h = tilemap_scale_dimension(tilemap->tile_height, scale_percent);
+        tx = tilemap_floor_div(tilemap_sub_saturating(screen_x, offset_x), dst_w);
+        ty = tilemap_floor_div(tilemap_sub_saturating(screen_y, offset_y), dst_h);
         in_bounds = (tx >= 0 && ty >= 0 && tx < tilemap->width && ty < tilemap->height) ? 1 : 0;
         if (in_bounds)
             tile = rt_tilemap_get_tile(tilemap_ptr, tx, ty);

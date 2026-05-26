@@ -277,6 +277,22 @@ TEST(RTSprite, TextureAtlasLoadGrid) {
     release_object(pixels);
 }
 
+TEST(RTSprite, TextureAtlasEmptyLookupIsAbsent) {
+    void *pixels = rt_pixels_new(8, 8);
+    ASSERT_TRUE(pixels != nullptr);
+    void *atlas = rt_texatlas_new(pixels);
+    ASSERT_TRUE(atlas != nullptr);
+    rt_string empty = rt_string_from_bytes("", 0);
+    ASSERT_TRUE(empty != nullptr);
+
+    ASSERT_TRUE(rt_texatlas_has(atlas, empty) == 0);
+    ASSERT_TRUE(rt_texatlas_region_count(atlas) == 0);
+
+    rt_string_unref(empty);
+    release_object(atlas);
+    release_object(pixels);
+}
+
 TEST(RTSprite, SpritebatchDrawAtlasVariantsIncrementCount) {
     void *pixels = rt_pixels_new(32, 32);
     ASSERT_TRUE(pixels != nullptr);
@@ -451,6 +467,21 @@ TEST(RTSprite, SetAndGetRegion) {
     ASSERT(p == expected, "region pixel 0,0 matches atlas 0,0");
 
     release_object(region);
+    release_object(sheet);
+    release_object(atlas);
+}
+
+TEST(RTSprite, SpriteSheetRejectsEmptyRegionName) {
+    void *atlas = make_test_atlas(16, 16);
+    void *sheet = rt_spritesheet_new(atlas);
+    ASSERT(sheet != NULL, "spritesheet_new should return non-null");
+
+    rt_string empty = rt_const_cstr("");
+    rt_spritesheet_set_region(sheet, empty, 0, 0, 8, 8);
+    ASSERT(rt_spritesheet_region_count(sheet) == 0, "empty region name is ignored");
+    ASSERT(rt_spritesheet_has_region(sheet, empty) == 0, "empty region name is not present");
+    rt_string_unref(empty);
+
     release_object(sheet);
     release_object(atlas);
 }

@@ -27,6 +27,8 @@
 #include "rt_string.h"
 #include <stdint.h>
 
+#define RT_VIDEOPLAYER_CLASS_ID INT64_C(-0x520120)
+
 #ifdef __cplusplus
 extern "C" {
 #endif

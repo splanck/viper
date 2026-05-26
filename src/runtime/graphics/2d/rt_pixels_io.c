@@ -491,9 +491,15 @@ void *rt_pixels_load_png(void *path) {
         return NULL;
 
     // Read entire file into memory (64-bit safe)
-    px_fseek(f, 0, SEEK_END);
+    if (px_fseek(f, 0, SEEK_END) != 0) {
+        fclose(f);
+        return NULL;
+    }
     int64_t file_len = px_ftell(f);
-    px_fseek(f, 0, SEEK_SET);
+    if (px_fseek(f, 0, SEEK_SET) != 0) {
+        fclose(f);
+        return NULL;
+    }
     if (file_len < 8 || file_len > 256 * 1024 * 1024) {
         fclose(f);
         return NULL;
@@ -2122,11 +2128,17 @@ void *rt_pixels_load_jpeg(void *path) {
     if (!f)
         return NULL;
 
-    fseek(f, 0, SEEK_END);
-    long file_len = ftell(f);
-    fseek(f, 0, SEEK_SET);
+    if (px_fseek(f, 0, SEEK_END) != 0) {
+        fclose(f);
+        return NULL;
+    }
+    int64_t file_len = px_ftell(f);
+    if (px_fseek(f, 0, SEEK_SET) != 0) {
+        fclose(f);
+        return NULL;
+    }
 
-    if (file_len <= 0 || file_len > 256 * 1024 * 1024) {
+    if (file_len <= 0 || file_len > INT64_C(256) * 1024 * 1024) {
         fclose(f);
         return NULL;
     }

@@ -267,9 +267,9 @@ static int8_t rt_canvas_get_scaled_clip_bounds(
     if (py0)
         *py0 = rtg_scale_up_i64(clip_y, scale);
     if (px1)
-        *px1 = rtg_scale_up_i64(clip_x + clip_w, scale);
+        *px1 = rtg_scale_up_i64(rtg_add_sat64(clip_x, clip_w), scale);
     if (py1)
-        *py1 = rtg_scale_up_i64(clip_y + clip_h, scale);
+        *py1 = rtg_scale_up_i64(rtg_add_sat64(clip_y, clip_h), scale);
     return 1;
 }
 
@@ -551,8 +551,9 @@ void rt_canvas_flood_fill(void *canvas_ptr, int64_t start_x, int64_t start_y, in
     int64_t clip_h = 0;
     if (!rt_canvas_get_logical_clip_bounds(canvas, &clip_x, &clip_y, &clip_w, &clip_h))
         return;
-    if (start_x < clip_x || start_x >= clip_x + clip_w || start_y < clip_y ||
-        start_y >= clip_y + clip_h)
+    int64_t clip_x1 = rtg_add_sat64(clip_x, clip_w);
+    int64_t clip_y1 = rtg_add_sat64(clip_y, clip_h);
+    if (start_x < clip_x || start_x >= clip_x1 || start_y < clip_y || start_y >= clip_y1)
         return;
 
     float scale = 1.0f;
@@ -1406,13 +1407,14 @@ void rt_canvas_gradient_h(
         // vgfx_line auto-scales via coord_scale, so pass logical coords.
         int64_t w_minus1 = orig_w > 1 ? orig_w - 1 : 1;
         for (int64_t col = 0; col < w; col++) {
-            int64_t gradient_col = (x + col) - orig_x;
-            int64_t color = rt_color_lerp(c1, c2, gradient_col * 100 / w_minus1);
+            int64_t logical_x = rtg_add_sat64(x, col);
+            int64_t gradient_col = rtg_add_sat64(logical_x, -orig_x);
+            int64_t color = rt_color_lerp(c1, c2, rtg_mul_sat64(gradient_col, 100) / w_minus1);
             vgfx_line(canvas->gfx_win,
-                      (int32_t)(x + col),
-                      (int32_t)y,
-                      (int32_t)(x + col),
-                      (int32_t)(y + h - 1),
+                      rtg_clamp_i64_to_i32(logical_x),
+                      rtg_clamp_i64_to_i32(y),
+                      rtg_clamp_i64_to_i32(logical_x),
+                      rtg_clamp_i64_to_i32(rtg_add_sat64(y, h - 1)),
                       rt_canvas_adv_color_to_vgfx_rgb(color));
         }
         return;
@@ -1420,9 +1422,9 @@ void rt_canvas_gradient_h(
 
     float scale = vgfx_window_get_scale(canvas->gfx_win);
     int64_t px0 = rtg_scale_up_i64(x, scale);
-    int64_t px1 = rtg_scale_up_i64(x + w, scale);
+    int64_t px1 = rtg_scale_up_i64(rtg_add_sat64(x, w), scale);
     int64_t py0 = rtg_scale_up_i64(y, scale);
-    int64_t py1 = rtg_scale_up_i64(y + h, scale);
+    int64_t py1 = rtg_scale_up_i64(rtg_add_sat64(y, h), scale);
     if (px0 < 0)
         px0 = 0;
     if (py0 < 0)
@@ -1442,8 +1444,9 @@ void rt_canvas_gradient_h(
     int64_t w_minus1 = orig_w > 1 ? orig_w - 1 : 1;
     memset(row_buf, 0, (size_t)draw_w * 4u);
     for (int64_t col = 0; col < w; col++) {
-        int64_t col_px0 = rtg_scale_up_i64(x + col, scale);
-        int64_t col_px1 = rtg_scale_up_i64(x + col + 1, scale);
+        int64_t logical_x = rtg_add_sat64(x, col);
+        int64_t col_px0 = rtg_scale_up_i64(logical_x, scale);
+        int64_t col_px1 = rtg_scale_up_i64(rtg_add_sat64(logical_x, 1), scale);
         if (col_px1 <= col_px0)
             col_px1 = col_px0 + 1;
         if (col_px0 < px0)
@@ -1453,9 +1456,10 @@ void rt_canvas_gradient_h(
         if (col_px1 <= col_px0)
             continue;
 
-        int64_t gradient_col = (x + col) - orig_x;
+        int64_t gradient_col = rtg_add_sat64(logical_x, -orig_x);
         uint32_t rgba =
-            rt_pixels_color_to_rgba(rt_color_lerp(c1, c2, gradient_col * 100 / w_minus1));
+            rt_pixels_color_to_rgba(
+                rt_color_lerp(c1, c2, rtg_mul_sat64(gradient_col, 100) / w_minus1));
         uint8_t cr = (uint8_t)((rgba >> 24) & 0xFF);
         uint8_t cg = (uint8_t)((rgba >> 16) & 0xFF);
         uint8_t cb = (uint8_t)((rgba >> 8) & 0xFF);
@@ -1501,13 +1505,14 @@ void rt_canvas_gradient_v(
         // Fallback: vgfx_line auto-scales via coord_scale, so pass logical coords.
         int64_t h_minus1 = orig_h > 1 ? orig_h - 1 : 1;
         for (int64_t row = 0; row < h; row++) {
-            int64_t gradient_row = (y + row) - orig_y;
-            int64_t color = rt_color_lerp(c1, c2, gradient_row * 100 / h_minus1);
+            int64_t logical_y = rtg_add_sat64(y, row);
+            int64_t gradient_row = rtg_add_sat64(logical_y, -orig_y);
+            int64_t color = rt_color_lerp(c1, c2, rtg_mul_sat64(gradient_row, 100) / h_minus1);
             vgfx_line(canvas->gfx_win,
-                      (int32_t)x,
-                      (int32_t)(y + row),
-                      (int32_t)(x + w - 1),
-                      (int32_t)(y + row),
+                      rtg_clamp_i64_to_i32(x),
+                      rtg_clamp_i64_to_i32(logical_y),
+                      rtg_clamp_i64_to_i32(rtg_add_sat64(x, w - 1)),
+                      rtg_clamp_i64_to_i32(logical_y),
                       rt_canvas_adv_color_to_vgfx_rgb(color));
         }
         return;
@@ -1515,9 +1520,9 @@ void rt_canvas_gradient_v(
 
     float scale = vgfx_window_get_scale(canvas->gfx_win);
     int64_t px0 = rtg_scale_up_i64(x, scale);
-    int64_t px1 = rtg_scale_up_i64(x + w, scale);
+    int64_t px1 = rtg_scale_up_i64(rtg_add_sat64(x, w), scale);
     int64_t py0 = rtg_scale_up_i64(y, scale);
-    int64_t py1 = rtg_scale_up_i64(y + h, scale);
+    int64_t py1 = rtg_scale_up_i64(rtg_add_sat64(y, h), scale);
     if (px0 < 0)
         px0 = 0;
     if (py0 < 0)
@@ -1533,8 +1538,9 @@ void rt_canvas_gradient_v(
     int64_t h_minus1 = orig_h > 1 ? orig_h - 1 : 1;
 
     for (int64_t row = 0; row < h; row++) {
-        int64_t row_py0 = rtg_scale_up_i64(y + row, scale);
-        int64_t row_py1 = rtg_scale_up_i64(y + row + 1, scale);
+        int64_t logical_y = rtg_add_sat64(y, row);
+        int64_t row_py0 = rtg_scale_up_i64(logical_y, scale);
+        int64_t row_py1 = rtg_scale_up_i64(rtg_add_sat64(logical_y, 1), scale);
         if (row_py1 <= row_py0)
             row_py1 = row_py0 + 1;
         if (row_py0 < py0)
@@ -1544,9 +1550,10 @@ void rt_canvas_gradient_v(
         if (row_py1 <= row_py0)
             continue;
 
-        int64_t gradient_row = (y + row) - orig_y;
+        int64_t gradient_row = rtg_add_sat64(logical_y, -orig_y);
         uint32_t rgba =
-            rt_pixels_color_to_rgba(rt_color_lerp(c1, c2, gradient_row * 100 / h_minus1));
+            rt_pixels_color_to_rgba(
+                rt_color_lerp(c1, c2, rtg_mul_sat64(gradient_row, 100) / h_minus1));
         uint8_t cr = (uint8_t)((rgba >> 24) & 0xFF);
         uint8_t cg = (uint8_t)((rgba >> 16) & 0xFF);
         uint8_t cb = (uint8_t)((rgba >> 8) & 0xFF);

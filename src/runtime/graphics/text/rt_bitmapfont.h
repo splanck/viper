@@ -33,6 +33,7 @@
 #include <stdint.h>
 
 #define RT_BITMAPFONT_CLASS_ID INT64_C(-0x600202)
+#define RT_SPRITEFONT_CLASS_ID INT64_C(-0x600203)
 
 #ifdef __cplusplus
 extern "C" {
@@ -46,11 +47,15 @@ extern "C" {
 /// @param path Path to the .bdf file.
 /// @return BitmapFont handle, or NULL on missing, truncated, or malformed input.
 void *rt_bitmapfont_load_bdf(rt_string path);
+/// @brief Load a BDF font and tag it as a SpriteFont alias handle.
+void *rt_spritefont_load_bdf(rt_string path);
 
 /// @brief Load a PSF (PC Screen Font) v1 or v2 file.
 /// @param path Path to the .psf file.
 /// @return BitmapFont handle, or NULL on missing, truncated, or malformed input.
 void *rt_bitmapfont_load_psf(rt_string path);
+/// @brief Load a PSF font and tag it as a SpriteFont alias handle.
+void *rt_spritefont_load_psf(rt_string path);
 
 /// @brief GC finalizer — free glyph bitmap data.
 void rt_bitmapfont_destroy(void *font);

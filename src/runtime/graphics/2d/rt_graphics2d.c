@@ -98,6 +98,13 @@
 #define RT2D_GPUTEXTURE_CLASS_ID INT64_C(-0x620125)
 #define RT2D_SCREENSCALER_CLASS_ID INT64_C(-0x620126)
 
+static int rt2d_normalize_angle_degrees(double *angle_deg) {
+    if (!angle_deg || !isfinite(*angle_deg))
+        return 0;
+    *angle_deg = fmod(*angle_deg, 360.0);
+    return isfinite(*angle_deg);
+}
+
 typedef struct {
     int64_t magic;
     void *pixels;
@@ -342,6 +349,11 @@ static int32_t rt2d_has_class(void *obj, int64_t class_id) {
 ///        @p min_size bytes (guards struct-layout mismatches before a cast).
 static int32_t rt2d_has_class_min(void *obj, int64_t class_id, size_t min_size) {
     return obj && rt_obj_is_instance(obj, class_id, min_size);
+}
+
+static int32_t rt2d_is_bitmap_font_handle(void *font) {
+    return font && (rt_obj_is_instance(font, RT_BITMAPFONT_CLASS_ID, 0) ||
+                    rt_obj_is_instance(font, RT_SPRITEFONT_CLASS_ID, 0));
 }
 
 /// @brief Safe-cast an opaque handle to rt_shader2d_impl, or NULL if not one.
@@ -1028,7 +1040,7 @@ static void blit_pixels_rotated(void *dst,
                                 int64_t blend_mode,
                                 int64_t filter,
                                 int64_t wrap) {
-    if (!dst || !src || !isfinite(angle_deg))
+    if (!dst || !src || !rt2d_normalize_angle_degrees(&angle_deg))
         return;
     int64_t sw = rt_pixels_width(src);
     int64_t sh = rt_pixels_height(src);
@@ -1698,7 +1710,7 @@ void rt_renderer2d_draw_texture(void *renderer, void *texture, int64_t x, int64_
 
 void rt_renderer2d_draw_texture_rotated(
     void *renderer, void *texture, int64_t x, int64_t y, double angle_deg) {
-    if (!texture || !texture2d_checked(texture))
+    if (!texture || !texture2d_checked(texture) || !rt2d_normalize_angle_degrees(&angle_deg))
         return;
     rt_renderer2d_impl *impl = renderer2d_checked(renderer);
     if (!impl)
@@ -1735,7 +1747,7 @@ void rt_renderer2d_draw_texture_rotated_at(void *renderer,
                                            int64_t pivot_x,
                                            int64_t pivot_y,
                                            double angle_deg) {
-    if (!texture || !texture2d_checked(texture))
+    if (!texture || !texture2d_checked(texture) || !rt2d_normalize_angle_degrees(&angle_deg))
         return;
     rt_renderer2d_impl *impl = renderer2d_checked(renderer);
     if (!impl)
@@ -2000,9 +2012,12 @@ void rt_renderer2d_end(void *renderer, void *canvas) {
             int64_t blit_x = cmd->x;
             int64_t blit_y = cmd->y;
             if (cmd->has_rotation) {
+                double angle_deg = cmd->angle_deg;
+                if (!rt2d_normalize_angle_degrees(&angle_deg))
+                    continue;
                 int64_t sw = rt_pixels_width(pixels);
                 int64_t sh = rt_pixels_height(pixels);
-                double radians = cmd->angle_deg * (double)RT2D_PI / 180.0;
+                double radians = angle_deg * (double)RT2D_PI / 180.0;
                 double cos_a = cos(radians);
                 double sin_a = sin(radians);
                 double corners[4][2] = {
@@ -2043,7 +2058,7 @@ void rt_renderer2d_end(void *renderer, void *canvas) {
                                     pixels,
                                     cmd->pivot_x,
                                     cmd->pivot_y,
-                                    cmd->angle_deg,
+                                    angle_deg,
                                     cmd->tint,
                                     cmd->alpha,
                                     RT_GRAPHICS2D_BLEND_OPAQUE,
@@ -3151,7 +3166,7 @@ void *rt_textrenderer2d_new(void) {
 ///          Pass NULL to revert to the built-in Canvas font.
 void rt_textrenderer2d_set_font(void *renderer, void *font) {
     if (!rt2d_has_class(renderer, RT2D_TEXTRENDERER_CLASS_ID) ||
-        (font && !rt_obj_is_instance(font, RT_BITMAPFONT_CLASS_ID, 0)))
+        (font && !rt2d_is_bitmap_font_handle(font)))
         return;
     rt_textrenderer2d_impl *impl = (rt_textrenderer2d_impl *)renderer;
     retain_ref(font);
@@ -3229,7 +3244,7 @@ static void sdffont_finalize(void *obj) {
 ///          rendering will use `spread` directly; the current bitmap-backed
 ///          implementation records it but ignores it at draw time.
 void *rt_sdffont_new(void *bitmap_font, int64_t spread) {
-    if (bitmap_font && !rt_obj_is_instance(bitmap_font, RT_BITMAPFONT_CLASS_ID, 0))
+    if (bitmap_font && !rt2d_is_bitmap_font_handle(bitmap_font))
         return NULL;
     retain_ref(bitmap_font);
     rt_sdffont_impl *font =
@@ -4510,7 +4525,7 @@ void *rt_textlayout2d_new(void) {
 /// @brief Bind a BitmapFont, retaining a reference.
 void rt_textlayout2d_set_font(void *layout, void *font) {
     if (rt2d_has_class(layout, RT2D_TEXTLAYOUT_CLASS_ID) &&
-        (!font || rt_obj_is_instance(font, RT_BITMAPFONT_CLASS_ID, 0)))
+        (!font || rt2d_is_bitmap_font_handle(font)))
         spriterenderer2d_set_ref(&((rt_textlayout2d_impl *)layout)->font, font);
 }
 

@@ -314,6 +314,12 @@ void *rt_scene_node_new(void) {
 
     node->parent = NULL;
     node->children = rt_seq_new();
+    if (!node->children) {
+        if (rt_obj_release_check0(node))
+            rt_obj_free(node);
+        rt_trap("SceneNode: child list allocation failed");
+        return NULL;
+    }
     rt_seq_set_owns_elements(node->children, 1);
     node->sprite = NULL;
     node->name = NULL;
@@ -424,14 +430,21 @@ static void update_world_transform(scene_node_impl *node) {
     // Use a small fixed inline buffer; spill to heap for deep hierarchies.
     scene_node_impl *inline_buf[64];
     scene_node_impl **chain = inline_buf;
-    int capacity = 64;
-    int depth = 0;
+    int64_t capacity = 64;
+    int64_t depth = 0;
     int heap_allocated = 0;
 
     scene_node_impl *cur = node;
     while (cur && cur->transform_dirty) {
         if (depth >= capacity) {
-            int new_cap = capacity * 2;
+            if (capacity > INT64_MAX / 2 ||
+                (uint64_t)(capacity * 2) > (uint64_t)SIZE_MAX / sizeof(*chain)) {
+                if (heap_allocated)
+                    free(chain);
+                rt_trap("SceneNode: transform chain too deep");
+                return;
+            }
+            int64_t new_cap = capacity * 2;
             scene_node_impl **grown = malloc((size_t)new_cap * sizeof(*grown));
             if (!grown) {
                 if (heap_allocated)
@@ -450,7 +463,7 @@ static void update_world_transform(scene_node_impl *node) {
     }
 
     // Process top-down (root-most dirty node first)
-    for (int i = depth - 1; i >= 0; i--)
+    for (int64_t i = depth - 1; i >= 0; i--)
         apply_node_transform(chain[i]);
 
     if (heap_allocated)
@@ -730,7 +743,19 @@ void rt_scene_node_add_child(void *node_ptr, void *child_ptr) {
         rt_scene_node_remove_child(child->parent, child);
     }
 
+    if (!node->children) {
+        if (rt_obj_release_check0(child))
+            rt_obj_free(child);
+        return;
+    }
+    int64_t before = rt_seq_len(node->children);
     rt_seq_push(node->children, child);
+    if (rt_seq_len(node->children) != before + 1 ||
+        rt_seq_get(node->children, before) != child) {
+        if (rt_obj_release_check0(child))
+            rt_obj_free(child);
+        return;
+    }
     child->parent = node;
     mark_transform_dirty(child);
 
@@ -1023,6 +1048,12 @@ void *rt_scene_new(void) {
     memset(scene, 0, sizeof(scene_impl));
 
     scene->root = (scene_node_impl *)rt_scene_node_new();
+    if (!scene->root) {
+        if (rt_obj_release_check0(scene))
+            rt_obj_free(scene);
+        rt_trap("Scene: root allocation failed");
+        return NULL;
+    }
     rt_scene_node_set_name(scene->root, rt_const_cstr("root"));
     rt_obj_set_finalizer(scene, scene_finalize);
 
@@ -1046,7 +1077,7 @@ void rt_scene_add(void *scene_ptr, void *node_ptr) {
     if (!scene_ptr || !node_ptr)
         return;
     scene_impl *scene = scene_checked_or_null(scene_ptr);
-    if (!scene)
+    if (!scene || !scene->root)
         return;
     rt_scene_node_add_child(scene->root, node_ptr);
 }
@@ -1060,7 +1091,7 @@ void rt_scene_remove(void *scene_ptr, void *node_ptr) {
     if (!scene_ptr || !node_ptr)
         return;
     scene_impl *scene = scene_checked_or_null(scene_ptr);
-    if (!scene)
+    if (!scene || !scene->root)
         return;
     rt_scene_node_remove_child(scene->root, node_ptr);
 }
@@ -1071,7 +1102,7 @@ void *rt_scene_find(void *scene_ptr, rt_string name) {
     if (!scene_ptr)
         return NULL;
     scene_impl *scene = scene_checked_or_null(scene_ptr);
-    if (!scene)
+    if (!scene || !scene->root)
         return NULL;
     return rt_scene_node_find(scene->root, name);
 }
@@ -1149,11 +1180,13 @@ void rt_scene_draw(void *scene_ptr, void *canvas) {
         return;
 
     scene_impl *scene = scene_checked_or_null(scene_ptr);
-    if (!scene)
+    if (!scene || !scene->root)
         return;
 
     // Collect all visible nodes
     void *nodes = rt_seq_new();
+    if (!nodes)
+        return;
     collect_visible_nodes(scene->root, nodes);
 
     int64_t count = rt_seq_len(nodes);
@@ -1214,11 +1247,13 @@ void rt_scene_draw_with_camera(void *scene_ptr, void *canvas, void *camera) {
         return;
 
     scene_impl *scene = scene_checked_or_null(scene_ptr);
-    if (!scene)
+    if (!scene || !scene->root)
         return;
 
     // Collect all visible nodes
     void *nodes = rt_seq_new();
+    if (!nodes)
+        return;
     collect_visible_nodes(scene->root, nodes);
 
     int64_t count = rt_seq_len(nodes);
@@ -1281,7 +1316,7 @@ void rt_scene_draw_with_camera(void *scene_ptr, void *canvas, void *camera) {
 /// @param scene_ptr  Scene handle.
 void rt_scene_update(void *scene_ptr) {
     scene_impl *scene = scene_checked_or_null(scene_ptr);
-    if (!scene)
+    if (!scene || !scene->root)
         return;
     rt_scene_node_update(scene->root);
 }
@@ -1291,7 +1326,7 @@ void rt_scene_update(void *scene_ptr) {
 ///   Returns 0 for a NULL or invalid scene.
 int64_t rt_scene_node_count(void *scene_ptr) {
     scene_impl *scene = scene_checked_or_null(scene_ptr);
-    if (!scene)
+    if (!scene || !scene->root)
         return 0;
     return scene && scene->root ? rt_seq_len(scene->root->children) : 0;
 }
@@ -1303,7 +1338,7 @@ int64_t rt_scene_node_count(void *scene_ptr) {
 /// @param scene_ptr  Scene handle.
 void rt_scene_clear(void *scene_ptr) {
     scene_impl *scene = scene_checked_or_null(scene_ptr);
-    if (!scene)
+    if (!scene || !scene->root)
         return;
 
     // Clear parent pointers before removing children to avoid stale references

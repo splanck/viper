@@ -10,7 +10,7 @@
 //
 //===----------------------------------------------------------------------===//
 
-#include "../../runtime/graphics/rt_gui_internal.h"
+#include "../../runtime/graphics/gui/rt_gui_internal.h"
 #include "rt_gui.h"
 #include "rt_pixels.h"
 

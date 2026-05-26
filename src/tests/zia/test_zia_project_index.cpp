@@ -12,7 +12,7 @@
 #include "runtime/collections/rt_map.h"
 #include "runtime/collections/rt_seq.h"
 #include "runtime/core/rt_string.h"
-#include "runtime/graphics/rt_zia_completion.h"
+#include "runtime/graphics/common/rt_zia_completion.h"
 #include "runtime/oop/rt_object.h"
 #include "tests/TestHarness.hpp"
 

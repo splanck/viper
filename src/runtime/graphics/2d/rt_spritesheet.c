@@ -279,6 +279,8 @@ void rt_spritesheet_set_region(
     cstr = rt_string_cstr(name);
     if (!cstr)
         return;
+    if (!*cstr)
+        return;
     if (!spritesheet_region_valid(ss, x, y, w, h))
         return;
 

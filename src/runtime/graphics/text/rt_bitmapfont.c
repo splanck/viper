@@ -31,10 +31,22 @@
 #include "rt_pixels_internal.h"
 #include "rt_string.h"
 
+#include <limits.h>
 #include <stdint.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#if !defined(_WIN32)
+#include <sys/types.h>
+#endif
+
+#if defined(_WIN32)
+#define bf_fseek(fp, off, whence) _fseeki64((fp), (off), (whence))
+#define bf_ftell(fp) _ftelli64((fp))
+#else
+#define bf_fseek(fp, off, whence) fseeko((fp), (off_t)(off), (whence))
+#define bf_ftell(fp) ftello((fp))
+#endif
 
 //=============================================================================
 // Internal Data Structures
@@ -64,9 +76,10 @@ typedef struct {
 } rt_bitmapfont_impl;
 
 static rt_bitmapfont_impl *bitmapfont_checked(void *font_ptr) {
-    return rt_obj_is_instance(font_ptr, RT_BITMAPFONT_CLASS_ID, sizeof(rt_bitmapfont_impl))
-               ? (rt_bitmapfont_impl *)font_ptr
-               : NULL;
+    if (rt_obj_is_instance(font_ptr, RT_BITMAPFONT_CLASS_ID, sizeof(rt_bitmapfont_impl)) ||
+        rt_obj_is_instance(font_ptr, RT_SPRITEFONT_CLASS_ID, sizeof(rt_bitmapfont_impl)))
+        return (rt_bitmapfont_impl *)font_ptr;
+    return NULL;
 }
 
 //=============================================================================
@@ -79,6 +92,14 @@ static inline int bf_row_bytes(int width) {
 }
 
 static int bf_next_codepoint(const char *str, size_t byte_len, size_t *index, int *codepoint_out);
+
+static int64_t bf_add_sat64(int64_t a, int64_t b) {
+    if (b > 0 && a > INT64_MAX - b)
+        return INT64_MAX;
+    if (b < 0 && a < INT64_MIN - b)
+        return INT64_MIN;
+    return a + b;
+}
 
 /// @brief Get a glyph for a codepoint, returning a fallback if not available.
 static const rt_glyph *bf_get_glyph(const rt_bitmapfont_impl *font, int codepoint) {
@@ -150,11 +171,11 @@ static void bf_text_bounds(
     while (bf_next_codepoint(str, len, &index, &codepoint)) {
         const rt_glyph *g = bf_get_glyph(font, codepoint);
         int64_t span_left = pen_x;
-        int64_t span_right = pen_x + (g ? g->advance : font->max_width);
+        int64_t span_right = bf_add_sat64(pen_x, g ? g->advance : font->max_width);
 
         if (g && g->bitmap && g->width > 0 && g->height > 0) {
-            int64_t glyph_left = pen_x + g->x_offset;
-            int64_t glyph_right = glyph_left + g->width;
+            int64_t glyph_left = bf_add_sat64(pen_x, g->x_offset);
+            int64_t glyph_right = bf_add_sat64(glyph_left, g->width);
             if (glyph_left < span_left)
                 span_left = glyph_left;
             if (glyph_right > span_right)
@@ -162,7 +183,7 @@ static void bf_text_bounds(
         }
 
         bf_extend_bounds(span_left, span_right, min_x, max_x, has_bounds);
-        pen_x += g ? g->advance : font->max_width;
+        pen_x = bf_add_sat64(pen_x, g ? g->advance : font->max_width);
     }
 }
 
@@ -376,7 +397,7 @@ static int bf_hex_byte(const char *s) {
 /// Parses ENCODING, BBX, DWIDTH, BITMAP entries and reconstructs per-glyph 1-bit
 /// bitmaps. Supports up to 256 codepoints and fails closed on malformed or
 /// truncated files. Returns NULL on file/parse failure or empty font.
-void *rt_bitmapfont_load_bdf(rt_string path) {
+static void *bitmapfont_load_bdf_as(rt_string path, int64_t class_id) {
     if (!path)
         return NULL;
 
@@ -389,7 +410,7 @@ void *rt_bitmapfont_load_bdf(rt_string path) {
         return NULL;
 
     rt_bitmapfont_impl *font =
-        (rt_bitmapfont_impl *)rt_obj_new_i64(RT_BITMAPFONT_CLASS_ID, (int64_t)sizeof(rt_bitmapfont_impl));
+        (rt_bitmapfont_impl *)rt_obj_new_i64(class_id, (int64_t)sizeof(rt_bitmapfont_impl));
     if (!font) {
         fclose(f);
         return NULL;
@@ -530,6 +551,14 @@ void *rt_bitmapfont_load_bdf(rt_string path) {
     return font;
 }
 
+void *rt_bitmapfont_load_bdf(rt_string path) {
+    return bitmapfont_load_bdf_as(path, RT_BITMAPFONT_CLASS_ID);
+}
+
+void *rt_spritefont_load_bdf(rt_string path) {
+    return bitmapfont_load_bdf_as(path, RT_SPRITEFONT_CLASS_ID);
+}
+
 //=============================================================================
 // PSF Parser
 //=============================================================================
@@ -551,7 +580,7 @@ void *rt_bitmapfont_load_bdf(rt_string path) {
 /// Auto-detects version via magic bytes. Glyphs are always monospace; v1 is
 /// fixed at 8 pixels wide, v2 reads width from the header. Returns NULL on
 /// magic mismatch or truncated/corrupt input.
-void *rt_bitmapfont_load_psf(rt_string path) {
+static void *bitmapfont_load_psf_as(rt_string path, int64_t class_id) {
     if (!path)
         return NULL;
 
@@ -574,7 +603,7 @@ void *rt_bitmapfont_load_psf(rt_string path) {
     int glyph_height = 0;
     int glyph_width = 0;
     int glyph_byte_size = 0;
-    long data_offset = 0;
+    int64_t data_offset = 0;
     int psf_version = 0;
     int has_unicode_table = 0;
     int parse_failed = 0;
@@ -618,7 +647,7 @@ void *rt_bitmapfont_load_psf(rt_string path) {
         glyph_height = (int)height;
         glyph_width = (int)width;
         glyph_byte_size = (int)bytes_per_glyph;
-        data_offset = (long)header_size;
+        data_offset = (int64_t)header_size;
         has_unicode_table = (flags & 1u) != 0;
     } else {
         fclose(f);
@@ -640,7 +669,7 @@ void *rt_bitmapfont_load_psf(rt_string path) {
         glyph_count = BF_MAX_GLYPHS;
 
     rt_bitmapfont_impl *font =
-        (rt_bitmapfont_impl *)rt_obj_new_i64(RT_BITMAPFONT_CLASS_ID, (int64_t)sizeof(rt_bitmapfont_impl));
+        (rt_bitmapfont_impl *)rt_obj_new_i64(class_id, (int64_t)sizeof(rt_bitmapfont_impl));
     if (!font) {
         fclose(f);
         return NULL;
@@ -648,7 +677,7 @@ void *rt_bitmapfont_load_psf(rt_string path) {
     memset(font, 0, sizeof(rt_bitmapfont_impl));
     rt_obj_set_finalizer(font, rt_bitmapfont_destroy);
 
-    if (fseek(f, data_offset, SEEK_SET) != 0) {
+    if (bf_fseek(f, data_offset, SEEK_SET) != 0) {
         fclose(f);
         bf_release_font(font);
         return NULL;
@@ -706,14 +735,14 @@ void *rt_bitmapfont_load_psf(rt_string path) {
     }
 
     if (!parse_failed && has_unicode_table) {
-        long table_start = ftell(f);
-        if (table_start >= 0 && fseek(f, 0, SEEK_END) == 0) {
-            long file_end = ftell(f);
+        int64_t table_start = bf_ftell(f);
+        if (table_start >= 0 && bf_fseek(f, 0, SEEK_END) == 0) {
+            int64_t file_end = bf_ftell(f);
             if (file_end >= table_start) {
                 size_t table_len = (size_t)(file_end - table_start);
                 if (table_len > 0 && table_len <= 16 * 1024 * 1024) {
                     uint8_t *table = (uint8_t *)malloc(table_len);
-                    if (table && fseek(f, table_start, SEEK_SET) == 0 &&
+                    if (table && bf_fseek(f, table_start, SEEK_SET) == 0 &&
                         fread(table, 1, table_len, f) == table_len) {
                         if (psf_version == 2)
                             bf_apply_psf2_unicode_table(font, glyph_count, table, table_len);
@@ -741,6 +770,14 @@ void *rt_bitmapfont_load_psf(rt_string path) {
     font->monospace = 1; // PSF fonts are always monospace
 
     return font;
+}
+
+void *rt_bitmapfont_load_psf(rt_string path) {
+    return bitmapfont_load_psf_as(path, RT_BITMAPFONT_CLASS_ID);
+}
+
+void *rt_spritefont_load_psf(rt_string path) {
+    return bitmapfont_load_psf_as(path, RT_SPRITEFONT_CLASS_ID);
 }
 
 //=============================================================================
@@ -843,8 +880,8 @@ static void bf_draw_glyph(vgfx_window_t win,
         return;
 
     // BDF y_offset is from baseline; we draw relative to top of line
-    int64_t draw_x = px + g->x_offset;
-    int64_t draw_y = py + (ascent - g->y_offset - g->height);
+    int64_t draw_x = rtg_add_sat64(px, g->x_offset);
+    int64_t draw_y = rtg_add_sat64(py, (int64_t)ascent - g->y_offset - g->height);
     int rb = bf_row_bytes(g->width);
 
     for (int row = 0; row < g->height; row++) {
@@ -872,8 +909,9 @@ static void bf_draw_glyph_scaled(vgfx_window_t win,
     if (!g || !g->bitmap || scale < 1)
         return;
 
-    int64_t draw_x = px + g->x_offset * scale;
-    int64_t draw_y = py + (ascent - g->y_offset - g->height) * scale;
+    int64_t draw_x = rtg_add_sat64(px, rtg_mul_sat64(g->x_offset, scale));
+    int64_t draw_y =
+        rtg_add_sat64(py, rtg_mul_sat64((int64_t)ascent - g->y_offset - g->height, scale));
     int rb = bf_row_bytes(g->width);
 
     for (int row = 0; row < g->height; row++) {
@@ -907,15 +945,16 @@ static void bf_draw_glyph_bg(vgfx_window_t win,
         return;
 
     int64_t bg_left = px;
-    int64_t bg_right = px + g->advance;
+    int64_t bg_right = rtg_add_sat64(px, g->advance);
 
     if (g->bitmap) {
-        int64_t draw_x = px + g->x_offset;
-        int64_t draw_y = py + (ascent - g->y_offset - g->height);
+        int64_t draw_x = rtg_add_sat64(px, g->x_offset);
+        int64_t draw_y = rtg_add_sat64(py, (int64_t)ascent - g->y_offset - g->height);
         if (draw_x < bg_left)
             bg_left = draw_x;
-        if (draw_x + g->width > bg_right)
-            bg_right = draw_x + g->width;
+        int64_t glyph_right = rtg_add_sat64(draw_x, g->width);
+        if (glyph_right > bg_right)
+            bg_right = glyph_right;
 
         if (bg_right > bg_left) {
             vgfx_fill_rect(
@@ -984,9 +1023,9 @@ void rt_canvas_text_font(
         const rt_glyph *g = bf_get_glyph(font, codepoint);
         if (g) {
             bf_draw_glyph(canvas->gfx_win, g, cx, y, font->ascent, col);
-            cx += g->advance;
+            cx = rtg_add_sat64(cx, g->advance);
         } else {
-            cx += font->max_width;
+            cx = rtg_add_sat64(cx, font->max_width);
         }
     }
 }
@@ -1024,7 +1063,7 @@ void rt_canvas_text_font_bg(void *canvas_ptr,
         const rt_glyph *g = bf_get_glyph(font, codepoint);
         if (g) {
             bf_draw_glyph_bg(canvas->gfx_win, g, cx, y, font->ascent, font->line_height, fg, bg);
-            cx += g->advance;
+            cx = rtg_add_sat64(cx, g->advance);
         } else {
             vgfx_fill_rect(canvas->gfx_win,
                            rtg_clamp_i64_to_i32(cx),
@@ -1032,7 +1071,7 @@ void rt_canvas_text_font_bg(void *canvas_ptr,
                            rtg_clamp_i64_to_i32(font->max_width),
                            rtg_clamp_i64_to_i32(font->line_height),
                            bg);
-            cx += font->max_width;
+            cx = rtg_add_sat64(cx, font->max_width);
         }
     }
 }
@@ -1069,9 +1108,9 @@ void rt_canvas_text_font_scaled(void *canvas_ptr,
         const rt_glyph *g = bf_get_glyph(font, codepoint);
         if (g) {
             bf_draw_glyph_scaled(canvas->gfx_win, g, cx, y, font->ascent, scale, col);
-            cx += g->advance * scale;
+            cx = rtg_add_sat64(cx, rtg_mul_sat64(g->advance, scale));
         } else {
-            cx += font->max_width * scale;
+            cx = rtg_add_sat64(cx, rtg_mul_sat64(font->max_width, scale));
         }
     }
 }

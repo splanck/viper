@@ -655,7 +655,7 @@ batch.End(canvas)
 Named-region sprite sheet atlas. Maps string names to rectangular sub-regions of a
 backing Pixels buffer, enabling content pipelines where frames are referenced by name
 instead of raw pixel coordinates. Added regions must stay inside the backing `Pixels`
-bounds.
+bounds and names must be non-empty.
 `TextureAtlas` retains its backing `Pixels`; constructors require a real `Pixels`
 object. `LoadGrid` publishes each generated region only after the region metadata
 and lookup entry are consistent. Drawing a missing region, null name, or invalid
