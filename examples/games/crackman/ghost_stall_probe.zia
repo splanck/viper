@@ -1,0 +1,89 @@
+// ============================================================================
+// MODULE: ghost_stall_probe
+// PURPOSE: Regression coverage for active Crackman ghosts getting stuck.
+// ============================================================================
+
+module ghost_stall_probe;
+
+bind Viper.Terminal as Terminal;
+bind "./config";
+bind "./ghost";
+bind "./maze";
+
+func fail(msg: String) {
+    Terminal.Say("RESULT: fail " + msg);
+}
+
+func ghostName(idx: Integer) -> String {
+    if idx == 0 { return "blinky"; }
+    if idx == 1 { return "pinky"; }
+    if idx == 2 { return "inky"; }
+    return "clyde";
+}
+
+func observeGhost(g: ghost.Ghost,
+                  idx: Integer,
+                  lastX: List[Integer],
+                  lastY: List[Integer],
+                  stillTicks: List[Integer]) -> Boolean {
+    if g.getScreenX() != lastX.get(idx) || g.getScreenY() != lastY.get(idx) {
+        lastX.set(idx, g.getScreenX());
+        lastY.set(idx, g.getScreenY());
+        stillTicks.set(idx, 0);
+        return true;
+    }
+
+    if g.isWaitingInHouse() {
+        stillTicks.set(idx, 0);
+        return true;
+    }
+
+    stillTicks.set(idx, stillTicks.get(idx) + 1);
+    if stillTicks.get(idx) > config.GHOST_STUCK_TICKS + 12 {
+        fail(ghostName(idx) + " stalled outside house");
+        return false;
+    }
+
+    return true;
+}
+
+func start() {
+    var theMaze = new maze.Maze();
+    theMaze.init();
+
+    var ghosts: List[ghost.Ghost] = [];
+    ghosts.add(new ghost.Ghost(0, 14, 11, config.COLOR_RED));
+    ghosts.add(new ghost.Ghost(1, 13, 14, config.COLOR_PINK));
+    ghosts.add(new ghost.Ghost(2, 14, 14, config.COLOR_CYAN));
+    ghosts.add(new ghost.Ghost(3, 15, 14, config.COLOR_ORANGE));
+
+    var lastX: List[Integer] = [];
+    var lastY: List[Integer] = [];
+    var stillTicks: List[Integer] = [];
+    for i in 0..ghosts.length() {
+        lastX.add(ghosts.get(i).getScreenX());
+        lastY.add(ghosts.get(i).getScreenY());
+        stillTicks.add(0);
+    }
+
+    var frame = 0;
+    while frame < 1200 {
+        var blinky = ghosts.get(0);
+        var blinkyX = blinky.getGridX();
+        var blinkyY = blinky.getGridY();
+
+        for i in 0..ghosts.length() {
+            ghosts.get(i).update(theMaze, 14, 23, blinkyX, blinkyY);
+        }
+
+        for j in 0..ghosts.length() {
+            if !observeGhost(ghosts.get(j), j, lastX, lastY, stillTicks) {
+                return;
+            }
+        }
+
+        frame = frame + 1;
+    }
+
+    Terminal.Say("RESULT: ok");
+}

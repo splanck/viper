@@ -21,7 +21,7 @@ bind "../core/config";
 //     dramatically faster than re-running the draw calls per frame.
 //   * THREE SIZES PER PIECE. Full sprite (70×70), tinted-and-blurred
 //     shadow (same size, dropped behind the piece for depth), and
-//     mini (28×28, shown in the captured-pieces row of the side
+//     mini (22×22, shown in the captured-pieces row of the side
 //     panel).
 //   * LAYERED DRAWING TECHNIQUE. Each piece draws an outline layer
 //     first (slightly larger shapes in outline color), then a fill
@@ -82,12 +82,13 @@ var blackKingMini:   Pixels;
 final SP = PIECE_SZ;           // sprite size (70×70)
 final CX = PIECE_SZ / 2;      // center X
 final CY = PIECE_SZ / 2;      // center Y
+final MINI_SZ = 22;
 
 // ============================================================================
 // Public API
 // ============================================================================
 
-/// @brief Pre-render every piece sprite + shadow + mini at 70×70 / 28×28.
+/// @brief Pre-render every piece sprite + shadow + mini at 70×70 / 22×22.
 /// @note Call once at game startup. Subsequent calls re-render — the
 ///       function is idempotent in effect but not free in time.
 func initSprites() {
@@ -117,18 +118,18 @@ func initSprites() {
     blackQueenShadow  = buildShadow(blackQueen);
     blackKingShadow   = buildShadow(blackKing);
 
-    whitePawnMini   = whitePawn.Scale(28, 28);
-    whiteRookMini   = whiteRook.Scale(28, 28);
-    whiteKnightMini = whiteKnight.Scale(28, 28);
-    whiteBishopMini = whiteBishop.Scale(28, 28);
-    whiteQueenMini  = whiteQueen.Scale(28, 28);
-    whiteKingMini   = whiteKing.Scale(28, 28);
-    blackPawnMini   = blackPawn.Scale(28, 28);
-    blackRookMini   = blackRook.Scale(28, 28);
-    blackKnightMini = blackKnight.Scale(28, 28);
-    blackBishopMini = blackBishop.Scale(28, 28);
-    blackQueenMini  = blackQueen.Scale(28, 28);
-    blackKingMini   = blackKing.Scale(28, 28);
+    whitePawnMini   = whitePawn.Scale(MINI_SZ, MINI_SZ);
+    whiteRookMini   = whiteRook.Scale(MINI_SZ, MINI_SZ);
+    whiteKnightMini = whiteKnight.Scale(MINI_SZ, MINI_SZ);
+    whiteBishopMini = whiteBishop.Scale(MINI_SZ, MINI_SZ);
+    whiteQueenMini  = whiteQueen.Scale(MINI_SZ, MINI_SZ);
+    whiteKingMini   = whiteKing.Scale(MINI_SZ, MINI_SZ);
+    blackPawnMini   = blackPawn.Scale(MINI_SZ, MINI_SZ);
+    blackRookMini   = blackRook.Scale(MINI_SZ, MINI_SZ);
+    blackKnightMini = blackKnight.Scale(MINI_SZ, MINI_SZ);
+    blackBishopMini = blackBishop.Scale(MINI_SZ, MINI_SZ);
+    blackQueenMini  = blackQueen.Scale(MINI_SZ, MINI_SZ);
+    blackKingMini   = blackKing.Scale(MINI_SZ, MINI_SZ);
 }
 
 /// @brief Look up the full-size sprite for a piece. Null on invalid type.
@@ -171,7 +172,7 @@ func getShadow(pieceType: Integer, isWhite: Boolean) -> Pixels {
     return null;
 }
 
-/// @brief Look up the 28×28 mini sprite for the captures display.
+/// @brief Look up the 22×22 mini sprite for the captures display.
 func getMiniPiece(pieceType: Integer, isWhite: Boolean) -> Pixels {
     if isWhite {
         if pieceType == PAWN   { return whitePawnMini; }

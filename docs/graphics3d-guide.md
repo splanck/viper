@@ -1765,8 +1765,9 @@ Impulse-based 3D rigid body simulation with AABB, sphere, and capsule collision 
 Bodies now track quaternion orientation and angular velocity in addition to linear motion.
 Shape-specific narrow-phase collision: sphere-sphere uses radial distance (not AABB),
 AABB-sphere uses closest-point projection. Collision detection uses a sweep-and-prune broadphase
-before narrow-phase tests. Coulomb friction and Baumgarte positional correction are applied to
-non-trigger contacts.
+before narrow-phase tests. Non-trigger contacts apply impulses at the contact point, so off-center
+hits update angular velocity as well as linear velocity. Coulomb friction and Baumgarte positional
+correction are applied to non-trigger contacts.
 
 Capsule primitive collision honors body orientation for capsule-vs-capsule, capsule-vs-sphere,
 capsule-vs-AABB, mesh, and heightfield tests. AABB primitives remain axis-aligned boxes; use

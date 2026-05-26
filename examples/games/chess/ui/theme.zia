@@ -35,37 +35,37 @@ var bodyFont_: BitmapFont = null;
 var titleFont_: BitmapFont = null;
 var assetsReady_: Boolean = false;
 
-final BG_TOP           = 0x120E0B;
-final BG_BOTTOM        = 0x231B14;
-final BG_NOISE         = 0x2A2018;
-final BOARD_FRAME_OUT  = 0x2D1E12;
-final BOARD_FRAME_IN   = 0x6D4A28;
-final BOARD_LIGHT      = 0xE7D7B7;
-final BOARD_DARK       = 0x8A5F3C;
-final BOARD_LIGHT_ALT  = 0xF0E2C4;
-final BOARD_DARK_ALT   = 0x785233;
-final BOARD_LABEL      = 0xD9C8A6;
-final BOARD_LABEL_DIM  = 0x9B886A;
-final PANEL_BG         = 0x151110;
-final CARD_BG          = 0x201815;
-final CARD_BG_ALT      = 0x261D19;
-final CARD_BORDER      = 0x5A473A;
-final CARD_BORDER_SOFT = 0x3A2E26;
-final TEXT_PRIMARY     = 0xF3EBDD;
-final TEXT_SECONDARY   = 0xC8BCA9;
-final TEXT_MUTED       = 0x8F8172;
-final ACCENT_GOLD      = 0xD4A44B;
-final ACCENT_GOLD_SOFT = 0x8A6730;
-final ACCENT_RED       = 0xAE473B;
-final ACCENT_GREEN     = 0x4E8A60;
-final ACCENT_BLUE      = 0x4E6C8E;
-final ACCENT_CREAM     = 0xF5E8CB;
-final HILITE_SELECTED  = 0xD9B15C;
-final HILITE_MOVE      = 0x5D8450;
-final HILITE_CAPTURE   = 0xB54A39;
-final HILITE_LAST      = 0xA28D46;
-final HILITE_CHECK     = 0x8D2A26;
-final SCRIM            = 0x090706;
+final BG_TOP           = 0x101820;
+final BG_BOTTOM        = 0x19252C;
+final BG_NOISE         = 0x26333A;
+final BOARD_FRAME_OUT  = 0x27333A;
+final BOARD_FRAME_IN   = 0x5E6A69;
+final BOARD_LIGHT      = 0xDCD2B5;
+final BOARD_DARK       = 0x657A68;
+final BOARD_LIGHT_ALT  = 0xE8DDC1;
+final BOARD_DARK_ALT   = 0x52695E;
+final BOARD_LABEL      = 0xF1E5C8;
+final BOARD_LABEL_DIM  = 0x617269;
+final PANEL_BG         = 0x111820;
+final CARD_BG          = 0x1B252C;
+final CARD_BG_ALT      = 0x22313A;
+final CARD_BORDER      = 0x52636A;
+final CARD_BORDER_SOFT = 0x32434B;
+final TEXT_PRIMARY     = 0xF3F0E7;
+final TEXT_SECONDARY   = 0xC7D2CD;
+final TEXT_MUTED       = 0x8EA19C;
+final ACCENT_GOLD      = 0xD6B760;
+final ACCENT_GOLD_SOFT = 0x856D36;
+final ACCENT_RED       = 0xB85B4F;
+final ACCENT_GREEN     = 0x4F9B78;
+final ACCENT_BLUE      = 0x4F82A6;
+final ACCENT_CREAM     = 0xF4E8CB;
+final HILITE_SELECTED  = 0xD6B760;
+final HILITE_MOVE      = 0x4F9B78;
+final HILITE_CAPTURE   = 0xB85B4F;
+final HILITE_LAST      = 0x7CA678;
+final HILITE_CHECK     = 0x9E3F3F;
+final SCRIM            = 0x071015;
 
 final FONT_BODY_SCALE  = 1;
 final FONT_TITLE_SCALE = 4;
@@ -151,6 +151,32 @@ func drawTextCentered(canvas: Canvas, x: Integer, y: Integer, w: Integer, text: 
 func drawTextRight(canvas: Canvas, x: Integer, y: Integer, w: Integer, text: String, scale: Integer, color: Integer) {
     var tx = x + w - textWidth(text, scale);
     drawTextScaled(canvas, tx, y, text, scale, color);
+}
+
+/// @brief Draw text constrained to a rectangular span.
+func drawTextClipped(canvas: Canvas, x: Integer, y: Integer, w: Integer, text: String, scale: Integer, color: Integer) {
+    if w <= 0 { return; }
+    canvas.SetClipRect(x, y, w, lineHeight(scale));
+    drawTextScaled(canvas, x, y, text, scale, color);
+    canvas.ClearClipRect();
+}
+
+/// @brief Draw centred text constrained to a rectangular span.
+func drawTextCenteredClipped(canvas: Canvas, x: Integer, y: Integer, w: Integer, text: String, scale: Integer, color: Integer) {
+    if w <= 0 { return; }
+    var tx = x + (w - textWidth(text, scale)) / 2;
+    canvas.SetClipRect(x, y, w, lineHeight(scale));
+    drawTextScaled(canvas, tx, y, text, scale, color);
+    canvas.ClearClipRect();
+}
+
+/// @brief Draw right-aligned text constrained to a rectangular span.
+func drawTextRightClipped(canvas: Canvas, x: Integer, y: Integer, w: Integer, text: String, scale: Integer, color: Integer) {
+    if w <= 0 { return; }
+    var tx = x + w - textWidth(text, scale);
+    canvas.SetClipRect(x, y, w, lineHeight(scale));
+    drawTextScaled(canvas, tx, y, text, scale, color);
+    canvas.ClearClipRect();
 }
 
 /// @brief Lighten an RGB color by `amount` (0..255).

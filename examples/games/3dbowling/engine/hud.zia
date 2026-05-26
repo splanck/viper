@@ -77,10 +77,7 @@ class HUD {
         drawStatusPanel(canvas, cw, playerCount, activePlayer, playerOneScore, playerTwoScore, oilName, ballType);
 
         if (gameState == config.STATE_AIMING) {
-            drawPowerMeter(canvas, power, charging, cw, ch);
-            drawSpinIndicator(canvas, spin, cw, ch);
-            drawAimGuide(canvas, aimX, cw, ch);
-            drawControls(canvas, ch);
+            drawControlPanel(canvas, power, charging, spin, aimX, ch);
         }
 
         if (messageTimer > 0.0) {
@@ -90,6 +87,58 @@ class HUD {
         }
 
         Canvas3D.DrawText2D(canvas, cw - 86, ch - 20, "FPS: " + toString(fps), config.HUD_COLOR_GRAY);
+    }
+
+    hide func drawControlPanel(canvas: Canvas3D, power: Float, charging: Boolean,
+                               spin: Float, aimX: Float,
+                               ch: Integer) {
+        var panelW = 304;
+        var panelH = 92;
+        var panelX = 24;
+        var panelY = ch - panelH - 22;
+        if (panelY < 166) { panelY = 166; }
+
+        Canvas3D.DrawRect2D(canvas, panelX, panelY, panelW, panelH, config.HUD_COLOR_FRAME_BG);
+        Canvas3D.DrawRect2D(canvas, panelX, panelY, panelW, 2, config.HUD_COLOR_MENU_ACCENT);
+
+        var meterX = panelX + 18;
+        var meterY = panelY + 30;
+        Canvas3D.DrawText2D(canvas, meterX, panelY + 12, "POWER", config.HUD_COLOR_WHITE);
+        Canvas3D.DrawRect2D(canvas, meterX - 1, meterY - 1,
+            config.METER_W + 2, config.METER_H + 2, config.HUD_COLOR_DARK);
+
+        var fillW = Convert.NumToInt(power * (config.METER_W + 0.0));
+        var meterColor = config.METER_COLOR_LOW;
+        if (power > config.METER_THRESHOLD_MID) { meterColor = config.METER_COLOR_MID; }
+        if (power > config.METER_THRESHOLD_HIGH) { meterColor = config.METER_COLOR_HIGH; }
+        Canvas3D.DrawRect2D(canvas, meterX, meterY, fillW, config.METER_H, meterColor);
+
+        var pct = "--";
+        if (charging || power > 0.0) {
+            pct = toString(Convert.NumToInt(power * 100.0)) + "%";
+        }
+        Canvas3D.DrawText2D(canvas, meterX + config.METER_W + 18, meterY + 2, pct, config.HUD_COLOR_WHITE);
+
+        var spinX = panelX + 18;
+        var spinY = panelY + 66;
+        Canvas3D.DrawText2D(canvas, spinX, spinY - 14, "CURVE", config.HUD_COLOR_GRAY);
+        Canvas3D.DrawRect2D(canvas, spinX + 66, spinY - 3,
+            config.SPIN_INDICATOR_W, config.SPIN_INDICATOR_H, config.HUD_COLOR_DARK);
+        var centerX = spinX + 66 + config.SPIN_INDICATOR_W / 2;
+        Canvas3D.DrawRect2D(canvas, centerX, spinY - 3, 1, config.SPIN_INDICATOR_H, config.HUD_COLOR_GRAY);
+
+        var spinOffset = Convert.NumToInt(spin * ((config.SPIN_INDICATOR_W / 2) + 0.0));
+        var markerX = centerX + spinOffset;
+        var markerColor = config.HUD_COLOR_CYAN;
+        if (spin < 0.0) { markerColor = 0xFF8844; }
+        Canvas3D.DrawRect2D(canvas, markerX - 2, spinY - 4, 4,
+            config.SPIN_INDICATOR_H + 2, markerColor);
+
+        var aimPct = aimX / config.AIM_MAX;
+        var aimXPos = panelX + 218 + Convert.NumToInt(aimPct * 38.0);
+        Canvas3D.DrawText2D(canvas, panelX + 214, spinY - 14, "AIM", config.HUD_COLOR_GRAY);
+        Canvas3D.DrawRect2D(canvas, panelX + 214, spinY - 3, 76, 2, config.HUD_COLOR_DARK);
+        Canvas3D.DrawRect2D(canvas, aimXPos - 2, spinY - 8, 4, 12, config.HUD_COLOR_WHITE);
     }
 
     hide func drawScoreboard(canvas: Canvas3D, sk: ScoreKeeper, cw: Integer) {
@@ -144,20 +193,20 @@ class HUD {
                               playerOneScore: Integer, playerTwoScore: Integer,
                               oilName: String, ballType: Integer) {
         var panelX = cw - 244;
-        Canvas3D.DrawRect2D(canvas, panelX, 42, 208, 122, config.HUD_COLOR_MENU_CARD);
-        Canvas3D.DrawText2D(canvas, panelX + 12, 54, "Status", config.HUD_COLOR_GOLD);
-        Canvas3D.DrawText2D(canvas, panelX + 12, 78, "Oil: " + oilName, config.HUD_COLOR_WHITE);
-        Canvas3D.DrawText2D(canvas, panelX + 12, 98, "Ball: " + getBallName(ballType), getBallColor(ballType));
+        Canvas3D.DrawRect2D(canvas, panelX, 42, 208, 104, config.HUD_COLOR_FRAME_BG);
+        Canvas3D.DrawRect2D(canvas, panelX, 42, 208, 2, config.HUD_COLOR_MENU_ACCENT);
+        Canvas3D.DrawText2D(canvas, panelX + 12, 56, oilName + " oil", config.HUD_COLOR_WHITE);
+        Canvas3D.DrawText2D(canvas, panelX + 12, 78, getBallName(ballType), getBallColor(ballType));
 
         if (playerCount <= 1) {
-            Canvas3D.DrawText2D(canvas, panelX + 12, 122, "Score: " + toString(playerOneScore), config.HUD_COLOR_CYAN);
+            Canvas3D.DrawText2D(canvas, panelX + 12, 104, "Score " + toString(playerOneScore), config.HUD_COLOR_CYAN);
         } else {
             var p1Color = config.HUD_COLOR_WHITE;
             var p2Color = config.HUD_COLOR_WHITE;
             if (activePlayer == 0) { p1Color = config.HUD_COLOR_GOLD; }
             if (activePlayer == 1) { p2Color = config.HUD_COLOR_GOLD; }
-            Canvas3D.DrawText2D(canvas, panelX + 12, 120, "P1  " + toString(playerOneScore), p1Color);
-            Canvas3D.DrawText2D(canvas, panelX + 108, 120, "P2  " + toString(playerTwoScore), p2Color);
+            Canvas3D.DrawText2D(canvas, panelX + 12, 104, "P1 " + toString(playerOneScore), p1Color);
+            Canvas3D.DrawText2D(canvas, panelX + 108, 104, "P2 " + toString(playerTwoScore), p2Color);
         }
     }
 
@@ -186,7 +235,7 @@ class HUD {
         var sx = cw / 2 - config.SPIN_INDICATOR_W / 2;
         var sy = ch - config.SPIN_INDICATOR_Y_OFFSET;
 
-        Canvas3D.DrawText2D(canvas, sx, sy - 15, "SHAPE", config.HUD_COLOR_GRAY);
+        Canvas3D.DrawText2D(canvas, sx, sy - 15, "CURVE", config.HUD_COLOR_GRAY);
         Canvas3D.DrawRect2D(canvas, sx, sy, config.SPIN_INDICATOR_W, config.SPIN_INDICATOR_H, config.HUD_COLOR_DARK);
         var centerX = sx + config.SPIN_INDICATOR_W / 2;
         Canvas3D.DrawRect2D(canvas, centerX, sy, 1, config.SPIN_INDICATOR_H, config.HUD_COLOR_GRAY);
@@ -204,15 +253,6 @@ class HUD {
         var arrowY = ch - 34;
 
         Canvas3D.DrawText2D(canvas, arrowX - 2, arrowY, "^", config.HUD_COLOR_WHITE);
-        Canvas3D.DrawText2D(canvas, cw / 2 - 46, arrowY + 12, "Aim board", config.HUD_COLOR_GRAY);
-    }
-
-    hide func drawControls(canvas: Canvas3D, ch: Integer) {
-        Canvas3D.DrawText2D(canvas, 12, ch - 80, "C / Y = camera toggle", config.HUD_COLOR_GRAY);
-        Canvas3D.DrawText2D(canvas, 12, ch - 64, "Hold Space / A = charge throw", config.HUD_COLOR_GRAY);
-        Canvas3D.DrawText2D(canvas, 12, ch - 48, "A-D / left stick = aim", config.HUD_COLOR_GRAY);
-        Canvas3D.DrawText2D(canvas, 12, ch - 32, "Q-E / bumpers = shape | 1 / 3 = change ball", config.HUD_COLOR_GRAY);
-        Canvas3D.DrawText2D(canvas, 12, ch - 16, "P / Start = pause | R = restart", config.HUD_COLOR_GRAY);
     }
 
     hide func getBallName(ballType: Integer) -> String {

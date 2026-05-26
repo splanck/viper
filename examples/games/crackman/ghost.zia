@@ -72,6 +72,9 @@ class Ghost {
     hide Integer normalMode;
     hide Boolean atTileCenter;
     hide Boolean inHouse;  // True if ghost is still in the ghost house
+    hide Integer lastScreenX;
+    hide Integer lastScreenY;
+    hide Integer stuckTicks;
 
     // Use Timers for frightened mode
     hide Timer frightenedTimer;
@@ -96,6 +99,9 @@ class Ghost {
         houseExitY = 11;
         normalMode = config.MODE_SCATTER;
         atTileCenter = true;
+        lastScreenX = screenX;
+        lastScreenY = screenY;
+        stuckTicks = 0;
 
         // Blinky starts outside, others start in the ghost house
         inHouse = (ghostType != GHOST_BLINKY);
@@ -178,6 +184,14 @@ class Ghost {
         return direction;
     }
 
+    expose func isWaitingInHouse() -> Boolean {
+        return inHouse && mode != config.MODE_EATEN && !exitTimer.IsExpired;
+    }
+
+    expose func getStuckTicks() -> Integer {
+        return stuckTicks;
+    }
+
     expose func update(theMaze: maze.Maze, pacmanX: Integer, pacmanY: Integer, blinkyX: Integer, blinkyY: Integer) {
         // Update exit timer for ghosts in house
         if inHouse {
@@ -216,12 +230,14 @@ class Ghost {
                 flashWhite = false;
                 direction = config.DIR_NONE;
                 exitTimer.Start(60);
+                self.resetStuckTracking();
                 return;
             }
 
             // Ghosts waiting inside the house should stay put until their exit timer expires.
             if inHouse && !exitTimer.IsExpired {
                 direction = config.DIR_NONE;
+                self.noteMovementProgress(theMaze);
                 return;
             }
 
@@ -231,6 +247,7 @@ class Ghost {
             if mode == config.MODE_EATEN {
                 direction = theMaze.getGhostPathDirection(gridX, gridY, returnX, returnY, direction);
                 self.move(theMaze);
+                self.noteMovementProgress(theMaze);
                 return;
             } else if inHouse {
                 // If in house and timer expired, target the exit
@@ -274,6 +291,46 @@ class Ghost {
         }
 
         self.move(theMaze);
+        self.noteMovementProgress(theMaze);
+    }
+
+    hide func resetStuckTracking() {
+        lastScreenX = screenX;
+        lastScreenY = screenY;
+        stuckTicks = 0;
+    }
+
+    hide func noteMovementProgress(theMaze: maze.Maze) {
+        if screenX != lastScreenX || screenY != lastScreenY {
+            self.resetStuckTracking();
+            return;
+        }
+
+        if self.isWaitingInHouse() {
+            stuckTicks = 0;
+            return;
+        }
+
+        stuckTicks = stuckTicks + 1;
+        if stuckTicks >= config.GHOST_STUCK_TICKS {
+            self.forceLegalDirection(theMaze);
+            stuckTicks = 0;
+        }
+    }
+
+    hide func forceLegalDirection(theMaze: maze.Maze) {
+        var dirs = [config.DIR_UP, config.DIR_LEFT, config.DIR_DOWN, config.DIR_RIGHT];
+        for i in 0..4 {
+            var testDir = dirs.get(i);
+            var nextX = utils.wrapGridX(gridX + utils.getDirX(testDir));
+            var nextY = gridY + utils.getDirY(testDir);
+            if theMaze.isWalkableForGhost(nextX, nextY) {
+                direction = testDir;
+                return;
+            }
+        }
+
+        direction = config.DIR_NONE;
     }
 
     hide func chooseDirection(targetX: Integer, targetY: Integer, theMaze: maze.Maze) {
@@ -389,6 +446,7 @@ class Ghost {
         atTileCenter = true;
         frightenedTimer.Stop();
         flashWhite = false;
+        self.resetStuckTracking();
 
         // Reset house state
         inHouse = (ghostType != GHOST_BLINKY);

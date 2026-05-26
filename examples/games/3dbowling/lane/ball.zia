@@ -61,7 +61,13 @@ class Ball {
     hide Integer ballType;
 
     hide Mesh3D ballMesh;
+    hide Mesh3D ballHoleMesh;
+    hide Mesh3D guideMesh;
+    hide Mesh3D targetMesh;
     hide Material3D ballMat;
+    hide Material3D ballHoleMat;
+    hide Material3D guideMat;
+    hide Material3D targetMat;
 
     hide Float spinAmount;
     hide Float visualSpinAngle;
@@ -85,6 +91,16 @@ class Ball {
         ballMesh = Mesh3D.NewSphere(config.BALL_RADIUS, 16);
         ballMat = Material3D.NewColor(colorR, colorG, colorB);
         Material3D.SetShininess(ballMat, config.BALL_SHININESS);
+        ballHoleMesh = Mesh3D.NewSphere(config.BALL_RADIUS * 0.16, 8);
+        ballHoleMat = Material3D.NewColor(0.015, 0.018, 0.022);
+        Material3D.SetShininess(ballHoleMat, 18.0);
+        guideMesh = Mesh3D.NewSphere(0.034, 8);
+        guideMat = Material3D.NewColor(0.05, 0.92, 0.96);
+        Material3D.SetEmissiveColor(guideMat, 0.08, 0.34, 0.36);
+        Material3D.set_Alpha(guideMat, 0.82);
+        targetMesh = Mesh3D.NewSphere(0.076, 12);
+        targetMat = Material3D.NewColor(1.0, 0.82, 0.22);
+        Material3D.SetEmissiveColor(targetMat, 0.18, 0.12, 0.02);
 
         recreateBody();
     }
@@ -126,6 +142,9 @@ class Ball {
         body = Physics3DBody.NewSphere(config.BALL_RADIUS, mass);
         Physics3DBody.set_Restitution(body, config.BALL_RESTITUTION);
         Physics3DBody.set_Friction(body, config.BALL_FRICTION);
+        Physics3DBody.set_LinearDamping(body, 0.015);
+        Physics3DBody.set_AngularDamping(body, 0.025);
+        Physics3DBody.set_UseCCD(body, true);
         Physics3DBody.set_CollisionLayer(body, config.LAYER_BALL);
         Physics3DBody.set_CollisionMask(body, config.MASK_BALL);
         Physics3DBody.SetPosition(body,
@@ -185,7 +204,7 @@ class Ball {
         if (targetClamp < releaseClamp) { targetClamp = releaseClamp; }
 
         var releaseX = aimPct * releaseClamp * config.BALL_RELEASE_X_SCALE;
-        var targetX = aimPct * targetClamp * config.BALL_TARGET_X_SCALE + spinAmount * 0.08;
+        var targetX = aimPct * targetClamp * config.BALL_TARGET_X_SCALE + spinAmount * 0.10;
         if (targetX < -targetClamp) { targetX = -targetClamp; }
         if (targetX > targetClamp) { targetX = targetClamp; }
 
@@ -202,6 +221,10 @@ class Ball {
         Physics3DBody.SetPosition(body,
             releaseX, config.BALL_RADIUS + config.BALL_START_Y_OFFSET, config.BALL_THROW_Z);
         Physics3DBody.SetVelocity(body, sideSpeed, 0.0, forwardSpeed);
+        Physics3DBody.SetAngularVelocity(body,
+            forwardSpeed / config.BALL_RADIUS,
+            spinAmount * config.BALL_AXIS_SPIN_SPEED,
+            -sideSpeed / config.BALL_RADIUS);
 
         if (inWorld == false) {
             Physics3DWorld.Add(world, body);
@@ -256,6 +279,10 @@ class Ball {
         }
 
         visualSpinAngle = visualSpinAngle + speed * dt * config.SPIN_VISUAL_SPEED;
+        Physics3DBody.SetAngularVelocity(body,
+            vz / config.BALL_RADIUS,
+            spinAmount * config.BALL_AXIS_SPIN_SPEED,
+            -vx / config.BALL_RADIUS);
         if (x > config.LANE_WIDTH) {
             spinAmount = spinAmount * 0.95;
         }
@@ -297,6 +324,7 @@ class Ball {
     /// @brief Release the gutter lock (reset only).
     expose func clearGutter() {
         isInGutter = false;
+        Physics3DBody.set_CollisionMask(body, config.MASK_BALL);
     }
 
     /// @brief Underlying physics body (for trigger callbacks).
@@ -362,6 +390,8 @@ class Ball {
     expose func applyEnvironment(env: CubeMap3D) {
         Material3D.SetEnvMap(ballMat, env);
         Material3D.set_Reflectivity(ballMat, config.BALL_REFLECTIVITY);
+        Material3D.SetEnvMap(ballHoleMat, env);
+        Material3D.set_Reflectivity(ballHoleMat, 0.05);
     }
 
     /// @brief Snap back to the spawn position; clear all per-throw state.
@@ -387,7 +417,35 @@ class Ball {
         if (releaseClamp < 0.16) { releaseClamp = 0.16; }
         var releaseX = aimPct * releaseClamp * config.BALL_RELEASE_X_SCALE;
         Physics3DBody.SetPosition(body,
-            releaseX, config.BALL_RADIUS + config.BALL_START_Y_OFFSET, config.BALL_START_Z);
+            releaseX, config.BALL_RADIUS + config.BALL_START_Y_OFFSET, config.BALL_THROW_Z);
+    }
+
+    /// @brief Draw a board-level throw preview during aim.
+    expose func drawAimPreview(canvas: Canvas3D, aimX: Float, spinPreview: Float) {
+        var clampedAimX = aimX;
+        if (clampedAimX < -config.AIM_MAX) { clampedAimX = -config.AIM_MAX; }
+        if (clampedAimX > config.AIM_MAX) { clampedAimX = config.AIM_MAX; }
+        var aimPct = clampedAimX / config.AIM_MAX;
+
+        var releaseClamp = config.LANE_WIDTH / 2.0 - config.BALL_RADIUS * 1.85;
+        if (releaseClamp < 0.16) { releaseClamp = 0.16; }
+        var targetClamp = config.LANE_WIDTH / 2.0 - config.BALL_RADIUS * 0.78;
+        if (targetClamp < releaseClamp) { targetClamp = releaseClamp; }
+
+        var releaseX = aimPct * releaseClamp * config.BALL_RELEASE_X_SCALE;
+        var targetX = aimPct * targetClamp * config.BALL_TARGET_X_SCALE + spinPreview * 0.10;
+        if (targetX < -targetClamp) { targetX = -targetClamp; }
+        if (targetX > targetClamp) { targetX = targetClamp; }
+
+        var guideStartZ = config.BALL_THROW_Z + 0.26;
+        for (var i: Integer = 0; i <= 12; i = i + 1) {
+            var t = (i + 0.0) / 12.0;
+            var z = guideStartZ + (config.BALL_TARGET_Z - guideStartZ) * t;
+            var hook = spinPreview * 0.07 * t * t;
+            var x = releaseX + (targetX - releaseX) * t + hook;
+            Canvas3D.DrawMesh(canvas, guideMesh, Mat4.Translate(x, 0.035, z), guideMat);
+        }
+        Canvas3D.DrawMesh(canvas, targetMesh, Mat4.Translate(targetX, 0.04, config.BALL_TARGET_Z), targetMat);
     }
 
     /// @brief Render the ball with translation + yaw + spin rotation.
@@ -397,10 +455,27 @@ class Ball {
         var by = Vec3.get_Y(pos);
         var bz = Vec3.get_Z(pos);
 
+        var vel = Physics3DBody.get_Velocity(body);
+        var vx = Vec3.get_X(vel);
+        var vz = Vec3.get_Z(vel);
+        var speed = Sqrt(vx * vx + vz * vz);
+        var axisX = 1.0;
+        var axisZ = 0.0;
+        if (speed > 0.05) {
+            axisX = vz / speed;
+            axisZ = -vx / speed;
+        }
+
         var translate = Mat4.Translate(bx, by, bz);
-        var spinAxis = new Vec3(1.0, 0.0, 0.0);
+        var spinAxis = new Vec3(axisX, 0.0, axisZ);
         var rotateSpin = Mat4.RotateAxis(spinAxis, visualSpinAngle);
-        var rotateYaw = Mat4.RotateAxis(new Vec3(0.0, 1.0, 0.0), launchAngle);
-        Canvas3D.DrawMesh(canvas, ballMesh, Mat4.Mul(Mat4.Mul(translate, rotateYaw), rotateSpin), ballMat);
+        var ballXform = Mat4.Mul(translate, rotateSpin);
+        Canvas3D.DrawMesh(canvas, ballMesh, ballXform, ballMat);
+        Canvas3D.DrawMesh(canvas, ballHoleMesh,
+            Mat4.Mul(ballXform, Mat4.Translate(-0.036, 0.048, -0.089)), ballHoleMat);
+        Canvas3D.DrawMesh(canvas, ballHoleMesh,
+            Mat4.Mul(ballXform, Mat4.Translate(0.010, 0.066, -0.084)), ballHoleMat);
+        Canvas3D.DrawMesh(canvas, ballHoleMesh,
+            Mat4.Mul(ballXform, Mat4.Translate(0.045, 0.024, -0.094)), ballHoleMat);
     }
 }

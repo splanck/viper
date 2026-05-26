@@ -1,0 +1,216 @@
+module trajectory_probe;
+
+bind Viper.Graphics3D;
+bind Viper.Math;
+bind Viper.Terminal as Terminal;
+bind "./config";
+bind "./lane/lane";
+bind "./lane/pins";
+bind "./lane/ball";
+
+func processImpacts(world: Physics3DWorld, pinMgr: PinManager, rackArmed: Boolean) -> Boolean {
+    var sawBallPin = false;
+    var count = Physics3DWorld.get_CollisionEventCount(world);
+    for (var i: Integer = 0; i < count; i = i + 1) {
+        var evt = Physics3DWorld.GetCollisionEvent(world, i);
+        if (CollisionEvent3D.get_IsTrigger(evt)) { continue; }
+        var bodyA = CollisionEvent3D.get_BodyA(evt);
+        var bodyB = CollisionEvent3D.get_BodyB(evt);
+        var layerA = Physics3DBody.get_CollisionLayer(bodyA);
+        var layerB = Physics3DBody.get_CollisionLayer(bodyB);
+        var posA = Physics3DBody.get_Position(bodyA);
+        var posB = Physics3DBody.get_Position(bodyB);
+        var point = new Vec3(
+            (Vec3.get_X(posA) + Vec3.get_X(posB)) * 0.5,
+            (Vec3.get_Y(posA) + Vec3.get_Y(posB)) * 0.5,
+            (Vec3.get_Z(posA) + Vec3.get_Z(posB)) * 0.5);
+        if (CollisionEvent3D.get_ContactCount(evt) > 0) {
+            var cp = CollisionEvent3D.GetContactPoint(evt, 0);
+            point = new Vec3(Vec3.get_X(cp), Vec3.get_Y(cp), Vec3.get_Z(cp));
+        }
+        var impulse = CollisionEvent3D.get_NormalImpulse(evt);
+        var speed = CollisionEvent3D.get_RelativeSpeed(evt);
+        if ((layerA == config.LAYER_BALL && layerB == config.LAYER_PINS) ||
+            (layerA == config.LAYER_PINS && layerB == config.LAYER_BALL)) {
+            sawBallPin = true;
+        }
+        var allowPinCascade = rackArmed || sawBallPin ||
+            ((layerA == config.LAYER_BALL && layerB == config.LAYER_PINS) ||
+             (layerA == config.LAYER_PINS && layerB == config.LAYER_BALL));
+        if (layerA == config.LAYER_PINS &&
+            (layerB == config.LAYER_BALL ||
+             (layerB == config.LAYER_PINS && allowPinCascade))) {
+            pinMgr.registerImpact(bodyA, point, impulse, speed);
+        }
+        if (layerB == config.LAYER_PINS &&
+            (layerA == config.LAYER_BALL ||
+             (layerA == config.LAYER_PINS && allowPinCascade))) {
+            pinMgr.registerImpact(bodyB, point, impulse, speed);
+        }
+    }
+    return sawBallPin;
+}
+
+func updateGutter(ballObj: Ball, sawBallPin: Boolean) {
+    if (ballObj.thrown() == false || ballObj.gutterBall()) { return; }
+    if (sawBallPin) { return; }
+    var pos = ballObj.getPosition();
+    var px = Vec3.get_X(pos);
+    var py = Vec3.get_Y(pos);
+    var pz = Vec3.get_Z(pos);
+    var laneHalf = config.LANE_WIDTH / 2.0;
+    var overhangEdge = laneHalf + config.GUTTER_DETECT_OVERHANG;
+    var side = 0;
+    if (pz > config.GUTTER_DETECT_Z && pz < config.GUTTER_DETECT_END_Z) {
+        if (px < -overhangEdge) { side = -1; }
+        if (px > overhangEdge) { side = 1; }
+        if (py < config.BALL_RADIUS * 0.46) {
+            if (px < -(laneHalf - config.BALL_RADIUS * 0.03)) { side = -1; }
+            if (px > laneHalf - config.BALL_RADIUS * 0.03) { side = 1; }
+        }
+    }
+    if (py < config.GUTTER_Y && side == 0) {
+        if (px < 0.0) { side = -1; }
+        else { side = 1; }
+    }
+    if (side != 0) {
+        ballObj.markGutter(side);
+    }
+}
+
+func checkIdleRack() -> Boolean {
+    var world = Physics3DWorld.New(0.0, config.GRAVITY_Y, 0.0);
+    var laneObj = new LaneBuilder();
+    laneObj.initLane(world, config.OIL_HOUSE);
+    var pinMgr = new PinManager();
+    pinMgr.initPins(world);
+
+    for (var step: Integer = 0; step < 240; step = step + 1) {
+        Physics3DWorld.Step(world, config.PHYSICS_DT);
+        pinMgr.updateKnockdowns(config.PHYSICS_DT);
+    }
+
+    var knocked = pinMgr.countTotalKnocked();
+    var maxDisp = pinMgr.maxStandingDisplacement();
+    var maxSpeed = pinMgr.maxBodySpeed();
+    Terminal.Say("idle-rack: knocked=" + toString(knocked)
+        + " maxDisp=" + toString(maxDisp)
+        + " maxSpeed=" + toString(maxSpeed));
+    if (knocked != 0) { return false; }
+    if (maxDisp > 0.012) { return false; }
+    if (maxSpeed > 0.04) { return false; }
+    return true;
+}
+
+func checkBallRoll() -> Boolean {
+    var world = Physics3DWorld.New(0.0, config.GRAVITY_Y, 0.0);
+    var laneObj = new LaneBuilder();
+    laneObj.initLane(world, config.OIL_HOUSE);
+    var ballObj = new Ball();
+    ballObj.initBall(world);
+    ballObj.setSpin(0.0);
+    ballObj.doThrow(0.0, 0.82);
+
+    for (var step: Integer = 0; step < 80; step = step + 1) {
+        var friction = laneObj.getFrictionAt(ballObj.getPosX(), ballObj.getPosZ());
+        ballObj.updateMotion(config.PHYSICS_DT, friction, laneObj.getOilEndZ());
+        Physics3DWorld.Step(world, config.PHYSICS_DT);
+    }
+
+    var vel = ballObj.getVelocity();
+    var ang = Physics3DBody.get_AngularVelocity(ballObj.getBody());
+    var vx = Vec3.get_X(vel);
+    var vz = Vec3.get_Z(vel);
+    var ax = Vec3.get_X(ang);
+    var ay = Vec3.get_Y(ang);
+    var az = Vec3.get_Z(ang);
+    var expectedX = vz / config.BALL_RADIUS;
+    var expectedZ = -vx / config.BALL_RADIUS;
+    Terminal.Say("ball-roll: ax=" + toString(ax)
+        + " ay=" + toString(ay)
+        + " az=" + toString(az)
+        + " expectedX=" + toString(expectedX)
+        + " expectedZ=" + toString(expectedZ));
+    if (Abs(ax - expectedX) > 2.5) { return false; }
+    if (Abs(az - expectedZ) > 2.5) { return false; }
+    if (Abs(ay) > 0.6) { return false; }
+    return true;
+}
+
+func runShot(label: String, aim: Float, power: Float, spin: Float) -> Integer {
+    var world = Physics3DWorld.New(0.0, config.GRAVITY_Y, 0.0);
+    var laneObj = new LaneBuilder();
+    laneObj.initLane(world, config.OIL_HOUSE);
+    var pinMgr = new PinManager();
+    pinMgr.initPins(world);
+    pinMgr.savePinState();
+    var ballObj = new Ball();
+    ballObj.initBall(world);
+    ballObj.setSpin(spin);
+    ballObj.doThrow(aim, power);
+
+    var sawBallPin = false;
+    var step = 0;
+    while (step < 1800 && ballObj.getPosZ() < config.PIN_Z_OFFSET + 2.0 && ballObj.gutterBall() == false) {
+        var friction = laneObj.getFrictionAt(ballObj.getPosX(), ballObj.getPosZ());
+        ballObj.updateMotion(config.PHYSICS_DT, friction, laneObj.getOilEndZ());
+        Physics3DWorld.Step(world, config.PHYSICS_DT);
+        if (processImpacts(world, pinMgr, sawBallPin)) { sawBallPin = true; }
+        updateGutter(ballObj, sawBallPin);
+        pinMgr.updateKnockdowns(config.PHYSICS_DT);
+        step = step + 1;
+        if (sawBallPin && step > 90) {
+            step = 1800;
+        }
+    }
+
+    var settle = 0;
+    while (settle < 360) {
+        Physics3DWorld.Step(world, config.PHYSICS_DT);
+        processImpacts(world, pinMgr, sawBallPin);
+        pinMgr.updateKnockdowns(config.PHYSICS_DT);
+        settle = settle + 1;
+    }
+
+    var knocked = pinMgr.countTotalKnocked();
+    Terminal.Say(label + ": knocked=" + toString(knocked)
+        + " sawBallPin=" + toString(sawBallPin)
+        + " ballX=" + toString(ballObj.getPosX())
+        + " ballZ=" + toString(ballObj.getPosZ()));
+    return knocked;
+}
+
+func main() {
+    if (checkIdleRack() == false) {
+        Terminal.Say("RESULT: fail idle rack moved before impact");
+        return;
+    }
+    if (checkBallRoll() == false) {
+        Terminal.Say("RESULT: fail ball roll axis drifted away from velocity");
+        return;
+    }
+
+    var center = runShot("center-full", 0.0, 1.0, 0.0);
+    var leftPocket = runShot("left-pocket", -config.AIM_MAX * 0.55, 0.92, 0.42);
+    var rightPocket = runShot("right-pocket", config.AIM_MAX * 0.55, 0.92, -0.42);
+    var edge = runShot("forgiving-edge", config.AIM_MAX, 0.72, config.SPIN_MAX);
+
+    if (center < 5) {
+        Terminal.Say("RESULT: fail center shot did not reach the rack");
+        return;
+    }
+    if (leftPocket < 6) {
+        Terminal.Say("RESULT: fail left pocket shot underperformed");
+        return;
+    }
+    if (rightPocket < 6) {
+        Terminal.Say("RESULT: fail right pocket shot underperformed");
+        return;
+    }
+    if (edge < 3) {
+        Terminal.Say("RESULT: fail max aim edge shot became too punishing");
+        return;
+    }
+
+    Terminal.Say("RESULT: ok");
+}

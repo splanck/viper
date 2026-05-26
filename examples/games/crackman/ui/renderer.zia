@@ -24,6 +24,9 @@ bind "./layout";
 bind "./widgets";
 bind "./sprites";
 
+var backdropCache_: Pixels;
+var playfieldShellCache_: Pixels;
+
 hide func drawStarField(canvas: Canvas, tickMs: Integer) {
     var i = 0;
     while i < 44 {
@@ -162,7 +165,7 @@ hide func drawPlayfieldAtmosphere(canvas: Canvas, tickMs: Integer) {
     drawGhostHouseBackdrop(canvas, tickMs);
 }
 
-expose func drawBackdrop(canvas: Canvas, tickMs: Integer) {
+hide func drawBackdropRaw(canvas: Canvas, tickMs: Integer) {
     canvas.GradientV(0, 0, config.SCREEN_WIDTH, config.SCREEN_HEIGHT, theme.BG_TOP, theme.BG_BOTTOM);
     canvas.BoxAlpha(36, 36, config.SCREEN_WIDTH - 72, 52, theme.BG_GLOW_BLUE, 18);
     canvas.BoxAlpha(64, config.SCREEN_HEIGHT - 128, config.SCREEN_WIDTH - 128, 72, theme.BG_GLOW_PINK, 14);
@@ -175,7 +178,21 @@ expose func drawBackdrop(canvas: Canvas, tickMs: Integer) {
     }
 }
 
-expose func drawPlayfieldShell(canvas: Canvas, tickMs: Integer) {
+expose func drawBackdrop(canvas: Canvas, tickMs: Integer) {
+    if config.LOW_SPEC_RENDERING {
+        if backdropCache_ == null {
+            drawBackdropRaw(canvas, tickMs);
+            backdropCache_ = canvas.CopyRect(0, 0, config.SCREEN_WIDTH, config.SCREEN_HEIGHT);
+        } else {
+            canvas.Blit(0, 0, backdropCache_);
+        }
+        return;
+    }
+
+    drawBackdropRaw(canvas, tickMs);
+}
+
+hide func drawPlayfieldShellRaw(canvas: Canvas, tickMs: Integer) {
     drawBackdrop(canvas, tickMs);
 
     var marquee = marqueeRect();
@@ -192,6 +209,20 @@ expose func drawPlayfieldShell(canvas: Canvas, tickMs: Integer) {
     var pf = playfieldRect();
     canvas.Box(pf.x - 2, pf.y - 2, pf.w + 4, pf.h + 4, 0x040814);
     drawPlayfieldAtmosphere(canvas, tickMs);
+}
+
+expose func drawPlayfieldShell(canvas: Canvas, tickMs: Integer) {
+    if config.LOW_SPEC_RENDERING {
+        if playfieldShellCache_ == null {
+            drawPlayfieldShellRaw(canvas, tickMs);
+            playfieldShellCache_ = canvas.CopyRect(0, 0, config.SCREEN_WIDTH, config.SCREEN_HEIGHT);
+        } else {
+            canvas.Blit(0, 0, playfieldShellCache_);
+        }
+        return;
+    }
+
+    drawPlayfieldShellRaw(canvas, tickMs);
 }
 
 expose func drawMenu(canvas: Canvas,

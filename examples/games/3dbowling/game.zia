@@ -568,9 +568,9 @@ class BowlingGame {
         var friction = laneObj.getFrictionAt(ballObj.getPosX(), ballObj.getPosZ());
         ballObj.updateMotion(dt, friction, laneObj.getOilEndZ());
         Physics3DWorld.Step(physWorld, dt);
-        updateTriggerZones();
         pinMgr.updateKnockdowns(dt);
         handlePinImpacts();
+        updateTriggerZones();
 
         if (friction > config.OIL_FRICTION_BLEND && Abs(ballObj.getSpin()) > 0.16 && skidMarkTimer <= 0.0) {
             particleMgr.spawnSkidMark(ballObj.getPosX(), ballObj.getPosZ());
@@ -580,7 +580,10 @@ class BowlingGame {
         particleMgr.updateLaneDust(ballObj.getPosX(), ballObj.getPosZ());
         camCtrl.updateFollow(ballObj.getPosX(), ballObj.getPosZ(), dt);
 
-        if (ballObj.hasPastPins() || ballObj.isSlow() || ballObj.getPosZ() > config.GUTTER_EXIT_Z) {
+        if (ballObj.hasPastPins() ||
+            (ballHitPinsThisRoll && ballObj.getPosZ() > config.PIN_Z_OFFSET - 1.2) ||
+            ballObj.isSlow() ||
+            ballObj.getPosZ() > config.GUTTER_EXIT_Z) {
             particleMgr.stopLaneDust();
             accumulator = 0.0;
             settleTimer = config.SETTLE_TIME;
@@ -610,6 +613,7 @@ class BowlingGame {
     /// @brief Poll the gutter + pin-deck triggers; update ball state accordingly.
     hide func updateTriggerZones() {
         if (ballObj.thrown() == false) { return; }
+        if (ballHitPinsThisRoll) { return; }
 
         var pos = ballObj.getPosition();
         var px = Vec3.get_X(pos);
@@ -619,7 +623,7 @@ class BowlingGame {
         var overhangEdge = laneHalf + config.GUTTER_DETECT_OVERHANG;
         var inLeftGutter = false;
         var inRightGutter = false;
-        if (pz > config.GUTTER_DETECT_Z) {
+        if (pz > config.GUTTER_DETECT_Z && pz < config.GUTTER_DETECT_END_Z) {
             if (px < -overhangEdge) { inLeftGutter = true; }
             if (px > overhangEdge) { inRightGutter = true; }
             if (py < config.BALL_RADIUS * 0.46) {
@@ -649,20 +653,32 @@ class BowlingGame {
 
     /// @brief Spawn sparks + sounds + camera shake on each pin-pin / ball-pin impact.
     hide func handlePinImpacts() {
-        var collisionCount = Physics3DWorld.get_CollisionCount(physWorld);
-        var bestDepth = 0.0;
+        var collisionCount = Physics3DWorld.get_CollisionEventCount(physWorld);
+        var bestStrength = 0.0;
         var bestPos = new Vec3(0.0, 0.0, 0.0);
         var ballPinImpact = false;
         var sawBallPinImpact = false;
 
         for (var ci: Integer = 0; ci < collisionCount; ci = ci + 1) {
-            var depth = Physics3DWorld.GetCollisionDepth(physWorld, ci);
-            var bodyA = Physics3DWorld.GetCollisionBodyA(physWorld, ci);
-            var bodyB = Physics3DWorld.GetCollisionBodyB(physWorld, ci);
+            var evt = Physics3DWorld.GetCollisionEvent(physWorld, ci);
+            if (CollisionEvent3D.get_IsTrigger(evt)) { continue; }
+            var bodyA = CollisionEvent3D.get_BodyA(evt);
+            var bodyB = CollisionEvent3D.get_BodyB(evt);
             var layerA = Physics3DBody.get_CollisionLayer(bodyA);
             var layerB = Physics3DBody.get_CollisionLayer(bodyB);
             var posA = Physics3DBody.get_Position(bodyA);
             var posB = Physics3DBody.get_Position(bodyB);
+            var point = new Vec3(
+                (Vec3.get_X(posA) + Vec3.get_X(posB)) * 0.5,
+                (Vec3.get_Y(posA) + Vec3.get_Y(posB)) * 0.5,
+                (Vec3.get_Z(posA) + Vec3.get_Z(posB)) * 0.5);
+            if (CollisionEvent3D.get_ContactCount(evt) > 0) {
+                var cp = CollisionEvent3D.GetContactPoint(evt, 0);
+                point = new Vec3(Vec3.get_X(cp), Vec3.get_Y(cp), Vec3.get_Z(cp));
+            }
+            var impulse = CollisionEvent3D.get_NormalImpulse(evt);
+            var relativeSpeed = CollisionEvent3D.get_RelativeSpeed(evt);
+            var strength = impulse + relativeSpeed * 0.18;
             var isBallPinPair =
                 (layerA == config.LAYER_BALL && layerB == config.LAYER_PINS) ||
                 (layerA == config.LAYER_PINS && layerB == config.LAYER_BALL);
@@ -671,17 +687,29 @@ class BowlingGame {
                 sawBallPinImpact = true;
             }
 
-            if (depth <= bestDepth) { continue; }
+            var allowPinCascade = ballHitPinsThisRoll || sawBallPinImpact || isBallPinPair;
+            if (layerA == config.LAYER_PINS &&
+                (layerB == config.LAYER_BALL ||
+                 (layerB == config.LAYER_PINS && allowPinCascade))) {
+                pinMgr.registerImpact(bodyA, point, impulse, relativeSpeed);
+            }
+            if (layerB == config.LAYER_PINS &&
+                (layerA == config.LAYER_BALL ||
+                 (layerA == config.LAYER_PINS && allowPinCascade))) {
+                pinMgr.registerImpact(bodyB, point, impulse, relativeSpeed);
+            }
+
+            if (strength <= bestStrength) { continue; }
 
             if ((layerA == config.LAYER_BALL || layerA == config.LAYER_PINS) && isImpactBodyInPinDeck(posA)) {
-                bestDepth = depth;
-                bestPos = posA;
+                bestStrength = strength;
+                bestPos = point;
                 ballPinImpact = isBallPinPair;
             }
             if ((layerB == config.LAYER_BALL || layerB == config.LAYER_PINS) &&
-                isImpactBodyInPinDeck(posB) && depth > bestDepth) {
-                bestDepth = depth;
-                bestPos = posB;
+                isImpactBodyInPinDeck(posB) && strength > bestStrength) {
+                bestStrength = strength;
+                bestPos = point;
                 ballPinImpact = isBallPinPair;
             }
         }
@@ -692,15 +720,15 @@ class BowlingGame {
 
         if (impactCooldown > 0.0) { return; }
 
-        if (bestDepth > 0.007) {
+        if (bestStrength > 0.18) {
             impactCooldown = config.IMPACT_COOLDOWN;
             if (ballPinImpact) {
-                ballObj.dampForPinDeckImpact(bestDepth);
+                ballObj.dampForPinDeckImpact(bestStrength * 0.006);
             }
             particleMgr.spawnCrashSparks(Vec3.get_X(bestPos), Vec3.get_Y(bestPos), Vec3.get_Z(bestPos));
             playSpatialSound("crash", bestPos, 16.0, 90);
             camCtrl.shake(config.SHAKE_PIN_INTENSITY, config.SHAKE_PIN_DURATION);
-            render.flashPinLight(1.35 + bestDepth * 20.0);
+            render.flashPinLight(1.25 + bestStrength * 0.35);
             lightFlashTimer = 0.08;
         }
     }
@@ -710,7 +738,8 @@ class BowlingGame {
         var current = getActiveScoreKeeper();
         var newlyKnocked = pinMgr.countNewlyKnocked();
         var scoredKnocked = newlyKnocked;
-        if (ballObj.gutterBall() || ballHitPinsThisRoll == false) {
+        var trueGutter = ballObj.gutterBall() && ballHitPinsThisRoll == false;
+        if (trueGutter) {
             scoredKnocked = 0;
             if (newlyKnocked > 0) {
                 pinMgr.restoreSavedPinState();
@@ -718,7 +747,7 @@ class BowlingGame {
         }
         var frameComplete = current.recordRoll(scoredKnocked);
 
-        if (ballObj.gutterBall()) {
+        if (trueGutter) {
             celebMgr.onGutter();
         } else if (current.wasStrike()) {
             celebMgr.onStrike();
@@ -908,6 +937,9 @@ class BowlingGame {
     /// @brief 3D pass: draw lane / pins / sweep bar / ball / particles.
     hide func drawScene() {
         laneObj.draw(render.getCanvas());
+        if (gameState == config.STATE_AIMING && screenState == config.SCREEN_PLAYING) {
+            ballObj.drawAimPreview(render.getCanvas(), aimX, spin);
+        }
         if (pinMgr.isSweeping()) {
             laneObj.drawSweepBar(render.getCanvas(), pinMgr.getSweepY());
         }

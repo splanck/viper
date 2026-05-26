@@ -7433,13 +7433,13 @@ void *rt_collider3d_new_sphere(double radius) {
 
 /// @brief Stub for `Collider3D.NewCapsule` — would normally allocate a
 ///        Y-axis-aligned capsule collider (cylinder with hemispherical
-///        end-caps). Total height along Y is `height + 2 * radius`.
+///        end-caps). Total height along Y is `height`, including caps.
 ///        Used for character controllers and humanoid bodies.
 ///
 /// Silent stub returning NULL.
 ///
 /// @param radius Capsule cross-sectional radius (ignored).
-/// @param height Length of the cylindrical mid-section (ignored).
+/// @param height Total capsule height including caps (ignored).
 ///
 /// @return `NULL`.
 void *rt_collider3d_new_capsule(double radius, double height) {
@@ -7659,8 +7659,7 @@ double rt_collider3d_get_radius_raw(void *collider) {
 }
 
 /// @brief Stub for `Collider3D.Height` raw query — for capsule colliders,
-///        get the axis length between the two hemispherical caps (so full
-///        capsule length is `height + 2 * radius`).
+///        get the total capsule height including both hemispherical caps.
 ///
 /// Silent stub returning `0.0`.
 ///
@@ -7841,7 +7840,7 @@ void *rt_body3d_new_sphere(double radius, double mass) {
 /// Silent stub returning NULL.
 ///
 /// @param radius Capsule cross-sectional radius (ignored).
-/// @param height Length of the cylindrical mid-section (ignored).
+/// @param height Total capsule height including caps (ignored).
 /// @param mass   Body mass in kilograms (ignored).
 ///
 /// @return `NULL`.

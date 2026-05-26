@@ -2,6 +2,7 @@ module overlay_smoke_probe;
 
 bind Viper.Graphics3D;
 bind Viper.Graphics.Pixels as Pixels;
+bind Viper.Math;
 bind Viper.Terminal as Terminal;
 bind "./config";
 bind "./engine/renderer";
@@ -65,9 +66,9 @@ func main() {
 
     var snap = render.getCanvas().Screenshot();
     var center = Pixels.Get(snap, render.getWidth() / 2, render.getHeight() / 2);
-    var r = (center >> 24) & 0xFF;
-    var g = (center >> 16) & 0xFF;
-    var b = (center >> 8) & 0xFF;
+    var r = Bits.And(center >> 24, 0xFF);
+    var g = Bits.And(center >> 16, 0xFF);
+    var b = Bits.And(center >> 8, 0xFF);
     if (r > 220 && g < 80 && b > 220) {
         Terminal.Say("RESULT: fail stale overlay");
         return;

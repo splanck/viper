@@ -1,0 +1,73 @@
+module aim_smoke_probe;
+
+bind Viper.Graphics3D;
+bind Viper.Graphics.Pixels as Pixels;
+bind Viper.Terminal as Terminal;
+bind "./config";
+bind "./engine/renderer";
+bind "./engine/camera";
+bind "./engine/hud";
+bind "./lane/lane";
+bind "./lane/pins";
+bind "./lane/ball";
+bind "./scoring/scoring";
+bind "./smoke_checks";
+
+func main() {
+    var render = new Renderer();
+    render.initRenderer(config.QUALITY_CINEMATIC);
+
+    var aimX = config.AIM_MAX * 0.55;
+    var spin = -config.SPIN_MAX * 0.55;
+
+    var camCtrl = new CameraController();
+    camCtrl.initCamera(render.getCamera());
+    camCtrl.setAimMode(aimX);
+
+    var world = Physics3DWorld.New(0.0, config.GRAVITY_Y, 0.0);
+
+    var laneObj = new LaneBuilder();
+    laneObj.initLane(world, config.OIL_HOUSE);
+
+    var pinMgr = new PinManager();
+    pinMgr.initPins(world);
+
+    var ballObj = new Ball();
+    ballObj.initBall(world);
+    ballObj.setSpin(spin);
+    ballObj.setAimPosition(aimX);
+
+    var scoreKeeper = new ScoreKeeper();
+    scoreKeeper.init();
+    var hudObj = new HUD();
+    hudObj.initHUD();
+
+    var env = render.getSkybox();
+    laneObj.applyEnvironment(env);
+    pinMgr.applyEnvironment(env);
+    ballObj.applyEnvironment(env);
+
+    render.poll();
+    render.beginFrame();
+    laneObj.draw(render.getCanvas());
+    ballObj.drawAimPreview(render.getCanvas(), aimX, spin);
+    pinMgr.draw(render.getCanvas());
+    ballObj.draw(render.getCanvas());
+    render.endFrame();
+    hudObj.draw(render.getCanvas(), scoreKeeper, 0.62, true, spin, aimX,
+        ballObj.getBallType(), config.STATE_AIMING, render.getFps(),
+        1, 0, 0, 0, laneObj.getOilPatternName());
+
+    var snap = render.getCanvas().Screenshot();
+    if Pixels.SavePng(snap, "/tmp/3dbowling_aim.png") != 1 {
+        Terminal.Say("RESULT: fail screenshot");
+        return;
+    }
+    if (smoke_checks.HasVisible3DScene(snap, render.getWidth(), render.getHeight()) == false) {
+        Terminal.Say("RESULT: fail scene visibility");
+        return;
+    }
+
+    render.flip();
+    Terminal.Say("RESULT: ok");
+}

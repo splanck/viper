@@ -760,6 +760,53 @@ static void test_rotated_capsule_aabb_collision() {
                 "rotated capsule-aabb: oriented capsule axis participates in collision");
 }
 
+static void test_offcenter_contact_generates_angular_velocity() {
+    void *world = rt_world3d_new(0, 0, 0);
+    void *capsule = rt_body3d_new_capsule(0.2, 1.2, 1.8);
+    void *sphere = rt_body3d_new_sphere(0.22, 3.0);
+    rt_body3d_set_position(capsule, 0.0, 0.6, 0.0);
+    rt_body3d_set_position(sphere, -0.35, 0.9, 0.0);
+    rt_body3d_set_velocity(sphere, 5.0, 0.0, 0.0);
+    rt_world3d_add(world, capsule);
+    rt_world3d_add(world, sphere);
+
+    rt_world3d_step(world, 1.0 / 60.0);
+
+    {
+        void *ang = rt_body3d_get_angular_velocity(capsule);
+        double angular_speed = sqrt(rt_vec3_x(ang) * rt_vec3_x(ang) +
+                                    rt_vec3_y(ang) * rt_vec3_y(ang) +
+                                    rt_vec3_z(ang) * rt_vec3_z(ang));
+        EXPECT_TRUE(rt_world3d_get_collision_count(world) == 1,
+                    "off-center contact: collision recorded");
+        EXPECT_TRUE(angular_speed > 0.1,
+                    "off-center contact: angular velocity generated from contact point");
+    }
+}
+
+static void test_large_floor_contact_point_stays_near_dynamic_body() {
+    void *world = rt_world3d_new(0, 0, 0);
+    void *floor = rt_body3d_new_aabb(100.0, 0.05, 100.0, 0.0);
+    void *sphere = rt_body3d_new_sphere(1.0, 1.0);
+    rt_body3d_set_position(floor, 0.0, -0.05, 0.0);
+    rt_body3d_set_position(sphere, 10.0, 0.95, 20.0);
+    rt_world3d_add(world, floor);
+    rt_world3d_add(world, sphere);
+
+    rt_world3d_step(world, 1.0 / 60.0);
+
+    {
+        void *event = rt_world3d_get_collision_event(world, 0);
+        void *point = rt_collision_event3d_get_contact_point(event, 0);
+        EXPECT_TRUE(rt_world3d_get_collision_count(world) == 1,
+                    "floor contact point: collision recorded");
+        EXPECT_NEAR(rt_vec3_x(point), 10.0, 0.05,
+                    "floor contact point: x remains near sphere");
+        EXPECT_NEAR(rt_vec3_z(point), 20.0, 0.05,
+                    "floor contact point: z remains near sphere");
+    }
+}
+
 static void test_convex_hull_collider_blocks_sphere() {
     void *world = rt_world3d_new(0, 0, 0);
     void *mesh = rt_mesh3d_new_box(2.0, 2.0, 2.0);
@@ -1329,6 +1376,8 @@ int main() {
     test_aabb_sphere_collision();
     test_capsule_aabb_collision();
     test_rotated_capsule_aabb_collision();
+    test_offcenter_contact_generates_angular_velocity();
+    test_large_floor_contact_point_stays_near_dynamic_body();
     test_convex_hull_collider_blocks_sphere();
     test_mesh_collider_blocks_falling_sphere();
     test_compound_collider_child_transform_affects_contact();

@@ -13,7 +13,7 @@
 // Key invariants:
 //   - Bodies in topological order not required (flat array, sweep-and-prune broad phase).
 //   - Integration: forces→velocity, velocity→position (symplectic Euler).
-//   - Collision response: impulse = -(1+e)*rv / (inv_mass_a + inv_mass_b).
+//   - Collision response: contact-point impulse updates linear and angular velocity.
 //   - Baumgarte stabilization: 40% excess penetration correction, 1% slop.
 //   - Character controller: up to 3 slide iterations per move.
 //   - Quaternion orientations are renormalized after every integration step.
@@ -605,6 +605,20 @@ static void vec3_sub(const double *a, const double *b, double *out) {
     out[2] = a[2] - b[2];
 }
 
+/// @brief Component add: `out = a + b`.
+static void vec3_add(const double *a, const double *b, double *out) {
+    out[0] = a[0] + b[0];
+    out[1] = a[1] + b[1];
+    out[2] = a[2] + b[2];
+}
+
+/// @brief Cross product: `out = a x b`.
+static void vec3_cross(const double *a, const double *b, double *out) {
+    out[0] = a[1] * b[2] - a[2] * b[1];
+    out[1] = a[2] * b[0] - a[0] * b[2];
+    out[2] = a[0] * b[1] - a[1] * b[0];
+}
+
 /// @brief Negate: `dst = -src`.
 static void vec3_negate(const double *src, double *dst) {
     dst[0] = -src[0];
@@ -1001,6 +1015,87 @@ static void body3d_wake_if_dynamic(rt_body3d *b) {
         return;
     b->is_sleeping = 0;
     b->sleep_time = 0.0;
+}
+
+/// @brief Apply a world-space angular impulse through the body's local diagonal inertia.
+static void body3d_apply_world_angular_impulse(rt_body3d *b, const double *angular_impulse) {
+    double inv_rotation[4];
+    double local_impulse[3];
+    double local_delta[3];
+    double world_delta[3];
+    if (!b || b->motion_mode != PH3D_MODE_DYNAMIC || !angular_impulse)
+        return;
+    if (!ph3d_vec3_all_finite(angular_impulse))
+        return;
+    quat_conjugate(b->orientation, inv_rotation);
+    quat_rotate_vec3(inv_rotation, angular_impulse, local_impulse);
+    local_delta[0] = local_impulse[0] * b->inv_inertia[0];
+    local_delta[1] = local_impulse[1] * b->inv_inertia[1];
+    local_delta[2] = local_impulse[2] * b->inv_inertia[2];
+    quat_rotate_vec3(b->orientation, local_delta, world_delta);
+    b->angular_velocity[0] += world_delta[0];
+    b->angular_velocity[1] += world_delta[1];
+    b->angular_velocity[2] += world_delta[2];
+}
+
+/// @brief Return `I^-1 * v` in world space using the body's local diagonal inertia.
+static void body3d_world_inv_inertia_mul(const rt_body3d *b, const double *v, double *out) {
+    double inv_rotation[4];
+    double local_v[3];
+    double local_out[3];
+    if (!out)
+        return;
+    vec3_set(out, 0.0, 0.0, 0.0);
+    if (!b || b->motion_mode != PH3D_MODE_DYNAMIC || !v || !ph3d_vec3_all_finite(v))
+        return;
+    quat_conjugate(b->orientation, inv_rotation);
+    quat_rotate_vec3(inv_rotation, v, local_v);
+    local_out[0] = local_v[0] * b->inv_inertia[0];
+    local_out[1] = local_v[1] * b->inv_inertia[1];
+    local_out[2] = local_v[2] * b->inv_inertia[2];
+    quat_rotate_vec3(b->orientation, local_out, out);
+}
+
+/// @brief Velocity at a world-space contact point, including angular motion.
+static void body3d_contact_velocity(const rt_body3d *b, const double *r, double *out) {
+    double angular_component[3];
+    if (!out)
+        return;
+    if (!b) {
+        vec3_set(out, 0.0, 0.0, 0.0);
+        return;
+    }
+    vec3_cross(b->angular_velocity, r, angular_component);
+    vec3_add(b->velocity, angular_component, out);
+}
+
+/// @brief Effective inverse mass contribution for an impulse direction at offset `r`.
+static double body3d_contact_impulse_denominator(const rt_body3d *b,
+                                                 const double *r,
+                                                 const double *dir) {
+    double r_cross_dir[3];
+    double inv_i_term[3];
+    double angular_cross[3];
+    if (!b || b->motion_mode != PH3D_MODE_DYNAMIC || !r || !dir)
+        return 0.0;
+    vec3_cross(r, dir, r_cross_dir);
+    body3d_world_inv_inertia_mul(b, r_cross_dir, inv_i_term);
+    vec3_cross(inv_i_term, r, angular_cross);
+    return b->inv_mass + vec3_dot(angular_cross, dir);
+}
+
+/// @brief Apply a world-space linear impulse at a contact offset from the center of mass.
+static void body3d_apply_contact_impulse(rt_body3d *b, const double *impulse, const double *r) {
+    double angular_impulse[3];
+    if (!b || b->motion_mode != PH3D_MODE_DYNAMIC || !impulse || !r)
+        return;
+    if (!ph3d_vec3_all_finite(impulse))
+        return;
+    b->velocity[0] += impulse[0] * b->inv_mass;
+    b->velocity[1] += impulse[1] * b->inv_mass;
+    b->velocity[2] += impulse[2] * b->inv_mass;
+    vec3_cross(r, impulse, angular_impulse);
+    body3d_apply_world_angular_impulse(b, angular_impulse);
 }
 
 /// @brief Per-body distance threshold for triggering CCD substeps.
@@ -1428,10 +1523,11 @@ static void collider_support_point(void *collider,
 
 /// @brief Estimate a representative contact point given two leaf colliders + a normal.
 ///
-/// Takes the support point on each leaf in opposite directions
-/// (`+normal` for A, `-normal` for B), then averages them. Cheap and
-/// stable enough for the impulse solver, which only uses the contact
-/// point for friction torque computation.
+/// Uses the overlapping region of the two world AABBs to pick a point on
+/// the active contact face. This is deliberately conservative: for large
+/// static boxes (floors, walls) a support point along an axis-aligned normal
+/// can land on a far corner when the other normal components are zero, which
+/// creates bogus torque in the contact solver.
 static void compute_contact_point_from_leafs(void *a_leaf,
                                              const rt_collider_pose *a_pose,
                                              void *b_leaf,
@@ -1441,12 +1537,54 @@ static void compute_contact_point_from_leafs(void *a_leaf,
     double point_a[3];
     double point_b[3];
     double inv_normal[3];
+    double amn[3];
+    double amx[3];
+    double bmn[3];
+    double bmx[3];
+    double abs_n[3];
+    int axis = 0;
     if (!point_out) {
         return;
     }
     vec3_set(point_out, 0.0, 0.0, 0.0);
     if (!a_leaf || !a_pose || !b_leaf || !b_pose || !normal)
         return;
+
+    rt_collider3d_compute_world_aabb_raw(
+        a_leaf, a_pose->position, a_pose->rotation, a_pose->scale, amn, amx);
+    rt_collider3d_compute_world_aabb_raw(
+        b_leaf, b_pose->position, b_pose->rotation, b_pose->scale, bmn, bmx);
+
+    abs_n[0] = fabs(normal[0]);
+    abs_n[1] = fabs(normal[1]);
+    abs_n[2] = fabs(normal[2]);
+    if (abs_n[1] > abs_n[axis])
+        axis = 1;
+    if (abs_n[2] > abs_n[axis])
+        axis = 2;
+
+    if (isfinite(amn[0]) && isfinite(amn[1]) && isfinite(amn[2]) &&
+        isfinite(amx[0]) && isfinite(amx[1]) && isfinite(amx[2]) &&
+        isfinite(bmn[0]) && isfinite(bmn[1]) && isfinite(bmn[2]) &&
+        isfinite(bmx[0]) && isfinite(bmx[1]) && isfinite(bmx[2])) {
+        for (int i = 0; i < 3; ++i) {
+            double lo = fmax(amn[i], bmn[i]);
+            double hi = fmin(amx[i], bmx[i]);
+            if (i == axis && abs_n[i] > 1e-8) {
+                double a_face = normal[i] >= 0.0 ? amx[i] : amn[i];
+                double b_face = normal[i] >= 0.0 ? bmn[i] : bmx[i];
+                point_out[i] = (a_face + b_face) * 0.5;
+            } else if (lo <= hi) {
+                point_out[i] = (lo + hi) * 0.5;
+            } else {
+                double ac = (amn[i] + amx[i]) * 0.5;
+                double bc = (bmn[i] + bmx[i]) * 0.5;
+                point_out[i] = (ac + bc) * 0.5;
+            }
+        }
+        return;
+    }
+
     vec3_negate(normal, inv_normal);
     collider_support_point(a_leaf, a_pose, normal, point_a);
     collider_support_point(b_leaf, b_pose, inv_normal, point_b);
@@ -2476,64 +2614,119 @@ static int test_collision(const rt_body3d *a,
 static double resolve_collision(rt_body3d *a,
                                 rt_body3d *b,
                                 const double *n,
+                                const double *point,
                                 double depth,
                                 double *relative_speed_out) {
-    double rv = (b->velocity[0] - a->velocity[0]) * n[0] +
-                (b->velocity[1] - a->velocity[1]) * n[1] + (b->velocity[2] - a->velocity[2]) * n[2];
-    if (relative_speed_out)
-        *relative_speed_out = fabs(rv);
-    if (rv > 0)
-        return 0.0; /* separating */
-
-    double e = (a->restitution < b->restitution) ? a->restitution : b->restitution;
-    double inv_sum = a->inv_mass + b->inv_mass;
-    if (inv_sum < 1e-12)
-        return 0.0;
-
-    double j = -(1.0 + e) * rv / inv_sum;
+    double r_a[3];
+    double r_b[3];
+    double vel_a[3];
+    double vel_b[3];
+    double rv_vec[3];
+    double rv;
+    double denom;
+    double e;
+    double j;
+    double impulse[3];
     int woke = 0;
 
-    a->velocity[0] -= j * a->inv_mass * n[0];
-    a->velocity[1] -= j * a->inv_mass * n[1];
-    a->velocity[2] -= j * a->inv_mass * n[2];
-    b->velocity[0] += j * b->inv_mass * n[0];
-    b->velocity[1] += j * b->inv_mass * n[1];
-    b->velocity[2] += j * b->inv_mass * n[2];
+    if (point) {
+        vec3_sub(point, a->position, r_a);
+        vec3_sub(point, b->position, r_b);
+    } else {
+        vec3_set(r_a, 0.0, 0.0, 0.0);
+        vec3_set(r_b, 0.0, 0.0, 0.0);
+    }
+
+    body3d_contact_velocity(a, r_a, vel_a);
+    body3d_contact_velocity(b, r_b, vel_b);
+    vec3_sub(vel_b, vel_a, rv_vec);
+    rv = vec3_dot(rv_vec, n);
+    if (relative_speed_out)
+        *relative_speed_out = fabs(rv);
+    if (rv > 0) {
+        double inv_sum = a->inv_mass + b->inv_mass;
+        if (inv_sum > 1e-12) {
+            double slop = 0.01;
+            double correction = fmax(depth - slop, 0.0) * 0.4 / inv_sum;
+            a->position[0] -= correction * a->inv_mass * n[0];
+            a->position[1] -= correction * a->inv_mass * n[1];
+            a->position[2] -= correction * a->inv_mass * n[2];
+            b->position[0] += correction * b->inv_mass * n[0];
+            b->position[1] += correction * b->inv_mass * n[1];
+            b->position[2] += correction * b->inv_mass * n[2];
+        }
+        return 0.0; /* separating */
+    }
+
+    e = (a->restitution < b->restitution) ? a->restitution : b->restitution;
+    denom = body3d_contact_impulse_denominator(a, r_a, n) +
+            body3d_contact_impulse_denominator(b, r_b, n);
+    if (denom < 1e-12)
+        return 0.0;
+
+    j = -(1.0 + e) * rv / denom;
+    impulse[0] = j * n[0];
+    impulse[1] = j * n[1];
+    impulse[2] = j * n[2];
+    {
+        double neg_impulse[3] = {-impulse[0], -impulse[1], -impulse[2]};
+        body3d_apply_contact_impulse(a, neg_impulse, r_a);
+        body3d_apply_contact_impulse(b, impulse, r_b);
+    }
 
     /* Coulomb friction — tangential impulse capped by mu * normal impulse */
     {
         double fa = ph3d_clamp_nonnegative_finite(a->friction, 0.0);
         double fb = ph3d_clamp_nonnegative_finite(b->friction, 0.0);
         double mu = sqrt(fa * fb);
-        double rvx = b->velocity[0] - a->velocity[0];
-        double rvy = b->velocity[1] - a->velocity[1];
-        double rvz = b->velocity[2] - a->velocity[2];
-        double rv_n = rvx * n[0] + rvy * n[1] + rvz * n[2];
-        double tx = rvx - rv_n * n[0];
-        double ty = rvy - rv_n * n[1];
-        double tz = rvz - rv_n * n[2];
-        double tlen = sqrt(tx * tx + ty * ty + tz * tz);
+        double rv_n;
+        double tx;
+        double ty;
+        double tz;
+        double tlen;
+        body3d_contact_velocity(a, r_a, vel_a);
+        body3d_contact_velocity(b, r_b, vel_b);
+        vec3_sub(vel_b, vel_a, rv_vec);
+        rv_n = vec3_dot(rv_vec, n);
+        tx = rv_vec[0] - rv_n * n[0];
+        ty = rv_vec[1] - rv_n * n[1];
+        tz = rv_vec[2] - rv_n * n[2];
+        tlen = sqrt(tx * tx + ty * ty + tz * tz);
         if (tlen > 1e-8) {
+            double tangent[3];
+            double tangent_denom;
+            double jt;
+            double friction_impulse[3];
             tx /= tlen;
             ty /= tlen;
             tz /= tlen;
-            double jt = -(rvx * tx + rvy * ty + rvz * tz) / inv_sum;
+            vec3_set(tangent, tx, ty, tz);
+            tangent_denom = body3d_contact_impulse_denominator(a, r_a, tangent) +
+                            body3d_contact_impulse_denominator(b, r_b, tangent);
+            if (tangent_denom < 1e-12)
+                tangent_denom = denom;
+            jt = -vec3_dot(rv_vec, tangent) / tangent_denom;
             if (fabs(jt) > mu * j)
                 jt = (jt > 0 ? 1.0 : -1.0) * mu * j;
-            a->velocity[0] -= jt * a->inv_mass * tx;
-            a->velocity[1] -= jt * a->inv_mass * ty;
-            a->velocity[2] -= jt * a->inv_mass * tz;
-            b->velocity[0] += jt * b->inv_mass * tx;
-            b->velocity[1] += jt * b->inv_mass * ty;
-            b->velocity[2] += jt * b->inv_mass * tz;
-            if (fabs(jt) > 1e-8)
+            friction_impulse[0] = jt * tx;
+            friction_impulse[1] = jt * ty;
+            friction_impulse[2] = jt * tz;
+            {
+                double neg_friction_impulse[3] = {
+                    -friction_impulse[0], -friction_impulse[1], -friction_impulse[2]};
+                body3d_apply_contact_impulse(a, neg_friction_impulse, r_a);
+                body3d_apply_contact_impulse(b, friction_impulse, r_b);
+            }
+            if (fabs(jt) > 1e-8) {
                 woke = 1;
+            }
         }
     }
 
     /* Baumgarte positional correction (40%, 1% slop) */
     double slop = 0.01;
-    double correction = fmax(depth - slop, 0.0) * 0.4 / inv_sum;
+    double inv_sum = a->inv_mass + b->inv_mass;
+    double correction = inv_sum > 1e-12 ? fmax(depth - slop, 0.0) * 0.4 / inv_sum : 0.0;
     a->position[0] -= correction * a->inv_mass * n[0];
     a->position[1] -= correction * a->inv_mass * n[1];
     a->position[2] -= correction * a->inv_mass * n[2];
@@ -2624,7 +2817,7 @@ static int world3d_process_collision_pair(rt_world3d *w, rt_body3d *a, rt_body3d
                               (b->velocity[1] - a->velocity[1]) * normal[1] +
                               (b->velocity[2] - a->velocity[2]) * normal[2]);
     } else {
-        normal_impulse = resolve_collision(a, b, normal, depth, &relative_speed);
+        normal_impulse = resolve_collision(a, b, normal, point, depth, &relative_speed);
     }
     c->relative_speed = relative_speed;
     c->normal_impulse = normal_impulse;

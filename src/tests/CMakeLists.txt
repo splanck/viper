@@ -1033,6 +1033,30 @@ if (WIN32)
             ENVIRONMENT "VIPER_3D_BACKEND=software")
 endif ()
 
+add_test(NAME zia_smoke_3dbowling_trajectory
+        COMMAND $<TARGET_FILE:zia> "${CMAKE_SOURCE_DIR}/examples/games/3dbowling/trajectory_probe.zia"
+        WORKING_DIRECTORY "${CMAKE_SOURCE_DIR}/examples/games/3dbowling")
+set_tests_properties(zia_smoke_3dbowling_trajectory PROPERTIES
+        PASS_REGULAR_EXPRESSION "RESULT: ok"
+        LABELS "zia;smoke;graphics3d"
+        TIMEOUT 30)
+
+add_test(NAME zia_smoke_3dbowling_aim
+        COMMAND $<TARGET_FILE:zia> "${CMAKE_SOURCE_DIR}/examples/games/3dbowling/aim_smoke_probe.zia"
+        WORKING_DIRECTORY "${CMAKE_SOURCE_DIR}/examples/games/3dbowling")
+set_tests_properties(zia_smoke_3dbowling_aim PROPERTIES
+        PASS_REGULAR_EXPRESSION "RESULT: ok"
+        LABELS "zia;smoke;graphics3d;requires_display"
+        TIMEOUT 30)
+if (CMAKE_SYSTEM_NAME STREQUAL "Linux")
+    set_tests_properties(zia_smoke_3dbowling_aim PROPERTIES
+            ENVIRONMENT "VIPER_3D_BACKEND=software")
+endif ()
+if (WIN32)
+    set_tests_properties(zia_smoke_3dbowling_aim PROPERTIES
+            ENVIRONMENT "VIPER_3D_BACKEND=software")
+endif ()
+
 add_test(NAME zia_smoke_3dscene
         COMMAND $<TARGET_FILE:zia> "${CMAKE_SOURCE_DIR}/examples/games/3dscene/smoke_probe.zia"
         WORKING_DIRECTORY "${CMAKE_SOURCE_DIR}/examples/games/3dscene")
@@ -1117,6 +1141,14 @@ add_test(NAME zia_smoke_crackman_movement
         COMMAND $<TARGET_FILE:zia> "${CMAKE_SOURCE_DIR}/examples/games/crackman/movement_probe.zia"
         WORKING_DIRECTORY "${CMAKE_SOURCE_DIR}/examples/games/crackman")
 set_tests_properties(zia_smoke_crackman_movement PROPERTIES
+        PASS_REGULAR_EXPRESSION "RESULT: ok"
+        LABELS "zia;smoke"
+        TIMEOUT 30)
+
+add_test(NAME zia_smoke_crackman_ghost_stall
+        COMMAND $<TARGET_FILE:zia> "${CMAKE_SOURCE_DIR}/examples/games/crackman/ghost_stall_probe.zia"
+        WORKING_DIRECTORY "${CMAKE_SOURCE_DIR}/examples/games/crackman")
+set_tests_properties(zia_smoke_crackman_ghost_stall PROPERTIES
         PASS_REGULAR_EXPRESSION "RESULT: ok"
         LABELS "zia;smoke"
         TIMEOUT 30)

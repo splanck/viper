@@ -15,7 +15,7 @@
 //     glow (warm tone over the foul line), point deck fill (cool
 //     tone behind the pins). The combination is what gives the
 //     "bowling alley" mood.
-//   * PROCEDURAL SKYBOX. createAlleySkybox builds 6 24×24 Pixels
+//   * PROCEDURAL SKYBOX. createAlleySkybox builds 6 64x64 Pixels
 //     buffers in code (gradients + ceiling tile pattern + floor
 //     stripe pattern), then assembles them as a CubeMap3D. No
 //     external textures needed; the skybox subtly reflects in the
@@ -71,13 +71,13 @@ class Renderer {
         var mainDir = new Vec3(config.LIGHT_MAIN_DIR_X, config.LIGHT_MAIN_DIR_Y, config.LIGHT_MAIN_DIR_Z);
         sunLight = Light3D.NewDirectional(mainDir,
             config.LIGHT_MAIN_R, config.LIGHT_MAIN_G, config.LIGHT_MAIN_B);
-        Light3D.SetIntensity(sunLight, 1.22);
+        Light3D.SetIntensity(sunLight, 1.08);
         Canvas3D.SetLight(canvas, 0, sunLight);
 
         var fillDir = new Vec3(config.LIGHT_FILL_DIR_X, config.LIGHT_FILL_DIR_Y, config.LIGHT_FILL_DIR_Z);
         fillLight = Light3D.NewDirectional(fillDir,
             config.LIGHT_FILL_R, config.LIGHT_FILL_G, config.LIGHT_FILL_B);
-        Light3D.SetIntensity(fillLight, 0.72);
+        Light3D.SetIntensity(fillLight, 0.84);
         Canvas3D.SetLight(canvas, 1, fillLight);
 
         var spotPos = new Vec3(config.LIGHT_SPOT_X, config.LIGHT_SPOT_Y, config.LIGHT_SPOT_Z);
@@ -86,17 +86,17 @@ class Renderer {
             config.LIGHT_SPOT_R, config.LIGHT_SPOT_G, config.LIGHT_SPOT_B,
             config.LIGHT_SPOT_ATTENUATION,
             config.LIGHT_SPOT_INNER_ANGLE, config.LIGHT_SPOT_OUTER_ANGLE);
-        Light3D.SetIntensity(pinSpot, 2.35);
+        Light3D.SetIntensity(pinSpot, 2.05);
         Canvas3D.SetLight(canvas, 2, pinSpot);
 
-        var laneGlowPos = new Vec3(0.0, 4.2, 6.2);
-        lanePractical = Light3D.NewPoint(laneGlowPos, 1.0, 0.88, 0.72, 0.04);
-        Light3D.SetIntensity(lanePractical, 0.92);
+        var laneGlowPos = new Vec3(0.0, 4.35, 6.2);
+        lanePractical = Light3D.NewPoint(laneGlowPos, 0.92, 0.96, 1.0, 0.035);
+        Light3D.SetIntensity(lanePractical, 0.78);
         Canvas3D.SetLight(canvas, 3, lanePractical);
 
         var deckFillPos = new Vec3(-0.78, 2.9, 16.2);
-        deckFill = Light3D.NewPoint(deckFillPos, 0.82, 0.90, 1.0, 0.05);
-        Light3D.SetIntensity(deckFill, 1.1);
+        deckFill = Light3D.NewPoint(deckFillPos, 0.78, 0.90, 1.0, 0.045);
+        Light3D.SetIntensity(deckFill, 1.22);
         Canvas3D.SetLight(canvas, 4, deckFill);
 
         Canvas3D.SetAmbient(canvas, config.AMBIENT_R, config.AMBIENT_G, config.AMBIENT_B);
@@ -115,11 +115,11 @@ class Renderer {
         PostFX3D.Clear(postfx);
 
         if (mode == config.QUALITY_CINEMATIC) {
-            PostFX3D.AddTonemap(postfx, 1, 1.28);
-            PostFX3D.AddBloom(postfx, 0.84, 0.12, 3);
+            PostFX3D.AddTonemap(postfx, 1, 1.20);
+            PostFX3D.AddBloom(postfx, 0.88, 0.08, 3);
             PostFX3D.AddFXAA(postfx);
-            PostFX3D.AddColorGrade(postfx, 0.02, 1.07, 1.05);
-            PostFX3D.AddVignette(postfx, 0.82, 0.06);
+            PostFX3D.AddColorGrade(postfx, 0.005, 1.06, 1.04);
+            PostFX3D.AddVignette(postfx, 0.86, 0.04);
         } else {
             PostFX3D.AddTonemap(postfx, 1, 1.18);
             PostFX3D.AddBloom(postfx, 0.90, 0.06, 1);
@@ -207,24 +207,24 @@ class Renderer {
 
     /// @brief Restore pin spotlight to default intensity.
     expose func resetPinLight() {
-        Light3D.SetIntensity(pinSpot, 2.35);
+        Light3D.SetIntensity(pinSpot, 2.05);
         Canvas3D.SetLight(canvas, 2, pinSpot);
     }
 
     hide func createAlleySkybox() -> CubeMap3D {
-        var right = createGradientFace(34, 24, 34, 142, 108, 60, true);
-        var left = createGradientFace(30, 22, 32, 128, 100, 56, true);
+        var right = createGradientFace(20, 28, 36, 58, 72, 82, true);
+        var left = createGradientFace(18, 26, 34, 52, 66, 78, true);
         var top = createCeilingFace();
         var bottom = createFloorFace();
-        var front = createGradientFace(22, 28, 42, 150, 112, 62, true);
-        var back = createGradientFace(18, 24, 34, 114, 88, 52, false);
+        var front = createGradientFace(18, 26, 36, 70, 82, 92, true);
+        var back = createGradientFace(14, 22, 30, 44, 56, 66, false);
         return CubeMap3D.New(right, left, top, bottom, front, back);
     }
 
     hide func createGradientFace(topR: Integer, topG: Integer, topB: Integer,
                                  botR: Integer, botG: Integer, botB: Integer,
                                  addLights: Boolean) -> Pixels {
-        var size = 24;
+        var size = 64;
         var face = Pixels.New(size, size);
 
         for (var py: Integer = 0; py < size; py = py + 1) {
@@ -237,10 +237,10 @@ class Renderer {
                 var r = rr;
                 var g = gg;
                 var b = bb;
-                if (addLights && py >= 7 && py <= 10 && ((px + 2) % 6) <= 1) {
-                    r = 248;
-                    g = 212;
-                    b = 128;
+                if (addLights && py >= 18 && py <= 25 && ((px + 5) % 16) <= 4) {
+                    r = 235;
+                    g = 238;
+                    b = 218;
                 }
                 face.Set(px, py, packPixel(r, g, b, 255));
             }
@@ -249,18 +249,18 @@ class Renderer {
     }
 
     hide func createCeilingFace() -> Pixels {
-        var size = 24;
+        var size = 64;
         var face = Pixels.New(size, size);
 
         for (var py: Integer = 0; py < size; py = py + 1) {
             for (var px: Integer = 0; px < size; px = px + 1) {
-                var r = 56;
-                var g = 60;
-                var b = 68;
-                if (((px + 1) % 8) <= 2 && ((py + 3) % 8) <= 2) {
-                    r = 250;
-                    g = 226;
-                    b = 168;
+                var r = 34;
+                var g = 42;
+                var b = 50;
+                if (((px + 2) % 16) <= 5 && ((py + 4) % 16) <= 4) {
+                    r = 226;
+                    g = 232;
+                    b = 210;
                 }
                 face.Set(px, py, packPixel(r, g, b, 255));
             }
@@ -269,19 +269,19 @@ class Renderer {
     }
 
     hide func createFloorFace() -> Pixels {
-        var size = 24;
+        var size = 64;
         var face = Pixels.New(size, size);
 
         for (var py: Integer = 0; py < size; py = py + 1) {
             for (var px: Integer = 0; px < size; px = px + 1) {
                 var stripe = ((px / 3) + (py / 5)) % 2;
-                var r = 46;
-                var g = 32;
-                var b = 18;
+                var r = 34;
+                var g = 42;
+                var b = 44;
                 if (stripe == 0) {
                     r = 60;
-                    g = 42;
-                    b = 24;
+                    g = 48;
+                    b = 34;
                 }
                 face.Set(px, py, packPixel(r, g, b, 255));
             }

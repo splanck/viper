@@ -272,9 +272,10 @@ sleeping, and optional CCD.
   the sleeping state.
 - `Kinematic = true` makes the body move from explicit `Velocity` / `AngularVelocity` only.
 - `UseCCD` uses additional substeps to reduce tunneling for fast-moving bodies.
-- Rotational state is fully integrated for all body types, but AABB and capsule collision shapes
-  still collide as axis-aligned / upright primitives. Sphere bodies currently provide the most
-  accurate rotational behavior.
+- Rotational state is fully integrated for all body types. Non-trigger contacts apply impulses at
+  the contact point, so off-center hits can generate angular velocity.
+- AABB primitives remain axis-aligned boxes. Capsule collision honors body orientation; use compound
+  colliders or mesh/convex-hull colliders when you need rotated box geometry.
 
 ### Zia Example
 

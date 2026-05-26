@@ -43,6 +43,7 @@ bind "../config";
 /// @brief Builds and owns every static lane mesh / body / trigger.
 class LaneBuilder {
     hide Mesh3D laneMesh;
+    hide Mesh3D boardMesh;
     hide Mesh3D oilMesh;
     hide Mesh3D pinDeckMesh;
     hide Mesh3D roomFloorMesh;
@@ -62,6 +63,8 @@ class LaneBuilder {
     hide Mesh3D lightMesh;
 
     hide Material3D laneMat;
+    hide Material3D boardLightMat;
+    hide Material3D boardDarkMat;
     hide Material3D oilMat;
     hide Material3D pinDeckMat;
     hide Material3D roomFloorMat;
@@ -146,6 +149,13 @@ class LaneBuilder {
         laneMesh = Mesh3D.NewBox(config.LANE_WIDTH, 0.05, totalLen);
         laneMat = Material3D.NewColor(config.LANE_COLOR_R, config.LANE_COLOR_G, config.LANE_COLOR_B);
         Material3D.SetShininess(laneMat, config.LANE_SHININESS);
+        boardMesh = Mesh3D.NewBox(config.LANE_WIDTH / (config.LANE_BOARD_COUNT + 0.0) * 0.92, 0.006, totalLen);
+        boardLightMat = Material3D.NewColor(
+            config.LANE_BOARD_LIGHT_R, config.LANE_BOARD_LIGHT_G, config.LANE_BOARD_LIGHT_B);
+        Material3D.SetShininess(boardLightMat, config.LANE_SHININESS);
+        boardDarkMat = Material3D.NewColor(
+            config.LANE_BOARD_DARK_R, config.LANE_BOARD_DARK_G, config.LANE_BOARD_DARK_B);
+        Material3D.SetShininess(boardDarkMat, config.LANE_SHININESS * 0.82);
 
         var oilLen = oilEndZ - config.OIL_START_Z;
         if (oilLen < 0.5) { oilLen = 0.5; }
@@ -215,12 +225,11 @@ class LaneBuilder {
 
     /// @brief Pre-compute Mat4 transforms for every static mesh.
     hide func buildTransforms() {
-        var totalLen = config.LANE_LENGTH + config.LANE_APPROACH;
         laneXform = Mat4.Translate(0.0, -0.025, laneCenterZ);
 
         var oilLen = oilEndZ - config.OIL_START_Z;
         if (oilLen < 0.5) { oilLen = 0.5; }
-        oilXform = Mat4.Translate(0.0, 0.005, config.OIL_START_Z + oilLen / 2.0);
+        oilXform = Mat4.Translate(0.0, 0.012, config.OIL_START_Z + oilLen / 2.0);
         pinDeckXform = Mat4.Translate(0.0, 0.004, config.PIN_Z_OFFSET + 0.12);
         roomFloorXform = Mat4.Translate(0.0, -0.045, laneCenterZ + 0.3);
 
@@ -254,7 +263,6 @@ class LaneBuilder {
         arrowBatch = InstanceBatch3D.New(arrowMesh, arrowMat);
         dotBatch = InstanceBatch3D.New(dotMesh, dotMat);
         lightBatch = InstanceBatch3D.New(lightMesh, lightMat);
-
         var halfArrows = config.LANE_ARROW_COUNT / 2;
         for (var ai: Integer = -halfArrows; ai <= halfArrows; ai = ai + 1) {
             var ax = (ai + 0.0) * config.LANE_ARROW_SPACING;
@@ -350,6 +358,7 @@ class LaneBuilder {
         Canvas3D.DrawMesh(canvas, sideGutterMesh, sideGutterLeftXform, sideGutterMat);
         Canvas3D.DrawMesh(canvas, sideGutterMesh, sideGutterRightXform, sideGutterMat);
         Canvas3D.DrawMesh(canvas, laneMesh, laneXform, laneMat);
+        drawLaneBoards(canvas);
         Canvas3D.DrawMesh(canvas, oilMesh, oilXform, oilMat);
         Canvas3D.DrawMesh(canvas, pinDeckMesh, pinDeckXform, pinDeckMat);
         Canvas3D.DrawMesh(canvas, gutterMesh, gutterLeftXform, gutterMat);
@@ -368,6 +377,19 @@ class LaneBuilder {
         Canvas3D.DrawInstanced(canvas, lightBatch);
     }
 
+    hide func drawLaneBoards(canvas: Canvas3D) {
+        var boardW = config.LANE_WIDTH / (config.LANE_BOARD_COUNT + 0.0);
+        for (var bi: Integer = 0; bi < config.LANE_BOARD_COUNT; bi = bi + 1) {
+            var bx = -config.LANE_WIDTH / 2.0 + boardW / 2.0 + (bi + 0.0) * boardW;
+            var xform = Mat4.Translate(bx, 0.006, laneCenterZ);
+            if (bi % 2 == 0) {
+                Canvas3D.DrawMesh(canvas, boardMesh, xform, boardLightMat);
+            } else {
+                Canvas3D.DrawMesh(canvas, boardMesh, xform, boardDarkMat);
+            }
+        }
+    }
+
     /// @brief Draw the moving sweep bar at the given Y position.
     expose func drawSweepBar(canvas: Canvas3D, sweepY: Float) {
         Canvas3D.DrawMesh(canvas, sweepBarMesh,
@@ -378,6 +400,10 @@ class LaneBuilder {
     expose func applyEnvironment(env: CubeMap3D) {
         Material3D.SetEnvMap(laneMat, env);
         Material3D.set_Reflectivity(laneMat, config.LANE_REFLECTIVITY);
+        Material3D.SetEnvMap(boardLightMat, env);
+        Material3D.set_Reflectivity(boardLightMat, config.LANE_REFLECTIVITY);
+        Material3D.SetEnvMap(boardDarkMat, env);
+        Material3D.set_Reflectivity(boardDarkMat, config.LANE_REFLECTIVITY * 0.72);
 
         Material3D.SetEnvMap(oilMat, env);
         Material3D.set_Reflectivity(oilMat, config.LANE_OIL_REFLECTIVITY);

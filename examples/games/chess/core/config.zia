@@ -5,7 +5,7 @@ module config;
 // PURPOSE: Centralised constants for the chess demo: piece encoding, piece
 //          values (centipawns), window/board layout, color palette, game
 //          state and mode tags, AI search depth, transposition-table
-//          flags, key codes, and gamepad button indices.
+//          flags, and action names.
 //
 // WHERE-THIS-FITS: Leaf module imported by every other chess file. Pure
 //          constants — no functions, no state.
@@ -143,24 +143,14 @@ final MAX_HISTORY = 100;    // move history list display limit
 final CVC_DELAY_MS = 600;
 
 // ============================================================================
-// Key Codes (GLFW / vgfx)
+// Animation / Easing
 // ============================================================================
-final KEY_N       = 78;
-final KEY_ESCAPE  = 256;
-final KEY_ENTER   = 257;
-final KEY_UP      = 260;
-final KEY_DOWN    = 261;
+final EASE_OUT_QUAD = 2;
 
 // ============================================================================
 // Action Names
 // ============================================================================
 final ACT_NEW_GAME = "new_game";
 final ACT_BACK     = "back";
-
-// ============================================================================
-// Gamepad
-// ============================================================================
-final PAD_IDX       = 0;
-final PAD_BTN_A     = 0;
-final PAD_BTN_B     = 1;
-final PAD_BTN_START = 7;
+final ACT_CONFIRM  = "confirm";
+final ACT_UNDO     = "undo";
