@@ -1127,6 +1127,7 @@ void rt_camera3d_smooth_follow(
     double look_at[3] = {tx, ty - height * 0.3, tz};
     double up[3] = {0, 1, 0};
     build_look_at(cam->view, cam->eye, look_at, up);
+    camera_sync_fps_angles_from_view(cam);
     camera_apply_shake_to_view(cam);
 }
 
@@ -1177,6 +1178,7 @@ void rt_camera3d_smooth_look_at(void *obj, void *target, double speed, double dt
     double look[3] = {cam->eye[0] + new_fwd[0], cam->eye[1] + new_fwd[1], cam->eye[2] + new_fwd[2]};
     double up[3] = {0, 1, 0};
     build_look_at(cam->view, cam->eye, look, up);
+    camera_sync_fps_angles_from_view(cam);
     camera_apply_shake_to_view(cam);
 }
 

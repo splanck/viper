@@ -208,12 +208,13 @@ static void quat_rotate_vec3(const double *q, const double *v, double *out) {
     double qv[4] = {v[0], v[1], v[2], 0.0};
     double q_conj[4];
     double tmp[4];
+    double rotated[4];
     quat_conjugate(q, q_conj);
     quat_mul(q, qv, tmp);
-    quat_mul(tmp, q_conj, tmp);
-    out[0] = tmp[0];
-    out[1] = tmp[1];
-    out[2] = tmp[2];
+    quat_mul(tmp, q_conj, rotated);
+    out[0] = rotated[0];
+    out[1] = rotated[1];
+    out[2] = rotated[2];
 }
 
 /// @brief Apply scale-then-rotate-then-translate to a single local point.

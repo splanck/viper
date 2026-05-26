@@ -451,9 +451,9 @@ static void test_node_sanitizes_nonfinite_transform_and_lod() {
 
     rt_scene_node3d_set_scale(node, 0.0, -0.0, 1e-16);
     scale = rt_scene_node3d_get_scale(node);
-    EXPECT_NEAR(rt_vec3_x(scale), 1.0, 0.001, "SceneNode zero scale X falls back to 1");
-    EXPECT_NEAR(rt_vec3_y(scale), 1.0, 0.001, "SceneNode negative-zero scale Y falls back to 1");
-    EXPECT_NEAR(rt_vec3_z(scale), 1.0, 0.001, "SceneNode near-zero scale Z falls back to 1");
+    EXPECT_NEAR(rt_vec3_x(scale), 0.0, 0.001, "SceneNode zero scale X is preserved");
+    EXPECT_NEAR(rt_vec3_y(scale), 0.0, 0.001, "SceneNode negative-zero scale Y is preserved");
+    EXPECT_NEAR(rt_vec3_z(scale), 1e-16, 0.001, "SceneNode near-zero finite scale Z is preserved");
 
     rt_scene_node3d_set_rotation(node, rt_quat_new(NAN, 0.0, 0.0, 0.0));
     void *rot = rt_scene_node3d_get_rotation(node);

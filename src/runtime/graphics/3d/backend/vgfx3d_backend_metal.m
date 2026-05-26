@@ -303,6 +303,9 @@ static NSString *metal_shader_source =
      "\n"
      "struct ShadowOut {\n"
      "    float4 position [[position]];\n"
+     "    float2 uv;\n"
+     "    float2 uv1;\n"
+     "    float4 color;\n"
      "};\n"
      "\n"
      "struct MainOut {\n"
@@ -359,14 +362,16 @@ static NSString *metal_shader_source =
      "    if (enabled == 0)\n"
      "        return pos;\n"
      "    float4 skinned = float4(0.0);\n"
+     "    float totalWeight = 0.0;\n"
      "    for (int i = 0; i < 4; i++) {\n"
      "        float bw = in.boneWt[i];\n"
      "        if (bw <= 0.0001)\n"
      "            continue;\n"
      "        uint idx = min((uint)in.boneIdx[i], 255u);\n"
      "        skinned += (palette[idx] * pos) * bw;\n"
+     "        totalWeight += bw;\n"
      "    }\n"
-     "    return skinned;\n"
+     "    return totalWeight > 0.0001 ? skinned / totalWeight : pos;\n"
      "}\n"
      "\n"
      "float3 skinVector(float3 vec,\n"
@@ -376,14 +381,16 @@ static NSString *metal_shader_source =
      "    if (enabled == 0)\n"
      "        return vec;\n"
      "    float3 skinned = float3(0.0);\n"
+     "    float totalWeight = 0.0;\n"
      "    for (int i = 0; i < 4; i++) {\n"
      "        float bw = in.boneWt[i];\n"
      "        if (bw <= 0.0001)\n"
      "            continue;\n"
      "        uint idx = min((uint)in.boneIdx[i], 255u);\n"
      "        skinned += (palette[idx] * float4(vec, 0.0)).xyz * bw;\n"
+     "        totalWeight += bw;\n"
      "    }\n"
-     "    return skinned;\n"
+     "    return totalWeight > 0.0001 ? skinned / totalWeight : vec;\n"
      "}\n"
      "\n"
      "VertexOut buildVertex(float3 currPos,\n"
@@ -539,7 +546,32 @@ static NSString *metal_shader_source =
      "        skinnedPos = float4(pos, 1.0);\n"
      "    out.position = obj.viewProjection * (obj.modelMatrix * skinnedPos);\n"
      "    out.position.z = out.position.z * 0.5 + out.position.w * 0.5;\n"
+     "    out.uv = in.uv;\n"
+     "    out.uv1 = in.uv1;\n"
+     "    out.color = in.color;\n"
      "    return out;\n"
+     "}\n"
+     "\n"
+     "float2 shadow_material_uv(ShadowOut in, constant PerMaterial &material, int slot) {\n"
+     "    int uvSet = slot < 4 ? material.textureUvSets0[slot] : "
+     "material.textureUvSets1[slot - 4];\n"
+     "    float2 uv = uvSet != 0 ? in.uv1 : in.uv;\n"
+     "    float4 m = material.textureUvTransform0[slot];\n"
+     "    float4 t = material.textureUvTransform1[slot];\n"
+     "    return float2(uv.x * m.x + uv.y * m.y + t.x,\n"
+     "                  uv.x * m.z + uv.y * m.w + t.y);\n"
+     "}\n"
+     "\n"
+     "fragment void fragment_shadow(\n"
+     "    ShadowOut in [[stage_in]],\n"
+     "    constant PerMaterial &material [[buffer(1)]],\n"
+     "    texture2d<float> diffuseTex [[texture(0)]],\n"
+     "    sampler diffuseSampler [[sampler(0)]]) {\n"
+     "    float alpha = material.diffuseColor.a * material.scalars.x * in.color.a;\n"
+     "    if (material.flags0.x != 0)\n"
+     "        alpha *= diffuseTex.sample(diffuseSampler, shadow_material_uv(in, material, 0)).a;\n"
+     "    if (material.pbrFlags.y == 1 && alpha < material.pbrScalars1.y)\n"
+     "        discard_fragment();\n"
      "}\n"
      "\n"
      "float4 motion_output(VertexOut in) {\n"
@@ -1702,6 +1734,9 @@ static void metal_get_geometry_buffers(VGFXMetalContext *ctx,
     if (!ctx || !cmd || !cmd->vertices || !cmd->indices || cmd->vertex_count == 0 ||
         cmd->index_count == 0)
         return;
+    if ((size_t)cmd->vertex_count > SIZE_MAX / sizeof(vgfx3d_vertex_t) ||
+        (size_t)cmd->index_count > SIZE_MAX / sizeof(uint32_t))
+        return;
 
     if (cmd->geometry_key && cmd->geometry_revision != 0) {
         NSValue *key = [NSValue valueWithPointer:cmd->geometry_key];
@@ -1709,16 +1744,20 @@ static void metal_get_geometry_buffers(VGFXMetalContext *ctx,
         if (!entry || entry.revision != cmd->geometry_revision ||
             entry.vertexCount != cmd->vertex_count || entry.indexCount != cmd->index_count ||
             !entry.vertexBuffer || !entry.indexBuffer) {
+            VGFXMetalGeometryCacheEntry *new_entry;
             metal_cache_evict_if_needed(ctx);
-            entry = [[VGFXMetalGeometryCacheEntry alloc] init];
-            entry.vertexBuffer = metal_new_shared_buffer(
+            new_entry = [[VGFXMetalGeometryCacheEntry alloc] init];
+            new_entry.vertexBuffer = metal_new_shared_buffer(
                 ctx, cmd->vertices, (size_t)cmd->vertex_count * sizeof(vgfx3d_vertex_t));
-            entry.indexBuffer = metal_new_shared_buffer(
+            new_entry.indexBuffer = metal_new_shared_buffer(
                 ctx, cmd->indices, (size_t)cmd->index_count * sizeof(uint32_t));
-            entry.revision = cmd->geometry_revision;
-            entry.vertexCount = cmd->vertex_count;
-            entry.indexCount = cmd->index_count;
-            ctx.geometryCache[key] = entry;
+            if (!new_entry.vertexBuffer || !new_entry.indexBuffer)
+                return;
+            new_entry.revision = cmd->geometry_revision;
+            new_entry.vertexCount = cmd->vertex_count;
+            new_entry.indexCount = cmd->index_count;
+            ctx.geometryCache[key] = new_entry;
+            entry = new_entry;
         }
         entry.lastUsedFrame = ctx.frameSerial;
         *outVB = entry.vertexBuffer;
@@ -2024,12 +2063,15 @@ static void *metal_create_ctx(vgfx_window_t win, int32_t w, int32_t h) {
         id<MTLFunction> vf = [ctx.library newFunctionWithName:@ "vertex_main"];
         id<MTLFunction> vfInstanced = [ctx.library newFunctionWithName:@ "vertex_main_instanced"];
         id<MTLFunction> vfShadow = [ctx.library newFunctionWithName:@ "vertex_shadow"];
+        id<MTLFunction> ffShadow = [ctx.library newFunctionWithName:@ "fragment_shadow"];
         id<MTLFunction> ff = [ctx.library newFunctionWithName:@ "fragment_main"];
-        if (!vf || !vfInstanced || !vfShadow || !ff) {
-            NSLog(@ "[Metal] required shader entrypoints missing (vf=%@ inst=%@ shadow=%@ ff=%@)",
+        if (!vf || !vfInstanced || !vfShadow || !ffShadow || !ff) {
+            NSLog(@ "[Metal] required shader entrypoints missing (vf=%@ inst=%@ shadow=%@ shadowf=%@ "
+                  "ff=%@)",
                   vf,
                   vfInstanced,
                   vfShadow,
+                  ffShadow,
                   ff);
             return NULL;
         }
@@ -2222,7 +2264,7 @@ static void *metal_create_ctx(vgfx_window_t win, int32_t w, int32_t h) {
         {
             MTLRenderPipelineDescriptor *spd = [[MTLRenderPipelineDescriptor alloc] init];
             spd.vertexFunction = vfShadow;
-            spd.fragmentFunction = nil;
+            spd.fragmentFunction = ffShadow;
             spd.vertexDescriptor = create_vertex_descriptor();
             spd.depthAttachmentPixelFormat = MTLPixelFormatDepth32Float;
             spd.colorAttachments[0].pixelFormat = MTLPixelFormatInvalid;
@@ -2575,7 +2617,7 @@ static void metal_begin_frame(void *ctx_ptr, const vgfx3d_camera_params_t *cam) 
         vgfx3d_metal_frame_history_t history;
         int8_t load_existing_color;
         int8_t is_overlay_pass;
-        if (!ctx)
+        if (!ctx || !cam)
             return;
 
         ctx.frameSerial++;
@@ -2761,13 +2803,45 @@ static id<MTLTexture> metal_get_cached_cubemap(VGFXMetalContext *ctx, const rt_c
     return cached.texture;
 }
 
+typedef struct {
+    int32_t shape_count;
+    int has_prev_weights;
+    int has_normal_deltas;
+} metal_morph_bind_status_t;
+
+static int metal_compute_morph_payload_bytes(uint32_t vertex_count,
+                                             int32_t morph_count,
+                                             size_t *out_bytes) {
+    size_t elements;
+    size_t bytes;
+
+    if (out_bytes)
+        *out_bytes = 0;
+    if (!out_bytes || vertex_count == 0 || morph_count <= 0)
+        return 0;
+    if ((size_t)morph_count > SIZE_MAX / (size_t)vertex_count)
+        return 0;
+    elements = (size_t)morph_count * (size_t)vertex_count;
+    if (elements > SIZE_MAX / 3u)
+        return 0;
+    elements *= 3u;
+    if (elements > SIZE_MAX / sizeof(float))
+        return 0;
+    bytes = elements * sizeof(float);
+    *out_bytes = bytes;
+    return 1;
+}
+
 static VGFXMetalMorphCacheEntry *
-metal_get_cached_morph_entry(VGFXMetalContext *ctx, const vgfx3d_draw_cmd_t *cmd) {
+metal_get_cached_morph_entry(VGFXMetalContext *ctx,
+                             const vgfx3d_draw_cmd_t *cmd,
+                             int32_t morph_count) {
     NSValue *key;
     VGFXMetalMorphCacheEntry *entry;
     size_t bytes;
 
-    if (!ctx || !ctx.morphCache || !cmd || !cmd->morph_key || cmd->morph_revision == 0 ||
+    if (!ctx || !ctx.morphCache || !cmd || morph_count <= 0 || !cmd->morph_key ||
+        cmd->morph_revision == 0 ||
         !cmd->morph_deltas || !cmd->morph_weights || cmd->morph_shape_count <= 0 ||
         cmd->vertex_count == 0) {
         return nil;
@@ -2786,34 +2860,44 @@ metal_get_cached_morph_entry(VGFXMetalContext *ctx, const vgfx3d_draw_cmd_t *cmd
         return entry;
     }
 
-    bytes = (size_t)cmd->morph_shape_count * cmd->vertex_count * 3u * sizeof(float);
+    if (!metal_compute_morph_payload_bytes(cmd->vertex_count, morph_count, &bytes))
+        return nil;
     entry = entry ? entry : [[VGFXMetalMorphCacheEntry alloc] init];
     entry.deltaBuffer = metal_new_shared_buffer(ctx, cmd->morph_deltas, bytes);
     entry.normalBuffer = cmd->morph_normal_deltas
                              ? metal_new_shared_buffer(ctx, cmd->morph_normal_deltas, bytes)
                              : nil;
+    if (!entry.deltaBuffer)
+        return nil;
     entry.key = cmd->morph_key;
     entry.revision = cmd->morph_revision;
-    entry.shapeCount = cmd->morph_shape_count;
+    entry.shapeCount = morph_count;
     entry.vertexCount = cmd->vertex_count;
-    entry.hasNormalDeltas = cmd->morph_normal_deltas ? 1 : 0;
+    entry.hasNormalDeltas = entry.normalBuffer ? 1 : 0;
     entry.lastUsedFrame = ctx.frameSerial;
     ctx.morphCache[key] = entry;
     return entry;
 }
 
-static void metal_bind_bone_palettes(VGFXMetalContext *ctx,
-                                     const vgfx3d_draw_cmd_t *cmd,
-                                     int has_skinning,
-                                     int has_prev_skinning) {
+static int metal_bind_bone_palettes(VGFXMetalContext *ctx,
+                                    const vgfx3d_draw_cmd_t *cmd,
+                                    int has_skinning,
+                                    int has_prev_skinning,
+                                    int *out_prev_ok) {
     float packed_palette[VGFX3D_METAL_MAX_BONES * 16];
     size_t palette_bytes = sizeof(packed_palette);
+    id<MTLBuffer> bone_buf;
+
+    if (out_prev_ok)
+        *out_prev_ok = 0;
 
     if (!ctx || !cmd || !has_skinning)
-        return;
+        return 0;
 
     vgfx3d_metal_pack_bone_palette(packed_palette, cmd->bone_palette, cmd->bone_count);
-    id<MTLBuffer> bone_buf = metal_new_shared_buffer(ctx, packed_palette, palette_bytes);
+    bone_buf = metal_new_shared_buffer(ctx, packed_palette, palette_bytes);
+    if (!bone_buf)
+        return 0;
     [ctx.encoder setVertexBuffer:bone_buf offset:0 atIndex:3];
     if (ctx.frameBuffers && bone_buf)
         [ctx.frameBuffers addObject:bone_buf];
@@ -2821,28 +2905,40 @@ static void metal_bind_bone_palettes(VGFXMetalContext *ctx,
         id<MTLBuffer> prev_bone_buf;
         vgfx3d_metal_pack_bone_palette(packed_palette, cmd->prev_bone_palette, cmd->bone_count);
         prev_bone_buf = metal_new_shared_buffer(ctx, packed_palette, palette_bytes);
-        [ctx.encoder setVertexBuffer:prev_bone_buf offset:0 atIndex:7];
+        if (prev_bone_buf) {
+            [ctx.encoder setVertexBuffer:prev_bone_buf offset:0 atIndex:7];
+            if (out_prev_ok)
+                *out_prev_ok = 1;
+        }
         if (ctx.frameBuffers && prev_bone_buf)
             [ctx.frameBuffers addObject:prev_bone_buf];
     }
+    return 1;
 }
 
-static void metal_bind_morph_payload(VGFXMetalContext *ctx, const vgfx3d_draw_cmd_t *cmd) {
+static metal_morph_bind_status_t metal_bind_morph_payload(VGFXMetalContext *ctx,
+                                                          const vgfx3d_draw_cmd_t *cmd) {
+    metal_morph_bind_status_t status = {0, 0, 0};
     VGFXMetalMorphCacheEntry *cached_entry;
     id<MTLBuffer> delta_buf = nil;
     id<MTLBuffer> normal_buf = nil;
+    int32_t morph_count;
     size_t delta_bytes;
     size_t weight_bytes;
 
     if (!ctx || !cmd || !cmd->morph_deltas || !cmd->morph_weights || cmd->morph_shape_count <= 0)
-        return;
+        return status;
+    morph_count = vgfx3d_metal_clamp_morph_shape_count(cmd->vertex_count, cmd->morph_shape_count);
+    if (morph_count <= 0)
+        return status;
 
-    cached_entry = metal_get_cached_morph_entry(ctx, cmd);
+    cached_entry = metal_get_cached_morph_entry(ctx, cmd, morph_count);
     if (cached_entry) {
         delta_buf = cached_entry.deltaBuffer;
         normal_buf = cached_entry.normalBuffer;
     } else {
-        delta_bytes = (size_t)cmd->morph_shape_count * cmd->vertex_count * 3u * sizeof(float);
+        if (!metal_compute_morph_payload_bytes(cmd->vertex_count, morph_count, &delta_bytes))
+            return status;
         delta_buf = metal_new_shared_buffer(ctx, cmd->morph_deltas, delta_bytes);
         normal_buf = cmd->morph_normal_deltas
                          ? metal_new_shared_buffer(ctx, cmd->morph_normal_deltas, delta_bytes)
@@ -2852,15 +2948,20 @@ static void metal_bind_morph_payload(VGFXMetalContext *ctx, const vgfx3d_draw_cm
         if (ctx.frameBuffers && normal_buf)
             [ctx.frameBuffers addObject:normal_buf];
     }
+    if (!delta_buf)
+        return status;
 
-    weight_bytes = (size_t)cmd->morph_shape_count * sizeof(float);
-    if (delta_buf)
-        [ctx.encoder setVertexBuffer:delta_buf offset:0 atIndex:4];
+    weight_bytes = (size_t)morph_count * sizeof(float);
+    [ctx.encoder setVertexBuffer:delta_buf offset:0 atIndex:4];
     if (normal_buf)
         [ctx.encoder setVertexBuffer:normal_buf offset:0 atIndex:9];
     [ctx.encoder setVertexBytes:cmd->morph_weights length:weight_bytes atIndex:5];
     if (cmd->prev_morph_weights)
         [ctx.encoder setVertexBytes:cmd->prev_morph_weights length:weight_bytes atIndex:8];
+    status.shape_count = morph_count;
+    status.has_prev_weights = cmd->prev_morph_weights ? 1 : 0;
+    status.has_normal_deltas = normal_buf ? 1 : 0;
+    return status;
 }
 
 static void metal_ensure_instance_storage(VGFXMetalContext *ctx, int32_t instance_count) {
@@ -2898,8 +2999,14 @@ static void metal_submit_draw(void *ctx_ptr,
         id<MTLBuffer> vb;
         id<MTLBuffer> ib;
         vgfx3d_metal_blend_mode_t blend_mode;
-        if (!ctx || !ctx.encoder || !ctx.inFrame)
+        static const float zero_ambient[3] = {0.0f, 0.0f, 0.0f};
+        if (!ctx || !ctx.encoder || !ctx.inFrame || !cmd || !cmd->vertices || !cmd->indices ||
+            cmd->vertex_count == 0 || cmd->index_count == 0)
             return;
+        if (!ambient)
+            ambient = zero_ambient;
+        if (!lights || light_count < 0)
+            light_count = 0;
 
         blend_mode = vgfx3d_metal_choose_blend_mode(cmd);
         [ctx.encoder setRenderPipelineState:metal_select_pipeline_state(ctx, cmd, NO)];
@@ -2935,31 +3042,27 @@ static void metal_submit_draw(void *ctx_ptr,
                      obj.prev_m);
         float vp_t[16];
         float normal_m[16];
+        int prev_bone_upload_ok = 0;
+        metal_morph_bind_status_t morph_status;
         transpose4x4(ctx->_vp, vp_t);
         memcpy(obj.vp, vp_t, sizeof(float) * 16);
         vgfx3d_compute_normal_matrix4(cmd->model_matrix, normal_m);
         transpose4x4(normal_m, obj.nm);
-        int capped_bone_count = cmd->bone_count > VGFX3D_METAL_MAX_BONES ? VGFX3D_METAL_MAX_BONES
-                                                                          : cmd->bone_count;
-        int has_skinning = (cmd->bone_palette && capped_bone_count > 0) ? 1 : 0;
+        int has_skinning = (cmd->bone_palette && cmd->bone_count > 0) ? 1 : 0;
         int has_prev_skinning = (has_skinning && cmd->prev_bone_palette) ? 1 : 0;
+        has_skinning =
+            metal_bind_bone_palettes(ctx, cmd, has_skinning, has_prev_skinning, &prev_bone_upload_ok);
+        has_prev_skinning = (has_skinning && has_prev_skinning && prev_bone_upload_ok) ? 1 : 0;
+        morph_status = metal_bind_morph_payload(ctx, cmd);
         obj.flags0[0] = has_skinning;
         obj.flags0[1] = has_prev_skinning;
-        obj.flags0[2] = cmd->morph_shape_count;
-        obj.flags0[3] = (int32_t)cmd->vertex_count;
+        obj.flags0[2] = morph_status.shape_count;
+        obj.flags0[3] = morph_status.shape_count > 0 ? (int32_t)cmd->vertex_count : 0;
         obj.flags1[0] = cmd->has_prev_model_matrix ? 1 : 0;
-        obj.flags1[1] =
-            (cmd->morph_deltas && cmd->morph_shape_count > 0 && cmd->prev_morph_weights) ? 1 : 0;
+        obj.flags1[1] = morph_status.has_prev_weights;
         obj.flags1[2] = 0;
-        obj.flags1[3] =
-            (cmd->morph_deltas && cmd->morph_shape_count > 0 && cmd->morph_normal_deltas) ? 1 : 0;
+        obj.flags1[3] = morph_status.has_normal_deltas;
         [ctx.encoder setVertexBytes:&obj length:sizeof(obj) atIndex:1];
-
-        /* MTL-09: Bind bone palette if skinning active */
-        metal_bind_bone_palettes(ctx, cmd, has_skinning, has_prev_skinning);
-
-        /* MTL-10: Bind morph deltas/weights if morph active */
-        metal_bind_morph_payload(ctx, cmd);
 
         /* Per-scene (includes MTL-07 fog) */
         mtl_per_scene_t scene;
@@ -2991,6 +3094,12 @@ static void metal_submit_draw(void *ctx_ptr,
 
         /* Per-material (includes MTL-04/05/06 map flags) */
         mtl_per_material_t mat;
+        int has_complete_splat = vgfx3d_metal_has_complete_splat(cmd->has_splat,
+                                                                 cmd->splat_map != NULL,
+                                                                 cmd->splat_layers[0] != NULL,
+                                                                 cmd->splat_layers[1] != NULL,
+                                                                 cmd->splat_layers[2] != NULL,
+                                                                 cmd->splat_layers[3] != NULL);
         memset(&mat, 0, sizeof(mat));
         memcpy(mat.dc, cmd->diffuse_color, sizeof(float) * 4);
         mat.sc[0] = cmd->specular[0];
@@ -3017,12 +3126,12 @@ static void metal_submit_draw(void *ctx_ptr,
         mat.flags0[3] = cmd->specular_map ? 1 : 0;
         mat.flags1[0] = cmd->emissive_map ? 1 : 0;
         mat.flags1[1] = (cmd->env_map && cmd->reflectivity > 0.0001f) ? 1 : 0;
-        mat.flags1[2] = cmd->has_splat;
+        mat.flags1[2] = has_complete_splat;
         mat.pbrFlags[0] = cmd->workflow;
         mat.pbrFlags[1] = cmd->alpha_mode;
         mat.pbrFlags[2] = cmd->metallic_roughness_map ? 1 : 0;
         mat.pbrFlags[3] = cmd->ao_map ? 1 : 0;
-        if (cmd->has_splat) {
+        if (has_complete_splat) {
             for (int si = 0; si < 4; si++)
                 mat.splatScales[si] = cmd->splat_layer_scales[si];
         }
@@ -3115,7 +3224,7 @@ static void metal_submit_draw(void *ctx_ptr,
                 [ctx.encoder setFragmentTexture:tex atIndex:15];
         }
         /* MTL-14: Terrain splat textures (slots 6-10) */
-        if (cmd->has_splat && cmd->splat_map) {
+        if (has_complete_splat) {
             id<MTLTexture> sp = metal_get_cached_texture(ctx, cmd->splat_map);
             if (sp)
                 [ctx.encoder setFragmentTexture:sp atIndex:6];
@@ -3334,7 +3443,8 @@ static void metal_shadow_begin(
     @autoreleasepool {
         (void)depth_buf; /* GPU shadows use MTLTexture, not CPU buffer */
         VGFXMetalContext *ctx = (__bridge VGFXMetalContext *)ctx_ptr;
-        if (!ctx || !ctx.shadowPipeline || slot < 0 || slot >= VGFX3D_MAX_SHADOW_LIGHTS)
+        if (!ctx || !ctx.device || !ctx.shadowPipeline || !light_vp || w <= 0 || h <= 0 ||
+            slot < 0 || slot >= VGFX3D_MAX_SHADOW_LIGHTS)
             return;
 
         /* Create/recreate shadow depth texture if size changed */
@@ -3386,7 +3496,11 @@ static void metal_shadow_draw(void *ctx_ptr, const vgfx3d_draw_cmd_t *cmd) {
         id<MTLBuffer> vb;
         id<MTLBuffer> ib;
         int has_skinning;
-        if (!ctx || !ctx.encoder)
+        int prev_bone_upload_ok = 0;
+        metal_morph_bind_status_t morph_status;
+        if (!ctx || !ctx.encoder || !cmd || !cmd->vertices || !cmd->indices ||
+            cmd->vertex_count == 0 || cmd->index_count == 0 || ctx->_shadowPassSlot < 0 ||
+            ctx->_shadowPassSlot >= VGFX3D_MAX_SHADOW_LIGHTS)
             return;
 
         metal_get_geometry_buffers(ctx, cmd, &vb, &ib);
@@ -3408,12 +3522,42 @@ static void metal_shadow_draw(void *ctx_ptr, const vgfx3d_draw_cmd_t *cmd) {
         memcpy(obj.vp, lvp_t, sizeof(float) * 16);
         memcpy(obj.nm, obj.m, sizeof(float) * 16);
         has_skinning = (cmd->bone_palette && cmd->bone_count > 0) ? 1 : 0;
+        has_skinning = metal_bind_bone_palettes(ctx, cmd, has_skinning, 0, &prev_bone_upload_ok);
+        morph_status = metal_bind_morph_payload(ctx, cmd);
         obj.flags0[0] = has_skinning;
-        obj.flags0[2] = cmd->morph_shape_count;
-        obj.flags0[3] = (int32_t)cmd->vertex_count;
+        obj.flags0[2] = morph_status.shape_count;
+        obj.flags0[3] = morph_status.shape_count > 0 ? (int32_t)cmd->vertex_count : 0;
         [ctx.encoder setVertexBytes:&obj length:sizeof(obj) atIndex:1];
-        metal_bind_bone_palettes(ctx, cmd, has_skinning, 0);
-        metal_bind_morph_payload(ctx, cmd);
+        {
+            mtl_per_material_t mat;
+            id<MTLTexture> diffuse_tex = cmd->texture ? metal_get_cached_texture(ctx, cmd->texture)
+                                                      : nil;
+            memset(&mat, 0, sizeof(mat));
+            memcpy(mat.dc, cmd->diffuse_color, sizeof(float) * 4);
+            mat.scalars[0] = cmd->alpha;
+            mat.pbrScalars1[1] = cmd->alpha_cutoff;
+            mat.flags0[0] = diffuse_tex ? 1 : 0;
+            mat.pbrFlags[1] = cmd->alpha_mode;
+            for (int tex_slot = 0; tex_slot < RT_MATERIAL3D_TEXTURE_SLOT_COUNT; tex_slot++) {
+                if (tex_slot < 4)
+                    mat.textureUvSets0[tex_slot] = cmd->texture_slot_uv_set[tex_slot];
+                else
+                    mat.textureUvSets1[tex_slot - 4] = cmd->texture_slot_uv_set[tex_slot];
+                mat.textureUvTransform0[tex_slot][0] = cmd->texture_slot_uv_transform[tex_slot][0];
+                mat.textureUvTransform0[tex_slot][1] = cmd->texture_slot_uv_transform[tex_slot][1];
+                mat.textureUvTransform0[tex_slot][2] = cmd->texture_slot_uv_transform[tex_slot][2];
+                mat.textureUvTransform0[tex_slot][3] = cmd->texture_slot_uv_transform[tex_slot][3];
+                mat.textureUvTransform1[tex_slot][0] = cmd->texture_slot_uv_transform[tex_slot][4];
+                mat.textureUvTransform1[tex_slot][1] = cmd->texture_slot_uv_transform[tex_slot][5];
+            }
+            [ctx.encoder setFragmentBytes:&mat length:sizeof(mat) atIndex:1];
+            [ctx.encoder setFragmentTexture:diffuse_tex ? diffuse_tex : ctx.defaultTexture atIndex:0];
+            [ctx.encoder setFragmentSamplerState:metal_get_material_sampler(
+                                                     ctx,
+                                                     cmd,
+                                                     RT_MATERIAL3D_TEXTURE_SLOT_BASE_COLOR)
+                                          atIndex:0];
+        }
 
         [ctx.encoder drawIndexedPrimitives:MTLPrimitiveTypeTriangle
                                 indexCount:cmd->index_count
@@ -3459,8 +3603,15 @@ static void metal_submit_draw_instanced(void *ctx_ptr,
         id<MTLBuffer> vb;
         id<MTLBuffer> ib;
         vgfx3d_metal_blend_mode_t blend_mode;
-        if (!ctx || !ctx.encoder || !ctx.inFrame || instance_count <= 0)
+        static const float zero_ambient[3] = {0.0f, 0.0f, 0.0f};
+        if (!ctx || !ctx.encoder || !ctx.inFrame || !cmd || !cmd->vertices || !cmd->indices ||
+            cmd->vertex_count == 0 || cmd->index_count == 0 || !instance_matrices ||
+            instance_count <= 0)
             return;
+        if (!ambient)
+            ambient = zero_ambient;
+        if (!lights || light_count < 0)
+            light_count = 0;
 
         metal_ensure_instance_storage(ctx, instance_count);
         if (!ctx.instanceScratch || !ctx.instanceBuf)
@@ -3502,10 +3653,14 @@ static void metal_submit_draw_instanced(void *ctx_ptr,
         mtl_per_object_t obj;
         memset(&obj, 0, sizeof(obj));
         float vp_t[16];
-        int capped_bone_count = cmd->bone_count > VGFX3D_METAL_MAX_BONES ? VGFX3D_METAL_MAX_BONES
-                                                                          : cmd->bone_count;
-        int has_skinning = (cmd->bone_palette && capped_bone_count > 0) ? 1 : 0;
+        int prev_bone_upload_ok = 0;
+        metal_morph_bind_status_t morph_status;
+        int has_skinning = (cmd->bone_palette && cmd->bone_count > 0) ? 1 : 0;
         int has_prev_skinning = (has_skinning && cmd->prev_bone_palette) ? 1 : 0;
+        has_skinning =
+            metal_bind_bone_palettes(ctx, cmd, has_skinning, has_prev_skinning, &prev_bone_upload_ok);
+        has_prev_skinning = (has_skinning && has_prev_skinning && prev_bone_upload_ok) ? 1 : 0;
+        morph_status = metal_bind_morph_payload(ctx, cmd);
         mat4f_identity(obj.m);
         mat4f_identity(obj.prev_m);
         transpose4x4(ctx->_vp, vp_t);
@@ -3513,14 +3668,12 @@ static void metal_submit_draw_instanced(void *ctx_ptr,
         mat4f_identity(obj.nm);
         obj.flags0[0] = has_skinning;
         obj.flags0[1] = has_prev_skinning;
-        obj.flags0[2] = cmd->morph_shape_count;
-        obj.flags0[3] = (int32_t)cmd->vertex_count;
+        obj.flags0[2] = morph_status.shape_count;
+        obj.flags0[3] = morph_status.shape_count > 0 ? (int32_t)cmd->vertex_count : 0;
         obj.flags1[0] = 0;
-        obj.flags1[1] =
-            (cmd->morph_deltas && cmd->morph_shape_count > 0 && cmd->prev_morph_weights) ? 1 : 0;
+        obj.flags1[1] = morph_status.has_prev_weights;
         obj.flags1[2] = cmd->has_prev_instance_matrices ? 1 : 0;
-        obj.flags1[3] =
-            (cmd->morph_deltas && cmd->morph_shape_count > 0 && cmd->morph_normal_deltas) ? 1 : 0;
+        obj.flags1[3] = morph_status.has_normal_deltas;
         [ctx.encoder setVertexBytes:&obj length:sizeof(obj) atIndex:1];
 
         mtl_per_scene_t scene;
@@ -3550,6 +3703,12 @@ static void metal_submit_draw_instanced(void *ctx_ptr,
         [ctx.encoder setFragmentBytes:&scene length:sizeof(scene) atIndex:0];
 
         mtl_per_material_t mat;
+        int has_complete_splat = vgfx3d_metal_has_complete_splat(cmd->has_splat,
+                                                                 cmd->splat_map != NULL,
+                                                                 cmd->splat_layers[0] != NULL,
+                                                                 cmd->splat_layers[1] != NULL,
+                                                                 cmd->splat_layers[2] != NULL,
+                                                                 cmd->splat_layers[3] != NULL);
         memset(&mat, 0, sizeof(mat));
         memcpy(mat.dc, cmd->diffuse_color, sizeof(float) * 4);
         mat.sc[0] = cmd->specular[0];
@@ -3575,12 +3734,12 @@ static void metal_submit_draw_instanced(void *ctx_ptr,
         mat.flags0[3] = cmd->specular_map ? 1 : 0;
         mat.flags1[0] = cmd->emissive_map ? 1 : 0;
         mat.flags1[1] = (cmd->env_map && cmd->reflectivity > 0.0001f) ? 1 : 0;
-        mat.flags1[2] = cmd->has_splat;
+        mat.flags1[2] = has_complete_splat;
         mat.pbrFlags[0] = cmd->workflow;
         mat.pbrFlags[1] = cmd->alpha_mode;
         mat.pbrFlags[2] = cmd->metallic_roughness_map ? 1 : 0;
         mat.pbrFlags[3] = cmd->ao_map ? 1 : 0;
-        if (cmd->has_splat) {
+        if (has_complete_splat) {
             for (int si = 0; si < 4; si++)
                 mat.splatScales[si] = cmd->splat_layer_scales[si];
         }
@@ -3599,9 +3758,6 @@ static void metal_submit_draw_instanced(void *ctx_ptr,
             mat.textureUvTransform1[slot][1] = cmd->texture_slot_uv_transform[slot][5];
         }
         [ctx.encoder setFragmentBytes:&mat length:sizeof(mat) atIndex:1];
-
-        metal_bind_bone_palettes(ctx, cmd, has_skinning, has_prev_skinning);
-        metal_bind_morph_payload(ctx, cmd);
 
         /* Default textures + sampler */
         for (int slot = 0; slot <= 10; slot++)
@@ -3673,7 +3829,7 @@ static void metal_submit_draw_instanced(void *ctx_ptr,
             if (tex)
                 [ctx.encoder setFragmentTexture:tex atIndex:15];
         }
-        if (cmd->has_splat && cmd->splat_map) {
+        if (has_complete_splat) {
             id<MTLTexture> sp = metal_get_cached_texture(ctx, cmd->splat_map);
             if (sp)
                 [ctx.encoder setFragmentTexture:sp atIndex:6];

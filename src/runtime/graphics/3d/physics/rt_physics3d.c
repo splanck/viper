@@ -503,6 +503,10 @@ static int test_collision(const rt_body3d *a,
                           double *point,
                           void **leaf_a_out,
                           void **leaf_b_out);
+static int test_simple_collision(const rt_body3d *a,
+                                 const rt_body3d *b,
+                                 double *normal,
+                                 double *depth);
 
 /*==========================================================================
  * Collision detection helpers
@@ -744,12 +748,13 @@ static void quat_rotate_vec3(const double *q, const double *v, double *out) {
     double qv[4] = {v[0], v[1], v[2], 0.0};
     double q_conj[4];
     double tmp[4];
+    double rotated[4];
     quat_conjugate(q, q_conj);
     quat_mul(q, qv, tmp);
-    quat_mul(tmp, q_conj, tmp);
-    out[0] = tmp[0];
-    out[1] = tmp[1];
-    out[2] = tmp[2];
+    quat_mul(tmp, q_conj, rotated);
+    out[0] = rotated[0];
+    out[1] = rotated[1];
+    out[2] = rotated[2];
 }
 
 // Collider pose helpers — pose = position + orientation + scale, used
@@ -855,6 +860,71 @@ static void transform_point_to_local(const rt_collider_pose *pose,
         local_point[1] /= pose->scale[1];
     if (fabs(pose->scale[2]) > 1e-12)
         local_point[2] /= pose->scale[2];
+}
+
+static double pose_abs_scale_or_unit(double value) {
+    value = fabs(value);
+    return isfinite(value) && value > 1e-12 ? value : 1.0;
+}
+
+static double pose_abs_scale_or_zero(double value) {
+    value = fabs(value);
+    return isfinite(value) ? value : 1.0;
+}
+
+/// @brief Transform a world-space vector into pose-local space.
+/// @details Translation is ignored; inverse rotation and inverse scale are applied.
+static void transform_vector_to_local(const rt_collider_pose *pose,
+                                      const double *world_vec,
+                                      double *local_vec) {
+    double inv_rotation[4];
+    if (!pose || !world_vec || !local_vec)
+        return;
+    quat_conjugate(pose->rotation, inv_rotation);
+    quat_rotate_vec3(inv_rotation, world_vec, local_vec);
+    if (fabs(pose->scale[0]) > 1e-12)
+        local_vec[0] /= pose->scale[0];
+    else
+        local_vec[0] = 0.0;
+    if (fabs(pose->scale[1]) > 1e-12)
+        local_vec[1] /= pose->scale[1];
+    else
+        local_vec[1] = 0.0;
+    if (fabs(pose->scale[2]) > 1e-12)
+        local_vec[2] /= pose->scale[2];
+    else
+        local_vec[2] = 0.0;
+}
+
+/// @brief Transform a local-space normal into world space via inverse-transpose scale.
+static void transform_normal_from_local(const rt_collider_pose *pose,
+                                        const double *local_normal,
+                                        double *world_normal) {
+    double scaled[3];
+    if (!pose || !local_normal || !world_normal)
+        return;
+    scaled[0] = local_normal[0] / pose_abs_scale_or_unit(pose->scale[0]);
+    scaled[1] = local_normal[1] / pose_abs_scale_or_unit(pose->scale[1]);
+    scaled[2] = local_normal[2] / pose_abs_scale_or_unit(pose->scale[2]);
+    quat_rotate_vec3(pose->rotation, scaled, world_normal);
+    if (vec3_normalize_in_place(world_normal) <= 1e-12)
+        vec3_set(world_normal, 0.0, 1.0, 0.0);
+}
+
+static int capsule_axis_sample_count(double axis_len, double radius) {
+    double spacing;
+    int samples;
+    if (!isfinite(axis_len) || axis_len <= 1e-9)
+        return 1;
+    spacing = (isfinite(radius) && radius > 1e-6) ? radius * 0.5 : 0.05;
+    if (spacing < 1e-4)
+        spacing = 1e-4;
+    samples = (int)ceil(axis_len / spacing) + 1;
+    if (samples < 1)
+        samples = 1;
+    if (samples > 256)
+        samples = 256;
+    return samples;
 }
 
 /// @brief Refresh the body's cached primitive-shape fields from its collider.
@@ -1777,6 +1847,266 @@ static int build_simple_proxy(const rt_collider_pose *pose,
     }
 }
 
+static void box_scaled_half_extents(void *collider,
+                                    const rt_collider_pose *pose,
+                                    double *half_extents) {
+    double raw[3];
+    rt_collider3d_get_box_half_extents_raw(collider, raw);
+    half_extents[0] = raw[0] * pose_abs_scale_or_zero(pose ? pose->scale[0] : 1.0);
+    half_extents[1] = raw[1] * pose_abs_scale_or_zero(pose ? pose->scale[1] : 1.0);
+    half_extents[2] = raw[2] * pose_abs_scale_or_zero(pose ? pose->scale[2] : 1.0);
+}
+
+static void pose_rotation_axes(const rt_collider_pose *pose, double axes[3][3]) {
+    const double local_x[3] = {1.0, 0.0, 0.0};
+    const double local_y[3] = {0.0, 1.0, 0.0};
+    const double local_z[3] = {0.0, 0.0, 1.0};
+    quat_rotate_vec3(pose->rotation, local_x, axes[0]);
+    quat_rotate_vec3(pose->rotation, local_y, axes[1]);
+    quat_rotate_vec3(pose->rotation, local_z, axes[2]);
+    for (int i = 0; i < 3; i++) {
+        if (vec3_normalize_in_place(axes[i]) <= 1e-12) {
+            axes[i][0] = axes[i][1] = axes[i][2] = 0.0;
+            axes[i][i] = 1.0;
+        }
+    }
+}
+
+static void obb_record_axis(const double *axis,
+                            double sign,
+                            double penetration,
+                            double *best_penetration,
+                            double *best_axis) {
+    if (penetration >= *best_penetration)
+        return;
+    *best_penetration = penetration;
+    best_axis[0] = axis[0] * sign;
+    best_axis[1] = axis[1] * sign;
+    best_axis[2] = axis[2] * sign;
+}
+
+/// @brief Exact SAT test for two oriented box colliders.
+static int test_box_box_obb(void *a_collider,
+                            const rt_collider_pose *a_pose,
+                            void *b_collider,
+                            const rt_collider_pose *b_pose,
+                            double *normal,
+                            double *depth) {
+    double a_he[3], b_he[3];
+    double A[3][3], B[3][3];
+    double R[3][3], AbsR[3][3];
+    double t_world[3], t[3];
+    double best_depth = DBL_MAX;
+    double best_axis[3] = {1.0, 0.0, 0.0};
+    const double eps = 1e-9;
+
+    if (!a_collider || !a_pose || !b_collider || !b_pose || !normal || !depth)
+        return 0;
+
+    box_scaled_half_extents(a_collider, a_pose, a_he);
+    box_scaled_half_extents(b_collider, b_pose, b_he);
+    pose_rotation_axes(a_pose, A);
+    pose_rotation_axes(b_pose, B);
+
+    vec3_sub(b_pose->position, a_pose->position, t_world);
+    for (int i = 0; i < 3; i++) {
+        t[i] = vec3_dot(t_world, A[i]);
+        for (int j = 0; j < 3; j++) {
+            R[i][j] = vec3_dot(A[i], B[j]);
+            AbsR[i][j] = fabs(R[i][j]) + eps;
+        }
+    }
+
+    for (int i = 0; i < 3; i++) {
+        double ra = a_he[i];
+        double rb = b_he[0] * AbsR[i][0] + b_he[1] * AbsR[i][1] + b_he[2] * AbsR[i][2];
+        double dist = fabs(t[i]);
+        double penetration = ra + rb - dist;
+        if (penetration < 0.0)
+            return 0;
+        obb_record_axis(A[i], t[i] >= 0.0 ? 1.0 : -1.0, penetration, &best_depth, best_axis);
+    }
+
+    for (int j = 0; j < 3; j++) {
+        double ra = a_he[0] * AbsR[0][j] + a_he[1] * AbsR[1][j] + a_he[2] * AbsR[2][j];
+        double rb = b_he[j];
+        double dist = fabs(t[0] * R[0][j] + t[1] * R[1][j] + t[2] * R[2][j]);
+        double penetration = ra + rb - dist;
+        if (penetration < 0.0)
+            return 0;
+        {
+            double sign = vec3_dot(t_world, B[j]) >= 0.0 ? 1.0 : -1.0;
+            obb_record_axis(B[j], sign, penetration, &best_depth, best_axis);
+        }
+    }
+
+    for (int i = 0; i < 3; i++) {
+        for (int j = 0; j < 3; j++) {
+            double axis[3];
+            double ra;
+            double rb;
+            double dist;
+            double penetration;
+            vec3_cross(A[i], B[j], axis);
+            if (vec3_normalize_in_place(axis) <= 1e-8)
+                continue;
+            ra = a_he[(i + 1) % 3] * AbsR[(i + 2) % 3][j] +
+                 a_he[(i + 2) % 3] * AbsR[(i + 1) % 3][j];
+            rb = b_he[(j + 1) % 3] * AbsR[i][(j + 2) % 3] +
+                 b_he[(j + 2) % 3] * AbsR[i][(j + 1) % 3];
+            dist = fabs(t[(i + 2) % 3] * R[(i + 1) % 3][j] -
+                        t[(i + 1) % 3] * R[(i + 2) % 3][j]);
+            penetration = ra + rb - dist;
+            if (penetration < 0.0)
+                return 0;
+            obb_record_axis(axis,
+                            vec3_dot(t_world, axis) >= 0.0 ? 1.0 : -1.0,
+                            penetration,
+                            &best_depth,
+                            best_axis);
+        }
+    }
+
+    vec3_copy(normal, best_axis);
+    if (vec3_normalize_in_place(normal) <= 1e-12)
+        vec3_set(normal, 0.0, 1.0, 0.0);
+    *depth = best_depth == DBL_MAX ? 0.0 : best_depth;
+    return *depth >= 0.0;
+}
+
+/// @brief Box-vs-sphere using the box's full oriented pose.
+static int test_box_sphere_pose(void *box_collider,
+                                const rt_collider_pose *box_pose,
+                                const rt_body3d *sphere,
+                                double *normal,
+                                double *depth) {
+    double raw_he[3];
+    double local_center[3];
+    double local_closest[3];
+    double world_closest[3];
+    double delta[3];
+    double dist_sq;
+    if (!box_collider || !box_pose || !sphere || !normal || !depth)
+        return 0;
+    rt_collider3d_get_box_half_extents_raw(box_collider, raw_he);
+    transform_point_to_local(box_pose, sphere->position, local_center);
+    for (int i = 0; i < 3; i++)
+        local_closest[i] = clampd(local_center[i], -raw_he[i], raw_he[i]);
+    transform_point_from_pose(box_pose, local_closest, world_closest);
+    vec3_sub(sphere->position, world_closest, delta);
+    dist_sq = vec3_len_sq(delta);
+    if (dist_sq > sphere->radius * sphere->radius)
+        return 0;
+    if (dist_sq > 1e-18) {
+        double dist = sqrt(dist_sq);
+        normal[0] = delta[0] / dist;
+        normal[1] = delta[1] / dist;
+        normal[2] = delta[2] / dist;
+        *depth = sphere->radius - dist;
+        return 1;
+    }
+
+    {
+        int axis = 0;
+        double face_distance[3];
+        double local_normal[3] = {0.0, 0.0, 0.0};
+        for (int i = 0; i < 3; i++) {
+            face_distance[i] =
+                (raw_he[i] - fabs(local_center[i])) * pose_abs_scale_or_unit(box_pose->scale[i]);
+            if (face_distance[i] < face_distance[axis])
+                axis = i;
+        }
+        local_normal[axis] = local_center[axis] >= 0.0 ? 1.0 : -1.0;
+        transform_normal_from_local(box_pose, local_normal, normal);
+        *depth = sphere->radius + fmax(face_distance[axis], 0.0);
+        return 1;
+    }
+}
+
+/// @brief Box-vs-capsule via adaptive sphere samples along the capsule axis.
+static int test_box_capsule_pose(void *box_collider,
+                                 const rt_collider_pose *box_pose,
+                                 const rt_body3d *capsule,
+                                 double *normal,
+                                 double *depth) {
+    double a[3], b[3], axis[3];
+    double best_depth = 0.0;
+    double best_normal[3] = {0.0, 1.0, 0.0};
+    int hit = 0;
+    int samples;
+    if (!box_collider || !box_pose || !capsule)
+        return 0;
+    capsule_axis_endpoints(capsule, a, b);
+    vec3_sub(b, a, axis);
+    samples = capsule_axis_sample_count(vec3_len(axis), capsule->radius);
+    for (int i = 0; i < samples; i++) {
+        double t = samples == 1 ? 0.5 : (double)i / (double)(samples - 1);
+        rt_body3d sphere;
+        double cur_normal[3];
+        double cur_depth;
+        make_temp_sphere(&sphere,
+                         (double[3]){a[0] + axis[0] * t,
+                                     a[1] + axis[1] * t,
+                                     a[2] + axis[2] * t},
+                         capsule->radius);
+        if (test_box_sphere_pose(box_collider, box_pose, &sphere, cur_normal, &cur_depth) &&
+            (!hit || cur_depth > best_depth)) {
+            best_depth = cur_depth;
+            vec3_copy(best_normal, cur_normal);
+            hit = 1;
+        }
+    }
+    if (!hit)
+        return 0;
+    vec3_copy(normal, best_normal);
+    *depth = best_depth;
+    return 1;
+}
+
+static int test_simple_collider_pose_collision(void *a_collider,
+                                               const rt_collider_pose *a_pose,
+                                               void *b_collider,
+                                               const rt_collider_pose *b_pose,
+                                               double *normal,
+                                               double *depth) {
+    int64_t a_type = rt_collider3d_get_type(a_collider);
+    int64_t b_type = rt_collider3d_get_type(b_collider);
+    rt_body3d proxy_a;
+    rt_body3d proxy_b;
+
+    if (a_type == RT_COLLIDER3D_TYPE_BOX && b_type == RT_COLLIDER3D_TYPE_BOX)
+        return test_box_box_obb(a_collider, a_pose, b_collider, b_pose, normal, depth);
+
+    if (a_type == RT_COLLIDER3D_TYPE_BOX) {
+        if (!build_simple_proxy(b_pose, b_collider, &proxy_b))
+            return 0;
+        if (proxy_b.shape == PH3D_SHAPE_SPHERE)
+            return test_box_sphere_pose(a_collider, a_pose, &proxy_b, normal, depth);
+        if (proxy_b.shape == PH3D_SHAPE_CAPSULE)
+            return test_box_capsule_pose(a_collider, a_pose, &proxy_b, normal, depth);
+    }
+
+    if (b_type == RT_COLLIDER3D_TYPE_BOX) {
+        int hit;
+        if (!build_simple_proxy(a_pose, a_collider, &proxy_a))
+            return 0;
+        if (proxy_a.shape == PH3D_SHAPE_SPHERE)
+            hit = test_box_sphere_pose(b_collider, b_pose, &proxy_a, normal, depth);
+        else if (proxy_a.shape == PH3D_SHAPE_CAPSULE)
+            hit = test_box_capsule_pose(b_collider, b_pose, &proxy_a, normal, depth);
+        else
+            hit = 0;
+        if (hit)
+            vec3_negate(normal, normal);
+        return hit;
+    }
+
+    if (!build_simple_proxy(a_pose, a_collider, &proxy_a) ||
+        !build_simple_proxy(b_pose, b_collider, &proxy_b))
+        return 0;
+    return test_simple_collision(&proxy_a, &proxy_b, normal, depth);
+}
+
 /// @brief Narrow-phase dispatcher for primitive-shape body pairs.
 ///
 /// Cheap broad-phase (AABB overlap) up front, then routes to:
@@ -2098,12 +2428,10 @@ static int test_meshlike_sphere(rt_mesh3d *mesh,
     return 1;
 }
 
-/// @brief Capsule-vs-mesh narrow phase via 5 sphere samples along the capsule axis.
+/// @brief Capsule-vs-mesh narrow phase via adaptive sphere samples along the capsule axis.
 ///
-/// Fakes capsule support by sampling 5 spheres uniformly along the
-/// capsule's axis segment and running each through `test_meshlike_sphere`.
-/// Picks the deepest penetration. Cheaper than a true capsule-mesh
-/// test and good enough for character collision against level geometry.
+/// Samples at radius-relative spacing instead of a fixed small count, which
+/// avoids missing side contacts on long capsules.
 static int test_meshlike_capsule(rt_mesh3d *mesh,
                                  const rt_collider_pose *mesh_pose,
                                  const rt_body3d *capsule,
@@ -2113,8 +2441,14 @@ static int test_meshlike_capsule(rt_mesh3d *mesh,
     double axis_a[3], axis_b[3];
     double best_depth = 0.0;
     double best_normal[3] = {0.0, 1.0, 0.0};
-    int samples = half_axis > 1e-9 ? 5 : 1;
+    int samples;
     capsule_axis_endpoints(capsule, axis_a, axis_b);
+    {
+        double axis_delta[3];
+        vec3_sub(axis_b, axis_a, axis_delta);
+        half_axis = vec3_len(axis_delta);
+    }
+    samples = capsule_axis_sample_count(half_axis, capsule->radius);
     for (int i = 0; i < samples; ++i) {
         double t = samples == 1 ? 0.5 : (double)i / (double)(samples - 1);
         rt_body3d sphere;
@@ -2141,6 +2475,154 @@ static int test_meshlike_capsule(rt_mesh3d *mesh,
     return 1;
 }
 
+static void body_pose_from_proxy(const rt_body3d *body, rt_collider_pose *pose) {
+    collider_pose_identity(pose);
+    if (!body)
+        return;
+    vec3_copy(pose->position, body->position);
+    pose->rotation[0] = body->orientation[0];
+    pose->rotation[1] = body->orientation[1];
+    pose->rotation[2] = body->orientation[2];
+    pose->rotation[3] = body->orientation[3];
+}
+
+static int test_triangle_box_local_axis(const double tri[3][3],
+                                        const double he[3],
+                                        const double axis_in[3],
+                                        double *best_depth,
+                                        double *best_axis,
+                                        double *best_sign) {
+    double axis[3] = {axis_in[0], axis_in[1], axis_in[2]};
+    double len = vec3_normalize_in_place(axis);
+    double min_p;
+    double max_p;
+    double radius;
+    double overlap;
+    if (len <= 1e-10)
+        return 1;
+    min_p = max_p = vec3_dot(tri[0], axis);
+    for (int i = 1; i < 3; i++) {
+        double p = vec3_dot(tri[i], axis);
+        if (p < min_p)
+            min_p = p;
+        if (p > max_p)
+            max_p = p;
+    }
+    radius = he[0] * fabs(axis[0]) + he[1] * fabs(axis[1]) + he[2] * fabs(axis[2]);
+    if (max_p < -radius || min_p > radius)
+        return 0;
+    overlap = fmin(radius - min_p, max_p + radius);
+    if (overlap < *best_depth) {
+        double centroid[3] = {(tri[0][0] + tri[1][0] + tri[2][0]) / 3.0,
+                              (tri[0][1] + tri[1][1] + tri[2][1]) / 3.0,
+                              (tri[0][2] + tri[1][2] + tri[2][2]) / 3.0};
+        *best_depth = overlap;
+        vec3_copy(best_axis, axis);
+        *best_sign = vec3_dot(centroid, axis) <= 0.0 ? 1.0 : -1.0;
+    }
+    return 1;
+}
+
+static int test_triangle_box_obb(const double *world_a,
+                                 const double *world_b,
+                                 const double *world_c,
+                                 const rt_body3d *box,
+                                 double *normal,
+                                 double *depth) {
+    rt_collider_pose box_pose;
+    double tri[3][3];
+    double edge0[3], edge1[3], edge2[3];
+    double tri_normal[3];
+    double best_depth = DBL_MAX;
+    double best_axis[3] = {0.0, 1.0, 0.0};
+    double best_sign = 1.0;
+    const double axes[3][3] = {{1.0, 0.0, 0.0}, {0.0, 1.0, 0.0}, {0.0, 0.0, 1.0}};
+
+    if (!world_a || !world_b || !world_c || !box || !normal || !depth)
+        return 0;
+    body_pose_from_proxy(box, &box_pose);
+    transform_point_to_local(&box_pose, world_a, tri[0]);
+    transform_point_to_local(&box_pose, world_b, tri[1]);
+    transform_point_to_local(&box_pose, world_c, tri[2]);
+
+    vec3_sub(tri[1], tri[0], edge0);
+    vec3_sub(tri[2], tri[1], edge1);
+    vec3_sub(tri[0], tri[2], edge2);
+    vec3_cross(edge0, edge1, tri_normal);
+
+    for (int i = 0; i < 3; i++) {
+        if (!test_triangle_box_local_axis(
+                tri, box->half_extents, axes[i], &best_depth, best_axis, &best_sign))
+            return 0;
+    }
+    if (!test_triangle_box_local_axis(
+            tri, box->half_extents, tri_normal, &best_depth, best_axis, &best_sign))
+        return 0;
+    for (int e = 0; e < 3; e++) {
+        const double *edge = e == 0 ? edge0 : (e == 1 ? edge1 : edge2);
+        for (int a = 0; a < 3; a++) {
+            double axis[3];
+            vec3_cross(edge, axes[a], axis);
+            if (!test_triangle_box_local_axis(
+                    tri, box->half_extents, axis, &best_depth, best_axis, &best_sign))
+                return 0;
+        }
+    }
+
+    best_axis[0] *= best_sign;
+    best_axis[1] *= best_sign;
+    best_axis[2] *= best_sign;
+    quat_rotate_vec3(box_pose.rotation, best_axis, normal);
+    if (vec3_normalize_in_place(normal) <= 1e-12)
+        vec3_set(normal, 0.0, 1.0, 0.0);
+    *depth = best_depth == DBL_MAX ? 0.0 : best_depth;
+    return 1;
+}
+
+static int test_meshlike_box(rt_mesh3d *mesh,
+                             const rt_collider_pose *mesh_pose,
+                             const rt_body3d *box,
+                             double *normal,
+                             double *depth) {
+    double best_depth = 0.0;
+    double best_normal[3] = {0.0, 1.0, 0.0};
+    int hit = 0;
+    if (!mesh || !mesh_pose || !box)
+        return 0;
+    rt_mesh3d_refresh_bounds(mesh);
+    for (uint32_t i = 0; i + 2 < mesh->index_count; i += 3) {
+        uint32_t i0 = mesh->indices[i];
+        uint32_t i1 = mesh->indices[i + 1];
+        uint32_t i2 = mesh->indices[i + 2];
+        double a[3], b[3], c[3], local[3], cur_normal[3], cur_depth;
+        if (i0 >= mesh->vertex_count || i1 >= mesh->vertex_count || i2 >= mesh->vertex_count)
+            continue;
+        local[0] = mesh->vertices[i0].pos[0];
+        local[1] = mesh->vertices[i0].pos[1];
+        local[2] = mesh->vertices[i0].pos[2];
+        transform_point_from_pose(mesh_pose, local, a);
+        local[0] = mesh->vertices[i1].pos[0];
+        local[1] = mesh->vertices[i1].pos[1];
+        local[2] = mesh->vertices[i1].pos[2];
+        transform_point_from_pose(mesh_pose, local, b);
+        local[0] = mesh->vertices[i2].pos[0];
+        local[1] = mesh->vertices[i2].pos[1];
+        local[2] = mesh->vertices[i2].pos[2];
+        transform_point_from_pose(mesh_pose, local, c);
+        if (test_triangle_box_obb(a, b, c, box, cur_normal, &cur_depth) &&
+            (!hit || cur_depth > best_depth)) {
+            best_depth = cur_depth;
+            vec3_copy(best_normal, cur_normal);
+            hit = 1;
+        }
+    }
+    if (!hit)
+        return 0;
+    vec3_copy(normal, best_normal);
+    *depth = best_depth;
+    return 1;
+}
+
 /// @brief Sphere-vs-heightfield narrow phase.
 ///
 /// Transforms the sphere center into local heightfield space, samples
@@ -2156,28 +2638,20 @@ static int test_heightfield_sphere(void *heightfield,
     double local_center[3];
     double surface_height = 0.0;
     double local_normal[3] = {0.0, 1.0, 0.0};
+    double scale_y;
+    double local_radius_y;
     double penetration;
     transform_point_to_local(field_pose, sphere->position, local_center);
     if (!rt_collider3d_sample_heightfield_raw(
             heightfield, local_center[0], local_center[2], &surface_height, local_normal))
         return 0;
-    penetration = surface_height - (local_center[1] - sphere->radius);
+    scale_y = pose_abs_scale_or_unit(field_pose->scale[1]);
+    local_radius_y = sphere->radius / scale_y;
+    penetration = surface_height - (local_center[1] - local_radius_y);
     if (penetration <= 0.0)
         return 0;
-    quat_rotate_vec3(field_pose->rotation, local_normal, normal);
-    {
-        double len = vec3_len(normal);
-        if (len > 1e-12) {
-            normal[0] /= len;
-            normal[1] /= len;
-            normal[2] /= len;
-        } else {
-            normal[0] = 0.0;
-            normal[1] = 1.0;
-            normal[2] = 0.0;
-        }
-    }
-    *depth = penetration * fabs(field_pose->scale[1] > 1e-12 ? field_pose->scale[1] : 1.0);
+    transform_normal_from_local(field_pose, local_normal, normal);
+    *depth = penetration * scale_y;
     return 1;
 }
 
@@ -2221,24 +2695,29 @@ static int test_heightfield_capsule(void *heightfield,
 
 /// @brief Box-vs-heightfield narrow phase via 5-sample bottom probe.
 ///
-/// Samples the heightfield at the box's four bottom corners and its
-/// center; the deepest penetration wins. Approximate but cheap;
-/// matches the resolution of the heightfield grid in practice.
+/// Samples the heightfield at the oriented box's four local bottom corners
+/// and its bottom center; the deepest penetration wins. Approximate but
+/// cheap; matches the resolution of the heightfield grid in practice.
 static int test_heightfield_box(void *heightfield,
                                 const rt_collider_pose *field_pose,
                                 const rt_body3d *box,
                                 double *normal,
                                 double *depth) {
-    double mn[3], mx[3];
+    rt_collider_pose box_pose;
     double samples[5][3];
     double best_depth = 0.0;
     double best_normal[3] = {0.0, 1.0, 0.0};
-    body_aabb(box, mn, mx);
-    vec3_set(samples[0], mn[0], mn[1], mn[2]);
-    vec3_set(samples[1], mn[0], mn[1], mx[2]);
-    vec3_set(samples[2], mx[0], mn[1], mn[2]);
-    vec3_set(samples[3], mx[0], mn[1], mx[2]);
-    vec3_set(samples[4], (mn[0] + mx[0]) * 0.5, mn[1], (mn[2] + mx[2]) * 0.5);
+    double local_samples[5][3];
+    if (!box)
+        return 0;
+    body_pose_from_proxy(box, &box_pose);
+    vec3_set(local_samples[0], -box->half_extents[0], -box->half_extents[1], -box->half_extents[2]);
+    vec3_set(local_samples[1], -box->half_extents[0], -box->half_extents[1], box->half_extents[2]);
+    vec3_set(local_samples[2], box->half_extents[0], -box->half_extents[1], -box->half_extents[2]);
+    vec3_set(local_samples[3], box->half_extents[0], -box->half_extents[1], box->half_extents[2]);
+    vec3_set(local_samples[4], 0.0, -box->half_extents[1], 0.0);
+    for (int i = 0; i < 5; i++)
+        transform_point_from_pose(&box_pose, local_samples[i], samples[i]);
     for (int i = 0; i < 5; ++i) {
         double local_point[3];
         double surface_height = 0.0;
@@ -2251,7 +2730,7 @@ static int test_heightfield_box(void *heightfield,
             double cur_depth = surface_height - local_point[1];
             if (cur_depth > best_depth) {
                 best_depth = cur_depth;
-                quat_rotate_vec3(field_pose->rotation, local_normal, best_normal);
+                transform_normal_from_local(field_pose, local_normal, best_normal);
             }
         }
     }
@@ -2270,7 +2749,7 @@ static int test_heightfield_box(void *heightfield,
         }
     }
     vec3_copy(normal, best_normal);
-    *depth = best_depth * fabs(field_pose->scale[1] > 1e-12 ? field_pose->scale[1] : 1.0);
+    *depth = best_depth * pose_abs_scale_or_unit(field_pose->scale[1]);
     return 1;
 }
 
@@ -2432,11 +2911,8 @@ static int test_collider_pair(const rt_body3d *a_body,
     }
 
     if (collider_type_is_simple(a_type) && collider_type_is_simple(b_type)) {
-        rt_body3d proxy_a, proxy_b;
-        if (!build_simple_proxy(a_pose, a_collider, &proxy_a) ||
-            !build_simple_proxy(b_pose, b_collider, &proxy_b))
-            return 0;
-        if (!test_simple_collision(&proxy_a, &proxy_b, normal, depth))
+        if (!test_simple_collider_pose_collision(
+                a_collider, a_pose, b_collider, b_pose, normal, depth))
             return 0;
         if (leaf_a_out)
             *leaf_a_out = a_collider;
@@ -2459,7 +2935,10 @@ static int test_collider_pair(const rt_body3d *a_body,
              !test_meshlike_sphere(mesh, a_pose, &proxy_b, normal, depth)) ||
             (proxy_b.shape == PH3D_SHAPE_CAPSULE &&
              !test_meshlike_capsule(mesh, a_pose, &proxy_b, normal, depth)) ||
-            ((proxy_b.shape != PH3D_SHAPE_SPHERE && proxy_b.shape != PH3D_SHAPE_CAPSULE) &&
+            (proxy_b.shape == PH3D_SHAPE_AABB &&
+             !test_meshlike_box(mesh, a_pose, &proxy_b, normal, depth)) ||
+            ((proxy_b.shape != PH3D_SHAPE_SPHERE && proxy_b.shape != PH3D_SHAPE_CAPSULE &&
+              proxy_b.shape != PH3D_SHAPE_AABB) &&
              !test_bounds_overlap(amn, amx, a_center, bmn, bmx, b_center, normal, depth))) {
             return 0;
         }
@@ -3894,10 +4373,9 @@ static int overlap_query_body_against_body(rt_body3d *query_body,
 ///
 /// First checks initial overlap (early-out for already-penetrating).
 /// Then broad-phases against the swept AABB. Then steps along the sweep
-/// in `radius/4`-sized increments looking for the first overlap, and
-/// refines the impact `t` via 14 iterations of bisection. The sub-step
-/// size is clamped to `[0.02, 0.5]` so very small or huge bodies still
-/// terminate in a reasonable number of iterations.
+/// in radius/body-feature-relative increments looking for the first overlap,
+/// and refines the impact `t` via bisection. There is deliberately no fixed
+/// world-unit minimum step: tiny spheres must still detect thin geometry.
 static int sweep_sphere_against_body(void *sphere_collider,
                                      const double *start_center,
                                      double radius,
@@ -3939,18 +4417,20 @@ static int sweep_sphere_against_body(void *sphere_collider,
             body_extent = other_extent_y;
         if (other_extent_z > body_extent)
             body_extent = other_extent_z;
-        step_dist = radius > 1e-3 ? radius * 0.25 : body_extent * 0.1;
-        if (step_dist < 0.02)
-            step_dist = 0.02;
-        if (step_dist > 0.5)
-            step_dist = 0.5;
+        step_dist = radius > 1e-6 ? radius * 0.25 : body_extent * 0.05;
+        if (!isfinite(step_dist) || step_dist <= 0.0)
+            step_dist = 1e-4;
+        if (step_dist < 1e-5)
+            step_dist = 1e-5;
+        if (step_dist > 0.25)
+            step_dist = 0.25;
     }
 
     steps = (int)ceil(delta_len / step_dist);
     if (steps < 1)
         steps = 1;
-    if (steps > 1024)
-        steps = 1024;
+    if (steps > 8192)
+        steps = 8192;
 
     {
         double prev_t = 0.0;
@@ -4001,9 +4481,8 @@ static int sweep_sphere_against_body(void *sphere_collider,
 
 /// @brief Sweep a capsule (axis from `a` to `b`, radius `radius`) along `delta`.
 ///
-/// Approximates the capsule sweep as up to 7 sphere-sweeps sampled
-/// along the axis. Picks the closest hit. Cheaper than a true capsule
-/// sweep and works well for character motion against level geometry.
+/// Approximates the capsule sweep as adaptive sphere-sweeps sampled
+/// along the axis. Picks the closest hit.
 static int sweep_capsule_against_body(const double *a,
                                       const double *b,
                                       double radius,
@@ -4024,11 +4503,7 @@ static int sweep_capsule_against_body(const double *a,
         return 0;
     vec3_sub(b, a, axis);
     axis_len = vec3_len(axis);
-    samples = axis_len <= radius ? 1 : (int)ceil(axis_len / (radius > 1e-6 ? radius : 0.25)) + 1;
-    if (samples < 1)
-        samples = 1;
-    if (samples > 7)
-        samples = 7;
+    samples = capsule_axis_sample_count(axis_len, radius);
     for (int i = 0; i < samples; ++i) {
         double t = samples == 1 ? 0.5 : (double)i / (double)(samples - 1);
         double center[3] = {
@@ -4451,8 +4926,318 @@ static int raycast_capsule_raw(const double *origin,
     return 1;
 }
 
-/// @brief Ray vs a physics body: transforms the ray into body space and
-///        dispatches to the sphere/AABB/capsule test for the body's shape.
+static int raycast_box_pose_raw(void *box_collider,
+                                const rt_collider_pose *pose,
+                                const double *origin,
+                                const double *dir,
+                                double max_distance,
+                                double expand_radius,
+                                double *out_t,
+                                double *out_normal,
+                                int *out_started) {
+    double he[3];
+    double local_origin[3];
+    double local_dir[3];
+    double mn[3];
+    double mx[3];
+    double local_normal[3] = {0.0, 0.0, 0.0};
+    double t = 0.0;
+    int started = 0;
+    if (!box_collider || !pose)
+        return 0;
+    rt_collider3d_get_box_half_extents_raw(box_collider, he);
+    for (int i = 0; i < 3; i++) {
+        double expansion = expand_radius / pose_abs_scale_or_unit(pose->scale[i]);
+        mn[i] = -he[i] - expansion;
+        mx[i] = he[i] + expansion;
+    }
+    transform_point_to_local(pose, origin, local_origin);
+    transform_vector_to_local(pose, dir, local_dir);
+    if (!raycast_aabb_raw(local_origin, local_dir, mn, mx, max_distance, &t, local_normal, &started))
+        return 0;
+    if (out_t)
+        *out_t = t;
+    if (out_started)
+        *out_started = started;
+    if (out_normal) {
+        if (started)
+            vec3_negate(dir, out_normal);
+        else
+            transform_normal_from_local(pose, local_normal, out_normal);
+    }
+    return 1;
+}
+
+static int raycast_triangle_world(const double *origin,
+                                  const double *dir,
+                                  const double *a,
+                                  const double *b,
+                                  const double *c,
+                                  double max_distance,
+                                  double *out_t,
+                                  double *out_normal) {
+    double e1[3], e2[3], pvec[3], tvec[3], qvec[3];
+    double det, inv_det, u, v, t;
+    vec3_sub(b, a, e1);
+    vec3_sub(c, a, e2);
+    vec3_cross(dir, e2, pvec);
+    det = vec3_dot(e1, pvec);
+    if (fabs(det) < 1e-12)
+        return 0;
+    inv_det = 1.0 / det;
+    vec3_sub(origin, a, tvec);
+    u = vec3_dot(tvec, pvec) * inv_det;
+    if (u < 0.0 || u > 1.0)
+        return 0;
+    vec3_cross(tvec, e1, qvec);
+    v = vec3_dot(dir, qvec) * inv_det;
+    if (v < 0.0 || u + v > 1.0)
+        return 0;
+    t = vec3_dot(e2, qvec) * inv_det;
+    if (t < 0.0 || t > max_distance)
+        return 0;
+    if (out_t)
+        *out_t = t;
+    if (out_normal) {
+        triangle_normal(a, b, c, out_normal);
+        if (vec3_dot(out_normal, dir) > 0.0)
+            vec3_negate(out_normal, out_normal);
+    }
+    return 1;
+}
+
+static int raycast_meshlike_pose_raw(rt_mesh3d *mesh,
+                                     const rt_collider_pose *pose,
+                                     const double *origin,
+                                     const double *dir,
+                                     double max_distance,
+                                     double *out_t,
+                                     double *out_normal,
+                                     int *out_started) {
+    double best_t = max_distance + 1.0;
+    double best_normal[3] = {0.0, 1.0, 0.0};
+    int found = 0;
+    if (!mesh || !pose || mesh->index_count < 3)
+        return 0;
+    rt_mesh3d_refresh_bounds(mesh);
+    for (uint32_t i = 0; i + 2 < mesh->index_count; i += 3) {
+        uint32_t i0 = mesh->indices[i];
+        uint32_t i1 = mesh->indices[i + 1];
+        uint32_t i2 = mesh->indices[i + 2];
+        double a[3], b[3], c[3], local[3], t, n[3];
+        if (i0 >= mesh->vertex_count || i1 >= mesh->vertex_count || i2 >= mesh->vertex_count)
+            continue;
+        local[0] = mesh->vertices[i0].pos[0];
+        local[1] = mesh->vertices[i0].pos[1];
+        local[2] = mesh->vertices[i0].pos[2];
+        transform_point_from_pose(pose, local, a);
+        local[0] = mesh->vertices[i1].pos[0];
+        local[1] = mesh->vertices[i1].pos[1];
+        local[2] = mesh->vertices[i1].pos[2];
+        transform_point_from_pose(pose, local, b);
+        local[0] = mesh->vertices[i2].pos[0];
+        local[1] = mesh->vertices[i2].pos[1];
+        local[2] = mesh->vertices[i2].pos[2];
+        transform_point_from_pose(pose, local, c);
+        if (raycast_triangle_world(origin, dir, a, b, c, max_distance, &t, n) && t < best_t) {
+            best_t = t;
+            vec3_copy(best_normal, n);
+            found = 1;
+        }
+    }
+    if (!found)
+        return 0;
+    if (out_t)
+        *out_t = best_t;
+    if (out_normal)
+        vec3_copy(out_normal, best_normal);
+    if (out_started)
+        *out_started = 0;
+    return 1;
+}
+
+static int raycast_heightfield_pose_raw(void *heightfield,
+                                        const rt_collider_pose *pose,
+                                        const double *origin,
+                                        const double *dir,
+                                        double max_distance,
+                                        double *out_t,
+                                        double *out_normal,
+                                        int *out_started) {
+    double mn[3], mx[3], entry_t, aabb_normal[3];
+    int started = 0;
+    double local_origin[3], local_dir[3];
+    double start_t;
+    double step;
+    double prev_t;
+    double prev_clearance = DBL_MAX;
+    int has_prev = 0;
+    rt_collider3d_compute_world_aabb_raw(heightfield, pose->position, pose->rotation, pose->scale, mn, mx);
+    if (!raycast_aabb_raw(origin, dir, mn, mx, max_distance, &entry_t, aabb_normal, &started))
+        return 0;
+    transform_point_to_local(pose, origin, local_origin);
+    transform_vector_to_local(pose, dir, local_dir);
+    start_t = started ? 0.0 : entry_t;
+    step = max_distance / 512.0;
+    if (!isfinite(step) || step < 1e-4)
+        step = 1e-4;
+    if (step > 0.25)
+        step = 0.25;
+    prev_t = start_t;
+    for (double t = start_t; t <= max_distance + 1e-9; t += step) {
+        double local_point[3] = {local_origin[0] + local_dir[0] * t,
+                                 local_origin[1] + local_dir[1] * t,
+                                 local_origin[2] + local_dir[2] * t};
+        double surface = 0.0;
+        double local_normal[3] = {0.0, 1.0, 0.0};
+        double clearance;
+        if (!rt_collider3d_sample_heightfield_raw(
+                heightfield, local_point[0], local_point[2], &surface, local_normal)) {
+            prev_t = t;
+            has_prev = 0;
+            continue;
+        }
+        clearance = local_point[1] - surface;
+        if (clearance <= 0.0) {
+            double hit_t = t;
+            if (has_prev && prev_clearance > 0.0) {
+                double lo = prev_t;
+                double hi = t;
+                for (int iter = 0; iter < 16; iter++) {
+                    double mid = (lo + hi) * 0.5;
+                    double mid_point[3] = {local_origin[0] + local_dir[0] * mid,
+                                           local_origin[1] + local_dir[1] * mid,
+                                           local_origin[2] + local_dir[2] * mid};
+                    double mid_surface = 0.0;
+                    double mid_normal[3] = {0.0, 1.0, 0.0};
+                    if (rt_collider3d_sample_heightfield_raw(
+                            heightfield, mid_point[0], mid_point[2], &mid_surface, mid_normal) &&
+                        mid_point[1] - mid_surface <= 0.0) {
+                        hi = mid;
+                        vec3_copy(local_normal, mid_normal);
+                    } else {
+                        lo = mid;
+                    }
+                }
+                hit_t = hi;
+            }
+            if (out_t)
+                *out_t = hit_t;
+            if (out_started)
+                *out_started = (t == start_t && clearance <= 0.0) ? 1 : 0;
+            if (out_normal)
+                transform_normal_from_local(pose, local_normal, out_normal);
+            return 1;
+        }
+        prev_clearance = clearance;
+        prev_t = t;
+        has_prev = 1;
+    }
+    return 0;
+}
+
+static int raycast_collider_pose(void *collider,
+                                 const rt_collider_pose *pose,
+                                 const double *origin,
+                                 const double *dir,
+                                 double max_distance,
+                                 double *out_t,
+                                 double *out_normal,
+                                 int *out_started,
+                                 void **out_leaf) {
+    int64_t type;
+    double t = 0.0;
+    double normal[3] = {0.0, 1.0, 0.0};
+    int started = 0;
+    if (!collider || !pose)
+        return 0;
+    type = rt_collider3d_get_type(collider);
+    if (type == RT_COLLIDER3D_TYPE_BOX) {
+        if (!raycast_box_pose_raw(collider, pose, origin, dir, max_distance, 0.0, &t, normal, &started))
+            return 0;
+    } else if (type == RT_COLLIDER3D_TYPE_SPHERE) {
+        double radius = rt_collider3d_get_radius_raw(collider);
+        double sx = pose_abs_scale_or_unit(pose->scale[0]);
+        double sy = pose_abs_scale_or_unit(pose->scale[1]);
+        double sz = pose_abs_scale_or_unit(pose->scale[2]);
+        double max_scale = sx > sy ? sx : sy;
+        if (sz > max_scale)
+            max_scale = sz;
+        if (!raycast_sphere_raw(origin, dir, pose->position, radius * max_scale, max_distance, &t, normal, &started))
+            return 0;
+    } else if (type == RT_COLLIDER3D_TYPE_CAPSULE) {
+        rt_body3d proxy;
+        double a[3], b[3];
+        if (!build_simple_proxy(pose, collider, &proxy))
+            return 0;
+        capsule_axis_endpoints(&proxy, a, b);
+        if (!raycast_capsule_raw(origin, dir, a, b, proxy.radius, max_distance, &t, normal, &started))
+            return 0;
+    } else if (type == RT_COLLIDER3D_TYPE_COMPOUND) {
+        int64_t child_count = rt_collider3d_get_child_count_raw(collider);
+        int found = 0;
+        double best_t = max_distance + 1.0;
+        double best_normal[3] = {0.0, 1.0, 0.0};
+        int best_started = 0;
+        void *best_leaf = NULL;
+        for (int64_t i = 0; i < child_count; i++) {
+            void *child = rt_collider3d_get_child_raw(collider, i);
+            double child_pos[3], child_rot[4], child_scale[3];
+            rt_collider_pose child_pose;
+            double cur_t, cur_normal[3];
+            int cur_started;
+            void *cur_leaf = NULL;
+            rt_collider3d_get_child_transform_raw(collider, i, child_pos, child_rot, child_scale);
+            collider_pose_compose(pose, child_pos, child_rot, child_scale, &child_pose);
+            if (raycast_collider_pose(child,
+                                      &child_pose,
+                                      origin,
+                                      dir,
+                                      max_distance,
+                                      &cur_t,
+                                      cur_normal,
+                                      &cur_started,
+                                      &cur_leaf) &&
+                cur_t < best_t) {
+                best_t = cur_t;
+                vec3_copy(best_normal, cur_normal);
+                best_started = cur_started;
+                best_leaf = cur_leaf ? cur_leaf : child;
+                found = 1;
+            }
+        }
+        if (!found)
+            return 0;
+        t = best_t;
+        vec3_copy(normal, best_normal);
+        started = best_started;
+        collider = best_leaf ? best_leaf : collider;
+    } else if (type == RT_COLLIDER3D_TYPE_CONVEX_HULL || type == RT_COLLIDER3D_TYPE_MESH) {
+        rt_mesh3d *mesh = (rt_mesh3d *)rt_collider3d_get_mesh_raw(collider);
+        if (!raycast_meshlike_pose_raw(mesh, pose, origin, dir, max_distance, &t, normal, &started))
+            return 0;
+    } else if (type == RT_COLLIDER3D_TYPE_HEIGHTFIELD) {
+        if (!raycast_heightfield_pose_raw(collider, pose, origin, dir, max_distance, &t, normal, &started))
+            return 0;
+    } else {
+        double mn[3], mx[3];
+        rt_collider3d_compute_world_aabb_raw(collider, pose->position, pose->rotation, pose->scale, mn, mx);
+        if (!raycast_aabb_raw(origin, dir, mn, mx, max_distance, &t, normal, &started))
+            return 0;
+    }
+    if (out_t)
+        *out_t = t;
+    if (out_normal)
+        vec3_copy(out_normal, normal);
+    if (out_started)
+        *out_started = started;
+    if (out_leaf)
+        *out_leaf = collider;
+    return 1;
+}
+
+/// @brief Ray vs a physics body: dispatches to the actual attached collider
+///        shape, recursing through compound children and testing mesh triangles.
 /// @return Non-zero on a hit (nearest distance written), 0 otherwise.
 static int raycast_body(rt_body3d *body,
                         const double *origin,
@@ -4462,32 +5247,27 @@ static int raycast_body(rt_body3d *body,
     double t = 0.0;
     double normal[3] = {0.0, 0.0, 0.0};
     int started = 0;
+    void *leaf = NULL;
     if (!body || !body->collider)
         return 0;
-    body3d_update_shape_cache_from_collider(body);
-    if (body->shape == PH3D_SHAPE_SPHERE) {
-        if (!raycast_sphere_raw(origin, dir, body->position, body->radius, max_distance, &t, normal, &started))
-            return 0;
-    } else if (body->shape == PH3D_SHAPE_CAPSULE) {
-        double a[3], b[3];
-        capsule_axis_endpoints(body, a, b);
-        if (!raycast_capsule_raw(origin, dir, a, b, body->radius, max_distance, &t, normal, &started))
-            return 0;
-    } else {
-        double mn[3], mx[3];
-        body_aabb(body, mn, mx);
-        if (!raycast_aabb_raw(origin, dir, mn, mx, max_distance, &t, normal, &started))
+    {
+        rt_collider_pose pose;
+        collider_pose_from_body(body, &pose);
+        if (!raycast_collider_pose(
+                body->collider, &pose, origin, dir, max_distance, &t, normal, &started, &leaf))
             return 0;
     }
     ray_fill_hit(body, t, max_distance, origin, dir, normal, started, out_hit);
+    if (out_hit && leaf)
+        out_hit->collider = leaf;
     return 1;
 }
 
 /// @brief `World3D.Raycast(origin, direction, maxDistance, mask)` — first hit along a ray.
 ///
-/// Uses analytic ray tests for sphere/capsule primitives and an AABB fallback
-/// for box, mesh, heightfield, compound, and hull colliders. Returns NULL when
-/// the direction is zero or `maxDistance <= 0`.
+/// Uses collider-specific tests for boxes, spheres, capsules, meshes, hulls,
+/// compounds, and heightfields. Returns NULL when the direction is zero or
+/// `maxDistance <= 0`.
 void *rt_world3d_raycast(void *obj, void *origin_obj, void *direction_obj, double max_distance, int64_t mask) {
     rt_world3d *w = world3d_checked(obj);
     rt_query_hit3d best_hit = {0};

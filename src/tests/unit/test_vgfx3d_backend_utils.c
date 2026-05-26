@@ -4,6 +4,8 @@
 
 #include "vgfx3d_backend.h"
 #include "vgfx3d_backend_utils.h"
+#include "vgfx3d_frustum.h"
+#include "vgfx3d_skinning.h"
 
 #include <math.h>
 #include <stdint.h>
@@ -431,6 +433,81 @@ static void test_draw_cmd_alpha_blend_policy(void) {
                 "Additive materials still route through the transparent pass");
 }
 
+static void set_identity4x4(float *m) {
+    memset(m, 0, sizeof(float) * 16u);
+    m[0] = 1.0f;
+    m[5] = 1.0f;
+    m[10] = 1.0f;
+    m[15] = 1.0f;
+}
+
+static void test_skinning_normalizes_weights_and_copies_without_palette(void) {
+    vgfx3d_vertex_t src[1];
+    vgfx3d_vertex_t dst[1];
+    float palette[32];
+
+    memset(src, 0, sizeof(src));
+    set_identity4x4(&palette[0]);
+    set_identity4x4(&palette[16]);
+    palette[16 + 3] = 4.0f;
+    src[0].pos[0] = 1.0f;
+    src[0].normal[0] = 1.0f;
+    src[0].bone_indices[0] = 0;
+    src[0].bone_indices[1] = 1;
+    src[0].bone_weights[0] = 0.25f;
+    src[0].bone_weights[1] = 0.25f;
+
+    memset(dst, 0, sizeof(dst));
+    vgfx3d_skin_vertices(src, dst, 1, palette, 2);
+    EXPECT_NEAR(dst[0].pos[0], 3.0f, 1e-6f,
+                "CPU skinning normalizes non-unit bone weights before writing positions");
+    EXPECT_NEAR(dst[0].normal[0], 1.0f, 1e-6f,
+                "CPU skinning preserves normalized normals after weight normalization");
+
+    memset(dst, 0, sizeof(dst));
+    vgfx3d_skin_vertices(src, dst, 1, NULL, 0);
+    EXPECT_NEAR(dst[0].pos[0], src[0].pos[0], 1e-6f,
+                "CPU skinning copies vertices through when no palette is available");
+}
+
+static void test_frustum_and_mesh_aabb_reject_invalid_inputs_conservatively(void) {
+    vgfx3d_frustum_t f;
+    float minv[3] = {-1.0f, -1.0f, -1.0f};
+    float maxv[3] = {1.0f, 1.0f, 1.0f};
+    float out_min[3] = {9.0f, 9.0f, 9.0f};
+    float out_max[3] = {9.0f, 9.0f, 9.0f};
+    vgfx3d_vertex_t vertices[2];
+    float invalid_vp[16];
+
+    memset(invalid_vp, 0, sizeof(invalid_vp));
+    invalid_vp[0] = NAN;
+    vgfx3d_frustum_extract(&f, invalid_vp);
+    EXPECT_TRUE(vgfx3d_frustum_test_aabb(&f, minv, maxv) == 1,
+                "Invalid frustum extraction keeps AABB culling conservative");
+    EXPECT_TRUE(vgfx3d_frustum_test_aabb(NULL, minv, maxv) == 1,
+                "AABB culling treats null frustums as conservative intersections");
+    EXPECT_TRUE(vgfx3d_frustum_test_sphere(&f, minv, -1.0f) == 1,
+                "Sphere culling treats invalid radii as conservative intersections");
+
+    memset(vertices, 0, sizeof(vertices));
+    vertices[0].pos[0] = NAN;
+    vertices[1].pos[0] = -2.0f;
+    vertices[1].pos[1] = 3.0f;
+    vertices[1].pos[2] = 4.0f;
+    vgfx3d_compute_mesh_aabb(vertices, 2, sizeof(vertices[0]), out_min, out_max);
+    EXPECT_NEAR(out_min[0], -2.0f, 1e-6f,
+                "Mesh AABB skips non-finite positions while keeping valid vertices");
+    EXPECT_NEAR(out_max[2], 4.0f, 1e-6f,
+                "Mesh AABB keeps finite position bounds after invalid vertices");
+
+    out_min[0] = out_max[0] = 9.0f;
+    vgfx3d_compute_mesh_aabb(vertices, 2, 1, out_min, out_max);
+    EXPECT_NEAR(out_min[0], 0.0f, 1e-6f,
+                "Mesh AABB rejects strides too small to contain positions");
+    EXPECT_NEAR(out_max[0], 0.0f, 1e-6f,
+                "Mesh AABB zeroes invalid stride outputs");
+}
+
 int main(void) {
     test_unpack_pixels_rgba_success();
     test_unpack_pixels_rgba_rejects_invalid();
@@ -444,6 +521,8 @@ int main(void) {
     test_invert_matrix4_success();
     test_invert_matrix4_rejects_singular();
     test_draw_cmd_alpha_blend_policy();
+    test_skinning_normalizes_weights_and_copies_without_palette();
+    test_frustum_and_mesh_aabb_reject_invalid_inputs_conservatively();
 
     printf("vgfx3d_backend_utils tests: %d/%d passed\n", tests_passed, tests_run);
     return tests_passed == tests_run ? 0 : 1;

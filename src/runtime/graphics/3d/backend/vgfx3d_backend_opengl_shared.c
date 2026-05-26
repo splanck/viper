@@ -82,6 +82,92 @@ int32_t vgfx3d_opengl_next_capacity(int32_t current_capacity,
     return next_capacity;
 }
 
+static int vgfx3d_opengl_checked_mul_size(size_t a, size_t b, size_t *out) {
+    if (out)
+        *out = 0;
+    if (!out)
+        return 0;
+    if (a != 0 && b > SIZE_MAX / a)
+        return 0;
+    *out = a * b;
+    return 1;
+}
+
+/// @brief Overflow-safe size_t capacity growth helper for GL buffer uploads.
+int vgfx3d_opengl_compute_buffer_capacity(size_t current_capacity,
+                                          size_t needed,
+                                          size_t minimum_capacity,
+                                          size_t *out_capacity) {
+    size_t next_capacity;
+
+    if (out_capacity)
+        *out_capacity = 0;
+    if (!out_capacity)
+        return 0;
+    if (needed == 0) {
+        *out_capacity = current_capacity > 0 ? current_capacity : minimum_capacity;
+        return 1;
+    }
+    next_capacity = current_capacity > 0 ? current_capacity : minimum_capacity;
+    if (next_capacity < 1)
+        next_capacity = 1;
+    while (next_capacity < needed) {
+        if (next_capacity > SIZE_MAX / 2) {
+            if (needed < next_capacity)
+                return 0;
+            next_capacity = needed;
+            break;
+        }
+        next_capacity *= 2;
+    }
+    *out_capacity = next_capacity;
+    return 1;
+}
+
+/// @brief Validate an RGBA8 destination rectangle and optionally return its byte span.
+int vgfx3d_opengl_validate_rgba8_destination(int32_t width,
+                                             int32_t height,
+                                             int32_t stride,
+                                             size_t *out_bytes) {
+    size_t min_stride;
+    size_t total_bytes;
+
+    if (out_bytes)
+        *out_bytes = 0;
+    if (width <= 0 || height <= 0 || stride <= 0)
+        return 0;
+    if (!vgfx3d_opengl_checked_mul_size((size_t)width, 4u, &min_stride))
+        return 0;
+    if ((size_t)stride < min_stride)
+        return 0;
+    if (!vgfx3d_opengl_checked_mul_size((size_t)stride, (size_t)height, &total_bytes))
+        return 0;
+    if (out_bytes)
+        *out_bytes = total_bytes;
+    return 1;
+}
+
+/// @brief Clamp morph shape count to shader and index-range limits.
+int32_t vgfx3d_opengl_clamp_morph_shape_count(uint32_t vertex_count,
+                                              int32_t requested_shape_count) {
+    int32_t shape_count;
+    uint32_t max_indexed_vertices;
+    uint32_t max_shapes_by_index;
+
+    if (vertex_count == 0 || requested_shape_count <= 0)
+        return 0;
+    shape_count = requested_shape_count;
+    if (shape_count > VGFX3D_OPENGL_MAX_MORPH_SHAPES)
+        shape_count = VGFX3D_OPENGL_MAX_MORPH_SHAPES;
+    max_indexed_vertices = (uint32_t)((INT_MAX - 2) / 3);
+    max_shapes_by_index = max_indexed_vertices / vertex_count;
+    if (max_shapes_by_index == 0)
+        return 0;
+    if ((uint32_t)shape_count > max_shapes_by_index)
+        shape_count = (int32_t)max_shapes_by_index;
+    return shape_count;
+}
+
 /// @brief Pick the right render-target classification for the OpenGL backend.
 /// See vgfx3d_d3d11_choose_target_kind for the policy semantics.
 vgfx3d_opengl_target_kind_t vgfx3d_opengl_choose_target_kind(int8_t rtt_active,
@@ -116,6 +202,17 @@ vgfx3d_opengl_choose_blend_mode(const vgfx3d_draw_cmd_t *cmd) {
                                                  : VGFX3D_OPENGL_BLEND_OPAQUE;
 }
 
+/// @brief Decide whether terrain splatting has every required texture bound.
+int vgfx3d_opengl_has_complete_splat(int8_t cmd_has_splat,
+                                     int has_splat_map,
+                                     int has_layer0,
+                                     int has_layer1,
+                                     int has_layer2,
+                                     int has_layer3) {
+    return cmd_has_splat && has_splat_map && has_layer0 && has_layer1 && has_layer2 &&
+           has_layer3;
+}
+
 /// @brief Decide whether a draw contributes to the motion-vector buffer.
 /// @details Motion vectors drive TAA / motion-blur postfx, both of which only run when
 ///   the scene target is bound. Transparent draws are excluded because blended fragments
@@ -147,6 +244,7 @@ int vgfx3d_opengl_should_reuse_morph_cache(const void *cached_key,
                                            uint32_t cached_vertex_count,
                                            int8_t cached_has_normal_deltas,
                                            const vgfx3d_draw_cmd_t *cmd) {
+    int32_t shape_count;
     int8_t has_normal_deltas;
 
     if (!cmd || !cmd->morph_key || cmd->morph_revision == 0 || !cmd->morph_deltas ||
@@ -154,9 +252,12 @@ int vgfx3d_opengl_should_reuse_morph_cache(const void *cached_key,
         return 0;
     }
 
+    shape_count = vgfx3d_opengl_clamp_morph_shape_count(cmd->vertex_count, cmd->morph_shape_count);
+    if (shape_count <= 0)
+        return 0;
     has_normal_deltas = cmd->morph_normal_deltas ? 1 : 0;
     return cached_key == cmd->morph_key && cached_revision == cmd->morph_revision &&
-           cached_shape_count == cmd->morph_shape_count &&
+           cached_shape_count == shape_count &&
            cached_vertex_count == cmd->vertex_count &&
            cached_has_normal_deltas == has_normal_deltas;
 }

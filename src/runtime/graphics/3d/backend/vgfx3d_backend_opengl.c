@@ -537,6 +537,10 @@ typedef struct {
     GLint shadow_uModelMatrix, shadow_uViewProjection;
     GLint shadow_uHasSkinning, shadow_uMorphShapeCount, shadow_uVertexCount;
     GLint shadow_uMorphWeights, shadow_uMorphDeltas;
+    GLint shadow_uDiffuseTex, shadow_uHasTexture, shadow_uAlphaMode, shadow_uAlphaCutoff,
+        shadow_uAlpha, shadow_uDiffuseColor;
+    GLint shadow_uTextureUvSets0, shadow_uTextureUvSets1;
+    GLint shadow_uTextureUvTransform0, shadow_uTextureUvTransform1;
 
     GLint skybox_uInverseProjection;
     GLint skybox_uInverseViewRotation;
@@ -831,6 +835,7 @@ static const char *const glsl_vertex_src[] = {
     "vec4 skinPosition(vec4 localPos, int usePrevPalette) {\n"
     "    if (uHasSkinning == 0) return localPos;\n"
     "    vec4 skinnedPos = vec4(0.0);\n"
+    "    float totalWeight = 0.0;\n"
     "    for (int i = 0; i < 4; i++) {\n"
     "        float bw = aBoneWt[i];\n"
     "        if (bw > 0.0001) {\n"
@@ -838,22 +843,25 @@ static const char *const glsl_vertex_src[] = {
     "            mat4 bm = (usePrevPalette != 0 && uHasPrevSkinning != 0) ? uPrevBonePalette[b] : "
     "uBonePalette[b];\n"
     "            skinnedPos += bm * localPos * bw;\n"
+    "            totalWeight += bw;\n"
     "        }\n"
     "    }\n"
-    "    return skinnedPos;\n"
+    "    return totalWeight > 0.0001 ? skinnedPos / totalWeight : localPos;\n"
     "}\n"
     "vec3 skinNormal(vec3 localNormal) {\n"
     "    if (uHasSkinning == 0) return localNormal;\n"
     "    vec3 skinnedNormal = vec3(0.0);\n"
+    "    float totalWeight = 0.0;\n"
     "    for (int i = 0; i < 4; i++) {\n"
     "        float bw = aBoneWt[i];\n"
     "        if (bw > 0.0001) {\n"
     "            int b = min(int(aBoneIdx[i]), 255);\n"
     "            mat4 bm = uBonePalette[b];\n"
     "            skinnedNormal += (bm * vec4(localNormal, 0.0)).xyz * bw;\n"
+    "            totalWeight += bw;\n"
     "        }\n"
     "    }\n"
-    "    return skinnedNormal;\n"
+    "    return totalWeight > 0.0001 ? skinnedNormal / totalWeight : localNormal;\n"
     "}\n",
     "void main() {\n"
     "    vec3 pos = aPosition;\n"
@@ -1239,8 +1247,11 @@ static const char *const glsl_fragment_src[] = {
 static const char *glsl_shadow_vertex_src =
     "#version 330 core\n"
     "layout(location=0) in vec3 aPosition;\n"
+    "layout(location=2) in vec2 aUV;\n"
+    "layout(location=3) in vec4 aColor;\n"
     "layout(location=5) in uvec4 aBoneIdx;\n"
     "layout(location=6) in vec4 aBoneWt;\n"
+    "layout(location=15) in vec2 aUV1;\n"
     "layout(std140) uniform Bones { mat4 uBonePalette[256]; };\n"
     "uniform mat4 uModelMatrix;\n"
     "uniform mat4 uViewProjection;\n"
@@ -1249,6 +1260,9 @@ static const char *glsl_shadow_vertex_src =
     "uniform int uVertexCount;\n"
     "uniform samplerBuffer uMorphDeltas;\n"
     "uniform float uMorphWeights[32];\n"
+    "out vec2 vShadowUV;\n"
+    "out vec2 vShadowUV1;\n"
+    "out vec4 vShadowColor;\n"
     "void applyMorph(inout vec3 pos) {\n"
     "    for (int s = 0; s < uMorphShapeCount; s++) {\n"
     "        float w = uMorphWeights[s];\n"
@@ -1266,20 +1280,62 @@ static const char *glsl_shadow_vertex_src =
     "    vec4 localPos = vec4(pos, 1.0);\n"
     "    if (uHasSkinning != 0) {\n"
     "        vec4 skinnedPos = vec4(0.0);\n"
+    "        float totalWeight = 0.0;\n"
     "        for (int i = 0; i < 4; i++) {\n"
     "            float bw = aBoneWt[i];\n"
     "            if (bw > 0.0001) {\n"
     "                int b = min(int(aBoneIdx[i]), 255);\n"
     "                skinnedPos += uBonePalette[b] * localPos * bw;\n"
+    "                totalWeight += bw;\n"
     "            }\n"
     "        }\n"
-    "        localPos = skinnedPos;\n"
+    "        localPos = totalWeight > 0.0001 ? skinnedPos / totalWeight : localPos;\n"
     "    }\n"
     "    gl_Position = uViewProjection * (uModelMatrix * localPos);\n"
+    "    vShadowUV = aUV;\n"
+    "    vShadowUV1 = aUV1;\n"
+    "    vShadowColor = aColor;\n"
     "}\n";
 
 static const char *glsl_shadow_fragment_src = "#version 330 core\n"
-                                              "void main() {}\n";
+                                              "in vec2 vShadowUV;\n"
+                                              "in vec2 vShadowUV1;\n"
+                                              "in vec4 vShadowColor;\n"
+                                              "uniform sampler2D uShadowDiffuseTex;\n"
+                                              "uniform int uShadowHasTexture;\n"
+                                              "uniform int uShadowAlphaMode;\n"
+                                              "uniform float uShadowAlphaCutoff;\n"
+                                              "uniform float uShadowAlpha;\n"
+                                              "uniform vec4 uShadowDiffuseColor;\n"
+                                              "uniform ivec4 uShadowTextureUvSets0;\n"
+                                              "uniform ivec4 uShadowTextureUvSets1;\n"
+                                              "uniform vec4 uShadowTextureUvTransform0["
+                                              VGFX3D_STR(RT_MATERIAL3D_TEXTURE_SLOT_COUNT) "];\n"
+                                              "uniform vec4 uShadowTextureUvTransform1["
+                                              VGFX3D_STR(RT_MATERIAL3D_TEXTURE_SLOT_COUNT) "];\n"
+                                              "int shadowTextureUvSetAt(int slot) {\n"
+                                              "    return slot < 4 ? uShadowTextureUvSets0[slot] : "
+                                              "uShadowTextureUvSets1[slot - 4];\n"
+                                              "}\n"
+                                              "vec2 shadowMaterialUv() {\n"
+                                              "    int slot = 0;\n"
+                                              "    vec2 uv = shadowTextureUvSetAt(slot) != 0 ? "
+                                              "vShadowUV1 : vShadowUV;\n"
+                                              "    vec4 m = uShadowTextureUvTransform0[slot];\n"
+                                              "    vec4 t = uShadowTextureUvTransform1[slot];\n"
+                                              "    return vec2(uv.x * m.x + uv.y * m.y + t.x,\n"
+                                              "                uv.x * m.z + uv.y * m.w + t.y);\n"
+                                              "}\n"
+                                              "void main() {\n"
+                                              "    float alpha = uShadowDiffuseColor.a * "
+                                              "uShadowAlpha * vShadowColor.a;\n"
+                                              "    if (uShadowHasTexture != 0)\n"
+                                              "        alpha *= texture(uShadowDiffuseTex, "
+                                              "shadowMaterialUv()).a;\n"
+                                              "    if (uShadowAlphaMode == 1 && alpha < "
+                                              "uShadowAlphaCutoff)\n"
+                                              "        discard;\n"
+                                              "}\n";
 
 static const char *glsl_skybox_vertex_src =
     "#version 330 core\n"
@@ -1562,20 +1618,24 @@ static int ensure_buffer_capacity(GLenum target,
                                   size_t needed,
                                   size_t initial_capacity,
                                   GLenum usage) {
-    int32_t new_capacity;
+    size_t new_capacity;
 
-    if (!capacity)
+    if (!capacity || !buffer)
         return -1;
     if (needed == 0)
         needed = 4;
     if (*capacity >= needed)
         return 0;
-    new_capacity = vgfx3d_opengl_next_capacity((int32_t)(*capacity),
-                                               (int32_t)needed,
-                                               (int32_t)initial_capacity);
+    if (!vgfx3d_opengl_compute_buffer_capacity(*capacity,
+                                               needed,
+                                               initial_capacity,
+                                               &new_capacity) ||
+        new_capacity > (size_t)PTRDIFF_MAX) {
+        return -1;
+    }
     gl.BindBuffer(target, buffer);
     gl.BufferData(target, (GLsizeiptr)new_capacity, NULL, usage);
-    *capacity = (size_t)new_capacity;
+    *capacity = new_capacity;
     return 0;
 }
 
@@ -1871,27 +1931,26 @@ static GLuint gl_get_cached_cubemap(gl_context_t *ctx, const rt_cubemap3d *cubem
 
     for (int32_t i = 0; i < ctx->cubemap_cache_count; i++) {
         if (ctx->cubemap_cache[i].cubemap == cubemap) {
+            int32_t face_size = 0;
+            uint8_t *rgba_faces[6] = {0};
+            if (vgfx3d_unpack_cubemap_faces_rgba(cubemap, &face_size, rgba_faces) != 0)
+                return ctx->cubemap_cache[i].tex;
             gl.BindTexture(GL_TEXTURE_CUBE_MAP, ctx->cubemap_cache[i].tex);
             for (int face = 0; face < 6; face++) {
-                int32_t w = 0, h = 0;
-                uint8_t *rgba = NULL;
-                if (vgfx3d_unpack_pixels_rgba(cubemap->faces[face], &w, &h, &rgba) != 0 || !rgba) {
-                    if (rgba)
-                        free(rgba);
-                    return 0;
-                }
-                vgfx3d_flip_rgba_rows(rgba, w, h);
+                uint8_t *rgba = rgba_faces[face];
+                vgfx3d_flip_rgba_rows(rgba, face_size, face_size);
                 gl.TexImage2D(GL_TEXTURE_CUBE_MAP_POSITIVE_X + (GLenum)face,
                               0,
                               GL_RGBA8,
-                              w,
-                              h,
+                              face_size,
+                              face_size,
                               0,
                               GL_RGBA,
                               GL_UNSIGNED_BYTE,
                               rgba);
-                free(rgba);
             }
+            for (int face = 0; face < 6; face++)
+                free(rgba_faces[face]);
             gl.GenerateMipmap(GL_TEXTURE_CUBE_MAP);
             ctx->cubemap_cache[i].generation = generation;
             ctx->cubemap_cache[i].last_used_frame = ctx->frame_serial;
@@ -1900,7 +1959,16 @@ static GLuint gl_get_cached_cubemap(gl_context_t *ctx, const rt_cubemap3d *cubem
     }
 
     GLuint tex = 0;
+    int32_t face_size = 0;
+    uint8_t *rgba_faces[6] = {0};
+    if (vgfx3d_unpack_cubemap_faces_rgba(cubemap, &face_size, rgba_faces) != 0)
+        return 0;
     gl.GenTextures(1, &tex);
+    if (!tex) {
+        for (int face = 0; face < 6; face++)
+            free(rgba_faces[face]);
+        return 0;
+    }
     gl.BindTexture(GL_TEXTURE_CUBE_MAP, tex);
     gl.TexParameteri(GL_TEXTURE_CUBE_MAP, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
     gl.TexParameteri(GL_TEXTURE_CUBE_MAP, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
@@ -1909,26 +1977,20 @@ static GLuint gl_get_cached_cubemap(gl_context_t *ctx, const rt_cubemap3d *cubem
     gl.TexParameteri(GL_TEXTURE_CUBE_MAP, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
 
     for (int face = 0; face < 6; face++) {
-        int32_t w = 0, h = 0;
-        uint8_t *rgba = NULL;
-        if (vgfx3d_unpack_pixels_rgba(cubemap->faces[face], &w, &h, &rgba) != 0 || !rgba) {
-            if (rgba)
-                free(rgba);
-            gl.DeleteTextures(1, &tex);
-            return 0;
-        }
-        vgfx3d_flip_rgba_rows(rgba, w, h);
+        uint8_t *rgba = rgba_faces[face];
+        vgfx3d_flip_rgba_rows(rgba, face_size, face_size);
         gl.TexImage2D(GL_TEXTURE_CUBE_MAP_POSITIVE_X + (GLenum)face,
                       0,
                       GL_RGBA8,
-                      w,
-                      h,
+                      face_size,
+                      face_size,
                       0,
                       GL_RGBA,
                       GL_UNSIGNED_BYTE,
                       rgba);
-        free(rgba);
     }
+    for (int face = 0; face < 6; face++)
+        free(rgba_faces[face]);
     gl.GenerateMipmap(GL_TEXTURE_CUBE_MAP);
 
     if (ctx->cubemap_cache_count >= ctx->cubemap_cache_capacity) {
@@ -2637,7 +2699,8 @@ static int gl_lookup_cached_mesh_buffers(gl_context_t *ctx,
     gl_mesh_cache_entry_t *slot = NULL;
     gl_mesh_cache_entry_t *oldest = NULL;
 
-    if (!ctx || !cmd || !out_vbo || !out_ibo || !cmd->geometry_key || cmd->geometry_revision == 0)
+    if (!ctx || !cmd || !out_vbo || !out_ibo || !cmd->geometry_key || cmd->geometry_revision == 0 ||
+        !cmd->vertices || !cmd->indices)
         return 0;
 
     for (int32_t i = 0; i < GL_MESH_CACHE_CAPACITY; i++) {
@@ -2663,6 +2726,10 @@ static int gl_lookup_cached_mesh_buffers(gl_context_t *ctx,
         size_t vbytes;
         size_t ibytes;
 
+        if ((size_t)cmd->vertex_count > (size_t)PTRDIFF_MAX / sizeof(vgfx3d_vertex_t) ||
+            (size_t)cmd->index_count > (size_t)PTRDIFF_MAX / sizeof(uint32_t)) {
+            return 0;
+        }
         if (slot->vbo)
             gl.DeleteBuffers(1, &slot->vbo);
         if (slot->ibo)
@@ -2671,6 +2738,14 @@ static int gl_lookup_cached_mesh_buffers(gl_context_t *ctx,
 
         gl.GenBuffers(1, &slot->vbo);
         gl.GenBuffers(1, &slot->ibo);
+        if (!slot->vbo || !slot->ibo) {
+            if (slot->vbo)
+                gl.DeleteBuffers(1, &slot->vbo);
+            if (slot->ibo)
+                gl.DeleteBuffers(1, &slot->ibo);
+            memset(slot, 0, sizeof(*slot));
+            return 0;
+        }
         vbytes = (size_t)cmd->vertex_count * sizeof(vgfx3d_vertex_t);
         ibytes = (size_t)cmd->index_count * sizeof(uint32_t);
         gl.BindBuffer(GL_ARRAY_BUFFER, slot->vbo);
@@ -2695,38 +2770,52 @@ static int gl_lookup_cached_mesh_buffers(gl_context_t *ctx,
 /// First tries `gl_lookup_cached_mesh_buffers` (static mesh fast path).
 /// On miss, ensures the dynamic streaming buffers are large enough,
 /// orphans them (avoids stalls), and uploads via `BufferSubData`.
-static void prepare_mesh_buffers(gl_context_t *ctx,
-                                 const vgfx3d_draw_cmd_t *cmd,
-                                 GLuint *out_vbo,
-                                 GLuint *out_ibo) {
-    size_t vbytes = (size_t)cmd->vertex_count * sizeof(vgfx3d_vertex_t);
-    size_t ibytes = (size_t)cmd->index_count * sizeof(uint32_t);
+static int prepare_mesh_buffers(gl_context_t *ctx,
+                                const vgfx3d_draw_cmd_t *cmd,
+                                GLuint *out_vbo,
+                                GLuint *out_ibo) {
+    size_t vbytes;
+    size_t ibytes;
 
+    if (!ctx || !cmd || !out_vbo || !out_ibo || !cmd->vertices || !cmd->indices ||
+        (size_t)cmd->vertex_count > (size_t)PTRDIFF_MAX / sizeof(vgfx3d_vertex_t) ||
+        (size_t)cmd->index_count > (size_t)PTRDIFF_MAX / sizeof(uint32_t)) {
+        return 0;
+    }
+    *out_vbo = 0;
+    *out_ibo = 0;
+    vbytes = (size_t)cmd->vertex_count * sizeof(vgfx3d_vertex_t);
+    ibytes = (size_t)cmd->index_count * sizeof(uint32_t);
     if (gl_lookup_cached_mesh_buffers(ctx, cmd, out_vbo, out_ibo))
-        return;
+        return 1;
 
-    ensure_buffer_capacity(GL_ARRAY_BUFFER,
-                           ctx->mesh_vbo,
-                           &ctx->mesh_vbo_capacity,
-                           vbytes,
-                           4u * 1024u * 1024u,
-                           GL_STREAM_DRAW);
+    if (ensure_buffer_capacity(GL_ARRAY_BUFFER,
+                               ctx->mesh_vbo,
+                               &ctx->mesh_vbo_capacity,
+                               vbytes,
+                               4u * 1024u * 1024u,
+                               GL_STREAM_DRAW) != 0) {
+        return 0;
+    }
     orphan_stream_buffer(GL_ARRAY_BUFFER, ctx->mesh_vbo, ctx->mesh_vbo_capacity, GL_STREAM_DRAW);
     gl.BindBuffer(GL_ARRAY_BUFFER, ctx->mesh_vbo);
     gl.BufferSubData(GL_ARRAY_BUFFER, 0, (GLsizeiptr)vbytes, cmd->vertices);
 
-    ensure_buffer_capacity(GL_ELEMENT_ARRAY_BUFFER,
-                           ctx->mesh_ibo,
-                           &ctx->mesh_ibo_capacity,
-                           ibytes,
-                           1u * 1024u * 1024u,
-                           GL_STREAM_DRAW);
+    if (ensure_buffer_capacity(GL_ELEMENT_ARRAY_BUFFER,
+                               ctx->mesh_ibo,
+                               &ctx->mesh_ibo_capacity,
+                               ibytes,
+                               1u * 1024u * 1024u,
+                               GL_STREAM_DRAW) != 0) {
+        return 0;
+    }
     orphan_stream_buffer(
         GL_ELEMENT_ARRAY_BUFFER, ctx->mesh_ibo, ctx->mesh_ibo_capacity, GL_STREAM_DRAW);
     gl.BindBuffer(GL_ELEMENT_ARRAY_BUFFER, ctx->mesh_ibo);
     gl.BufferSubData(GL_ELEMENT_ARRAY_BUFFER, 0, (GLsizeiptr)ibytes, cmd->indices);
     *out_vbo = ctx->mesh_vbo;
     *out_ibo = ctx->mesh_ibo;
+    return 1;
 }
 
 /// @brief Disable instance attribute arrays and supply identity-matrix constants.
@@ -2774,21 +2863,26 @@ static void configure_mesh_attributes(gl_context_t *ctx, GLuint mesh_vbo, GLuint
     gl.BindVertexArray(ctx->vao);
     gl.BindBuffer(GL_ARRAY_BUFFER, mesh_vbo);
     gl.BindBuffer(GL_ELEMENT_ARRAY_BUFFER, mesh_ibo);
-    gl.VertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, stride, (void *)0);
+    gl.VertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, stride, (void *)offsetof(vgfx3d_vertex_t, pos));
     gl.EnableVertexAttribArray(0);
-    gl.VertexAttribPointer(1, 3, GL_FLOAT, GL_FALSE, stride, (void *)12);
+    gl.VertexAttribPointer(
+        1, 3, GL_FLOAT, GL_FALSE, stride, (void *)offsetof(vgfx3d_vertex_t, normal));
     gl.EnableVertexAttribArray(1);
-    gl.VertexAttribPointer(2, 2, GL_FLOAT, GL_FALSE, stride, (void *)24);
+    gl.VertexAttribPointer(2, 2, GL_FLOAT, GL_FALSE, stride, (void *)offsetof(vgfx3d_vertex_t, uv));
     gl.EnableVertexAttribArray(2);
-    gl.VertexAttribPointer(15, 2, GL_FLOAT, GL_FALSE, stride, (void *)32);
+    gl.VertexAttribPointer(15, 2, GL_FLOAT, GL_FALSE, stride, (void *)offsetof(vgfx3d_vertex_t, uv1));
     gl.EnableVertexAttribArray(15);
-    gl.VertexAttribPointer(3, 4, GL_FLOAT, GL_FALSE, stride, (void *)40);
+    gl.VertexAttribPointer(
+        3, 4, GL_FLOAT, GL_FALSE, stride, (void *)offsetof(vgfx3d_vertex_t, color));
     gl.EnableVertexAttribArray(3);
-    gl.VertexAttribPointer(4, 4, GL_FLOAT, GL_FALSE, stride, (void *)56);
+    gl.VertexAttribPointer(
+        4, 4, GL_FLOAT, GL_FALSE, stride, (void *)offsetof(vgfx3d_vertex_t, tangent));
     gl.EnableVertexAttribArray(4);
-    gl.VertexAttribIPointer(5, 4, GL_UNSIGNED_BYTE, stride, (void *)72);
+    gl.VertexAttribIPointer(
+        5, 4, GL_UNSIGNED_BYTE, stride, (void *)offsetof(vgfx3d_vertex_t, bone_indices));
     gl.EnableVertexAttribArray(5);
-    gl.VertexAttribPointer(6, 4, GL_FLOAT, GL_FALSE, stride, (void *)76);
+    gl.VertexAttribPointer(
+        6, 4, GL_FLOAT, GL_FALSE, stride, (void *)offsetof(vgfx3d_vertex_t, bone_weights));
     gl.EnableVertexAttribArray(6);
     set_identity_instance_constants();
 }
@@ -2801,17 +2895,24 @@ static void configure_mesh_attributes(gl_context_t *ctx, GLuint mesh_vbo, GLuint
 /// instance matrices (slots 11..14) are uploaded if `prev_instance_matrices`
 /// is non-NULL; otherwise the slots get identity constants for "no
 /// motion this frame" semantics.
-static void configure_instance_attributes(gl_context_t *ctx,
-                                          const float *instance_matrices,
-                                          const float *prev_instance_matrices,
-                                          int32_t instance_count) {
-    size_t bytes = (size_t)instance_count * 16 * sizeof(float);
-    ensure_buffer_capacity(GL_ARRAY_BUFFER,
-                           ctx->instance_vbo,
-                           &ctx->instance_vbo_capacity,
-                           bytes,
-                           64u * 1024u,
-                           GL_STREAM_DRAW);
+static int configure_instance_attributes(gl_context_t *ctx,
+                                         const float *instance_matrices,
+                                         const float *prev_instance_matrices,
+                                         int32_t instance_count) {
+    size_t bytes;
+    if (!ctx || !instance_matrices || instance_count <= 0 ||
+        (size_t)instance_count > (size_t)PTRDIFF_MAX / (16u * sizeof(float))) {
+        return 0;
+    }
+    bytes = (size_t)instance_count * 16u * sizeof(float);
+    if (ensure_buffer_capacity(GL_ARRAY_BUFFER,
+                               ctx->instance_vbo,
+                               &ctx->instance_vbo_capacity,
+                               bytes,
+                               64u * 1024u,
+                               GL_STREAM_DRAW) != 0) {
+        return 0;
+    }
     orphan_stream_buffer(
         GL_ARRAY_BUFFER, ctx->instance_vbo, ctx->instance_vbo_capacity, GL_STREAM_DRAW);
     gl.BindBuffer(GL_ARRAY_BUFFER, ctx->instance_vbo);
@@ -2834,12 +2935,14 @@ static void configure_instance_attributes(gl_context_t *ctx,
     gl.VertexAttribDivisor(10, 1);
 
     if (prev_instance_matrices) {
-        ensure_buffer_capacity(GL_ARRAY_BUFFER,
-                               ctx->prev_instance_vbo,
-                               &ctx->prev_instance_vbo_capacity,
-                               bytes,
-                               64u * 1024u,
-                               GL_STREAM_DRAW);
+        if (ensure_buffer_capacity(GL_ARRAY_BUFFER,
+                                   ctx->prev_instance_vbo,
+                                   &ctx->prev_instance_vbo_capacity,
+                                   bytes,
+                                   64u * 1024u,
+                                   GL_STREAM_DRAW) != 0) {
+            return 0;
+        }
         orphan_stream_buffer(
             GL_ARRAY_BUFFER, ctx->prev_instance_vbo, ctx->prev_instance_vbo_capacity, GL_STREAM_DRAW);
         gl.BindBuffer(GL_ARRAY_BUFFER, ctx->prev_instance_vbo);
@@ -2873,9 +2976,18 @@ static void configure_instance_attributes(gl_context_t *ctx,
         gl.VertexAttrib4f(13, 0.0f, 0.0f, 1.0f, 0.0f);
         gl.VertexAttrib4f(14, 0.0f, 0.0f, 0.0f, 1.0f);
     }
+    return 1;
 }
 
-/// @brief Upload up to 128 bone matrices into a UBO, transposing each.
+static void store_identity4x4(float *dst) {
+    memset(dst, 0, sizeof(float) * 16u);
+    dst[0] = 1.0f;
+    dst[5] = 1.0f;
+    dst[10] = 1.0f;
+    dst[15] = 1.0f;
+}
+
+/// @brief Upload up to 256 bone matrices into a UBO, transposing each.
 ///
 /// GLSL's `mat4` UBO layout is column-major; our matrices are row-
 /// major. We transpose during upload so the shader sees the right
@@ -2884,19 +2996,19 @@ static void upload_bone_palette(gl_context_t *ctx,
                                 GLuint ubo,
                                 const float *bone_palette,
                                 int32_t bone_count) {
-    static const size_t kBonePaletteBytes = 256u * 16u * sizeof(float);
-    float upload[256 * 16];
+    float upload[VGFX3D_OPENGL_BONE_PALETTE_FLOATS];
 
-    if (!ctx || !bone_palette || bone_count <= 0)
+    if (!ctx || !bone_palette || bone_count <= 0 || !ubo)
         return;
 
-    memset(upload, 0, sizeof(upload));
-    if (bone_count > 256)
-        bone_count = 256;
+    for (int32_t i = 0; i < VGFX3D_OPENGL_MAX_BONES; i++)
+        store_identity4x4(&upload[(size_t)i * 16u]);
+    if (bone_count > VGFX3D_OPENGL_MAX_BONES)
+        bone_count = VGFX3D_OPENGL_MAX_BONES;
     for (int32_t i = 0; i < bone_count; i++)
         transpose4x4(&bone_palette[i * 16], &upload[i * 16]);
 
-    orphan_stream_buffer(GL_UNIFORM_BUFFER, ubo, kBonePaletteBytes, GL_DYNAMIC_DRAW);
+    orphan_stream_buffer(GL_UNIFORM_BUFFER, ubo, VGFX3D_OPENGL_BONE_PALETTE_BYTES, GL_DYNAMIC_DRAW);
     gl.BindBuffer(GL_UNIFORM_BUFFER, ubo);
     gl.BufferSubData(GL_UNIFORM_BUFFER, 0, (GLsizeiptr)sizeof(upload), upload);
 }
@@ -2930,7 +3042,7 @@ static int gl_upload_morph_payload_texture(GLuint *buffer,
                                            GLuint *tbo,
                                            const float *payload,
                                            size_t bytes) {
-    if (!buffer || !tbo || !payload || bytes == 0)
+    if (!buffer || !tbo || !payload || bytes == 0 || bytes > (size_t)PTRDIFF_MAX)
         return 0;
     if (*buffer == 0)
         gl.GenBuffers(1, buffer);
@@ -2956,15 +3068,42 @@ static int gl_upload_transient_morph_payload(gl_context_t *ctx,
                                              size_t *capacity_bytes,
                                              const float *payload,
                                              size_t bytes) {
-    if (!ctx || !capacity_bytes || !payload || bytes == 0)
+    if (!ctx || !capacity_bytes || !payload || bytes == 0 || bytes > (size_t)PTRDIFF_MAX)
         return 0;
-    ensure_buffer_capacity(
-        GL_TEXTURE_BUFFER, buffer, capacity_bytes, bytes, 64u * 1024u, GL_STREAM_DRAW);
+    if (ensure_buffer_capacity(
+            GL_TEXTURE_BUFFER, buffer, capacity_bytes, bytes, 64u * 1024u, GL_STREAM_DRAW) != 0) {
+        return 0;
+    }
     orphan_stream_buffer(GL_TEXTURE_BUFFER, buffer, *capacity_bytes, GL_STREAM_DRAW);
     gl.BindBuffer(GL_TEXTURE_BUFFER, buffer);
     gl.BufferSubData(GL_TEXTURE_BUFFER, 0, (GLsizeiptr)bytes, payload);
     gl.BindTexture(GL_TEXTURE_BUFFER, tbo);
     gl.TexBuffer(GL_TEXTURE_BUFFER, GL_R32F, buffer);
+    return 1;
+}
+
+static int gl_compute_morph_payload_bytes(uint32_t vertex_count,
+                                          int32_t morph_count,
+                                          size_t *out_bytes) {
+    size_t elements;
+    size_t bytes;
+
+    if (out_bytes)
+        *out_bytes = 0;
+    if (!out_bytes || vertex_count == 0 || morph_count <= 0)
+        return 0;
+    if ((size_t)morph_count > SIZE_MAX / (size_t)vertex_count)
+        return 0;
+    elements = (size_t)morph_count * (size_t)vertex_count;
+    if (elements > SIZE_MAX / 3u)
+        return 0;
+    elements *= 3u;
+    if (elements > SIZE_MAX / sizeof(float))
+        return 0;
+    bytes = elements * sizeof(float);
+    if (bytes > (size_t)PTRDIFF_MAX)
+        return 0;
+    *out_bytes = bytes;
     return 1;
 }
 
@@ -3027,7 +3166,8 @@ static gl_morph_cache_entry_t *gl_get_cached_morph_entry(gl_context_t *ctx,
         return NULL;
 
     morph_cache_release_entry(slot);
-    bytes = (size_t)morph_count * (size_t)cmd->vertex_count * 3u * sizeof(float);
+    if (!gl_compute_morph_payload_bytes(cmd->vertex_count, morph_count, &bytes))
+        return NULL;
     if (!gl_upload_morph_payload_texture(
             &slot->morph_buffer, &slot->morph_tbo, cmd->morph_deltas, bytes)) {
         morph_cache_release_entry(slot);
@@ -3041,7 +3181,7 @@ static gl_morph_cache_entry_t *gl_get_cached_morph_entry(gl_context_t *ctx,
     }
     slot->key = cmd->morph_key;
     slot->revision = cmd->morph_revision;
-    slot->shape_count = cmd->morph_shape_count;
+    slot->shape_count = morph_count;
     slot->vertex_count = cmd->vertex_count;
     slot->has_normal_deltas = cmd->morph_normal_deltas ? 1 : 0;
     slot->morph_bytes = bytes;
@@ -3070,14 +3210,48 @@ static void bind_morph_payload(gl_context_t *ctx,
     gl_morph_cache_entry_t *cached_entry = NULL;
     GLuint morph_tbo = 0;
     GLuint morph_normal_tbo = 0;
-    int use_skinning = (cmd->bone_palette && cmd->bone_count > 0 && cmd->bone_count <= 256) ? 1 : 0;
+    int use_skinning = (cmd->bone_palette && cmd->bone_count > 0) ? 1 : 0;
     int morph_count = (cmd->morph_deltas && cmd->morph_weights && cmd->morph_shape_count > 0)
-                          ? cmd->morph_shape_count
+                          ? vgfx3d_opengl_clamp_morph_shape_count(cmd->vertex_count,
+                                                                   cmd->morph_shape_count)
                           : 0;
-    if (morph_count > 32)
-        morph_count = 32;
 
     gl.Uniform1i(uHasSkinning, use_skinning);
+
+    if (use_skinning)
+        upload_active_bone_palettes(ctx, cmd);
+
+    gl.ActiveTexture(GL_TEXTURE0 + 11);
+    if (morph_count > 0) {
+        size_t bytes;
+        if (!gl_compute_morph_payload_bytes(cmd->vertex_count, morph_count, &bytes)) {
+            morph_count = 0;
+        } else {
+            cached_entry = gl_get_cached_morph_entry(ctx, cmd, morph_count);
+            if (cached_entry) {
+                morph_tbo = cached_entry->morph_tbo;
+                morph_normal_tbo = cached_entry->morph_normal_tbo;
+            } else if (gl_upload_transient_morph_payload(ctx,
+                                                         ctx->morph_buffer,
+                                                         ctx->morph_tbo,
+                                                         &ctx->morph_capacity_bytes,
+                                                         cmd->morph_deltas,
+                                                         bytes)) {
+                morph_tbo = ctx->morph_tbo;
+                if (cmd->morph_normal_deltas &&
+                    gl_upload_transient_morph_payload(ctx,
+                                                      ctx->morph_normal_buffer,
+                                                      ctx->morph_normal_tbo,
+                                                      &ctx->morph_normal_capacity_bytes,
+                                                      cmd->morph_normal_deltas,
+                                                      bytes)) {
+                    morph_normal_tbo = ctx->morph_normal_tbo;
+                }
+            }
+        }
+        if (morph_tbo == 0)
+            morph_count = 0;
+    }
     gl.Uniform1i(uMorphShapeCount, morph_count);
     gl.Uniform1i(uVertexCount, morph_count > 0 ? (GLint)cmd->vertex_count : 0);
     if (morph_count > 0 && uMorphWeights >= 0)
@@ -3086,34 +3260,7 @@ static void bind_morph_payload(gl_context_t *ctx,
         gl.Uniform1fv(uPrevMorphWeights,
                       morph_count,
                       cmd->prev_morph_weights ? cmd->prev_morph_weights : cmd->morph_weights);
-
-    if (use_skinning)
-        upload_active_bone_palettes(ctx, cmd);
-
-    gl.ActiveTexture(GL_TEXTURE0 + 11);
     if (morph_count > 0) {
-        size_t bytes = (size_t)morph_count * (size_t)cmd->vertex_count * 3 * sizeof(float);
-        cached_entry = gl_get_cached_morph_entry(ctx, cmd, morph_count);
-        if (cached_entry) {
-            morph_tbo = cached_entry->morph_tbo;
-            morph_normal_tbo = cached_entry->morph_normal_tbo;
-        } else if (gl_upload_transient_morph_payload(ctx,
-                                                     ctx->morph_buffer,
-                                                     ctx->morph_tbo,
-                                                     &ctx->morph_capacity_bytes,
-                                                     cmd->morph_deltas,
-                                                     bytes)) {
-            morph_tbo = ctx->morph_tbo;
-            if (cmd->morph_normal_deltas &&
-                gl_upload_transient_morph_payload(ctx,
-                                                  ctx->morph_normal_buffer,
-                                                  ctx->morph_normal_tbo,
-                                                  &ctx->morph_normal_capacity_bytes,
-                                                  cmd->morph_normal_deltas,
-                                                  bytes)) {
-                morph_normal_tbo = ctx->morph_normal_tbo;
-            }
-        }
         gl.BindTexture(GL_TEXTURE_BUFFER, morph_tbo);
     } else {
         gl.BindTexture(GL_TEXTURE_BUFFER, 0);
@@ -3289,6 +3436,8 @@ static void bind_texture_unit_with_sampler(gl_context_t *ctx,
 static void upload_light_uniforms(gl_context_t *ctx,
                                   const vgfx3d_light_params_t *lights,
                                   int32_t light_count) {
+    if (!lights || light_count < 0)
+        light_count = 0;
     if (light_count > VGFX3D_MAX_LIGHTS)
         light_count = VGFX3D_MAX_LIGHTS;
     gl.Uniform1i(ctx->uLightCount, light_count);
@@ -3324,6 +3473,9 @@ static void upload_main_uniforms(gl_context_t *ctx,
                                  const float *ambient,
                                  int8_t instanced) {
     float normal_matrix[16];
+    static const float zero_ambient[3] = {0.0f, 0.0f, 0.0f};
+    if (!ambient)
+        ambient = zero_ambient;
     vgfx3d_compute_normal_matrix4(cmd->model_matrix, normal_matrix);
 
     gl.UniformMatrix4fv(ctx->uModelMatrix, 1, GL_TRUE, cmd->model_matrix);
@@ -3451,7 +3603,12 @@ static void bind_material_textures(gl_context_t *ctx, const vgfx3d_draw_cmd_t *c
         cmd->splat_layers[2] ? gl_get_cached_texture(ctx, cmd->splat_layers[2]) : 0;
     GLuint splat_layer3 =
         cmd->splat_layers[3] ? gl_get_cached_texture(ctx, cmd->splat_layers[3]) : 0;
-    int has_splat = cmd->has_splat && splat_tex != 0;
+    int has_splat = vgfx3d_opengl_has_complete_splat(cmd->has_splat,
+                                                     splat_tex != 0,
+                                                     splat_layer0 != 0,
+                                                     splat_layer1 != 0,
+                                                     splat_layer2 != 0,
+                                                     splat_layer3 != 0);
 
     gl.Uniform1i(ctx->uHasTexture, diffuse_tex ? 1 : 0);
     gl.Uniform1i(ctx->uHasNormalMap, normal_tex ? 1 : 0);
@@ -3529,17 +3686,6 @@ static void bind_material_textures(gl_context_t *ctx, const vgfx3d_draw_cmd_t *c
 /// previous-frame morph weights. Reuses `bind_morph_payload` with -1
 /// for the unused locations so it skips those uniform writes.
 static void bind_shadow_anim(gl_context_t *ctx, const vgfx3d_draw_cmd_t *cmd) {
-    gl.Uniform1i(ctx->shadow_uHasSkinning,
-                 (cmd->bone_palette && cmd->bone_count > 0 && cmd->bone_count <= 256) ? 1 : 0);
-    int morph_count = (cmd->morph_deltas && cmd->morph_weights && cmd->morph_shape_count > 0)
-                          ? cmd->morph_shape_count
-                          : 0;
-    if (morph_count > 32)
-        morph_count = 32;
-    gl.Uniform1i(ctx->shadow_uMorphShapeCount, morph_count);
-    gl.Uniform1i(ctx->shadow_uVertexCount, morph_count > 0 ? (GLint)cmd->vertex_count : 0);
-    if (morph_count > 0)
-        gl.Uniform1fv(ctx->shadow_uMorphWeights, morph_count, cmd->morph_weights);
     bind_morph_payload(ctx,
                        cmd,
                        ctx->shadow_uHasSkinning,
@@ -3754,6 +3900,21 @@ static void query_shadow_uniforms(gl_context_t *ctx) {
     ctx->shadow_uVertexCount = gl.GetUniformLocation(ctx->shadow_program, "uVertexCount");
     ctx->shadow_uMorphWeights = gl.GetUniformLocation(ctx->shadow_program, "uMorphWeights[0]");
     ctx->shadow_uMorphDeltas = gl.GetUniformLocation(ctx->shadow_program, "uMorphDeltas");
+    ctx->shadow_uDiffuseTex = gl.GetUniformLocation(ctx->shadow_program, "uShadowDiffuseTex");
+    ctx->shadow_uHasTexture = gl.GetUniformLocation(ctx->shadow_program, "uShadowHasTexture");
+    ctx->shadow_uAlphaMode = gl.GetUniformLocation(ctx->shadow_program, "uShadowAlphaMode");
+    ctx->shadow_uAlphaCutoff = gl.GetUniformLocation(ctx->shadow_program, "uShadowAlphaCutoff");
+    ctx->shadow_uAlpha = gl.GetUniformLocation(ctx->shadow_program, "uShadowAlpha");
+    ctx->shadow_uDiffuseColor =
+        gl.GetUniformLocation(ctx->shadow_program, "uShadowDiffuseColor");
+    ctx->shadow_uTextureUvSets0 =
+        gl.GetUniformLocation(ctx->shadow_program, "uShadowTextureUvSets0");
+    ctx->shadow_uTextureUvSets1 =
+        gl.GetUniformLocation(ctx->shadow_program, "uShadowTextureUvSets1");
+    ctx->shadow_uTextureUvTransform0 =
+        gl.GetUniformLocation(ctx->shadow_program, "uShadowTextureUvTransform0[0]");
+    ctx->shadow_uTextureUvTransform1 =
+        gl.GetUniformLocation(ctx->shadow_program, "uShadowTextureUvTransform1[0]");
 }
 
 /// @brief Resolve uniform locations for the cubemap skybox program.
@@ -4013,6 +4174,7 @@ static void *gl_create_ctx(vgfx_window_t win, int32_t w, int32_t h) {
 
     gl.UseProgram(ctx->shadow_program);
     gl.Uniform1i(ctx->shadow_uMorphDeltas, 11);
+    gl.Uniform1i(ctx->shadow_uDiffuseTex, 0);
 
     gl.UseProgram(ctx->skybox_program);
     gl.Uniform1i(ctx->skybox_uSkybox, 13);
@@ -4068,10 +4230,16 @@ static void *gl_create_ctx(vgfx_window_t win, int32_t w, int32_t h) {
     ctx->morph_normal_capacity_bytes = 64u * 1024u;
 
     gl.BindBuffer(GL_UNIFORM_BUFFER, ctx->bone_ubo);
-    gl.BufferData(GL_UNIFORM_BUFFER, (GLsizeiptr)(128 * 16 * sizeof(float)), NULL, GL_DYNAMIC_DRAW);
+    gl.BufferData(GL_UNIFORM_BUFFER,
+                  (GLsizeiptr)VGFX3D_OPENGL_BONE_PALETTE_BYTES,
+                  NULL,
+                  GL_DYNAMIC_DRAW);
     gl.BindBufferBase(GL_UNIFORM_BUFFER, 0, ctx->bone_ubo);
     gl.BindBuffer(GL_UNIFORM_BUFFER, ctx->prev_bone_ubo);
-    gl.BufferData(GL_UNIFORM_BUFFER, (GLsizeiptr)(128 * 16 * sizeof(float)), NULL, GL_DYNAMIC_DRAW);
+    gl.BufferData(GL_UNIFORM_BUFFER,
+                  (GLsizeiptr)VGFX3D_OPENGL_BONE_PALETTE_BYTES,
+                  NULL,
+                  GL_DYNAMIC_DRAW);
     gl.BindBufferBase(GL_UNIFORM_BUFFER, 1, ctx->prev_bone_ubo);
 
     gl.BindVertexArray(ctx->fullscreen_vao);
@@ -4370,7 +4538,8 @@ static void gl_submit_draw(void *ctx_ptr,
     (void)win;
     gl_context_t *ctx = (gl_context_t *)ctx_ptr;
     GLuint mesh_vbo, mesh_ibo;
-    if (!ctx || !cmd || cmd->vertex_count == 0 || cmd->index_count == 0)
+    if (!ctx || !cmd || !cmd->vertices || !cmd->indices || cmd->vertex_count == 0 ||
+        cmd->index_count == 0)
         return;
 
     if (backface_cull)
@@ -4383,7 +4552,8 @@ static void gl_submit_draw(void *ctx_ptr,
     gl.UseProgram(ctx->program);
     upload_main_uniforms(ctx, cmd, lights, light_count, ambient, 0);
     bind_material_textures(ctx, cmd);
-    prepare_mesh_buffers(ctx, cmd, &mesh_vbo, &mesh_ibo);
+    if (!prepare_mesh_buffers(ctx, cmd, &mesh_vbo, &mesh_ibo))
+        return;
     configure_mesh_attributes(ctx, mesh_vbo, mesh_ibo);
     gl.DrawElements(GL_TRIANGLES, (GLsizei)cmd->index_count, GL_UNSIGNED_INT, NULL);
     GL_CHECK();
@@ -4444,8 +4614,9 @@ static int gl_readback_rgba(
     GLuint readback_framebuffer = 0;
     GLenum readback_buffer = GL_BACK;
     uint8_t *tmp;
+    size_t dst_bytes;
 
-    if (!ctx || !dst_rgba || w <= 0 || h <= 0 || stride < w * 4)
+    if (!ctx || !dst_rgba || !vgfx3d_opengl_validate_rgba8_destination(w, h, stride, &dst_bytes))
         return 0;
 
     glx.MakeCurrent(ctx->display, ctx->window, ctx->glxCtx);
@@ -4479,11 +4650,17 @@ static int gl_readback_rgba(
 
     copy_w = source_w < w ? source_w : w;
     copy_h = source_h < h ? source_h : h;
+    if (copy_w <= 0 || copy_h <= 0)
+        return 0;
+    if ((size_t)copy_w > SIZE_MAX / (size_t)copy_h ||
+        (size_t)copy_w * (size_t)copy_h > SIZE_MAX / 4u) {
+        return 0;
+    }
     tmp = (uint8_t *)malloc((size_t)copy_w * (size_t)copy_h * 4u);
     if (!tmp)
         return 0;
 
-    memset(dst_rgba, 0, (size_t)stride * (size_t)h);
+    memset(dst_rgba, 0, dst_bytes);
     gl.BindFramebuffer(GL_FRAMEBUFFER, use_postfx_readback ? readback_framebuffer : 0);
     gl.ReadBuffer(use_postfx_readback ? readback_buffer : GL_BACK);
     gl.ReadPixels(0, 0, copy_w, copy_h, GL_RGBA, GL_UNSIGNED_BYTE, tmp);
@@ -4598,7 +4775,7 @@ static void gl_shadow_begin(
     void *ctx_ptr, int32_t slot, float *depth_buf, int32_t w, int32_t h, const float *light_vp) {
     (void)depth_buf;
     gl_context_t *ctx = (gl_context_t *)ctx_ptr;
-    if (!ctx || !light_vp || slot < 0 || slot >= VGFX3D_MAX_SHADOW_LIGHTS)
+    if (!ctx || !light_vp || w <= 0 || h <= 0 || slot < 0 || slot >= VGFX3D_MAX_SHADOW_LIGHTS)
         return;
     if (ensure_shadow_targets(ctx, slot, w, h) != 0)
         return;
@@ -4622,16 +4799,66 @@ static void gl_shadow_begin(
 static void gl_shadow_draw(void *ctx_ptr, const vgfx3d_draw_cmd_t *cmd) {
     gl_context_t *ctx = (gl_context_t *)ctx_ptr;
     GLuint mesh_vbo, mesh_ibo;
-    if (!ctx || !cmd || ctx->shadow_pass_slot < 0 ||
+    if (!ctx || !cmd || !cmd->vertices || !cmd->indices || ctx->shadow_pass_slot < 0 ||
         ctx->shadow_pass_slot >= VGFX3D_MAX_SHADOW_LIGHTS || cmd->vertex_count == 0 ||
         cmd->index_count == 0)
         return;
-    prepare_mesh_buffers(ctx, cmd, &mesh_vbo, &mesh_ibo);
+    if (!prepare_mesh_buffers(ctx, cmd, &mesh_vbo, &mesh_ibo))
+        return;
     configure_mesh_attributes(ctx, mesh_vbo, mesh_ibo);
     gl.UniformMatrix4fv(ctx->shadow_uModelMatrix, 1, GL_TRUE, cmd->model_matrix);
     gl.UniformMatrix4fv(
         ctx->shadow_uViewProjection, 1, GL_TRUE, ctx->shadow_vp[ctx->shadow_pass_slot]);
     bind_shadow_anim(ctx, cmd);
+    {
+        GLuint diffuse_tex = cmd->texture ? gl_get_cached_texture(ctx, cmd->texture) : 0;
+        gl.Uniform1i(ctx->shadow_uHasTexture, diffuse_tex ? 1 : 0);
+        gl.Uniform1i(ctx->shadow_uAlphaMode, cmd->alpha_mode);
+        gl.Uniform1f(ctx->shadow_uAlphaCutoff, cmd->alpha_cutoff);
+        gl.Uniform1f(ctx->shadow_uAlpha, cmd->alpha);
+        gl.Uniform4f(ctx->shadow_uDiffuseColor,
+                     cmd->diffuse_color[0],
+                     cmd->diffuse_color[1],
+                     cmd->diffuse_color[2],
+                     cmd->diffuse_color[3]);
+        gl.Uniform4i(ctx->shadow_uTextureUvSets0,
+                     cmd->texture_slot_uv_set[0],
+                     cmd->texture_slot_uv_set[1],
+                     cmd->texture_slot_uv_set[2],
+                     cmd->texture_slot_uv_set[3]);
+        gl.Uniform4i(ctx->shadow_uTextureUvSets1,
+                     cmd->texture_slot_uv_set[4],
+                     cmd->texture_slot_uv_set[5],
+                     0,
+                     0);
+        {
+            float uv_transform0[RT_MATERIAL3D_TEXTURE_SLOT_COUNT][4];
+            float uv_transform1[RT_MATERIAL3D_TEXTURE_SLOT_COUNT][4];
+            for (int32_t tex_slot = 0; tex_slot < RT_MATERIAL3D_TEXTURE_SLOT_COUNT; tex_slot++) {
+                uv_transform0[tex_slot][0] = cmd->texture_slot_uv_transform[tex_slot][0];
+                uv_transform0[tex_slot][1] = cmd->texture_slot_uv_transform[tex_slot][1];
+                uv_transform0[tex_slot][2] = cmd->texture_slot_uv_transform[tex_slot][2];
+                uv_transform0[tex_slot][3] = cmd->texture_slot_uv_transform[tex_slot][3];
+                uv_transform1[tex_slot][0] = cmd->texture_slot_uv_transform[tex_slot][4];
+                uv_transform1[tex_slot][1] = cmd->texture_slot_uv_transform[tex_slot][5];
+                uv_transform1[tex_slot][2] = 0.0f;
+                uv_transform1[tex_slot][3] = 0.0f;
+            }
+            gl.Uniform4fv(ctx->shadow_uTextureUvTransform0,
+                          RT_MATERIAL3D_TEXTURE_SLOT_COUNT,
+                          &uv_transform0[0][0]);
+            gl.Uniform4fv(ctx->shadow_uTextureUvTransform1,
+                          RT_MATERIAL3D_TEXTURE_SLOT_COUNT,
+                          &uv_transform1[0][0]);
+        }
+        bind_texture_unit_with_sampler(ctx,
+                                       ctx->shadow_uDiffuseTex,
+                                       0,
+                                       GL_TEXTURE_2D,
+                                       diffuse_tex,
+                                       cmd,
+                                       RT_MATERIAL3D_TEXTURE_SLOT_BASE_COLOR);
+    }
     gl.DrawElements(GL_TRIANGLES, (GLsizei)cmd->index_count, GL_UNSIGNED_INT, NULL);
 }
 
@@ -4672,7 +4899,8 @@ static void gl_submit_draw_instanced(void *ctx_ptr,
     (void)win;
     gl_context_t *ctx = (gl_context_t *)ctx_ptr;
     GLuint mesh_vbo, mesh_ibo;
-    if (!ctx || !cmd || !instance_matrices || instance_count <= 0)
+    if (!ctx || !cmd || !cmd->vertices || !cmd->indices || cmd->vertex_count == 0 ||
+        cmd->index_count == 0 || !instance_matrices || instance_count <= 0)
         return;
 
     if (backface_cull)
@@ -4685,13 +4913,17 @@ static void gl_submit_draw_instanced(void *ctx_ptr,
     gl.UseProgram(ctx->program);
     upload_main_uniforms(ctx, cmd, lights, light_count, ambient, 1);
     bind_material_textures(ctx, cmd);
-    prepare_mesh_buffers(ctx, cmd, &mesh_vbo, &mesh_ibo);
+    if (!prepare_mesh_buffers(ctx, cmd, &mesh_vbo, &mesh_ibo))
+        return;
     configure_mesh_attributes(ctx, mesh_vbo, mesh_ibo);
-    configure_instance_attributes(ctx,
-                                  instance_matrices,
-                                  cmd->has_prev_instance_matrices ? cmd->prev_instance_matrices
-                                                                  : NULL,
-                                  instance_count);
+    if (!configure_instance_attributes(ctx,
+                                       instance_matrices,
+                                       cmd->has_prev_instance_matrices ? cmd->prev_instance_matrices
+                                                                       : NULL,
+                                       instance_count)) {
+        set_identity_instance_constants();
+        return;
+    }
     gl.DrawElementsInstanced(
         GL_TRIANGLES, (GLsizei)cmd->index_count, GL_UNSIGNED_INT, NULL, (GLsizei)instance_count);
     set_identity_instance_constants();

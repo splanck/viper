@@ -156,6 +156,27 @@ static float canvas3d_sanitize_f64_to_float(double value, float fallback) {
     return canvas3d_double_fits_float(value) ? (float)value : fallback;
 }
 
+/// @brief Clamp a finite double to [lo, hi] and narrow to float; non-finite -> fallback.
+static float canvas3d_clamp_f64_to_float(double value, double lo, double hi, float fallback) {
+    if (!canvas3d_double_fits_float(value))
+        return fallback;
+    if (value < lo)
+        value = lo;
+    if (value > hi)
+        value = hi;
+    return (float)value;
+}
+
+static int canvas3d_rgba8_stride_valid(int32_t w, int32_t h, int32_t stride) {
+    int64_t required;
+    if (w <= 0 || h <= 0 || stride < 0)
+        return 0;
+    required = (int64_t)w * 4;
+    if (required > INT32_MAX)
+        return 0;
+    return (int64_t)stride >= required;
+}
+
 /// @brief Clear the per-draw splat-map staging slot on the canvas.
 /// @details Called on every early-return path of `rt_canvas3d_draw_mesh_matrix_keyed`
 ///          so a failed splat-configured draw cannot leak its splat-map and four
@@ -514,15 +535,15 @@ static void canvas3d_fill_material_cmd(const rt_material3d *mat, vgfx3d_draw_cmd
     if (!mat || !cmd)
         return;
 
-    cmd->diffuse_color[0] = (float)mat->diffuse[0];
-    cmd->diffuse_color[1] = (float)mat->diffuse[1];
-    cmd->diffuse_color[2] = (float)mat->diffuse[2];
-    cmd->diffuse_color[3] = (float)mat->diffuse[3];
-    cmd->specular[0] = (float)mat->specular[0];
-    cmd->specular[1] = (float)mat->specular[1];
-    cmd->specular[2] = (float)mat->specular[2];
+    cmd->diffuse_color[0] = canvas3d_clamp01_f64(mat->diffuse[0]);
+    cmd->diffuse_color[1] = canvas3d_clamp01_f64(mat->diffuse[1]);
+    cmd->diffuse_color[2] = canvas3d_clamp01_f64(mat->diffuse[2]);
+    cmd->diffuse_color[3] = canvas3d_clamp01_f64(mat->diffuse[3]);
+    cmd->specular[0] = canvas3d_clamp01_f64(mat->specular[0]);
+    cmd->specular[1] = canvas3d_clamp01_f64(mat->specular[1]);
+    cmd->specular[2] = canvas3d_clamp01_f64(mat->specular[2]);
     cmd->shininess = canvas3d_sanitize_nonnegative_f64(mat->shininess, 32.0f);
-    cmd->alpha = (float)mat->alpha;
+    cmd->alpha = canvas3d_clamp01_f64(mat->alpha);
     cmd->unlit = (int8_t)(mat->unlit || mat->shading_model == 3);
     cmd->texture = mat->texture;
     cmd->normal_map = mat->normal_map;
@@ -530,19 +551,19 @@ static void canvas3d_fill_material_cmd(const rt_material3d *mat, vgfx3d_draw_cmd
     cmd->emissive_map = mat->emissive_map;
     cmd->metallic_roughness_map = mat->metallic_roughness_map;
     cmd->ao_map = mat->ao_map;
-    cmd->emissive_color[0] = (float)mat->emissive[0];
-    cmd->emissive_color[1] = (float)mat->emissive[1];
-    cmd->emissive_color[2] = (float)mat->emissive[2];
-    cmd->metallic = (float)mat->metallic;
-    cmd->roughness = (float)mat->roughness;
-    cmd->ao = (float)mat->ao;
+    cmd->emissive_color[0] = canvas3d_clamp01_f64(mat->emissive[0]);
+    cmd->emissive_color[1] = canvas3d_clamp01_f64(mat->emissive[1]);
+    cmd->emissive_color[2] = canvas3d_clamp01_f64(mat->emissive[2]);
+    cmd->metallic = canvas3d_clamp01_f64(mat->metallic);
+    cmd->roughness = canvas3d_clamp01_f64(mat->roughness);
+    cmd->ao = canvas3d_clamp01_f64(mat->ao);
     cmd->emissive_intensity =
         canvas3d_sanitize_nonnegative_f64(mat->emissive_intensity, 1.0f);
-    cmd->normal_scale = canvas3d_sanitize_nonnegative_f64(mat->normal_scale, 1.0f);
+    cmd->normal_scale = canvas3d_clamp_f64_to_float(mat->normal_scale, -1000.0, 1000.0, 1.0f);
     cmd->additive_blend = mat->additive_blend ? 1 : 0;
-    cmd->workflow = mat->workflow;
-    cmd->alpha_mode = mat->alpha_mode;
-    cmd->alpha_cutoff = (float)mat->alpha_cutoff;
+    cmd->workflow = (mat->workflow == 1) ? 1 : 0;
+    cmd->alpha_mode = (mat->alpha_mode >= 0 && mat->alpha_mode <= 2) ? mat->alpha_mode : 0;
+    cmd->alpha_cutoff = canvas3d_clamp01_f64(mat->alpha_cutoff);
     cmd->double_sided = mat->double_sided ? 1 : 0;
     cmd->texture_wrap_s = mat->texture_wrap_s;
     cmd->texture_wrap_t = mat->texture_wrap_t;
@@ -565,8 +586,10 @@ static void canvas3d_fill_material_cmd(const rt_material3d *mat, vgfx3d_draw_cmd
                 canvas3d_sanitize_f64_to_float(mat->texture_slot_uv_transform[slot][i], 0.0f);
     }
     cmd->env_map = mat->env_map;
-    cmd->reflectivity = (float)mat->reflectivity;
-    cmd->shading_model = (mat->shading_model == 3) ? 0 : mat->shading_model;
+    cmd->reflectivity = canvas3d_clamp01_f64(mat->reflectivity);
+    cmd->shading_model = (mat->shading_model >= 0 && mat->shading_model <= 5 && mat->shading_model != 3)
+                             ? mat->shading_model
+                             : 0;
     for (int pi = 0; pi < 8; pi++)
         cmd->custom_params[pi] = canvas3d_sanitize_f64_to_float(mat->custom_params[pi], 0.0f);
 }
@@ -677,22 +700,33 @@ static void canvas3d_resolve_previous_model(rt_canvas3d *c,
     entry->last_frame_seen = c->frame_serial;
 }
 
+static uintptr_t canvas3d_mix_motion_key(uintptr_t key, uintptr_t value) {
+    key ^= value + (uintptr_t)0x9e3779b97f4a7c15ull + (key << 6) + (key >> 2);
+    return key;
+}
+
+/// @brief Derive a stable object draw key for transform-handle draw calls.
+static uintptr_t canvas3d_mesh_transform_motion_key(const void *mesh_obj,
+                                                    const void *material_obj,
+                                                    const void *transform_obj) {
+    uintptr_t key = (uintptr_t)transform_obj;
+    key = canvas3d_mix_motion_key(key, (uintptr_t)mesh_obj);
+    key = canvas3d_mix_motion_key(key, (uintptr_t)material_obj);
+    return key ? key : (uintptr_t)1u;
+}
+
 /// @brief Derive a stable per-instance key for the motion-blur history table.
-/// @details Mixes the mesh, material, instance-matrix-array pointers and the
-///          instance index with a boost-style hash (golden-ratio 0x9e3779b9
-///          and friends) so distinct instances rarely collide across frames.
-///          Returns a non-zero value (folds in the index) since 0 is reserved
-///          as the empty-slot sentinel in the history map.
+/// @details Uses stable batch identity inputs (mesh, material, count, index)
+///          rather than the transient matrix array address, so reallocating the
+///          caller's instance buffer does not reset motion history.
 static uintptr_t canvas3d_instance_motion_key(const void *mesh_obj,
                                               const void *material_obj,
-                                              const float *instance_matrices,
+                                              int32_t instance_count,
                                               int32_t index) {
     uintptr_t key = (uintptr_t)mesh_obj;
-    uintptr_t material_key = (uintptr_t)material_obj;
-    uintptr_t matrices_key = (uintptr_t)instance_matrices;
     uintptr_t instance_key = (uintptr_t)((uint32_t)index + 1u);
-    key ^= material_key + (uintptr_t)0x9e3779b9u + (key << 6) + (key >> 2);
-    key ^= matrices_key + (uintptr_t)0x85ebca6bu + (key << 6) + (key >> 2);
+    key = canvas3d_mix_motion_key(key, (uintptr_t)material_obj);
+    key = canvas3d_mix_motion_key(key, (uintptr_t)((uint32_t)instance_count + 1u));
     key ^= instance_key * (uintptr_t)0xc2b2ae35u;
     return key ? key : instance_key;
 }
@@ -1933,7 +1967,7 @@ static int canvas3d_render_skybox_cpu(rt_canvas3d *c,
                                       int32_t dst_w,
                                       int32_t dst_h,
                                       int32_t dst_stride) {
-    if (!c || !c->skybox || !dst_pixels || dst_w <= 0 || dst_h <= 0 || dst_stride < dst_w * 4)
+    if (!c || !c->skybox || !dst_pixels || !canvas3d_rgba8_stride_valid(dst_w, dst_h, dst_stride))
         return 0;
 
     if (c->cached_cam_is_ortho) {
@@ -2055,7 +2089,7 @@ static int canvas3d_ensure_skybox_cpu_cache(rt_canvas3d *c, int32_t w, int32_t h
     uint64_t generation;
     size_t bytes;
 
-    if (!c || !c->skybox || w <= 0 || h <= 0)
+    if (!c || !c->skybox || w <= 0 || h <= 0 || (int64_t)w > INT32_MAX / 4)
         return 0;
     generation = vgfx3d_get_cubemap_generation(c->skybox);
     if (canvas3d_skybox_cache_matches(c, w, h, generation))
@@ -2073,7 +2107,7 @@ static int canvas3d_ensure_skybox_cpu_cache(rt_canvas3d *c, int32_t w, int32_t h
     }
     c->skybox_cpu_cache_w = w;
     c->skybox_cpu_cache_h = h;
-    if (!canvas3d_render_skybox_cpu(c, c->skybox_cpu_cache, w, h, w * 4)) {
+    if (!canvas3d_render_skybox_cpu(c, c->skybox_cpu_cache, w, h, (int32_t)((int64_t)w * 4))) {
         rt_canvas3d_invalidate_skybox_cache(c);
         return 0;
     }
@@ -2102,9 +2136,9 @@ static void canvas3d_blit_skybox_cpu_cache(rt_canvas3d *c,
 
     if (!c || !c->skybox_cpu_cache || !dst_pixels || dst_w <= 0 || dst_h <= 0 ||
         c->skybox_cpu_cache_w != dst_w || c->skybox_cpu_cache_h != dst_h ||
-        dst_stride < dst_w * 4)
+        !canvas3d_rgba8_stride_valid(dst_w, dst_h, dst_stride))
         return;
-    src_stride = dst_w * 4;
+    src_stride = (int32_t)((int64_t)dst_w * 4);
     for (int32_t y = 0; y < dst_h; y++)
         memcpy(&dst_pixels[y * dst_stride], &c->skybox_cpu_cache[y * src_stride], (size_t)src_stride);
 }
@@ -2988,10 +3022,12 @@ void rt_canvas3d_draw_mesh_matrix(void *obj,
 ///          material pointers are borrowed (not retained).
 void rt_canvas3d_draw_mesh(void *obj, void *mesh_obj, void *transform_obj, void *material_obj) {
     mat4_impl *transform = canvas3d_mat4_checked(transform_obj);
+    uintptr_t motion_key;
     if (!transform)
         return;
+    motion_key = canvas3d_mesh_transform_motion_key(mesh_obj, material_obj, transform_obj);
     rt_canvas3d_draw_mesh_matrix_keyed(
-        obj, mesh_obj, transform->m, material_obj, transform_obj, NULL, NULL);
+        obj, mesh_obj, transform->m, material_obj, (const void *)motion_key, NULL, NULL);
 }
 
 /// @brief Queue an instanced draw — render `instance_count` copies of `mesh` with per-instance transforms.
@@ -3017,6 +3053,8 @@ void rt_canvas3d_queue_instanced_batch(void *canvas_obj,
         return;
     c = rt_canvas3d_checked_or_stack(canvas_obj);
     mesh = (rt_mesh3d *)rt_g3d_checked_or_null(mesh_obj, RT_G3D_MESH3D_CLASS_ID);
+    if (!mesh && mesh_obj && !rt_heap_is_payload(mesh_obj))
+        mesh = (rt_mesh3d *)mesh_obj;
     mat = (rt_material3d *)rt_g3d_checked_or_null(material_obj, RT_G3D_MATERIAL3D_CLASS_ID);
     if (!c || !mesh || !mat)
         return;
@@ -3064,7 +3102,7 @@ void rt_canvas3d_queue_instanced_batch(void *canvas_obj,
         rt_trap("Canvas3D.DrawMeshInstanced: instance matrices must contain finite values");
         return;
     }
-    if (!canvas3d_track_temp_object(c, mesh_obj))
+    if (rt_heap_is_payload(mesh_obj) && !canvas3d_track_temp_object(c, mesh_obj))
         return;
     if (!canvas3d_track_temp_object(c, material_obj))
         return;
@@ -3091,7 +3129,7 @@ void rt_canvas3d_queue_instanced_batch(void *canvas_obj,
             } else {
                 canvas3d_resolve_previous_model(
                     c,
-                    canvas3d_instance_motion_key(mesh_obj, material_obj, instance_matrices, i),
+                    canvas3d_instance_motion_key(mesh_obj, material_obj, instance_count, i),
                     per_instance.model_matrix,
                     per_instance.prev_model_matrix,
                     &per_instance.has_prev_model_matrix);

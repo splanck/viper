@@ -114,18 +114,17 @@ static float scene3d_float_or_zero(double value) {
     return (float)value;
 }
 
-/// @brief Return @p value if finite and non-zero, or +/-1.0 as a safe scale factor.
+/// @brief Return @p value if finite, or 1.0 as a safe scale factor.
 /// @details Specialisation of `scene3d_finite_or` for scale components where a
-///   zero-or-NaN value would collapse the node to a point or produce a degenerate
-///   inverse matrix. Negative finite scales are preserved so mirrored nodes remain
-///   representable; only near-zero and non-finite inputs are replaced.
+///   NaN/Inf value would corrupt transform composition. Finite zero scale is
+///   preserved so authored collapse animations and intentionally flattened nodes
+///   remain representable; inverse-dependent consumers handle singular matrices
+///   at their own boundary.
 /// @param value Scale factor candidate — may be NaN or Inf.
-/// @return @p value when usable, otherwise +/-1.0.
+/// @return @p value when finite, otherwise 1.0.
 static double scene3d_scale_or_unit(double value) {
     if (!isfinite(value))
         return 1.0;
-    if (fabs(value) < 1e-12)
-        return value < 0.0 ? -1.0 : 1.0;
     if (value > SCENE3D_ABS_MAX)
         return SCENE3D_ABS_MAX;
     if (value < -SCENE3D_ABS_MAX)
@@ -765,21 +764,20 @@ static void decompose_trs_matrix(const double *m, double *pos, double *quat, dou
     sx = sqrt(rx * rx + ry * ry + rz * rz);
     sy = sqrt(ux * ux + uy * uy + uz * uz);
     sz = sqrt(fx * fx + fy * fy + fz * fz);
-    if (sx < 1e-12)
-        sx = 1.0;
-    if (sy < 1e-12)
-        sy = 1.0;
-    if (sz < 1e-12)
-        sz = 1.0;
-    rx /= sx;
-    ry /= sx;
-    rz /= sx;
-    ux /= sy;
-    uy /= sy;
-    uz /= sy;
-    fx /= sz;
-    fy /= sz;
-    fz /= sz;
+    {
+        double sx_norm = sx > 1e-12 ? sx : 1.0;
+        double sy_norm = sy > 1e-12 ? sy : 1.0;
+        double sz_norm = sz > 1e-12 ? sz : 1.0;
+        rx /= sx_norm;
+        ry /= sx_norm;
+        rz /= sx_norm;
+        ux /= sy_norm;
+        uy /= sy_norm;
+        uz /= sy_norm;
+        fx /= sz_norm;
+        fy /= sz_norm;
+        fz /= sz_norm;
+    }
 
     det = rx * (uy * fz - uz * fy) - ux * (ry * fz - rz * fy) +
           fx * (ry * uz - rz * uy);

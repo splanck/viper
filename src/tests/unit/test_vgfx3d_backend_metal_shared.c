@@ -4,6 +4,7 @@
 
 #include "vgfx3d_backend_metal_shared.h"
 
+#include <limits.h>
 #include <math.h>
 #include <stdio.h>
 #include <string.h>
@@ -37,7 +38,7 @@ static void set_identity4x4(float *m) {
     m[15] = 1.0f;
 }
 
-static void test_pack_bone_palette_zero_pads_unused_bones(void) {
+static void test_pack_bone_palette_identity_pads_unused_bones(void) {
     float src[16];
     float dst[VGFX3D_METAL_MAX_BONES * 16];
 
@@ -51,9 +52,24 @@ static void test_pack_bone_palette_zero_pads_unused_bones(void) {
         snprintf(msg, sizeof(msg), "Bone palette preserves matrix element %d", i);
         EXPECT_NEAR(dst[i], src[i], 1e-6f, msg);
     }
-    EXPECT_NEAR(dst[16], 0.0f, 1e-6f, "Bone palette zero-pads the second bone");
-    EXPECT_NEAR(dst[sizeof(dst) / sizeof(dst[0]) - 1], 0.0f, 1e-6f,
-                "Bone palette zero-pads the tail of the upload buffer");
+    EXPECT_NEAR(dst[16], 1.0f, 1e-6f, "Bone palette identity-pads the second bone X scale");
+    EXPECT_NEAR(dst[21], 1.0f, 1e-6f, "Bone palette identity-pads the second bone Y scale");
+    EXPECT_NEAR(dst[26], 1.0f, 1e-6f, "Bone palette identity-pads the second bone Z scale");
+    EXPECT_NEAR(dst[31], 1.0f, 1e-6f, "Bone palette identity-pads the second bone W scale");
+    EXPECT_NEAR(dst[17], 0.0f, 1e-6f, "Bone palette clears off-diagonal identity padding");
+}
+
+static void test_pack_bone_palette_identity_pads_empty_source(void) {
+    float dst[VGFX3D_METAL_MAX_BONES * 16];
+
+    memset(dst, 0xCD, sizeof(dst));
+    vgfx3d_metal_pack_bone_palette(dst, NULL, 0);
+
+    EXPECT_NEAR(dst[0], 1.0f, 1e-6f, "Empty bone palette identity-pads the first bone");
+    EXPECT_NEAR(dst[5], 1.0f, 1e-6f, "Empty bone palette identity-pads the first bone");
+    EXPECT_NEAR(dst[10], 1.0f, 1e-6f, "Empty bone palette identity-pads the first bone");
+    EXPECT_NEAR(dst[15], 1.0f, 1e-6f, "Empty bone palette identity-pads the first bone");
+    EXPECT_NEAR(dst[1], 0.0f, 1e-6f, "Empty bone palette clears off-diagonal slots");
 }
 
 static void test_pack_bone_palette_keeps_highest_supported_bone(void) {
@@ -232,6 +248,17 @@ static void test_capacity_mip_and_morph_cache_helpers(void) {
                 "Capacity helper grows beyond the old fixed cache size");
     EXPECT_TRUE(vgfx3d_metal_next_capacity(16, 8, 16) == 16,
                 "Capacity helper keeps existing storage when it is already large enough");
+    EXPECT_TRUE(vgfx3d_metal_clamp_morph_shape_count(1024u, 64) ==
+                    VGFX3D_METAL_MAX_MORPH_SHAPES,
+                "Morph count helper clamps to the shader-visible shape limit");
+    EXPECT_TRUE(vgfx3d_metal_clamp_morph_shape_count((uint32_t)INT_MAX, 1) == 0,
+                "Morph count helper rejects vertex counts that would overflow int indexing");
+    EXPECT_TRUE(vgfx3d_metal_clamp_morph_shape_count(1u << 28, 8) == 2,
+                "Morph count helper clamps to the signed shader index range");
+    EXPECT_TRUE(vgfx3d_metal_has_complete_splat(1, 1, 1, 1, 1, 1) == 1,
+                "Terrain splat helper accepts a complete control map and four layers");
+    EXPECT_TRUE(vgfx3d_metal_has_complete_splat(1, 1, 1, 0, 1, 1) == 0,
+                "Terrain splat helper rejects partial layer bindings");
     EXPECT_TRUE(vgfx3d_metal_should_prune_cache_entry(300, 10, 240) == 1,
                 "Old cache entries become prune candidates");
     EXPECT_TRUE(vgfx3d_metal_should_prune_cache_entry(200, 10, 240) == 0,
@@ -253,10 +280,15 @@ static void test_capacity_mip_and_morph_cache_helpers(void) {
     cmd.morph_normal_deltas = (const float *)&tests_run;
     EXPECT_TRUE(vgfx3d_metal_should_reuse_morph_cache(cmd.morph_key, 4, 3, 128, 0, &cmd) == 0,
                 "Morph cache entries include normal-delta presence in the cache key");
+    cmd.morph_shape_count = VGFX3D_METAL_MAX_MORPH_SHAPES + 4;
+    EXPECT_TRUE(vgfx3d_metal_should_reuse_morph_cache(
+                    cmd.morph_key, 4, VGFX3D_METAL_MAX_MORPH_SHAPES, 128, 1, &cmd) == 1,
+                "Morph cache reuse compares against the clamped Metal shape count");
 }
 
 int main(void) {
-    test_pack_bone_palette_zero_pads_unused_bones();
+    test_pack_bone_palette_identity_pads_unused_bones();
+    test_pack_bone_palette_identity_pads_empty_source();
     test_pack_bone_palette_keeps_highest_supported_bone();
     test_fill_instance_data_transposes_and_tracks_history();
     test_frame_history_preserves_scene_state_across_overlay_passes();

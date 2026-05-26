@@ -721,6 +721,9 @@ static const char *d3d11_shader_source =
     "\n"
     "struct SHADOW_OUT {\n"
     "    float4 pos : SV_POSITION;\n"
+    "    float2 uv : TEXCOORD0;\n"
+    "    float2 uv1 : TEXCOORD1;\n"
+    "    float4 color : COLOR0;\n"
     "};\n"
     "\n"
     "SHADOW_OUT VSShadow(VS_INPUT input, uint vid : SV_VertexID) {\n"
@@ -733,7 +736,27 @@ static const char *d3d11_shader_source =
     "    float4 clip = mul(viewProjection, wp);\n"
     "    clip.z = clip.z * 0.5 + clip.w * 0.5;\n"
     "    output.pos = clip;\n"
+    "    output.uv = input.uv;\n"
+    "    output.uv1 = input.uv1;\n"
+    "    output.color = input.color;\n"
     "    return output;\n"
+    "}\n"
+    "\n"
+    "float2 shadowMaterialUv(SHADOW_OUT input) {\n"
+    "    int safeSlot = textureSlotIndex(0);\n"
+    "    float2 uv = textureUvSetAt(safeSlot) != 0 ? input.uv1 : input.uv;\n"
+    "    float4 m = textureUvTransform0[safeSlot];\n"
+    "    float4 t = textureUvTransform1[safeSlot];\n"
+    "    return float2(uv.x * m.x + uv.y * m.y + t.x,\n"
+    "                  uv.x * m.z + uv.y * m.w + t.y);\n"
+    "}\n"
+    "\n"
+    "void PSShadow(SHADOW_OUT input) {\n"
+    "    float alpha = diffuseColor.a * scalars.x * input.color.a;\n"
+    "    if (flags0.x != 0)\n"
+    "        alpha *= diffuseTex.Sample(diffuseSampler, shadowMaterialUv(input)).a;\n"
+    "    if (pbrFlags.y == 1 && alpha < pbrScalars1.y)\n"
+    "        discard;\n"
     "}\n";
 
 static const char *d3d11_skybox_shader_source =
@@ -1138,6 +1161,7 @@ typedef struct {
     ID3D11VertexShader *vs_instanced;
     ID3D11PixelShader *ps_main;
     ID3D11VertexShader *vs_shadow;
+    ID3D11PixelShader *ps_shadow;
     ID3D11VertexShader *vs_skybox;
     ID3D11PixelShader *ps_skybox;
     ID3D11VertexShader *vs_postfx;
@@ -4192,6 +4216,7 @@ static void *d3d11_create_ctx(vgfx_window_t win, int32_t width, int32_t height) 
     ID3DBlob *vs_instanced_blob = NULL;
     ID3DBlob *ps_blob = NULL;
     ID3DBlob *vs_shadow_blob = NULL;
+    ID3DBlob *ps_shadow_blob = NULL;
     ID3DBlob *vs_skybox_blob = NULL;
     ID3DBlob *ps_skybox_blob = NULL;
     ID3DBlob *vs_postfx_blob = NULL;
@@ -4423,6 +4448,9 @@ static void *d3d11_create_ctx(vgfx_window_t win, int32_t width, int32_t height) 
     hr = d3d11_compile_shader(d3d11_shader_source, "VSShadow", "vs_5_0", &vs_shadow_blob);
     if (FAILED(hr))
         goto fail;
+    hr = d3d11_compile_shader(d3d11_shader_source, "PSShadow", "ps_5_0", &ps_shadow_blob);
+    if (FAILED(hr))
+        goto fail;
     hr = d3d11_compile_shader(d3d11_skybox_shader_source, "VSSkybox", "vs_5_0", &vs_skybox_blob);
     if (FAILED(hr))
         goto fail;
@@ -4474,6 +4502,15 @@ static void *d3d11_create_ctx(vgfx_window_t win, int32_t width, int32_t height) 
                                          &ctx->vs_shadow);
     if (FAILED(hr)) {
         d3d11_log_hresult("CreateVertexShader(shadow)", hr);
+        goto fail;
+    }
+    hr = ID3D11Device_CreatePixelShader(ctx->device,
+                                        ID3D10Blob_GetBufferPointer(ps_shadow_blob),
+                                        ID3D10Blob_GetBufferSize(ps_shadow_blob),
+                                        NULL,
+                                        &ctx->ps_shadow);
+    if (FAILED(hr)) {
+        d3d11_log_hresult("CreatePixelShader(shadow)", hr);
         goto fail;
     }
     hr = ID3D11Device_CreateVertexShader(ctx->device,
@@ -4721,6 +4758,7 @@ static void *d3d11_create_ctx(vgfx_window_t win, int32_t width, int32_t height) 
     SAFE_RELEASE(vs_instanced_blob);
     SAFE_RELEASE(ps_blob);
     SAFE_RELEASE(vs_shadow_blob);
+    SAFE_RELEASE(ps_shadow_blob);
     SAFE_RELEASE(vs_skybox_blob);
     SAFE_RELEASE(ps_skybox_blob);
     SAFE_RELEASE(vs_postfx_blob);
@@ -4733,6 +4771,7 @@ fail:
     SAFE_RELEASE(vs_instanced_blob);
     SAFE_RELEASE(ps_blob);
     SAFE_RELEASE(vs_shadow_blob);
+    SAFE_RELEASE(ps_shadow_blob);
     SAFE_RELEASE(vs_skybox_blob);
     SAFE_RELEASE(ps_skybox_blob);
     SAFE_RELEASE(vs_postfx_blob);
@@ -4796,6 +4835,7 @@ static void d3d11_destroy_ctx(void *ctx_ptr) {
     SAFE_RELEASE(ctx->vs_postfx);
     SAFE_RELEASE(ctx->ps_skybox);
     SAFE_RELEASE(ctx->vs_skybox);
+    SAFE_RELEASE(ctx->ps_shadow);
     SAFE_RELEASE(ctx->vs_shadow);
     SAFE_RELEASE(ctx->ps_main);
     SAFE_RELEASE(ctx->vs_instanced);
@@ -5561,7 +5601,8 @@ static void d3d11_shadow_begin(
     HRESULT hr;
 
     (void)depth_buf;
-    if (!ctx || !light_vp || slot < 0 || slot >= VGFX3D_MAX_SHADOW_LIGHTS)
+    if (!ctx || !light_vp || width <= 0 || height <= 0 || slot < 0 ||
+        slot >= VGFX3D_MAX_SHADOW_LIGHTS)
         return;
     ctx->shadow_pass_slot = -1;
     hr = d3d11_ensure_shadow_targets(ctx, slot, width, height);
@@ -5601,11 +5642,17 @@ static void d3d11_shadow_draw(void *ctx_ptr, const vgfx3d_draw_cmd_t *cmd) {
     d3d11_context_t *ctx = (d3d11_context_t *)ctx_ptr;
     d3d_per_object_t object_data;
     d3d_per_scene_t scene_data;
+    d3d_per_material_t material_data;
+    d3d_temp_srv_t shadow_diffuse = {0};
+    ID3D11ShaderResourceView *shadow_diffuse_srv = NULL;
+    ID3D11ShaderResourceView *null_shadow_ps_srv[1] = {NULL};
+    ID3D11SamplerState *shadow_diffuse_sampler = NULL;
     HRESULT hr;
     UINT stride = sizeof(vgfx3d_vertex_t);
     UINT offset = 0;
     ID3D11Buffer *mesh_vb = NULL;
     ID3D11Buffer *mesh_ib = NULL;
+    int alpha_masked_shadow = cmd && cmd->alpha_mode == RT_MATERIAL3D_ALPHA_MODE_MASK;
 
     if (!ctx || !cmd || ctx->shadow_pass_slot < 0 ||
         ctx->shadow_pass_slot >= VGFX3D_MAX_SHADOW_LIGHTS || !cmd->vertices || !cmd->indices ||
@@ -5627,9 +5674,31 @@ static void d3d11_shadow_draw(void *ctx_ptr, const vgfx3d_draw_cmd_t *cmd) {
         d3d11_log_hresult("Map(cbPerScene shadow)", hr);
         return;
     }
+    if (alpha_masked_shadow) {
+        shadow_diffuse_srv = d3d11_get_or_create_srv(ctx, cmd->texture, &shadow_diffuse);
+        d3d11_prepare_material_data(cmd,
+                                    shadow_diffuse_srv != NULL,
+                                    0,
+                                    0,
+                                    0,
+                                    0,
+                                    0,
+                                    0,
+                                    0,
+                                    &material_data);
+        hr = d3d11_update_constant_buffer(
+            ctx, ctx->cb_per_material, &material_data, sizeof(material_data));
+        if (FAILED(hr)) {
+            d3d11_log_hresult("Map(cbPerMaterial shadow)", hr);
+            d3d11_release_temp_srv(&shadow_diffuse);
+            return;
+        }
+    }
 
-    if (!d3d11_acquire_mesh_buffers(ctx, cmd, &mesh_vb, &mesh_ib))
+    if (!d3d11_acquire_mesh_buffers(ctx, cmd, &mesh_vb, &mesh_ib)) {
+        d3d11_release_temp_srv(&shadow_diffuse);
         return;
+    }
 
     ID3D11DeviceContext_IASetVertexBuffers(ctx->ctx, 0, 1, &mesh_vb, &stride, &offset);
     ID3D11DeviceContext_IASetIndexBuffer(ctx->ctx, mesh_ib, DXGI_FORMAT_R32_UINT, 0);
@@ -5637,11 +5706,24 @@ static void d3d11_shadow_draw(void *ctx_ptr, const vgfx3d_draw_cmd_t *cmd) {
     ID3D11DeviceContext_VSSetConstantBuffers(ctx->ctx, 1, 1, &ctx->cb_per_scene);
     ID3D11DeviceContext_VSSetConstantBuffers(ctx->ctx, 4, 1, &ctx->cb_bones);
     ID3D11DeviceContext_VSSetConstantBuffers(ctx->ctx, 5, 1, &ctx->cb_prev_bones);
+    if (alpha_masked_shadow && ctx->ps_shadow) {
+        shadow_diffuse_sampler =
+            d3d11_get_material_sampler(ctx, cmd, RT_MATERIAL3D_TEXTURE_SLOT_BASE_COLOR);
+        ID3D11DeviceContext_PSSetShader(ctx->ctx, ctx->ps_shadow, NULL, 0);
+        ID3D11DeviceContext_PSSetConstantBuffers(ctx->ctx, 2, 1, &ctx->cb_per_material);
+        ID3D11DeviceContext_PSSetShaderResources(ctx->ctx, 0, 1, &shadow_diffuse_srv);
+        if (shadow_diffuse_sampler)
+            ID3D11DeviceContext_PSSetSamplers(ctx->ctx, 0, 1, &shadow_diffuse_sampler);
+    } else {
+        ID3D11DeviceContext_PSSetShader(ctx->ctx, NULL, NULL, 0);
+    }
     {
         ID3D11ShaderResourceView *vs_srvs[2] = {ctx->current_morph_srv, NULL};
         ID3D11DeviceContext_VSSetShaderResources(ctx->ctx, 0, 2, vs_srvs);
     }
     ID3D11DeviceContext_DrawIndexed(ctx->ctx, cmd->index_count, 0, 0);
+    ID3D11DeviceContext_PSSetShaderResources(ctx->ctx, 0, 1, null_shadow_ps_srv);
+    d3d11_release_temp_srv(&shadow_diffuse);
     {
         ID3D11ShaderResourceView *null_vs[2] = {NULL, NULL};
         ID3D11DeviceContext_VSSetShaderResources(ctx->ctx, 0, 2, null_vs);

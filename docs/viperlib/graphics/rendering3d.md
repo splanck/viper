@@ -1,7 +1,7 @@
 ---
 status: active
 audience: public
-last-verified: 2026-05-21
+last-verified: 2026-05-26
 ---
 
 # 3D Rendering, Animation, and Environment
@@ -47,6 +47,7 @@ This page documents the `Viper.Graphics3D` runtime surface for classes not cover
 
 Camera positions and FPS-style movement inputs are clamped to the runtime's safe world range before
 view/projection matrices are generated. Non-finite position components fall back to `0.0`.
+`SmoothFollow` and `SmoothLookAt` keep FPS-style yaw/pitch state synchronized with the resulting view.
 
 ```rust
 bind Viper.Graphics3D.Camera3D as Camera3D;
@@ -201,6 +202,9 @@ Bone hierarchy for skeletal mesh deformation. Typically loaded alongside a model
 | `ComputeInverseBind()` | `Void()` | Pre-compute inverse bind pose matrices after all bones are added |
 | `FindBone(name)` | `Integer(String)` | Return the bone index, or `-1` if not found |
 | `GetBoneName(index)` | `String(Integer)` | Return the name of bone at `index` |
+
+Skinning weights are normalized consistently across CPU and GPU draw paths. Missing palettes copy
+vertices through unchanged, and unused backend bone-palette slots are treated as identity transforms.
 
 ---
 
@@ -384,6 +388,9 @@ Per-vertex morph target system for facial animation or shape blending.
 | `SetWeight(index, weight)` | `Void(Integer, Double)` | Set blend weight `[0.0–1.0]` for shape at `index` |
 | `GetWeight(index)` | `Double(Integer)` | Get the current weight for a shape |
 | `SetWeightByName(name, weight)` | `Void(String, Double)` | Set blend weight by shape name |
+
+GPU backends clamp active morph shapes to shader-indexable limits and disable morphing on upload
+failure instead of reusing stale buffers; larger shape sets should use the CPU-applied path.
 
 ---
 
@@ -667,6 +674,9 @@ Heightmap terrain with multi-layer splat texturing, LOD, and normal generation.
 | `SetLODDistances(near, far)` | `Void(Double, Double)` | Set LOD transition distances |
 | `SetSkirtDepth(depth)` | `Void(Double)` | Set the tile skirt depth to hide LOD seams |
 
+Terrain splatting is enabled only when the splat map and all four layer textures are present.
+Incomplete splat sets render with the base material/fallback texture.
+
 ```rust
 bind Viper.Graphics3D.Terrain3D as Terrain3D;
 
@@ -777,7 +787,8 @@ World-space transform (position, rotation quaternion, scale) with matrix output.
 | `Translate(delta)` | `Void(Object)` | Move by a `Vec3` offset |
 
 Very large Euler angles and incremental rotation angles are reduced before trigonometry runs, and
-the stored quaternion is kept normalized.
+the stored quaternion is kept normalized. Finite zero scale is preserved; only non-finite scale
+components are replaced with a safe identity value.
 
 ---
 
@@ -833,7 +844,9 @@ Efficient GPU-instanced rendering of many copies of the same mesh.
 | `Clear()` | `Void()` | Remove all instances |
 
 `Add` and `Set` require a valid runtime `Mat4` object with a complete matrix payload; foreign or
-undersized objects are ignored.
+undersized objects are ignored. Stack-backed mesh fixtures can be drawn through the instanced path
+when used by runtime systems. Draw submission sanitizes material scalars before narrowing to backend
+floats, and motion-history keys are stable across transform-buffer reallocations.
 
 ---
 

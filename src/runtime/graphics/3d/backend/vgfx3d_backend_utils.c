@@ -24,6 +24,7 @@
 
 #include "vgfx3d_backend_utils.h"
 
+#include <limits.h>
 #include <math.h>
 #include <stdlib.h>
 #include <string.h>
@@ -242,6 +243,24 @@ uint8_t vgfx3d_hdr_to_unorm8(float value) {
     return vgfx3d_float_to_unorm8(value / (1.0f + value));
 }
 
+static int vgfx3d_copy_dims_are_valid(int32_t copy_w,
+                                      int32_t copy_h,
+                                      int32_t dst_stride_units,
+                                      int32_t src_stride_bytes,
+                                      int32_t dst_units_per_pixel,
+                                      int32_t src_bytes_per_pixel) {
+    int64_t dst_required;
+    int64_t src_required;
+    if (copy_w <= 0 || copy_h <= 0 || dst_stride_units < 0 || src_stride_bytes < 0)
+        return 0;
+    dst_required = (int64_t)copy_w * (int64_t)dst_units_per_pixel;
+    src_required = (int64_t)copy_w * (int64_t)src_bytes_per_pixel;
+    if (dst_required > INT32_MAX || src_required > INT32_MAX)
+        return 0;
+    return (int64_t)dst_stride_units >= dst_required &&
+           (int64_t)src_stride_bytes >= src_required;
+}
+
 /// @brief Convert linear RGBA16F rows to displayable RGBA8.
 void vgfx3d_copy_linear_rgba16f_to_rgba8(uint8_t *dst_rgba,
                                          int32_t dst_stride,
@@ -249,8 +268,13 @@ void vgfx3d_copy_linear_rgba16f_to_rgba8(uint8_t *dst_rgba,
                                          int32_t copy_h,
                                          const uint16_t *src_rgba16f,
                                          int32_t src_stride_bytes) {
-    if (!dst_rgba || !src_rgba16f || dst_stride < copy_w * 4 || copy_w <= 0 || copy_h <= 0 ||
-        src_stride_bytes < copy_w * (int32_t)(sizeof(uint16_t) * 4)) {
+    if (!dst_rgba || !src_rgba16f ||
+        !vgfx3d_copy_dims_are_valid(copy_w,
+                                    copy_h,
+                                    dst_stride,
+                                    src_stride_bytes,
+                                    4,
+                                    (int32_t)(sizeof(uint16_t) * 4u))) {
         return;
     }
 
@@ -275,8 +299,13 @@ void vgfx3d_copy_linear_rgba16f_to_rgba32f(float *dst_rgba32f,
                                            int32_t copy_h,
                                            const uint16_t *src_rgba16f,
                                            int32_t src_stride_bytes) {
-    if (!dst_rgba32f || !src_rgba16f || dst_stride_floats < copy_w * 4 || copy_w <= 0 ||
-        copy_h <= 0 || src_stride_bytes < copy_w * (int32_t)(sizeof(uint16_t) * 4)) {
+    if (!dst_rgba32f || !src_rgba16f ||
+        !vgfx3d_copy_dims_are_valid(copy_w,
+                                    copy_h,
+                                    dst_stride_floats,
+                                    src_stride_bytes,
+                                    4,
+                                    (int32_t)(sizeof(uint16_t) * 4u))) {
         return;
     }
 
@@ -301,8 +330,13 @@ void vgfx3d_copy_linear_rgba32f_to_rgba8(uint8_t *dst_rgba,
                                          int32_t copy_h,
                                          const float *src_rgba32f,
                                          int32_t src_stride_bytes) {
-    if (!dst_rgba || !src_rgba32f || dst_stride < copy_w * 4 || copy_w <= 0 || copy_h <= 0 ||
-        src_stride_bytes < copy_w * (int32_t)(sizeof(float) * 4)) {
+    if (!dst_rgba || !src_rgba32f ||
+        !vgfx3d_copy_dims_are_valid(copy_w,
+                                    copy_h,
+                                    dst_stride,
+                                    src_stride_bytes,
+                                    4,
+                                    (int32_t)(sizeof(float) * 4u))) {
         return;
     }
 
@@ -434,7 +468,7 @@ int vgfx3d_invert_matrix4(const float *matrix, float *out_matrix) {
               matrix[8] * matrix[1] * matrix[6] - matrix[8] * matrix[2] * matrix[5];
 
     det = matrix[0] * inv[0] + matrix[1] * inv[4] + matrix[2] * inv[8] + matrix[3] * inv[12];
-    if (fabsf(det) < 1e-12f)
+    if (!isfinite(det) || fabsf(det) < 1e-12f)
         return -1;
 
     det = 1.0f / det;

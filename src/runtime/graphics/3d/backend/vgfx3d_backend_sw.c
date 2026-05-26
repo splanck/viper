@@ -386,6 +386,13 @@ static void compute_lighting(pipe_vert_t *v,
                              const vgfx3d_light_params_t *lights,
                              int32_t light_count,
                              const float *ambient) {
+    static const float zero_ambient[3] = {0.0f, 0.0f, 0.0f};
+    if (!v || !cmd)
+        return;
+    if (!ambient)
+        ambient = zero_ambient;
+    if (!lights || light_count < 0)
+        light_count = 0;
     if (cmd->unlit) {
         v->color[0] = cmd->diffuse_color[0] * v->color[0];
         v->color[1] = cmd->diffuse_color[1] * v->color[1];
@@ -567,6 +574,22 @@ static int setup_pixels_view(const void *pixels_obj, sw_pixels_view *out) {
     const sw_pixels_view *pv = (const sw_pixels_view *)pixels_obj;
     *out = *pv;
     return (out->width > 0 && out->height > 0 && out->data != NULL);
+}
+
+static int sw_setup_complete_splat(const vgfx3d_draw_cmd_t *cmd,
+                                   sw_pixels_view *splat_view,
+                                   sw_pixels_view layer_views[4]) {
+    if (!cmd || !cmd->has_splat || !cmd->splat_map || !cmd->splat_layers[0] ||
+        !cmd->splat_layers[1] || !cmd->splat_layers[2] || !cmd->splat_layers[3]) {
+        return 0;
+    }
+    if (!setup_pixels_view(cmd->splat_map, splat_view))
+        return 0;
+    for (int i = 0; i < 4; i++) {
+        if (!setup_pixels_view(cmd->splat_layers[i], &layer_views[i]))
+            return 0;
+    }
+    return 1;
 }
 
 /// @brief Wrap a continuous UV coordinate into [0, 1] according to the material wrap mode.
@@ -1414,7 +1437,8 @@ static void raster_triangle(uint8_t *pixels,
                             float sp_v =
                                 (b0 * v0->v_over_w + b1 * v1->v_over_w + b2 * v2->v_over_w) / iw;
                             sw_pixels_view splat_view;
-                            if (setup_pixels_view(cmd->splat_map, &splat_view)) {
+                            sw_pixels_view layer_views[4];
+                            if (sw_setup_complete_splat(cmd, &splat_view, layer_views)) {
                                 float sr, sg, sb, sa;
                                 sample_texture(&splat_view, sp_u, sp_v, &sr, &sg, &sb, &sa);
                                 float w[4] = {sr, sg, sb, sa};
@@ -1428,15 +1452,12 @@ static void raster_triangle(uint8_t *pixels,
                                 }
                                 float blr = 0, blg = 0, blb = 0;
                                 for (int L = 0; L < 4; L++) {
-                                    if (w[L] < 0.001f || !cmd->splat_layers[L])
-                                        continue;
-                                    sw_pixels_view lv;
-                                    if (!setup_pixels_view(cmd->splat_layers[L], &lv))
+                                    if (w[L] < 0.001f)
                                         continue;
                                     float lu = sp_u * cmd->splat_layer_scales[L];
                                     float lvc = sp_v * cmd->splat_layer_scales[L];
                                     float lr, lg2, lb, la;
-                                    sample_texture(&lv, lu, lvc, &lr, &lg2, &lb, &la);
+                                    sample_texture(&layer_views[L], lu, lvc, &lr, &lg2, &lb, &la);
                                     blr += lr * w[L];
                                     blg += lg2 * w[L];
                                     blb += lb * w[L];
@@ -2110,8 +2131,24 @@ static void draw_line(uint8_t *pixels,
 ///
 /// Slimmer than `raster_triangle` — only writes Z (no color, lighting,
 /// or texturing). Same edge-function approach.
-static void shadow_raster_tri(
-    float *depth, int32_t sw, int32_t sh, float *sx, float *sy, float *sz) {
+static void shadow_raster_tri(float *depth,
+                              int32_t sw,
+                              int32_t sh,
+                              float *sx,
+                              float *sy,
+                              float *sz,
+                              const float *su,
+                              const float *sv,
+                              const float *su1,
+                              const float *sv1,
+                              const float *sa,
+                              const vgfx3d_draw_cmd_t *cmd,
+                              const sw_pixels_view *alpha_tex) {
+    float u[3] = {su ? su[0] : 0.0f, su ? su[1] : 0.0f, su ? su[2] : 0.0f};
+    float vcoord[3] = {sv ? sv[0] : 0.0f, sv ? sv[1] : 0.0f, sv ? sv[2] : 0.0f};
+    float u1[3] = {su1 ? su1[0] : 0.0f, su1 ? su1[1] : 0.0f, su1 ? su1[2] : 0.0f};
+    float v1coord[3] = {sv1 ? sv1[0] : 0.0f, sv1 ? sv1[1] : 0.0f, sv1 ? sv1[2] : 0.0f};
+    float alpha_v[3] = {sa ? sa[0] : 1.0f, sa ? sa[1] : 1.0f, sa ? sa[2] : 1.0f};
     /* Screen-space area (winding check) */
     float area = (sx[1] - sx[0]) * (sy[2] - sy[0]) - (sx[2] - sx[0]) * (sy[1] - sy[0]);
     if (area < 0.0f) {
@@ -2126,6 +2163,21 @@ static void shadow_raster_tri(
         t = sz[1];
         sz[1] = sz[2];
         sz[2] = t;
+        t = u[1];
+        u[1] = u[2];
+        u[2] = t;
+        t = vcoord[1];
+        vcoord[1] = vcoord[2];
+        vcoord[2] = t;
+        t = u1[1];
+        u1[1] = u1[2];
+        u1[2] = t;
+        t = v1coord[1];
+        v1coord[1] = v1coord[2];
+        v1coord[2] = t;
+        t = alpha_v[1];
+        alpha_v[1] = alpha_v[2];
+        alpha_v[2] = t;
         area = -area;
     }
     if (area < 1e-6f)
@@ -2154,9 +2206,40 @@ static void shadow_raster_tri(
                 float b0 = w0 * inv_area, b1 = w1 * inv_area, b2 = w2 * inv_area;
                 float z = b0 * sz[0] + b1 * sz[1] + b2 * sz[2];
                 int idx = y * sw + x;
+                if (cmd && cmd->alpha_mode == RT_MATERIAL3D_ALPHA_MODE_MASK) {
+                    float alpha = cmd->diffuse_color[3] * cmd->alpha *
+                                  (b0 * alpha_v[0] + b1 * alpha_v[1] + b2 * alpha_v[2]);
+                    if (alpha_tex) {
+                        float tr, tg, tb, ta;
+                        int use_uv1 =
+                            cmd->texture_slot_uv_set[RT_MATERIAL3D_TEXTURE_SLOT_BASE_COLOR] > 0;
+                        const float *m =
+                            cmd->texture_slot_uv_transform[RT_MATERIAL3D_TEXTURE_SLOT_BASE_COLOR];
+                        float base_u = use_uv1 ? (b0 * u1[0] + b1 * u1[1] + b2 * u1[2])
+                                               : (b0 * u[0] + b1 * u[1] + b2 * u[2]);
+                        float base_v =
+                            use_uv1 ? (b0 * v1coord[0] + b1 * v1coord[1] + b2 * v1coord[2])
+                                    : (b0 * vcoord[0] + b1 * vcoord[1] + b2 * vcoord[2]);
+                        float tex_u = base_u * m[0] + base_v * m[1] + m[4];
+                        float tex_v = base_u * m[2] + base_v * m[3] + m[5];
+                        sample_texture_slot_ex(alpha_tex,
+                                               cmd,
+                                               RT_MATERIAL3D_TEXTURE_SLOT_BASE_COLOR,
+                                               tex_u,
+                                               tex_v,
+                                               &tr,
+                                               &tg,
+                                               &tb,
+                                               &ta);
+                        alpha *= ta;
+                    }
+                    if (alpha < cmd->alpha_cutoff)
+                        goto next_shadow_pixel;
+                }
                 if (z < depth[idx])
                     depth[idx] = z;
             }
+        next_shadow_pixel:
             w0 -= e12_dy;
             w1 -= e20_dy;
             w2 -= e01_dy;
@@ -2169,6 +2252,9 @@ static void shadow_raster_tri(
 
 typedef struct {
     float clip[4];
+    float uv[2];
+    float uv1[2];
+    float color_alpha;
 } shadow_clip_vertex_t;
 
 /// @brief Signed distance from a clip-space vertex to the @p plane-th frustum plane.
@@ -2203,6 +2289,11 @@ static shadow_clip_vertex_t shadow_clip_lerp(const shadow_clip_vertex_t *a,
     shadow_clip_vertex_t out;
     for (int i = 0; i < 4; i++)
         out.clip[i] = a->clip[i] + (b->clip[i] - a->clip[i]) * t;
+    out.uv[0] = a->uv[0] + (b->uv[0] - a->uv[0]) * t;
+    out.uv[1] = a->uv[1] + (b->uv[1] - a->uv[1]) * t;
+    out.uv1[0] = a->uv1[0] + (b->uv1[0] - a->uv1[0]) * t;
+    out.uv1[1] = a->uv1[1] + (b->uv1[1] - a->uv1[1]) * t;
+    out.color_alpha = a->color_alpha + (b->color_alpha - a->color_alpha) * t;
     return out;
 }
 
@@ -2253,7 +2344,14 @@ static int shadow_clip_polygon(shadow_clip_vertex_t *poly, int count) {
 static void sw_shadow_begin(
     void *ctx_ptr, int32_t slot, float *depth_buf, int32_t w, int32_t h, const float *light_vp) {
     sw_context_t *ctx = (sw_context_t *)ctx_ptr;
-    if (!ctx || slot < 0 || slot >= VGFX3D_MAX_SHADOW_LIGHTS || !depth_buf)
+    size_t pixel_count;
+    if (!ctx || slot < 0 || slot >= VGFX3D_MAX_SHADOW_LIGHTS || !depth_buf || !light_vp ||
+        w <= 0 || h <= 0)
+        return;
+    if ((size_t)w > SIZE_MAX / (size_t)h)
+        return;
+    pixel_count = (size_t)w * (size_t)h;
+    if (pixel_count > (size_t)INT32_MAX)
         return;
     ctx->shadow_pass_slot = (int8_t)slot;
     ctx->shadow_depth[slot] = depth_buf;
@@ -2261,7 +2359,7 @@ static void sw_shadow_begin(
     ctx->shadow_h[slot] = h;
     memcpy(ctx->shadow_vp[slot], light_vp, 16 * sizeof(float));
     /* Clear shadow depth to FLT_MAX */
-    for (int32_t i = 0; i < w * h; i++)
+    for (size_t i = 0; i < pixel_count; i++)
         depth_buf[i] = FLT_MAX;
 }
 
@@ -2274,7 +2372,10 @@ static void sw_shadow_begin(
 static void sw_shadow_draw(void *ctx_ptr, const vgfx3d_draw_cmd_t *cmd) {
     sw_context_t *ctx = (sw_context_t *)ctx_ptr;
     int32_t slot;
-    if (!ctx || !cmd || cmd->vertex_count == 0 || cmd->index_count == 0)
+    sw_pixels_view alpha_view;
+    sw_pixels_view *alpha_tex = NULL;
+    if (!ctx || !cmd || !cmd->vertices || !cmd->indices || cmd->vertex_count == 0 ||
+        cmd->index_count == 0)
         return;
     slot = ctx->shadow_pass_slot;
     if (slot < 0 || slot >= VGFX3D_MAX_SHADOW_LIGHTS || !ctx->shadow_depth[slot])
@@ -2282,6 +2383,12 @@ static void sw_shadow_draw(void *ctx_ptr, const vgfx3d_draw_cmd_t *cmd) {
     /* Skip transparent objects */
     if (cmd->additive_blend || vgfx3d_draw_cmd_uses_alpha_blend(cmd))
         return;
+    if (cmd->alpha_mode == RT_MATERIAL3D_ALPHA_MODE_MASK && cmd->texture) {
+        const sw_pixels_view *pv = (const sw_pixels_view *)cmd->texture;
+        alpha_view = *pv;
+        if (alpha_view.width > 0 && alpha_view.height > 0 && alpha_view.data)
+            alpha_tex = &alpha_view;
+    }
 
     /* Build light MVP = shadow_vp * model */
     float lmvp[16];
@@ -2301,6 +2408,11 @@ static void sw_shadow_draw(void *ctx_ptr, const vgfx3d_draw_cmd_t *cmd) {
             const vgfx3d_vertex_t *v = &cmd->vertices[idx[vi]];
             float pos4[4] = {v->pos[0], v->pos[1], v->pos[2], 1.0f};
             mat4f_transform4(lmvp, pos4, clipped[vi].clip);
+            clipped[vi].uv[0] = v->uv[0];
+            clipped[vi].uv[1] = v->uv[1];
+            clipped[vi].uv1[0] = v->uv1[0];
+            clipped[vi].uv1[1] = v->uv1[1];
+            clipped[vi].color_alpha = v->color[3];
         }
         int clipped_count = shadow_clip_polygon(clipped, 3);
         if (clipped_count < 3)
@@ -2309,6 +2421,7 @@ static void sw_shadow_draw(void *ctx_ptr, const vgfx3d_draw_cmd_t *cmd) {
         for (int tri = 1; tri + 1 < clipped_count; tri++) {
             const shadow_clip_vertex_t *fan[3] = {&clipped[0], &clipped[tri], &clipped[tri + 1]};
             float screen_x[3], screen_y[3], screen_z[3];
+            float tex_u[3], tex_v[3], tex_u1[3], tex_v1[3], vert_alpha[3];
             int ok = 1;
             for (int vi = 0; vi < 3; vi++) {
                 float w = fan[vi]->clip[3];
@@ -2327,6 +2440,11 @@ static void sw_shadow_draw(void *ctx_ptr, const vgfx3d_draw_cmd_t *cmd) {
                 screen_x[vi] = (ndc_x + 1.0f) * half_w;
                 screen_y[vi] = (1.0f - ndc_y) * half_h;
                 screen_z[vi] = ndc_z * 0.5f + 0.5f;
+                tex_u[vi] = fan[vi]->uv[0];
+                tex_v[vi] = fan[vi]->uv[1];
+                tex_u1[vi] = fan[vi]->uv1[0];
+                tex_v1[vi] = fan[vi]->uv1[1];
+                vert_alpha[vi] = fan[vi]->color_alpha;
             }
             if (!ok)
                 continue;
@@ -2335,7 +2453,14 @@ static void sw_shadow_draw(void *ctx_ptr, const vgfx3d_draw_cmd_t *cmd) {
                               ctx->shadow_h[slot],
                               screen_x,
                               screen_y,
-                              screen_z);
+                              screen_z,
+                              tex_u,
+                              tex_v,
+                              tex_u1,
+                              tex_v1,
+                              vert_alpha,
+                              cmd,
+                              alpha_tex);
         }
     }
 }
@@ -2447,7 +2572,7 @@ static void sw_clear(void *ctx_ptr, vgfx_window_t win, float r, float g, float b
 /// position. Doesn't touch any pixels — drawing happens in `submit_draw`.
 static void sw_begin_frame(void *ctx_ptr, const vgfx3d_camera_params_t *cam) {
     sw_context_t *ctx = (sw_context_t *)ctx_ptr;
-    if (!ctx)
+    if (!ctx || !cam)
         return;
     /* VP = projection * view */
     mat4f_mul(cam->projection, cam->view, ctx->vp);
@@ -2488,8 +2613,14 @@ static void sw_submit_draw(void *ctx_ptr,
                            int8_t wireframe,
                            int8_t backface_cull) {
     sw_context_t *ctx = (sw_context_t *)ctx_ptr;
-    if (!ctx || !cmd || cmd->vertex_count == 0 || cmd->index_count == 0)
+    static const float zero_ambient[3] = {0.0f, 0.0f, 0.0f};
+    if (!ctx || !cmd || !cmd->vertices || !cmd->indices || cmd->vertex_count == 0 ||
+        cmd->index_count == 0)
         return;
+    if (!ambient)
+        ambient = zero_ambient;
+    if (!lights || light_count < 0)
+        light_count = 0;
 
     /* Determine output buffers: render target or window framebuffer */
     uint8_t *out_pixels;

@@ -99,13 +99,11 @@ static double transform3d_clamp_abs_or(double value, double fallback) {
 }
 
 /// @brief Return @p value if finite, or 1.0 as a safe identity scale.
-/// @details Specialisation for scale components where 0 or NaN would collapse
-///   the node to a point or produce a non-invertible matrix.
+/// @details Finite zero scale is intentional and must be preserved so callers
+///   can collapse one or more axes. Only non-finite values are replaced.
 static double transform3d_scale_or_unit(double value) {
     if (!isfinite(value))
         return 1.0;
-    if (fabs(value) < 1e-12)
-        return value < 0.0 ? -1.0 : 1.0;
     if (value > TRANSFORM3D_ABS_MAX)
         return TRANSFORM3D_ABS_MAX;
     if (value < -TRANSFORM3D_ABS_MAX)

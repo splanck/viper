@@ -1,7 +1,7 @@
 ---
 status: active
 audience: public
-last-verified: 2026-05-21
+last-verified: 2026-05-26
 ---
 
 # 3D Physics
@@ -70,7 +70,9 @@ and joint integration.
 - Static bodies are immovable. Kinematic bodies move from explicit velocity but do not
   receive gravity or force integration.
 - World storage for bodies, contacts, contact events, and joints grows on demand from production-sized initial capacities. Query result lists remain bounded for predictable allocation behavior.
-- Collision detection uses a sweep-and-prune broadphase before shape-specific narrow-phase tests.
+- Collision detection uses a sweep-and-prune broadphase before shape-specific narrow-phase tests. Box colliders honor body and compound-child orientation.
+- `Raycast` and `RaycastAll` test collider geometry, not only broadphase bounds: boxes, spheres, capsules, compound leaves, mesh/convex triangles, and heightfields report nearest shape hits.
+- Sphere and capsule sweeps use adaptive sampling, so small-radius sweeps and long capsules can hit thin geometry without a fixed world-unit step floor.
 
 ---
 
@@ -202,6 +204,7 @@ content; bodies now own a collider instead of baking all shape state directly in
 - `NewHeightfield()` requires a valid `Pixels` object, not just a matching class ID.
 - `NewConvexHull()` expects convex source geometry and uses the mesh surface as the hull shape.
 - Compound colliders are the preferred way to build richer dynamic bodies from simple children.
+- Heightfield contacts account for signed and non-uniform Y scale when computing sphere penetration depth and normals.
 
 ---
 
@@ -217,7 +220,7 @@ sleeping, and optional CCD.
 | Constructor | Signature | Description |
 |-------------|-----------|-------------|
 | `New(mass)` | `Physics3DBody(Double)` | Create an empty body and assign a collider later |
-| `NewAABB(sx, sy, sz, mass)` | `Physics3DBody(Double, Double, Double, Double)` | Axis-aligned box body (`mass = 0` makes it static) |
+| `NewAABB(sx, sy, sz, mass)` | `Physics3DBody(Double, Double, Double, Double)` | Box body (`mass = 0` makes it static); name retained for compatibility |
 | `NewSphere(radius, mass)` | `Physics3DBody(Double, Double)` | Sphere body |
 | `NewCapsule(radius, height, mass)` | `Physics3DBody(Double, Double, Double)` | Capsule body; `height` is total height including caps |
 

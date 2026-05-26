@@ -301,7 +301,7 @@ func start() {
 
 **Frame lifecycle:** `Poll → Clear → Begin → DrawMesh (repeated) → End → [HUD overlay] → Flip`
 
-**Important:** `Begin`/`End` must not nest. All 3D draw calls go between `Begin` and `End`; `DrawTerrain` and `DrawVegetation` are rejected during `Begin2D`. HUD overlay calls (`DrawRect2D`, `DrawText2D`, `DrawCrosshair`) go between `End` and `Flip`. `DrawMesh` and instanced draws require finite transform matrices; invalid matrices are rejected before they reach culling or backend submission.
+**Important:** `Begin`/`End` must not nest. All 3D draw calls go between `Begin` and `End`; `DrawTerrain` and `DrawVegetation` are rejected during `Begin2D`. HUD overlay calls (`DrawRect2D`, `DrawText2D`, `DrawCrosshair`) go between `End` and `Flip`. `DrawMesh` and instanced draws require finite transform matrices; invalid matrices are rejected before they reach culling or backend submission. Draw submission clamps material colors and PBR scalars before narrowing to backend floats.
 
 ## Mesh3D
 
@@ -526,11 +526,11 @@ Surface appearance for meshes, models, decals, and other 3D drawables.
 - `NewPBR` selects the metallic/roughness workflow directly.
 - Calling `SetMetallic`, `SetRoughness`, `SetAO`, `SetMetallicRoughnessMap`, or `SetAOMap` on a legacy material promotes it into the PBR workflow.
 - `Clone()` and `MakeInstance()` both return independent material objects. They eagerly copy scalar state and share the currently referenced texture/cubemap objects by pointer. After cloning, either material can replace its maps independently.
-- Color and scalar setters sanitize input at the runtime boundary: colors and PBR factors are clamped to valid ranges, non-finite custom parameters become `0`, and non-finite shadow/fog/material values fall back to deterministic safe defaults.
+- Color and scalar setters sanitize input at the runtime boundary: colors and PBR factors are clamped to valid ranges, non-finite custom parameters become `0`, and non-finite shadow/fog/material values fall back to deterministic safe defaults. The draw path repeats finite/clamp validation before backend command submission.
 - Texture map setters accept `Pixels` handles only, and `SetEnvMap` accepts `CubeMap3D` handles only. Invalid handle types are ignored instead of being retained into material state.
 - `AlphaMode` changes how texture alpha is interpreted for PBR materials:
   - `0`: opaque. Texture/material alpha does not enable blending, and surviving fragments write depth as opaque.
-  - `1`: masked. Fragments below the cutoff are discarded; surviving fragments render as opaque coverage.
+  - `1`: masked. Fragments below the cutoff are discarded; surviving fragments render as opaque coverage. Masked materials also cast alpha-tested shadows on the software, Metal, OpenGL, and D3D11 backends.
   - `2`: blended. Texture/material alpha participates in transparency and transparent sorting.
 - Explicit `SetAlphaMode` calls take precedence over alpha auto-promotion. For example, a material
   explicitly set to `Blend` remains blended even if `Alpha` is later set back to `1.0`.
@@ -888,7 +888,7 @@ func start() {
 }
 ```
 
-Transform order: `world = parent_world * Translate * Rotate * Scale`. Dirty flags propagate to descendants automatically. `Scene3D.Save` writes a `.vscn` asset with embedded meshes, materials, textures, cubemaps, and node hierarchy, and `Scene3D.Load` reconstructs those shared payloads on load.
+Transform order: `world = parent_world * Translate * Rotate * Scale`. Dirty flags propagate to descendants automatically. Finite zero scale is preserved on `Transform3D` and `SceneNode3D`; only non-finite scale components are replaced. `Scene3D.Save` writes a `.vscn` asset with embedded meshes, materials, textures, cubemaps, and node hierarchy, and `Scene3D.Load` reconstructs those shared payloads on load.
 
 ### Binding Sync
 
@@ -1139,7 +1139,7 @@ func start() {
 }
 ```
 
-- `DrawMeshSkinned` applies CPU skinning via weighted bone palette
+- `DrawMeshSkinned` applies CPU skinning via weighted bone palette. Skinning weights are normalized consistently across CPU and GPU paths; missing palettes copy vertices through unchanged, and unused backend bone-palette slots behave as identity transforms.
 - `Crossfade` blends using TRS decomposition: position/scale linearly interpolated, rotation via quaternion SLERP
 
 ## MorphTarget3D
@@ -1211,7 +1211,7 @@ func start() {
 - Weights can be negative (reverse deformation)
 - `New(vertexCount)` bounds allocation size, deltas sanitize non-finite values to `0`, and non-finite weights become `0` before clamping to the supported range.
 - `Canvas3D.DrawMeshMorphed` requires a `Mat4` transform, a `Mesh3D`, and a matching `MorphTarget3D`; mismatched vertex counts or invalid handles skip the draw without dereferencing the wrong object type.
-- GPU-applied on Metal and on OpenGL/D3D11 while the active shape count fits backend shader limits; otherwise CPU-applied as `finalPos = basePos + sum(weight * delta)` per vertex
+- GPU-applied on Metal and on OpenGL/D3D11 while the active shape count fits backend shader limits; otherwise CPU-applied as `finalPos = basePos + sum(weight * delta)` per vertex. GPU backends clamp active shape counts to shader-indexable limits and disable the morph path on upload failure rather than reusing stale buffers.
 
 ## FBX Loader
 
@@ -1761,17 +1761,20 @@ When captured, `Mouse.DeltaX()`/`Mouse.DeltaY()` report movement from center. Th
 
 ## Physics3D
 
-Impulse-based 3D rigid body simulation with AABB, sphere, and capsule collision shapes.
+Impulse-based 3D rigid body simulation with box, sphere, and capsule collision shapes.
 Bodies now track quaternion orientation and angular velocity in addition to linear motion.
 Shape-specific narrow-phase collision: sphere-sphere uses radial distance (not AABB),
-AABB-sphere uses closest-point projection. Collision detection uses a sweep-and-prune broadphase
+box-sphere uses closest-point projection in the box's oriented local space. Collision detection uses a sweep-and-prune broadphase
 before narrow-phase tests. Non-trigger contacts apply impulses at the contact point, so off-center
 hits update angular velocity as well as linear velocity. Coulomb friction and Baumgarte positional
 correction are applied to non-trigger contacts.
 
 Capsule primitive collision honors body orientation for capsule-vs-capsule, capsule-vs-sphere,
-capsule-vs-AABB, mesh, and heightfield tests. AABB primitives remain axis-aligned boxes; use
-compound colliders or mesh/convex-hull colliders when you need rotated box geometry.
+capsule-vs-box, mesh, and heightfield tests. Box primitives honor body and compound-child
+orientation; the `NewAABB` name is kept as a compatibility factory for box bodies.
+`Raycast` tests actual collider geometry for boxes, spheres, capsules, compound leaves, mesh/convex
+triangles, and heightfields. Sphere and capsule sweeps use adaptive sampling so small-radius sweeps
+and long capsules can hit thin geometry.
 
 ### Physics3DWorld
 
@@ -1917,7 +1920,7 @@ Notes:
 | Constructor | Signature | Description |
 |-------------|-----------|-------------|
 | `New(mass)` | `obj(f64)` | Create an empty body and assign a collider later |
-| `NewAABB(sx, sy, sz, mass)` | `obj(f64, f64, f64, f64)` | AABB box body (mass=0 for static) |
+| `NewAABB(sx, sy, sz, mass)` | `obj(f64, f64, f64, f64)` | Box body (mass=0 for static); name retained for compatibility |
 | `NewSphere(radius, mass)` | `obj(f64, f64)` | Sphere body |
 | `NewCapsule(radius, height, mass)` | `obj(f64, f64, f64)` | Capsule body; `height` is total height including caps |
 
@@ -2435,7 +2438,7 @@ func start() {
 1. **Zia-only:** Use `PerlinNoise.Octave2D()` to fill a `Pixels` buffer, then call `SetHeightmap()`. The heightmap uses 16-bit precision via R (high byte) + G (low byte) channels in `0xRRGGBBAA` pixel format.
 2. **Native fast path:** Call `GeneratePerlin(noise, scale, octaves, persistence)` with a `PerlinNoise` object. This writes directly to the internal float heightmap, bypassing the Pixels intermediate for better performance on large terrains. The `noise` parameter is a `PerlinNoise` object, `scale` controls coordinate frequency, `octaves` sets detail layers (typically 4-8), and `persistence` controls amplitude decay (typically 0.4-0.6). Non-finite scale/persistence values are sanitized, octaves are clamped to `1..16`, and generated heights are clamped to `0..1`.
 
-**Texture splatting:** When a splat map is set, the terrain blends 4 layer textures per-pixel during rasterization, weighted by the splat map RGBA channels. Each layer can have its own UV tiling scale for detail repetition. The software, Metal, OpenGL, and D3D11 backends all perform per-pixel splat sampling. A `1x1` splat map is valid and acts as uniform coverage for the whole terrain. Any baked fallback texture is stored in the standard `Pixels` format, `0xRRGGBBAA`.
+**Texture splatting:** When a splat map is set, the terrain blends 4 layer textures per-pixel during rasterization, weighted by the splat map RGBA channels. Each layer can have its own UV tiling scale for detail repetition. The software, Metal, OpenGL, and D3D11 backends all perform per-pixel splat sampling. Backend splatting is enabled only when the control map and all four layer textures are present; incomplete splat sets render with the base material/fallback texture instead of sampling missing layers. A `1x1` splat map is valid and acts as uniform coverage for the whole terrain. Any baked fallback texture is stored in the standard `Pixels` format, `0xRRGGBBAA`.
 
 **LOD (Level of Detail):** Terrain chunks use 3 resolution levels based on distance from the camera:
 - LOD 0 (full): 16x16 quads per chunk (nearest chunks)
@@ -2478,6 +2481,9 @@ replaced with the corresponding identity-matrix value before culling or backend 
 | `Clear()` | `void()` | Remove all instances |
 
 Draw via `Canvas3D.DrawInstanced(batch)`.
+
+Instanced motion-history keys use stable mesh/material/count/index identity rather than the
+transient transform-buffer address, so reallocating an instance buffer does not reset motion vectors.
 
 ### Zia Example
 
@@ -3079,6 +3085,8 @@ For feature gating, prefer `canvas.BackendCapabilities` or `canvas.BackendSuppor
 **OpenGL 3.3** (Linux) — Full feature parity (OGL-01 through OGL-20): all texture types, the shared `Material3D` PBR path (metallic/roughness, AO, alpha modes, emissive intensity, normal scale), spot lights, fog, wireframe, render-to-texture, up to two directional shadow maps, post-processing, instancing, skinning, morph targets, terrain splatting, cubemap skybox, environment reflections, and advanced post-FX (SSAO, depth of field, motion blur).
 
 **Direct3D 11** (Windows) — Full feature parity: same feature set as OpenGL, including the shared `Material3D` PBR path. On non-Windows hosts, validation depends on the Windows CI lane.
+
+Backend correctness rules are shared where possible: skinning weights are normalized before application, unused bone palette slots are identity transforms, terrain splatting requires a complete control-map-plus-four-layer texture set, masked materials alpha-test shadow casters, and invalid draw/readback/shadow inputs are rejected or treated conservatively instead of being dereferenced.
 
 ## Performance Tips
 

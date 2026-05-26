@@ -24,12 +24,16 @@
 #include "vgfx3d_backend.h"
 
 #include <stdint.h>
+#include <stddef.h>
 
 #ifdef __cplusplus
 extern "C" {
 #endif
 
 #define VGFX3D_METAL_MAX_BONES 256
+#define VGFX3D_METAL_BONE_PALETTE_FLOATS (VGFX3D_METAL_MAX_BONES * 16u)
+#define VGFX3D_METAL_BONE_PALETTE_BYTES (sizeof(float) * VGFX3D_METAL_BONE_PALETTE_FLOATS)
+#define VGFX3D_METAL_MAX_MORPH_SHAPES 32
 
 typedef enum {
     VGFX3D_METAL_BLEND_OPAQUE = 0,
@@ -75,7 +79,7 @@ typedef struct {
     float prev_model[16];
 } vgfx3d_metal_instance_data_t;
 
-/// @brief Copy bone palette into a fixed-size MTLBuffer slot (zero-pads unused bones).
+/// @brief Copy bone palette into a fixed-size MTLBuffer slot (identity-pads unused bones).
 void vgfx3d_metal_pack_bone_palette(float *dst, const float *src, int32_t bone_count);
 /// @brief Build per-instance Metal buffer entries with column-major transpose for MSL.
 void vgfx3d_metal_fill_instance_data(vgfx3d_metal_instance_data_t *dst,
@@ -96,6 +100,9 @@ int32_t vgfx3d_metal_compute_mip_count(int32_t width, int32_t height);
 int32_t vgfx3d_metal_next_capacity(int32_t current_capacity,
                                    int32_t needed,
                                    int32_t minimum_capacity);
+/// @brief Clamp morph shapes so shader-side int indexing cannot overflow.
+int32_t vgfx3d_metal_clamp_morph_shape_count(uint32_t vertex_count,
+                                             int32_t requested_shape_count);
 /// @brief Pick the right render-target classification for the Metal backend.
 vgfx3d_metal_target_kind_t vgfx3d_metal_choose_target_kind(int8_t rtt_active,
                                                            int8_t gpu_postfx_enabled,
@@ -110,6 +117,13 @@ vgfx3d_metal_choose_color_format(vgfx3d_metal_target_kind_t target_kind);
 /// @brief Map a draw command to its required blend state (alpha vs opaque).
 vgfx3d_metal_blend_mode_t
 vgfx3d_metal_choose_blend_mode(const vgfx3d_draw_cmd_t *cmd);
+/// @brief Decide whether terrain splatting has every required texture bound.
+int vgfx3d_metal_has_complete_splat(int8_t cmd_has_splat,
+                                    int has_splat_map,
+                                    int has_layer0,
+                                    int has_layer1,
+                                    int has_layer2,
+                                    int has_layer3);
 /// @brief Decide whether to attach a motion-vector buffer (only for opaque scene draws).
 vgfx3d_metal_motion_attachment_mode_t
 vgfx3d_metal_choose_motion_attachment_mode(vgfx3d_metal_target_kind_t target_kind,

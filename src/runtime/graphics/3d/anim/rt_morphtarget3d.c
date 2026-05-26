@@ -843,6 +843,14 @@ static void morphtarget_draw_mesh_matrix(void *canvas,
     /* Submit via normal draw pipeline */
     rt_mesh3d tmp = *m;
     tmp.vertices = morphed;
+    tmp.morph_targets_ref = NULL;
+    tmp.morph_deltas = NULL;
+    tmp.morph_normal_deltas = NULL;
+    tmp.morph_weights = NULL;
+    tmp.prev_morph_weights = NULL;
+    tmp.morph_shape_count = 0;
+    tmp.bounds_dirty = 1;
+    rt_mesh3d_refresh_bounds(&tmp);
     rt_canvas3d_draw_mesh_matrix_keyed(
         canvas, &tmp, model_matrix, material, motion_key, NULL, NULL);
 }

@@ -41,6 +41,14 @@ void vgfx3d_skin_vertices(const vgfx3d_vertex_t *src,
                           uint32_t vertex_count,
                           const float *palette,
                           int32_t bone_count) {
+    if (!src || !dst || vertex_count == 0)
+        return;
+    if (!palette || bone_count <= 0) {
+        if (dst != src)
+            memcpy(dst, src, (size_t)vertex_count * sizeof(*dst));
+        return;
+    }
+
     for (uint32_t v = 0; v < vertex_count; v++) {
         float pos[3] = {0, 0, 0};
         float nrm[3] = {0, 0, 0};
@@ -48,7 +56,7 @@ void vgfx3d_skin_vertices(const vgfx3d_vertex_t *src,
 
         for (int b = 0; b < 4; b++) {
             float w = src[v].bone_weights[b];
-            if (w < 1e-6f)
+            if (!isfinite(w) || w <= 1e-6f)
                 continue;
             int idx = (int)src[v].bone_indices[b];
             if (idx >= bone_count)
@@ -70,6 +78,13 @@ void vgfx3d_skin_vertices(const vgfx3d_vertex_t *src,
             dst[v] = src[v];
 
         if (total_w > 1e-6f) {
+            float inv_w = 1.0f / total_w;
+            pos[0] *= inv_w;
+            pos[1] *= inv_w;
+            pos[2] *= inv_w;
+            nrm[0] *= inv_w;
+            nrm[1] *= inv_w;
+            nrm[2] *= inv_w;
             memcpy(dst[v].pos, pos, sizeof(float) * 3);
             /* Normalize skinned normal */
             float len = sqrtf(nrm[0] * nrm[0] + nrm[1] * nrm[1] + nrm[2] * nrm[2]);

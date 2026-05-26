@@ -246,7 +246,7 @@ static double rt_ray3d_intersect_aabb_raw(const double *origin,
                                           const double *dir,
                                           const double *mn,
                                           const double *mx) {
-    double tmin = -1e30, tmax = 1e30;
+    double tmin = -DBL_MAX, tmax = DBL_MAX;
     for (int i = 0; i < 3; i++) {
         if (fabs(dir[i]) < EPSILON) {
             if (origin[i] < mn[i] || origin[i] > mx[i])
@@ -324,7 +324,7 @@ static int mat4d_invert(const double *m, double *out) {
 
     {
         double det = m[0] * inv[0] + m[1] * inv[4] + m[2] * inv[8] + m[3] * inv[12];
-        if (fabs(det) < 1e-12)
+        if (!isfinite(det) || fabs(det) < 1e-12)
             return -1;
         det = 1.0 / det;
         for (int i = 0; i < 16; i++)
@@ -849,11 +849,8 @@ int64_t rt_ray3d_hit_triangle(void *hit) {
 
 /// @brief Test whether two spheres overlap (distance < sum of radii).
 int8_t rt_sphere3d_overlaps(void *center_a, double radius_a, void *center_b, double radius_b) {
-    if (!center_a || !center_b)
-        return 0;
-    double ca[3] = {rt_vec3_x(center_a), rt_vec3_y(center_a), rt_vec3_z(center_a)};
-    double cb[3] = {rt_vec3_x(center_b), rt_vec3_y(center_b), rt_vec3_z(center_b)};
-    if (!vec3_is_finite_raw(ca) || !vec3_is_finite_raw(cb))
+    double ca[3], cb[3];
+    if (!vec3_read_finite(center_a, ca) || !vec3_read_finite(center_b, cb))
         return 0;
     radius_a = isfinite(radius_a) && radius_a > 0.0 ? radius_a : 0.0;
     radius_b = isfinite(radius_b) && radius_b > 0.0 ? radius_b : 0.0;
@@ -867,11 +864,8 @@ int8_t rt_sphere3d_overlaps(void *center_a, double radius_a, void *center_b, dou
 
 /// @brief Compute the penetration vector to separate two overlapping spheres.
 void *rt_sphere3d_penetration(void *center_a, double radius_a, void *center_b, double radius_b) {
-    if (!center_a || !center_b)
-        return rt_vec3_new(0, 0, 0);
-    double ca[3] = {rt_vec3_x(center_a), rt_vec3_y(center_a), rt_vec3_z(center_a)};
-    double cb[3] = {rt_vec3_x(center_b), rt_vec3_y(center_b), rt_vec3_z(center_b)};
-    if (!vec3_is_finite_raw(ca) || !vec3_is_finite_raw(cb))
+    double ca[3], cb[3];
+    if (!vec3_read_finite(center_a, ca) || !vec3_read_finite(center_b, cb))
         return rt_vec3_new(0, 0, 0);
     radius_a = isfinite(radius_a) && radius_a > 0.0 ? radius_a : 0.0;
     radius_b = isfinite(radius_b) && radius_b > 0.0 ? radius_b : 0.0;
@@ -959,7 +953,7 @@ int8_t rt_aabb3d_sphere_overlaps(void *aabb_min, void *aabb_max, void *center, d
             double dx = p[0] - c[0];
             double dy = p[1] - c[1];
             double dz = p[2] - c[2];
-            return (dx * dx + dy * dy + dz * dz) < radius * radius ? 1 : 0;
+            return (dx * dx + dy * dy + dz * dz) <= radius * radius ? 1 : 0;
         }
     }
 }
@@ -970,13 +964,10 @@ int8_t rt_aabb3d_sphere_overlaps(void *aabb_min, void *aabb_max, void *center, d
 /// position. Degenerate zero-length segments collapse to endpoint A. Used by capsule
 /// overlap tests and AI path-following.
 void *rt_segment3d_closest_point(void *seg_a, void *seg_b, void *point) {
-    if (!seg_a || !seg_b || !point)
-        return rt_vec3_new(0, 0, 0);
-    double a[3] = {rt_vec3_x(seg_a), rt_vec3_y(seg_a), rt_vec3_z(seg_a)};
-    double b[3] = {rt_vec3_x(seg_b), rt_vec3_y(seg_b), rt_vec3_z(seg_b)};
-    double p[3] = {rt_vec3_x(point), rt_vec3_y(point), rt_vec3_z(point)};
+    double a[3], b[3], p[3];
     double closest[3];
-    if (!vec3_is_finite_raw(a) || !vec3_is_finite_raw(b) || !vec3_is_finite_raw(p))
+    if (!vec3_read_finite(seg_a, a) || !vec3_read_finite(seg_b, b) ||
+        !vec3_read_finite(point, p))
         return rt_vec3_new(0, 0, 0);
     segment3d_closest_point_raw(a, b, p, closest);
     return rt_vec3_new(closest[0], closest[1], closest[2]);
@@ -989,13 +980,10 @@ void *rt_segment3d_closest_point(void *seg_a, void *seg_b, void *point) {
 /// sqrt.
 int8_t rt_capsule3d_sphere_overlaps(
     void *cap_a, void *cap_b, double cap_radius, void *sphere_center, double sphere_radius) {
-    if (!cap_a || !cap_b || !sphere_center)
-        return 0;
-    double a[3] = {rt_vec3_x(cap_a), rt_vec3_y(cap_a), rt_vec3_z(cap_a)};
-    double b[3] = {rt_vec3_x(cap_b), rt_vec3_y(cap_b), rt_vec3_z(cap_b)};
-    double c[3] = {rt_vec3_x(sphere_center), rt_vec3_y(sphere_center), rt_vec3_z(sphere_center)};
+    double a[3], b[3], c[3];
     double closest[3];
-    if (!vec3_is_finite_raw(a) || !vec3_is_finite_raw(b) || !vec3_is_finite_raw(c))
+    if (!vec3_read_finite(cap_a, a) || !vec3_read_finite(cap_b, b) ||
+        !vec3_read_finite(sphere_center, c))
         return 0;
     cap_radius = isfinite(cap_radius) && cap_radius > 0.0 ? cap_radius : 0.0;
     sphere_radius = isfinite(sphere_radius) && sphere_radius > 0.0 ? sphere_radius : 0.0;

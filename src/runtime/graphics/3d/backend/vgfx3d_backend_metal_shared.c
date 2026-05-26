@@ -38,23 +38,34 @@ static void transpose4x4_local(const float *src, float *dst) {
             dst[c * 4 + r] = src[r * 4 + c];
 }
 
-/// @brief Copy a bone palette into a fixed-size MTLBuffer slot (zero-pads unused bones).
+/// @brief Store a row-major identity matrix into one fixed bone-palette slot.
+static void vgfx3d_metal_store_identity4x4(float *dst) {
+    memset(dst, 0, sizeof(float) * 16u);
+    dst[0] = 1.0f;
+    dst[5] = 1.0f;
+    dst[10] = 1.0f;
+    dst[15] = 1.0f;
+}
+
+/// @brief Copy a bone palette into a fixed-size MTLBuffer slot (identity-pads unused bones).
 /// Matches `vgfx3d_d3d11_pack_bone_palette` semantics; oversized inputs are
 /// clamped to the largest palette this backend exposes.
 void vgfx3d_metal_pack_bone_palette(float *dst, const float *src, int32_t bone_count) {
     size_t copy_count;
+    int32_t first_unused = 0;
 
     if (!dst)
         return;
 
-    memset(dst, 0, sizeof(float) * VGFX3D_METAL_MAX_BONES * 16u);
-    if (!src || bone_count <= 0)
-        return;
-
-    if (bone_count > VGFX3D_METAL_MAX_BONES)
-        bone_count = VGFX3D_METAL_MAX_BONES;
-    copy_count = (size_t)bone_count * 16u;
-    memcpy(dst, src, copy_count * sizeof(float));
+    if (src && bone_count > 0) {
+        if (bone_count > VGFX3D_METAL_MAX_BONES)
+            bone_count = VGFX3D_METAL_MAX_BONES;
+        copy_count = (size_t)bone_count * 16u;
+        memcpy(dst, src, copy_count * sizeof(float));
+        first_unused = bone_count;
+    }
+    for (int32_t i = first_unused; i < VGFX3D_METAL_MAX_BONES; i++)
+        vgfx3d_metal_store_identity4x4(&dst[(size_t)i * 16u]);
 }
 
 /// @brief Build per-instance Metal buffer entries with column-major transpose for MSL.
@@ -149,6 +160,27 @@ int32_t vgfx3d_metal_next_capacity(int32_t current_capacity,
     return next_capacity;
 }
 
+/// @brief Clamp morph shape count to shader and index-range limits.
+int32_t vgfx3d_metal_clamp_morph_shape_count(uint32_t vertex_count,
+                                             int32_t requested_shape_count) {
+    int32_t shape_count;
+    uint32_t max_indexed_vertices;
+    uint32_t max_shapes_by_index;
+
+    if (vertex_count == 0 || requested_shape_count <= 0)
+        return 0;
+    shape_count = requested_shape_count;
+    if (shape_count > VGFX3D_METAL_MAX_MORPH_SHAPES)
+        shape_count = VGFX3D_METAL_MAX_MORPH_SHAPES;
+    max_indexed_vertices = (uint32_t)((INT_MAX - 2) / 3);
+    max_shapes_by_index = max_indexed_vertices / vertex_count;
+    if (max_shapes_by_index == 0)
+        return 0;
+    if ((uint32_t)shape_count > max_shapes_by_index)
+        shape_count = (int32_t)max_shapes_by_index;
+    return shape_count;
+}
+
 /// @brief Pick the right render-target classification for the Metal backend.
 vgfx3d_metal_target_kind_t vgfx3d_metal_choose_target_kind(int8_t rtt_active,
                                                            int8_t gpu_postfx_enabled,
@@ -191,6 +223,17 @@ vgfx3d_metal_choose_blend_mode(const vgfx3d_draw_cmd_t *cmd) {
                                                  : VGFX3D_METAL_BLEND_OPAQUE;
 }
 
+/// @brief Decide whether terrain splatting has every required texture bound.
+int vgfx3d_metal_has_complete_splat(int8_t cmd_has_splat,
+                                    int has_splat_map,
+                                    int has_layer0,
+                                    int has_layer1,
+                                    int has_layer2,
+                                    int has_layer3) {
+    return cmd_has_splat && has_splat_map && has_layer0 && has_layer1 && has_layer2 &&
+           has_layer3;
+}
+
 /// @brief Decide whether to attach a motion-vector buffer to the current pass.
 /// Only the scene pass with opaque draws gets a motion attachment; alpha-blended
 /// draws and non-scene targets drop motion (TAA can't disambiguate transparency).
@@ -219,6 +262,7 @@ int vgfx3d_metal_should_reuse_morph_cache(const void *cached_key,
                                           uint32_t cached_vertex_count,
                                           int8_t cached_has_normal_deltas,
                                           const vgfx3d_draw_cmd_t *cmd) {
+    int32_t shape_count;
     int8_t has_normal_deltas;
 
     if (!cmd || !cmd->morph_key || cmd->morph_revision == 0 || !cmd->morph_deltas ||
@@ -226,9 +270,12 @@ int vgfx3d_metal_should_reuse_morph_cache(const void *cached_key,
         return 0;
     }
 
+    shape_count = vgfx3d_metal_clamp_morph_shape_count(cmd->vertex_count, cmd->morph_shape_count);
+    if (shape_count <= 0)
+        return 0;
     has_normal_deltas = cmd->morph_normal_deltas ? 1 : 0;
     return cached_key == cmd->morph_key && cached_revision == cmd->morph_revision &&
-           cached_shape_count == cmd->morph_shape_count &&
+           cached_shape_count == shape_count &&
            cached_vertex_count == cmd->vertex_count &&
            cached_has_normal_deltas == has_normal_deltas;
 }
