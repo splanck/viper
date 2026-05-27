@@ -1,5 +1,6 @@
 module walk_min_probe;
 
+bind Viper.Game3D;
 bind Viper.Graphics.Pixels as Pixels;
 bind Viper.Graphics3D;
 bind Viper.Math;
@@ -29,6 +30,12 @@ func luminance(px: Integer) -> Integer {
 
 func colorDiff(a: Integer, b: Integer) -> Integer {
     return absInt(red(a) - red(b)) + absInt(green(a) - green(b)) + absInt(blue(a) - blue(b));
+}
+
+func near(a: Float, b: Float, eps: Float) -> Boolean {
+    var d = a - b;
+    if (d < 0.0) { d = 0.0 - d; }
+    return d <= eps;
 }
 
 func assertFinalOverlayCrisp(img: Pixels, width: Integer, height: Integer) -> Boolean {
@@ -92,6 +99,38 @@ func assertNearBaseline(img: Pixels, baseline: Pixels, width: Integer, height: I
     return maxDiff <= 72 && avgDiff <= 8;
 }
 
+func assertWalksGrounded(game: WalkMinGame, canvas: Canvas3D) -> Boolean {
+    var player = game.getPlayer();
+    var character = game.getCharacter();
+
+    Canvas3D.ClearSyntheticInput(canvas);
+    Canvas3D.SetInputSource(canvas, 1);
+    var before = Entity3D.position(player);
+
+    Canvas3D.PushSyntheticKey(canvas, Keys.get_W(), true);
+    World3D.tick(game.getWorld());
+    game.step(0.100);
+    Canvas3D.ClearSyntheticInput(canvas);
+
+    var after = Entity3D.position(player);
+    var dx = Vec3.get_X(after) - Vec3.get_X(before);
+    var dz = Vec3.get_Z(after) - Vec3.get_Z(before);
+    if (dx * dx + dz * dz < 0.0025) {
+        Terminal.Say("RESULT: fail player did not walk");
+        return false;
+    }
+    if (CharacterController3D.grounded(character) == false) {
+        Terminal.Say("RESULT: fail player not grounded");
+        return false;
+    }
+    if (Vec3.get_Y(after) < 0.70 || Vec3.get_Y(after) > 1.50) {
+        Terminal.Say("RESULT: fail player y drift");
+        return false;
+    }
+
+    return true;
+}
+
 func main() {
     var game = new WalkMinGame();
     game.setup("Walk Min Visual Probe", 320, 180);
@@ -99,7 +138,7 @@ func main() {
     game.renderFrame();
 
     var canvas = game.getCanvas();
-    var snap = Canvas3D.ScreenshotFinal(canvas);
+    var snap = World3D.captureFinalFrame(game.getWorld());
     if (snap == null) {
         Terminal.Say("RESULT: fail screenshot-final null");
         return;
@@ -146,6 +185,15 @@ func main() {
         return;
     }
 
-    Canvas3D.Flip(canvas);
+    World3D.present(game.getWorld());
+    game.destroy();
+
+    var movementGame = new WalkMinGame();
+    movementGame.setup("Walk Min Movement Probe", 64, 48);
+    if (assertWalksGrounded(movementGame, movementGame.getCanvas()) == false) {
+        return;
+    }
+    movementGame.destroy();
+
     Terminal.Say("RESULT: ok");
 }

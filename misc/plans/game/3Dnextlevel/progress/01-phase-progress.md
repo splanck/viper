@@ -35,7 +35,7 @@ API, test, and docs items are tracked in the sibling files.
 | P0B-014 | Prove `ScreenshotFinal()` then `Flip()` does not double-apply finalization | `roadmap.md` Phase 0B Exit | done | finalization idempotence implemented; probe calls `ScreenshotFinal()` then `Flip()` | `test_rt_canvas3d_gpu_paths`, `g3d_walk_min_visual_probe` |  | ctests passed | Direct fake-backend `Flip` counter remains impractical because `Flip` enters `vgfx_update` |
 | P0B-015 | Build passes on macOS, Windows, Linux | `roadmap.md` Phase 0B Exit | partial | local macOS build passed |  |  | `cmake --build build -j...` | Windows/Linux pending |
 | P0B-016 | `check_runtime_completeness.sh` passes | `roadmap.md` Phase 0B Exit | done | runtime.def complete | script |  | `scripts/check_runtime_completeness.sh` |  |
-| P0B-017 | `ctest --test-dir build -L graphics3d` passes | `roadmap.md` Phase 0B Exit | done | graphics3d regression green | 38/38 ctests |  | `ctest --test-dir build -L graphics3d --output-on-failure` | Includes Phase 0A surface probe, synthetic input, quality profiles, model asset loading, and `walk_min` visual probe |
+| P0B-017 | `ctest --test-dir build -L graphics3d` passes | `roadmap.md` Phase 0B Exit | done | graphics3d regression green | 44/44 ctests |  | `ctest --test-dir build -L graphics3d --output-on-failure` | Includes Phase 0A surface probe, synthetic input, quality profiles, model asset loading, Game3D controller probes, and `walk_min` visual probe |
 
 ## Phase 0C - deterministic test input, clock, and backend-safe quality
 
@@ -85,7 +85,7 @@ API, test, and docs items are tracked in the sibling files.
 | P1-013 | `Input3D` reads named keyboard/mouse state, not `Canvas3D.Poll()` bitmasks | `roadmap.md` Phase 1 | done | `rt_game3d_input_*` over runtime keyboard/mouse APIs | `test_rt_game3d` | Game3D docs | focused ctest passed |  |
 | P1-014 | API-spec hello-world compiles and renders | `roadmap.md` Phase 1 Exit | partial | docs quick start mirrors passing world probe structure | `g3d_test_game3d_world_probe` renders/captures | Game3D docs | focused ctest passed | Dedicated snippet ctest still pending |
 | P1-015 | `world_probe.zia` covers construction, cleanup, find, resize, final-frame render, tick, step, runFrames, destroy, diagnostics | `roadmap.md` Phase 1 Exit | partial | world/runframes/callback-reject probes added | `g3d_test_game3d_world_probe`, `g3d_test_game3d_runframes_probe`, `g3d_test_game3d_runframes_callback_reject`; graphics3d 44/44 | Game3D docs | ctests passed | Tick/step and destroyed-handle diagnostics need explicit Zia probe coverage |
-| P1-016 | No common-case sample uses `Mat4.` | `roadmap.md` Phase 1 Exit | partial | Game3D docs/probes use entity transform helpers | `g3d_test_game3d_world_probe` | Game3D docs | focused ctest passed | Final starter/showcase samples still pending |
+| P1-016 | No common-case sample uses `Mat4.` | `roadmap.md` Phase 1 Exit | partial | Game3D docs/probes and `walk_min` use entity transform helpers | `g3d_test_game3d_world_probe`; `g3d_walk_min_visual_probe` | Game3D docs; `examples/3d/README.md` | focused ctests passed | Final starter/showcase samples still pending |
 
 ## Phase 2 - cameras and walkable movement
 
@@ -101,7 +101,7 @@ API, test, and docs items are tracked in the sibling files.
 | P2-008 | Synthetic-input probes deterministically change camera pose | `roadmap.md` Phase 2 Exit | done | Controller dispatch consumes Canvas3D synthetic input | `g3d_test_game3d_camera_controllers_probe` | Game3D docs | direct probe passed | Free-fly camera pose changes from scripted W/mouse |
 | P2-009 | First-person character movement is not one frame late | `roadmap.md` Phase 2 Exit | done | Character update happens before physics in `stepSimulation` | `test_rt_game3d`; `g3d_test_game3d_character_controller_probe` | Game3D docs | focused tests passed | One `runFramesOnly` frame moves the player entity |
 | P2-010 | Follow camera tracks post-physics entity pose | `roadmap.md` Phase 2 Exit | done | Follow controller lateUpdate after physics/sync | `test_rt_game3d`; `g3d_test_game3d_camera_controllers_probe` | Game3D docs | focused tests passed | Target move before `stepSimulation` is observed in same frame |
-| P2-011 | `walk_min` supports walking with collision/grounding | `roadmap.md` Phase 2 Exit | todo |  |  |  |  |  |
+| P2-011 | `walk_min` supports walking with collision/grounding | `roadmap.md` Phase 2 Exit | done | `walk_min` now uses `World3D`, `FirstPersonController`, `CharacterController3D`, static ground/prop colliders, and `Entity3D` scene props | `g3d_walk_min_visual_probe` checks final frame plus grounded synthetic movement | `examples/3d/README.md`; Game3D docs | focused ctest passed | Probe uses a fresh movement instance with synthetic input source enabled |
 | P2-012 | No hand-authored camera `LookAt` loop needed in game code | `roadmap.md` Phase 2 Exit | done | Built-in controllers call Camera3D helpers internally | Controller probes and docs examples | Game3D docs | focused tests passed | Raw `Camera3D.LookAt` remains an escape hatch |
 
 ## Phase 3 - presets, prefabs, quality, environment, debug

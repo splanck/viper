@@ -291,6 +291,7 @@ The Game3D runtime is covered by:
 | `g3d_test_game3d_runframes_callback_reject` | Interpreted Zia callback rejection diagnostic for native callback-loop APIs |
 | `g3d_test_game3d_camera_controllers_probe` | Zia free-fly synthetic input, orbit drag/zoom, and follow camera post-physics tracking |
 | `g3d_test_game3d_character_controller_probe` | Zia first-person character movement and late-update camera alignment |
+| `g3d_walk_min_visual_probe` | Game3D sample final-frame baseline, crisp overlay, directional lighting, and grounded synthetic first-person movement |
 
 Run the focused set with:
 
@@ -309,10 +310,11 @@ ctest --test-dir build -L graphics3d --output-on-failure
 ## Current Boundaries
 
 The core world/entity/input layer and built-in camera/character controllers now
-live in the C runtime. `BodyDef` construction, rich Game3D collision event
-wrappers, prefabs, environment presets, `Assets3D`, animation helpers, 3D audio
-playback helpers, VFX presets, starter templates, and showcase samples remain
-tracked in the 3D Next Level plan.
+live in the C runtime. `examples/3d/walk_min.zia` is the current small Game3D
+walking sample. `BodyDef` construction, rich Game3D collision event wrappers,
+prefabs, environment presets, `Assets3D`, animation helpers, 3D audio playback
+helpers, VFX presets, starter templates, and showcase samples remain tracked in
+the 3D Next Level plan.
 
 Use the lower-level `Viper.Graphics3D` and `Viper.Sound` APIs as escape hatches
 while those higher-level Game3D helpers are being implemented.
