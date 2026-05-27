@@ -282,6 +282,8 @@ static int32_t g_game3d_model_cache_capacity = 0;
 static int game3d_callback_pointer_is_native(void *callback) {
     if (!callback)
         return 1;
+    if (((uintptr_t)callback & (UINTPTR_MAX - (UINTPTR_MAX >> 1))) != 0)
+        return 0;
     if (rt_heap_is_payload(callback))
         return 0;
 #if defined(_WIN32)
