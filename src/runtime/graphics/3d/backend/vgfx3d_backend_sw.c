@@ -68,6 +68,7 @@ typedef struct {
     float shadow_bias;
     int8_t shadow_pass_slot;
     int8_t shadow_count;
+    int8_t shadow_complete[VGFX3D_MAX_SHADOW_LIGHTS];
 } sw_context_t;
 
 static inline void sw_compute_view_vector(const sw_context_t *ctx,
@@ -77,6 +78,43 @@ static inline void sw_compute_view_vector(const sw_context_t *ctx,
                                           float *out_vx,
                                           float *out_vy,
                                           float *out_vz);
+
+static int sw_normalize3(float *x, float *y, float *z, float fallback_x, float fallback_y, float fallback_z) {
+    float len;
+    if (!x || !y || !z || !isfinite(*x) || !isfinite(*y) || !isfinite(*z)) {
+        if (x)
+            *x = fallback_x;
+        if (y)
+            *y = fallback_y;
+        if (z)
+            *z = fallback_z;
+        return 0;
+    }
+    len = sqrtf((*x) * (*x) + (*y) * (*y) + (*z) * (*z));
+    if (!isfinite(len) || len <= 1e-7f) {
+        *x = fallback_x;
+        *y = fallback_y;
+        *z = fallback_z;
+        return 0;
+    }
+    *x /= len;
+    *y /= len;
+    *z /= len;
+    return 1;
+}
+
+static void sw_recompute_shadow_count(sw_context_t *ctx) {
+    int8_t count = 0;
+    if (!ctx)
+        return;
+    for (int slot = 0; slot < VGFX3D_MAX_SHADOW_LIGHTS; slot++) {
+        if (!ctx->shadow_complete[slot] || !ctx->shadow_depth[slot] || ctx->shadow_w[slot] <= 0 ||
+            ctx->shadow_h[slot] <= 0)
+            break;
+        count = (int8_t)(slot + 1);
+    }
+    ctx->shadow_count = count;
+}
 
 /// @brief Sample the shadow map for @p slot at a world-space position and return a visibility factor.
 /// @details Transforms the world position into shadow NDC via the stored shadow VP matrix, then
@@ -111,7 +149,9 @@ static float sw_sample_shadow_visibility(const sw_context_t *ctx,
     float visibility_sum = 0.0f;
     int sample_count = 0;
 
-    if (!ctx || slot < 0 || slot >= ctx->shadow_count || !ctx->shadow_depth[slot])
+    if (!ctx || slot < 0 || slot >= ctx->shadow_count || slot >= VGFX3D_MAX_SHADOW_LIGHTS ||
+        !ctx->shadow_complete[slot] || !ctx->shadow_depth[slot] || ctx->shadow_w[slot] <= 0 ||
+        ctx->shadow_h[slot] <= 0)
         return 1.0f;
 
     svp = ctx->shadow_vp[slot];
@@ -119,13 +159,14 @@ static float sw_sample_shadow_visibility(const sw_context_t *ctx,
     ly = wx * svp[4] + wy * svp[5] + wz * svp[6] + svp[7];
     lz = wx * svp[8] + wy * svp[9] + wz * svp[10] + svp[11];
     lw = wx * svp[12] + wy * svp[13] + wz * svp[14] + svp[15];
-    if (fabsf(lw) <= 1e-7f)
+    if (lw <= 1e-7f || !isfinite(lw))
         return 1.0f;
 
     su = (lx / lw) * 0.5f + 0.5f;
     sv = (1.0f - ly / lw) * 0.5f;
     sd = (lz / lw) * 0.5f + 0.5f;
-    if (su < 0.0f || su >= 1.0f || sv < 0.0f || sv >= 1.0f)
+    if (!isfinite(su) || !isfinite(sv) || !isfinite(sd) || su < 0.0f || su >= 1.0f ||
+        sv < 0.0f || sv >= 1.0f || sd < 0.0f || sd > 1.0f)
         return 1.0f;
 
     shadow_w = ctx->shadow_w[slot];
@@ -402,12 +443,7 @@ static void compute_lighting(pipe_vert_t *v,
     }
 
     float nx = v->normal[0], ny = v->normal[1], nz = v->normal[2];
-    float nlen = sqrtf(nx * nx + ny * ny + nz * nz);
-    if (nlen > 1e-7f) {
-        nx /= nlen;
-        ny /= nlen;
-        nz /= nlen;
-    }
+    sw_normalize3(&nx, &ny, &nz, 0.0f, 0.0f, 1.0f);
 
     float vx;
     float vy;
@@ -433,23 +469,19 @@ static void compute_lighting(pipe_vert_t *v,
             lx = -light->direction[0];
             ly = -light->direction[1];
             lz = -light->direction[2];
-            float ll = sqrtf(lx * lx + ly * ly + lz * lz);
-            if (ll > 1e-7f) {
-                lx /= ll;
-                ly /= ll;
-                lz /= ll;
-            }
+            if (!sw_normalize3(&lx, &ly, &lz, 0.0f, 0.0f, 0.0f))
+                continue;
         } else if (light->type == 1) /* point */
         {
             lx = light->position[0] - v->world[0];
             ly = light->position[1] - v->world[1];
             lz = light->position[2] - v->world[2];
             float dist = sqrtf(lx * lx + ly * ly + lz * lz);
-            if (dist > 1e-7f) {
-                lx /= dist;
-                ly /= dist;
-                lz /= dist;
-            }
+            if (!isfinite(dist) || dist <= 1e-7f)
+                continue;
+            lx /= dist;
+            ly /= dist;
+            lz /= dist;
             atten = 1.0f / (1.0f + light->attenuation * dist * dist);
         } else if (light->type == 3) /* spot */
         {
@@ -457,20 +489,29 @@ static void compute_lighting(pipe_vert_t *v,
             ly = light->position[1] - v->world[1];
             lz = light->position[2] - v->world[2];
             float dist = sqrtf(lx * lx + ly * ly + lz * lz);
-            if (dist > 1e-7f) {
-                lx /= dist;
-                ly /= dist;
-                lz /= dist;
-            }
+            if (!isfinite(dist) || dist <= 1e-7f)
+                continue;
+            lx /= dist;
+            ly /= dist;
+            lz /= dist;
             atten = 1.0f / (1.0f + light->attenuation * dist * dist);
             /* Cone attenuation: smoothstep between outer and inner cosines */
-            float spot_dot =
-                -(lx * light->direction[0] + ly * light->direction[1] + lz * light->direction[2]);
+            float sx = -light->direction[0];
+            float sy = -light->direction[1];
+            float sz = -light->direction[2];
+            if (!sw_normalize3(&sx, &sy, &sz, 0.0f, 0.0f, 0.0f))
+                continue;
+            float spot_dot = lx * sx + ly * sy + lz * sz;
             if (spot_dot < light->outer_cos)
                 atten = 0.0f; /* outside cone */
             else if (spot_dot < light->inner_cos) {
-                float t = (spot_dot - light->outer_cos) / (light->inner_cos - light->outer_cos);
-                atten *= t * t * (3.0f - 2.0f * t); /* smoothstep */
+                float cone_range = light->inner_cos - light->outer_cos;
+                if (cone_range <= 1e-6f) {
+                    atten = 0.0f;
+                } else {
+                    float t = (spot_dot - light->outer_cos) / cone_range;
+                    atten *= t * t * (3.0f - 2.0f * t); /* smoothstep */
+                }
             }
         } else /* ambient */
         {
@@ -491,12 +532,8 @@ static void compute_lighting(pipe_vert_t *v,
 
         if (ndl > 0.0f && cmd->shininess > 0.0f) {
             float hx = lx + vx, hy = ly + vy, hz = lz + vz;
-            float hlen = sqrtf(hx * hx + hy * hy + hz * hz);
-            if (hlen > 1e-7f) {
-                hx /= hlen;
-                hy /= hlen;
-                hz /= hlen;
-            }
+            if (!sw_normalize3(&hx, &hy, &hz, 0.0f, 0.0f, 1.0f))
+                continue;
             float ndh = nx * hx + ny * hy + nz * hz;
             if (ndh < 0.0f)
                 ndh = 0.0f;
@@ -569,11 +606,16 @@ typedef struct {
 /// public ABI of `rt_pixels_new`). Returns 1 if the view is sampleable
 /// (non-null + non-empty), 0 otherwise.
 static int setup_pixels_view(const void *pixels_obj, sw_pixels_view *out) {
-    if (!pixels_obj)
+    if (!pixels_obj || !out)
         return 0;
     const sw_pixels_view *pv = (const sw_pixels_view *)pixels_obj;
     *out = *pv;
-    return (out->width > 0 && out->height > 0 && out->data != NULL);
+    if (out->width <= 0 || out->height <= 0 || out->width > INT32_MAX ||
+        out->height > INT32_MAX || !out->data)
+        return 0;
+    if (out->width > INT32_MAX / out->height)
+        return 0;
+    return 1;
 }
 
 static int sw_setup_complete_splat(const vgfx3d_draw_cmd_t *cmd,
@@ -596,6 +638,8 @@ static int sw_setup_complete_splat(const vgfx3d_draw_cmd_t *cmd,
 /// @details CLAMP_TO_EDGE saturates to [0, 1]. MIRRORED_REPEAT folds across even/odd periods
 ///          so the texture reads forward then backward. Default (repeat) uses fract().
 static float sw_wrap_coord(float value, int32_t mode) {
+    if (!isfinite(value))
+        return 0.0f;
     if (mode == RT_MATERIAL3D_TEXTURE_WRAP_CLAMP_TO_EDGE) {
         if (value < 0.0f)
             return 0.0f;
@@ -667,12 +711,16 @@ static void sample_texture_ex(const sw_pixels_view *tex,
                               float *g,
                               float *b,
                               float *a) {
-    int w = (int)tex->width, h = (int)tex->height;
-    if (w == 0 || h == 0) {
+    if (!r || !g || !b || !a)
+        return;
+    if (!tex || !tex->data || tex->width <= 0 || tex->height <= 0 ||
+        tex->width > INT32_MAX || tex->height > INT32_MAX ||
+        tex->width > INT32_MAX / tex->height) {
         *r = *g = *b = 1.0f;
         *a = 1.0f;
         return;
     }
+    int w = (int)tex->width, h = (int)tex->height;
 
     u = sw_wrap_coord(u, wrap_s);
     v = sw_wrap_coord(v, wrap_t);
@@ -990,12 +1038,25 @@ static inline float dot3f(float ax, float ay, float az, float bx, float by, floa
 
 /// @brief In-place 3-vector normalization (no-op for zero-length vectors).
 static inline void normalize3f(float *x, float *y, float *z) {
-    float len = sqrtf((*x) * (*x) + (*y) * (*y) + (*z) * (*z));
-    if (len > 1e-7f) {
-        *x /= len;
-        *y /= len;
-        *z /= len;
+    if (!x || !y || !z || !isfinite(*x) || !isfinite(*y) || !isfinite(*z)) {
+        if (x)
+            *x = 0.0f;
+        if (y)
+            *y = 0.0f;
+        if (z)
+            *z = 0.0f;
+        return;
     }
+    float len = sqrtf((*x) * (*x) + (*y) * (*y) + (*z) * (*z));
+    if (!isfinite(len) || len <= 1e-7f) {
+        *x = 0.0f;
+        *y = 0.0f;
+        *z = 0.0f;
+        return;
+    }
+    *x /= len;
+    *y /= len;
+    *z /= len;
 }
 
 /// @brief Compute the unit view vector from a world-space point to the camera.
@@ -1709,31 +1770,38 @@ static void raster_triangle(uint8_t *pixels,
                                         lly = lt->position[1] - wy;
                                         llz = lt->position[2] - wz;
                                         float dist = sqrtf(llx * llx + lly * lly + llz * llz);
-                                        if (dist > 1e-7f) {
-                                            llx /= dist;
-                                            lly /= dist;
-                                            llz /= dist;
-                                        }
+                                        if (!isfinite(dist) || dist <= 1e-7f)
+                                            continue;
+                                        llx /= dist;
+                                        lly /= dist;
+                                        llz /= dist;
                                         la = 1.0f / (1.0f + lt->attenuation * dist * dist);
                                     } else if (lt->type == 3) { /* spot */
                                         llx = lt->position[0] - wx;
                                         lly = lt->position[1] - wy;
                                         llz = lt->position[2] - wz;
                                         float dist = sqrtf(llx * llx + lly * lly + llz * llz);
-                                        if (dist > 1e-7f) {
-                                            llx /= dist;
-                                            lly /= dist;
-                                            llz /= dist;
-                                        }
+                                        if (!isfinite(dist) || dist <= 1e-7f)
+                                            continue;
+                                        llx /= dist;
+                                        lly /= dist;
+                                        llz /= dist;
                                         la = 1.0f / (1.0f + lt->attenuation * dist * dist);
-                                        float sd = -(llx * lt->direction[0] + lly * lt->direction[1] +
-                                                     llz * lt->direction[2]);
+                                        float sdx = -lt->direction[0];
+                                        float sdy = -lt->direction[1];
+                                        float sdz = -lt->direction[2];
+                                        normalize3f(&sdx, &sdy, &sdz);
+                                        float sd = llx * sdx + lly * sdy + llz * sdz;
                                         if (sd < lt->outer_cos)
                                             la = 0.0f;
                                         else if (sd < lt->inner_cos) {
-                                            float st =
-                                                (sd - lt->outer_cos) / (lt->inner_cos - lt->outer_cos);
-                                            la *= st * st * (3.0f - 2.0f * st);
+                                            float cone_range = lt->inner_cos - lt->outer_cos;
+                                            if (cone_range <= 1e-6f) {
+                                                la = 0.0f;
+                                            } else {
+                                                float st = (sd - lt->outer_cos) / cone_range;
+                                                la *= st * st * (3.0f - 2.0f * st);
+                                            }
                                         }
                                     } else { /* ambient */
                                         lit_r += lt->color[0] * lt->intensity * base_r * ao;
@@ -1870,31 +1938,38 @@ static void raster_triangle(uint8_t *pixels,
                                         lly = lt->position[1] - wy;
                                         llz = lt->position[2] - wz;
                                         float dist = sqrtf(llx * llx + lly * lly + llz * llz);
-                                        if (dist > 1e-7f) {
-                                            llx /= dist;
-                                            lly /= dist;
-                                            llz /= dist;
-                                        }
+                                        if (!isfinite(dist) || dist <= 1e-7f)
+                                            continue;
+                                        llx /= dist;
+                                        lly /= dist;
+                                        llz /= dist;
                                         la = 1.0f / (1.0f + lt->attenuation * dist * dist);
                                     } else if (lt->type == 3) { /* spot */
                                         llx = lt->position[0] - wx;
                                         lly = lt->position[1] - wy;
                                         llz = lt->position[2] - wz;
                                         float dist = sqrtf(llx * llx + lly * lly + llz * llz);
-                                        if (dist > 1e-7f) {
-                                            llx /= dist;
-                                            lly /= dist;
-                                            llz /= dist;
-                                        }
+                                        if (!isfinite(dist) || dist <= 1e-7f)
+                                            continue;
+                                        llx /= dist;
+                                        lly /= dist;
+                                        llz /= dist;
                                         la = 1.0f / (1.0f + lt->attenuation * dist * dist);
-                                        float sd = -(llx * lt->direction[0] + lly * lt->direction[1] +
-                                                     llz * lt->direction[2]);
+                                        float sdx = -lt->direction[0];
+                                        float sdy = -lt->direction[1];
+                                        float sdz = -lt->direction[2];
+                                        normalize3f(&sdx, &sdy, &sdz);
+                                        float sd = llx * sdx + lly * sdy + llz * sdz;
                                         if (sd < lt->outer_cos)
                                             la = 0.0f;
                                         else if (sd < lt->inner_cos) {
-                                            float st =
-                                                (sd - lt->outer_cos) / (lt->inner_cos - lt->outer_cos);
-                                            la *= st * st * (3.0f - 2.0f * st);
+                                            float cone_range = lt->inner_cos - lt->outer_cos;
+                                            if (cone_range <= 1e-6f) {
+                                                la = 0.0f;
+                                            } else {
+                                                float st = (sd - lt->outer_cos) / cone_range;
+                                                la *= st * st * (3.0f - 2.0f * st);
+                                            }
                                         }
                                     } else { /* ambient */
                                         lit_r += lt->color[0] * lt->intensity * fr;
@@ -2345,14 +2420,25 @@ static void sw_shadow_begin(
     void *ctx_ptr, int32_t slot, float *depth_buf, int32_t w, int32_t h, const float *light_vp) {
     sw_context_t *ctx = (sw_context_t *)ctx_ptr;
     size_t pixel_count;
-    if (!ctx || slot < 0 || slot >= VGFX3D_MAX_SHADOW_LIGHTS || !depth_buf || !light_vp ||
-        w <= 0 || h <= 0)
+    if (!ctx)
         return;
-    if ((size_t)w > SIZE_MAX / (size_t)h)
+    ctx->shadow_pass_slot = -1;
+    if (slot < 0 || slot >= VGFX3D_MAX_SHADOW_LIGHTS)
         return;
+    ctx->shadow_complete[slot] = 0;
+    if (!depth_buf || !light_vp || w <= 0 || h <= 0) {
+        sw_recompute_shadow_count(ctx);
+        return;
+    }
+    if ((size_t)w > SIZE_MAX / (size_t)h) {
+        sw_recompute_shadow_count(ctx);
+        return;
+    }
     pixel_count = (size_t)w * (size_t)h;
-    if (pixel_count > (size_t)INT32_MAX)
+    if (pixel_count > (size_t)INT32_MAX) {
+        sw_recompute_shadow_count(ctx);
         return;
+    }
     ctx->shadow_pass_slot = (int8_t)slot;
     ctx->shadow_depth[slot] = depth_buf;
     ctx->shadow_w[slot] = w;
@@ -2425,7 +2511,7 @@ static void sw_shadow_draw(void *ctx_ptr, const vgfx3d_draw_cmd_t *cmd) {
             int ok = 1;
             for (int vi = 0; vi < 3; vi++) {
                 float w = fan[vi]->clip[3];
-                if (fabsf(w) < 1e-7f) {
+                if (w <= 1e-7f || !isfinite(w)) {
                     ok = 0;
                     break;
                 }
@@ -2440,6 +2526,10 @@ static void sw_shadow_draw(void *ctx_ptr, const vgfx3d_draw_cmd_t *cmd) {
                 screen_x[vi] = (ndc_x + 1.0f) * half_w;
                 screen_y[vi] = (1.0f - ndc_y) * half_h;
                 screen_z[vi] = ndc_z * 0.5f + 0.5f;
+                if (screen_z[vi] < 0.0f || screen_z[vi] > 1.0f) {
+                    ok = 0;
+                    break;
+                }
                 tex_u[vi] = fan[vi]->uv[0];
                 tex_v[vi] = fan[vi]->uv[1];
                 tex_u1[vi] = fan[vi]->uv1[0];
@@ -2470,9 +2560,13 @@ static void sw_shadow_end(void *ctx_ptr, int32_t slot, float bias) {
     sw_context_t *ctx = (sw_context_t *)ctx_ptr;
     if (!ctx || slot < 0 || slot >= VGFX3D_MAX_SHADOW_LIGHTS)
         return;
+    if (ctx->shadow_pass_slot != slot)
+        return;
     ctx->shadow_bias = bias;
-    if (ctx->shadow_count < slot + 1)
-        ctx->shadow_count = (int8_t)(slot + 1);
+    ctx->shadow_complete[slot] =
+        (ctx->shadow_depth[slot] && ctx->shadow_w[slot] > 0 && ctx->shadow_h[slot] > 0) ? 1 : 0;
+    ctx->shadow_pass_slot = -1;
+    sw_recompute_shadow_count(ctx);
 }
 
 /*==========================================================================
@@ -2592,6 +2686,7 @@ static void sw_begin_frame(void *ctx_ptr, const vgfx3d_camera_params_t *cam) {
     /* Reset shadow state — rebuilt if shadows are enabled this frame */
     ctx->shadow_pass_slot = -1;
     ctx->shadow_count = 0;
+    memset(ctx->shadow_complete, 0, sizeof(ctx->shadow_complete));
 }
 
 /// @brief Backend `submit_draw` op — render one indexed mesh in software.

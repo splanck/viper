@@ -140,6 +140,8 @@ void vgfx3d_d3d11_update_frame_history(vgfx3d_d3d11_frame_history_t *history,
 void vgfx3d_d3d11_resolve_bone_upload_status(vgfx3d_d3d11_per_object_t *object_data,
                                              int current_upload_ok,
                                              int prev_upload_ok);
+/// @brief Decide if shader skinning can run; palette uploads clamp to the shader maximum.
+int vgfx3d_d3d11_should_enable_skinning(const float *bone_palette, int32_t bone_count);
 /// @brief Reconcile morph-target upload outcome (positions + normals) into draw flags.
 void vgfx3d_d3d11_resolve_morph_upload_status(vgfx3d_d3d11_per_object_t *object_data,
                                               int morph_upload_ok,

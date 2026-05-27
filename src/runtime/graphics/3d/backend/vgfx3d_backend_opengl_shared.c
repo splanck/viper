@@ -235,6 +235,15 @@ vgfx3d_opengl_readback_kind_t vgfx3d_opengl_choose_readback_kind(int8_t gpu_post
                               : VGFX3D_OPENGL_READBACK_BACKBUFFER;
 }
 
+/// @brief Clamp light shadow indices to completed contiguous shadow-map slots.
+int32_t vgfx3d_opengl_sanitize_shadow_index(int32_t shadow_index, int32_t shadow_count) {
+    if (shadow_count <= 0)
+        return -1;
+    if (shadow_count > VGFX3D_MAX_SHADOW_LIGHTS)
+        shadow_count = VGFX3D_MAX_SHADOW_LIGHTS;
+    return (shadow_index >= 0 && shadow_index < shadow_count) ? shadow_index : -1;
+}
+
 /// @brief Decide whether to reuse a cached morph-target GPU buffer.
 /// Returns 1 if the cached payload is still valid (same key + matching shape/vertex count),
 /// 0 if the buffer must be re-uploaded.

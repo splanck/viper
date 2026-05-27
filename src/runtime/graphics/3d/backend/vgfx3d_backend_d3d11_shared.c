@@ -162,6 +162,11 @@ void vgfx3d_d3d11_resolve_bone_upload_status(vgfx3d_d3d11_per_object_t *object_d
         object_data->has_prev_skinning = 0;
 }
 
+/// @brief Decide if shader skinning can run; palette uploads clamp to shader capacity.
+int vgfx3d_d3d11_should_enable_skinning(const float *bone_palette, int32_t bone_count) {
+    return (bone_palette && bone_count > 0) ? 1 : 0;
+}
+
 /// @brief Reconcile morph-target upload outcomes (positions and normals) into draw flags.
 /// On failure the shape count drops to 0 (mesh renders un-morphed). If only normal
 /// deltas fail, the position morph still applies but normals will be re-derived from

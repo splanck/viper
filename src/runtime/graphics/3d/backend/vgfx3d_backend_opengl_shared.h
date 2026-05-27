@@ -119,6 +119,8 @@ vgfx3d_opengl_choose_motion_attachment_mode(vgfx3d_opengl_target_kind_t target_k
                                             const vgfx3d_draw_cmd_t *cmd);
 /// @brief Decide whether canvas readback should source the swapchain or postfx target.
 vgfx3d_opengl_readback_kind_t vgfx3d_opengl_choose_readback_kind(int8_t gpu_postfx_enabled);
+/// @brief Clamp light shadow indices to the currently completed contiguous shadow slots.
+int32_t vgfx3d_opengl_sanitize_shadow_index(int32_t shadow_index, int32_t shadow_count);
 /// @brief Decide whether to reuse a cached morph-target GPU buffer (key + revision + counts match).
 int vgfx3d_opengl_should_reuse_morph_cache(const void *cached_key,
                                            uint64_t cached_revision,

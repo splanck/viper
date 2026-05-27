@@ -263,6 +263,14 @@ static void test_capacity_mip_and_morph_cache_helpers(void) {
                 "Old cache entries become prune candidates");
     EXPECT_TRUE(vgfx3d_metal_should_prune_cache_entry(200, 10, 240) == 0,
                 "Recently used cache entries stay resident");
+    EXPECT_TRUE(vgfx3d_metal_sanitize_shadow_index(1, 2) == 1,
+                "Shadow index helper preserves completed shadow slots");
+    EXPECT_TRUE(vgfx3d_metal_sanitize_shadow_index(2, 2) == -1,
+                "Shadow index helper rejects slots beyond the completed count");
+    EXPECT_TRUE(vgfx3d_metal_sanitize_shadow_index(0, 0) == -1,
+                "Shadow index helper rejects all slots when no shadow maps completed");
+    EXPECT_TRUE(vgfx3d_metal_sanitize_shadow_index(3, 99) == -1,
+                "Shadow index helper still clamps to the backend maximum slot count");
 
     memset(&cmd, 0, sizeof(cmd));
     cmd.morph_key = &cmd;

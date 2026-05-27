@@ -15,6 +15,7 @@
 
 #ifdef VIPER_ENABLE_GRAPHICS
 
+#include "vgfx3d_backend_utils.h"
 #include "vgfx3d_skinning.h"
 
 #include <math.h>
@@ -24,8 +25,9 @@
 /// @details For every vertex, sums `weight[i] * palette[bone_index[i]] * v` over the
 ///   four bone influences carried in `src[v].bone_weights` / `src[v].bone_indices`.
 ///   Positions take the full affine row (translation column included); normals use
-///   only the 3x3 linear block and are re-normalized. Influences with weight below
-///   1e-6 or whose bone index exceeds `bone_count` are skipped. Non-position/normal
+///   each bone's inverse-transpose normal matrix and are re-normalized. Influences
+///   with weight below 1e-6 or whose bone index exceeds `bone_count` are skipped.
+///   Non-position/normal
 ///   attributes are passed through by copying `src[v]` into `dst[v]` first when the
 ///   buffers differ (in-place skinning is supported by leaving `dst == src`).
 ///   Vertices with zero total weight fall through unchanged so unskinned geometry
@@ -63,12 +65,15 @@ void vgfx3d_skin_vertices(const vgfx3d_vertex_t *src,
                 continue;
 
             const float *m = &palette[idx * 16];
+            float nm[16];
+            vgfx3d_compute_normal_matrix4(m, nm);
             /* pos += w * (M * src_pos) — row-major multiply */
             for (int i = 0; i < 3; i++) {
                 pos[i] += w * (m[i * 4 + 0] * src[v].pos[0] + m[i * 4 + 1] * src[v].pos[1] +
                                m[i * 4 + 2] * src[v].pos[2] + m[i * 4 + 3]);
-                nrm[i] += w * (m[i * 4 + 0] * src[v].normal[0] + m[i * 4 + 1] * src[v].normal[1] +
-                               m[i * 4 + 2] * src[v].normal[2]);
+                nrm[i] += w * (nm[i * 4 + 0] * src[v].normal[0] +
+                               nm[i * 4 + 1] * src[v].normal[1] +
+                               nm[i * 4 + 2] * src[v].normal[2]);
             }
             total_w += w;
         }

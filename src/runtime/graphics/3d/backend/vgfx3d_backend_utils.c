@@ -181,7 +181,11 @@ void vgfx3d_flip_rgba_rows(uint8_t *rgba, int32_t w, int32_t h) {
     if (!rgba || w <= 0 || h <= 1)
         return;
 
+    if ((size_t)w > SIZE_MAX / 4u)
+        return;
     size_t row_bytes = (size_t)w * 4;
+    if (row_bytes != 0 && (size_t)h > SIZE_MAX / row_bytes)
+        return;
     uint8_t *tmp = (uint8_t *)malloc(row_bytes);
     if (!tmp)
         return;
@@ -354,10 +358,18 @@ void vgfx3d_copy_linear_rgba32f_to_rgba8(uint8_t *dst_rgba,
     }
 }
 
+static void vgfx3d_store_identity_normal_matrix4(float *out_matrix) {
+    memset(out_matrix, 0, sizeof(float) * 16);
+    out_matrix[0] = 1.0f;
+    out_matrix[5] = 1.0f;
+    out_matrix[10] = 1.0f;
+    out_matrix[15] = 1.0f;
+}
+
 /// @brief Compute the normal matrix (inverse-transpose of the upper 3×3 of
 /// @p model_matrix) and place it in the upper-left 3×3 of @p out_matrix.
-/// Falls back to copying the upper 3×3 directly when the matrix is singular,
-/// avoiding NaN/Inf propagation in shaders.
+/// Falls back to identity when the matrix is singular or non-finite, avoiding
+/// NaN/Inf propagation in shaders and CPU skinning.
 void vgfx3d_compute_normal_matrix4(const float *model_matrix, float *out_matrix) {
     if (!model_matrix || !out_matrix)
         return;
@@ -365,6 +377,12 @@ void vgfx3d_compute_normal_matrix4(const float *model_matrix, float *out_matrix)
     const float a = model_matrix[0], b = model_matrix[1], c = model_matrix[2];
     const float d = model_matrix[4], e = model_matrix[5], f = model_matrix[6];
     const float g = model_matrix[8], h = model_matrix[9], i = model_matrix[10];
+
+    if (!isfinite(a) || !isfinite(b) || !isfinite(c) || !isfinite(d) || !isfinite(e) ||
+        !isfinite(f) || !isfinite(g) || !isfinite(h) || !isfinite(i)) {
+        vgfx3d_store_identity_normal_matrix4(out_matrix);
+        return;
+    }
 
     const float c00 = e * i - f * h;
     const float c01 = -(d * i - f * g);
@@ -378,22 +396,14 @@ void vgfx3d_compute_normal_matrix4(const float *model_matrix, float *out_matrix)
 
     float det = a * c00 + b * c01 + c * c02;
     float inv_det = 0.0f;
-    if (fabsf(det) > 1e-8f)
+    if (isfinite(det) && fabsf(det) > 1e-8f)
         inv_det = 1.0f / det;
 
     memset(out_matrix, 0, sizeof(float) * 16);
     out_matrix[15] = 1.0f;
 
-    if (inv_det == 0.0f) {
-        out_matrix[0] = a;
-        out_matrix[1] = b;
-        out_matrix[2] = c;
-        out_matrix[4] = d;
-        out_matrix[5] = e;
-        out_matrix[6] = f;
-        out_matrix[8] = g;
-        out_matrix[9] = h;
-        out_matrix[10] = i;
+    if (!isfinite(inv_det) || inv_det == 0.0f) {
+        vgfx3d_store_identity_normal_matrix4(out_matrix);
         return;
     }
 

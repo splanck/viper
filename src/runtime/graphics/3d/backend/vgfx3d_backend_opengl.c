@@ -461,6 +461,7 @@ typedef struct {
     int32_t shadow_height[VGFX3D_MAX_SHADOW_LIGHTS];
     int32_t shadow_pass_slot;
     int32_t shadow_count;
+    int8_t shadow_complete[VGFX3D_MAX_SHADOW_LIGHTS];
     float shadow_bias;
     float shadow_vp[VGFX3D_MAX_SHADOW_LIGHTS][16];
     GLuint material_samplers[3][3][2];
@@ -816,6 +817,15 @@ static const char *const glsl_vertex_src[] = {
     "out vec4 vCurrClip;\n"
     "out vec4 vPrevClip;\n"
     "flat out float vHasObjectHistory;\n"
+    "vec3 safeNormalize3(vec3 v, vec3 fallback) {\n"
+    "    float len2 = dot(v, v);\n"
+    "    return (len2 > 1e-12) ? v * inversesqrt(len2) : fallback;\n"
+    "}\n"
+    "mat3 safeNormalMatrix(mat3 m) {\n"
+    "    float det = determinant(m);\n"
+    "    if (abs(det) > 1e-8) return transpose(inverse(m));\n"
+    "    return mat3(1.0);\n"
+    "}\n"
     "void applyMorph(inout vec3 pos, inout vec3 nrm, int usePrevWeights) {\n"
     "    for (int s = 0; s < uMorphShapeCount; s++) {\n"
     "        float w = (usePrevWeights != 0) ? uPrevMorphWeights[s] : uMorphWeights[s];\n"
@@ -848,20 +858,20 @@ static const char *const glsl_vertex_src[] = {
     "    }\n"
     "    return totalWeight > 0.0001 ? skinnedPos / totalWeight : localPos;\n"
     "}\n"
-    "vec3 skinNormal(vec3 localNormal) {\n"
-    "    if (uHasSkinning == 0) return localNormal;\n"
-    "    vec3 skinnedNormal = vec3(0.0);\n"
+    "vec3 skinVector(vec3 localVector) {\n"
+    "    if (uHasSkinning == 0) return localVector;\n"
+    "    vec3 skinnedVector = vec3(0.0);\n"
     "    float totalWeight = 0.0;\n"
     "    for (int i = 0; i < 4; i++) {\n"
     "        float bw = aBoneWt[i];\n"
     "        if (bw > 0.0001) {\n"
     "            int b = min(int(aBoneIdx[i]), 255);\n"
     "            mat4 bm = uBonePalette[b];\n"
-    "            skinnedNormal += (bm * vec4(localNormal, 0.0)).xyz * bw;\n"
+    "            skinnedVector += safeNormalMatrix(mat3(bm)) * localVector * bw;\n"
     "            totalWeight += bw;\n"
     "        }\n"
     "    }\n"
-    "    return totalWeight > 0.0001 ? skinnedNormal / totalWeight : localNormal;\n"
+    "    return totalWeight > 0.0001 ? skinnedVector / totalWeight : localVector;\n"
     "}\n",
     "void main() {\n"
     "    vec3 pos = aPosition;\n"
@@ -872,10 +882,12 @@ static const char *const glsl_vertex_src[] = {
     "    applyMorph(prevPos, prevNrm, uHasPrevMorphWeights);\n"
     "    vec4 localPos = vec4(pos, 1.0);\n"
     "    vec4 prevLocalPos = vec4(prevPos, 1.0);\n"
-    "    vec3 localNormal = normalize(nrm);\n"
+    "    vec3 localNormal = safeNormalize3(nrm, vec3(0.0, 0.0, 1.0));\n"
+    "    vec3 localTangent = safeNormalize3(aTangent.xyz, vec3(1.0, 0.0, 0.0));\n"
     "    localPos = skinPosition(localPos, 0);\n"
     "    prevLocalPos = skinPosition(prevLocalPos, 1);\n"
-    "    localNormal = skinNormal(localNormal);\n"
+    "    localNormal = skinVector(localNormal);\n"
+    "    localTangent = skinVector(localTangent);\n"
     "    mat4 model = uModelMatrix;\n"
     "    mat4 prevModel = (uHasPrevModelMatrix != 0) ? uPrevModelMatrix : uModelMatrix;\n"
     "    if (uUseInstancing != 0) {\n"
@@ -885,14 +897,14 @@ static const char *const glsl_vertex_src[] = {
     "aPrevInstanceRow3))\n"
     "            : model;\n"
     "    }\n"
-    "    mat3 normalMatrix = (uUseInstancing != 0) ? transpose(inverse(mat3(model))) : "
+    "    mat3 normalMatrix = (uUseInstancing != 0) ? safeNormalMatrix(mat3(model)) : "
     "mat3(uNormalMatrix);\n"
     "    vec4 wp = model * localPos;\n"
     "    vec4 prevWp = prevModel * prevLocalPos;\n"
     "    gl_Position = uViewProjection * wp;\n"
     "    vWorldPos = wp.xyz;\n"
     "    vNormal = normalMatrix * localNormal;\n"
-    "    vTangent = vec4(mat3(model) * aTangent.xyz, aTangent.w);\n"
+    "    vTangent = vec4(normalMatrix * localTangent, aTangent.w);\n"
     "    vUV = aUV;\n"
     "    vUV1 = aUV1;\n"
     "    vColor = aColor;\n"
@@ -1000,9 +1012,13 @@ static const char *const glsl_fragment_src[] = {
     "    vec3 high = pow((c + vec3(0.055)) / 1.055, vec3(2.4));\n"
     "    return mix(low, high, step(vec3(0.04045), c));\n"
     "}\n"
+    "vec3 safeNormalize3(vec3 v, vec3 fallback) {\n"
+    "    float len2 = dot(v, v);\n"
+    "    return (len2 > 1e-12) ? v * inversesqrt(len2) : fallback;\n"
+    "}\n"
     "vec3 envSample(vec3 dir, float roughness) {\n"
     "    float lod = clamp(roughness, 0.0, 1.0) * max(uEnvMaxLod, 0.0);\n"
-    "    return textureLod(uEnvMap, normalize(dir), lod).rgb;\n"
+    "    return textureLod(uEnvMap, safeNormalize3(dir, vec3(0.0, 0.0, 1.0)), lod).rgb;\n"
     "}\n",
     "int textureUvSetAt(int slot) {\n"
     "    return slot < 4 ? uTextureUvSets0[slot] : uTextureUvSets1[slot - 4];\n"
@@ -1018,11 +1034,12 @@ static const char *const glsl_fragment_src[] = {
     "    if (shadowIndex < 0 || shadowIndex >= uShadowCount) return 1.0;\n"
     "    mat4 shadowVP = (shadowIndex == 0) ? uShadowVP[0] : uShadowVP[1];\n"
     "    vec4 lc = shadowVP * vec4(worldPos, 1.0);\n"
-    "    float invW = 1.0 / max(lc.w, 0.0001);\n"
+    "    if (lc.w <= 0.0001) return 1.0;\n"
+    "    float invW = 1.0 / lc.w;\n"
     "    vec3 ndc = lc.xyz * invW;\n"
     "    vec2 uv = ndc.xy * 0.5 + 0.5;\n"
     "    float depth = ndc.z * 0.5 + 0.5;\n"
-    "    if (uv.x < 0.0 || uv.x > 1.0 || uv.y < 0.0 || uv.y > 1.0 || depth > 1.0) return 1.0;\n"
+    "    if (uv.x < 0.0 || uv.x > 1.0 || uv.y < 0.0 || uv.y > 1.0 || depth < 0.0 || depth > 1.0) return 1.0;\n"
     "    vec2 texel = (shadowIndex == 0)\n"
     "        ? 1.0 / vec2(textureSize(uShadowTex0, 0))\n"
     "        : 1.0 / vec2(textureSize(uShadowTex1, 0));\n"
@@ -1059,13 +1076,13 @@ static const char *const glsl_fragment_src[] = {
     "            baseColor = splatColor * uDiffuseColor.rgb * vColor.rgb;\n"
     "        }\n"
     "    }\n"
-    "    vec3 N = normalize(vNormal);\n"
+    "    vec3 N = safeNormalize3(vNormal, vec3(0.0, 0.0, 1.0));\n"
     "    if (uHasNormalMap != 0) {\n"
     "        vec3 mapN = texture(uNormalTex, materialUv(1)).xyz * 2.0 - 1.0;\n"
     "        mapN.xy *= uPbrScalars1.x;\n"
-    "        vec3 T = normalize(vTangent.xyz - N * dot(vTangent.xyz, N));\n"
-    "        vec3 B = normalize(cross(N, T)) * (vTangent.w < 0.0 ? -1.0 : 1.0);\n"
-    "        N = normalize(mat3(T, B, N) * mapN);\n"
+    "        vec3 T = safeNormalize3(vTangent.xyz - N * dot(vTangent.xyz, N), vec3(1.0, 0.0, 0.0));\n"
+    "        vec3 B = safeNormalize3(cross(N, T), vec3(0.0, 1.0, 0.0)) * (vTangent.w < 0.0 ? -1.0 : 1.0);\n"
+    "        N = safeNormalize3(mat3(T, B, N) * mapN, N);\n"
     "    }\n"
     "    vec3 emissive = uEmissiveColor * uPbrScalars0.w;\n"
     "    if (uHasEmissiveMap != 0) {\n"
@@ -1074,7 +1091,7 @@ static const char *const glsl_fragment_src[] = {
     "        emissive *= emissiveSample;\n"
     "    }\n"
     "    vec3 cameraToWorld = uCameraPos - vWorldPos;\n"
-    "    vec3 V = normalize((uCameraIsOrtho != 0) ? -uCameraForward : cameraToWorld);\n"
+    "    vec3 V = safeNormalize3((uCameraIsOrtho != 0) ? -uCameraForward : cameraToWorld, vec3(0.0, 0.0, 1.0));\n"
     "    float viewDistance = (uCameraIsOrtho != 0)\n"
     "        ? abs(dot(vWorldPos - uCameraPos, uCameraForward))\n"
     "        : length(cameraToWorld);\n"
@@ -1126,12 +1143,12 @@ static const char *const glsl_fragment_src[] = {
     "            vec3 L = vec3(0.0);\n"
     "            float atten = 1.0;\n"
     "            if (uLightType[i] == 0) {\n"
-    "                L = normalize(-uLightDir[i]);\n"
+    "                L = safeNormalize3(-uLightDir[i], vec3(0.0));\n"
     "                atten *= mix(0.15, 1.0, sampleShadowMap(uLightShadowIndex[i], vWorldPos));\n"
     "            } else if (uLightType[i] == 1) {\n"
     "                vec3 toLight = uLightPos[i] - vWorldPos;\n"
     "                float d = length(toLight);\n"
-    "                L = toLight / max(d, 0.0001);\n"
+    "                L = safeNormalize3(toLight, vec3(0.0));\n"
     "                atten = 1.0 / (1.0 + uLightAtten[i] * d * d);\n"
     "            } else if (uLightType[i] == 2) {\n"
     "                result += uLightColor[i] * uLightIntensity[i] * baseColor * ao;\n"
@@ -1139,13 +1156,13 @@ static const char *const glsl_fragment_src[] = {
     "            } else if (uLightType[i] == 3) {\n"
     "                vec3 toLight = uLightPos[i] - vWorldPos;\n"
     "                float d = length(toLight);\n"
-    "                L = toLight / max(d, 0.0001);\n"
-    "                float spotDot = dot(normalize(-uLightDir[i]), L);\n"
+    "                L = safeNormalize3(toLight, vec3(0.0));\n"
+    "                float spotDot = dot(safeNormalize3(-uLightDir[i], vec3(0.0)), L);\n"
     "                if (spotDot < uLightOuterCos[i]) {\n"
     "                    atten = 0.0;\n"
     "                } else if (spotDot < uLightInnerCos[i]) {\n"
-    "                    float t = (spotDot - uLightOuterCos[i]) / "
-    "max(uLightInnerCos[i] - uLightOuterCos[i], 0.0001);\n"
+    "                    float coneRange = uLightInnerCos[i] - uLightOuterCos[i];\n"
+    "                    float t = (coneRange > 0.0001) ? clamp((spotDot - uLightOuterCos[i]) / coneRange, 0.0, 1.0) : 0.0;\n"
     "                    atten = (t * t * (3.0 - 2.0 * t)) / (1.0 + uLightAtten[i] * d * d);\n"
     "                } else {\n"
     "                    atten = 1.0 / (1.0 + uLightAtten[i] * d * d);\n"
@@ -1155,7 +1172,7 @@ static const char *const glsl_fragment_src[] = {
     "            }\n"
     "            float NdotL = max(dot(N, L), 0.0);\n"
     "            if (NdotL <= 0.0) continue;\n"
-    "            vec3 H = normalize(L + V);\n"
+    "            vec3 H = safeNormalize3(L + V, N);\n"
     "            float NdotV = max(dot(N, V), 0.001);\n"
     "            float NdotH = max(dot(N, H), 0.0);\n"
     "            float VdotH = max(dot(V, H), 0.0);\n"
@@ -1178,12 +1195,12 @@ static const char *const glsl_fragment_src[] = {
     "            vec3 L = vec3(0.0);\n"
     "            float atten = 1.0;\n"
     "            if (uLightType[i] == 0) {\n"
-    "                L = normalize(-uLightDir[i]);\n"
+    "                L = safeNormalize3(-uLightDir[i], vec3(0.0));\n"
     "                atten *= mix(0.15, 1.0, sampleShadowMap(uLightShadowIndex[i], vWorldPos));\n"
     "            } else if (uLightType[i] == 1) {\n"
     "                vec3 toLight = uLightPos[i] - vWorldPos;\n"
     "                float d = length(toLight);\n"
-    "                L = toLight / max(d, 0.0001);\n"
+    "                L = safeNormalize3(toLight, vec3(0.0));\n"
     "                atten = 1.0 / (1.0 + uLightAtten[i] * d * d);\n"
     "            } else if (uLightType[i] == 2) {\n"
     "                result += uLightColor[i] * uLightIntensity[i] * baseColor;\n"
@@ -1191,9 +1208,11 @@ static const char *const glsl_fragment_src[] = {
     "            } else if (uLightType[i] == 3) {\n"
     "                vec3 toLight = uLightPos[i] - vWorldPos;\n"
     "                float d = length(toLight);\n"
-    "                L = toLight / max(d, 0.0001);\n"
-    "                float cone = smoothstep(uLightOuterCos[i], uLightInnerCos[i], "
-    "dot(normalize(-uLightDir[i]), L));\n"
+    "                L = safeNormalize3(toLight, vec3(0.0));\n"
+    "                float spotDot = dot(safeNormalize3(-uLightDir[i], vec3(0.0)), L);\n"
+    "                float coneRange = uLightInnerCos[i] - uLightOuterCos[i];\n"
+    "                float cone = (coneRange > 0.0001) ? clamp((spotDot - uLightOuterCos[i]) / coneRange, 0.0, 1.0) : (spotDot >= uLightInnerCos[i] ? 1.0 : 0.0);\n"
+    "                cone = cone * cone * (3.0 - 2.0 * cone);\n"
     "                atten = cone / (1.0 + uLightAtten[i] * d * d);\n"
     "            } else {\n"
     "                continue;\n"
@@ -1205,7 +1224,7 @@ static const char *const glsl_fragment_src[] = {
     "            }\n"
     "            result += uLightColor[i] * uLightIntensity[i] * NdotL * baseColor * atten;\n"
     "            if (NdotL > 0.0 && uSpecularColor.w > 0.0) {\n"
-    "                vec3 H = normalize(L + V);\n"
+    "                vec3 H = safeNormalize3(L + V, N);\n"
     "                float spec = pow(max(dot(N, H), 0.0), uSpecularColor.w);\n"
     "                if (uShadingModel == 1) spec = spec >= max(uCustomParams[1], 0.5) ? 1.0 : 0.0;\n"
     "                result += uLightColor[i] * uLightIntensity[i] * spec * specColor * atten;\n"
@@ -1933,8 +1952,28 @@ static GLuint gl_get_cached_cubemap(gl_context_t *ctx, const rt_cubemap3d *cubem
         if (ctx->cubemap_cache[i].cubemap == cubemap) {
             int32_t face_size = 0;
             uint8_t *rgba_faces[6] = {0};
-            if (vgfx3d_unpack_cubemap_faces_rgba(cubemap, &face_size, rgba_faces) != 0)
-                return ctx->cubemap_cache[i].tex;
+            if (vgfx3d_unpack_cubemap_faces_rgba(cubemap, &face_size, rgba_faces) != 0) {
+                if (ctx->cubemap_cache[i].tex)
+                    gl.DeleteTextures(1, &ctx->cubemap_cache[i].tex);
+                ctx->cubemap_cache[i].tex = 0;
+                ctx->cubemap_cache[i].generation = 0;
+                ctx->cubemap_cache[i].last_used_frame = ctx->frame_serial;
+                return 0;
+            }
+            if (!ctx->cubemap_cache[i].tex) {
+                gl.GenTextures(1, &ctx->cubemap_cache[i].tex);
+                if (!ctx->cubemap_cache[i].tex) {
+                    for (int face = 0; face < 6; face++)
+                        free(rgba_faces[face]);
+                    return 0;
+                }
+                gl.BindTexture(GL_TEXTURE_CUBE_MAP, ctx->cubemap_cache[i].tex);
+                gl.TexParameteri(GL_TEXTURE_CUBE_MAP, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
+                gl.TexParameteri(GL_TEXTURE_CUBE_MAP, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
+                gl.TexParameteri(GL_TEXTURE_CUBE_MAP, GL_TEXTURE_WRAP_R, GL_CLAMP_TO_EDGE);
+                gl.TexParameteri(GL_TEXTURE_CUBE_MAP, GL_TEXTURE_MIN_FILTER, GL_LINEAR_MIPMAP_LINEAR);
+                gl.TexParameteri(GL_TEXTURE_CUBE_MAP, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+            }
             gl.BindTexture(GL_TEXTURE_CUBE_MAP, ctx->cubemap_cache[i].tex);
             for (int face = 0; face < 6; face++) {
                 uint8_t *rgba = rgba_faces[face];
@@ -2199,7 +2238,7 @@ static int ensure_rtt_targets(gl_context_t *ctx, vgfx3d_rendertarget_t *rt) {
     GLenum color_internal_format;
     GLenum color_type;
 
-    if (!ctx || !rt)
+    if (!ctx || !rt || rt->width <= 0 || rt->height <= 0)
         return -1;
     if (ctx->rtt_fbo && ctx->rtt_width == rt->width && ctx->rtt_height == rt->height &&
         ctx->rtt_color_format == rt->color_format) {
@@ -2280,9 +2319,23 @@ static void destroy_shadow_targets(gl_context_t *ctx) {
         ctx->shadow_depth_tex[slot] = 0;
         ctx->shadow_width[slot] = 0;
         ctx->shadow_height[slot] = 0;
+        ctx->shadow_complete[slot] = 0;
     }
     ctx->shadow_pass_slot = -1;
     ctx->shadow_count = 0;
+}
+
+static void gl_recompute_shadow_count(gl_context_t *ctx) {
+    int32_t count = 0;
+    if (!ctx)
+        return;
+    for (int32_t slot = 0; slot < VGFX3D_MAX_SHADOW_LIGHTS; slot++) {
+        if (!ctx->shadow_complete[slot] || !ctx->shadow_depth_tex[slot] ||
+            !ctx->shadow_fbo[slot] || ctx->shadow_width[slot] <= 0 || ctx->shadow_height[slot] <= 0)
+            break;
+        count = slot + 1;
+    }
+    ctx->shadow_count = count;
 }
 
 /// @brief Build a depth-only FBO for shadow-map rendering.
@@ -2296,6 +2349,8 @@ static int ensure_shadow_targets(gl_context_t *ctx, int32_t slot, int32_t w, int
     if (ctx->shadow_fbo[slot] && ctx->shadow_width[slot] == w && ctx->shadow_height[slot] == h)
         return 0;
 
+    ctx->shadow_complete[slot] = 0;
+    gl_recompute_shadow_count(ctx);
     if (ctx->shadow_depth_tex[slot])
         gl.DeleteTextures(1, &ctx->shadow_depth_tex[slot]);
     if (ctx->shadow_fbo[slot])
@@ -2328,6 +2383,10 @@ static int ensure_shadow_targets(gl_context_t *ctx, int32_t slot, int32_t w, int
             gl.DeleteFramebuffers(1, &ctx->shadow_fbo[slot]);
         ctx->shadow_fbo[slot] = 0;
         ctx->shadow_depth_tex[slot] = 0;
+        ctx->shadow_width[slot] = 0;
+        ctx->shadow_height[slot] = 0;
+        ctx->shadow_complete[slot] = 0;
+        gl_recompute_shadow_count(ctx);
         return -1;
     }
 
@@ -2604,6 +2663,17 @@ static int gl_apply_postfx_chain(gl_context_t *ctx,
     return 1;
 }
 
+static int gl_checked_mul_size(size_t a, size_t b, size_t *out) {
+    if (out)
+        *out = 0;
+    if (!out)
+        return 0;
+    if (a != 0 && b > SIZE_MAX / a)
+        return 0;
+    *out = a * b;
+    return 1;
+}
+
 /// @brief Read back the RTT color buffer into the user's host RGBA buffer.
 ///
 /// Allocates a transient buffer matching the RT's stride×height, reads
@@ -2618,6 +2688,8 @@ static int gl_sync_render_target_color(void *ctx_ptr, vgfx3d_rendertarget_t *rt)
     float *tmpf;
     size_t bytes;
     size_t float_count;
+    size_t pixel_count;
+    size_t float_bytes;
 
     if (!ctx || !rt || rt->width <= 0 || rt->height <= 0 || !ctx->rtt_fbo || ctx->rtt_target != rt) {
         return 0;
@@ -2625,14 +2697,21 @@ static int gl_sync_render_target_color(void *ctx_ptr, vgfx3d_rendertarget_t *rt)
     if (!vgfx3d_rendertarget_ensure_color(rt)) {
         return 0;
     }
+    if (!gl_checked_mul_size((size_t)rt->width, (size_t)rt->height, &pixel_count) ||
+        !gl_checked_mul_size((size_t)rt->stride, (size_t)rt->height, &bytes)) {
+        return 0;
+    }
 
-    bytes = (size_t)rt->height * (size_t)rt->stride;
     glx.MakeCurrent(ctx->display, ctx->window, ctx->glxCtx);
     gl.BindFramebuffer(GL_FRAMEBUFFER, ctx->rtt_fbo);
     gl.ReadBuffer(GL_COLOR_ATTACHMENT0);
     if (vgfx3d_rendertarget_is_hdr(rt)) {
-        float_count = (size_t)rt->width * (size_t)rt->height * 4u;
-        tmpf = (float *)malloc(float_count * sizeof(float));
+        if (!gl_checked_mul_size(pixel_count, 4u, &float_count) ||
+            !gl_checked_mul_size(float_count, sizeof(float), &float_bytes)) {
+            bind_main_framebuffer(ctx);
+            return 0;
+        }
+        tmpf = (float *)malloc(float_bytes);
         if (!tmpf) {
             bind_main_framebuffer(ctx);
             return 0;
@@ -3442,8 +3521,10 @@ static void upload_light_uniforms(gl_context_t *ctx,
         light_count = VGFX3D_MAX_LIGHTS;
     gl.Uniform1i(ctx->uLightCount, light_count);
     for (int32_t i = 0; i < light_count; i++) {
+        int32_t shadow_index =
+            vgfx3d_opengl_sanitize_shadow_index(lights[i].shadow_index, ctx->shadow_count);
         gl.Uniform1i(ctx->uLightType[i], lights[i].type);
-        gl.Uniform1i(ctx->uLightShadowIndex[i], lights[i].shadow_index);
+        gl.Uniform1i(ctx->uLightShadowIndex[i], shadow_index);
         gl.Uniform3f(ctx->uLightDir[i],
                      lights[i].direction[0],
                      lights[i].direction[1],
@@ -3700,14 +3781,21 @@ static void bind_shadow_anim(gl_context_t *ctx, const vgfx3d_draw_cmd_t *cmd) {
 
 /// @brief Composite the offscreen scene to the swapchain backbuffer.
 ///
-/// Convenience wrapper around `gl_apply_postfx_chain` that
-/// targets FBO 0 (default framebuffer / swapchain).
-static void draw_scene_texture(gl_context_t *ctx, const vgfx3d_postfx_chain_t *chain) {
-    if (!ctx)
-        return;
-    if (!chain || !chain->enabled || chain->effect_count <= 0 || !chain->effects)
-        return;
-    gl_apply_postfx_chain(ctx, ctx->scene_color_tex, ctx->width, ctx->height, chain, 0, GL_BACK, 0, NULL, NULL);
+/// Convenience wrapper around `gl_apply_postfx_chain` that targets FBO 0
+/// (default framebuffer / swapchain), falling back to a no-op composite when
+/// the chain is disabled or unavailable.
+static int draw_scene_texture(gl_context_t *ctx, const vgfx3d_postfx_chain_t *chain) {
+    if (!ctx || !ctx->scene_color_tex || ctx->width <= 0 || ctx->height <= 0)
+        return 0;
+    if (chain && chain->enabled && chain->effect_count > 0 && chain->effects &&
+        gl_apply_postfx_chain(
+            ctx, ctx->scene_color_tex, ctx->width, ctx->height, chain, 0, GL_BACK, 0, NULL, NULL)) {
+        return 1;
+    }
+    if (!ctx->postfx_program)
+        return 0;
+    gl_draw_texture_to_target(ctx, ctx->scene_color_tex, 0, GL_BACK, ctx->width, ctx->height, NULL);
+    return 1;
 }
 
 /// @brief Internal skybox draw — full-screen triangle with reconstructed view rays.
@@ -4399,6 +4487,7 @@ static void gl_begin_frame(void *ctx_ptr, const vgfx3d_camera_params_t *cam) {
     ctx->frame_serial++;
     ctx->shadow_pass_slot = -1;
     ctx->shadow_count = 0;
+    memset(ctx->shadow_complete, 0, sizeof(ctx->shadow_complete));
     ctx->current_pass_is_overlay = (!ctx->rtt_active && cam->load_existing_color) ? 1 : 0;
     if (!ctx->current_pass_is_overlay) {
         ctx->scene_composited_to_backbuffer = 0;
@@ -4441,8 +4530,8 @@ static void gl_begin_frame(void *ctx_ptr, const vgfx3d_camera_params_t *cam) {
 
     if (ctx->current_pass_is_overlay && ctx->gpu_postfx_enabled && ctx->scene_postfx_pending &&
         !ctx->scene_composited_to_backbuffer) {
-        draw_scene_texture(ctx, ctx->gpu_postfx_chain_valid ? &ctx->gpu_postfx_chain : NULL);
-        ctx->scene_composited_to_backbuffer = 1;
+        if (draw_scene_texture(ctx, ctx->gpu_postfx_chain_valid ? &ctx->gpu_postfx_chain : NULL))
+            ctx->scene_composited_to_backbuffer = 1;
     }
 
     if (ctx->current_pass_is_overlay && ctx->gpu_postfx_enabled)
@@ -4639,7 +4728,8 @@ static int gl_readback_rgba(
                                    1,
                                    &readback_framebuffer,
                                    &readback_buffer)) {
-            return 0;
+            readback_framebuffer = ctx->scene_fbo;
+            readback_buffer = GL_COLOR_ATTACHMENT0;
         }
         source_w = ctx->scene_width;
         source_h = ctx->scene_height;
@@ -4690,8 +4780,10 @@ static void gl_present_impl(gl_context_t *ctx, const vgfx3d_postfx_chain_t *chai
                   ctx->gpu_postfx_enabled && ctx->scene_postfx_pending)
                      ? 1
                      : 0;
-    if (use_postfx && !ctx->scene_composited_to_backbuffer)
-        draw_scene_texture(ctx, chain);
+    if (ctx->gpu_postfx_enabled && ctx->scene_postfx_pending && !ctx->scene_composited_to_backbuffer) {
+        if (draw_scene_texture(ctx, use_postfx ? chain : NULL))
+            ctx->scene_composited_to_backbuffer = 1;
+    }
     glx.SwapBuffers(ctx->display, ctx->window);
     ctx->scene_postfx_pending = 0;
     ctx->scene_composited_to_backbuffer = 0;
@@ -4763,7 +4855,11 @@ static void gl_set_render_target(void *ctx_ptr, vgfx3d_rendertarget_t *rt) {
         gl.BindFramebuffer(GL_FRAMEBUFFER, 0);
         return;
     }
-    ensure_rtt_targets(ctx, rt);
+    if (ensure_rtt_targets(ctx, rt) != 0) {
+        destroy_rtt_targets(ctx);
+        ctx->active_target_kind = VGFX3D_OPENGL_TARGET_SWAPCHAIN;
+        gl.BindFramebuffer(GL_FRAMEBUFFER, 0);
+    }
 }
 
 /// @brief Backend `shadow_begin` — switch the pipeline to shadow-pass mode.
@@ -4775,10 +4871,20 @@ static void gl_shadow_begin(
     void *ctx_ptr, int32_t slot, float *depth_buf, int32_t w, int32_t h, const float *light_vp) {
     (void)depth_buf;
     gl_context_t *ctx = (gl_context_t *)ctx_ptr;
-    if (!ctx || !light_vp || w <= 0 || h <= 0 || slot < 0 || slot >= VGFX3D_MAX_SHADOW_LIGHTS)
+    if (!ctx)
         return;
-    if (ensure_shadow_targets(ctx, slot, w, h) != 0)
+    ctx->shadow_pass_slot = -1;
+    if (slot < 0 || slot >= VGFX3D_MAX_SHADOW_LIGHTS)
         return;
+    ctx->shadow_complete[slot] = 0;
+    gl_recompute_shadow_count(ctx);
+    if (!light_vp || w <= 0 || h <= 0)
+        return;
+    if (ensure_shadow_targets(ctx, slot, w, h) != 0) {
+        ctx->shadow_complete[slot] = 0;
+        gl_recompute_shadow_count(ctx);
+        return;
+    }
     ctx->shadow_pass_slot = slot;
     memcpy(ctx->shadow_vp[slot], light_vp, sizeof(ctx->shadow_vp[slot]));
     gl.BindFramebuffer(GL_FRAMEBUFFER, ctx->shadow_fbo[slot]);
@@ -4872,10 +4978,16 @@ static void gl_shadow_end(void *ctx_ptr, int32_t slot, float bias) {
     gl_context_t *ctx = (gl_context_t *)ctx_ptr;
     if (!ctx || slot < 0 || slot >= VGFX3D_MAX_SHADOW_LIGHTS)
         return;
-    if (ctx->shadow_count < slot + 1)
-        ctx->shadow_count = slot + 1;
+    if (ctx->shadow_pass_slot != slot)
+        return;
     ctx->shadow_bias = bias;
+    ctx->shadow_complete[slot] =
+        (ctx->shadow_depth_tex[slot] && ctx->shadow_fbo[slot] && ctx->shadow_width[slot] > 0 &&
+         ctx->shadow_height[slot] > 0)
+            ? 1
+            : 0;
     ctx->shadow_pass_slot = -1;
+    gl_recompute_shadow_count(ctx);
     bind_main_framebuffer(ctx);
     gl.UseProgram(ctx->program);
 }

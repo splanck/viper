@@ -258,11 +258,23 @@ void vgfx3d_transform_aabb(const float obj_min[3],
         }
     }
 
+    float safe_min[3];
+    float safe_max[3];
+    for (int axis = 0; axis < 3; axis++) {
+        if (obj_min[axis] <= obj_max[axis]) {
+            safe_min[axis] = obj_min[axis];
+            safe_max[axis] = obj_max[axis];
+        } else {
+            safe_min[axis] = obj_max[axis];
+            safe_max[axis] = obj_min[axis];
+        }
+    }
+
     /* Iterate all 8 corners of the AABB */
     for (int i = 0; i < 8; i++) {
-        float cx = (i & 1) ? obj_max[0] : obj_min[0];
-        float cy = (i & 2) ? obj_max[1] : obj_min[1];
-        float cz = (i & 4) ? obj_max[2] : obj_min[2];
+        float cx = (i & 1) ? safe_max[0] : safe_min[0];
+        float cy = (i & 2) ? safe_max[1] : safe_min[1];
+        float cz = (i & 4) ? safe_max[2] : safe_min[2];
 
         /* Transform by row-major 4x4 matrix (column-vector convention) */
         double dx = world_matrix[0] * cx + world_matrix[1] * cy + world_matrix[2] * cz +

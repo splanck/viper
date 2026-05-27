@@ -60,6 +60,7 @@
     id<MTLTexture> _shadowDepthTexture[VGFX3D_MAX_SHADOW_LIGHTS];
     int32_t _shadowPassSlot;
     int32_t _shadowCount;
+    int8_t _shadowComplete[VGFX3D_MAX_SHADOW_LIGHTS];
     float _shadowBias;
 }
 @property(nonatomic, strong) id<MTLDevice> device;
@@ -355,6 +356,19 @@ static NSString *metal_shader_source =
      "    return nrm;\n"
      "}\n"
      "\n"
+     "float3 safe_normalize3(float3 v, float3 fallback) {\n"
+     "    float len2 = dot(v, v);\n"
+     "    return len2 > 1e-12 ? v * rsqrt(len2) : fallback;\n"
+     "}\n"
+     "\n"
+     "float3x3 safe_normal_matrix(float4x4 m) {\n"
+     "    float3x3 linear = float3x3(m[0].xyz, m[1].xyz, m[2].xyz);\n"
+     "    float det = determinant(linear);\n"
+     "    if (fabs(det) > 1e-8)\n"
+     "        return transpose(inverse(linear));\n"
+     "    return float3x3(float3(1.0, 0.0, 0.0), float3(0.0, 1.0, 0.0), float3(0.0, 0.0, 1.0));\n"
+     "}\n"
+     "\n"
      "float4 skinPosition(float4 pos,\n"
      "                    VertexIn in,\n"
      "                    constant float4x4 *palette,\n"
@@ -387,7 +401,7 @@ static NSString *metal_shader_source =
      "        if (bw <= 0.0001)\n"
      "            continue;\n"
      "        uint idx = min((uint)in.boneIdx[i], 255u);\n"
-     "        skinned += (palette[idx] * float4(vec, 0.0)).xyz * bw;\n"
+     "        skinned += (safe_normal_matrix(palette[idx]) * vec) * bw;\n"
      "        totalWeight += bw;\n"
      "    }\n"
      "    return totalWeight > 0.0001 ? skinned / totalWeight : vec;\n"
@@ -415,7 +429,7 @@ static NSString *metal_shader_source =
      "    out.position.z = out.position.z * 0.5 + out.position.w * 0.5;\n"
      "    out.worldPos = worldPos.xyz;\n"
      "    out.normal = (normalMatrix * float4(currNormal, 0.0)).xyz;\n"
-     "    out.tangent = float4((modelMatrix * float4(currTangent.xyz, 0.0)).xyz, currTangent.w);\n"
+     "    out.tangent = float4((normalMatrix * float4(currTangent.xyz, 0.0)).xyz, currTangent.w);\n"
      "    out.uv = uv;\n"
      "    out.uv1 = uv1;\n"
      "    out.color = color;\n"
@@ -464,8 +478,8 @@ static NSString *metal_shader_source =
      "0.0;\n"
      "    return buildVertex(skinnedPos.xyz,\n"
      "                       prevSkinnedPos.xyz,\n"
-     "                       normalize(skinnedNormal),\n"
-     "                       float4(normalize(skinnedTangent), currTangent.w),\n"
+     "                       safe_normalize3(skinnedNormal, float3(0.0, 0.0, 1.0)),\n"
+     "                       float4(safe_normalize3(skinnedTangent, float3(1.0, 0.0, 0.0)), currTangent.w),\n"
      "                       in.uv,\n"
      "                       in.uv1,\n"
      "                       in.color,\n"
@@ -519,8 +533,8 @@ static NSString *metal_shader_source =
      "0.0;\n"
      "    return buildVertex(skinnedPos.xyz,\n"
      "                       prevSkinnedPos.xyz,\n"
-     "                       normalize(skinnedNormal),\n"
-     "                       float4(normalize(skinnedTangent), currTangent.w),\n"
+     "                       safe_normalize3(skinnedNormal, float3(0.0, 0.0, 1.0)),\n"
+     "                       float4(safe_normalize3(skinnedTangent, float3(1.0, 0.0, 0.0)), currTangent.w),\n"
      "                       in.uv,\n"
      "                       in.uv1,\n"
      "                       in.color,\n"
@@ -614,7 +628,7 @@ static NSString *metal_shader_source =
      "                  float roughness,\n"
      "                  float maxLod) {\n"
      "    float lod = clamp(roughness, 0.0, 1.0) * max(maxLod, 0.0);\n"
-     "    return envTex.sample(envSampler, normalize(dir), level(lod)).rgb;\n"
+     "    return envTex.sample(envSampler, safe_normalize3(dir, float3(0.0, 0.0, 1.0)), level(lod)).rgb;\n"
      "}\n"
      "\n"
      "int texture_uv_set_at(constant PerMaterial &material, int slot) {\n"
@@ -638,10 +652,12 @@ static NSString *metal_shader_source =
      "    if (shadowIndex < 0 || shadowIndex >= scene.counts.y)\n"
      "        return 1.0;\n"
      "    float4 lc = scene.shadowVP[shadowIndex] * float4(worldPos, 1.0);\n"
-     "    float3 suv = lc.xyz / max(lc.w, 0.0001);\n"
+     "    if (lc.w <= 0.0001)\n"
+     "        return 1.0;\n"
+     "    float3 suv = lc.xyz / lc.w;\n"
      "    suv.xy = suv.xy * 0.5 + 0.5;\n"
      "    suv.y = 1.0 - suv.y;\n"
-     "    if (suv.x < 0.0 || suv.x > 1.0 || suv.y < 0.0 || suv.y > 1.0)\n"
+     "    if (suv.x < 0.0 || suv.x > 1.0 || suv.y < 0.0 || suv.y > 1.0 || suv.z < 0.0 || suv.z > 1.0)\n"
      "        return 1.0;\n"
      "    return shadowIndex == 0\n"
      "        ? shadowMap0.sample_compare(shadowSampler, suv.xy, suv.z - scene.fogParams.z)\n"
@@ -677,9 +693,9 @@ static NSString *metal_shader_source =
      "    sampler aoSampler [[sampler(7)]]\n"
      ") {\n"
      "    MainOut out;\n"
-     "    float3 baseColor = material.diffuseColor.rgb;\n"
+     "    float3 baseColor = material.diffuseColor.rgb * in.color.rgb;\n"
      "    float texAlpha = 1.0;\n"
-     "    float materialAlpha = material.diffuseColor.a * material.scalars.x;\n"
+     "    float materialAlpha = material.diffuseColor.a * material.scalars.x * in.color.a;\n"
      "    if (material.flags0.x != 0) {\n"
      "        float4 texSample = diffuseTex.sample(diffuseSampler, material_uv(in, material, 0));\n"
      "        if (material.pbrFlags.x != 0) texSample.rgb = srgb_to_linear(texSample.rgb);\n"
@@ -699,24 +715,24 @@ static NSString *metal_shader_source =
      "material.splatScales.z).rgb * sp.b;\n"
      "        if (sp.a > 0.001) blended += splatLayer3.sample(diffuseSampler, in.uv * "
      "material.splatScales.w).rgb * sp.a;\n"
-     "        baseColor = blended * material.diffuseColor.rgb;\n"
+     "        baseColor = blended * material.diffuseColor.rgb * in.color.rgb;\n"
      "    }\n"
-     "    float3 N = normalize(in.normal);\n"
+     "    float3 N = safe_normalize3(in.normal, float3(0.0, 0.0, 1.0));\n"
      "    float3 cameraToWorld = scene.cameraPosition.xyz - in.worldPos;\n"
-     "    float3 V = normalize(scene.cameraPosition.w > 0.5 ? -scene.cameraForward.xyz : "
-     "cameraToWorld);\n"
+     "    float3 V = safe_normalize3(scene.cameraPosition.w > 0.5 ? -scene.cameraForward.xyz : "
+     "cameraToWorld, float3(0.0, 0.0, 1.0));\n"
      "    float viewDistance = scene.cameraPosition.w > 0.5\n"
      "        ? abs(dot(in.worldPos - scene.cameraPosition.xyz, scene.cameraForward.xyz))\n"
      "        : length(cameraToWorld);\n"
      "    if (material.flags0.z != 0) {\n"
-     "        float3 T = normalize(in.tangent.xyz);\n"
-     "        T = normalize(T - N * dot(T, N));\n"
+     "        float3 T = safe_normalize3(in.tangent.xyz, float3(1.0, 0.0, 0.0));\n"
+     "        T = safe_normalize3(T - N * dot(T, N), float3(1.0, 0.0, 0.0));\n"
      "        float lenT = length(T);\n"
      "        if (lenT > 0.001) {\n"
-     "            float3 B = cross(N, T) * (in.tangent.w < 0.0 ? -1.0 : 1.0);\n"
+     "            float3 B = safe_normalize3(cross(N, T), float3(0.0, 1.0, 0.0)) * (in.tangent.w < 0.0 ? -1.0 : 1.0);\n"
      "            float3 mapN = normalTex.sample(normalSampler, material_uv(in, material, 1)).rgb * 2.0 - 1.0;\n"
      "            mapN.xy *= material.pbrScalars1.x;\n"
-     "            N = normalize(T * mapN.x + B * mapN.y + N * mapN.z);\n"
+     "            N = safe_normalize3(T * mapN.x + B * mapN.y + N * mapN.z, N);\n"
      "        }\n"
      "    }\n"
      "    float3 emissive = material.emissiveColor.rgb * material.pbrScalars0.w;\n"
@@ -775,21 +791,21 @@ static NSString *metal_shader_source =
      "        for (int i = 0; i < scene.counts.x; i++) {\n"
      "            float3 L; float atten = 1.0;\n"
      "            if (lights[i].type == 0) {\n"
-     "                L = normalize(-lights[i].direction.xyz);\n"
+     "                L = safe_normalize3(-lights[i].direction.xyz, float3(0.0, -1.0, 0.0));\n"
      "            } else if (lights[i].type == 1) {\n"
      "                float3 tl = lights[i].position.xyz - in.worldPos;\n"
-     "                float d = length(tl); L = tl / max(d, 0.0001);\n"
+     "                float d = length(tl); L = safe_normalize3(tl, float3(0.0));\n"
      "                atten = 1.0 / (1.0 + lights[i].attenuation * d * d);\n"
      "            } else if (lights[i].type == 3) {\n"
      "                float3 tl = lights[i].position.xyz - in.worldPos;\n"
-     "                float d = length(tl); L = tl / max(d, 0.0001);\n"
+     "                float d = length(tl); L = safe_normalize3(tl, float3(0.0));\n"
      "                atten = 1.0 / (1.0 + lights[i].attenuation * d * d);\n"
-     "                float spotDot = dot(-L, normalize(lights[i].direction.xyz));\n"
+     "                float spotDot = dot(-L, safe_normalize3(lights[i].direction.xyz, float3(0.0, -1.0, 0.0)));\n"
      "                if (spotDot < lights[i].outer_cos) {\n"
      "                    atten = 0.0;\n"
      "                } else if (spotDot < lights[i].inner_cos) {\n"
-     "                    float t = (spotDot - lights[i].outer_cos) / "
-     "(lights[i].inner_cos - lights[i].outer_cos);\n"
+     "                    float coneRange = lights[i].inner_cos - lights[i].outer_cos;\n"
+     "                    float t = coneRange > 0.0001 ? clamp((spotDot - lights[i].outer_cos) / coneRange, 0.0, 1.0) : 0.0;\n"
      "                    atten *= t * t * (3.0 - 2.0 * t);\n"
      "                }\n"
      "            } else {\n"
@@ -802,7 +818,7 @@ static NSString *metal_shader_source =
      "scene, shadowMap0, shadowMap1, shadowSampler));\n"
      "            if (NdotL <= 0.0)\n"
      "                continue;\n"
-     "            float3 H = normalize(L + V);\n"
+     "            float3 H = safe_normalize3(L + V, N);\n"
      "            float NdotV = max(dot(N, V), 0.001);\n"
      "            float NdotH = max(dot(N, H), 0.0);\n"
      "            float VdotH = max(dot(V, H), 0.0);\n"
@@ -826,21 +842,21 @@ static NSString *metal_shader_source =
      "        for (int i = 0; i < scene.counts.x; i++) {\n"
      "            float3 L; float atten = 1.0;\n"
      "            if (lights[i].type == 0) {\n"
-     "                L = normalize(-lights[i].direction.xyz);\n"
+     "                L = safe_normalize3(-lights[i].direction.xyz, float3(0.0, -1.0, 0.0));\n"
      "            } else if (lights[i].type == 1) {\n"
      "                float3 tl = lights[i].position.xyz - in.worldPos;\n"
-     "                float d = length(tl); L = tl / max(d, 0.0001);\n"
+     "                float d = length(tl); L = safe_normalize3(tl, float3(0.0));\n"
      "                atten = 1.0 / (1.0 + lights[i].attenuation * d * d);\n"
      "            } else if (lights[i].type == 3) {\n"
      "                float3 tl = lights[i].position.xyz - in.worldPos;\n"
-     "                float d = length(tl); L = tl / max(d, 0.0001);\n"
+     "                float d = length(tl); L = safe_normalize3(tl, float3(0.0));\n"
      "                atten = 1.0 / (1.0 + lights[i].attenuation * d * d);\n"
-     "                float spotDot = dot(-L, normalize(lights[i].direction.xyz));\n"
+     "                float spotDot = dot(-L, safe_normalize3(lights[i].direction.xyz, float3(0.0, -1.0, 0.0)));\n"
      "                if (spotDot < lights[i].outer_cos) {\n"
      "                    atten = 0.0;\n"
      "                } else if (spotDot < lights[i].inner_cos) {\n"
-     "                    float t = (spotDot - lights[i].outer_cos) / "
-     "(lights[i].inner_cos - lights[i].outer_cos);\n"
+     "                    float coneRange = lights[i].inner_cos - lights[i].outer_cos;\n"
+     "                    float t = coneRange > 0.0001 ? clamp((spotDot - lights[i].outer_cos) / coneRange, 0.0, 1.0) : 0.0;\n"
      "                    atten *= t * t * (3.0 - 2.0 * t);\n"
      "                }\n"
      "            } else {\n"
@@ -854,7 +870,7 @@ static NSString *metal_shader_source =
      "            result += lights[i].color.rgb * lights[i].intensity * NdotL * "
      "baseColor * atten;\n"
      "            if (NdotL > 0.0 && material.specularColor.w > 0.0) {\n"
-     "                float3 H = normalize(L + V);\n"
+     "                float3 H = safe_normalize3(L + V, N);\n"
      "                float spec = pow(max(dot(N, H), 0.0), material.specularColor.w);\n"
      "                result += lights[i].color.rgb * lights[i].intensity * spec * "
      "specColor * atten;\n"
@@ -987,6 +1003,18 @@ static void mat4f_identity(float *out) {
     out[5] = 1.0f;
     out[10] = 1.0f;
     out[15] = 1.0f;
+}
+
+static void metal_recompute_shadow_count(VGFXMetalContext *ctx) {
+    int32_t count = 0;
+    if (!ctx)
+        return;
+    for (int32_t slot = 0; slot < VGFX3D_MAX_SHADOW_LIGHTS; slot++) {
+        if (!ctx->_shadowComplete[slot] || !ctx->_shadowDepthTexture[slot])
+            break;
+        count = slot + 1;
+    }
+    ctx->_shadowCount = count;
 }
 
 static const float metal_skybox_vertices[] = {
@@ -2675,6 +2703,7 @@ static void metal_begin_frame(void *ctx_ptr, const vgfx3d_camera_params_t *cam) 
         if (new_command_buffer || !is_overlay_pass) {
             ctx->_shadowPassSlot = -1;
             ctx->_shadowCount = 0;
+            memset(ctx->_shadowComplete, 0, sizeof(ctx->_shadowComplete));
         }
 
         if ((ctx.frameSerial & 31u) == 0u) {
@@ -3249,7 +3278,8 @@ static void metal_submit_draw(void *ctx_ptr,
             memset(ml, 0, sizeof(ml));
             for (int32_t i = 0; i < light_count && i < VGFX3D_MAX_LIGHTS; i++) {
                 ml[i].type = lights[i].type;
-                ml[i].shadow_index = lights[i].shadow_index;
+                ml[i].shadow_index =
+                    vgfx3d_metal_sanitize_shadow_index(lights[i].shadow_index, ctx->_shadowCount);
                 ml[i].dir[0] = lights[i].direction[0];
                 ml[i].dir[1] = lights[i].direction[1];
                 ml[i].dir[2] = lights[i].direction[2];
@@ -3443,8 +3473,14 @@ static void metal_shadow_begin(
     @autoreleasepool {
         (void)depth_buf; /* GPU shadows use MTLTexture, not CPU buffer */
         VGFXMetalContext *ctx = (__bridge VGFXMetalContext *)ctx_ptr;
-        if (!ctx || !ctx.device || !ctx.shadowPipeline || !light_vp || w <= 0 || h <= 0 ||
-            slot < 0 || slot >= VGFX3D_MAX_SHADOW_LIGHTS)
+        if (!ctx)
+            return;
+        ctx->_shadowPassSlot = -1;
+        if (slot < 0 || slot >= VGFX3D_MAX_SHADOW_LIGHTS)
+            return;
+        ctx->_shadowComplete[slot] = 0;
+        metal_recompute_shadow_count(ctx);
+        if (!ctx.device || !ctx.shadowPipeline || !light_vp || w <= 0 || h <= 0)
             return;
 
         /* Create/recreate shadow depth texture if size changed */
@@ -3459,9 +3495,10 @@ static void metal_shadow_begin(
             desc.storageMode = MTLStorageModePrivate;
             ctx->_shadowDepthTexture[slot] = [ctx.device newTextureWithDescriptor:desc];
         }
+        if (!ctx->_shadowDepthTexture[slot])
+            return;
 
         /* Store light VP for main pass uniform */
-        ctx->_shadowPassSlot = slot;
         memcpy(ctx->_shadowLightVP[slot], light_vp, 16 * sizeof(float));
 
         /* Start shadow render pass */
@@ -3479,8 +3516,11 @@ static void metal_shadow_begin(
         rp.depthAttachment.clearDepth = 1.0;
 
         ctx.encoder = [ctx.cmdBuf renderCommandEncoderWithDescriptor:rp];
-        if (!ctx.encoder)
+        if (!ctx.encoder) {
+            ctx->_shadowPassSlot = -1;
             return;
+        }
+        ctx->_shadowPassSlot = slot;
         [ctx.encoder setRenderPipelineState:ctx.shadowPipeline];
         [ctx.encoder setDepthStencilState:ctx.shadowDepthState];
         MTLViewport vp = {0, 0, (double)w, (double)h, 0.0, 1.0};
@@ -3572,12 +3612,14 @@ static void metal_shadow_end(void *ctx_ptr, int32_t slot, float bias) {
         VGFXMetalContext *ctx = (__bridge VGFXMetalContext *)ctx_ptr;
         if (!ctx || !ctx.encoder || slot < 0 || slot >= VGFX3D_MAX_SHADOW_LIGHTS)
             return;
+        if (ctx->_shadowPassSlot != slot)
+            return;
         [ctx.encoder endEncoding];
         ctx.encoder = nil;
-        if (ctx->_shadowCount < slot + 1)
-            ctx->_shadowCount = slot + 1;
+        ctx->_shadowComplete[slot] = ctx->_shadowDepthTexture[slot] ? 1 : 0;
         ctx->_shadowPassSlot = -1;
         ctx->_shadowBias = bias;
+        metal_recompute_shadow_count(ctx);
         metal_begin_scene_encoder(ctx, YES, YES);
     }
 }
@@ -3854,7 +3896,8 @@ static void metal_submit_draw_instanced(void *ctx_ptr,
             memset(ml, 0, sizeof(ml));
             for (int32_t i = 0; i < light_count && i < VGFX3D_MAX_LIGHTS; i++) {
                 ml[i].type = lights[i].type;
-                ml[i].shadow_index = lights[i].shadow_index;
+                ml[i].shadow_index =
+                    vgfx3d_metal_sanitize_shadow_index(lights[i].shadow_index, ctx->_shadowCount);
                 ml[i].dir[0] = lights[i].direction[0];
                 ml[i].dir[1] = lights[i].direction[1];
                 ml[i].dir[2] = lights[i].direction[2];

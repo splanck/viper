@@ -613,8 +613,9 @@ static const char *d3d11_shader_source =
     "                    if (spotDot < lights[i].outer_cos) {\n"
     "                        atten = 0.0;\n"
     "                    } else if (spotDot < lights[i].inner_cos) {\n"
-    "                        float t = (spotDot - lights[i].outer_cos) /\n"
-    "                                  max(lights[i].inner_cos - lights[i].outer_cos, 0.0001);\n"
+    "                        float coneRange = lights[i].inner_cos - lights[i].outer_cos;\n"
+    "                        float t = (coneRange > 0.0001) ?\n"
+    "                                  saturate((spotDot - lights[i].outer_cos) / coneRange) : 0.0;\n"
     "                        atten *= t * t * (3.0 - 2.0 * t);\n"
     "                    }\n"
     "                } else {\n"
@@ -660,10 +661,13 @@ static const char *d3d11_shader_source =
     "                    float3 toLight = lights[i].position.xyz - input.worldPos;\n"
     "                    float d = length(toLight);\n"
     "                    L = toLight / max(d, 0.0001);\n"
-    "                    float cone = smoothstep(lights[i].outer_cos,\n"
-    "                                            lights[i].inner_cos,\n"
-    "                                            dot(safeNormalize3(-lights[i].direction.xyz, "
-    "float3(0.0, -1.0, 0.0)), L));\n"
+    "                    float spotDot = dot(safeNormalize3(-lights[i].direction.xyz, "
+    "float3(0.0, -1.0, 0.0)), L);\n"
+    "                    float coneRange = lights[i].inner_cos - lights[i].outer_cos;\n"
+    "                    float cone = (coneRange > 0.0001) ?\n"
+    "                        saturate((spotDot - lights[i].outer_cos) / coneRange) :\n"
+    "                        (spotDot >= lights[i].inner_cos ? 1.0 : 0.0);\n"
+    "                    cone = cone * cone * (3.0 - 2.0 * cone);\n"
     "                    atten = cone / (1.0 + lights[i].attenuation * d * d);\n"
     "                } else {\n"
     "                    continue;\n"
@@ -3414,10 +3418,8 @@ static void d3d11_prepare_object_data(const vgfx3d_draw_cmd_t *cmd, d3d_per_obje
     vgfx3d_compute_normal_matrix4(cmd->model_matrix, object_data->normal);
 
     object_data->has_prev_model_matrix = cmd->has_prev_model_matrix ? 1 : 0;
-    object_data->has_skinning = (cmd->bone_palette && cmd->bone_count > 0 &&
-                                 cmd->bone_count <= VGFX3D_D3D11_MAX_BONES)
-                                    ? 1
-                                    : 0;
+    object_data->has_skinning =
+        vgfx3d_d3d11_should_enable_skinning(cmd->bone_palette, cmd->bone_count) ? 1 : 0;
     object_data->has_prev_skinning =
         (object_data->has_skinning && cmd->prev_bone_palette != NULL) ? 1 : 0;
     object_data->has_prev_instance_matrices = cmd->has_prev_instance_matrices ? 1 : 0;
@@ -4998,6 +5000,37 @@ static void d3d11_end_frame(void *ctx_ptr) {
     ctx->rtt_target->hdr_color_valid = 0;
 }
 
+static HRESULT d3d11_recreate_swapchain_main_targets(d3d11_context_t *ctx,
+                                                     int32_t width,
+                                                     int32_t height,
+                                                     const char *log_context) {
+    ID3D11Texture2D *back_buffer = NULL;
+    HRESULT hr;
+
+    if (!ctx || !vgfx3d_d3d11_is_valid_texture2d_extent(width, height))
+        return E_INVALIDARG;
+
+    hr = IDXGISwapChain_GetBuffer(ctx->swap_chain, 0, &IID_ID3D11Texture2D, (void **)&back_buffer);
+    if (FAILED(hr)) {
+        d3d11_log_hresult(log_context ? log_context : "IDXGISwapChain::GetBuffer", hr);
+        return hr;
+    }
+    hr = ID3D11Device_CreateRenderTargetView(
+        ctx->device, (ID3D11Resource *)back_buffer, NULL, &ctx->rtv);
+    SAFE_RELEASE(back_buffer);
+    if (FAILED(hr)) {
+        d3d11_log_hresult(log_context ? log_context : "CreateRenderTargetView(backbuffer)", hr);
+        return hr;
+    }
+    hr = d3d11_create_depth_target(ctx, width, height, 0, &ctx->depth_tex, &ctx->dsv, NULL);
+    if (FAILED(hr)) {
+        d3d11_log_hresult(log_context ? log_context : "CreateTexture2D/DepthStencilView(main)", hr);
+        SAFE_RELEASE(ctx->rtv);
+        return hr;
+    }
+    return S_OK;
+}
+
 /// @brief Backend `resize` — handle window-size changes.
 ///
 /// Unbinds targets, releases the backbuffer RTV + main depth, calls
@@ -5007,13 +5040,16 @@ static void d3d11_end_frame(void *ctx_ptr) {
 /// dimensions match.
 static void d3d11_resize(void *ctx_ptr, int32_t w, int32_t h) {
     d3d11_context_t *ctx = (d3d11_context_t *)ctx_ptr;
-    ID3D11Texture2D *back_buffer = NULL;
+    int32_t old_w;
+    int32_t old_h;
     HRESULT hr;
 
     if (!ctx || !vgfx3d_d3d11_is_valid_texture2d_extent(w, h))
         return;
     if (ctx->width == w && ctx->height == h)
         return;
+    old_w = ctx->width;
+    old_h = ctx->height;
 
     ID3D11DeviceContext_OMSetRenderTargets(ctx->ctx, 0, NULL, NULL);
     d3d11_unbind_draw_resources(ctx);
@@ -5026,27 +5062,16 @@ static void d3d11_resize(void *ctx_ptr, int32_t w, int32_t h) {
     hr = IDXGISwapChain_ResizeBuffers(ctx->swap_chain, 0, (UINT)w, (UINT)h, DXGI_FORMAT_UNKNOWN, 0);
     if (FAILED(hr)) {
         d3d11_log_hresult("IDXGISwapChain::ResizeBuffers", hr);
+        if (SUCCEEDED(d3d11_recreate_swapchain_main_targets(
+                ctx, old_w, old_h, "Recreate swapchain targets after failed resize"))) {
+            d3d11_bind_swapchain_target(ctx);
+        }
         return;
     }
 
-    hr = IDXGISwapChain_GetBuffer(ctx->swap_chain, 0, &IID_ID3D11Texture2D, (void **)&back_buffer);
-    if (FAILED(hr)) {
-        d3d11_log_hresult("IDXGISwapChain::GetBuffer(resize)", hr);
+    hr = d3d11_recreate_swapchain_main_targets(ctx, w, h, "Recreate swapchain targets after resize");
+    if (FAILED(hr))
         return;
-    }
-    hr = ID3D11Device_CreateRenderTargetView(
-        ctx->device, (ID3D11Resource *)back_buffer, NULL, &ctx->rtv);
-    SAFE_RELEASE(back_buffer);
-    if (FAILED(hr)) {
-        d3d11_log_hresult("CreateRenderTargetView(backbuffer resize)", hr);
-        return;
-    }
-    hr = d3d11_create_depth_target(ctx, w, h, 0, &ctx->depth_tex, &ctx->dsv, NULL);
-    if (FAILED(hr)) {
-        d3d11_log_hresult("CreateTexture2D/DepthStencilView(main resize)", hr);
-        SAFE_RELEASE(ctx->rtv);
-        return;
-    }
 
     ctx->width = w;
     ctx->height = h;

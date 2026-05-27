@@ -295,7 +295,7 @@ static void test_compute_normal_matrix_inverse_transpose(void) {
 }
 
 static void test_compute_normal_matrix_singular_fallback(void) {
-    const float model[16] = {
+    float model[16] = {
         1.0f,
         2.0f,
         3.0f,
@@ -317,11 +317,17 @@ static void test_compute_normal_matrix_singular_fallback(void) {
 
     vgfx3d_compute_normal_matrix4(model, normal);
 
-    EXPECT_NEAR(normal[0], 1.0f, 1e-6f, "Singular fallback copies row 0 col 0");
-    EXPECT_NEAR(normal[1], 2.0f, 1e-6f, "Singular fallback copies row 0 col 1");
-    EXPECT_NEAR(normal[2], 3.0f, 1e-6f, "Singular fallback copies row 0 col 2");
-    EXPECT_NEAR(normal[4], 4.0f, 1e-6f, "Singular fallback copies row 1 col 0");
-    EXPECT_NEAR(normal[10], 9.0f, 1e-6f, "Singular fallback copies row 2 col 2");
+    EXPECT_NEAR(normal[0], 1.0f, 1e-6f, "Singular fallback uses identity row 0 col 0");
+    EXPECT_NEAR(normal[1], 0.0f, 1e-6f, "Singular fallback clears off-diagonal entries");
+    EXPECT_NEAR(normal[4], 0.0f, 1e-6f, "Singular fallback clears row 1 col 0");
+    EXPECT_NEAR(normal[5], 1.0f, 1e-6f, "Singular fallback uses identity row 1 col 1");
+    EXPECT_NEAR(normal[10], 1.0f, 1e-6f, "Singular fallback uses identity row 2 col 2");
+
+    model[0] = NAN;
+    vgfx3d_compute_normal_matrix4(model, normal);
+    EXPECT_NEAR(normal[0], 1.0f, 1e-6f, "Non-finite normal matrix input falls back to identity");
+    EXPECT_NEAR(normal[10], 1.0f, 1e-6f,
+                "Non-finite normal matrix input avoids propagating NaN values");
 }
 
 static void test_invert_matrix4_success(void) {
@@ -470,6 +476,29 @@ static void test_skinning_normalizes_weights_and_copies_without_palette(void) {
                 "CPU skinning copies vertices through when no palette is available");
 }
 
+static void test_skinning_uses_inverse_transpose_normals(void) {
+    vgfx3d_vertex_t src[1];
+    vgfx3d_vertex_t dst[1];
+    float palette[16];
+
+    memset(src, 0, sizeof(src));
+    set_identity4x4(palette);
+    palette[0] = 2.0f;
+    palette[10] = 0.5f;
+    src[0].normal[0] = 0.70710677f;
+    src[0].normal[2] = 0.70710677f;
+    src[0].bone_indices[0] = 0;
+    src[0].bone_weights[0] = 1.0f;
+
+    memset(dst, 0, sizeof(dst));
+    vgfx3d_skin_vertices(src, dst, 1, palette, 1);
+
+    EXPECT_NEAR(dst[0].normal[0], 0.24253564f, 1e-5f,
+                "CPU skinning applies inverse-transpose X scale to normals");
+    EXPECT_NEAR(dst[0].normal[2], 0.97014254f, 1e-5f,
+                "CPU skinning applies inverse-transpose Z scale to normals");
+}
+
 static void test_frustum_and_mesh_aabb_reject_invalid_inputs_conservatively(void) {
     vgfx3d_frustum_t f;
     float minv[3] = {-1.0f, -1.0f, -1.0f};
@@ -508,6 +537,38 @@ static void test_frustum_and_mesh_aabb_reject_invalid_inputs_conservatively(void
                 "Mesh AABB zeroes invalid stride outputs");
 }
 
+static void test_transform_aabb_orders_inverted_extents(void) {
+    const float obj_min[3] = {3.0f, -2.0f, 5.0f};
+    const float obj_max[3] = {-1.0f, 4.0f, -6.0f};
+    const double world[16] = {
+        1.0,
+        0.0,
+        0.0,
+        10.0,
+        0.0,
+        1.0,
+        0.0,
+        20.0,
+        0.0,
+        0.0,
+        1.0,
+        30.0,
+        0.0,
+        0.0,
+        0.0,
+        1.0,
+    };
+    float out_min[3];
+    float out_max[3];
+
+    vgfx3d_transform_aabb(obj_min, obj_max, world, out_min, out_max);
+
+    EXPECT_NEAR(out_min[0], 9.0f, 1e-6f, "AABB transform accepts inverted X extents");
+    EXPECT_NEAR(out_min[2], 24.0f, 1e-6f, "AABB transform accepts inverted Z extents");
+    EXPECT_NEAR(out_max[0], 13.0f, 1e-6f, "AABB transform refits max X after ordering");
+    EXPECT_NEAR(out_max[2], 35.0f, 1e-6f, "AABB transform refits max Z after ordering");
+}
+
 int main(void) {
     test_unpack_pixels_rgba_success();
     test_unpack_pixels_rgba_rejects_invalid();
@@ -522,7 +583,9 @@ int main(void) {
     test_invert_matrix4_rejects_singular();
     test_draw_cmd_alpha_blend_policy();
     test_skinning_normalizes_weights_and_copies_without_palette();
+    test_skinning_uses_inverse_transpose_normals();
     test_frustum_and_mesh_aabb_reject_invalid_inputs_conservatively();
+    test_transform_aabb_orders_inverted_extents();
 
     printf("vgfx3d_backend_utils tests: %d/%d passed\n", tests_passed, tests_run);
     return tests_passed == tests_run ? 0 : 1;

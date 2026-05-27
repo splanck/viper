@@ -140,6 +140,14 @@ static void test_target_blend_motion_and_readback_helpers(void) {
     EXPECT_TRUE(vgfx3d_opengl_choose_readback_kind(1) ==
                     VGFX3D_OPENGL_READBACK_POSTFX_COMPOSITE,
                 "GPU postfx readback uses the composited postfx path");
+    EXPECT_TRUE(vgfx3d_opengl_sanitize_shadow_index(1, 2) == 1,
+                "Shadow index helper preserves completed shadow slots");
+    EXPECT_TRUE(vgfx3d_opengl_sanitize_shadow_index(2, 2) == -1,
+                "Shadow index helper rejects slots beyond the completed count");
+    EXPECT_TRUE(vgfx3d_opengl_sanitize_shadow_index(0, 0) == -1,
+                "Shadow index helper rejects all slots when no shadow maps completed");
+    EXPECT_TRUE(vgfx3d_opengl_sanitize_shadow_index(3, 99) == -1,
+                "Shadow index helper still clamps to the backend maximum slot count");
 }
 
 static void test_capacity_and_cache_helpers(void) {

@@ -145,6 +145,7 @@ The Metal backend now follows the same split as the other GPU runtimes:
 - direct mode: when GPU postfx is disabled, window-backed draws render straight into the current CAMetalLayer drawable and `present()` just schedules that drawable for display
 - postfx mode: the main scene renders into an HDR `RGBA16F` scene target, optional overlays render into a separate UNORM overlay target, and `present_postfx` composites the final tonemapped image to the swapchain
 - overlay composition: screen-space overlays are blended after bloom / tonemap / SSAO / DOF / motion blur, so UI stays crisp and the post stack keeps using the main 3D scene camera, depth, and motion history
+- material/shadow safety: vertex color and alpha are part of the Metal base-color contract, shader normalization has zero-vector fallbacks, and shadow maps are exposed only as a contiguous completed prefix with clip-space `w` and depth-range checks before sampling
 
 This keeps the no-postfx path cheap while preserving the correct scene-history inputs required by the GPU postfx path.
 
@@ -157,9 +158,9 @@ The D3D11 backend now uses two window-backed presentation modes:
 - overlay composition: the first overlay pass clears the overlay target to transparent black, while later overlay passes in the same frame preserve the existing overlay contents before final compositing
 - motion history: only opaque scene draws write the D3D11 motion-vector render target; alpha-blended and additive draws write color only so they do not corrupt motion blur / temporal reconstruction inputs
 - texture-space conversion: D3D11 shader code converts clip/NDC coordinates to top-left-origin texture UVs for shadow maps, post-FX world reconstruction, and motion-vector sampling so vertical motion and shadow lookups match the rest of the runtime
-- skinning robustness: D3D11 normalizes non-zero bone weights in the shader, falls back to the original position/vector when a skinned vertex has no usable weights, and identity-pads unused palette entries to avoid collapsing malformed or partially weighted meshes
+- skinning robustness: D3D11 normalizes non-zero bone weights in the shader, falls back to the original position/vector when a skinned vertex has no usable weights, clamps oversized palette uploads to the shader-visible limit instead of disabling skinning outright, and identity-pads unused palette entries to avoid collapsing malformed or partially weighted meshes
 - resource lifetime: scene resolves fall back to a backend pass-through composite instead of presenting stale swapchain contents, target binding requires complete texture/RTV/DSV/SRV/staging resource sets, texture/cubemap caches prune aged entries while preserving a resident floor, and shadow slots are advertised only as a contiguous complete prefix so shader-visible indices always correspond to bound SRVs
-- allocation fallback/readback: if an offscreen D3D11 target cannot be allocated, the backend downgrades to an available target before clear/draw; readback and render-target sync unbind output resources for `CopyResource` and restore the previous target binding afterward; RTT mirrors are marked dirty only when the target handle plus color/depth/staging resources are all live
+- allocation fallback/readback: if an offscreen D3D11 target cannot be allocated, the backend downgrades to an available target before clear/draw; resize failure attempts to recreate the prior swapchain render/depth targets before returning; readback and render-target sync unbind output resources for `CopyResource` and restore the previous target binding afterward; RTT mirrors are marked dirty only when the target handle plus color/depth/staging resources are all live
 - descriptor validation: D3D11 samplers are initialized with valid comparison/max-anisotropy defaults, constant/static buffers clear stale output pointers and validate device state before `CreateBuffer`, constant buffers are aligned and bounded, instanced uploads are checked against D3D11 `ByteWidth`, and morph-target cache reuse includes normal-delta presence so position-only payloads cannot satisfy normal-morphed draws
 
 This split keeps the no-postfx path cheap while preserving correct motion/depth history for SSAO, DOF, and motion blur when the GPU postfx path is active.
@@ -170,9 +171,10 @@ The OpenGL backend now follows the same high-level split, adapted to its GLX/swa
 
 - direct mode: when GPU postfx is disabled, window-backed draws render straight into the default framebuffer and `present()` only swaps buffers
 - postfx mode: the main scene renders into an HDR scene FBO, screenshots/readback can composite that scene through the backend-owned postfx shader, and 2D overlay passes preserve scene history instead of overwriting it
-- overlay composition: when a screen overlay follows a GPU-postfx main scene, OpenGL first composites the postfx result to the default framebuffer, then renders the overlay directly on top so SSAO / DOF / motion-blur history remains sourced from the 3D scene
+- overlay composition: when a screen overlay follows a GPU-postfx main scene, OpenGL first composites the postfx result to the default framebuffer, then renders the overlay directly on top so SSAO / DOF / motion-blur history remains sourced from the 3D scene; if the chain is absent or disabled, the backend still performs a no-op scene composite instead of presenting stale backbuffer contents
 - texture origin normalization: `Pixels` and `CubeMap3D` faces use a top-left origin, so OpenGL flips RGBA rows before `glTexImage2D` / cubemap face upload to match software, Metal, and D3D11 sampling
-- cubemap seam filtering: OpenGL enables `GL_TEXTURE_CUBE_MAP_SEAMLESS`, while the software backend remaps bilinear taps across neighboring faces so skyboxes and reflections do not introduce backend-specific face seams
+- cubemap seam filtering: OpenGL enables `GL_TEXTURE_CUBE_MAP_SEAMLESS`, while the software backend remaps bilinear taps across neighboring faces so skyboxes and reflections do not introduce backend-specific face seams; failed cubemap reuploads invalidate the stale GL texture cache entry instead of reusing older face data
+- target/readback validation: OpenGL rejects invalid RTT dimensions, bounds HDR readback allocation math, sanitizes shadow indices against completed slots, and falls back to raw scene readback when postfx readback cannot allocate or apply the chain
 
 Like D3D11, this keeps the no-postfx path cheap while preserving the scene depth/history inputs required by the advanced GPU postfx path.
 

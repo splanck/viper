@@ -253,6 +253,15 @@ vgfx3d_metal_readback_kind_t vgfx3d_metal_choose_readback_kind(int8_t gpu_postfx
                               : VGFX3D_METAL_READBACK_BACKBUFFER;
 }
 
+/// @brief Clamp light shadow indices to completed contiguous shadow-map slots.
+int32_t vgfx3d_metal_sanitize_shadow_index(int32_t shadow_index, int32_t shadow_count) {
+    if (shadow_count <= 0)
+        return -1;
+    if (shadow_count > VGFX3D_MAX_SHADOW_LIGHTS)
+        shadow_count = VGFX3D_MAX_SHADOW_LIGHTS;
+    return (shadow_index >= 0 && shadow_index < shadow_count) ? shadow_index : -1;
+}
+
 /// @brief Decide whether to reuse a cached morph-target Metal buffer.
 /// Returns 1 if the cached payload (key + revision + shape/vertex counts +
 /// normal-deltas flag) still matches the draw command; 0 otherwise.

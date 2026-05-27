@@ -208,6 +208,11 @@ static void test_upload_status_helpers_drop_stale_state(void) {
     vgfx3d_d3d11_resolve_bone_upload_status(&object_data, 0, 1);
     EXPECT_TRUE(object_data.has_skinning == 0 && object_data.has_prev_skinning == 0,
                 "Bone upload failure disables both current and previous skinning flags");
+    EXPECT_TRUE(vgfx3d_d3d11_should_enable_skinning((const float *)&object_data,
+                                                   VGFX3D_D3D11_MAX_BONES + 8) == 1,
+                "Skinning enable helper keeps oversized palettes active for clamped uploads");
+    EXPECT_TRUE(vgfx3d_d3d11_should_enable_skinning(NULL, VGFX3D_D3D11_MAX_BONES + 8) == 0,
+                "Skinning enable helper still rejects missing palettes");
 
     memset(&object_data, 0, sizeof(object_data));
     object_data.has_skinning = 1;
