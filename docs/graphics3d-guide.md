@@ -385,7 +385,7 @@ For a compact, executable example of this path, see
 software-backend frame, captures with `ScreenshotFinal()`, checks the crisp final
 overlay, and compares to the committed baseline in `examples/3d/baselines/`.
 
-**Important:** `Begin`/`End` and `BeginOverlay`/`EndOverlay` must not nest. All 3D draw calls go between `Begin` and `End`; `DrawTerrain` and `DrawVegetation` are rejected during `Begin2D`. Legacy HUD overlay calls (`DrawRect2D`, `DrawText2D`, `DrawCrosshair`) may still be called between `End` and `Flip`, but final overlays should be grouped with `BeginOverlay`/`EndOverlay`. `DrawMesh` and instanced draws require finite transform matrices; invalid matrices are rejected before they reach culling or backend submission. Draw submission clamps material colors and PBR scalars before narrowing to backend floats.
+**Important:** `Begin`/`End` and `BeginOverlay`/`EndOverlay` must not nest. All 3D draw calls go between `Begin` and `End`; `DrawTerrain` and `DrawVegetation` are rejected during `Begin2D`. Legacy HUD overlay calls (`DrawRect2D`, `DrawText2D`, `DrawCrosshair`) may still be called between `End` and `Flip`, but final overlays should be grouped with `BeginOverlay`/`EndOverlay`. `DrawMesh` and instanced draws require finite transform matrices; invalid matrices are rejected before they reach culling or backend submission. Draw submission clamps material colors and PBR scalars before narrowing to backend floats. Deferred heap `Mesh3D` draws retain the mesh object instead of copying static geometry every draw; do not mutate a submitted heap mesh until after `Canvas3D.End()`.
 
 ## Mesh3D
 
@@ -1015,7 +1015,7 @@ Current scope:
 
 - `SceneNode3D` bindings currently cover `Physics3DBody` and `AnimController3D`.
 - `NavAgent3D` now provides its own `BindNode` / `BindCharacter` workflow for navigation-driven motion.
-- `AudioListener3D` and `AudioSource3D` now use `Audio3D.SyncBindings(dt)`, and `Scene3D.SyncBindings(dt)` forwards into that audio-binding pass after node/body/anim synchronization.
+- `SoundListener3D` and `SoundSource3D` now use `Sound3D.SyncBindings(dt)`, and `Scene3D.SyncBindings(dt)` forwards into that audio-binding pass after node/body/anim synchronization.
 
 ## Model3D
 
@@ -1447,6 +1447,9 @@ Supported glTF material fidelity:
 Emitter-based 3D particle effects with physics, lifetime, and billboard rendering.
 Particle setters sanitize non-finite values: ranges are kept non-negative and ordered, alpha and
 direction spread are clamped, invalid directions fall back to +Y, and invalid update deltas are ignored.
+Rendering is batched per emitter. Additive particles skip sorting, while alpha particles sort a
+temporary key array back-to-front and submit one billboard mesh without reordering the live particle
+array.
 
 ### Constructor
 
@@ -1738,23 +1741,23 @@ func start() {
 - `Yaw`/`Pitch` properties allow reading/writing the current angles and rebuild the view immediately
 - Use `Mouse.Capture()` to hide cursor and enable warp-to-center mouse tracking
 
-## Audio3D
+## Sound3D
 
 Spatial audio now has two layers:
 
-- `AudioListener3D` and `AudioSource3D` are the preferred gameplay-facing APIs.
-- `Audio3D` remains as the low-level compatibility layer for direct listener/voice control.
+- `SoundListener3D` and `SoundSource3D` are the preferred gameplay-facing APIs.
+- `Sound3D` remains as the low-level compatibility layer for direct listener/voice control.
 
-### AudioListener3D
+### SoundListener3D
 
-An `AudioListener3D` owns the active listener transform used for attenuation and stereo pan. The first listener you create becomes active automatically if no other active listener exists; you can switch the active listener by setting `IsActive = true` on another instance.
+An `SoundListener3D` owns the active listener transform used for attenuation and stereo pan. The first listener you create becomes active automatically if no other active listener exists; you can switch the active listener by setting `IsActive = true` on another instance.
 
 | Property | Type | Access | Description |
 |----------|------|--------|-------------|
 | `Position` | `Vec3` | read/write | Listener world position |
 | `Forward` | `Vec3` | read/write | Listener facing direction |
 | `Velocity` | `Vec3` | read/write | Listener velocity |
-| `IsActive` | `Boolean` | read/write | Whether this listener is driving `Audio3D` |
+| `IsActive` | `Boolean` | read/write | Whether this listener is driving `Sound3D` |
 
 | Method | Signature | Description |
 |--------|-----------|-------------|
@@ -1767,14 +1770,16 @@ An `AudioListener3D` owns the active listener transform used for attenuation and
 | `BindCamera(camera)` | `void(obj)` | Follow a `Camera3D` position and forward vector |
 | `ClearCameraBinding()` | `void()` | Stop following a camera |
 
-### AudioSource3D
+### SoundSource3D
 
-An `AudioSource3D` owns one spatial sound instance. It caches world-space position and can follow a bound `SceneNode3D`.
+An `SoundSource3D` owns one spatial sound instance. It caches world-space position and can follow a bound `SceneNode3D`.
 
 | Property | Type | Access | Description |
 |----------|------|--------|-------------|
 | `Position` | `Vec3` | read/write | Source world position |
 | `Velocity` | `Vec3` | read/write | Source velocity |
+| `DopplerFactor` | `Float` | read | Latest computed Doppler pitch multiplier |
+| `RefDistance` | `Float` | read/write | Full-volume radius before attenuation begins |
 | `MaxDistance` | `Float` | read/write | Distance at which the sound attenuates to silence |
 | `Volume` | `Integer` | read/write | Base volume before attenuation `[0,100]` |
 | `Looping` | `Boolean` | read/write | Whether `Play()` uses looped voice playback |
@@ -1795,33 +1800,34 @@ An `AudioSource3D` owns one spatial sound instance. It caches world-space positi
 
 Bound audio objects are explicit, just like physics/animation bindings:
 
-- `Audio3D.SyncBindings(dt)` updates all bound listeners and sources, recomputes velocities, and refreshes any live source voices.
-- `Scene3D.SyncBindings(dt)` calls `Audio3D.SyncBindings(dt)` after scene/body/anim synchronization, so most scene-driven games only need the scene call.
+- `Sound3D.SyncBindings(dt)` updates all bound listeners and sources, recomputes velocities, and refreshes any live source voices.
+- `Scene3D.SyncBindings(dt)` calls `Sound3D.SyncBindings(dt)` after scene/body/anim synchronization, so most scene-driven games only need the scene call.
 - Property setters such as `source.Position = ...` update the cached spatial state immediately even when no scene binding is involved.
 - `BindNode` accepts only `SceneNode3D`, `BindCamera` accepts only `Camera3D`, and non-Vec3 position/velocity/forward values are ignored. Null vectors still collapse to origin for compatibility.
-- `AudioSource3D.MaxDistance` is finite and non-negative; invalid values become `0.0`.
+- `SoundSource3D.MaxDistance` is finite and non-negative; invalid values become `0.0`.
+- `SoundSource3D.RefDistance` defaults to `1.0`; `MaxDistance` is raised when needed so it is never smaller than `RefDistance`.
 
 Recommended frame order for scene-driven audio:
 
 1. Move cameras and scene nodes.
 2. Call `Scene3D.SyncBindings(dt)`.
-3. Trigger `AudioSource3D.Play()` or `Audio3D.PlayAt(...)` calls for the frame.
+3. Trigger `SoundSource3D.Play()` or `Sound3D.PlayAt(...)` calls for the frame.
 
-### Audio3D Compatibility Layer
+### Sound3D Compatibility Layer
 
-`Audio3D` is still available when you want direct listener/voice control without allocating objects.
+`Sound3D` is still available when you want direct listener/voice control without allocating objects.
 
 | Method | Signature | Description |
 |--------|-----------|-------------|
-| `Audio3D.SetListener(position, forward)` | `void(obj, obj)` | Set the fallback listener position and forward vector |
-| `Audio3D.PlayAt(sound, position, maxDist, volume)` | `i64(obj, obj, f64, i64)` | Play a `Sound` at a world position |
-| `Audio3D.UpdateVoice(voice, position, maxDist)` | `void(i64, obj, f64)` | Recompute attenuation and pan for a moving voice |
-| `Audio3D.SyncBindings(dt)` | `void(f64)` | Update all bound `AudioListener3D` / `AudioSource3D` objects |
+| `Sound3D.SetListener(position, forward)` | `void(obj, obj)` | Set the fallback listener position and forward vector |
+| `Sound3D.PlayAt(sound, position, maxDist, volume)` | `i64(obj, obj, f64, i64)` | Play a `Sound` at a world position |
+| `Sound3D.UpdateVoice(voice, position, maxDist)` | `void(i64, obj, f64)` | Recompute attenuation and pan for a moving voice |
+| `Sound3D.SyncBindings(dt)` | `void(f64)` | Update all bound `SoundListener3D` / `SoundSource3D` objects |
 
 ### Zia Example
 
 ```zia
-module Audio3DObjectsDemo;
+module Sound3DObjectsDemo;
 
 bind Viper.Graphics3D;
 bind Viper.Math;
@@ -1835,16 +1841,17 @@ func start() {
     var node = SceneNode3D.New();
     SceneNode3D.SetPosition(node, 3.0, 0.5, -1.0);
 
-    var listener = AudioListener3D.New();
+    var listener = SoundListener3D.New();
     listener.BindCamera(cam);
     listener.IsActive = true;
 
-    var source = AudioSource3D.New(Synth.Tone(523, 220, 0));
+    var source = SoundSource3D.New(Synth.Tone(523, 220, 0));
     source.BindNode(node);
+    source.RefDistance = 2.0;
     source.MaxDistance = 20.0;
     source.Volume = 75;
 
-    Audio3D.SyncBindings(0.016);
+    Sound3D.SyncBindings(0.016);
 
     if (Audio.IsAvailable() && Audio.Init() != 0) {
         var voice = source.Play();
@@ -1853,10 +1860,10 @@ func start() {
 }
 ```
 
-- Linear distance attenuation: `volume * max(0, 1 - dist/maxDist)`
+- Linear distance attenuation stays at full volume through `refDist`, then falls to zero at `maxDist`
 - Pan is derived from the listener's right vector and the source direction in world space
-- `Audio3D.PlayAt` still records per-voice `max_distance`, and `UpdateVoice(..., 0.0)` reuses that stored value
-- `AudioSource3D` currently exposes volume, max-distance, looping, and binding control; doppler, pitch, cones, and occlusion remain future work
+- `Sound3D.PlayAt` still records per-voice `max_distance`, and `UpdateVoice(..., 0.0)` reuses that stored value
+- `SoundSource3D.DopplerFactor` exposes the latest factor computed from listener/source velocity; the current mixer applies volume and pan, with playback-rate application reserved for rate-capable backends
 
 ## Mouse Capture
 
@@ -2570,6 +2577,9 @@ See `examples/apiaudit/graphics3d/procedural_terrain_demo.zia` and `terrain_lod_
 Draw many copies of one mesh with different transforms in a single draw call.
 Transforms passed to `Add` and `Set` are copied into finite float matrices; any non-finite element is
 replaced with the corresponding identity-matrix value before culling or backend submission.
+GPU instanced draws synthesize previous-instance matrices when the caller does not provide them, so
+motion-vector consumers get stable no-streak first frames. Raw instanced submissions separate motion
+history by batch buffer identity; reuse the same matrix buffer across frames for continuous history.
 
 ### Constructor
 
@@ -2635,7 +2645,8 @@ func start() {
 
 ## NavMesh3D
 
-Navigation mesh with A* pathfinding for AI characters.
+Navigation mesh with A* pathfinding for AI characters. `Build` requires manifold shared edges:
+more than two triangles on one undirected edge is rejected because adjacency would be ambiguous.
 
 ### Constructor
 

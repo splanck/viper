@@ -18,8 +18,11 @@
 #include "rt_path3d.h"
 #include "rt_skeleton3d.h"
 #include <cassert>
+#include <csetjmp>
 #include <cmath>
 #include <cstdio>
+#include <cstdlib>
+#include <cstring>
 
 extern "C" {
 extern void *rt_vec3_new(double x, double y, double z);
@@ -27,6 +30,10 @@ extern double rt_vec3_x(void *v);
 extern double rt_vec3_y(void *v);
 extern double rt_vec3_z(void *v);
 extern void *rt_mesh3d_new_plane(double sx, double sz);
+extern void *rt_mesh3d_new(void);
+extern void rt_mesh3d_add_vertex(
+    void *obj, double x, double y, double z, double nx, double ny, double nz, double u, double v);
+extern void rt_mesh3d_add_triangle(void *obj, int64_t v0, int64_t v1, int64_t v2);
 extern void *rt_mesh3d_new_box(double sx, double sy, double sz);
 extern int64_t rt_path3d_get_point_count(void *path);
 extern void *rt_mat4_identity(void);
@@ -39,6 +46,30 @@ extern rt_string rt_const_cstr(const char *s);
 
 static int tests_passed = 0;
 static int tests_run = 0;
+static std::jmp_buf trap_jmp;
+static const char *last_trap = nullptr;
+static bool expect_trap = false;
+
+extern "C" void vm_trap(const char *msg) {
+    last_trap = msg;
+    if (expect_trap)
+        std::longjmp(trap_jmp, 1);
+    std::fprintf(stderr, "unexpected runtime trap: %s\n", msg ? msg : "(null)");
+    std::abort();
+}
+
+template <typename Fn>
+static bool expect_trap_contains(Fn &&fn, const char *needle) {
+    last_trap = nullptr;
+    expect_trap = true;
+    if (setjmp(trap_jmp) == 0) {
+        fn();
+        expect_trap = false;
+        return false;
+    }
+    expect_trap = false;
+    return last_trap && (!needle || std::strstr(last_trap, needle) != nullptr);
+}
 
 #define EXPECT_TRUE(cond, msg)                                                                     \
     do {                                                                                           \
@@ -154,6 +185,22 @@ static void test_navmesh_adjacency_edge_hash() {
     EXPECT_TRUE(path != nullptr, "NavMesh adjacency: path found across edge-hash adjacency");
 }
 
+static void test_navmesh_rejects_non_manifold_edges() {
+    void *mesh = rt_mesh3d_new();
+    rt_mesh3d_add_vertex(mesh, -1.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0);
+    rt_mesh3d_add_vertex(mesh, 1.0, 0.0, 0.0, 0.0, 1.0, 0.0, 1.0, 0.0);
+    rt_mesh3d_add_vertex(mesh, 0.0, 0.0, -1.0, 0.0, 1.0, 0.0, 0.5, 1.0);
+    rt_mesh3d_add_vertex(mesh, 0.0, 0.0, 1.0, 0.0, 1.0, 0.0, 0.5, 1.0);
+    rt_mesh3d_add_vertex(mesh, 0.0, 0.0, -2.0, 0.0, 1.0, 0.0, 0.5, 1.0);
+    rt_mesh3d_add_triangle(mesh, 0, 1, 2);
+    rt_mesh3d_add_triangle(mesh, 1, 0, 3);
+    rt_mesh3d_add_triangle(mesh, 0, 1, 4);
+
+    EXPECT_TRUE(expect_trap_contains([&] { (void)rt_navmesh3d_build(mesh, 0.4, 1.8); },
+                                     "non-manifold"),
+                "NavMesh rejects non-manifold edge ownership");
+}
+
 static void test_navmesh_large_mesh() {
     /* Build from a box (12 triangles) — verifies edge hash handles > 2 triangles */
     void *box = rt_mesh3d_new_box(10.0, 0.5, 10.0); /* flat-ish box */
@@ -254,6 +301,7 @@ int main() {
     test_navmesh_find_path_from_shared_edge();
     test_navmesh_box_slope_filter();
     test_navmesh_adjacency_edge_hash();
+    test_navmesh_rejects_non_manifold_edges();
     test_navmesh_large_mesh();
 
     /* AnimBlend3D */

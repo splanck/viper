@@ -1053,10 +1053,10 @@ static void test_static_mesh_geometry_identity_forwarded(void) {
                 "Static mesh draw forwards a stable geometry identity for backend caches");
     EXPECT_TRUE(draws[0].cmd.geometry_revision == mesh_view->geometry_revision,
                 "Static mesh draw forwards the current geometry revision");
-    EXPECT_TRUE(draws[0].cmd.vertices != mesh_view->vertices,
-                "Static mesh draw snapshots vertex data for deferred submission");
-    EXPECT_TRUE(draws[0].cmd.indices != mesh_view->indices,
-                "Static mesh draw snapshots index data for deferred submission");
+    EXPECT_TRUE(draws[0].cmd.vertices == mesh_view->vertices,
+                "Static mesh draw reuses retained heap vertex data for deferred submission");
+    EXPECT_TRUE(draws[0].cmd.indices == mesh_view->indices,
+                "Static mesh draw reuses retained heap index data for deferred submission");
 
     cleanup_fake_canvas(&canvas);
 }
@@ -1235,8 +1235,16 @@ static void test_instanced_transform_history_forwarded(void) {
     rt_canvas3d_draw_instanced(&canvas, batch);
     rt_canvas3d_end(&canvas);
     EXPECT_TRUE(last_instance_count == 2, "Instanced draw submits both instances");
-    EXPECT_TRUE(last_instanced_cmd.has_prev_instance_matrices == 0,
-                "First instanced draw has no previous transform history");
+    EXPECT_TRUE(last_instanced_cmd.has_prev_instance_matrices == 1,
+                "First instanced draw synthesizes previous transform history");
+    EXPECT_TRUE(last_instanced_cmd.prev_instance_matrices != nullptr,
+                "First instanced draw exposes a previous instance matrix payload");
+    if (last_instanced_cmd.prev_instance_matrices) {
+        EXPECT_TRUE(last_instanced_cmd.prev_instance_matrices[3] == -0.75f,
+                    "First instanced draw seeds the first previous transform from the current pose");
+        EXPECT_TRUE(last_instanced_cmd.prev_instance_matrices[19] == -0.25f,
+                    "First instanced draw seeds the second previous transform from the current pose");
+    }
 
     ((mat4_impl *)t0)->m[3] = 0.0;
     rt_instbatch3d_set(batch, 0, t0);

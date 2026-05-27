@@ -76,7 +76,7 @@ This is intentionally free of common-case `Mat4` calls. `Entity3D` owns the raw
 | `Assets3D` / `ModelTemplate` | Filesystem and package-aware model loading with cached reusable model templates |
 | `Animator3D` | Game3D wrapper over `Graphics3D.AnimController3D` for play/crossfade/state-time/events/root-motion attachment |
 | `Input3D` | Named keyboard, mouse, movement-axis, and look-axis helper over the runtime input state |
-| `Audio3D` | World-owned audio helper with camera-follow listener, loading, 2D, positional, and attached-source playback |
+| `Sound3D` | World-owned audio helper with camera-follow listener, loading, 2D, positional, and attached-source playback |
 | `EffectRegistry3D` / `Effects3D` | World-owned post-FX plus runtime particle/decal registry and one-call VFX presets |
 | `FreeFlyController` | Spectator camera controller with WASD/arrow movement, vertical movement, mouse look, and mouse capture |
 | `FirstPersonController` | FPS camera controller that can either move the camera directly or drive a `CharacterController3D` |
@@ -111,7 +111,7 @@ Constant classes are runtime-backed too: `Layers`, `BodyShape`, `SyncMode`,
 | `scene` | `Viper.Graphics3D.Scene3D` |
 | `physics` | `Viper.Graphics3D.Physics3DWorld` |
 | `input` | `Viper.Game3D.Input3D` |
-| `audio` | `Viper.Game3D.Audio3D` with a camera-aligned listener |
+| `audio` | `Viper.Game3D.Sound3D` with a camera-aligned listener |
 | `effects` | `Viper.Game3D.EffectRegistry3D` with a `PostFX3D` chain and particle/decal registry |
 
 The constructor installs explicit default lighting, balanced backend-safe
@@ -249,7 +249,10 @@ Manual code can use the same pieces directly:
 
 For deterministic interpreted-Zia tests, use `runFramesOnly(frameCount, stepSec)`
 or call the manual methods explicitly. `runFramesOnly` uses the synthetic clock
-path and leaves the final frame capturable.
+path and leaves the final frame capturable. `runFrames` / `runFramesOnly`
+temporarily switch the backing canvas to synthetic input and fixed-clock timing,
+then restore the previous canvas input source, clock source, and synthetic
+delta when the run completes.
 
 The raw `Canvas3D` finalization calls map to the Game3D frame helpers this way:
 
@@ -292,7 +295,7 @@ This boundary is covered by `g3d_test_game3d_runframes_callback_reject`.
 | `setScale(s)` / `setScaleXYZ(x, y, z)` | Set node scale |
 | `setRotationEuler(xDeg, yDeg, zDeg)` | Set node orientation in degrees |
 | `setMesh(mesh)` / `setMaterial(material)` | Replace render resources |
-| `addChild(child)` | Parent another Game3D entity |
+| `addChild(child)` | Parent another Game3D entity; reparents from an old Game3D parent and rejects self/cycle parenting |
 | `setName(name)` | Name the entity and backing node for lookup |
 | `setLayer(layer)` | Set gameplay/physics layer |
 | `setCollisionMask(mask)` | Set the layer mask used by attached bodies |
@@ -305,7 +308,9 @@ This boundary is covered by `g3d_test_game3d_runframes_callback_reject`.
 the entity by name. `World3D.despawn(entity)` removes it from the registry,
 scene, and physics world. Child Game3D entities are owned by their parent for
 despawn purposes; raw imported child nodes remain part of the imported node
-subtree.
+subtree. Adding a child to an already-spawned entity spawns that child into the
+same world; adding a spawned child under an unspawned entity is rejected because
+it would detach the child from its world scene.
 
 Use `LayerMask.None()`, `LayerMask.All()`, `LayerMask.Of(layer)`,
 `include(layer)`, and `includes(layer)` for readable filters. Layer values are
@@ -402,16 +407,16 @@ deferred until the VM has a callback trampoline for managed function objects.
 
 ---
 
-## Audio3D And Effects3D
+## Sound3D And Effects3D
 
-`World3D.audio` owns a runtime `AudioListener3D` that follows the world camera
+`World3D.audio` owns a runtime `SoundListener3D` that follows the world camera
 by default. The listener can be detached for cutscenes, replays, or split-view
 tests:
 
 ```zia
 var audio = Game3D.World3D.get_audio(world);
-Game3D.Audio3D.listenerFollowCamera(audio, false);
-Game3D.Audio3D.setListenerPose(
+Game3D.Sound3D.listenerFollowCamera(audio, false);
+Game3D.Sound3D.setListenerPose(
     audio,
     new Math.Vec3(0.0, 2.0, 6.0),
     new Math.Vec3(0.0, 0.0, -1.0),
@@ -420,16 +425,16 @@ Game3D.Audio3D.setListenerPose(
 
 | Audio API | Purpose |
 |-----------|---------|
-| `listener` | Raw `AudioListener3D` escape hatch |
+| `listener` | Raw `SoundListener3D` escape hatch |
 | `listenerFollowCamera(enabled)` | Bind/unbind the listener from the world camera |
 | `setListenerPose(pos, forward, up)` | Set a manual listener pose; `up` is reserved for future orientation support |
-| `setAttenuation(refDist, maxDist)` | Store Game3D playback attenuation defaults; current low-level spatial audio uses `maxDist` linear falloff |
+| `setAttenuation(refDist, maxDist)` | Store and apply Game3D playback attenuation defaults; sources stay full-volume through `refDist`, then fall linearly to silence at `maxDist` |
 | `volume` | Default source/playback volume, clamped to 0..100 |
 | `load(path)` / `loadAsset(assetPath)` | Load a `Viper.Sound.Sound` clip from filesystem or asset resolver |
-| `playAt(clip, pos)` | Create and play a positional `AudioSource3D` at a `Vec3` |
-| `playAttached(clip, entity)` | Create an `AudioSource3D` bound to the entity node, so it follows after scene/body sync |
+| `playAt(clip, pos)` | Create and play a positional `SoundSource3D` at a `Vec3` |
+| `playAttached(clip, entity)` | Create an `SoundSource3D` bound to the entity node, so it follows after scene/body sync |
 | `play2D(clip)` | Play a non-positional clip and return the voice id |
-| `clearSources()` | Stop and release sources created through this `Audio3D` helper |
+| `clearSources()` | Stop and release sources created through this `Sound3D` helper |
 
 `World3D.stepSimulation` syncs audio bindings after physics and scene sync, so
 attached audio observes the same final entity transforms as follow cameras.
@@ -462,7 +467,7 @@ impact audio/VFX a direct event-buffer workflow:
 
 ```zia
 var evt = Game3D.World3D.collisionEvent(world, Game3D.CollisionPhase.get_Enter(), 0);
-Game3D.Audio3D.playAt(audio, bounceClip, Game3D.Collision3DEvent.point(evt));
+Game3D.Sound3D.playAt(audio, bounceClip, Game3D.Collision3DEvent.point(evt));
 Game3D.Effects3D.Dust(world, Game3D.Collision3DEvent.point(evt));
 ```
 
@@ -605,7 +610,7 @@ smoothing.
 
 | Symptom | Check |
 |---------|-------|
-| `LoadModelAsset` or `Audio3D.loadAsset` returns `null` | Run from the project root or package the asset path in `viper.project`; source-tree samples use `asset assets assets` or repository-relative fixture paths. |
+| `LoadModelAsset` or `Sound3D.loadAsset` returns `null` | Run from the project root or package the asset path in `viper.project`; source-tree samples use `asset assets assets` or repository-relative fixture paths. |
 | Final overlay pixels look post-processed | Draw HUD after `World3D.endScene()` with `Canvas3D.BeginOverlay()` / `EndOverlay()`, then call `captureFinalFrame()` or `present()`. |
 | Interpreted Zia callback loop traps | Use manual `tick`/`stepSimulation`/frame methods or `runFramesOnly`; native callback loops require C-callable function pointers. |
 | Software backend disables a requested quality feature | Inspect `Canvas3D.get_QualityActive()` and `get_QualityFallback()`; `Quality.Apply` avoids unsupported shadow/post-FX paths. |
@@ -620,7 +625,7 @@ The Game3D runtime is covered by:
 
 | Test | Coverage |
 |------|----------|
-| `test_rt_game3d` | C runtime contracts for constants, masks, input, world defaults, spawn/despawn, collision-event clearing, native callback loops, overlay hooks, final capture, synthetic controller input, orbit/follow late update, first-person character movement, material presets, prefabs, lighting, quality, environment, post-FX, debug helpers, Animator3D root motion/events, Audio3D helpers, and Effects3D presets/expiry |
+| `test_rt_game3d` | C runtime contracts for constants, masks, input, world defaults, spawn/despawn, collision-event clearing, native callback loops, overlay hooks, final capture, synthetic controller input, orbit/follow late update, first-person character movement, material presets, prefabs, lighting, quality, environment, post-FX, debug helpers, Animator3D root motion/events, Sound3D helpers, and Effects3D presets/expiry |
 | `g3d_test_game3d_world_probe` | Zia construction, default subsystems, layer masks, entity spawn/find/despawn, resize/aspect, manual frame path, final capture, and destroy |
 | `g3d_test_game3d_runframes_probe` | Zia deterministic `runFramesOnly`, dt/elapsed/frame accounting, and final capture |
 | `g3d_test_game3d_runframes_callback_reject` | Interpreted Zia callback rejection diagnostic for native callback-loop APIs |
@@ -631,7 +636,7 @@ The Game3D runtime is covered by:
 | `g3d_test_game3d_physics_probe` | Zia `BodyDef` static/dynamic body attachment, CCD/filter flags, gravity, and collision production |
 | `g3d_test_game3d_collision_probe` | Zia entity-aware collision wrappers for enter/stay/exit and trigger events |
 | `g3d_test_game3d_anim_probe` | Zia Animator3D play/crossfade/state-time/events, entity attachment, raw controller wrapping, and root-motion world stepping |
-| `g3d_test_game3d_audio_probe` | Zia listener follow/manual pose, attenuation defaults, positional playback, attached-source sync, 2D playback, and source cleanup |
+| `g3d_test_game3d_sound_probe` | Zia listener follow/manual pose, attenuation defaults, positional playback, attached-source sync, 2D playback, and source cleanup |
 | `g3d_test_game3d_effects_probe` | Zia Effects3D presets, registry diagnostics, draw path, auto-expiry, manual particle/decal registration, and collision-triggered VFX |
 | `g3d_test_game3d_docs_snippets` | Copy-paste docs surfaces for setup, presets, assets, physics, audio/VFX, deterministic frame helpers, and manual final-frame capture |
 | `g3d_walk_min_visual_probe` | Game3D sample final-frame baseline, crisp overlay, directional lighting, and grounded synthetic first-person movement |
@@ -659,7 +664,7 @@ ctest --test-dir build -L graphics3d --output-on-failure
 
 The core world/entity/input layer, built-in camera/character controllers,
 presets, prefabs, environment/debug helpers, `Assets3D`, `BodyDef`,
-entity-aware collision event wrappers, `Animator3D`, `Audio3D`, and `Effects3D`
+entity-aware collision event wrappers, `Animator3D`, `Sound3D`, and `Effects3D`
 now live in the C runtime.
 `examples/3d/walk_min.zia`, `examples/3d/game3d_starter/`, and
 `examples/3d/game3d_showcase/` are the current code-first samples. The bowling

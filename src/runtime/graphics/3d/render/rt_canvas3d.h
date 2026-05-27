@@ -391,6 +391,8 @@ void *rt_light3d_get_position(void *obj);
 /// @brief Register a temporary buffer to be freed at the end of the current frame.
 /// @return 1 when ownership transfers to the canvas, 0 when the caller still owns `buffer`.
 int rt_canvas3d_add_temp_buffer(void *canvas, void *buffer);
+/// @brief Remove a previously-registered temporary buffer; caller owns/free()s it again.
+int rt_canvas3d_remove_temp_buffer(void *canvas, void *buffer);
 
 /* Screen-space HUD overlay */
 /// @brief Draw a screen-space filled rectangle as a HUD element.

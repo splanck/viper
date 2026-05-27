@@ -46,9 +46,9 @@
 
 #include "rt_animcontroller3d.h"
 #include "rt_audio.h"
-#include "rt_audio3d.h"
-#include "rt_audiolistener3d.h"
-#include "rt_audiosource3d.h"
+#include "rt_sound3d.h"
+#include "rt_soundlistener3d.h"
+#include "rt_soundsource3d.h"
 #include "rt_canvas3d.h"
 #include "rt_canvas3d_internal.h"
 #include "rt_collider3d.h"
@@ -82,6 +82,9 @@
 #define WIN32_LEAN_AND_MEAN
 #endif
 #include <windows.h>
+#elif defined(__APPLE__)
+#include <mach/mach.h>
+#include <mach/mach_vm.h>
 #endif
 
 // Default tuning constants applied when callers omit a value or pass a
@@ -159,6 +162,7 @@ typedef struct rt_game3d_entity {
     int64_t collision_mask_bits;
     rt_string name;
     void *world;
+    struct rt_game3d_entity *parent;
     struct rt_game3d_entity **children;
     int32_t child_count;
     int32_t child_capacity;
@@ -167,7 +171,7 @@ typedef struct rt_game3d_entity {
     int8_t destroyed;
 } rt_game3d_entity;
 
-/// @brief Audio3D payload: listener, optional followed camera, a dynamic source
+/// @brief Sound3D payload: listener, optional followed camera, a dynamic source
 ///   list, distance-attenuation radii, master volume, and follow-camera flag.
 typedef struct rt_game3d_audio {
     void *listener;
@@ -381,6 +385,41 @@ static int game3d_callback_pointer_is_native(void *callback) {
     DWORD protect = info.Protect & 0xffu;
     return protect == PAGE_EXECUTE || protect == PAGE_EXECUTE_READ ||
            protect == PAGE_EXECUTE_READWRITE || protect == PAGE_EXECUTE_WRITECOPY;
+#elif defined(__APPLE__)
+    mach_vm_address_t region = (mach_vm_address_t)(uintptr_t)callback;
+    mach_vm_size_t size = 0;
+    vm_region_basic_info_data_64_t info;
+    mach_msg_type_number_t count = VM_REGION_BASIC_INFO_COUNT_64;
+    mach_port_t object = MACH_PORT_NULL;
+    if (mach_vm_region(mach_task_self(),
+                       &region,
+                       &size,
+                       VM_REGION_BASIC_INFO_64,
+                       (vm_region_info_t)&info,
+                       &count,
+                       &object) != KERN_SUCCESS)
+        return 0;
+    if (object != MACH_PORT_NULL)
+        mach_port_deallocate(mach_task_self(), object);
+    return (info.protection & VM_PROT_EXECUTE) != 0;
+#elif defined(__linux__)
+    FILE *maps = fopen("/proc/self/maps", "r");
+    char line[512];
+    uintptr_t needle = (uintptr_t)callback;
+    if (!maps)
+        return 0;
+    while (fgets(line, sizeof(line), maps)) {
+        unsigned long start = 0;
+        unsigned long end = 0;
+        char perms[5] = {0, 0, 0, 0, 0};
+        if (sscanf(line, "%lx-%lx %4s", &start, &end, perms) == 3 &&
+            needle >= (uintptr_t)start && needle < (uintptr_t)end) {
+            fclose(maps);
+            return strchr(perms, 'x') != NULL;
+        }
+    }
+    fclose(maps);
+    return 0;
 #else
     return 1;
 #endif
@@ -498,19 +537,50 @@ static int8_t game3d_read_vec3(void *vec, double *out, const char *method) {
     return 1;
 }
 
+/// @brief Compute a doubled int32 capacity for an array while guarding integer
+///   and byte-size overflow before the caller reaches realloc().
+static int game3d_compute_capacity(int32_t current,
+                                   int32_t needed,
+                                   int32_t initial,
+                                   size_t elem_size,
+                                   int32_t *out_capacity) {
+    int32_t capacity;
+    if (!out_capacity || needed < 0 || initial <= 0 || elem_size == 0)
+        return 0;
+    if (current >= needed) {
+        *out_capacity = current;
+        return 1;
+    }
+    capacity = current > 0 ? current : initial;
+    while (capacity < needed) {
+        if (capacity > INT32_MAX / 2) {
+            capacity = needed;
+            break;
+        }
+        capacity *= 2;
+    }
+    if (capacity < needed || (size_t)capacity > SIZE_MAX / elem_size)
+        return 0;
+    *out_capacity = capacity;
+    return 1;
+}
+
 /// @brief Ensure the audio source array can hold `needed` entries, doubling capacity
 ///   as needed; traps and returns 0 on allocation failure, else 1.
 static int game3d_audio_reserve_sources(rt_game3d_audio *audio, int32_t needed) {
+    int32_t new_capacity;
     if (!audio)
         return 0;
     if (needed <= audio->source_capacity)
         return 1;
-    int32_t new_capacity = audio->source_capacity > 0 ? audio->source_capacity * 2 : 8;
-    while (new_capacity < needed)
-        new_capacity *= 2;
+    if (!game3d_compute_capacity(
+            audio->source_capacity, needed, 8, sizeof(void *), &new_capacity)) {
+        rt_trap("Game3D.Sound3D: too many sources");
+        return 0;
+    }
     void **new_sources = (void **)realloc(audio->sources, (size_t)new_capacity * sizeof(void *));
     if (!new_sources) {
-        rt_trap("Game3D.Audio3D: source list allocation failed");
+        rt_trap("Game3D.Sound3D: source list allocation failed");
         return 0;
     }
     audio->sources = new_sources;
@@ -522,6 +592,10 @@ static int game3d_audio_reserve_sources(rt_game3d_audio *audio, int32_t needed) 
 static void game3d_audio_track_source(rt_game3d_audio *audio, void *source) {
     if (!audio || !source)
         return;
+    if (audio->source_count == INT32_MAX) {
+        rt_trap("Game3D.Sound3D: too many sources");
+        return;
+    }
     if (!game3d_audio_reserve_sources(audio, audio->source_count + 1))
         return;
     rt_obj_retain_maybe(source);
@@ -531,13 +605,16 @@ static void game3d_audio_track_source(rt_game3d_audio *audio, void *source) {
 /// @brief Ensure the effect-item array can hold `needed` entries, doubling capacity
 ///   as needed; traps and returns 0 on allocation failure, else 1.
 static int game3d_effects_reserve(rt_game3d_effects *effects, int32_t needed) {
+    int32_t new_capacity;
     if (!effects)
         return 0;
     if (needed <= effects->capacity)
         return 1;
-    int32_t new_capacity = effects->capacity > 0 ? effects->capacity * 2 : 16;
-    while (new_capacity < needed)
-        new_capacity *= 2;
+    if (!game3d_compute_capacity(
+            effects->capacity, needed, 16, sizeof(rt_game3d_effect_item), &new_capacity)) {
+        rt_trap("Game3D.EffectRegistry3D: too many effects");
+        return 0;
+    }
     rt_game3d_effect_item *new_items =
         (rt_game3d_effect_item *)realloc(effects->items,
                                          (size_t)new_capacity * sizeof(rt_game3d_effect_item));
@@ -632,10 +709,10 @@ static rt_game3d_entity *game3d_entity_checked(void *obj, const char *method) {
     return entity;
 }
 
-/// @brief Validate `obj` as an Audio3D handle, trapping `method` on mismatch.
+/// @brief Validate `obj` as an Sound3D handle, trapping `method` on mismatch.
 static rt_game3d_audio *game3d_audio_checked(void *obj, const char *method) {
     rt_game3d_audio *audio =
-        (rt_game3d_audio *)rt_g3d_checked_or_null(obj, RT_G3D_GAME3D_AUDIO_CLASS_ID);
+        (rt_game3d_audio *)rt_g3d_checked_or_null(obj, RT_G3D_GAME3D_SOUND_CLASS_ID);
     if (!audio)
         rt_trap(method);
     return audio;
@@ -1467,11 +1544,14 @@ void rt_game3d_input_release_mouse(void *obj) {
 /// @brief Ensure an entity's child array can hold `need` entries, doubling capacity as
 ///   needed; returns 0 on allocation failure, else 1.
 static int game3d_entity_grow_children(rt_game3d_entity *entity, int32_t need) {
+    int32_t new_cap;
+    if (!entity)
+        return 0;
     if (entity->child_capacity >= need)
         return 1;
-    int32_t new_cap = entity->child_capacity > 0 ? entity->child_capacity * 2 : 4;
-    if (new_cap < need)
-        new_cap = need;
+    if (!game3d_compute_capacity(
+            entity->child_capacity, need, 4, sizeof(rt_game3d_entity *), &new_cap))
+        return 0;
     rt_game3d_entity **grown =
         (rt_game3d_entity **)realloc(entity->children, (size_t)new_cap * sizeof(*grown));
     if (!grown)
@@ -1481,14 +1561,66 @@ static int game3d_entity_grow_children(rt_game3d_entity *entity, int32_t need) {
     return 1;
 }
 
+static void game3d_world_spawn_entity_tree(rt_game3d_world *world,
+                                           rt_game3d_entity *entity,
+                                           int attach_to_scene,
+                                           int64_t *next_id);
+
+/// @brief True when `ancestor` is already on `entity`'s parent chain.
+static int game3d_entity_has_ancestor(rt_game3d_entity *entity, rt_game3d_entity *ancestor) {
+    for (rt_game3d_entity *cursor = entity; cursor; cursor = cursor->parent) {
+        if (cursor == ancestor)
+            return 1;
+    }
+    return 0;
+}
+
+/// @brief Find a direct child index, or -1 when absent.
+static int32_t game3d_entity_find_child_index(rt_game3d_entity *parent, rt_game3d_entity *child) {
+    if (!parent || !child)
+        return -1;
+    for (int32_t i = 0; i < parent->child_count; ++i) {
+        if (parent->children[i] == child)
+            return i;
+    }
+    return -1;
+}
+
+/// @brief Remove a child from its Game3D parent list and scene-node parent.
+/// @details The caller should hold its own retain if it needs `child` to
+///          survive this unlink.
+static void game3d_entity_detach_from_parent(rt_game3d_entity *child) {
+    rt_game3d_entity *parent;
+    int32_t index;
+    if (!child || !child->parent)
+        return;
+    parent = child->parent;
+    index = game3d_entity_find_child_index(parent, child);
+    if (index >= 0) {
+        rt_game3d_entity *owned = parent->children[index];
+        for (int32_t i = index; i < parent->child_count - 1; ++i)
+            parent->children[i] = parent->children[i + 1];
+        parent->children[--parent->child_count] = NULL;
+        child->parent = NULL;
+        if (parent->node && child->node && rt_scene_node3d_get_parent(child->node) == parent->node)
+            rt_scene_node3d_remove_child(parent->node, child->node);
+        game3d_release_ref((void **)&owned);
+    } else {
+        child->parent = NULL;
+    }
+}
+
 /// @brief GC finalizer for an entity: release all child entities and the node/mesh/
 ///   material/body/anim/name references it owns, then free the child array.
 static void game3d_entity_finalize(void *obj) {
     rt_game3d_entity *entity = (rt_game3d_entity *)obj;
     if (!entity)
         return;
-    for (int32_t i = 0; i < entity->child_count; ++i)
+    for (int32_t i = 0; i < entity->child_count; ++i) {
+        if (entity->children[i] && entity->children[i]->parent == entity)
+            entity->children[i]->parent = NULL;
         game3d_release_ref((void **)&entity->children[i]);
+    }
     free(entity->children);
     entity->children = NULL;
     entity->child_count = 0;
@@ -1714,12 +1846,52 @@ void *rt_game3d_entity_add_child(void *obj, void *child_obj) {
         game3d_entity_checked(child_obj, "Game3D.Entity3D.addChild: child must be Entity3D");
     if (!entity || !child)
         return obj;
-    if (!game3d_entity_grow_children(entity, entity->child_count + 1))
+    if (entity == child) {
+        rt_trap("Game3D.Entity3D.addChild: entity cannot be its own child");
+        return obj;
+    }
+    if (entity->destroyed || child->destroyed) {
+        rt_trap("Game3D.Entity3D.addChild: destroyed entities cannot be parented");
+        return obj;
+    }
+    if (game3d_entity_has_ancestor(entity, child)) {
+        rt_trap("Game3D.Entity3D.addChild: parenting would create a cycle");
+        return obj;
+    }
+    if (child->parent == entity || game3d_entity_find_child_index(entity, child) >= 0)
+        return obj;
+    if (entity->spawned && child->spawned && child->world != entity->world) {
+        rt_trap("Game3D.Entity3D.addChild: child already belongs to another world");
+        return obj;
+    }
+    if (!entity->spawned && child->spawned) {
+        rt_trap("Game3D.Entity3D.addChild: spawned child cannot be parented under an unspawned entity");
+        return obj;
+    }
+    if (entity->child_count == INT32_MAX || !game3d_entity_grow_children(entity, entity->child_count + 1)) {
         rt_trap("Game3D.Entity3D.addChild: allocation failed");
+        return obj;
+    }
     rt_obj_retain_maybe(child);
+    game3d_entity_detach_from_parent(child);
     entity->children[entity->child_count++] = child;
-    if (entity->node && child->node)
+    child->parent = entity;
+    if (entity->node && child->node) {
         rt_scene_node3d_add_child(entity->node, child->node);
+        if (rt_scene_node3d_get_parent(child->node) != entity->node) {
+            entity->children[--entity->child_count] = NULL;
+            child->parent = NULL;
+            game3d_release_ref((void **)&child);
+            rt_trap("Game3D.Entity3D.addChild: scene-node parenting failed");
+            return obj;
+        }
+    }
+    if (entity->spawned && entity->world && !child->spawned) {
+        rt_game3d_world *world = (rt_game3d_world *)entity->world;
+        int64_t next_id = world->next_entity_id;
+        game3d_world_spawn_entity_tree(world, child, 0, &next_id);
+        world->next_entity_id = next_id;
+    }
     entity->group = 1;
     return obj;
 }
@@ -2073,9 +2245,9 @@ static void game3d_audio_finalize(void *obj) {
 ///   listener; if `camera` is given, bind and activate the listener to follow it.
 static void *game3d_audio_new(void *camera) {
     rt_game3d_audio *audio =
-        (rt_game3d_audio *)rt_obj_new_i64(RT_G3D_GAME3D_AUDIO_CLASS_ID, (int64_t)sizeof(*audio));
+        (rt_game3d_audio *)rt_obj_new_i64(RT_G3D_GAME3D_SOUND_CLASS_ID, (int64_t)sizeof(*audio));
     if (!audio) {
-        rt_trap("Game3D.Audio3D.New: allocation failed");
+        rt_trap("Game3D.Sound3D.New: allocation failed");
         return NULL;
     }
     memset(audio, 0, sizeof(*audio));
@@ -2083,54 +2255,54 @@ static void *game3d_audio_new(void *camera) {
     audio->ref_distance = RT_GAME3D_DEFAULT_AUDIO_REF_DISTANCE;
     audio->max_distance = RT_GAME3D_DEFAULT_AUDIO_MAX_DISTANCE;
     audio->volume = RT_GAME3D_DEFAULT_AUDIO_VOLUME;
-    audio->listener = rt_audiolistener3d_new();
+    audio->listener = rt_soundlistener3d_new();
     game3d_assign_ref(&audio->camera, camera);
     if (audio->listener && camera) {
         audio->listener_follow_camera = 1;
-        rt_audiolistener3d_bind_camera(audio->listener, camera);
-        rt_audiolistener3d_set_is_active(audio->listener, 1);
+        rt_soundlistener3d_bind_camera(audio->listener, camera);
+        rt_soundlistener3d_set_is_active(audio->listener, 1);
     }
     return audio;
 }
 
 /// @brief Get the listener (ears) object (NULL if invalid).
 void *rt_game3d_audio_get_listener(void *obj) {
-    rt_game3d_audio *audio = game3d_audio_checked(obj, "Game3D.Audio3D.get_Listener: invalid audio");
+    rt_game3d_audio *audio = game3d_audio_checked(obj, "Game3D.Sound3D.get_Listener: invalid audio");
     return audio ? audio->listener : NULL;
 }
 
 /// @brief True if the listener auto-follows the camera.
 int8_t rt_game3d_audio_get_listener_follows_camera(void *obj) {
     rt_game3d_audio *audio =
-        game3d_audio_checked(obj, "Game3D.Audio3D.get_listenerFollowsCamera: invalid audio");
+        game3d_audio_checked(obj, "Game3D.Sound3D.get_listenerFollowsCamera: invalid audio");
     return audio && audio->listener_follow_camera ? 1 : 0;
 }
 
 /// @brief Get the attenuation reference (full-volume) distance.
 double rt_game3d_audio_get_ref_distance(void *obj) {
     rt_game3d_audio *audio =
-        game3d_audio_checked(obj, "Game3D.Audio3D.get_refDistance: invalid audio");
+        game3d_audio_checked(obj, "Game3D.Sound3D.get_refDistance: invalid audio");
     return audio ? audio->ref_distance : 0.0;
 }
 
 /// @brief Get the attenuation maximum (silence) distance.
 double rt_game3d_audio_get_max_distance(void *obj) {
     rt_game3d_audio *audio =
-        game3d_audio_checked(obj, "Game3D.Audio3D.get_maxDistance: invalid audio");
+        game3d_audio_checked(obj, "Game3D.Sound3D.get_maxDistance: invalid audio");
     return audio ? audio->max_distance : 0.0;
 }
 
 /// @brief Get the master output volume (0–100).
 int64_t rt_game3d_audio_get_volume(void *obj) {
     rt_game3d_audio *audio =
-        game3d_audio_checked(obj, "Game3D.Audio3D.get_volume: invalid audio");
+        game3d_audio_checked(obj, "Game3D.Sound3D.get_volume: invalid audio");
     return audio ? audio->volume : 0;
 }
 
 /// @brief Count currently active 3D sound sources.
 int64_t rt_game3d_audio_get_source_count(void *obj) {
     rt_game3d_audio *audio =
-        game3d_audio_checked(obj, "Game3D.Audio3D.get_sourceCount: invalid audio");
+        game3d_audio_checked(obj, "Game3D.Sound3D.get_sourceCount: invalid audio");
     return audio ? audio->source_count : 0;
 }
 
@@ -2138,15 +2310,15 @@ int64_t rt_game3d_audio_get_source_count(void *obj) {
 ///   camera accordingly and reactivates the listener.
 void rt_game3d_audio_listener_follow_camera(void *obj, int8_t enabled) {
     rt_game3d_audio *audio =
-        game3d_audio_checked(obj, "Game3D.Audio3D.listenerFollowCamera: invalid audio");
+        game3d_audio_checked(obj, "Game3D.Sound3D.listenerFollowCamera: invalid audio");
     if (!audio || !audio->listener)
         return;
     audio->listener_follow_camera = enabled ? 1 : 0;
     if (audio->listener_follow_camera && audio->camera)
-        rt_audiolistener3d_bind_camera(audio->listener, audio->camera);
+        rt_soundlistener3d_bind_camera(audio->listener, audio->camera);
     else
-        rt_audiolistener3d_clear_camera_binding(audio->listener);
-    rt_audiolistener3d_set_is_active(audio->listener, 1);
+        rt_soundlistener3d_clear_camera_binding(audio->listener);
+    rt_soundlistener3d_set_is_active(audio->listener, 1);
 }
 
 /// @brief Set the listener pose explicitly from Vec3 position/forward (the `up`
@@ -2154,50 +2326,56 @@ void rt_game3d_audio_listener_follow_camera(void *obj, int8_t enabled) {
 void rt_game3d_audio_set_listener_pose(void *obj, void *position, void *forward, void *up) {
     (void)up;
     rt_game3d_audio *audio =
-        game3d_audio_checked(obj, "Game3D.Audio3D.setListenerPose: invalid audio");
+        game3d_audio_checked(obj, "Game3D.Sound3D.setListenerPose: invalid audio");
     if (!audio || !audio->listener)
         return;
     if (!rt_g3d_is_vec3(position) || !rt_g3d_is_vec3(forward)) {
-        rt_trap("Game3D.Audio3D.setListenerPose: expected Vec3 position and forward");
+        rt_trap("Game3D.Sound3D.setListenerPose: expected Vec3 position and forward");
         return;
     }
     audio->listener_follow_camera = 0;
-    rt_audiolistener3d_clear_camera_binding(audio->listener);
-    rt_audiolistener3d_set_position(audio->listener, position);
-    rt_audiolistener3d_set_forward(audio->listener, forward);
-    rt_audiolistener3d_set_is_active(audio->listener, 1);
+    rt_soundlistener3d_clear_camera_binding(audio->listener);
+    rt_soundlistener3d_set_position(audio->listener, position);
+    rt_soundlistener3d_set_forward(audio->listener, forward);
+    rt_soundlistener3d_set_is_active(audio->listener, 1);
 }
 
 /// @brief Set the distance-attenuation reference and max radii; non-positive/non-finite
 ///   values fall back to the library defaults.
 void rt_game3d_audio_set_attenuation(void *obj, double ref_distance, double max_distance) {
     rt_game3d_audio *audio =
-        game3d_audio_checked(obj, "Game3D.Audio3D.setAttenuation: invalid audio");
+        game3d_audio_checked(obj, "Game3D.Sound3D.setAttenuation: invalid audio");
     if (!audio)
         return;
     audio->ref_distance =
         (isfinite(ref_distance) && ref_distance > 0.0) ? ref_distance : RT_GAME3D_DEFAULT_AUDIO_REF_DISTANCE;
     audio->max_distance =
         (isfinite(max_distance) && max_distance > 0.0) ? max_distance : RT_GAME3D_DEFAULT_AUDIO_MAX_DISTANCE;
+    if (audio->max_distance < audio->ref_distance)
+        audio->max_distance = audio->ref_distance;
+    for (int32_t i = 0; i < audio->source_count; ++i) {
+        rt_soundsource3d_set_ref_distance(audio->sources[i], audio->ref_distance);
+        rt_soundsource3d_set_max_distance(audio->sources[i], audio->max_distance);
+    }
 }
 
 /// @brief Set the master output volume, clamped to [0, 100].
 void rt_game3d_audio_set_volume(void *obj, int64_t volume) {
     rt_game3d_audio *audio =
-        game3d_audio_checked(obj, "Game3D.Audio3D.set_volume: invalid audio");
+        game3d_audio_checked(obj, "Game3D.Sound3D.set_volume: invalid audio");
     if (audio)
         audio->volume = game3d_clamp_i64(volume, 0, 100);
 }
 
 /// @brief Load a sound clip from a filesystem path.
 void *rt_game3d_audio_load(void *obj, rt_string path) {
-    (void)game3d_audio_checked(obj, "Game3D.Audio3D.load: invalid audio");
+    (void)game3d_audio_checked(obj, "Game3D.Sound3D.load: invalid audio");
     return rt_sound_load(path);
 }
 
 /// @brief Load a sound clip from a packed asset path.
 void *rt_game3d_audio_load_asset(void *obj, rt_string asset_path) {
-    (void)game3d_audio_checked(obj, "Game3D.Audio3D.loadAsset: invalid audio");
+    (void)game3d_audio_checked(obj, "Game3D.Sound3D.loadAsset: invalid audio");
     return rt_sound_load_asset(asset_path);
 }
 
@@ -2205,24 +2383,25 @@ void *rt_game3d_audio_load_asset(void *obj, rt_string asset_path) {
 ///   attenuation/volume; tracks and returns the new source. Traps on bad clip/position.
 void *rt_game3d_audio_play_at(void *obj, void *clip, void *position) {
     rt_game3d_audio *audio =
-        game3d_audio_checked(obj, "Game3D.Audio3D.playAt: invalid audio");
+        game3d_audio_checked(obj, "Game3D.Sound3D.playAt: invalid audio");
     if (!audio || !clip)
         return NULL;
     if (!rt_sound_is_handle(clip)) {
-        rt_trap("Game3D.Audio3D.playAt: expected Sound clip");
+        rt_trap("Game3D.Sound3D.playAt: expected Sound clip");
         return NULL;
     }
     if (!rt_g3d_is_vec3(position)) {
-        rt_trap("Game3D.Audio3D.playAt: expected Vec3 position");
+        rt_trap("Game3D.Sound3D.playAt: expected Vec3 position");
         return NULL;
     }
-    void *source = rt_audiosource3d_new(clip);
+    void *source = rt_soundsource3d_new(clip);
     if (!source)
         return NULL;
-    rt_audiosource3d_set_position(source, position);
-    rt_audiosource3d_set_max_distance(source, audio->max_distance);
-    rt_audiosource3d_set_volume(source, audio->volume);
-    (void)rt_audiosource3d_play(source);
+    rt_soundsource3d_set_position(source, position);
+    rt_soundsource3d_set_ref_distance(source, audio->ref_distance);
+    rt_soundsource3d_set_max_distance(source, audio->max_distance);
+    rt_soundsource3d_set_volume(source, audio->volume);
+    (void)rt_soundsource3d_play(source);
     game3d_audio_track_source(audio, source);
     return source;
 }
@@ -2231,28 +2410,29 @@ void *rt_game3d_audio_play_at(void *obj, void *clip, void *position) {
 ///   position if nodeless); tracks and returns the source. Traps on bad clip/entity.
 void *rt_game3d_audio_play_attached(void *obj, void *clip, void *entity_obj) {
     rt_game3d_audio *audio =
-        game3d_audio_checked(obj, "Game3D.Audio3D.playAttached: invalid audio");
+        game3d_audio_checked(obj, "Game3D.Sound3D.playAttached: invalid audio");
     rt_game3d_entity *entity =
-        game3d_entity_checked(entity_obj, "Game3D.Audio3D.playAttached: invalid entity");
+        game3d_entity_checked(entity_obj, "Game3D.Sound3D.playAttached: invalid entity");
     if (!audio || !entity || !clip)
         return NULL;
     if (!rt_sound_is_handle(clip)) {
-        rt_trap("Game3D.Audio3D.playAttached: expected Sound clip");
+        rt_trap("Game3D.Sound3D.playAttached: expected Sound clip");
         return NULL;
     }
-    void *source = rt_audiosource3d_new(clip);
+    void *source = rt_soundsource3d_new(clip);
     if (!source)
         return NULL;
-    rt_audiosource3d_set_max_distance(source, audio->max_distance);
-    rt_audiosource3d_set_volume(source, audio->volume);
+    rt_soundsource3d_set_ref_distance(source, audio->ref_distance);
+    rt_soundsource3d_set_max_distance(source, audio->max_distance);
+    rt_soundsource3d_set_volume(source, audio->volume);
     if (entity->node)
-        rt_audiosource3d_bind_node(source, entity->node);
+        rt_soundsource3d_bind_node(source, entity->node);
     else {
         void *pos = rt_game3d_entity_position(entity);
-        rt_audiosource3d_set_position(source, pos);
+        rt_soundsource3d_set_position(source, pos);
         game3d_release_ref(&pos);
     }
-    (void)rt_audiosource3d_play(source);
+    (void)rt_soundsource3d_play(source);
     game3d_audio_track_source(audio, source);
     return source;
 }
@@ -2261,11 +2441,11 @@ void *rt_game3d_audio_play_attached(void *obj, void *clip, void *entity_obj) {
 ///   voice id, or 0 on failure. Traps on a bad clip.
 int64_t rt_game3d_audio_play2d(void *obj, void *clip) {
     rt_game3d_audio *audio =
-        game3d_audio_checked(obj, "Game3D.Audio3D.play2D: invalid audio");
+        game3d_audio_checked(obj, "Game3D.Sound3D.play2D: invalid audio");
     if (!audio || !clip)
         return 0;
     if (!rt_sound_is_handle(clip)) {
-        rt_trap("Game3D.Audio3D.play2D: expected Sound clip");
+        rt_trap("Game3D.Sound3D.play2D: expected Sound clip");
         return 0;
     }
     int64_t voice = rt_sound_play_ex(clip, audio->volume, 0);
@@ -2275,12 +2455,12 @@ int64_t rt_game3d_audio_play2d(void *obj, void *clip) {
 /// @brief Stop and release every tracked source, resetting the active count to 0.
 void rt_game3d_audio_clear_sources(void *obj) {
     rt_game3d_audio *audio =
-        game3d_audio_checked(obj, "Game3D.Audio3D.clearSources: invalid audio");
+        game3d_audio_checked(obj, "Game3D.Sound3D.clearSources: invalid audio");
     if (!audio)
         return;
     for (int32_t i = 0; i < audio->source_count; ++i) {
         if (audio->sources[i])
-            rt_audiosource3d_stop(audio->sources[i]);
+            rt_soundsource3d_stop(audio->sources[i]);
         game3d_release_ref(&audio->sources[i]);
     }
     audio->source_count = 0;
@@ -2371,6 +2551,10 @@ void *rt_game3d_effects_add_particles(void *obj, void *particles, double lifetim
         rt_trap("Game3D.EffectRegistry3D.addParticles: expected Particles3D");
         return NULL;
     }
+    if (effects->count == INT32_MAX) {
+        rt_trap("Game3D.EffectRegistry3D: too many effects");
+        return NULL;
+    }
     if (!game3d_effects_reserve(effects, effects->count + 1))
         return NULL;
     rt_game3d_effect_item *item = &effects->items[effects->count++];
@@ -2392,6 +2576,10 @@ void *rt_game3d_effects_add_decal(void *obj, void *decal) {
         return NULL;
     if (!rt_g3d_has_class(decal, RT_G3D_DECAL3D_CLASS_ID)) {
         rt_trap("Game3D.EffectRegistry3D.addDecal: expected Decal3D");
+        return NULL;
+    }
+    if (effects->count == INT32_MAX) {
+        rt_trap("Game3D.EffectRegistry3D: too many effects");
         return NULL;
     }
     if (!game3d_effects_reserve(effects, effects->count + 1))
@@ -2498,8 +2686,10 @@ void *rt_game3d_effects3d_explosion(void *world_obj, void *position) {
     if (!particles)
         return NULL;
     if (!game3d_particles_set_position_from_vec(
-            particles, position, "Game3D.Effects3D.Explosion: expected Vec3 position"))
+            particles, position, "Game3D.Effects3D.Explosion: expected Vec3 position")) {
+        game3d_release_ref(&particles);
         return NULL;
+    }
     rt_particles3d_set_direction(particles, 0.0, 1.0, 0.0, 2.8);
     rt_particles3d_set_speed(particles, 3.0, 9.0);
     rt_particles3d_set_lifetime(particles, 0.25, 0.9);
@@ -2527,8 +2717,10 @@ void *rt_game3d_effects3d_sparks(void *world_obj, void *position, void *directio
     if (!particles)
         return NULL;
     if (!game3d_particles_set_position_from_vec(
-            particles, position, "Game3D.Effects3D.Sparks: expected Vec3 position"))
+            particles, position, "Game3D.Effects3D.Sparks: expected Vec3 position")) {
+        game3d_release_ref(&particles);
         return NULL;
+    }
     rt_particles3d_set_direction(particles, dir[0], dir[1], dir[2], 0.75);
     rt_particles3d_set_speed(particles, 5.0, 13.0);
     rt_particles3d_set_lifetime(particles, 0.15, 0.55);
@@ -2552,8 +2744,10 @@ void *rt_game3d_effects3d_dust(void *world_obj, void *position) {
     if (!particles)
         return NULL;
     if (!game3d_particles_set_position_from_vec(
-            particles, position, "Game3D.Effects3D.Dust: expected Vec3 position"))
+            particles, position, "Game3D.Effects3D.Dust: expected Vec3 position")) {
+        game3d_release_ref(&particles);
         return NULL;
+    }
     rt_particles3d_set_direction(particles, 0.0, 1.0, 0.0, 1.35);
     rt_particles3d_set_speed(particles, 0.6, 2.5);
     rt_particles3d_set_lifetime(particles, 0.35, 1.2);
@@ -2576,8 +2770,10 @@ void *rt_game3d_effects3d_smoke(void *world_obj, void *position) {
     if (!particles)
         return NULL;
     if (!game3d_particles_set_position_from_vec(
-            particles, position, "Game3D.Effects3D.Smoke: expected Vec3 position"))
+            particles, position, "Game3D.Effects3D.Smoke: expected Vec3 position")) {
+        game3d_release_ref(&particles);
         return NULL;
+    }
     rt_particles3d_set_direction(particles, 0.0, 1.0, 0.0, 1.1);
     rt_particles3d_set_speed(particles, 0.4, 1.8);
     rt_particles3d_set_lifetime(particles, 0.8, 2.0);
@@ -3008,11 +3204,15 @@ static void game3d_model_template_finalize(void *obj) {
 /// @brief Ensure the global model cache can hold `need` entries, doubling and zeroing
 ///   new slots; returns 0 on allocation failure.
 static int game3d_model_cache_grow(int32_t need) {
+    int32_t new_cap;
     if (g_game3d_model_cache_capacity >= need)
         return 1;
-    int32_t new_cap = g_game3d_model_cache_capacity > 0 ? g_game3d_model_cache_capacity * 2 : 8;
-    if (new_cap < need)
-        new_cap = need;
+    if (!game3d_compute_capacity(g_game3d_model_cache_capacity,
+                                 need,
+                                 8,
+                                 sizeof(rt_game3d_model_cache_entry),
+                                 &new_cap))
+        return 0;
     rt_game3d_model_cache_entry *grown = (rt_game3d_model_cache_entry *)realloc(
         g_game3d_model_cache, (size_t)new_cap * sizeof(*grown));
     if (!grown)
@@ -4227,11 +4427,14 @@ static void game3d_world_late_update_controller(rt_game3d_world *world, double d
 /// @brief Ensure the world's entity registry can hold `need` entries, doubling capacity;
 ///   returns 0 on allocation failure.
 static int game3d_world_grow_entities(rt_game3d_world *world, int32_t need) {
+    int32_t new_cap;
+    if (!world)
+        return 0;
     if (world->entity_capacity >= need)
         return 1;
-    int32_t new_cap = world->entity_capacity > 0 ? world->entity_capacity * 2 : 16;
-    if (new_cap < need)
-        new_cap = need;
+    if (!game3d_compute_capacity(
+            world->entity_capacity, need, 16, sizeof(rt_game3d_entity *), &new_cap))
+        return 0;
     rt_game3d_entity **grown =
         (rt_game3d_entity **)realloc(world->entities, (size_t)new_cap * sizeof(*grown));
     if (!grown)
@@ -4323,8 +4526,10 @@ static void game3d_world_spawn_entity_tree(rt_game3d_world *world,
         return;
     if (entity->spawned || (entity->world && entity->world != world))
         rt_trap("Game3D.World3D.spawn: entity already belongs to a world");
-    if (!game3d_world_grow_entities(world, world->entity_count + 1))
+    if (world->entity_count == INT32_MAX || !game3d_world_grow_entities(world, world->entity_count + 1)) {
         rt_trap("Game3D.World3D.spawn: registry allocation failed");
+        return;
+    }
 
     if (entity->id == 0)
         entity->id = (*next_id)++;
@@ -4433,8 +4638,14 @@ void *rt_game3d_world_new_with_camera(
     world->audio = game3d_audio_new(world->camera);
     world->effects = game3d_effects_new(world->canvas, RT_GAME3D_QUALITY_BALANCED);
 
-    if (!world->canvas || !world->scene || !world->camera || !world->physics || !world->input)
+    if (!world->canvas || !world->scene || !world->camera || !world->physics ||
+        !world->input || !world->audio || !world->effects) {
+        game3d_world_release_runtime(world, 0);
+        if (rt_obj_release_check0(world))
+            rt_obj_free(world);
         rt_trap("Game3D.World3D.New: component allocation failed");
+        return NULL;
+    }
     game3d_world_install_default_camera(world);
     rt_canvas3d_set_default_lighting(world->canvas);
     rt_canvas3d_set_quality(world->canvas, RT_GAME3D_QUALITY_BALANCED);
@@ -4896,7 +5107,7 @@ void rt_game3d_world_step_simulation(void *obj, double step_sec) {
         rt_world3d_step(world->physics, dt);
     if (world->scene)
         rt_scene3d_sync_bindings(world->scene, dt);
-    rt_audio3d_sync_bindings(dt);
+    rt_sound3d_sync_bindings(dt);
     if (world->effects)
         rt_game3d_effects_update(world->effects, dt);
     game3d_world_late_update_controller(world, dt);
@@ -5194,9 +5405,17 @@ void rt_game3d_world_run_frames(void *obj, int64_t frame_count, double step_sec,
         update,
         "Game3D.World3D.runFrames: callback must be a native function pointer; use runFramesOnly/manual frame APIs from interpreted Zia");
     double fixed = game3d_clamp_dt(step_sec);
+    rt_canvas3d *canvas = NULL;
+    int32_t previous_input_source = 0;
+    int32_t previous_clock_source = 0;
+    int64_t previous_synthetic_dt_us = 0;
     if (!world || frame_count < 0)
         return;
-    if (world->canvas) {
+    canvas = rt_canvas3d_checked_or_stack(world->canvas);
+    if (canvas) {
+        previous_input_source = canvas->input_source;
+        previous_clock_source = canvas->clock_source;
+        previous_synthetic_dt_us = canvas->synthetic_dt_us;
         rt_canvas3d_set_input_source(world->canvas, 1);
         rt_canvas3d_set_clock_source(world->canvas, 1);
         rt_canvas3d_set_synthetic_delta_time_sec(world->canvas, fixed);
@@ -5212,6 +5431,12 @@ void rt_game3d_world_run_frames(void *obj, int64_t frame_count, double step_sec,
             fn(fixed);
         rt_game3d_world_step_simulation(world, fixed);
         game3d_world_render_once(world, NULL);
+    }
+    if (canvas) {
+        rt_canvas3d_set_input_source(world->canvas, previous_input_source);
+        rt_canvas3d_set_synthetic_delta_time_sec(world->canvas,
+                                                 (double)previous_synthetic_dt_us / 1000000.0);
+        rt_canvas3d_set_clock_source(world->canvas, previous_clock_source);
     }
 }
 

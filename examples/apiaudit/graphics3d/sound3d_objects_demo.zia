@@ -1,4 +1,4 @@
-module Audio3DObjectsDemo;
+module Sound3DObjectsDemo;
 
 bind Viper.Graphics3D;
 bind Viper.Math;
@@ -6,7 +6,7 @@ bind Viper.Sound;
 bind Viper.Terminal;
 
 func start() {
-    Say("=== Audio3D Objects Demo ===");
+    Say("=== Sound3D Objects Demo ===");
 
     var cam = Camera3D.New(60.0, 1.0, 0.1, 100.0);
     Camera3D.LookAt(
@@ -20,11 +20,11 @@ func start() {
     SceneNode3D.AddChild(parent, node);
     Scene3D.Add(scene, parent);
 
-    var listener = AudioListener3D.New();
+    var listener = SoundListener3D.New();
     listener.BindCamera(cam);
     listener.IsActive = true;
 
-    var source = AudioSource3D.New(Synth.Tone(523, 220, 0));
+    var source = SoundSource3D.New(Synth.Tone(523, 220, 0));
     source.BindNode(node);
     source.MaxDistance = 20.0;
     source.Volume = 75;

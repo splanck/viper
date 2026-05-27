@@ -491,7 +491,7 @@ rt_string rt_game3d_animator_event_name(void *animator, int64_t index);
 void rt_game3d_animator_update(void *animator, double dt);
 
 //=========================================================================
-// Audio3D — spatial audio subsystem (Viper.Game3D.Audio3D)
+// Sound3D — spatial audio subsystem (Viper.Game3D.Sound3D)
 //=========================================================================
 
 /// @brief Get the audio listener (ears) object.

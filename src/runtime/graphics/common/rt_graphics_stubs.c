@@ -25,7 +25,7 @@
 //
 //===----------------------------------------------------------------------===//
 
-#include "rt_audio3d.h"
+#include "rt_sound3d.h"
 #include "rt_canvas3d.h"
 #include "rt_collider3d.h"
 #include "rt_decal3d.h"
@@ -6208,23 +6208,73 @@ void rt_canvas3d_set_shadow_bias(void *c, double b) {
     (void)b;
 }
 
-/* Audio3D stubs */
+/* Sound3D stubs */
 
-/// @brief Stub for `Audio3D.SetListener` — set the active listener and
+/// @brief Stub for `Sound3D.SetListener` — set the active listener and
 ///        its forward orientation. Convenience wrapper around the
-///        AudioListener3D class for callers that don't need full per-
+///        SoundListener3D class for callers that don't need full per-
 ///        listener state.
 ///
 /// Silent no-op stub.
 ///
 /// @param p Vec3 listener position (ignored).
 /// @param f Vec3 listener forward direction (ignored).
-void rt_audio3d_set_listener(void *p, void *f) {
+void rt_sound3d_set_listener(void *p, void *f) {
     (void)p;
     (void)f;
 }
 
-/// @brief Stub for `Audio3D.PlayAt` — would normally play sound `s` at
+void rt_sound3d_compute_voice_params_ex(const rt_sound3d_listener_state *listener,
+                                        const double *source_position,
+                                        const double *source_velocity,
+                                        double ref_distance,
+                                        double max_distance,
+                                        int64_t base_volume,
+                                        int64_t *out_volume,
+                                        int64_t *out_pan,
+                                        double *out_doppler) {
+    (void)listener;
+    (void)source_position;
+    (void)source_velocity;
+    (void)ref_distance;
+    (void)max_distance;
+    if (out_volume)
+        *out_volume = base_volume;
+    if (out_pan)
+        *out_pan = 0;
+    if (out_doppler)
+        *out_doppler = 1.0;
+}
+
+void rt_sound3d_compute_voice_params(const rt_sound3d_listener_state *listener,
+                                     const double *source_position,
+                                     double max_distance,
+                                     int64_t base_volume,
+                                     int64_t *out_volume,
+                                     int64_t *out_pan) {
+    rt_sound3d_compute_voice_params_ex(listener,
+                                       source_position,
+                                       NULL,
+                                       0.0,
+                                       max_distance,
+                                       base_volume,
+                                       out_volume,
+                                       out_pan,
+                                       NULL);
+}
+
+void rt_sound3d_register_voice_ex(int64_t v, double rd, double md, int64_t bv) {
+    (void)v;
+    (void)rd;
+    (void)md;
+    (void)bv;
+}
+
+void rt_sound3d_register_voice(int64_t v, double md, int64_t bv) {
+    rt_sound3d_register_voice_ex(v, 0.0, md, bv);
+}
+
+/// @brief Stub for `Sound3D.PlayAt` — would normally play sound `s` at
 ///        world-space position `p` with maximum-distance attenuation
 ///        cutoff `d` and base volume `v`. Returns the assigned voice id,
 ///        or `0` on failure.
@@ -6237,7 +6287,7 @@ void rt_audio3d_set_listener(void *p, void *f) {
 /// @param v Volume 0..100 (ignored).
 ///
 /// @return `0`.
-int64_t rt_audio3d_play_at(void *s, void *p, double d, int64_t v) {
+int64_t rt_sound3d_play_at(void *s, void *p, double d, int64_t v) {
     (void)s;
     (void)p;
     (void)d;
@@ -6245,7 +6295,7 @@ int64_t rt_audio3d_play_at(void *s, void *p, double d, int64_t v) {
     return 0;
 }
 
-/// @brief Stub for `Audio3D.UpdateVoice` — update the world-space
+/// @brief Stub for `Sound3D.UpdateVoice` — update the world-space
 ///        position and max-distance of an already-playing voice (use to
 ///        track moving emitters that aren't bound to a SceneNode3D).
 ///
@@ -6254,200 +6304,208 @@ int64_t rt_audio3d_play_at(void *s, void *p, double d, int64_t v) {
 /// @param v  Voice id from `PlayAt` (ignored).
 /// @param p  Vec3 new position (ignored).
 /// @param md New max audible distance (ignored).
-void rt_audio3d_update_voice(int64_t v, void *p, double md) {
+void rt_sound3d_update_voice(int64_t v, void *p, double md) {
     (void)v;
     (void)p;
     (void)md;
 }
 
-/// @brief Stub for `Audio3D.SyncBindings` — batch-update spatial
-///        positions for every AudioListener3D and AudioSource3D bound to
+void rt_sound3d_update_voice_ex(int64_t v, void *p, const double *sv, double rd, double md) {
+    (void)v;
+    (void)p;
+    (void)sv;
+    (void)rd;
+    (void)md;
+}
+
+/// @brief Stub for `Sound3D.SyncBindings` — batch-update spatial
+///        positions for every SoundListener3D and SoundSource3D bound to
 ///        a SceneNode3D or Camera3D. Should be called once per frame
 ///        before any draw calls so audio reflects the same world state.
 ///
 /// Silent no-op stub.
 ///
 /// @param dt Delta time in seconds (ignored).
-void rt_audio3d_sync_bindings(double dt) {
+void rt_sound3d_sync_bindings(double dt) {
     (void)dt;
 }
 
-/// @brief Stub for `AudioListener3D.New` — would normally create a
+/// @brief Stub for `SoundListener3D.New` — would normally create a
 ///        spatial-audio listener (the "ear" the mixer applies pan and
 ///        distance attenuation against). Typically one per scene.
 ///
 /// Silent stub returning NULL.
 ///
 /// @return `NULL`.
-void *rt_audiolistener3d_new(void) {
+void *rt_soundlistener3d_new(void) {
     return NULL;
 }
 
-/// @brief Stub for `AudioListener3D.Position` — get the listener's
+/// @brief Stub for `SoundListener3D.Position` — get the listener's
 ///        current world-space position as a Vec3.
 ///
 /// Silent stub returning NULL.
 ///
-/// @param l AudioListener3D handle (ignored).
+/// @param l SoundListener3D handle (ignored).
 ///
 /// @return `NULL`.
-void *rt_audiolistener3d_get_position(void *l) {
+void *rt_soundlistener3d_get_position(void *l) {
     (void)l;
     return NULL;
 }
 
-/// @brief Stub for `AudioListener3D.SetPosition` — set the listener's
+/// @brief Stub for `SoundListener3D.SetPosition` — set the listener's
 ///        world-space position from a Vec3 handle.
 ///
 /// Silent no-op stub.
 ///
-/// @param l AudioListener3D handle (ignored).
+/// @param l SoundListener3D handle (ignored).
 /// @param p Vec3 position handle (ignored).
-void rt_audiolistener3d_set_position(void *l, void *p) {
+void rt_soundlistener3d_set_position(void *l, void *p) {
     (void)l;
     (void)p;
 }
 
-/// @brief Stub for `AudioListener3D.SetPositionXYZ` — set the listener's
+/// @brief Stub for `SoundListener3D.SetPositionXYZ` — set the listener's
 ///        world-space position from raw doubles. Convenience overload.
 ///
 /// Silent no-op stub.
 ///
-/// @param l AudioListener3D handle (ignored).
+/// @param l SoundListener3D handle (ignored).
 /// @param x World-space x (ignored).
 /// @param y World-space y (ignored).
 /// @param z World-space z (ignored).
-void rt_audiolistener3d_set_position_vec(void *l, double x, double y, double z) {
+void rt_soundlistener3d_set_position_vec(void *l, double x, double y, double z) {
     (void)l;
     (void)x;
     (void)y;
     (void)z;
 }
 
-/// @brief Stub for `AudioListener3D.Forward` — get the listener's
+/// @brief Stub for `SoundListener3D.Forward` — get the listener's
 ///        forward-facing direction vector (used for stereo panning math).
 ///
 /// Silent stub returning NULL.
 ///
-/// @param l AudioListener3D handle (ignored).
+/// @param l SoundListener3D handle (ignored).
 ///
 /// @return `NULL`.
-void *rt_audiolistener3d_get_forward(void *l) {
+void *rt_soundlistener3d_get_forward(void *l) {
     (void)l;
     return NULL;
 }
 
-/// @brief Stub for `AudioListener3D.SetForward` — set the listener's
+/// @brief Stub for `SoundListener3D.SetForward` — set the listener's
 ///        forward direction (must be normalized).
 ///
 /// Silent no-op stub.
 ///
-/// @param l AudioListener3D handle (ignored).
+/// @param l SoundListener3D handle (ignored).
 /// @param f Vec3 forward direction (ignored).
-void rt_audiolistener3d_set_forward(void *l, void *f) {
+void rt_soundlistener3d_set_forward(void *l, void *f) {
     (void)l;
     (void)f;
 }
 
-/// @brief Stub for `AudioListener3D.Velocity` — get the listener's
+/// @brief Stub for `SoundListener3D.Velocity` — get the listener's
 ///        velocity vector (used by the mixer for Doppler-effect math).
 ///
 /// Silent stub returning NULL.
 ///
-/// @param l AudioListener3D handle (ignored).
+/// @param l SoundListener3D handle (ignored).
 ///
 /// @return `NULL`.
-void *rt_audiolistener3d_get_velocity(void *l) {
+void *rt_soundlistener3d_get_velocity(void *l) {
     (void)l;
     return NULL;
 }
 
-/// @brief Stub for `AudioListener3D.SetVelocity` — set the listener's
+/// @brief Stub for `SoundListener3D.SetVelocity` — set the listener's
 ///        velocity vector for Doppler computation.
 ///
 /// Silent no-op stub.
 ///
-/// @param l AudioListener3D handle (ignored).
+/// @param l SoundListener3D handle (ignored).
 /// @param v Vec3 velocity handle (ignored).
-void rt_audiolistener3d_set_velocity(void *l, void *v) {
+void rt_soundlistener3d_set_velocity(void *l, void *v) {
     (void)l;
     (void)v;
 }
 
-/// @brief Stub for `AudioListener3D.IsActive` — true when this listener
+/// @brief Stub for `SoundListener3D.IsActive` — true when this listener
 ///        is the currently-selected listener for the audio mixer
 ///        (multiple listeners may exist; only one is active at a time).
 ///
 /// Silent stub returning `0`.
 ///
-/// @param l AudioListener3D handle (ignored).
+/// @param l SoundListener3D handle (ignored).
 ///
 /// @return `0`.
-int8_t rt_audiolistener3d_get_is_active(void *l) {
+int8_t rt_soundlistener3d_get_is_active(void *l) {
     (void)l;
     return 0;
 }
 
-/// @brief Stub for `AudioListener3D.SetActive` — designate this
+/// @brief Stub for `SoundListener3D.SetActive` — designate this
 ///        listener as the active one (deactivates any previously-active
 ///        listener).
 ///
 /// Silent no-op stub.
 ///
-/// @param l AudioListener3D handle (ignored).
+/// @param l SoundListener3D handle (ignored).
 /// @param a Non-zero to make this listener active (ignored).
-void rt_audiolistener3d_set_is_active(void *l, int8_t a) {
+void rt_soundlistener3d_set_is_active(void *l, int8_t a) {
     (void)l;
     (void)a;
 }
 
-/// @brief Stub for `AudioListener3D.BindNode` — attach a SceneNode3D so
+/// @brief Stub for `SoundListener3D.BindNode` — attach a SceneNode3D so
 ///        the listener's position/orientation follow the node each frame.
 ///        Use `BindCamera` for the typical first-person setup.
 ///
 /// Silent no-op stub.
 ///
-/// @param l AudioListener3D handle (ignored).
+/// @param l SoundListener3D handle (ignored).
 /// @param n SceneNode3D handle, or NULL to detach (ignored).
-void rt_audiolistener3d_bind_node(void *l, void *n) {
+void rt_soundlistener3d_bind_node(void *l, void *n) {
     (void)l;
     (void)n;
 }
 
-/// @brief Stub for `AudioListener3D.ClearNodeBinding` — detach the
+/// @brief Stub for `SoundListener3D.ClearNodeBinding` — detach the
 ///        SceneNode3D currently driving the listener's spatial position.
 ///
 /// Silent no-op stub.
 ///
-/// @param l AudioListener3D handle (ignored).
-void rt_audiolistener3d_clear_node_binding(void *l) {
+/// @param l SoundListener3D handle (ignored).
+void rt_soundlistener3d_clear_node_binding(void *l) {
     (void)l;
 }
 
-/// @brief Stub for `AudioListener3D.BindCamera` — attach a Camera3D so
+/// @brief Stub for `SoundListener3D.BindCamera` — attach a Camera3D so
 ///        the listener's position and forward vector follow the camera
 ///        each frame (typical first-person audio setup).
 ///
 /// Silent no-op stub.
 ///
-/// @param l AudioListener3D handle (ignored).
+/// @param l SoundListener3D handle (ignored).
 /// @param c Camera3D handle, or NULL to detach (ignored).
-void rt_audiolistener3d_bind_camera(void *l, void *c) {
+void rt_soundlistener3d_bind_camera(void *l, void *c) {
     (void)l;
     (void)c;
 }
 
-/// @brief Stub for `AudioListener3D.ClearCameraBinding` — detach the
+/// @brief Stub for `SoundListener3D.ClearCameraBinding` — detach the
 ///        Camera3D currently driving the listener.
 ///
 /// Silent no-op stub.
 ///
-/// @param l AudioListener3D handle (ignored).
-void rt_audiolistener3d_clear_camera_binding(void *l) {
+/// @param l SoundListener3D handle (ignored).
+void rt_soundlistener3d_clear_camera_binding(void *l) {
     (void)l;
 }
 
-/// @brief Stub for `AudioSource3D.New` — would normally create a 3D
+/// @brief Stub for `SoundSource3D.New` — would normally create a 3D
 ///        positional emitter for the given Sound resource.
 ///
 /// Silent stub returning NULL.
@@ -6455,222 +6513,239 @@ void rt_audiolistener3d_clear_camera_binding(void *l) {
 /// @param s Sound handle (ignored).
 ///
 /// @return `NULL`.
-void *rt_audiosource3d_new(void *s) {
+void *rt_soundsource3d_new(void *s) {
     (void)s;
     return NULL;
 }
 
-/// @brief Stub for `AudioSource3D.Position` — get the source's current
+/// @brief Stub for `SoundSource3D.Position` — get the source's current
 ///        world-space position as a Vec3.
 ///
 /// Silent stub returning NULL.
 ///
-/// @param s AudioSource3D handle (ignored).
+/// @param s SoundSource3D handle (ignored).
 ///
 /// @return `NULL`.
-void *rt_audiosource3d_get_position(void *s) {
+void *rt_soundsource3d_get_position(void *s) {
     (void)s;
     return NULL;
 }
 
-/// @brief Stub for `AudioSource3D.SetPosition` — set the source's
+/// @brief Stub for `SoundSource3D.SetPosition` — set the source's
 ///        world-space position from a Vec3 handle.
 ///
 /// Silent no-op stub.
 ///
-/// @param s AudioSource3D handle (ignored).
+/// @param s SoundSource3D handle (ignored).
 /// @param p Vec3 position handle (ignored).
-void rt_audiosource3d_set_position(void *s, void *p) {
+void rt_soundsource3d_set_position(void *s, void *p) {
     (void)s;
     (void)p;
 }
 
-/// @brief Stub for `AudioSource3D.SetPositionXYZ` — set the source's
+/// @brief Stub for `SoundSource3D.SetPositionXYZ` — set the source's
 ///        world-space position from raw doubles. Convenience overload.
 ///
 /// Silent no-op stub.
 ///
-/// @param s AudioSource3D handle (ignored).
+/// @param s SoundSource3D handle (ignored).
 /// @param x World-space x (ignored).
 /// @param y World-space y (ignored).
 /// @param z World-space z (ignored).
-void rt_audiosource3d_set_position_vec(void *s, double x, double y, double z) {
+void rt_soundsource3d_set_position_vec(void *s, double x, double y, double z) {
     (void)s;
     (void)x;
     (void)y;
     (void)z;
 }
 
-/// @brief Stub for `AudioSource3D.Velocity` — get the source's current
+/// @brief Stub for `SoundSource3D.Velocity` — get the source's current
 ///        velocity vector. Used by the mixer for Doppler-effect calculations.
 ///
 /// Silent stub returning NULL.
 ///
-/// @param s AudioSource3D handle (ignored).
+/// @param s SoundSource3D handle (ignored).
 ///
 /// @return `NULL`.
-void *rt_audiosource3d_get_velocity(void *s) {
+void *rt_soundsource3d_get_velocity(void *s) {
     (void)s;
     return NULL;
 }
 
-/// @brief Stub for `AudioSource3D.SetVelocity` — set the source's
+/// @brief Stub for `SoundSource3D.SetVelocity` — set the source's
 ///        velocity vector for Doppler computation.
 ///
 /// Silent no-op stub.
 ///
-/// @param s AudioSource3D handle (ignored).
+/// @param s SoundSource3D handle (ignored).
 /// @param v Vec3 velocity handle (ignored).
-void rt_audiosource3d_set_velocity(void *s, void *v) {
+void rt_soundsource3d_set_velocity(void *s, void *v) {
     (void)s;
     (void)v;
 }
 
-/// @brief Stub for `AudioSource3D.MaxDistance` — get the cutoff distance
+double rt_soundsource3d_get_doppler_factor(void *s) {
+    (void)s;
+    return 1.0;
+}
+
+/// @brief Stub for `SoundSource3D.MaxDistance` — get the cutoff distance
 ///        beyond which the source is silent (inverse-distance attenuation
 ///        upper bound).
 ///
 /// Silent stub returning `0.0`.
 ///
-/// @param s AudioSource3D handle (ignored).
+/// @param s SoundSource3D handle (ignored).
 ///
 /// @return `0.0`.
-double rt_audiosource3d_get_max_distance(void *s) {
+double rt_soundsource3d_get_max_distance(void *s) {
     (void)s;
     return 0.0;
 }
 
-/// @brief Stub for `AudioSource3D.SetMaxDistance` — set the cutoff
+/// @brief Stub for `SoundSource3D.SetMaxDistance` — set the cutoff
 ///        distance for attenuation.
 ///
 /// Silent no-op stub.
 ///
-/// @param s AudioSource3D handle (ignored).
+/// @param s SoundSource3D handle (ignored).
 /// @param d Max distance in world units (ignored).
-void rt_audiosource3d_set_max_distance(void *s, double d) {
+void rt_soundsource3d_set_max_distance(void *s, double d) {
     (void)s;
     (void)d;
 }
 
-/// @brief Stub for `AudioSource3D.Volume` — get the per-source gain
+/// @brief Stub for `SoundSource3D.RefDistance` — get the full-volume radius.
+double rt_soundsource3d_get_ref_distance(void *s) {
+    (void)s;
+    return 0.0;
+}
+
+/// @brief Stub for `SoundSource3D.SetRefDistance` — set the full-volume radius.
+void rt_soundsource3d_set_ref_distance(void *s, double d) {
+    (void)s;
+    (void)d;
+}
+
+/// @brief Stub for `SoundSource3D.Volume` — get the per-source gain
 ///        multiplier (0..100, applied after distance attenuation).
 ///
 /// Silent stub returning `0`.
 ///
-/// @param s AudioSource3D handle (ignored).
+/// @param s SoundSource3D handle (ignored).
 ///
 /// @return `0`.
-int64_t rt_audiosource3d_get_volume(void *s) {
+int64_t rt_soundsource3d_get_volume(void *s) {
     (void)s;
     return 0;
 }
 
-/// @brief Stub for `AudioSource3D.SetVolume` — set the per-source gain
+/// @brief Stub for `SoundSource3D.SetVolume` — set the per-source gain
 ///        multiplier.
 ///
 /// Silent no-op stub.
 ///
-/// @param s AudioSource3D handle (ignored).
+/// @param s SoundSource3D handle (ignored).
 /// @param v Volume 0..100 (ignored).
-void rt_audiosource3d_set_volume(void *s, int64_t v) {
+void rt_soundsource3d_set_volume(void *s, int64_t v) {
     (void)s;
     (void)v;
 }
 
-/// @brief Stub for `AudioSource3D.Looping` — get the looping flag.
+/// @brief Stub for `SoundSource3D.Looping` — get the looping flag.
 ///
 /// Silent stub returning `0`.
 ///
-/// @param s AudioSource3D handle (ignored).
+/// @param s SoundSource3D handle (ignored).
 ///
 /// @return `0`.
-int8_t rt_audiosource3d_get_looping(void *s) {
+int8_t rt_soundsource3d_get_looping(void *s) {
     (void)s;
     return 0;
 }
 
-/// @brief Stub for `AudioSource3D.SetLooping` — when enabled, the
+/// @brief Stub for `SoundSource3D.SetLooping` — when enabled, the
 ///        underlying voice loops at the end of the sound buffer.
 ///
 /// Silent no-op stub.
 ///
-/// @param s AudioSource3D handle (ignored).
+/// @param s SoundSource3D handle (ignored).
 /// @param l Non-zero to enable looping (ignored).
-void rt_audiosource3d_set_looping(void *s, int8_t l) {
+void rt_soundsource3d_set_looping(void *s, int8_t l) {
     (void)s;
     (void)l;
 }
 
-/// @brief Stub for `AudioSource3D.IsPlaying` — true while the active
+/// @brief Stub for `SoundSource3D.IsPlaying` — true while the active
 ///        voice for this source is producing audio.
 ///
 /// Silent stub returning `0`.
 ///
-/// @param s AudioSource3D handle (ignored).
+/// @param s SoundSource3D handle (ignored).
 ///
 /// @return `0`.
-int8_t rt_audiosource3d_get_is_playing(void *s) {
+int8_t rt_soundsource3d_get_is_playing(void *s) {
     (void)s;
     return 0;
 }
 
-/// @brief Stub for `AudioSource3D.VoiceId` — get the underlying mixer
+/// @brief Stub for `SoundSource3D.VoiceId` — get the underlying mixer
 ///        voice handle (`0` if not playing). Useful for debugging.
 ///
 /// Silent stub returning `0`.
 ///
-/// @param s AudioSource3D handle (ignored).
+/// @param s SoundSource3D handle (ignored).
 ///
 /// @return `0`.
-int64_t rt_audiosource3d_get_voice_id(void *s) {
+int64_t rt_soundsource3d_get_voice_id(void *s) {
     (void)s;
     return 0;
 }
 
-/// @brief Stub for `AudioSource3D.Play` — start playback of the bound
+/// @brief Stub for `SoundSource3D.Play` — start playback of the bound
 ///        Sound at the source's current position. Returns the assigned
 ///        voice id, or `0` on failure.
 ///
 /// Silent stub returning `0`.
 ///
-/// @param s AudioSource3D handle (ignored).
+/// @param s SoundSource3D handle (ignored).
 ///
 /// @return `0`.
-int64_t rt_audiosource3d_play(void *s) {
+int64_t rt_soundsource3d_play(void *s) {
     (void)s;
     return 0;
 }
 
-/// @brief Stub for `AudioSource3D.Stop` — halt the source's current
+/// @brief Stub for `SoundSource3D.Stop` — halt the source's current
 ///        voice immediately. Safe no-op when not playing.
 ///
 /// Silent no-op stub.
 ///
-/// @param s AudioSource3D handle (ignored).
-void rt_audiosource3d_stop(void *s) {
+/// @param s SoundSource3D handle (ignored).
+void rt_soundsource3d_stop(void *s) {
     (void)s;
 }
 
-/// @brief Stub for `AudioSource3D.BindNode` — attach a SceneNode3D so
+/// @brief Stub for `SoundSource3D.BindNode` — attach a SceneNode3D so
 ///        the source's position follows the node each frame
-///        (`Audio3D.SyncBindings(dt)`).
+///        (`Sound3D.SyncBindings(dt)`).
 ///
 /// Silent no-op stub.
 ///
-/// @param s AudioSource3D handle (ignored).
+/// @param s SoundSource3D handle (ignored).
 /// @param n SceneNode3D handle, or NULL to detach (ignored).
-void rt_audiosource3d_bind_node(void *s, void *n) {
+void rt_soundsource3d_bind_node(void *s, void *n) {
     (void)s;
     (void)n;
 }
 
-/// @brief Stub for `AudioSource3D.ClearNodeBinding` — detach the
+/// @brief Stub for `SoundSource3D.ClearNodeBinding` — detach the
 ///        SceneNode3D currently driving the source's position.
 ///
 /// Silent no-op stub.
 ///
-/// @param s AudioSource3D handle (ignored).
-void rt_audiosource3d_clear_node_binding(void *s) {
+/// @param s SoundSource3D handle (ignored).
+void rt_soundsource3d_clear_node_binding(void *s) {
     (void)s;
 }
 

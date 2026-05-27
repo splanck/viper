@@ -17,10 +17,10 @@
 #include "rt_animcontroller3d.h"
 #include "rt.hpp"
 #include "rt_audio.h"
-#include "rt_audio3d.h"
+#include "rt_sound3d.h"
 #include "rt_canvas3d.h"
-#include "rt_audiolistener3d.h"
-#include "rt_audiosource3d.h"
+#include "rt_soundlistener3d.h"
+#include "rt_soundsource3d.h"
 #include "rt_decal3d.h"
 #include "rt_game3d.h"
 #include "rt_input.h"
@@ -31,12 +31,17 @@
 #include "rt_pixels.h"
 #include "rt_postfx3d.h"
 #include "rt_quat.h"
+#include "rt_platform.h"
 #include "rt_scene3d.h"
 #include "rt_skeleton3d.h"
 #include "rt_synth.h"
 #include "rt_string.h"
 #include "rt_vec2.h"
 #include "rt_vec3.h"
+
+extern "C" {
+#include "rt_canvas3d_internal.h"
+}
 
 #include <cmath>
 #include <csetjmp>
@@ -133,7 +138,7 @@ static bool expect_trap_contains(Fn &&fn, const char *needle) {
 }
 
 static void set_software_backend_env() {
-#ifdef _WIN32
+#if RT_PLATFORM_WINDOWS
     _putenv_s("VIPER_3D_BACKEND", "software");
 #else
     setenv("VIPER_3D_BACKEND", "software", 1);
@@ -388,10 +393,46 @@ static bool test_world_entity_registry_and_collision_clear() {
     PASS();
 }
 
+static bool test_entity_child_graph_reparents_and_rejects_cycles() {
+    TEST("Entity3D child graph reparents and rejects cycles");
+    void *parent_a = rt_game3d_entity_new();
+    void *parent_b = rt_game3d_entity_new();
+    void *child = rt_game3d_entity_new();
+
+    rt_game3d_entity_add_child(parent_a, child);
+    EXPECT_EQ_INT(rt_scene_node3d_child_count(rt_game3d_entity_get_node(parent_a)),
+                  1,
+                  "first parent receives child node");
+    rt_game3d_entity_add_child(parent_a, child);
+    EXPECT_EQ_INT(rt_scene_node3d_child_count(rt_game3d_entity_get_node(parent_a)),
+                  1,
+                  "adding same child twice is idempotent");
+
+    rt_game3d_entity_add_child(parent_b, child);
+    EXPECT_EQ_INT(rt_scene_node3d_child_count(rt_game3d_entity_get_node(parent_a)),
+                  0,
+                  "reparent removes child from old parent node");
+    EXPECT_EQ_INT(rt_scene_node3d_child_count(rt_game3d_entity_get_node(parent_b)),
+                  1,
+                  "reparent adds child to new parent node");
+
+    EXPECT_TRUE(expect_trap_contains([&] { rt_game3d_entity_add_child(child, parent_b); },
+                                     "cycle"),
+                "child graph rejects cycles");
+    EXPECT_TRUE(expect_trap_contains([&] { rt_game3d_entity_add_child(child, child); },
+                                     "own child"),
+                "child graph rejects self-parenting");
+    PASS();
+}
+
 static bool test_frame_loop_manual_frame_and_final_capture() {
     TEST("World3D runFrames, manual frame API, overlay, and final capture");
     void *world = rt_game3d_world_new(rt_const_cstr("Game3D Unit Frames"), 64, 48);
     EXPECT_TRUE(world != nullptr, "World3D.New returns an object");
+    rt_canvas3d *canvas_state = (rt_canvas3d *)rt_game3d_world_get_canvas(world);
+    rt_canvas3d_set_input_source(canvas_state, 2);
+    rt_canvas3d_set_clock_source(canvas_state, 0);
+    rt_canvas3d_set_synthetic_delta_time_sec(canvas_state, 0.123);
 
     g_update_calls = 0;
     g_update_dt_sum = 0.0;
@@ -401,6 +442,9 @@ static bool test_frame_loop_manual_frame_and_final_capture() {
     EXPECT_EQ_INT(rt_game3d_world_get_frame(world), 3, "runFrames increments frame count");
     EXPECT_NEAR(rt_game3d_world_get_dt(world), 0.02, 0.0001, "runFrames stores dt");
     EXPECT_NEAR(rt_game3d_world_get_elapsed(world), 0.06, 0.0001, "runFrames stores elapsed time");
+    EXPECT_EQ_INT(canvas_state->input_source, 2, "runFrames restores input source");
+    EXPECT_EQ_INT(canvas_state->clock_source, 0, "runFrames restores clock source");
+    EXPECT_EQ_INT(canvas_state->synthetic_dt_us, 123000, "runFrames restores synthetic delta");
 
     g_overlay_calls = 0;
     rt_game3d_world_begin_frame(world);
@@ -920,57 +964,57 @@ static bool test_phase5_animator3d_events_and_root_motion() {
     PASS();
 }
 
-static bool test_phase6_audio3d_and_effects3d_helpers() {
-    TEST("Audio3D helpers and Effects3D presets integrate with World3D");
+static bool test_phase6_sound3d_and_effects3d_helpers() {
+    TEST("Sound3D helpers and Effects3D presets integrate with World3D");
 
     void *world = rt_game3d_world_new(rt_const_cstr("Game3D Audio VFX Unit"), 96, 72);
     void *camera = rt_game3d_world_get_camera(world);
     void *audio = rt_game3d_world_get_audio(world);
     void *listener = rt_game3d_audio_get_listener(audio);
     void *effects = rt_game3d_world_get_effects(world);
-    EXPECT_TRUE(audio != nullptr, "World3D creates Audio3D");
-    EXPECT_TRUE(listener != nullptr, "Audio3D creates a listener");
+    EXPECT_TRUE(audio != nullptr, "World3D creates Sound3D");
+    EXPECT_TRUE(listener != nullptr, "Sound3D creates a listener");
     EXPECT_TRUE(effects != nullptr, "World3D creates EffectRegistry3D");
     EXPECT_TRUE(rt_game3d_audio_get_listener_follows_camera(audio) != 0,
-                "Audio3D listener follows camera by default");
+                "Sound3D listener follows camera by default");
 
     rt_camera3d_look_at(
         camera, rt_vec3_new(3.0, 2.0, 6.0), rt_vec3_new(3.0, 2.0, 5.0), rt_vec3_new(0.0, 1.0, 0.0));
     rt_game3d_world_step_simulation(world, 0.1);
-    void *listener_pos = rt_audiolistener3d_get_position(listener);
+    void *listener_pos = rt_soundlistener3d_get_position(listener);
     EXPECT_NEAR(rt_vec3_x(listener_pos), 3.0, 0.001, "listener syncs bound camera position");
 
     rt_game3d_audio_listener_follow_camera(audio, 0);
     rt_camera3d_look_at(
         camera, rt_vec3_new(7.0, 2.0, 6.0), rt_vec3_new(7.0, 2.0, 5.0), rt_vec3_new(0.0, 1.0, 0.0));
     rt_game3d_world_step_simulation(world, 0.1);
-    listener_pos = rt_audiolistener3d_get_position(listener);
+    listener_pos = rt_soundlistener3d_get_position(listener);
     EXPECT_NEAR(rt_vec3_x(listener_pos), 3.0, 0.001, "listenerFollowCamera(false) freezes listener pose");
 
     void *manual_pos = rt_vec3_new(9.0, 1.0, 2.0);
     void *manual_forward = rt_vec3_new(0.0, 0.0, -1.0);
     void *manual_up = rt_vec3_new(0.0, 1.0, 0.0);
     rt_game3d_audio_set_listener_pose(audio, manual_pos, manual_forward, manual_up);
-    listener_pos = rt_audiolistener3d_get_position(listener);
+    listener_pos = rt_soundlistener3d_get_position(listener);
     EXPECT_NEAR(rt_vec3_x(listener_pos), 9.0, 0.001, "setListenerPose writes listener position");
     EXPECT_TRUE(rt_game3d_audio_get_listener_follows_camera(audio) == 0,
                 "setListenerPose disables camera follow");
     rt_game3d_audio_set_attenuation(audio, 2.0, 12.0);
     rt_game3d_audio_set_volume(audio, 70);
-    EXPECT_NEAR(rt_game3d_audio_get_ref_distance(audio), 2.0, 0.0001, "Audio3D stores ref distance");
-    EXPECT_NEAR(rt_game3d_audio_get_max_distance(audio), 12.0, 0.0001, "Audio3D stores max distance");
-    EXPECT_EQ_INT(rt_game3d_audio_get_volume(audio), 70, "Audio3D clamps/stores volume");
+    EXPECT_NEAR(rt_game3d_audio_get_ref_distance(audio), 2.0, 0.0001, "Sound3D stores ref distance");
+    EXPECT_NEAR(rt_game3d_audio_get_max_distance(audio), 12.0, 0.0001, "Sound3D stores max distance");
+    EXPECT_EQ_INT(rt_game3d_audio_get_volume(audio), 70, "Sound3D clamps/stores volume");
 
-    rt_audio3d_listener_state state;
+    rt_sound3d_listener_state state;
     double pos[3] = {0.0, 0.0, 0.0};
     double fwd[3] = {0.0, 0.0, -1.0};
     double src[3] = {5.0, 0.0, 0.0};
     int64_t spatial_volume = 0;
     int64_t spatial_pan = 0;
-    rt_audio3d_listener_state_set(&state, pos, fwd, nullptr);
-    rt_audio3d_compute_voice_params(&state, src, 10.0, 100, &spatial_volume, &spatial_pan);
-    EXPECT_EQ_INT(spatial_volume, 50, "Audio3D attenuation halves volume at half max distance");
-    EXPECT_TRUE(spatial_pan > 90, "Audio3D pans right-side sources to the right");
+    rt_sound3d_listener_state_set(&state, pos, fwd, nullptr);
+    rt_sound3d_compute_voice_params(&state, src, 10.0, 100, &spatial_volume, &spatial_pan);
+    EXPECT_EQ_INT(spatial_volume, 50, "Sound3D attenuation halves volume at half max distance");
+    EXPECT_TRUE(spatial_pan > 90, "Sound3D pans right-side sources to the right");
 
     if (rt_audio_is_available() && rt_audio_init()) {
         void *clip = rt_synth_tone(440, 80, RT_WAVE_SINE);
@@ -979,21 +1023,21 @@ static bool test_phase6_audio3d_and_effects3d_helpers() {
             rt_game3d_entity_set_position(entity, 1.0, 0.0, 0.0);
             rt_game3d_world_spawn(world, entity);
             void *attached = rt_game3d_audio_play_attached(audio, clip, entity);
-            EXPECT_TRUE(attached != nullptr, "playAttached returns an AudioSource3D");
-            EXPECT_NEAR(rt_audiosource3d_get_max_distance(attached),
+            EXPECT_TRUE(attached != nullptr, "playAttached returns an SoundSource3D");
+            EXPECT_NEAR(rt_soundsource3d_get_max_distance(attached),
                         12.0,
                         0.001,
-                        "playAttached applies Audio3D attenuation");
+                        "playAttached applies Sound3D attenuation");
             rt_game3d_entity_set_position(entity, 4.0, 0.0, 0.0);
             rt_game3d_world_step_simulation(world, 0.1);
-            void *source_pos = rt_audiosource3d_get_position(attached);
+            void *source_pos = rt_soundsource3d_get_position(attached);
             EXPECT_NEAR(rt_vec3_x(source_pos), 4.0, 0.001, "attached audio follows entity node");
 
             void *one_shot = rt_game3d_audio_play_at(audio, clip, rt_vec3_new(2.0, 0.0, 0.0));
-            EXPECT_TRUE(one_shot != nullptr, "playAt returns an AudioSource3D");
+            EXPECT_TRUE(one_shot != nullptr, "playAt returns an SoundSource3D");
             (void)rt_game3d_audio_play2d(audio, clip);
             EXPECT_TRUE(rt_game3d_audio_get_source_count(audio) >= 2,
-                        "Audio3D tracks sources it creates");
+                        "Sound3D tracks sources it creates");
             rt_game3d_audio_clear_sources(audio);
             EXPECT_EQ_INT(rt_game3d_audio_get_source_count(audio), 0, "clearSources drops source refs");
         }
@@ -1061,6 +1105,7 @@ int main() {
     ok = test_input_axes() && ok;
     ok = test_input_update_snapshots_frame_state() && ok;
     ok = test_world_entity_registry_and_collision_clear() && ok;
+    ok = test_entity_child_graph_reparents_and_rejects_cycles() && ok;
     ok = test_frame_loop_manual_frame_and_final_capture() && ok;
     ok = test_free_fly_controller_synthetic_input() && ok;
     ok = test_orbit_and_follow_controllers() && ok;
@@ -1071,7 +1116,7 @@ int main() {
     ok = test_phase4_body_def_attach_body() && ok;
     ok = test_phase4_collision_events_wrapped_with_entities() && ok;
     ok = test_phase5_animator3d_events_and_root_motion() && ok;
-    ok = test_phase6_audio3d_and_effects3d_helpers() && ok;
+    ok = test_phase6_sound3d_and_effects3d_helpers() && ok;
 
     std::printf("\nGame3D runtime tests: %d/%d passed\n", g_tests_passed, g_tests_total);
     return ok && g_tests_passed == g_tests_total ? 0 : 1;

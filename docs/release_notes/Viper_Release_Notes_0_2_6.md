@@ -77,7 +77,6 @@ Counts via `scripts/count_sloc.sh` (production 619,961 / test 259,931 / demo 186
 
 ### Audio and 2D graphics
 
-- `Viper.Audio.*` rebuilt from `RT_ALIAS` forwarders into full typed class registrations across Audio/Sound/Voice/Music/Playlist/SoundBank/Synth/MusicGen, which the forwarders could not carry.
 - 2D graphics: saturating int64 clip math and class-ID validation across AutoTile2D / Path2D / ShapeRenderer2D / TextRenderer2D / RenderPass2D; premultiplied-alpha edges; alpha-preserving `Canvas.BlitAlpha`; pooled per-frame tile lights. SpriteFont gains its own class ID and BDF/PSF entry points (BitmapFont measurement preserved via aliases), VideoPlayer gains a class ID, and renderer rotation / scaled-tilemap hit-tests are NaN- and INT64-guarded.
 - `Pixels.Get`/`Set`/`Fill` keep their raw `0xRRGGBBAA` contract but now unpack a tagged `Color.RGBA(...)` argument instead of bit-reinterpreting it (fixes the Xenoscape cyan-bevel artifact); new `*Color` accessors are canonical.
 - Image IO hardening across PNG/BMP/JPEG/GIF: chunk validation, pixel-offset checks, no partial saves on failure, and normalized per-frame delays.

@@ -10,9 +10,7 @@ last-verified: 2026-05-15
 
 **Part of the [Viper Runtime Library](README.md)**
 
-The canonical namespace is `Viper.Sound`. The runtime also exposes
-`Viper.Audio.*` as a compatibility alias for older examples and projects; the
-classes and behavior are the same.
+All audio classes live in the `Viper.Sound` namespace.
 
 ## Contents
 

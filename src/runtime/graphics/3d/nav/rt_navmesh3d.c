@@ -175,8 +175,13 @@ static int navmesh3d_build_adjacency(rt_navmesh3d *nm) {
                 }
                 if (emap[idx].key == key) {
                     int32_t j = emap[idx].tri_idx;
+                    int32_t je = emap[idx].edge_idx;
+                    if (nm->triangles[i].neighbors[e] >= 0 || nm->triangles[j].neighbors[je] >= 0) {
+                        free(emap);
+                        return 0;
+                    }
                     nm->triangles[i].neighbors[e] = j;
-                    nm->triangles[j].neighbors[emap[idx].edge_idx] = i;
+                    nm->triangles[j].neighbors[je] = i;
                     break;
                 }
             }
@@ -203,7 +208,7 @@ static int navmesh3d_apply_slope_filter(rt_navmesh3d *nm) {
         nm->triangles[nm->triangle_count++] = tri;
     }
     if (!navmesh3d_build_adjacency(nm)) {
-        rt_trap("NavMesh3D: adjacency allocation failed");
+        rt_trap("NavMesh3D: adjacency build failed (non-manifold edge or allocation failure)");
         return 0;
     }
     return 1;

@@ -38,7 +38,7 @@ typedef enum {
 } rt_playlist_repeat_t;
 
 //=============================================================================
-// Viper.Audio.Playlist
+// Viper.Sound.Playlist
 //=============================================================================
 
 /// @brief Create a new empty playlist.

@@ -519,6 +519,8 @@ static int ensure_deferred_capacity(void **buf, int32_t *capacity, int32_t neede
         else
             new_cap *= 2;
     }
+    if ((size_t)new_cap > SIZE_MAX / sizeof(deferred_draw_t))
+        return 0;
 
     deferred_draw_t *new_buf =
         (deferred_draw_t *)realloc(*buf, (size_t)new_cap * sizeof(deferred_draw_t));
@@ -755,6 +757,8 @@ static int ensure_motion_history_capacity(rt_canvas3d *c, int32_t needed) {
         else
             new_cap *= 2;
     }
+    if ((size_t)new_cap > SIZE_MAX / sizeof(canvas_motion_history_t))
+        return 0;
 
     canvas_motion_history_t *new_hist = (canvas_motion_history_t *)realloc(
         c->motion_history, (size_t)new_cap * sizeof(canvas_motion_history_t));
@@ -861,16 +865,19 @@ static uintptr_t canvas3d_mesh_transform_motion_key(const void *mesh_obj,
 }
 
 /// @brief Derive a stable per-instance key for the motion-blur history table.
-/// @details Uses stable batch identity inputs (mesh, material, count, index)
-///          rather than the transient matrix array address, so reallocating the
-///          caller's instance buffer does not reset motion history.
+/// @details Includes the caller's batch buffer identity so two batches with
+///          the same mesh/material/count do not alias one another's previous
+///          transforms. Keeping the same matrix buffer across frames preserves
+///          continuous history; a reallocated buffer safely starts fresh.
 static uintptr_t canvas3d_instance_motion_key(const void *mesh_obj,
                                               const void *material_obj,
+                                              const void *batch_obj,
                                               int32_t instance_count,
                                               int32_t index) {
     uintptr_t key = (uintptr_t)mesh_obj;
     uintptr_t instance_key = (uintptr_t)((uint32_t)index + 1u);
     key = canvas3d_mix_motion_key(key, (uintptr_t)material_obj);
+    key = canvas3d_mix_motion_key(key, (uintptr_t)batch_obj);
     key = canvas3d_mix_motion_key(key, (uintptr_t)((uint32_t)instance_count + 1u));
     key ^= instance_key * (uintptr_t)0xc2b2ae35u;
     return key ? key : instance_key;
@@ -1111,6 +1118,29 @@ static int canvas3d_track_temp_buffer(rt_canvas3d *c, void *buffer) {
     return 1;
 }
 
+/// @brief Remove a tracked temp buffer without freeing it.
+static int canvas3d_untrack_temp_buffer(rt_canvas3d *c, void *buffer) {
+    if (!c || !buffer)
+        return 0;
+    for (int32_t i = 0; i < c->temp_buf_count; ++i) {
+        if (c->temp_buffers[i] == buffer) {
+            for (int32_t j = i; j < c->temp_buf_count - 1; ++j)
+                c->temp_buffers[j] = c->temp_buffers[j + 1];
+            c->temp_buffers[--c->temp_buf_count] = NULL;
+            return 1;
+        }
+    }
+    return 0;
+}
+
+/// @brief Untrack and free a temp buffer when a later allocation path fails.
+static void canvas3d_release_tracked_temp_buffer(rt_canvas3d *c, void *buffer) {
+    if (!buffer)
+        return;
+    if (canvas3d_untrack_temp_buffer(c, buffer))
+        free(buffer);
+}
+
 /// @brief Track a malloc'd buffer used by deferred final-overlay commands.
 ///
 /// Final overlays are recorded before frame finalization and replayed after
@@ -1212,14 +1242,16 @@ static int canvas3d_snapshot_mesh_geometry(rt_canvas3d *c,
 
 /// @brief Decide whether to snapshot a mesh's geometry into canvas-owned buffers.
 /// @details Returns 0 for skinned/morphed meshes (they recompute every frame)
-///          and for non-heap-payload mesh objects (already canvas-stable).
+///          and for retained heap meshes. Deferred draws retain the heap mesh
+///          and validate its geometry revision at flush, avoiding a per-draw
+///          vertex/index heap copy for static meshes.
 static int canvas3d_should_snapshot_heap_geometry(const rt_mesh3d *mesh, void *mesh_obj) {
     if (!mesh || !mesh_obj || !rt_heap_is_payload(mesh_obj))
         return 0;
     if (mesh->bone_palette || mesh->morph_deltas || mesh->morph_weights ||
         mesh->morph_shape_count > 0)
         return 0;
-    return 1;
+    return 0;
 }
 
 /// @brief Free every tracked transient buffer (called at end of frame).
@@ -2130,8 +2162,10 @@ static int canvas3d_ensure_shadow_targets(rt_canvas3d *c, int32_t resolution) {
             for (int32_t alloc_slot = 0; alloc_slot < VGFX3D_MAX_SHADOW_LIGHTS; alloc_slot++) {
                 vgfx3d_rendertarget_t *new_rt =
                     (vgfx3d_rendertarget_t *)calloc(1, sizeof(vgfx3d_rendertarget_t));
-                if (!new_rt)
+                if (!new_rt) {
+                    canvas3d_release_shadow_targets(c);
                     return 0;
+                }
                 new_rt->width = resolution;
                 new_rt->height = resolution;
                 new_rt->stride = resolution * 4;
@@ -3484,7 +3518,8 @@ void rt_canvas3d_queue_instanced_batch(void *canvas_obj,
             } else {
                 canvas3d_resolve_previous_model(
                     c,
-                    canvas3d_instance_motion_key(mesh_obj, material_obj, instance_count, i),
+                    canvas3d_instance_motion_key(
+                        mesh_obj, material_obj, instance_matrices, instance_count, i),
                     per_instance.model_matrix,
                     per_instance.prev_model_matrix,
                     &per_instance.has_prev_model_matrix);
@@ -3534,25 +3569,50 @@ void rt_canvas3d_queue_instanced_batch(void *canvas_obj,
     }
 
     float *queued_prev_instance_matrices = NULL;
+    queued_prev_instance_matrices =
+        (float *)malloc(matrix_float_count * sizeof(*queued_prev_instance_matrices));
+    if (!queued_prev_instance_matrices) {
+        canvas3d_release_tracked_temp_buffer(c, queued_instance_matrices);
+        rt_trap("Canvas3D.DrawMeshInstanced: previous instance matrix allocation failed");
+        return;
+    }
     if (has_prev_instance_matrices && prev_instance_matrices) {
-        queued_prev_instance_matrices =
-            (float *)malloc(matrix_float_count * sizeof(*queued_prev_instance_matrices));
-        if (!queued_prev_instance_matrices) {
-            rt_trap("Canvas3D.DrawMeshInstanced: previous instance matrix allocation failed");
-            return;
-        }
         memcpy(queued_prev_instance_matrices,
                prev_instance_matrices,
                matrix_float_count * sizeof(float));
-        if (!canvas3d_track_temp_buffer(c, queued_prev_instance_matrices)) {
-            free(queued_prev_instance_matrices);
-            return;
+        for (int32_t i = 0; i < instance_count; ++i) {
+            float ignored_prev[16];
+            int8_t ignored_has_prev = 0;
+            canvas3d_resolve_previous_model(
+                c,
+                canvas3d_instance_motion_key(mesh_obj, material_obj, instance_matrices, instance_count, i),
+                &instance_matrices[(size_t)i * 16u],
+                ignored_prev,
+                &ignored_has_prev);
         }
+    } else {
+        for (int32_t i = 0; i < instance_count; ++i) {
+            int8_t has_prev = 0;
+            float *dst_prev = &queued_prev_instance_matrices[(size_t)i * 16u];
+            const float *current = &instance_matrices[(size_t)i * 16u];
+            canvas3d_resolve_previous_model(
+                c,
+                canvas3d_instance_motion_key(mesh_obj, material_obj, instance_matrices, instance_count, i),
+                current,
+                dst_prev,
+                &has_prev);
+            if (!has_prev)
+                memcpy(dst_prev, current, 16u * sizeof(float));
+        }
+    }
+    if (!canvas3d_track_temp_buffer(c, queued_prev_instance_matrices)) {
+        canvas3d_release_tracked_temp_buffer(c, queued_instance_matrices);
+        free(queued_prev_instance_matrices);
+        return;
     }
 
     base_cmd.prev_instance_matrices = queued_prev_instance_matrices;
-    base_cmd.has_prev_instance_matrices =
-        (int8_t)(queued_prev_instance_matrices != NULL);
+    base_cmd.has_prev_instance_matrices = 1;
     if (!canvas3d_enqueue_draw(c,
                                &base_cmd,
                                DEFERRED_DRAW_INSTANCED,
@@ -3570,6 +3630,8 @@ void rt_canvas3d_queue_instanced_batch(void *canvas_obj,
                                mesh->aabb_min,
                                mesh->aabb_max)) {
         rt_trap("Canvas3D.DrawMeshInstanced: deferred draw queue allocation failed");
+        canvas3d_release_tracked_temp_buffer(c, queued_prev_instance_matrices);
+        canvas3d_release_tracked_temp_buffer(c, queued_instance_matrices);
         return;
     }
 }
@@ -4083,6 +4145,14 @@ int rt_canvas3d_add_temp_buffer(void *obj, void *buffer) {
     if (!c || !buffer)
         return 0;
     return canvas3d_track_temp_buffer(c, buffer);
+}
+
+/// @brief Undo temp-buffer ownership transfer before frame cleanup.
+int rt_canvas3d_remove_temp_buffer(void *obj, void *buffer) {
+    rt_canvas3d *c = rt_canvas3d_checked_or_stack(obj);
+    if (!c || !buffer)
+        return 0;
+    return canvas3d_untrack_temp_buffer(c, buffer);
 }
 
 /// @brief Park a GC-managed object reference for end-of-frame release.

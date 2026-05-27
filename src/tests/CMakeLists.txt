@@ -1497,12 +1497,12 @@ if (EXISTS "${GAME3D_ANIM_PROBE}")
             TIMEOUT 30)
 endif ()
 
-set(GAME3D_AUDIO_PROBE "${G3D_TESTS_DIR}/test_game3d_audio_probe.zia")
-if (EXISTS "${GAME3D_AUDIO_PROBE}")
-    add_test(NAME g3d_test_game3d_audio_probe
-            COMMAND $<TARGET_FILE:viper> run "${GAME3D_AUDIO_PROBE}"
+set(GAME3D_SOUND_PROBE "${G3D_TESTS_DIR}/test_game3d_sound_probe.zia")
+if (EXISTS "${GAME3D_SOUND_PROBE}")
+    add_test(NAME g3d_test_game3d_sound_probe
+            COMMAND $<TARGET_FILE:viper> run "${GAME3D_SOUND_PROBE}"
             WORKING_DIRECTORY "${CMAKE_SOURCE_DIR}")
-    set_tests_properties(g3d_test_game3d_audio_probe PROPERTIES
+    set_tests_properties(g3d_test_game3d_sound_probe PROPERTIES
             PASS_REGULAR_EXPRESSION "PASS"
             LABELS "runtime;graphics3d;zia;requires_display"
             ENVIRONMENT "VIPER_3D_BACKEND=software"

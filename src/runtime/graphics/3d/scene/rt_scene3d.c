@@ -33,7 +33,7 @@
 
 #include "rt_scene3d.h"
 #include "rt_scene3d_internal.h"
-#include "rt_audio3d.h"
+#include "rt_sound3d.h"
 #include "rt_animcontroller3d.h"
 #include "rt_box.h"
 #include "rt_canvas3d.h"
@@ -2891,7 +2891,7 @@ void rt_scene3d_sync_bindings(void *obj, double dt) {
     if (!scene || !scene->root)
         return;
     scene_node_sync_recursive(scene->root, dt);
-    rt_audio3d_sync_bindings(dt);
+    rt_sound3d_sync_bindings(dt);
 }
 
 /// @brief Count every node in the scene, including the implicit root.

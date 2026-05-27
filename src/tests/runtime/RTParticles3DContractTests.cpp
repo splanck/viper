@@ -29,6 +29,7 @@ int g_draw_mesh_calls = 0;
 int g_draw_mesh_matrix_keyed_calls = 0;
 int g_last_mesh_vertex_count = 0;
 int g_last_mesh_index_count = 0;
+double g_last_mesh_quad_z[16] = {0.0};
 double g_keyed_draw_z[16] = {0.0};
 double g_keyed_draw_alpha[16] = {0.0};
 int g_keyed_draw_additive[16] = {0};
@@ -130,6 +131,10 @@ extern "C" int rt_canvas3d_add_temp_buffer(void *, void *) {
     return 1;
 }
 
+extern "C" int rt_canvas3d_remove_temp_buffer(void *, void *) {
+    return 1;
+}
+
 extern "C" void *rt_material3d_new(void) {
     return std::calloc(1, sizeof(StubMaterial));
 }
@@ -169,6 +174,14 @@ extern "C" void rt_canvas3d_draw_mesh(void *, void *mesh, void *, void *material
     g_draw_mesh_calls++;
     g_last_mesh_vertex_count = m ? (int)m->vertex_count : 0;
     g_last_mesh_index_count = m ? (int)m->index_count : 0;
+    std::memset(g_last_mesh_quad_z, 0, sizeof(g_last_mesh_quad_z));
+    if (m && m->vertices) {
+        int quad_count = m->vertex_count / 4;
+        if (quad_count > (int)(sizeof(g_last_mesh_quad_z) / sizeof(g_last_mesh_quad_z[0])))
+            quad_count = (int)(sizeof(g_last_mesh_quad_z) / sizeof(g_last_mesh_quad_z[0]));
+        for (int i = 0; i < quad_count; ++i)
+            g_last_mesh_quad_z[i] = m->vertices[i * 4].pos[2];
+    }
     g_last_draw_alpha = material ? static_cast<StubMaterial *>(material)->alpha : 0.0;
     g_last_draw_additive = material ? static_cast<StubMaterial *>(material)->additive_blend : 0;
     g_last_draw_alpha_mode = material ? static_cast<StubMaterial *>(material)->alpha_mode : 0;
@@ -344,6 +357,7 @@ static void reset_draw_records() {
     g_last_draw_alpha = 0.0;
     g_last_draw_additive = 0;
     g_last_draw_alpha_mode = 0;
+    std::memset(g_last_mesh_quad_z, 0, sizeof(g_last_mesh_quad_z));
     std::memset(g_keyed_draw_z, 0, sizeof(g_keyed_draw_z));
     std::memset(g_keyed_draw_alpha, 0, sizeof(g_keyed_draw_alpha));
     std::memset(g_keyed_draw_additive, 0, sizeof(g_keyed_draw_additive));
@@ -365,7 +379,7 @@ static rt_camera3d make_test_camera() {
     return cam;
 }
 
-static void test_draw_additive_batches_and_alpha_splits_per_particle() {
+static void test_draw_batches_additive_and_alpha_particles() {
     void *ps = rt_particles3d_new(8);
     rt_camera3d cam = make_test_camera();
     assert(ps != nullptr);
@@ -385,6 +399,7 @@ static void test_draw_additive_batches_and_alpha_splits_per_particle() {
     assert(g_draw_mesh_matrix_keyed_calls == 0);
     assert(g_last_mesh_vertex_count == 12);
     assert(g_last_mesh_index_count == 18);
+    assert(std::fabs(g_last_mesh_quad_z[0] - 1.0) < 1e-6);
     assert(std::fabs(g_last_draw_alpha - 1.0) < 1e-6);
     assert(g_last_draw_additive == 1);
     assert(g_last_draw_alpha_mode == kAlphaModeBlend);
@@ -392,13 +407,16 @@ static void test_draw_additive_batches_and_alpha_splits_per_particle() {
     rt_particles3d_set_additive(ps, 0);
     reset_draw_records();
     rt_particles3d_draw(ps, reinterpret_cast<void *>(1), &cam);
-    assert(g_draw_mesh_calls == 0);
-    assert(g_draw_mesh_matrix_keyed_calls == 3);
-    assert(std::fabs(g_keyed_draw_z[0] - 5.0) < 1e-6);
-    assert(std::fabs(g_keyed_draw_z[1] - 3.0) < 1e-6);
-    assert(std::fabs(g_keyed_draw_z[2] - 1.0) < 1e-6);
-    assert(std::fabs(g_keyed_draw_alpha[0] - 1.0) < 1e-6);
-    assert(g_keyed_draw_additive[0] == 0);
+    assert(g_draw_mesh_calls == 1);
+    assert(g_draw_mesh_matrix_keyed_calls == 0);
+    assert(g_last_mesh_vertex_count == 12);
+    assert(g_last_mesh_index_count == 18);
+    assert(std::fabs(g_last_mesh_quad_z[0] - 5.0) < 1e-6);
+    assert(std::fabs(g_last_mesh_quad_z[1] - 3.0) < 1e-6);
+    assert(std::fabs(g_last_mesh_quad_z[2] - 1.0) < 1e-6);
+    assert(std::fabs(g_last_draw_alpha - 1.0) < 1e-6);
+    assert(g_last_draw_additive == 0);
+    assert(g_last_draw_alpha_mode == kAlphaModeBlend);
 }
 
 int main() {
@@ -409,7 +427,7 @@ int main() {
     test_particles_expire_after_lifetime();
     test_update_clamps_large_finite_delta_time();
     test_setters_sanitize_nonfinite_ranges();
-    test_draw_additive_batches_and_alpha_splits_per_particle();
+    test_draw_batches_additive_and_alpha_particles();
     std::printf("RTParticles3DContractTests passed.\n");
     return 0;
 }

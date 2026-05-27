@@ -747,11 +747,27 @@ extern void rt_material3d_set_unlit(void *m, int8_t u);
 extern void rt_material3d_set_alpha(void *m, double a);
 extern void rt_material3d_set_alpha_mode(void *m, int64_t mode);
 extern void rt_material3d_set_texture(void *m, void *tex);
+extern int rt_canvas3d_remove_temp_buffer(void *canvas, void *buffer);
+
+typedef struct particle3d_sort_key {
+    int32_t index;
+    float dist_sq;
+} particle3d_sort_key;
+
+static int particle3d_sort_key_desc(const void *a, const void *b) {
+    const particle3d_sort_key *ka = (const particle3d_sort_key *)a;
+    const particle3d_sort_key *kb = (const particle3d_sort_key *)b;
+    if (ka->dist_sq < kb->dist_sq)
+        return 1;
+    if (ka->dist_sq > kb->dist_sq)
+        return -1;
+    return ka->index - kb->index;
+}
 
 /// @brief Render every live particle as a camera-facing billboard quad. Extracts right/up from
 /// the camera view matrix to build the quads. Sorts back-to-front for alpha blending; skips the
-/// sort when in additive mode (order-independent). Additive mode stays batched; alpha mode emits
-/// one keyed quad draw per particle so it can sort correctly against the rest of the scene.
+/// sort when in additive mode (order-independent). Both additive and alpha modes stay batched;
+/// alpha uses sorted indices so the backend draws quads back-to-front inside one mesh.
 void rt_particles3d_draw(void *o, void *canvas3d, void *camera) {
     rt_particles3d *ps = particles3d_checked(o);
     rt_canvas3d *canvas = rt_canvas3d_checked_or_stack(canvas3d);
@@ -774,27 +790,23 @@ void rt_particles3d_draw(void *o, void *canvas3d, void *camera) {
                         right[0] * up[1] - right[1] * up[0]};
     normalize3(&forward[0], &forward[1], &forward[2]);
 
+    particle3d_sort_key *sort_keys = NULL;
+
     /* Sort particles back-to-front for alpha blend (skip for additive) */
     if (!ps->additive_blend) {
         float cam_pos[3] = {(float)cam->eye[0], (float)cam->eye[1], (float)cam->eye[2]};
-        /* Simple insertion sort (stable, good for nearly-sorted data) */
-        for (int32_t i = 1; i < ps->count; i++) {
-            vgfx3d_particle_t key = ps->particles[i];
-            float ki_dist = (key.pos[0] - cam_pos[0]) * (key.pos[0] - cam_pos[0]) +
-                            (key.pos[1] - cam_pos[1]) * (key.pos[1] - cam_pos[1]) +
-                            (key.pos[2] - cam_pos[2]) * (key.pos[2] - cam_pos[2]);
-            int32_t j = i - 1;
-            while (j >= 0) {
-                vgfx3d_particle_t *pj = &ps->particles[j];
-                float dj = (pj->pos[0] - cam_pos[0]) * (pj->pos[0] - cam_pos[0]) +
-                           (pj->pos[1] - cam_pos[1]) * (pj->pos[1] - cam_pos[1]) +
-                           (pj->pos[2] - cam_pos[2]) * (pj->pos[2] - cam_pos[2]);
-                if (dj >= ki_dist)
-                    break;
-                ps->particles[j + 1] = ps->particles[j];
-                j--;
+        if ((size_t)ps->count <= SIZE_MAX / sizeof(*sort_keys))
+            sort_keys = (particle3d_sort_key *)malloc((size_t)ps->count * sizeof(*sort_keys));
+        if (sort_keys) {
+            for (int32_t i = 0; i < ps->count; i++) {
+                vgfx3d_particle_t *p = &ps->particles[i];
+                float dx = p->pos[0] - cam_pos[0];
+                float dy = p->pos[1] - cam_pos[1];
+                float dz = p->pos[2] - cam_pos[2];
+                sort_keys[i].index = i;
+                sort_keys[i].dist_sq = dx * dx + dy * dy + dz * dz;
             }
-            ps->particles[j + 1] = key;
+            qsort(sort_keys, (size_t)ps->count, sizeof(*sort_keys), particle3d_sort_key_desc);
         }
     }
 
@@ -803,6 +815,7 @@ void rt_particles3d_draw(void *o, void *canvas3d, void *camera) {
         (size_t)ps->count > SIZE_MAX / (4u * sizeof(vgfx3d_vertex_t)) ||
         (size_t)ps->count > SIZE_MAX / (6u * sizeof(uint32_t))) {
         rt_trap("Particles3D.Draw: particle buffer allocation overflow");
+        free(sort_keys);
         return;
     }
     uint32_t vert_count = (uint32_t)ps->count * 4;
@@ -812,11 +825,13 @@ void rt_particles3d_draw(void *o, void *canvas3d, void *camera) {
     if (!verts || !indices) {
         free(verts);
         free(indices);
+        free(sort_keys);
         return;
     }
 
     for (int32_t i = 0; i < ps->count; i++) {
-        vgfx3d_particle_t *p = &ps->particles[i];
+        int32_t particle_index = sort_keys ? sort_keys[i].index : i;
+        vgfx3d_particle_t *p = &ps->particles[particle_index];
         float hs = p->size * 0.5f;
         uint32_t base = (uint32_t)i * 4;
 
@@ -825,15 +840,9 @@ void rt_particles3d_draw(void *o, void *canvas3d, void *camera) {
             float rs = (vi == 1 || vi == 2) ? hs : -hs;
             float us = (vi == 2 || vi == 3) ? hs : -hs;
             vgfx3d_vertex_t *v = &verts[base + vi];
-            if (ps->additive_blend) {
-                v->pos[0] = p->pos[0] + right[0] * rs + up[0] * us;
-                v->pos[1] = p->pos[1] + right[1] * rs + up[1] * us;
-                v->pos[2] = p->pos[2] + right[2] * rs + up[2] * us;
-            } else {
-                v->pos[0] = right[0] * rs + up[0] * us;
-                v->pos[1] = right[1] * rs + up[1] * us;
-                v->pos[2] = right[2] * rs + up[2] * us;
-            }
+            v->pos[0] = p->pos[0] + right[0] * rs + up[0] * us;
+            v->pos[1] = p->pos[1] + right[1] * rs + up[1] * us;
+            v->pos[2] = p->pos[2] + right[2] * rs + up[2] * us;
             v->normal[0] = forward[0];
             v->normal[1] = forward[1];
             v->normal[2] = forward[2];
@@ -853,22 +862,14 @@ void rt_particles3d_draw(void *o, void *canvas3d, void *camera) {
         verts[base + 3].uv[1] = 0;
 
         /* 2 triangles per quad (CCW) */
-        if (ps->additive_blend) {
-            indices[i * 6 + 0] = base + 0;
-            indices[i * 6 + 1] = base + 1;
-            indices[i * 6 + 2] = base + 2;
-            indices[i * 6 + 3] = base + 0;
-            indices[i * 6 + 4] = base + 2;
-            indices[i * 6 + 5] = base + 3;
-        } else {
-            indices[i * 6 + 0] = 0;
-            indices[i * 6 + 1] = 1;
-            indices[i * 6 + 2] = 2;
-            indices[i * 6 + 3] = 0;
-            indices[i * 6 + 4] = 2;
-            indices[i * 6 + 5] = 3;
-        }
+        indices[i * 6 + 0] = base + 0;
+        indices[i * 6 + 1] = base + 1;
+        indices[i * 6 + 2] = base + 2;
+        indices[i * 6 + 3] = base + 0;
+        indices[i * 6 + 4] = base + 2;
+        indices[i * 6 + 5] = base + 3;
     }
+    free(sort_keys);
 
     /* Create a temporary mesh and submit via the normal draw pipeline.
      * Use unlit material with particle alpha for the draw command. */
@@ -892,6 +893,14 @@ void rt_particles3d_draw(void *o, void *canvas3d, void *camera) {
     int verts_tracked = rt_canvas3d_add_temp_buffer(canvas3d, verts);
     int indices_tracked = rt_canvas3d_add_temp_buffer(canvas3d, indices);
     if (!verts_tracked || !indices_tracked) {
+        if (verts_tracked) {
+            rt_canvas3d_remove_temp_buffer(canvas3d, verts);
+            free(verts);
+        }
+        if (indices_tracked) {
+            rt_canvas3d_remove_temp_buffer(canvas3d, indices);
+            free(indices);
+        }
         if (!verts_tracked)
             free(verts);
         if (!indices_tracked)
@@ -899,35 +908,14 @@ void rt_particles3d_draw(void *o, void *canvas3d, void *camera) {
         return;
     }
 
-    if (ps->additive_blend) {
-        static const double identity[16] = {
-            1.0, 0.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0,
-            0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 0.0, 1.0,
-        };
-        rt_material3d_set_alpha(mat, 1.0);
-        rt_material3d_set_alpha_mode(mat, RT_MATERIAL3D_ALPHA_MODE_BLEND);
-        ((rt_material3d *)mat)->additive_blend = 1;
-        rt_canvas3d_draw_mesh_matrix(canvas3d, &tmp_mesh, identity, mat);
-        return;
-    }
-
+    static const double identity[16] = {
+        1.0, 0.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0,
+        0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 0.0, 1.0,
+    };
+    rt_material3d_set_alpha(mat, 1.0);
     rt_material3d_set_alpha_mode(mat, RT_MATERIAL3D_ALPHA_MODE_BLEND);
-    for (int32_t i = 0; i < ps->count; i++) {
-        vgfx3d_particle_t *p = &ps->particles[i];
-        rt_mesh3d quad_mesh;
-        double model_matrix[16] = {
-            1.0, 0.0, 0.0, (double)p->pos[0], 0.0, 1.0, 0.0, (double)p->pos[1],
-            0.0, 0.0, 1.0, (double)p->pos[2], 0.0, 0.0, 0.0, 1.0};
-        memset(&quad_mesh, 0, sizeof(quad_mesh));
-        quad_mesh.vertices = &verts[(size_t)i * 4u];
-        quad_mesh.vertex_count = 4;
-        quad_mesh.indices = &indices[(size_t)i * 6u];
-        quad_mesh.index_count = 6;
-        quad_mesh.bounds_dirty = 1;
-        rt_material3d_set_alpha(mat, (double)p->color[3]);
-        rt_canvas3d_draw_mesh_matrix_keyed(
-            canvas3d, &quad_mesh, model_matrix, mat, NULL, NULL, NULL);
-    }
+    ((rt_material3d *)mat)->additive_blend = ps->additive_blend ? 1 : 0;
+    rt_canvas3d_draw_mesh_matrix(canvas3d, &tmp_mesh, identity, mat);
 }
 
 #else

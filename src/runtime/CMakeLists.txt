@@ -273,8 +273,8 @@ set(RT_GRAPHICS_SOURCES
         graphics/3d/world/rt_particles3d.c
         graphics/3d/render/rt_postfx3d.c
         graphics/3d/scene/rt_raycast3d.c
-        graphics/3d/audio/rt_audio3d.c
-        graphics/3d/audio/rt_audio3d_objects.c
+        graphics/3d/audio/rt_sound3d.c
+        graphics/3d/audio/rt_sound3d_objects.c
         graphics/3d/physics/rt_physics3d.c
         graphics/3d/physics/rt_joints3d.c
         graphics/3d/scene/rt_transform3d.c

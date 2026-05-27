@@ -269,12 +269,6 @@ TEST(RuntimeMethodIndexBasic, SoundFactoriesPreserveConcreteReturnClass) {
     EXPECT_EQ(build->target, std::string("Viper.Sound.MusicGen.Build"));
     EXPECT_EQ(build->ret, BasicType::Object);
     EXPECT_EQ(build->returnClassQName, std::string("Viper.Sound.Sound"));
-
-    auto compatTone = runtimeMethodIndex().find("Viper.Audio.Synth", "Tone", 3);
-    ASSERT_TRUE(compatTone.has_value());
-    EXPECT_EQ(compatTone->target, std::string("Viper.Audio.Synth.Tone"));
-    EXPECT_EQ(compatTone->ret, BasicType::Object);
-    EXPECT_EQ(compatTone->returnClassQName, std::string("Viper.Audio.Sound"));
 }
 
 TEST(RuntimeMethodIndexBasic, GraphicsSurfaceBindingsAreCataloged) {

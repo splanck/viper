@@ -161,11 +161,23 @@ static rt_model3d *model_new(void) {
 /// when it grows. Returns 1 on success, 0 on realloc failure (existing array untouched so
 /// the caller can safely trap and bail).
 static int model_grow_array(void ***arr, int32_t *cap, int32_t need) {
+    int32_t new_cap;
+    if (need < 0 || !cap || !arr)
+        return 0;
     if (*cap >= need)
         return 1;
-    int32_t new_cap = *cap > 0 ? *cap * 2 : 4;
+    new_cap = *cap > 0 ? *cap : 4;
+    while (new_cap < need) {
+        if (new_cap > INT32_MAX / 2) {
+            new_cap = need;
+            break;
+        }
+        new_cap *= 2;
+    }
     if (new_cap < need)
-        new_cap = need;
+        return 0;
+    if ((size_t)new_cap > SIZE_MAX / sizeof(void *))
+        return 0;
     void **grown = (void **)realloc(*arr, (size_t)new_cap * sizeof(void *));
     if (!grown)
         return 0;
@@ -207,11 +219,52 @@ static int model_append_unique_ref(
 /// itself. Used by `rt_model3d_get_node_count` (which subtracts 1 to exclude the synthetic
 /// template root from the user-visible count).
 static int32_t model_count_subtree(const rt_scene_node3d *node) {
-    int32_t total = 1;
+    const rt_scene_node3d **stack = NULL;
+    int32_t stack_count = 0;
+    int32_t stack_capacity = 0;
+    int32_t total = 0;
     if (!node)
         return 0;
-    for (int32_t i = 0; i < node->child_count; i++)
-        total += model_count_subtree(node->children[i]);
+    stack_capacity = 32;
+    stack = (const rt_scene_node3d **)malloc((size_t)stack_capacity * sizeof(*stack));
+    if (!stack) {
+        rt_trap("Model3D: node-count stack allocation failed");
+        return 0;
+    }
+    stack[stack_count++] = node;
+    while (stack_count > 0) {
+        const rt_scene_node3d *current = stack[--stack_count];
+        if (!current)
+            continue;
+        if (total == INT32_MAX) {
+            free(stack);
+            rt_trap("Model3D: too many nodes");
+            return 0;
+        }
+        total++;
+        for (int32_t i = 0; i < current->child_count; i++) {
+            if (stack_count >= stack_capacity) {
+                if (stack_capacity > INT32_MAX / 2 ||
+                    (size_t)(stack_capacity * 2) > SIZE_MAX / sizeof(*stack)) {
+                    free(stack);
+                    rt_trap("Model3D: too many nodes");
+                    return 0;
+                }
+                int32_t new_capacity = stack_capacity * 2;
+                const rt_scene_node3d **grown =
+                    (const rt_scene_node3d **)realloc(stack, (size_t)new_capacity * sizeof(*stack));
+                if (!grown) {
+                    free(stack);
+                    rt_trap("Model3D: node-count stack allocation failed");
+                    return 0;
+                }
+                stack = grown;
+                stack_capacity = new_capacity;
+            }
+            stack[stack_count++] = current->children[i];
+        }
+    }
+    free(stack);
     return total;
 }
 
@@ -273,17 +326,9 @@ static void *model_clone_mutable_mesh(void *mesh) {
     return mesh_clone;
 }
 
-/// @brief Recursive deep-copy of a scene-node subtree from `src` into a new GC-allocated node.
-/// @details Copies TRS (translation, rotation, scale), world-dirty flag, visibility, AABB, and
-///   bounding-sphere radius.  Mesh and material handles are retained (not cloned) so the clone
-///   shares static geometry with the template.  When `clone_mutable_meshes` is nonzero, any
-///   mesh that has attached morph targets is deep-cloned via `model_clone_mutable_mesh` so each
-///   instance can have independent blend-shape weights.  LOD level geometry follows the same
-///   retain / clone logic as the primary mesh.  Children are recursively cloned and attached via
-///   `rt_scene_node3d_add_child`; the local reference is released after attachment so the parent
-///   node is the sole owner.  Returns NULL on allocation failure (partial nodes may have been
-///   constructed but are GC-collected normally).
-static rt_scene_node3d *model_clone_node(const rt_scene_node3d *src, int clone_mutable_meshes) {
+/// @brief Clone one node without its children. Returns NULL and releases partial state on OOM.
+static rt_scene_node3d *model_clone_node_shallow(const rt_scene_node3d *src,
+                                                 int clone_mutable_meshes) {
     rt_scene_node3d *dst;
     if (!src)
         return NULL;
@@ -335,7 +380,8 @@ static rt_scene_node3d *model_clone_node(const rt_scene_node3d *src, int clone_m
         dst->lod_levels = calloc((size_t)src->lod_count, sizeof(*dst->lod_levels));
         if (!dst->lod_levels) {
             rt_trap("Model3D: lod allocation failed");
-            return dst;
+            model_release_local(dst);
+            return NULL;
         }
         dst->lod_capacity = src->lod_count;
         dst->lod_count = src->lod_count;
@@ -352,15 +398,78 @@ static rt_scene_node3d *model_clone_node(const rt_scene_node3d *src, int clone_m
         }
     }
 
-    for (int32_t i = 0; i < src->child_count; i++) {
-        rt_scene_node3d *child = model_clone_node(src->children[i], clone_mutable_meshes);
-        if (child) {
-            rt_scene_node3d_add_child(dst, child);
-            model_release_local(child);
-        }
-    }
-
     return dst;
+}
+
+typedef struct model_clone_frame {
+    const rt_scene_node3d *src;
+    rt_scene_node3d *dst;
+    int32_t next_child;
+} model_clone_frame;
+
+/// @brief Iterative deep-copy of a scene-node subtree.
+static rt_scene_node3d *model_clone_node(const rt_scene_node3d *src, int clone_mutable_meshes) {
+    rt_scene_node3d *root;
+    model_clone_frame *stack;
+    int32_t stack_count = 0;
+    int32_t stack_capacity = 32;
+    if (!src)
+        return NULL;
+    root = model_clone_node_shallow(src, clone_mutable_meshes);
+    if (!root)
+        return NULL;
+    stack = (model_clone_frame *)malloc((size_t)stack_capacity * sizeof(*stack));
+    if (!stack) {
+        rt_trap("Model3D: clone stack allocation failed");
+        model_release_local(root);
+        return NULL;
+    }
+    stack[stack_count++] = (model_clone_frame){src, root, 0};
+    while (stack_count > 0) {
+        model_clone_frame *frame = &stack[stack_count - 1];
+        if (!frame->src || frame->next_child >= frame->src->child_count) {
+            stack_count--;
+            continue;
+        }
+        const rt_scene_node3d *src_child = frame->src->children[frame->next_child++];
+        rt_scene_node3d *dst_child = model_clone_node_shallow(src_child, clone_mutable_meshes);
+        if (!dst_child) {
+            free(stack);
+            model_release_local(root);
+            return NULL;
+        }
+        rt_scene_node3d_add_child(frame->dst, dst_child);
+        if (rt_scene_node3d_get_parent(dst_child) != frame->dst) {
+            model_release_local(dst_child);
+            free(stack);
+            model_release_local(root);
+            return NULL;
+        }
+        model_release_local(dst_child);
+        if (stack_count >= stack_capacity) {
+            if (stack_capacity > INT32_MAX / 2 ||
+                (size_t)(stack_capacity * 2) > SIZE_MAX / sizeof(*stack)) {
+                free(stack);
+                model_release_local(root);
+                rt_trap("Model3D: too many nodes to clone");
+                return NULL;
+            }
+            int32_t new_capacity = stack_capacity * 2;
+            model_clone_frame *grown =
+                (model_clone_frame *)realloc(stack, (size_t)new_capacity * sizeof(*stack));
+            if (!grown) {
+                free(stack);
+                model_release_local(root);
+                rt_trap("Model3D: clone stack allocation failed");
+                return NULL;
+            }
+            stack = grown;
+            stack_capacity = new_capacity;
+        }
+        stack[stack_count++] = (model_clone_frame){src_child, dst_child, 0};
+    }
+    free(stack);
+    return root;
 }
 
 /// @brief Clone each child of `src_root` and attach to `dst_root`. Used by `Model3D.Load`
@@ -464,31 +573,70 @@ static void model_bind_default_node_animator(rt_model3d *model, rt_scene_node3d 
 /// without re-walking the tree. Recurses into every child; duplicates are skipped by
 /// `model_append_unique_ref`.
 static int model_collect_scene_refs(rt_model3d *model, const rt_scene_node3d *node) {
+    const rt_scene_node3d **stack = NULL;
+    int32_t stack_count = 0;
+    int32_t stack_capacity = 32;
     if (!model || !node)
         return 1;
-
-    if (!model_append_unique_ref(
-            &model->meshes, &model->mesh_count, &model->mesh_capacity, node->mesh,
-            "Model3D.Load: mesh list allocation failed"))
+    stack = (const rt_scene_node3d **)malloc((size_t)stack_capacity * sizeof(*stack));
+    if (!stack) {
+        rt_trap("Model3D.Load: scene-ref walk allocation failed");
         return 0;
-    if (!model_append_unique_ref(&model->materials,
-                                 &model->material_count,
-                                 &model->material_capacity,
-                                 node->material,
-                                 "Model3D.Load: material list allocation failed"))
-        return 0;
-    for (int32_t i = 0; i < node->lod_count; i++) {
+    }
+    stack[stack_count++] = node;
+    while (stack_count > 0) {
+        const rt_scene_node3d *current = stack[--stack_count];
+        if (!current)
+            continue;
         if (!model_append_unique_ref(&model->meshes,
                                      &model->mesh_count,
                                      &model->mesh_capacity,
-                                     node->lod_levels[i].mesh,
-                                     "Model3D.Load: mesh list allocation failed"))
+                                     current->mesh,
+                                     "Model3D.Load: mesh list allocation failed")) {
+            free(stack);
             return 0;
-    }
-    for (int32_t i = 0; i < node->child_count; i++) {
-        if (!model_collect_scene_refs(model, node->children[i]))
+        }
+        if (!model_append_unique_ref(&model->materials,
+                                     &model->material_count,
+                                     &model->material_capacity,
+                                     current->material,
+                                     "Model3D.Load: material list allocation failed")) {
+            free(stack);
             return 0;
+        }
+        for (int32_t i = 0; i < current->lod_count; i++) {
+            if (!model_append_unique_ref(&model->meshes,
+                                         &model->mesh_count,
+                                         &model->mesh_capacity,
+                                         current->lod_levels[i].mesh,
+                                         "Model3D.Load: mesh list allocation failed")) {
+                free(stack);
+                return 0;
+            }
+        }
+        for (int32_t i = 0; i < current->child_count; i++) {
+            if (stack_count >= stack_capacity) {
+                if (stack_capacity > INT32_MAX / 2 ||
+                    (size_t)(stack_capacity * 2) > SIZE_MAX / sizeof(*stack)) {
+                    free(stack);
+                    rt_trap("Model3D.Load: too many scene nodes");
+                    return 0;
+                }
+                int32_t new_capacity = stack_capacity * 2;
+                const rt_scene_node3d **grown =
+                    (const rt_scene_node3d **)realloc(stack, (size_t)new_capacity * sizeof(*stack));
+                if (!grown) {
+                    free(stack);
+                    rt_trap("Model3D.Load: scene-ref walk allocation failed");
+                    return 0;
+                }
+                stack = grown;
+                stack_capacity = new_capacity;
+            }
+            stack[stack_count++] = current->children[i];
+        }
     }
+    free(stack);
     return 1;
 }
 

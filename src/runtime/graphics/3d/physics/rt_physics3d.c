@@ -40,6 +40,7 @@
 #include "rt_joints3d.h"
 #include "rt_raycast3d.h"
 
+#include <limits.h>
 #include <math.h>
 #include <stdint.h>
 #include <stdlib.h>
@@ -1499,6 +1500,88 @@ static int contact_pair_equals(const rt_contact3d *a, const rt_contact3d *b) {
         return 0;
     return a->body_a == b->body_a && a->body_b == b->body_b &&
            a->collider_a == b->collider_a && a->collider_b == b->collider_b;
+}
+
+typedef struct contact_pair_hash_entry {
+    const rt_contact3d *contact;
+    uintptr_t hash;
+} contact_pair_hash_entry;
+
+static uintptr_t contact_pair_hash_mix(uintptr_t key, uintptr_t value) {
+    key ^= value + (uintptr_t)0x9e3779b97f4a7c15ull + (key << 6) + (key >> 2);
+    return key ? key : (uintptr_t)1u;
+}
+
+static uintptr_t contact_pair_hash_value(const rt_contact3d *contact) {
+    uintptr_t key = (uintptr_t)contact->body_a;
+    key = contact_pair_hash_mix(key, (uintptr_t)contact->body_b);
+    key = contact_pair_hash_mix(key, (uintptr_t)contact->collider_a);
+    key = contact_pair_hash_mix(key, (uintptr_t)contact->collider_b);
+    return key ? key : (uintptr_t)1u;
+}
+
+static int contact_pair_table_capacity(int32_t count, int32_t *out_capacity) {
+    int32_t cap = 16;
+    if (!out_capacity || count <= 0)
+        return 0;
+    if (count > INT32_MAX / 2)
+        return 0;
+    while (cap < count * 2) {
+        if (cap > INT32_MAX / 2)
+            return 0;
+        cap *= 2;
+    }
+    if ((size_t)cap > SIZE_MAX / sizeof(contact_pair_hash_entry))
+        return 0;
+    *out_capacity = cap;
+    return 1;
+}
+
+static contact_pair_hash_entry *contact_pair_table_build(const rt_contact3d *contacts,
+                                                         int32_t count,
+                                                         int32_t *out_capacity) {
+    int32_t capacity = 0;
+    contact_pair_hash_entry *table;
+    if (!contacts || count <= 0 || !out_capacity)
+        return NULL;
+    if (!contact_pair_table_capacity(count, &capacity))
+        return NULL;
+    table = (contact_pair_hash_entry *)calloc((size_t)capacity, sizeof(*table));
+    if (!table)
+        return NULL;
+    for (int32_t i = 0; i < count; ++i) {
+        uintptr_t hash = contact_pair_hash_value(&contacts[i]);
+        int32_t slot = (int32_t)(hash & (uintptr_t)(capacity - 1));
+        for (int32_t probe = 0; probe < capacity; ++probe) {
+            int32_t idx = (slot + probe) & (capacity - 1);
+            if (!table[idx].contact) {
+                table[idx].contact = &contacts[i];
+                table[idx].hash = hash;
+                break;
+            }
+        }
+    }
+    *out_capacity = capacity;
+    return table;
+}
+
+static int contact_pair_table_contains(const contact_pair_hash_entry *table,
+                                       int32_t capacity,
+                                       const rt_contact3d *needle) {
+    uintptr_t hash;
+    int32_t slot;
+    if (!table || capacity <= 0 || !needle)
+        return 0;
+    hash = contact_pair_hash_value(needle);
+    slot = (int32_t)(hash & (uintptr_t)(capacity - 1));
+    for (int32_t probe = 0; probe < capacity; ++probe) {
+        int32_t idx = (slot + probe) & (capacity - 1);
+        if (!table[idx].contact)
+            return 0;
+        if (table[idx].hash == hash && contact_pair_equals(table[idx].contact, needle))
+            return 1;
+    }
+    return 0;
 }
 
 /// @brief Compute the support point for a collider in a given direction.
@@ -3586,18 +3669,32 @@ static void *collision_event3d_new_from_contact(const rt_contact3d *contact) {
 /// Event arrays grow with the live contact list so large production scenes
 /// do not silently drop contacts after the initial capacity.
 static void world3d_build_event_buffers(rt_world3d *w) {
+    contact_pair_hash_entry *previous_table = NULL;
+    contact_pair_hash_entry *current_table = NULL;
+    int32_t previous_table_capacity = 0;
+    int32_t current_table_capacity = 0;
     if (!w)
         return;
     w->enter_event_count = 0;
     w->stay_event_count = 0;
     w->exit_event_count = 0;
 
+    previous_table = contact_pair_table_build(
+        w->previous_contacts, w->previous_contact_count, &previous_table_capacity);
+    current_table =
+        contact_pair_table_build(w->contacts, w->contact_count, &current_table_capacity);
+
     for (int32_t i = 0; i < w->contact_count; ++i) {
-        int found = 0;
-        for (int32_t j = 0; j < w->previous_contact_count; ++j) {
-            if (contact_pair_equals(&w->contacts[i], &w->previous_contacts[j])) {
-                found = 1;
-                break;
+        int found = previous_table ? contact_pair_table_contains(previous_table,
+                                                                 previous_table_capacity,
+                                                                 &w->contacts[i])
+                                   : 0;
+        if (!previous_table) {
+            for (int32_t j = 0; j < w->previous_contact_count; ++j) {
+                if (contact_pair_equals(&w->contacts[i], &w->previous_contacts[j])) {
+                    found = 1;
+                    break;
+                }
             }
         }
         if (found) {
@@ -3605,6 +3702,8 @@ static void world3d_build_event_buffers(rt_world3d *w) {
             if (!world3d_checked_increment(w->stay_event_count, &next_stay_count) ||
                 !world3d_reserve_stay_events(w, next_stay_count)) {
                 rt_trap("Physics3D.World.Step: stay-event allocation failed");
+                free(previous_table);
+                free(current_table);
                 return;
             }
             contact_snapshot_copy(&w->stay_events[w->stay_event_count++], &w->contacts[i]);
@@ -3613,6 +3712,8 @@ static void world3d_build_event_buffers(rt_world3d *w) {
             if (!world3d_checked_increment(w->enter_event_count, &next_enter_count) ||
                 !world3d_reserve_enter_events(w, next_enter_count)) {
                 rt_trap("Physics3D.World.Step: enter-event allocation failed");
+                free(previous_table);
+                free(current_table);
                 return;
             }
             contact_snapshot_copy(&w->enter_events[w->enter_event_count++], &w->contacts[i]);
@@ -3620,11 +3721,16 @@ static void world3d_build_event_buffers(rt_world3d *w) {
     }
 
     for (int32_t i = 0; i < w->previous_contact_count; ++i) {
-        int found = 0;
-        for (int32_t j = 0; j < w->contact_count; ++j) {
-            if (contact_pair_equals(&w->previous_contacts[i], &w->contacts[j])) {
-                found = 1;
-                break;
+        int found = current_table ? contact_pair_table_contains(current_table,
+                                                               current_table_capacity,
+                                                               &w->previous_contacts[i])
+                                  : 0;
+        if (!current_table) {
+            for (int32_t j = 0; j < w->contact_count; ++j) {
+                if (contact_pair_equals(&w->previous_contacts[i], &w->contacts[j])) {
+                    found = 1;
+                    break;
+                }
             }
         }
         if (!found) {
@@ -3632,6 +3738,8 @@ static void world3d_build_event_buffers(rt_world3d *w) {
             if (!world3d_checked_increment(w->exit_event_count, &next_exit_count) ||
                 !world3d_reserve_exit_events(w, next_exit_count)) {
                 rt_trap("Physics3D.World.Step: exit-event allocation failed");
+                free(previous_table);
+                free(current_table);
                 return;
             }
             contact_snapshot_copy(&w->exit_events[w->exit_event_count++], &w->previous_contacts[i]);
@@ -3640,11 +3748,15 @@ static void world3d_build_event_buffers(rt_world3d *w) {
 
     if (!world3d_reserve_previous_contacts(w, w->contact_count)) {
         rt_trap("Physics3D.World.Step: previous-contact allocation failed");
+        free(previous_table);
+        free(current_table);
         return;
     }
     w->previous_contact_count = w->contact_count;
     for (int32_t i = 0; i < w->contact_count; ++i)
         contact_snapshot_copy(&w->previous_contacts[i], &w->contacts[i]);
+    free(previous_table);
+    free(current_table);
 }
 
 /*==========================================================================

@@ -1,4 +1,4 @@
-PRINT "=== Audio3D Objects Demo ==="
+PRINT "=== Sound3D Objects Demo ==="
 
 DIM cam AS OBJECT
 DIM scene AS OBJECT
@@ -20,11 +20,11 @@ Viper.Graphics3D.SceneNode3D.SetPosition(node, 3.0, 0.5, -1.0)
 Viper.Graphics3D.SceneNode3D.AddChild(parent, node)
 Viper.Graphics3D.Scene3D.Add(scene, parent)
 
-listener = Viper.Graphics3D.AudioListener3D.New()
+listener = Viper.Graphics3D.SoundListener3D.New()
 listener.BindCamera(cam)
 listener.IsActive = 1
 
-source = Viper.Graphics3D.AudioSource3D.New(Viper.Sound.Synth.Tone(523, 220, 0))
+source = Viper.Graphics3D.SoundSource3D.New(Viper.Sound.Synth.Tone(523, 220, 0))
 source.BindNode(node)
 source.MaxDistance = 20.0
 source.Volume = 75

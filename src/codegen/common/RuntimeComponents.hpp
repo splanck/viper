@@ -202,7 +202,7 @@ inline std::optional<RtComponent> componentForRuntimeSymbol(std::string_view sym
     if (starts("Viper.Canvas.") || starts("Viper.Input.") || starts("Viper.GUI.") ||
         starts("Viper.Graphics.") || starts("Viper.Color."))
         return RtComponent::Graphics;
-    if (starts("Viper.Audio.") || starts("Viper.Sound.") || starts("Viper.Music."))
+    if (starts("Viper.Sound.") || starts("Viper.Music."))
         return RtComponent::Audio;
     if (starts("Viper.Thread.") || starts("Viper.Channel.") || starts("Viper.Future."))
         return RtComponent::Threads;

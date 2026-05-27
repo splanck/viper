@@ -5,7 +5,7 @@
 //
 //===----------------------------------------------------------------------===//
 
-#include "rt_audio3d.h"
+#include "rt_sound3d.h"
 
 #include <cassert>
 #include <cmath>
@@ -75,8 +75,8 @@ static void test_origin_has_full_volume_and_zero_pan() {
     Vec3 source{0.0, 0.0, 0.0};
     reset_audio_stub_state();
 
-    rt_audio3d_set_listener(&listener, &forward);
-    int64_t voice = rt_audio3d_play_at(reinterpret_cast<void *>(1), &source, 10.0, 80);
+    rt_sound3d_set_listener(&listener, &forward);
+    int64_t voice = rt_sound3d_play_at(reinterpret_cast<void *>(1), &source, 10.0, 80);
 
     assert(voice > 0);
     assert(g_last_play_volume == 80);
@@ -89,8 +89,8 @@ static void test_pan_and_attenuation_are_derived_from_position() {
     Vec3 source{5.0, 0.0, 0.0};
     reset_audio_stub_state();
 
-    rt_audio3d_set_listener(&listener, &forward);
-    int64_t voice = rt_audio3d_play_at(reinterpret_cast<void *>(1), &source, 10.0, 100);
+    rt_sound3d_set_listener(&listener, &forward);
+    int64_t voice = rt_sound3d_play_at(reinterpret_cast<void *>(1), &source, 10.0, 100);
 
     assert(voice > 0);
     assert(g_last_play_volume == 50);
@@ -103,13 +103,13 @@ static void test_update_voice_reuses_original_base_volume_and_distance() {
     Vec3 source{5.0, 0.0, 0.0};
     reset_audio_stub_state();
 
-    rt_audio3d_set_listener(&listener, &forward);
-    int64_t voice = rt_audio3d_play_at(reinterpret_cast<void *>(1), &source, 10.0, 40);
+    rt_sound3d_set_listener(&listener, &forward);
+    int64_t voice = rt_sound3d_play_at(reinterpret_cast<void *>(1), &source, 10.0, 40);
     assert(voice > 0);
     assert(g_last_play_volume == 20);
 
     reset_audio_stub_state();
-    rt_audio3d_update_voice(voice, &source, 0.0);
+    rt_sound3d_update_voice(voice, &source, 0.0);
 
     assert(g_last_update_voice == voice);
     assert(g_last_update_volume == 20);
@@ -121,10 +121,10 @@ static void test_invalid_inputs_are_ignored() {
     Vec3 forward{0.0, 0.0, -1.0};
     reset_audio_stub_state();
 
-    rt_audio3d_set_listener(&listener, &forward);
-    assert(rt_audio3d_play_at(nullptr, &listener, 10.0, 100) == 0);
-    assert(rt_audio3d_play_at(reinterpret_cast<void *>(1), nullptr, 10.0, 100) == 0);
-    rt_audio3d_update_voice(0, &listener, 5.0);
+    rt_sound3d_set_listener(&listener, &forward);
+    assert(rt_sound3d_play_at(nullptr, &listener, 10.0, 100) == 0);
+    assert(rt_sound3d_play_at(reinterpret_cast<void *>(1), nullptr, 10.0, 100) == 0);
+    rt_sound3d_update_voice(0, &listener, 5.0);
     assert(g_last_update_voice == -1);
 }
 
@@ -133,7 +133,7 @@ static void test_play_at_normalizes_backend_failure_to_zero() {
     reset_audio_stub_state();
     g_next_play_result = -1;
 
-    int64_t voice = rt_audio3d_play_at(reinterpret_cast<void *>(1), &source, 10.0, 100);
+    int64_t voice = rt_sound3d_play_at(reinterpret_cast<void *>(1), &source, 10.0, 100);
 
     assert(voice == 0);
 }
@@ -143,8 +143,8 @@ static void test_set_listener_accepts_partial_null_inputs() {
     Vec3 source{0.0, 0.0, 5.0};
     reset_audio_stub_state();
 
-    rt_audio3d_set_listener(nullptr, &forward);
-    int64_t voice = rt_audio3d_play_at(reinterpret_cast<void *>(1), &source, 10.0, 100);
+    rt_sound3d_set_listener(nullptr, &forward);
+    int64_t voice = rt_sound3d_play_at(reinterpret_cast<void *>(1), &source, 10.0, 100);
 
     assert(voice > 0);
     assert(g_last_play_pan == 100);
@@ -156,8 +156,8 @@ static void test_nonfinite_positions_do_not_escape_clamps() {
     Vec3 source{NAN, INFINITY, -INFINITY};
     reset_audio_stub_state();
 
-    rt_audio3d_set_listener(&listener, &forward);
-    int64_t voice = rt_audio3d_play_at(reinterpret_cast<void *>(1), &source, NAN, 1000);
+    rt_sound3d_set_listener(&listener, &forward);
+    int64_t voice = rt_sound3d_play_at(reinterpret_cast<void *>(1), &source, NAN, 1000);
 
     assert(voice > 0);
     assert(g_last_play_volume >= 0 && g_last_play_volume <= 100);
@@ -169,18 +169,18 @@ static void test_voice_tracking_overwrites_as_ring() {
     Vec3 forward{0.0, 0.0, -1.0};
     Vec3 source{5.0, 0.0, 0.0};
     reset_audio_stub_state();
-    rt_audio3d_set_listener(&listener, &forward);
+    rt_sound3d_set_listener(&listener, &forward);
 
     int64_t tracked_after_wrap = 0;
     for (int i = 0; i < 66; i++) {
-        int64_t voice = rt_audio3d_play_at(reinterpret_cast<void *>(1), &source, 10.0, 40);
+        int64_t voice = rt_sound3d_play_at(reinterpret_cast<void *>(1), &source, 10.0, 40);
         assert(voice > 0);
         if (i == 64)
             tracked_after_wrap = voice;
     }
 
     reset_audio_stub_state();
-    rt_audio3d_update_voice(tracked_after_wrap, &source, 0.0);
+    rt_sound3d_update_voice(tracked_after_wrap, &source, 0.0);
 
     assert(g_last_update_voice == tracked_after_wrap);
     assert(g_last_update_volume == 20);
@@ -196,6 +196,6 @@ int main() {
     test_set_listener_accepts_partial_null_inputs();
     test_nonfinite_positions_do_not_escape_clamps();
     test_voice_tracking_overwrites_as_ring();
-    std::printf("RTAudio3DTests passed.\n");
+    std::printf("RTSound3DTests passed.\n");
     return 0;
 }

@@ -27,6 +27,7 @@
 #include "rt.hpp"
 #include "rt_canvas3d.h"
 #include "rt_internal.h"
+#include "rt_platform.h"
 #include "rt_sprite3d.h"
 #include "rt_string.h"
 #include "rt_terrain3d.h"
@@ -627,11 +628,11 @@ static void test_backend_select_software_override() {
 }
 
 static void test_backend_select_platform_override() {
-#if defined(__APPLE__)
+#if RT_PLATFORM_MACOS
     const char *expected = "metal";
-#elif defined(_WIN32)
+#elif RT_PLATFORM_WINDOWS
     const char *expected = "d3d11";
-#elif defined(__linux__)
+#elif RT_PLATFORM_LINUX
     const char *expected = "opengl";
 #else
     const char *expected = "software";
@@ -1840,6 +1841,8 @@ static int g_canvas_end_frame_calls = 0;
 static int g_canvas_submit_draw_calls = 0;
 static int g_canvas_submit_draw_instanced_calls = 0;
 static int g_last_instanced_count = 0;
+static int g_last_instanced_has_prev = 0;
+static float g_last_instanced_prev_x = 0.0f;
 static vgfx3d_camera_params_t g_canvas_begin_frame_params = {};
 static vgfx3d_draw_cmd_t g_last_draw_cmd = {};
 } // namespace
@@ -1907,7 +1910,7 @@ static void tracked_submit_draw(void *,
 
 static void tracked_submit_draw_instanced(void *,
                                           vgfx_window_t,
-                                          const vgfx3d_draw_cmd_t *,
+                                          const vgfx3d_draw_cmd_t *cmd,
                                           const float *,
                                           int32_t instance_count,
                                           const vgfx3d_light_params_t *,
@@ -1917,6 +1920,10 @@ static void tracked_submit_draw_instanced(void *,
                                           int8_t) {
     g_canvas_submit_draw_instanced_calls++;
     g_last_instanced_count = instance_count;
+    if (cmd) {
+        g_last_instanced_has_prev = cmd->has_prev_instance_matrices;
+        g_last_instanced_prev_x = cmd->prev_instance_matrices ? cmd->prev_instance_matrices[3] : 0.0f;
+    }
 }
 
 static void test_canvas_postfx_retains_owned_reference() {
@@ -3086,6 +3093,87 @@ static void test_canvas_opaque_alpha_mode_keeps_instanced_path() {
     PASS();
 }
 
+static void test_canvas_instanced_gpu_synthesizes_previous_matrices() {
+    TEST("Canvas3D synthesizes previous matrices for GPU instancing");
+    vgfx3d_backend_t backend = {};
+    rt_canvas3d canvas;
+    void *cam = rt_camera3d_new(60.0, 1.0, 0.1, 100.0);
+    void *mesh = rt_mesh3d_new_box(1.0, 1.0, 1.0);
+    void *mat = rt_material3d_new();
+    float instances[16] = {0.0f};
+
+    backend.name = "opengl";
+    backend.begin_frame = tracked_begin_frame;
+    backend.submit_draw = tracked_submit_draw;
+    backend.submit_draw_instanced = tracked_submit_draw_instanced;
+    backend.end_frame = tracked_end_frame;
+
+    instances[0] = instances[5] = instances[10] = instances[15] = 1.0f;
+
+    memset(&canvas, 0, sizeof(canvas));
+    canvas.backend = &backend;
+    rt_material3d_set_alpha(mat, 1.0);
+    rt_material3d_set_alpha_mode(mat, RT_MATERIAL3D_ALPHA_MODE_OPAQUE);
+
+    g_last_instanced_has_prev = 0;
+    g_last_instanced_prev_x = -99.0f;
+    rt_canvas3d_begin(&canvas, cam);
+    rt_canvas3d_queue_instanced_batch(&canvas, mesh, mat, instances, 1, NULL, 0);
+    rt_canvas3d_end(&canvas);
+    EXPECT_EQ(g_last_instanced_has_prev, 1);
+    EXPECT_NEAR(g_last_instanced_prev_x, 0.0, 0.0001);
+
+    instances[3] = 2.0f;
+    rt_canvas3d_begin(&canvas, cam);
+    rt_canvas3d_queue_instanced_batch(&canvas, mesh, mat, instances, 1, NULL, 0);
+    rt_canvas3d_end(&canvas);
+    EXPECT_EQ(g_last_instanced_has_prev, 1);
+    EXPECT_NEAR(g_last_instanced_prev_x, 0.0, 0.0001);
+    PASS();
+}
+
+static void test_canvas_instanced_motion_history_separates_batches() {
+    TEST("Canvas3D separates motion history for same mesh instanced batches");
+    vgfx3d_backend_t backend = {};
+    rt_canvas3d canvas;
+    void *cam = rt_camera3d_new(60.0, 1.0, 0.1, 100.0);
+    void *mesh = rt_mesh3d_new_box(1.0, 1.0, 1.0);
+    void *mat = rt_material3d_new();
+    float batch_a[16] = {0.0f};
+    float batch_b[16] = {0.0f};
+
+    backend.name = "software";
+    backend.begin_frame = tracked_begin_frame;
+    backend.submit_draw = tracked_submit_draw;
+    backend.end_frame = tracked_end_frame;
+
+    batch_a[0] = batch_a[5] = batch_a[10] = batch_a[15] = 1.0f;
+    batch_b[0] = batch_b[5] = batch_b[10] = batch_b[15] = 1.0f;
+    batch_b[3] = 10.0f;
+
+    memset(&canvas, 0, sizeof(canvas));
+    canvas.backend = &backend;
+    rt_material3d_set_alpha(mat, 0.5);
+    rt_material3d_set_alpha_mode(mat, RT_MATERIAL3D_ALPHA_MODE_OPAQUE);
+
+    rt_canvas3d_begin(&canvas, cam);
+    rt_canvas3d_queue_instanced_batch(&canvas, mesh, mat, batch_a, 1, NULL, 0);
+    rt_canvas3d_queue_instanced_batch(&canvas, mesh, mat, batch_b, 1, NULL, 0);
+    rt_canvas3d_end(&canvas);
+
+    batch_a[3] = 1.0f;
+    batch_b[3] = 11.0f;
+    memset(&g_last_draw_cmd, 0, sizeof(g_last_draw_cmd));
+    rt_canvas3d_begin(&canvas, cam);
+    rt_canvas3d_queue_instanced_batch(&canvas, mesh, mat, batch_a, 1, NULL, 0);
+    rt_canvas3d_queue_instanced_batch(&canvas, mesh, mat, batch_b, 1, NULL, 0);
+    rt_canvas3d_end(&canvas);
+
+    EXPECT_EQ(g_last_draw_cmd.has_prev_model_matrix, 1);
+    EXPECT_NEAR(g_last_draw_cmd.prev_model_matrix[3], 10.0, 0.0001);
+    PASS();
+}
+
 static void test_canvas_legacy_translucent_batch_falls_back_from_instancing() {
     TEST("Canvas3D routes legacy translucent batches off the instanced path");
     vgfx3d_backend_t backend = {};
@@ -3444,6 +3532,8 @@ int main() {
     test_metal_instbatch_create();
     test_instbatch_remove_preserves_unrelated_motion_history();
     test_canvas_opaque_alpha_mode_keeps_instanced_path();
+    test_canvas_instanced_gpu_synthesizes_previous_matrices();
+    test_canvas_instanced_motion_history_separates_batches();
     test_canvas_legacy_translucent_batch_falls_back_from_instancing();
     test_canvas_instanced_fallback_caps_instance_count();
     test_canvas_instanced_previous_matrices_require_pointer();

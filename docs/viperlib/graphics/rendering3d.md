@@ -535,6 +535,9 @@ failure instead of reusing stale buffers; larger shape sets should use the CPU-a
 ### Viper.Graphics3D.Particles3D
 
 3D particle emitter with configurable spawn, physics, color, and render properties.
+`Draw` submits one batched billboard mesh per emitter. Additive particles skip
+sorting; alpha particles sort a temporary key array back-to-front without
+mutating the emitter's live particle order.
 
 **Type:** Instance (obj)
 **Constructor:** `Particles3D.New(maxParticles)`
@@ -612,7 +615,7 @@ Time-limited projected decal placed in a 3D scene (bullet holes, blood splats, s
 
 ## Spatial Audio
 
-### Viper.Graphics3D.Audio3D
+### Viper.Graphics3D.Sound3D
 
 Static utilities for positioning audio in 3D space via listeners and voice IDs.
 
@@ -625,16 +628,16 @@ Static utilities for positioning audio in 3D space via listeners and voice IDs.
 | `SetListener(position, forward)` | `Void(Object, Object)` | Set the listener position and orientation |
 | `PlayAt(sound, position, volume, loop)` | `Integer(Object, Object, Double, Integer)` | Spawn a spatialized voice at a world position; returns voice ID |
 | `UpdateVoice(voiceId, position, volume)` | `Void(Integer, Object, Double)` | Update the position and volume of a live spatialized voice |
-| `SyncBindings(deltaSeconds)` | `Void(Double)` | Propagate node/camera bindings from `AudioSource3D` and `AudioListener3D` |
+| `SyncBindings(deltaSeconds)` | `Void(Double)` | Propagate node/camera bindings from `SoundSource3D` and `SoundListener3D` |
 
 ---
 
-### Viper.Graphics3D.AudioListener3D
+### Viper.Graphics3D.SoundListener3D
 
 3D audio listener that tracks a scene node or camera position.
 
 **Type:** Instance (obj)
-**Constructor:** `AudioListener3D.New()`
+**Constructor:** `SoundListener3D.New()`
 
 #### Properties
 
@@ -652,19 +655,23 @@ Static utilities for positioning audio in 3D space via listeners and voice IDs.
 | `SetPosition(pos)` | `Void(Object)` | Set position from a `Vec3` |
 | `SetForward(dir)` | `Void(Object)` | Set facing direction from a `Vec3` |
 | `SetVelocity(vel)` | `Void(Object)` | Set Doppler velocity from a `Vec3` |
-| `BindNode(sceneNode)` | `Void(Object)` | Automatically track a `SceneNode3D` position each `Audio3D.SyncBindings` call |
+| `BindNode(sceneNode)` | `Void(Object)` | Automatically track a `SceneNode3D` position each `Sound3D.SyncBindings` call |
 | `ClearNodeBinding()` | `Void()` | Remove the node binding |
 | `BindCamera(camera)` | `Void(Object)` | Automatically track a `Camera3D` position and forward |
 | `ClearCameraBinding()` | `Void()` | Remove the camera binding |
 
 ---
 
-### Viper.Graphics3D.AudioSource3D
+### Viper.Graphics3D.SoundSource3D
 
 3D audio source positioned in world space, with range and Doppler support.
+Sources are full-volume through `RefDistance`, attenuate linearly until
+`MaxDistance`, and compute a Doppler factor from listener/source velocity. The
+current mixer applies volume and pan; the Doppler factor is kept in the spatial
+calculation path for playback-rate-capable backends.
 
 **Type:** Instance (obj)
-**Constructor:** `AudioSource3D.New(sound)`
+**Constructor:** `SoundSource3D.New(sound)`
 
 #### Properties
 
@@ -672,6 +679,8 @@ Static utilities for positioning audio in 3D space via listeners and voice IDs.
 |---------------|---------|------------|-------------|
 | `Position`    | Object  | Read/Write | Source world position as `Vec3` |
 | `Velocity`    | Object  | Read/Write | Source velocity for Doppler as `Vec3` |
+| `DopplerFactor` | Double | Read       | Latest computed Doppler pitch multiplier |
+| `RefDistance` | Double  | Read/Write | Full-volume radius before linear falloff begins |
 | `MaxDistance` | Double  | Read/Write | Attenuation roll-off distance |
 | `Volume`      | Integer | Read/Write | Base volume `0–100` |
 | `Looping`     | Boolean | Read/Write | True to loop the audio |
@@ -686,27 +695,27 @@ Static utilities for positioning audio in 3D space via listeners and voice IDs.
 | `SetVelocity(vel)` | `Void(Object)` | Set Doppler velocity from a `Vec3` |
 | `Play()` | `Integer()` | Start playback; returns voice ID |
 | `Stop()` | `Void()` | Stop playback |
-| `BindNode(sceneNode)` | `Void(Object)` | Auto-track a `SceneNode3D` each `Audio3D.SyncBindings` call |
+| `BindNode(sceneNode)` | `Void(Object)` | Auto-track a `SceneNode3D` each `Sound3D.SyncBindings` call |
 | `ClearNodeBinding()` | `Void()` | Remove node binding |
 
 ```rust
-bind Viper.Graphics3D.AudioSource3D as AudioSource3D;
-bind Viper.Graphics3D.AudioListener3D as AudioListener3D;
-bind Viper.Graphics3D.Audio3D as Audio3D;
+bind Viper.Graphics3D.SoundSource3D as SoundSource3D;
+bind Viper.Graphics3D.SoundListener3D as SoundListener3D;
+bind Viper.Graphics3D.Sound3D as Sound3D;
 bind Viper.Sound.Sound as Sound;
 
-var listener = AudioListener3D.New()
+var listener = SoundListener3D.New()
 listener.IsActive = true
 listener.BindCamera(cam)
 
 var explosion = Sound.LoadAsset("assets/explosion.ogg")
-var src = AudioSource3D.New(explosion)
+var src = SoundSource3D.New(explosion)
 src.MaxDistance = 40.0
 src.SetPosition(Vec3.New(10.0, 0.0, 0.0))
 src.Play()
 
 // per frame
-Audio3D.SyncBindings(deltaSeconds)
+Sound3D.SyncBindings(deltaSeconds)
 ```
 
 ---
@@ -716,6 +725,9 @@ Audio3D.SyncBindings(deltaSeconds)
 ### Viper.Graphics3D.NavMesh3D
 
 Walkable navigation mesh built from scene geometry. Used with `NavAgent3D` for pathfinding.
+`Build` rejects non-manifold shared edges, where more than two triangles own the
+same undirected edge, because adjacency/pathfinding would otherwise be
+ambiguous.
 
 **Type:** Static (none)
 **Constructor:** `NavMesh3D.Build(mesh, agentRadius, agentHeight)`
@@ -982,7 +994,10 @@ Efficient GPU-instanced rendering of many copies of the same mesh.
 `Add` and `Set` require a valid runtime `Mat4` object with a complete matrix payload; foreign or
 undersized objects are ignored. Stack-backed mesh fixtures can be drawn through the instanced path
 when used by runtime systems. Draw submission sanitizes material scalars before narrowing to backend
-floats, and motion-history keys are stable across transform-buffer reallocations.
+floats. Raw instanced draw submission retains mesh/material objects for the deferred frame and
+synthesizes previous instance matrices on the GPU path when explicit previous matrices are not
+supplied. Motion history is separated by batch buffer identity, so keep the same instance-matrix
+buffer across frames when continuous motion vectors are desired.
 
 ---
 
@@ -1024,6 +1039,7 @@ Texture atlas for 3D rendering with named-region management.
 
 - `Transform3D` is distinct from `SceneNode3D` — use `Transform3D` for standalone matrix math and non-scene-graph transforms; attach nodes to the scene for scene-managed transform hierarchies.
 - `AnimController3D.PollEvent` returns events one at a time per call; poll it in a loop until an empty string is returned if multiple events fire in one update.
-- `NavMesh3D` is rebuilt by `NavMesh3D.Build`; the mesh is not dynamic. Rebuild when geometry changes.
+- `NavMesh3D` is rebuilt by `NavMesh3D.Build`; the mesh is not dynamic. Rebuild when geometry changes, and keep baked meshes manifold at shared edges.
 - `Particles3D.Draw` should be called inside the `Canvas3D.Begin`/`End` scene pass after opaque geometry when you want particles over the main scene.
-- `Audio3D.SyncBindings` must be called once per frame after physics/animation updates so bound sources and listeners track their nodes.
+- Deferred heap `Mesh3D` draws retain the mesh object instead of copying static geometry each draw; avoid mutating a submitted heap mesh until after `Canvas3D.End()`.
+- `Sound3D.SyncBindings` must be called once per frame after physics/animation updates so bound sources and listeners track their nodes.

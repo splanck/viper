@@ -844,9 +844,9 @@ function(viper_add_runtime_tests)
     target_link_libraries(test_rt_navagent3d PRIVATE ${VIPER_RUNTIME_TEST_LIBS})
     viper_add_ctest(test_rt_navagent3d test_rt_navagent3d)
 
-    viper_add_test(test_rt_audio3d_objects ${VIPER_TESTS_DIR}/unit/test_rt_audio3d_objects.cpp)
-    target_link_libraries(test_rt_audio3d_objects PRIVATE ${VIPER_RUNTIME_TEST_LIBS})
-    viper_add_ctest(test_rt_audio3d_objects test_rt_audio3d_objects)
+    viper_add_test(test_rt_sound3d_objects ${VIPER_TESTS_DIR}/unit/test_rt_sound3d_objects.cpp)
+    target_link_libraries(test_rt_sound3d_objects PRIVATE ${VIPER_RUNTIME_TEST_LIBS})
+    viper_add_ctest(test_rt_sound3d_objects test_rt_sound3d_objects)
 
     viper_add_test(test_rt_math_core ${VIPER_TESTS_DIR}/runtime/RTMathCoreTests.cpp)
     target_link_libraries(test_rt_math_core PRIVATE ${VIPER_RUNTIME_TEST_LIBS})
@@ -1276,10 +1276,10 @@ function(viper_add_runtime_tests)
             ${VIPER_TESTS_DIR}/runtime/RTAchievementTests.cpp
             ${CMAKE_SOURCE_DIR}/src/runtime/game/rt_achievement.c)
 
-    viper_add_isolated_runtime_test(test_rt_audio3d_contract
-            ${VIPER_TESTS_DIR}/runtime/RTAudio3DTests.cpp
-            ${CMAKE_SOURCE_DIR}/src/runtime/graphics/3d/audio/rt_audio3d.c)
-    target_compile_definitions(test_rt_audio3d_contract PRIVATE VIPER_ENABLE_GRAPHICS=1)
+    viper_add_isolated_runtime_test(test_rt_sound3d_contract
+            ${VIPER_TESTS_DIR}/runtime/RTSound3DTests.cpp
+            ${CMAKE_SOURCE_DIR}/src/runtime/graphics/3d/audio/rt_sound3d.c)
+    target_compile_definitions(test_rt_sound3d_contract PRIVATE VIPER_ENABLE_GRAPHICS=1)
 
     viper_add_isolated_runtime_test(test_rt_videowidget_contract
             ${VIPER_TESTS_DIR}/runtime/RTVideoWidgetContractTests.cpp

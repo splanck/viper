@@ -200,15 +200,15 @@ func runScenario(title: String, render: Boolean) -> Float {
     Game3D.Animator3D.play(anim, "move");
 
     var audio = Game3D.World3D.get_audio(world);
-    Game3D.Audio3D.setAttenuation(audio, 1.0, 12.0);
-    var bounceClip = Game3D.Audio3D.loadAsset(audio, "examples/games/xenoscape/sounds/jump.wav");
+    Game3D.Sound3D.setAttenuation(audio, 1.0, 12.0);
+    var bounceClip = Game3D.Sound3D.loadAsset(audio, "examples/games/xenoscape/sounds/jump.wav");
     if (bounceClip == null) {
         bounceClip = Sound.Synth.Tone(440, 80, 0);
     }
     var humClip = Sound.Synth.Tone(220, 100, 1);
     if (humClip != null) {
-        Game3D.Audio3D.playAttached(audio, humClip, ball);
-        Game3D.Audio3D.play2D(audio, humClip);
+        Game3D.Sound3D.playAttached(audio, humClip, ball);
+        Game3D.Sound3D.play2D(audio, humClip);
     }
 
     var frame = 0;
@@ -245,7 +245,7 @@ func runScenario(title: String, render: Boolean) -> Float {
             Game3D.Effects3D.Dust(world, point);
             Game3D.Effects3D.ImpactDecal(world, point, normal);
             if (bounceClip != null) {
-                Game3D.Audio3D.playAt(audio, bounceClip, point);
+                Game3D.Sound3D.playAt(audio, bounceClip, point);
             }
             hitCount = hitCount + 1;
             Game3D.World3D.clearCollisionEvents(world);

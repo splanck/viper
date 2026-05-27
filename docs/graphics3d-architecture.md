@@ -360,10 +360,10 @@ src/runtime/graphics/
 │   ├── rt_gltf.c/h                glTF 2.0 format loader
 │   └── rt_model3d.c/h             Model3D unified prefab/import wrapper
 └── Audio
-    ├── rt_audio3d.c/h             Audio3D spatial helpers and compatibility wrappers
-    ├── rt_audiolistener3d.h       AudioListener3D public surface
-    ├── rt_audiosource3d.h         AudioSource3D public surface
-    └── rt_audio3d_objects.c       Object-backed listener/source bindings and voice updates
+    ├── rt_sound3d.c/h             Sound3D spatial helpers and compatibility wrappers
+    ├── rt_soundlistener3d.h       SoundListener3D public surface
+    ├── rt_soundsource3d.h         SoundSource3D public surface
+    └── rt_sound3d_objects.c       Object-backed listener/source bindings and voice updates
 ```
 
 ## Asset Import Hardening
@@ -445,7 +445,7 @@ All Graphics3D objects are GC-managed via `rt_obj_new_i64`:
 | Water3D | Yes | Texture refs, mesh, material |
 | NavMesh3D | Yes | Baked vertex/triangle arrays |
 | NavAgent3D | Yes | Path point buffer and bound nav/scene references |
-| AudioListener3D / AudioSource3D | Yes | Bound node/camera/sound references and global-list links |
+| SoundListener3D / SoundSource3D | Yes | Bound node/camera/sound references and global-list links |
 
 Temporary Vec3/Mat4 objects created for debug drawing, audio node binding, path integration, and
 navigation path conversion must be released in the same call that creates them. Deferred Canvas3D
