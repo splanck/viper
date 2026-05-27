@@ -378,7 +378,7 @@ glTF material import maps core metallic-roughness PBR plus selected extensions o
 
 glTF animation import now covers both skeletal clips and scene-node clips. Bone-targeted transform channels still feed `Skeleton3D` / `Animation3D`; non-joint node translation, rotation, scale, and morph `weights` channels are stored as retained node animation clips and bound automatically when a `Model3D` is instantiated. `Scene3D.SyncBindings(dt)` advances those node clips and applies morph weights before draw submission.
 
-VSCN saves the current vertex layout as `vgfx3d_vertex_le_v2` and serializes material `textureSlots` alongside texture references, so saved imported scenes preserve UV-set choices, transforms, and sampler state on reload. The loader still accepts the older `vgfx3d_vertex_le_v1` vertex blob for compatibility.
+VSCN saves the current vertex layout as `vgfx3d_vertex_le_v2` and serializes material `textureSlots` alongside texture references, so saved imported scenes preserve UV-set choices, transforms, and sampler state on reload. The loader still accepts the older `vgfx3d_vertex_le_v1` vertex blob for compatibility, but rejects malformed JSON/base64, non-triangle or out-of-range index buffers, broken asset references, and partial child subtrees before returning a scene.
 
 ## Shader Architecture
 
@@ -473,7 +473,7 @@ or Hi-Z visibility system.
 
 1. Extract VP matrix from camera, build frustum planes (Gribb-Hartmann)
 2. For each visible node: recompute world matrix if dirty (lazy TRS propagation)
-3. If node has a mesh: transform its object-space AABB to world space (8-corner expansion), test against frustum (p-vertex/n-vertex method). Animated or morph-capable meshes use an inflated conservative AABB instead of disabling culling entirely. Skip draw if fully outside.
+3. If node has a mesh: transform its object-space AABB to world space (8-corner expansion), test against frustum (p-vertex/n-vertex method). Animated or morph-capable meshes skip frustum rejection because their deformed bounds can move outside static mesh bounds. Skip static draws if fully outside.
 4. Children are ALWAYS traversed even if parent mesh is culled (child transforms may place them inside the frustum independently).
 
 When a node is bound to an `AnimController3D`, the draw path forwards the controller's blended bone palette into the deferred draw command so skinned meshes render through the scene graph without manually calling `DrawMeshAnimated`.
@@ -483,12 +483,18 @@ When a node is bound to an `AnimController3D`, the draw path forwards the contro
 Bone palette computation (per-frame, in `compute_bone_palette`):
 
 1. Start with bind pose for all bones (local transforms)
-2. Override with sampled animation channels (keyframes are kept sorted by time; interpolation uses SLERP for rotation and lerp for position/scale)
-3. Optional crossfade: blend local transforms between outgoing and incoming animations
+2. Override with sampled animation channels (keyframes are kept sorted by time; interpolation uses SLERP for rotation and lerp for position/scale; missing keyframe components fall back to bind pose)
+3. Optional crossfade: blend local transforms between outgoing and incoming animations across all bones, with source-only/target-only channels blended against bind pose
 4. Two-phase global computation:
    - Phase 1: compute global transforms (`globals[i] = globals[parent] * local[i]`) — requires topological order
    - Phase 2: compute palette (`palette[i] = globals[i] * inverse_bind[i]`)
 5. CPU skinning: for each vertex, `pos = sum(weight[b] * palette[b] * base_pos)`, normals renormalized
+
+`GetBoneMatrix` returns the global transform from phase 1; renderer upload paths use the phase-2
+skinning palette. Skeleton topology is frozen once a mesh/player/blender/controller binds it so
+allocated pose buffers cannot be overrun by later bone additions. Deferred skinned and morphed draw
+paths retain the source mesh/animator/morph objects until frame submission so queued commands never
+hold stack-wrapper or freed-payload pointers.
 
 ## Particle Billboard Rendering
 

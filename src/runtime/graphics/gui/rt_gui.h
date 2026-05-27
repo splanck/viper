@@ -1149,6 +1149,13 @@ int64_t rt_app_get_width(void *app);
 /// @return Window height in pixels.
 int64_t rt_app_get_height(void *app);
 
+/// @brief Get the window's HiDPI backing scale factor.
+/// @param app GUI application handle.
+/// @return Scale factor (>= 1.0): 1.0 on standard displays, 2.0 on Retina/2x.
+///         GetWidth/GetHeight report physical pixels; divide by this to recover
+///         logical (point) dimensions.
+double rt_app_get_scale(void *app);
+
 /// @brief Set the window position.
 /// @param app GUI application handle.
 /// @param x X position in screen coordinates.

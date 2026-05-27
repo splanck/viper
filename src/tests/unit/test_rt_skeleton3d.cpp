@@ -17,6 +17,10 @@
 #include "rt_canvas3d.h"
 #include "rt_internal.h"
 #include "rt_skeleton3d.h"
+#ifndef VIPER_ENABLE_GRAPHICS
+#define VIPER_ENABLE_GRAPHICS 1
+#endif
+#include "rt_skeleton3d_internal.h"
 #include "rt_string.h"
 #include <cassert>
 #include <cmath>
@@ -169,6 +173,19 @@ static void test_player_create() {
     EXPECT_TRUE(rt_anim_player3d_is_playing(player) == 0, "Not playing initially");
 }
 
+static void test_skeleton_freezes_after_player_creation() {
+    void *skel = rt_skeleton3d_new();
+    rt_skeleton3d_add_bone(skel, rt_const_cstr("root"), -1, rt_mat4_identity());
+    rt_skeleton3d_compute_inverse_bind(skel);
+
+    void *player = rt_anim_player3d_new(skel);
+    EXPECT_TRUE(player != nullptr, "AnimPlayer3D.New freezes skeleton after pose buffers exist");
+    EXPECT_TRUE(((rt_skeleton3d *)skel)->frozen == 1,
+                "Skeleton3D records frozen topology after player creation");
+    EXPECT_TRUE(rt_skeleton3d_get_bone_count(skel) == 1,
+                "Frozen skeleton bone count remains unchanged");
+}
+
 static void test_player_playback() {
     void *skel = rt_skeleton3d_new();
     rt_skeleton3d_add_bone(skel, rt_const_cstr("root"), -1, rt_mat4_identity());
@@ -284,6 +301,29 @@ static void test_player_stop_at_end() {
     EXPECT_TRUE(rt_anim_player3d_is_playing(player) == 0, "Stopped after non-looping end");
 }
 
+static void test_player_stop_returns_to_bind_pose() {
+    void *skel = rt_skeleton3d_new();
+    rt_skeleton3d_add_bone(skel, rt_const_cstr("root"), -1, rt_mat4_translate(3.0, 0.0, 0.0));
+    rt_skeleton3d_compute_inverse_bind(skel);
+
+    void *anim = rt_animation3d_new(rt_const_cstr("move"), 1.0);
+    void *rot = rt_quat_new(0.0, 0.0, 0.0, 1.0);
+    void *scl = rt_vec3_new(1.0, 1.0, 1.0);
+    rt_animation3d_add_keyframe(anim, 0, 0.0, rt_vec3_new(10.0, 0.0, 0.0), rot, scl);
+    rt_animation3d_add_keyframe(anim, 0, 1.0, rt_vec3_new(10.0, 0.0, 0.0), rot, scl);
+
+    void *player = rt_anim_player3d_new(skel);
+    rt_anim_player3d_play(player, anim);
+    rt_anim_player3d_update(player, 0.0);
+    rt_anim_player3d_stop(player);
+
+    typedef struct {
+        double m[16];
+    } mat4_view;
+    mat4_view *mv = (mat4_view *)rt_anim_player3d_get_bone_matrix(player, 0);
+    EXPECT_NEAR(mv->m[3], 3.0, 0.1, "AnimPlayer3D.Stop restores bind-pose world matrix");
+}
+
 static void test_player_speed() {
     void *skel = rt_skeleton3d_new();
     rt_skeleton3d_add_bone(skel, rt_const_cstr("root"), -1, rt_mat4_identity());
@@ -331,13 +371,12 @@ static void test_two_bone_chain() {
     } mat4_view;
 
     mat4_view *m0 = (mat4_view *)rt_anim_player3d_get_bone_matrix(player, 0);
-    EXPECT_NEAR(m0->m[3], 5.0, 0.1, "Root palette X = 5");
+    EXPECT_NEAR(m0->m[3], 5.0, 0.1, "Root world X = 5");
 
-    /* Child bone: global = parent_global * child_local = translate(5,0,0) * translate(2,0,0) =
-     * translate(7,0,0). inv_bind(child) = inverse(translate(2,0,0)) = translate(-2,0,0). Palette[1]
-     * = translate(7,0,0) * translate(-2,0,0) = translate(5,0,0). */
+    /* Child bone: global = parent_global * child_local = translate(5,0,0) * translate(2,0,0)
+     * = translate(7,0,0). */
     mat4_view *m1 = (mat4_view *)rt_anim_player3d_get_bone_matrix(player, 1);
-    EXPECT_NEAR(m1->m[3], 5.0, 0.1, "Child palette X = 5 (root moved +5, child stays relative)");
+    EXPECT_NEAR(m1->m[3], 7.0, 0.1, "Child world X = 7 (root moved +5, child stays relative)");
 }
 
 static void test_non_identity_bind_pose() {
@@ -364,20 +403,40 @@ static void test_non_identity_bind_pose() {
     rt_anim_player3d_play(player, anim);
     rt_anim_player3d_update(player, 0.0);
 
-    /* Root: global=(10,0,0), inverse_bind=inv(translate(3,0,0))=translate(-3,0,0)
-     * palette[0] = translate(10,0,0) * translate(-3,0,0) = translate(7,0,0) */
+    /* GetBoneMatrix returns the animated world/global transform, not the skinning palette. */
     typedef struct {
         double m[16];
     } mat4_view;
 
     mat4_view *m0 = (mat4_view *)rt_anim_player3d_get_bone_matrix(player, 0);
-    EXPECT_NEAR(m0->m[3], 7.0, 0.1, "Root palette X = 10 - 3 = 7");
+    EXPECT_NEAR(m0->m[3], 10.0, 0.1, "Root world X = 10");
 
-    /* Child: global = parent_global(10,0,0) * child_local(2,0,0) = translate(12,0,0)
-     * inverse_bind(child) = inv(root_bind(3,0,0) * child_bind(2,0,0)) = inv(translate(5,0,0)) =
-     * translate(-5,0,0) palette[1] = translate(12,0,0) * translate(-5,0,0) = translate(7,0,0) */
+    /* Child: global = parent_global(10,0,0) * child_local(2,0,0) = translate(12,0,0). */
     mat4_view *m1 = (mat4_view *)rt_anim_player3d_get_bone_matrix(player, 1);
-    EXPECT_NEAR(m1->m[3], 7.0, 0.1, "Child palette X = 12 - 5 = 7 (non-identity bind pose)");
+    EXPECT_NEAR(m1->m[3], 12.0, 0.1, "Child world X = 12 (non-identity bind pose)");
+}
+
+static void test_partial_keyframes_preserve_bind_components() {
+    void *skel = rt_skeleton3d_new();
+    rt_skeleton3d_add_bone(skel, rt_const_cstr("root"), -1, rt_mat4_translate(3.0, 0.0, 0.0));
+    rt_skeleton3d_compute_inverse_bind(skel);
+
+    void *anim = rt_animation3d_new(rt_const_cstr("partial"), 1.0);
+    void *rot = rt_quat_new(0.0, 0.0, 0.0, 1.0);
+    void *scl = rt_vec3_new(1.0, 1.0, 1.0);
+    rt_animation3d_add_keyframe(anim, 0, 0.0, NULL, rot, scl);
+    rt_animation3d_add_keyframe(anim, 0, 1.0, rt_vec3_new(INFINITY, 0.0, 0.0), rot, scl);
+
+    void *player = rt_anim_player3d_new(skel);
+    rt_anim_player3d_play(player, anim);
+    rt_anim_player3d_update(player, 0.5);
+
+    typedef struct {
+        double m[16];
+    } mat4_view;
+    mat4_view *mv = (mat4_view *)rt_anim_player3d_get_bone_matrix(player, 0);
+    EXPECT_NEAR(mv->m[3], 3.0, 0.1,
+                "Partial/overflow keyframe position components fall back to bind pose");
 }
 
 static void test_bone_name() {
@@ -451,8 +510,58 @@ static void test_crossfade_falls_back_to_bind_pose_translation() {
         double m[16];
     } mat4_view;
     mat4_view *mv = (mat4_view *)rt_anim_player3d_get_bone_matrix(player, 0);
-    EXPECT_NEAR(mv->m[3], 4.0, 0.1,
-                "Crossfade missing-channel fallback uses row-major bind-pose translation");
+    EXPECT_NEAR(mv->m[3], 6.0, 0.1,
+                "Crossfade missing-channel fallback blends toward bind-pose world translation");
+}
+
+static void test_crossfade_blends_target_only_channels() {
+    void *skel = rt_skeleton3d_new();
+    rt_skeleton3d_add_bone(skel, rt_const_cstr("root"), -1, rt_mat4_translate(2.0, 0.0, 0.0));
+    rt_skeleton3d_compute_inverse_bind(skel);
+
+    void *anim_a = rt_animation3d_new(rt_const_cstr("from_bind"), 1.0);
+    void *anim_b = rt_animation3d_new(rt_const_cstr("to"), 1.0);
+    void *rot = rt_quat_new(0.0, 0.0, 0.0, 1.0);
+    void *scl = rt_vec3_new(1.0, 1.0, 1.0);
+    rt_animation3d_add_keyframe(anim_b, 0, 0.0, rt_vec3_new(10.0, 0.0, 0.0), rot, scl);
+    rt_animation3d_add_keyframe(anim_b, 0, 1.0, rt_vec3_new(10.0, 0.0, 0.0), rot, scl);
+
+    void *player = rt_anim_player3d_new(skel);
+    rt_anim_player3d_play(player, anim_a);
+    rt_anim_player3d_crossfade(player, anim_b, 1.0);
+    rt_anim_player3d_update(player, 0.5);
+
+    typedef struct {
+        double m[16];
+    } mat4_view;
+    mat4_view *mv = (mat4_view *)rt_anim_player3d_get_bone_matrix(player, 0);
+    EXPECT_NEAR(mv->m[3], 6.0, 0.1,
+                "Crossfade target-only channels blend from bind pose instead of popping");
+}
+
+static void test_anim_blend_dt_zero_and_looping_defaults() {
+    void *skel = rt_skeleton3d_new();
+    rt_skeleton3d_add_bone(skel, rt_const_cstr("root"), -1, rt_mat4_identity());
+    rt_skeleton3d_compute_inverse_bind(skel);
+
+    void *constant = rt_animation3d_new(rt_const_cstr("constant"), 1.0);
+    void *rot = rt_quat_new(0.0, 0.0, 0.0, 1.0);
+    void *scl = rt_vec3_new(1.0, 1.0, 1.0);
+    rt_animation3d_add_keyframe(constant, 0, 0.0, rt_vec3_new(4.0, 0.0, 0.0), rot, scl);
+    rt_animation3d_add_keyframe(constant, 0, 1.0, rt_vec3_new(4.0, 0.0, 0.0), rot, scl);
+    rt_animation3d_set_looping(constant, 0);
+
+    void *blend = rt_anim_blend3d_new(skel);
+    int64_t state = rt_anim_blend3d_add_state(blend, rt_const_cstr("constant"), constant);
+    rt_anim_blend3d_set_weight(blend, state, 1.0);
+    rt_anim_blend3d_update(blend, 0.0);
+    rt_anim_blend3d *blend_impl = (rt_anim_blend3d *)blend;
+    EXPECT_NEAR(blend_impl->bone_palette[3], 4.0, 0.1,
+                "AnimBlend3D.Update recomputes weighted pose when dt is zero");
+
+    rt_anim_blend3d_update(blend, 1.5);
+    EXPECT_NEAR(blend_impl->states[state].anim_time, 1.0, 0.01,
+                "AnimBlend3D state inherits non-looping animation default");
 }
 
 static void test_crossfade_preserves_structure() {
@@ -471,18 +580,23 @@ int main() {
     test_animation_keyframes_are_sorted();
     test_anim_player_retains_inputs();
     test_player_create();
+    test_skeleton_freezes_after_player_creation();
     test_player_playback();
     test_player_loop();
     test_player_reverse_timing_and_bad_handles();
     test_player_stop_at_end();
+    test_player_stop_returns_to_bind_pose();
     test_player_speed();
     test_two_bone_chain();
     test_non_identity_bind_pose();
+    test_partial_keyframes_preserve_bind_components();
     test_bone_name();
 
     /* Crossfade tests */
     test_crossfade_basic();
     test_crossfade_falls_back_to_bind_pose_translation();
+    test_crossfade_blends_target_only_channels();
+    test_anim_blend_dt_zero_and_looping_defaults();
     test_crossfade_preserves_structure();
 
     printf("Skeleton3D tests: %d/%d passed\n", tests_passed, tests_run);

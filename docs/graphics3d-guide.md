@@ -888,7 +888,7 @@ func start() {
 }
 ```
 
-Transform order: `world = parent_world * Translate * Rotate * Scale`. Dirty flags propagate to descendants automatically. Finite zero scale is preserved on `Transform3D` and `SceneNode3D`; only non-finite scale components are replaced. `Scene3D.Save` writes a `.vscn` asset with embedded meshes, materials, textures, cubemaps, and node hierarchy, and `Scene3D.Load` reconstructs those shared payloads on load.
+Transform order: `world = parent_world * Translate * Rotate * Scale`. Dirty flags propagate to descendants automatically. Finite zero scale is preserved on `Transform3D` and `SceneNode3D`; only non-finite scale components are replaced. `Scene3D.Save` writes a `.vscn` asset with embedded meshes, materials, textures, cubemaps, and node hierarchy using round-trip float precision. `Scene3D.Load` validates JSON, base64 payloads, mesh indices, asset references, and child nodes before returning a scene; invalid partial assets fail the load instead of being skipped.
 
 ### Binding Sync
 
@@ -985,7 +985,7 @@ Format note:
 - glTF node hierarchies are rejected if they contain invalid child references, duplicate parents, or cycles; valid meshes/materials still remain available to the asset container.
 - Triangle-list, triangle-strip, and triangle-fan glTF primitives are triangulated on import.
 - Materialless glTF primitives receive a shared default white PBR material so valid assets render through `Scene3D` / `Model3D` without manual material assignment.
-- VSCN round-trips the current `vgfx3d_vertex_le_v2` vertex layout, per-slot material texture metadata, and node-attached lights, while still loading older `vgfx3d_vertex_le_v1` scenes.
+- VSCN round-trips the current `vgfx3d_vertex_le_v2` vertex layout, per-slot material texture metadata, node-attached lights, and high-precision node transforms, while still loading older `vgfx3d_vertex_le_v1` scenes. The loader rejects malformed JSON/base64, invalid mesh index buffers, broken node references, and partial child subtrees; finite transform/material/light values are sanitized during load.
 - `.glb` files are validated as GLB 2.0 containers before JSON parse. External `.gltf` buffers and images are resolved relative to the asset path and reject absolute paths, URI schemes, and `.` / `..` traversal segments.
 - glTF `extensionsRequired` is enforced. Required `KHR_texture_transform`, `KHR_materials_emissive_strength`, `KHR_materials_unlit`, and `KHR_lights_punctual` are accepted; unsupported required extensions such as Draco, Meshopt, Basis/KTX2, DDS, and exact advanced material extensions fail load rather than rendering incomplete fallback data.
 
@@ -1015,6 +1015,9 @@ Bone hierarchy for skeletal animation.
 | `GetBoneName(index)` | `str(i64)` | Get bone name by index |
 
 Bones must be added in topological order (parent before child). Max 256 bones per skeleton.
+Add all bones before binding the skeleton to a mesh or creating an `AnimPlayer3D`, `AnimBlend3D`,
+or `AnimController3D`; those runtime objects allocate fixed-size pose buffers and freeze the
+skeleton topology.
 
 ---
 
@@ -1043,8 +1046,9 @@ Keyframe animation clip with per-bone position, rotation, and scale tracks.
 | `AddKeyframe(boneIdx, time, pos, rot, scale)` | `void(i64, f64, obj, obj, obj)` | Add keyframe: bone index, time, position Vec3, rotation Quat, scale Vec3 |
 
 Keyframes are kept sorted by time within each bone channel. Rotation keyframes use normalized
-quaternions and SLERP; position/scale use linear interpolation. Non-finite keyframe times are
-ignored, and non-finite TRS components fall back to identity-safe values.
+quaternions and SLERP; position/scale use linear interpolation. `pos`, `rot`, or `scale` may be
+`null`; omitted or non-finite/out-of-float-range components fall back to the bone bind pose instead
+of erasing that component to zero/identity.
 
 ---
 
@@ -1072,9 +1076,9 @@ Playback controller for skeletal animation.
 |--------|-----------|-------------|
 | `Play(animation)` | `void(obj)` | Start playing an Animation3D |
 | `Crossfade(animation, duration)` | `void(obj, f64)` | Blend to new animation over duration (SLERP for rotation) |
-| `Stop()` | `void()` | Stop playback |
+| `Stop()` | `void()` | Stop playback and output the bind pose |
 | `Update(dt)` | `void(f64)` | Advance animation by dt seconds |
-| `GetBoneMatrix(boneIdx)` | `obj(i64)` | Get current Mat4 for a bone |
+| `GetBoneMatrix(boneIdx)` | `obj(i64)` | Get the current global/world Mat4 for a bone |
 
 Negative playback speeds play clips in reverse. Looping clips wrap in both directions; non-looping
 clips clamp at the start/end and stop when they hit the boundary. Player and animation handles are
@@ -1139,8 +1143,8 @@ func start() {
 }
 ```
 
-- `DrawMeshSkinned` applies CPU skinning via weighted bone palette. Skinning weights are normalized consistently across CPU and GPU paths; missing palettes copy vertices through unchanged, and unused backend bone-palette slots behave as identity transforms.
-- `Crossfade` blends using TRS decomposition: position/scale linearly interpolated, rotation via quaternion SLERP
+- `DrawMeshSkinned` applies CPU or GPU skinning via the internal skinning palette. Skinning weights are normalized consistently across CPU and GPU paths; missing palettes copy vertices through unchanged, and unused backend bone-palette slots behave as identity transforms.
+- `Crossfade` blends every bone using TRS decomposition: position/scale linearly interpolated, rotation via quaternion SLERP. Channels present in only one clip blend against bind pose, and the fading-out clip keeps its own speed/looping settings during the transition.
 
 ## MorphTarget3D
 
@@ -1165,7 +1169,7 @@ Blend shapes for facial animation, muscle flex, and shape-based deformation.
 | `AddShape(name)` | `i64(str)` | Register a blend shape (returns shape index) |
 | `SetDelta(shapeIdx, vertexIdx, dx, dy, dz)` | `void(i64, i64, f64, f64, f64)` | Set position delta for a vertex in a shape |
 | `SetNormalDelta(shapeIdx, vertexIdx, dx, dy, dz)` | `void(i64, i64, f64, f64, f64)` | Set normal delta for a vertex in a shape |
-| `SetWeight(shapeIdx, weight)` | `void(i64, f64)` | Set blend weight for a shape |
+| `SetWeight(shapeIdx, weight)` | `void(i64, f64)` | Set blend weight for a shape, clamped to `[-1, 1]` |
 | `GetWeight(shapeIdx)` | `f64(i64)` | Get current blend weight |
 | `SetWeightByName(name, weight)` | `void(str, f64)` | Set blend weight by shape name |
 
@@ -1505,6 +1509,8 @@ Effects are applied in chain order (first added = first applied). Chain storage 
 | `Ray3D.IntersectAABB(o, d, min, max)` | `f64(obj, obj, obj, obj)` | Slab method; returns distance or -1 |
 | `Ray3D.IntersectSphere(o, d, center, radius)` | `f64(obj, obj, obj, f64)` | Quadratic formula; returns distance or -1 |
 
+Ray directions are normalized internally for all `Ray3D` intersection helpers. A zero-length or non-finite direction is a miss, and returned distances are Euclidean world distances even when the input direction was not normalized. Sphere hits from inside the sphere return distance `0`.
+
 ### RayHit3D — Hit result
 
 | Property | Type | Access | Description |
@@ -1544,8 +1550,9 @@ Effects are applied in chain order (first added = first applied). Chain storage 
 | `Capsule3D.AABBOverlaps(capA, capB, capR, min, max)` | `i1(obj, obj, f64, obj, obj)` | Capsule vs AABB overlap |
 
 Ray/AABB/capsule helpers validate `Vec3`, `Mat4`, mesh, and hit handles. Non-finite rays or
-dimensions return a miss or safe zero result. AABB helpers canonicalize inverted min/max bounds, and
-capsule-vs-AABB uses exact segment-to-box distance rather than only testing against the box center.
+dimensions return a miss or safe zero result. AABB helpers canonicalize inverted min/max bounds,
+penetration vectors push the first shape out of the second, and capsule-vs-AABB uses exact
+segment-to-box distance rather than only testing against the box center.
 
 ### Zia Example
 
@@ -2740,9 +2747,10 @@ Weight-based animation blending for smooth transitions between clips.
 | `Update(dt)` | `void(f64)` | Advance all active animations |
 
 Weights are clamped to `[0.0, 1.0]`, NaN weights become zero, and negative per-state speeds play the
-state in reverse using the same loop/clamp behavior as `AnimPlayer3D`. Blending decomposes sampled
-bone matrices into TRS and uses quaternion slerp for rotation, which avoids skewed matrices when
-rotations are mixed.
+state in reverse using the same loop/clamp behavior as `AnimPlayer3D`. `Update(0.0)` still
+recomputes the blended pose, and newly added states inherit the source animation's looping flag.
+Blending decomposes sampled bone matrices into TRS and uses quaternion slerp for rotation, which
+avoids skewed matrices when rotations are mixed.
 
 Draw blended mesh via `Canvas3D.DrawMeshBlended(canvas, mesh, transform, material, blender)`. The `AnimBlend3D` already owns its `Skeleton3D`, so no extra skeleton argument is required.
 
@@ -2814,19 +2822,21 @@ Stateful skeletal animation controller for gameplay code. `AnimController3D` bui
 | `SetStateLooping(name, loop)` | `void(str,i1)` | Override looping behavior for a named state |
 | `AddEvent(stateName, timeSeconds, eventName)` | `void(str,f64,str)` | Queue an event when playback crosses the specified state-local time |
 | `PollEvent()` | `str()` | Dequeue the next event name, or `""` when none are pending |
-| `SetRootMotionBone(boneIdx)` | `void(i64)` | Choose which bone contributes root motion |
+| `SetRootMotionBone(boneIdx)` | `void(i64)` | Choose which bone contributes root motion; `-1` disables it |
 | `ConsumeRootMotion()` | `obj()` | Return the accumulated `Vec3` delta and clear it |
 | `SetLayerWeight(layer, weight)` | `void(i64,f64)` | Set overlay weight for layers `1..3` |
 | `SetLayerMask(layer, rootBone)` | `void(i64,i64)` | Restrict an overlay layer to the subtree rooted at `rootBone` |
 | `PlayLayer(layer, stateName)` | `i1(i64,str)` | Start a named state on an overlay layer |
 | `CrossfadeLayer(layer, stateName, blendSeconds)` | `i1(i64,str,f64)` | Crossfade an overlay layer to a new state |
 | `StopLayer(layer)` | `void(i64)` | Stop one overlay layer |
-| `GetBoneMatrix(boneIdx)` | `obj(i64)` | Read the controller's final blended matrix for a bone |
+| `GetBoneMatrix(boneIdx)` | `obj(i64)` | Read the controller's final global/world matrix for a bone |
 
 Event times are clamped into the owning clip's duration and are fired when playback crosses them in
 forward, reverse, exact-loop, or multi-loop updates. State speeds may be negative for reverse
 playback; non-finite speeds fall back to `1.0`. Overlay weights are finite and clamped, and overlay
-composition uses TRS/quaternion blending so masked layers do not introduce matrix skew.
+composition uses TRS/quaternion blending so masked layers do not introduce matrix skew. Root motion
+is disabled by default, preserves forward/reverse loop-wrap deltas, and can be reset with
+`SetRootMotionBone(-1)`. `Stop()` returns the output pose to bind pose.
 
 ### When To Use Which API
 

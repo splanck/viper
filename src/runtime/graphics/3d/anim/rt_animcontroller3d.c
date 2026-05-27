@@ -42,6 +42,7 @@
 #include "rt_trap.h"
 #include "rt_vec3.h"
 
+#include <float.h>
 #include <math.h>
 #include <stdint.h>
 #include <stdlib.h>
@@ -102,6 +103,7 @@ typedef struct {
     anim_controller3d_layer_t layers[RT_ANIM_CONTROLLER3D_MAX_LAYERS];
 
     float *final_palette;
+    float *final_globals;
     float *prev_final_palette;
     int8_t has_prev_final_palette;
     double root_motion_delta[3];
@@ -126,6 +128,24 @@ static rt_skeleton3d *skeleton3d_checked(void *obj) {
 /// @brief Validate that @p obj is a live Animation3D handle, returning NULL otherwise.
 static rt_animation3d *animation3d_checked(void *obj) {
     return (rt_animation3d *)rt_g3d_checked_or_null(obj, RT_G3D_ANIMATION3D_CLASS_ID);
+}
+
+static float controller_clamp_to_float(double value, float fallback) {
+    if (!isfinite(value))
+        return fallback;
+    if (value > (double)FLT_MAX)
+        return FLT_MAX;
+    if (value < -(double)FLT_MAX)
+        return -FLT_MAX;
+    return (float)value;
+}
+
+static float controller_clamp_nonnegative_float(double value) {
+    if (!isfinite(value) || value <= 0.0)
+        return 0.0f;
+    if (value > (double)FLT_MAX)
+        return FLT_MAX;
+    return (float)value;
 }
 
 /// @brief Drop one reference from a slot, free if it was the last, then NULL out the slot.
@@ -405,8 +425,7 @@ static int8_t controller_set_layer_state(rt_anim_controller3d *controller,
     int use_crossfade;
     if (!controller || layer_index < 0 || layer_index >= RT_ANIM_CONTROLLER3D_MAX_LAYERS)
         return 0;
-    if (!isfinite(blend_seconds) || blend_seconds < 0.0)
-        blend_seconds = 0.0;
+    blend_seconds = (double)controller_clamp_nonnegative_float(blend_seconds);
     if (state_index < 0 || state_index >= controller->state_count)
         return 0;
     layer = &controller->layers[layer_index];
@@ -419,13 +438,14 @@ static int8_t controller_set_layer_state(rt_anim_controller3d *controller,
 
     layer->previous_state = layer->current_state;
     layer->current_state = state_index;
-    controller_apply_state_settings(layer->player, state);
     if (use_crossfade) {
         rt_anim_player3d_crossfade(layer->player, state->animation, blend_seconds);
+        controller_apply_state_settings(layer->player, state);
         layer->transitioning = 1;
         layer->transition_time = 0.0f;
-        layer->transition_duration = (float)blend_seconds;
+        layer->transition_duration = controller_clamp_nonnegative_float(blend_seconds);
     } else {
+        controller_apply_state_settings(layer->player, state);
         rt_anim_player3d_play(layer->player, state->animation);
         layer->transitioning = 0;
         layer->transition_time = 0.0f;
@@ -436,19 +456,39 @@ static int8_t controller_set_layer_state(rt_anim_controller3d *controller,
     return 1;
 }
 
-/// @brief Reset the final bone palette to identity matrices for every bone.
-/// @details Used as the seed when no base-layer animation is playing or as
-///          a clean slate before compositing overlay layers. Each 16-float
-///          matrix block is zeroed then the diagonal is set to 1.0.
-static void controller_identity_palette(rt_anim_controller3d *controller) {
+/// @brief Multiply two row-major 4x4 float matrices.
+static void controller_mat4f_mul(const float *a, const float *b, float *out) {
+    for (int r = 0; r < 4; r++) {
+        for (int c = 0; c < 4; c++) {
+            out[r * 4 + c] = a[r * 4 + 0] * b[0 * 4 + c] +
+                             a[r * 4 + 1] * b[1 * 4 + c] +
+                             a[r * 4 + 2] * b[2 * 4 + c] +
+                             a[r * 4 + 3] * b[3 * 4 + c];
+        }
+    }
+}
+
+/// @brief Reset final globals to bind pose and final palette to skinning identity.
+static void controller_bind_pose_palette(rt_anim_controller3d *controller) {
     int32_t bone_count;
-    if (!controller || !controller->final_palette || !controller->skeleton)
+    if (!controller || !controller->final_palette || !controller->final_globals ||
+        !controller->skeleton)
         return;
     bone_count = controller->skeleton->bone_count;
     for (int32_t bone = 0; bone < bone_count; bone++) {
-        float *m = &controller->final_palette[bone * 16];
-        memset(m, 0, 16 * sizeof(float));
-        m[0] = m[5] = m[10] = m[15] = 1.0f;
+        if (controller->skeleton->bones[bone].parent_index >= 0) {
+            controller_mat4f_mul(
+                &controller->final_globals[controller->skeleton->bones[bone].parent_index * 16],
+                controller->skeleton->bones[bone].bind_pose_local,
+                &controller->final_globals[bone * 16]);
+        } else {
+            memcpy(&controller->final_globals[bone * 16],
+                   controller->skeleton->bones[bone].bind_pose_local,
+                   16 * sizeof(float));
+        }
+        controller_mat4f_mul(&controller->final_globals[bone * 16],
+                             controller->skeleton->bones[bone].inverse_bind,
+                             &controller->final_palette[bone * 16]);
     }
 }
 
@@ -567,6 +607,155 @@ static void controller_decompose_trs_float(const float *m,
     out_rot[3] = (float)rot[3];
 }
 
+static const vgfx3d_anim_channel_t *controller_find_animation_channel(const rt_animation3d *anim,
+                                                                      int32_t bone_index) {
+    if (!anim || bone_index < 0)
+        return NULL;
+    for (int32_t i = 0; i < anim->channel_count; i++) {
+        if (anim->channels[i].bone_index == bone_index)
+            return &anim->channels[i];
+    }
+    return NULL;
+}
+
+static void controller_keyframe_effective_trs(const vgfx3d_keyframe_t *key,
+                                              const float *fallback_pos,
+                                              const float *fallback_rot,
+                                              const float *fallback_scl,
+                                              float *out_pos,
+                                              float *out_rot,
+                                              float *out_scl) {
+    if (!key)
+        return;
+    for (int32_t i = 0; i < 3; i++) {
+        uint8_t bit = (uint8_t)(1u << i);
+        out_pos[i] = (key->position_mask & bit) ? key->position[i] : fallback_pos[i];
+        out_scl[i] = (key->scale_mask & bit) ? key->scale_xyz[i] : fallback_scl[i];
+    }
+    if ((key->rotation_mask & 0x0Fu) == 0x0Fu)
+        memcpy(out_rot, key->rotation, 4 * sizeof(float));
+    else
+        memcpy(out_rot, fallback_rot, 4 * sizeof(float));
+}
+
+static void controller_sample_channel_trs(const vgfx3d_anim_channel_t *channel,
+                                          float time,
+                                          const float *fallback_pos,
+                                          const float *fallback_rot,
+                                          const float *fallback_scl,
+                                          float *out_pos,
+                                          float *out_rot,
+                                          float *out_scl) {
+    if (!channel || channel->keyframe_count <= 0) {
+        memcpy(out_pos, fallback_pos, 3 * sizeof(float));
+        memcpy(out_rot, fallback_rot, 4 * sizeof(float));
+        memcpy(out_scl, fallback_scl, 3 * sizeof(float));
+        return;
+    }
+    if (channel->keyframe_count == 1) {
+        controller_keyframe_effective_trs(&channel->keyframes[0],
+                                          fallback_pos,
+                                          fallback_rot,
+                                          fallback_scl,
+                                          out_pos,
+                                          out_rot,
+                                          out_scl);
+        return;
+    }
+
+    int32_t k0 = 0;
+    int32_t k1 = 1;
+    for (int32_t i = 0; i < channel->keyframe_count - 1; i++) {
+        if (channel->keyframes[i + 1].time >= time) {
+            k0 = i;
+            k1 = i + 1;
+            break;
+        }
+        k0 = i;
+        k1 = i + 1;
+    }
+    float t0 = channel->keyframes[k0].time;
+    float t1 = channel->keyframes[k1].time;
+    float alpha = (t1 > t0) ? (time - t0) / (t1 - t0) : 0.0f;
+    if (alpha < 0.0f)
+        alpha = 0.0f;
+    if (alpha > 1.0f)
+        alpha = 1.0f;
+
+    float pos0[3], rot0[4], scl0[3];
+    float pos1[3], rot1[4], scl1[3];
+    controller_keyframe_effective_trs(&channel->keyframes[k0],
+                                      fallback_pos,
+                                      fallback_rot,
+                                      fallback_scl,
+                                      pos0,
+                                      rot0,
+                                      scl0);
+    controller_keyframe_effective_trs(&channel->keyframes[k1],
+                                      fallback_pos,
+                                      fallback_rot,
+                                      fallback_scl,
+                                      pos1,
+                                      rot1,
+                                      scl1);
+    for (int32_t i = 0; i < 3; i++) {
+        out_pos[i] = pos0[i] + (pos1[i] - pos0[i]) * alpha;
+        out_scl[i] = scl0[i] + (scl1[i] - scl0[i]) * alpha;
+    }
+    controller_quat_slerp_float(rot0, rot1, alpha, out_rot);
+}
+
+static void controller_sample_animation_local_matrix(const rt_skeleton3d *skeleton,
+                                                     const rt_animation3d *animation,
+                                                     int32_t bone_index,
+                                                     float time,
+                                                     float *out_local) {
+    float fallback_pos[3], fallback_rot[4], fallback_scl[3];
+    float pos[3], rot[4], scl[3];
+    const float *bind_local = skeleton->bones[bone_index].bind_pose_local;
+    controller_decompose_trs_float(bind_local, fallback_pos, fallback_rot, fallback_scl);
+    controller_sample_channel_trs(controller_find_animation_channel(animation, bone_index),
+                                  time,
+                                  fallback_pos,
+                                  fallback_rot,
+                                  fallback_scl,
+                                  pos,
+                                  rot,
+                                  scl);
+    controller_build_trs_float(pos, rot, scl, out_local);
+}
+
+static int controller_sample_state_global_matrix(const rt_anim_controller3d *controller,
+                                                 int32_t state_index,
+                                                 float time,
+                                                 int32_t bone_index,
+                                                 float *out_global) {
+    float globals[VGFX3D_MAX_BONES * 16];
+    float local[16];
+    if (!controller || !controller->skeleton || !out_global)
+        return 0;
+    if (state_index < 0 || state_index >= controller->state_count)
+        return 0;
+    if (bone_index < 0 || bone_index >= controller->skeleton->bone_count)
+        return 0;
+    rt_animation3d *animation = controller->states[state_index].animation;
+    if (!animation)
+        return 0;
+    for (int32_t bone = 0; bone <= bone_index; bone++) {
+        controller_sample_animation_local_matrix(
+            controller->skeleton, animation, bone, time, local);
+        if (controller->skeleton->bones[bone].parent_index >= 0) {
+            controller_mat4f_mul(&globals[controller->skeleton->bones[bone].parent_index * 16],
+                                 local,
+                                 &globals[bone * 16]);
+        } else {
+            memcpy(&globals[bone * 16], local, 16 * sizeof(float));
+        }
+    }
+    memcpy(out_global, &globals[bone_index * 16], 16 * sizeof(float));
+    return 1;
+}
+
 /// @brief Composite the base layer + weighted overlay layers into the final bone palette.
 /// @details Two-pass blend:
 ///          1. Base layer (layer 0) is copied wholesale into `final_palette`.
@@ -581,24 +770,45 @@ static void controller_decompose_trs_float(const float *m,
 ///          nothing.
 static void controller_compute_final_palette(rt_anim_controller3d *controller) {
     int32_t bone_count;
-    if (!controller || !controller->final_palette || !controller->skeleton)
+    float final_locals[VGFX3D_MAX_BONES * 16];
+    if (!controller || !controller->final_palette || !controller->final_globals ||
+        !controller->skeleton)
         return;
     bone_count = controller->skeleton->bone_count;
     if (bone_count <= 0)
         return;
+    if (bone_count > VGFX3D_MAX_BONES)
+        bone_count = VGFX3D_MAX_BONES;
 
-    if (controller->layers[0].player && controller->layers[0].player->bone_palette) {
-        memcpy(controller->final_palette,
-               controller->layers[0].player->bone_palette,
+    if (controller->layers[0].player && controller->layers[0].player->local_transforms) {
+        memcpy(final_locals,
+               controller->layers[0].player->local_transforms,
                (size_t)bone_count * 16 * sizeof(float));
     } else {
-        controller_identity_palette(controller);
+        for (int32_t bone = 0; bone < bone_count; bone++) {
+            memcpy(&final_locals[bone * 16],
+                   controller->skeleton->bones[bone].bind_pose_local,
+                   16 * sizeof(float));
+        }
+    }
+
+    for (int32_t bone = 0; bone < bone_count; bone++) {
+        if (controller->skeleton->bones[bone].parent_index >= 0) {
+            controller_mat4f_mul(
+                &controller->final_globals[controller->skeleton->bones[bone].parent_index * 16],
+                &final_locals[bone * 16],
+                &controller->final_globals[bone * 16]);
+        } else {
+            memcpy(&controller->final_globals[bone * 16],
+                   &final_locals[bone * 16],
+                   16 * sizeof(float));
+        }
     }
 
     for (int32_t layer_index = 1; layer_index < RT_ANIM_CONTROLLER3D_MAX_LAYERS; layer_index++) {
         anim_controller3d_layer_t *layer = &controller->layers[layer_index];
         float weight = layer->weight;
-        if (!layer->player || !layer->player->bone_palette || layer->current_state < 0 ||
+        if (!layer->player || !layer->player->local_transforms || layer->current_state < 0 ||
             weight <= 1e-6f)
             continue;
         if (weight > 1.0f)
@@ -608,8 +818,8 @@ static void controller_compute_final_palette(rt_anim_controller3d *controller) {
             const float *src;
             if (!layer->mask_bits[bone])
                 continue;
-            dst = &controller->final_palette[bone * 16];
-            src = &layer->player->bone_palette[bone * 16];
+            dst = &final_locals[bone * 16];
+            src = &layer->player->local_transforms[bone * 16];
             {
                 float dst_pos[3], dst_rot[4], dst_scl[3];
                 float src_pos[3], src_rot[4], src_scl[3];
@@ -624,10 +834,28 @@ static void controller_compute_final_palette(rt_anim_controller3d *controller) {
                 controller_build_trs_float(blend_pos, blend_rot, blend_scl, dst);
             }
         }
+        for (int32_t bone = 0; bone < bone_count; bone++) {
+            if (controller->skeleton->bones[bone].parent_index >= 0) {
+                int32_t parent = controller->skeleton->bones[bone].parent_index;
+                controller_mat4f_mul(&controller->final_globals[parent * 16],
+                                     &final_locals[bone * 16],
+                                     &controller->final_globals[bone * 16]);
+            } else {
+                memcpy(&controller->final_globals[bone * 16],
+                       &final_locals[bone * 16],
+                       16 * sizeof(float));
+            }
+        }
+    }
+
+    for (int32_t bone = 0; bone < bone_count; bone++) {
+        controller_mat4f_mul(&controller->final_globals[bone * 16],
+                             controller->skeleton->bones[bone].inverse_bind,
+                             &controller->final_palette[bone * 16]);
     }
 }
 
-/// @brief Read the translation column from a layer's bone matrix at `bone_index`.
+/// @brief Read the translation column from a layer's global bone matrix at `bone_index`.
 /// @details Reads `(m[3], m[7], m[11])` which is the translation row in the
 ///          column-major 4x4 matrix used by the player's bone palette.
 ///          Used by root-motion delta accumulation. Out-pointers are zeroed
@@ -644,11 +872,11 @@ static void controller_get_layer_translation(const anim_controller3d_layer_t *la
     *x = 0.0;
     *y = 0.0;
     *z = 0.0;
-    if (!layer || !layer->player || !layer->player->bone_palette || !layer->player->skeleton)
+    if (!layer || !layer->player || !layer->player->globals_buf || !layer->player->skeleton)
         return;
     if (bone_index < 0 || bone_index >= layer->player->skeleton->bone_count)
         return;
-    m = &layer->player->bone_palette[bone_index * 16];
+    m = &layer->player->globals_buf[bone_index * 16];
     *x = (double)m[3];
     *y = (double)m[7];
     *z = (double)m[11];
@@ -675,7 +903,7 @@ static void controller_quat_normalize(double *q) {
     if (!q)
         return;
     len_sq = q[0] * q[0] + q[1] * q[1] + q[2] * q[2] + q[3] * q[3];
-    if (len_sq < 1e-20) {
+    if (!isfinite(len_sq) || len_sq < 1e-20) {
         controller_quat_identity(q);
         return;
     }
@@ -706,6 +934,12 @@ static void controller_quat_from_matrix_rows(double m00,
     double trace;
     if (!out)
         return;
+    if (!isfinite(m00) || !isfinite(m01) || !isfinite(m02) || !isfinite(m10) ||
+        !isfinite(m11) || !isfinite(m12) || !isfinite(m20) || !isfinite(m21) ||
+        !isfinite(m22)) {
+        controller_quat_identity(out);
+        return;
+    }
     trace = m00 + m11 + m22;
     if (trace > 0.0) {
         double s = sqrt(trace + 1.0) * 2.0;
@@ -753,11 +987,11 @@ static void controller_get_layer_rotation(
     double inv_sz;
 
     controller_quat_identity(out_quat);
-    if (!layer || !layer->player || !layer->player->bone_palette || !layer->player->skeleton)
+    if (!layer || !layer->player || !layer->player->globals_buf || !layer->player->skeleton)
         return;
     if (bone_index < 0 || bone_index >= layer->player->skeleton->bone_count)
         return;
-    m = &layer->player->bone_palette[bone_index * 16];
+    m = &layer->player->globals_buf[bone_index * 16];
     sx = sqrt((double)m[0] * (double)m[0] + (double)m[4] * (double)m[4] + (double)m[8] * (double)m[8]);
     sy = sqrt((double)m[1] * (double)m[1] + (double)m[5] * (double)m[5] + (double)m[9] * (double)m[9]);
     sz = sqrt((double)m[2] * (double)m[2] + (double)m[6] * (double)m[6] + (double)m[10] * (double)m[10]);
@@ -836,6 +1070,8 @@ static void controller_finalize(void *obj) {
         controller_release_ref((void **)&controller->layers[i].player);
     free(controller->final_palette);
     controller->final_palette = NULL;
+    free(controller->final_globals);
+    controller->final_globals = NULL;
     free(controller->prev_final_palette);
     controller->prev_final_palette = NULL;
 }
@@ -868,16 +1104,19 @@ void *rt_anim_controller3d_new(void *skeleton) {
     rt_obj_set_finalizer(controller, controller_finalize);
     controller->skeleton = skel;
     rt_obj_retain_maybe(controller->skeleton);
-    controller->root_motion_bone = 0;
+    controller->root_motion_bone = -1;
     controller_quat_identity(controller->root_motion_rotation);
 
     if (skel->bone_count > 0) {
         size_t palette_size = (size_t)skel->bone_count * 16 * sizeof(float);
         controller->final_palette = (float *)calloc(1, palette_size);
+        controller->final_globals = (float *)calloc(1, palette_size);
         controller->prev_final_palette = (float *)calloc(1, palette_size);
-        if (!controller->final_palette || !controller->prev_final_palette) {
+        if (!controller->final_palette || !controller->final_globals ||
+            !controller->prev_final_palette) {
             rt_trap("AnimController3D.New: palette allocation failed");
-            controller_finalize(controller);
+            if (rt_obj_release_check0(controller))
+                rt_obj_free(controller);
             return NULL;
         }
     }
@@ -886,7 +1125,8 @@ void *rt_anim_controller3d_new(void *skeleton) {
         layer->player = (rt_anim_player3d *)rt_anim_player3d_new(skeleton);
         if (!layer->player) {
             rt_trap("AnimController3D.New: layer allocation failed");
-            controller_finalize(controller);
+            if (rt_obj_release_check0(controller))
+                rt_obj_free(controller);
             return NULL;
         }
         layer->current_state = -1;
@@ -895,7 +1135,7 @@ void *rt_anim_controller3d_new(void *skeleton) {
         layer->mask_root_bone = -1;
         controller_set_all_mask_bits(layer, skel->bone_count);
     }
-    controller_identity_palette(controller);
+    controller_bind_pose_palette(controller);
     return controller;
 }
 
@@ -948,7 +1188,7 @@ int8_t rt_anim_controller3d_add_transition(
     existing = controller_find_transition(controller, from_index, to_index);
     if (existing >= 0) {
         controller->transitions[existing].blend_seconds =
-            (float)((isfinite(blend_seconds) && blend_seconds > 0.0) ? blend_seconds : 0.0);
+            controller_clamp_nonnegative_float(blend_seconds);
         return 1;
     }
     if (!controller_grow_array((void **)&controller->transitions,
@@ -961,7 +1201,7 @@ int8_t rt_anim_controller3d_add_transition(
     transition = &controller->transitions[controller->transition_count++];
     transition->from_state = from_index;
     transition->to_state = to_index;
-    transition->blend_seconds = (float)((isfinite(blend_seconds) && blend_seconds > 0.0) ? blend_seconds : 0.0);
+    transition->blend_seconds = controller_clamp_nonnegative_float(blend_seconds);
     return 1;
 }
 
@@ -1013,6 +1253,8 @@ void rt_anim_controller3d_stop(void *obj) {
         layer->transition_time = 0.0f;
         layer->transition_duration = 0.0f;
     }
+    controller->has_prev_final_palette = 0;
+    controller_compute_final_palette(controller);
 }
 
 /// @brief Per-frame tick for every layer. Advances each player's time by `delta_time`, fires
@@ -1032,6 +1274,11 @@ void rt_anim_controller3d_update(void *obj, double delta_time) {
     double inv_before_rot[4];
     double delta_rot[4];
     double accumulated_rot[4];
+    double base_prev_time = 0.0;
+    double base_elapsed_time = 0.0;
+    double base_duration = 0.0;
+    int32_t base_state = -1;
+    int8_t base_looping = 0;
     if (!controller || !controller->skeleton || !isfinite(delta_time) || delta_time < 0.0)
         return;
 
@@ -1059,6 +1306,13 @@ void rt_anim_controller3d_update(void *obj, double delta_time) {
         elapsed_time = delta_time * rt_anim_player3d_get_speed(layer->player);
         rt_anim_player3d_update(layer->player, delta_time);
         curr_time = rt_anim_player3d_get_time(layer->player);
+        if (layer_index == 0) {
+            base_state = state_index;
+            base_prev_time = prev_time;
+            base_elapsed_time = elapsed_time;
+            base_duration = rt_animation3d_get_duration(controller->states[state_index].animation);
+            base_looping = controller->states[state_index].looping;
+        }
         controller_process_events(controller,
                                   state_index,
                                   prev_time,
@@ -1067,7 +1321,7 @@ void rt_anim_controller3d_update(void *obj, double delta_time) {
                                   controller->states[state_index].looping,
                                   elapsed_time);
         if (layer->transitioning) {
-            layer->transition_time += (float)delta_time;
+            layer->transition_time += controller_clamp_to_float(delta_time, 0.0f);
             if (layer->transition_time >= layer->transition_duration) {
                 layer->transitioning = 0;
                 layer->transition_time = layer->transition_duration;
@@ -1079,13 +1333,71 @@ void rt_anim_controller3d_update(void *obj, double delta_time) {
     controller_get_layer_translation(
         &controller->layers[0], controller->root_motion_bone, &after_x, &after_y, &after_z);
     controller_get_layer_rotation(&controller->layers[0], controller->root_motion_bone, after_rot);
-    controller->root_motion_delta[0] += after_x - before_x;
-    controller->root_motion_delta[1] += after_y - before_y;
-    controller->root_motion_delta[2] += after_z - before_z;
-    controller_quat_conjugate(before_rot, inv_before_rot);
-    controller_quat_mul(after_rot, inv_before_rot, delta_rot);
-    controller_quat_mul(controller->root_motion_rotation, delta_rot, accumulated_rot);
-    memcpy(controller->root_motion_rotation, accumulated_rot, sizeof(accumulated_rot));
+    if (controller->root_motion_bone >= 0) {
+        double dx = after_x - before_x;
+        double dy = after_y - before_y;
+        double dz = after_z - before_z;
+        int64_t cycle_count = 0;
+        int forward_cycles = base_elapsed_time >= 0.0 ? 1 : 0;
+        controller_quat_conjugate(before_rot, inv_before_rot);
+        controller_quat_mul(after_rot, inv_before_rot, delta_rot);
+
+        if (base_looping && base_state >= 0 && base_duration > 0.0 &&
+            isfinite(base_elapsed_time)) {
+            double raw_time = base_prev_time + base_elapsed_time;
+            if (base_elapsed_time >= 0.0 && raw_time >= base_duration)
+                cycle_count = (int64_t)floor(raw_time / base_duration);
+            else if (base_elapsed_time < 0.0 && raw_time < 0.0)
+                cycle_count = (int64_t)ceil((-raw_time) / base_duration);
+        }
+
+        if (cycle_count > 0) {
+            float start_global[16];
+            float end_global[16];
+            if (controller_sample_state_global_matrix(controller,
+                                                      base_state,
+                                                      0.0f,
+                                                      controller->root_motion_bone,
+                                                      start_global) &&
+                controller_sample_state_global_matrix(controller,
+                                                      base_state,
+                                                      (float)base_duration,
+                                                      controller->root_motion_bone,
+                                                      end_global)) {
+                double cycle_dx = (double)end_global[3] - (double)start_global[3];
+                double cycle_dy = (double)end_global[7] - (double)start_global[7];
+                double cycle_dz = (double)end_global[11] - (double)start_global[11];
+                double sign = forward_cycles ? 1.0 : -1.0;
+                dx += sign * (double)cycle_count * cycle_dx;
+                dy += sign * (double)cycle_count * cycle_dy;
+                dz += sign * (double)cycle_count * cycle_dz;
+
+                float start_pos[3], start_rot_f[4], start_scl[3];
+                float end_pos[3], end_rot_f[4], end_scl[3];
+                double start_rot[4], end_rot[4], inv_start_rot[4], cycle_rot[4];
+                controller_decompose_trs_float(start_global, start_pos, start_rot_f, start_scl);
+                controller_decompose_trs_float(end_global, end_pos, end_rot_f, end_scl);
+                for (int32_t i = 0; i < 4; i++) {
+                    start_rot[i] = start_rot_f[i];
+                    end_rot[i] = end_rot_f[i];
+                }
+                controller_quat_conjugate(start_rot, inv_start_rot);
+                controller_quat_mul(end_rot, inv_start_rot, cycle_rot);
+                if (!forward_cycles)
+                    controller_quat_conjugate(cycle_rot, cycle_rot);
+                int32_t rotation_cycles =
+                    cycle_count > 1024 ? 1024 : (int32_t)cycle_count;
+                for (int32_t i = 0; i < rotation_cycles; i++)
+                    controller_quat_mul(cycle_rot, delta_rot, delta_rot);
+            }
+        }
+
+        controller->root_motion_delta[0] += dx;
+        controller->root_motion_delta[1] += dy;
+        controller->root_motion_delta[2] += dz;
+        controller_quat_mul(controller->root_motion_rotation, delta_rot, accumulated_rot);
+        memcpy(controller->root_motion_rotation, accumulated_rot, sizeof(accumulated_rot));
+    }
 }
 
 /// @brief Name of the state currently playing on the base layer (empty string if none/missing).
@@ -1137,10 +1449,11 @@ void rt_anim_controller3d_set_state_speed(void *obj, rt_string state_name, doubl
         return;
     if (!isfinite(speed))
         speed = 1.0;
-    controller->states[state_index].speed = (float)speed;
+    controller->states[state_index].speed = controller_clamp_to_float(speed, 1.0f);
     for (int32_t layer_index = 0; layer_index < RT_ANIM_CONTROLLER3D_MAX_LAYERS; layer_index++) {
         if (controller->layers[layer_index].current_state == state_index)
-            rt_anim_player3d_set_speed(controller->layers[layer_index].player, speed);
+            rt_anim_player3d_set_speed(controller->layers[layer_index].player,
+                                       controller->states[state_index].speed);
     }
 }
 
@@ -1221,6 +1534,14 @@ void rt_anim_controller3d_set_root_motion_bone(void *obj, int64_t bone_index) {
     rt_anim_controller3d *controller = anim_controller3d_checked(obj);
     if (!controller || !controller->skeleton)
         return;
+    if (bone_index == -1) {
+        controller->root_motion_bone = -1;
+        controller->root_motion_delta[0] = 0.0;
+        controller->root_motion_delta[1] = 0.0;
+        controller->root_motion_delta[2] = 0.0;
+        controller_quat_identity(controller->root_motion_rotation);
+        return;
+    }
     if (bone_index < 0 || bone_index >= controller->skeleton->bone_count)
         return;
     controller->root_motion_bone = (int32_t)bone_index;
@@ -1355,6 +1676,7 @@ void rt_anim_controller3d_stop_layer(void *obj, int64_t layer_index) {
     layer->transitioning = 0;
     layer->transition_time = 0.0f;
     layer->transition_duration = 0.0f;
+    controller_compute_final_palette(controller);
 }
 
 /// @brief Snapshot the current final-palette matrix for a single bone as a Mat4.
@@ -1365,11 +1687,11 @@ void rt_anim_controller3d_stop_layer(void *obj, int64_t layer_index) {
 void *rt_anim_controller3d_get_bone_matrix(void *obj, int64_t bone_index) {
     rt_anim_controller3d *controller = anim_controller3d_checked(obj);
     const float *m;
-    if (!controller || !controller->skeleton || !controller->final_palette)
+    if (!controller || !controller->skeleton || !controller->final_globals)
         return NULL;
     if (bone_index < 0 || bone_index >= controller->skeleton->bone_count)
         return NULL;
-    m = &controller->final_palette[bone_index * 16];
+    m = &controller->final_globals[bone_index * 16];
     return rt_mat4_new(m[0],
                        m[1],
                        m[2],

@@ -172,10 +172,12 @@ Mesh raycast result returned by `Canvas3D.Raycast`. Read-only value type.
 
 | Property        | Type    | Access | Description |
 |-----------------|---------|--------|-------------|
-| `Distance`      | Double  | Read   | Distance along the ray to the hit point |
+| `Distance`      | Double  | Read   | Euclidean distance along the ray to the hit point |
 | `Point`         | Object  | Read   | World-space hit point as `Vec3` |
 | `Normal`        | Object  | Read   | Surface normal at the hit point as `Vec3` |
 | `TriangleIndex` | Integer | Read   | Index of the hit triangle in the mesh |
+
+Ray queries normalize non-zero directions internally. Zero-length or non-finite directions miss, and distances remain world-unit distances even when the input direction was not normalized.
 
 ---
 
@@ -205,6 +207,9 @@ Bone hierarchy for skeletal mesh deformation. Typically loaded alongside a model
 
 Skinning weights are normalized consistently across CPU and GPU draw paths. Missing palettes copy
 vertices through unchanged, and unused backend bone-palette slots are treated as identity transforms.
+Add every bone before binding the skeleton to a mesh or constructing animation players, blenders, or
+controllers; those runtime objects freeze the skeleton topology because their pose buffers are sized
+from the current bone count.
 
 ---
 
@@ -227,7 +232,7 @@ Single keyframe animation track referencing a `Skeleton3D`.
 
 | Method | Signature | Description |
 |--------|-----------|-------------|
-| `AddKeyframe(boneIndex, time, translation, rotation, scale)` | `Void(Integer, Double, Object, Object, Object)` | Add a keyframe for the given bone at `time` seconds |
+| `AddKeyframe(boneIndex, time, translation, rotation, scale)` | `Void(Integer, Double, Object, Object, Object)` | Add a keyframe for the given bone at `time` seconds; `null` TRS parts fall back to bind pose |
 
 ---
 
@@ -252,9 +257,12 @@ Plays a single `Animation3D` track on a `Skeleton3D` with optional crossfade.
 |--------|-----------|-------------|
 | `Play(animation)` | `Void(Object)` | Start playing an `Animation3D` |
 | `Crossfade(animation, duration)` | `Void(Object, Double)` | Blend into a new animation over `duration` seconds |
-| `Stop()` | `Void()` | Stop the current animation |
+| `Stop()` | `Void()` | Stop the current animation and output the bind pose |
 | `Update(deltaSeconds)` | `Void(Double)` | Advance the animation by the given delta |
-| `GetBoneMatrix(boneIndex)` | `Object(Integer)` | Return the current skinning matrix for `boneIndex` |
+| `GetBoneMatrix(boneIndex)` | `Object(Integer)` | Return the current global/world matrix for `boneIndex` |
+
+Crossfades blend all bones, including channels that exist in only one clip, against bind pose. The
+fading-out clip keeps its own speed and looping behavior during the transition.
 
 ```rust
 bind Viper.Graphics3D.AnimPlayer3D as AnimPlayer3D;
@@ -300,6 +308,9 @@ Blends multiple named animation states by weight. Useful for blend trees (run/wa
 | `SetSpeed(index, speed)` | `Void(Integer, Double)` | Set playback speed for state at `index` |
 | `Update(deltaSeconds)` | `Void(Double)` | Advance all states and produce the blended pose |
 
+`Update(0.0)` recomputes the pose without advancing time. New states inherit their animation's
+looping flag unless overridden by speed/time control in code.
+
 ---
 
 ### Viper.Graphics3D.AnimController3D
@@ -333,14 +344,18 @@ Stateful animation controller with named states, triggered transitions, animatio
 | `SetStateLooping(state, loop)` | `Void(String, Boolean)` | Override loop setting for a state |
 | `AddEvent(state, time, name)` | `Void(String, Double, String)` | Register a named event to fire at a playback time |
 | `PollEvent()` | `String()` | Dequeue the next fired event name, or empty string |
-| `SetRootMotionBone(index)` | `Void(Integer)` | Designate a bone to extract root motion from |
+| `SetRootMotionBone(index)` | `Void(Integer)` | Designate a bone to extract root motion from; `-1` disables it |
 | `ConsumeRootMotion()` | `Object()` | Read and clear the accumulated root motion `Vec3` |
 | `SetLayerWeight(layer, weight)` | `Void(Integer, Double)` | Set the blend weight for an additive layer |
 | `SetLayerMask(layer, boneMask)` | `Void(Integer, Integer)` | Restrict a layer to a bone mask bitmask |
 | `PlayLayer(layer, state)` | `Boolean(Integer, String)` | Play a state on an additive layer |
 | `CrossfadeLayer(layer, state, duration)` | `Boolean(Integer, String, Double)` | Blend into a new state on an additive layer over `duration` seconds |
 | `StopLayer(layer)` | `Void(Integer)` | Stop the additive layer |
-| `GetBoneMatrix(boneIndex)` | `Object(Integer)` | Return the current skinning matrix for `boneIndex` |
+| `GetBoneMatrix(boneIndex)` | `Object(Integer)` | Return the current global/world matrix for `boneIndex` |
+
+Root motion is disabled by default, preserves loop-wrap deltas, and resets its accumulated
+translation/rotation when disabled or switched to another bone. `Stop()` returns all layers to bind
+pose while keeping state metadata intact.
 
 ```rust
 bind Viper.Graphics3D.AnimController3D as AnimController3D;
@@ -385,7 +400,7 @@ Per-vertex morph target system for facial animation or shape blending.
 | `AddShape(name)` | `Integer(String)` | Add a named morph shape; returns its index |
 | `SetDelta(shape, vertex, dx, dy, dz)` | `Void(Integer, Integer, Double, Double, Double)` | Set the position delta for a vertex in a shape |
 | `SetNormalDelta(shape, vertex, dx, dy, dz)` | `Void(Integer, Integer, Double, Double, Double)` | Set the normal delta for a vertex in a shape |
-| `SetWeight(index, weight)` | `Void(Integer, Double)` | Set blend weight `[0.0–1.0]` for shape at `index` |
+| `SetWeight(index, weight)` | `Void(Integer, Double)` | Set blend weight `[-1.0–1.0]` for shape at `index` |
 | `GetWeight(index)` | `Double(Integer)` | Get the current weight for a shape |
 | `SetWeightByName(name, weight)` | `Void(String, Double)` | Set blend weight by shape name |
 

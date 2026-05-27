@@ -11,8 +11,8 @@
 //   and AABB-AABB overlap/penetration tests.
 //
 // Key invariants:
-//   - All ray functions take Vec3 origin + direction; direction must be normalized.
-//   - Distance return: >= 0 = hit distance, -1 = no hit.
+//   - All ray functions take Vec3 origin + direction; non-zero directions are normalized internally.
+//   - Distance return: >= 0 = Euclidean hit distance, -1 = no hit.
 //   - IntersectMesh returns a RayHit3D object (or NULL) with hit point, normal, triangle index.
 //   - AABB functions take Vec3 min/max corners.
 //
@@ -29,13 +29,13 @@ extern "C" {
 #endif
 
 /* Ray intersection */
-/// @brief Möller-Trumbore ray-triangle test. Returns hit distance, -1 on miss.
+/// @brief Möller-Trumbore ray-triangle test. Returns Euclidean hit distance, -1 on miss.
 double rt_ray3d_intersect_triangle(void *origin, void *dir, void *v0, void *v1, void *v2);
 /// @brief Test ray against every triangle in a transformed mesh; returns RayHit3D or NULL.
 void *rt_ray3d_intersect_mesh(void *origin, void *dir, void *mesh, void *transform);
-/// @brief Slab-method ray-AABB test. Returns hit distance, -1 on miss.
+/// @brief Slab-method ray-AABB test. Returns Euclidean hit distance, -1 on miss.
 double rt_ray3d_intersect_aabb(void *origin, void *dir, void *aabb_min, void *aabb_max);
-/// @brief Analytic ray-sphere test. Returns hit distance, -1 on miss.
+/// @brief Analytic ray-sphere test. Returns Euclidean hit distance, -1 on miss.
 double rt_ray3d_intersect_sphere(void *origin, void *dir, void *center, double radius);
 
 /* AABB collision */

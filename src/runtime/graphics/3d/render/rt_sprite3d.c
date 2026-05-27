@@ -48,7 +48,7 @@ extern void rt_mesh3d_add_triangle(void *m, int64_t v0, int64_t v1, int64_t v2);
 extern void rt_canvas3d_draw_mesh(void *canvas, void *mesh, void *transform, void *material);
 extern void rt_canvas3d_draw_mesh_matrix(
     void *canvas, void *mesh, const double *transform, void *material);
-extern void rt_canvas3d_add_temp_object(void *canvas, void *value);
+extern int rt_canvas3d_add_temp_object(void *canvas, void *value);
 extern void *rt_material3d_new(void);
 extern void rt_material3d_set_texture(void *m, void *tex);
 extern void rt_material3d_set_unlit(void *m, int8_t u);

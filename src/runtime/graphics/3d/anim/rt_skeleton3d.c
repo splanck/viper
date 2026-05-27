@@ -116,6 +116,41 @@ static int skeleton3d_value_fits_float(double value) {
            value <= SKELETON3D_FLOAT_ABS_MAX;
 }
 
+/// @brief Convert a finite double into float range, otherwise use @p fallback.
+static float skeleton3d_float_or(double value, float fallback) {
+    if (!skeleton3d_value_fits_float(value))
+        return fallback;
+    return (float)value;
+}
+
+/// @brief Clamp a finite double into the full finite float range.
+static float skeleton3d_clamp_to_float(double value, float fallback) {
+    if (!isfinite(value))
+        return fallback;
+    if (value > SKELETON3D_FLOAT_ABS_MAX)
+        return FLT_MAX;
+    if (value < -SKELETON3D_FLOAT_ABS_MAX)
+        return -FLT_MAX;
+    return (float)value;
+}
+
+/// @brief Clamp a non-negative time/duration value into float range.
+static float skeleton3d_clamp_nonnegative_float(double value, float fallback) {
+    if (!isfinite(value))
+        return fallback;
+    if (value <= 0.0)
+        return 0.0f;
+    if (value > SKELETON3D_FLOAT_ABS_MAX)
+        return FLT_MAX;
+    return (float)value;
+}
+
+/// @brief Once pose buffers exist, the skeleton topology can no longer grow safely.
+static void skeleton3d_freeze(rt_skeleton3d *s) {
+    if (s)
+        s->frozen = 1;
+}
+
 /// @brief Wrap a playback time into `[0, duration)` (looping). Non-finite time or a
 ///        non-positive/non-finite duration yields 0.0f.
 static float animation3d_wrap_time(float time, float duration) {
@@ -393,6 +428,7 @@ void *rt_skeleton3d_new(void) {
     s->vptr = NULL;
     s->bones = NULL;
     s->bone_count = 0;
+    s->frozen = 0;
     rt_obj_set_finalizer(s, rt_skeleton3d_finalize);
     return s;
 }
@@ -409,6 +445,10 @@ int64_t rt_skeleton3d_add_bone(void *obj, rt_string name, int64_t parent_index, 
         (rt_skeleton3d *)rt_g3d_checked_or_null(obj, RT_G3D_SKELETON3D_CLASS_ID);
     if (!s)
         return -1;
+    if (s->frozen) {
+        rt_trap("Skeleton3D.AddBone: skeleton is already bound to an animation runtime");
+        return -1;
+    }
     if (s->bone_count >= VGFX3D_MAX_BONES) {
         rt_trap("Skeleton3D.AddBone: max 256 bones exceeded");
         return -1;
@@ -652,8 +692,9 @@ void *rt_animation3d_new(rt_string name, double duration) {
     a->channels = NULL;
     a->channel_count = 0;
     a->channel_capacity = 0;
-    a->duration =
-        (float)((isfinite(duration) && duration > 0.0 && duration <= FLT_MAX) ? duration : 1.0);
+    a->duration = (isfinite(duration) && duration > 0.0)
+                      ? skeleton3d_clamp_nonnegative_float(duration, 1.0f)
+                      : 1.0f;
     a->looping = 0;
     rt_obj_set_finalizer(a, rt_animation3d_finalize);
     return a;
@@ -679,19 +720,34 @@ void rt_animation3d_add_keyframe(
         double px = rt_vec3_x(position);
         double py = rt_vec3_y(position);
         double pz = rt_vec3_z(position);
-        new_kf.position[0] = isfinite(px) ? (float)px : 0.0f;
-        new_kf.position[1] = isfinite(py) ? (float)py : 0.0f;
-        new_kf.position[2] = isfinite(pz) ? (float)pz : 0.0f;
+        if (skeleton3d_value_fits_float(px)) {
+            new_kf.position[0] = (float)px;
+            new_kf.position_mask |= 1u;
+        }
+        if (skeleton3d_value_fits_float(py)) {
+            new_kf.position[1] = (float)py;
+            new_kf.position_mask |= 2u;
+        }
+        if (skeleton3d_value_fits_float(pz)) {
+            new_kf.position[2] = (float)pz;
+            new_kf.position_mask |= 4u;
+        }
     }
     if (rotation) {
         double qx = rt_quat_x(rotation);
         double qy = rt_quat_y(rotation);
         double qz = rt_quat_z(rotation);
         double qw = rt_quat_w(rotation);
-        new_kf.rotation[0] = isfinite(qx) ? (float)qx : 0.0f;
-        new_kf.rotation[1] = isfinite(qy) ? (float)qy : 0.0f;
-        new_kf.rotation[2] = isfinite(qz) ? (float)qz : 0.0f;
-        new_kf.rotation[3] = isfinite(qw) ? (float)qw : 1.0f;
+        if (skeleton3d_value_fits_float(qx) && skeleton3d_value_fits_float(qy) &&
+            skeleton3d_value_fits_float(qz) && skeleton3d_value_fits_float(qw)) {
+            new_kf.rotation[0] = (float)qx;
+            new_kf.rotation[1] = (float)qy;
+            new_kf.rotation[2] = (float)qz;
+            new_kf.rotation[3] = (float)qw;
+            new_kf.rotation_mask = 0x0Fu;
+        } else {
+            new_kf.rotation[3] = 1.0f;
+        }
     } else {
         new_kf.rotation[3] = 1.0f;
     }
@@ -703,9 +759,18 @@ void rt_animation3d_add_keyframe(
         double sx = rt_vec3_x(scale);
         double sy = rt_vec3_y(scale);
         double sz = rt_vec3_z(scale);
-        new_kf.scale_xyz[0] = isfinite(sx) ? (float)sx : 1.0f;
-        new_kf.scale_xyz[1] = isfinite(sy) ? (float)sy : 1.0f;
-        new_kf.scale_xyz[2] = isfinite(sz) ? (float)sz : 1.0f;
+        if (skeleton3d_value_fits_float(sx)) {
+            new_kf.scale_xyz[0] = (float)sx;
+            new_kf.scale_mask |= 1u;
+        }
+        if (skeleton3d_value_fits_float(sy)) {
+            new_kf.scale_xyz[1] = (float)sy;
+            new_kf.scale_mask |= 2u;
+        }
+        if (skeleton3d_value_fits_float(sz)) {
+            new_kf.scale_xyz[2] = (float)sz;
+            new_kf.scale_mask |= 4u;
+        }
     }
 
     /* Find or create channel for this bone */
@@ -794,17 +859,58 @@ rt_string rt_animation3d_get_name(void *obj) {
  * Keyframe sampling
  *=========================================================================*/
 
-/// @brief Sample a channel at time t, producing a local TRS matrix.
-static void sample_channel(const vgfx3d_anim_channel_t *ch, float t, float *out_local) {
-    if (ch->keyframe_count == 0) {
-        mat4f_identity(out_local);
+/// @brief Find the channel for @p bone_index in an animation clip.
+static const vgfx3d_anim_channel_t *animation3d_find_channel(const rt_animation3d *anim,
+                                                             int32_t bone_index) {
+    if (!anim || bone_index < 0)
+        return NULL;
+    for (int32_t i = 0; i < anim->channel_count; i++) {
+        if (anim->channels[i].bone_index == bone_index)
+            return &anim->channels[i];
+    }
+    return NULL;
+}
+
+/// @brief Resolve a keyframe's optional components against bind-pose fallback TRS.
+static void keyframe_effective_trs(const vgfx3d_keyframe_t *key,
+                                   const float *fallback_pos,
+                                   const float *fallback_rot,
+                                   const float *fallback_scl,
+                                   float *out_pos,
+                                   float *out_rot,
+                                   float *out_scl) {
+    if (!key || !fallback_pos || !fallback_rot || !fallback_scl)
+        return;
+    for (int32_t i = 0; i < 3; i++) {
+        uint8_t bit = (uint8_t)(1u << i);
+        out_pos[i] = (key->position_mask & bit) ? key->position[i] : fallback_pos[i];
+        out_scl[i] = (key->scale_mask & bit) ? key->scale_xyz[i] : fallback_scl[i];
+    }
+    if ((key->rotation_mask & 0x0Fu) == 0x0Fu) {
+        memcpy(out_rot, key->rotation, 4 * sizeof(float));
+    } else {
+        memcpy(out_rot, fallback_rot, 4 * sizeof(float));
+    }
+}
+
+/// @brief Sample a channel at time t, returning separate TRS components.
+static void sample_channel_trs_with_fallback(const vgfx3d_anim_channel_t *ch,
+                                             float t,
+                                             const float *fallback_pos,
+                                             const float *fallback_rot,
+                                             const float *fallback_scl,
+                                             float *out_pos,
+                                             float *out_rot,
+                                             float *out_scl) {
+    if (!ch || ch->keyframe_count == 0) {
+        memcpy(out_pos, fallback_pos, 3 * sizeof(float));
+        memcpy(out_rot, fallback_rot, 4 * sizeof(float));
+        memcpy(out_scl, fallback_scl, 3 * sizeof(float));
         return;
     }
     if (ch->keyframe_count == 1) {
-        build_trs_float(ch->keyframes[0].position,
-                        ch->keyframes[0].rotation,
-                        ch->keyframes[0].scale_xyz,
-                        out_local);
+        keyframe_effective_trs(
+            &ch->keyframes[0], fallback_pos, fallback_rot, fallback_scl, out_pos, out_rot, out_scl);
         return;
     }
 
@@ -830,70 +936,49 @@ static void sample_channel(const vgfx3d_anim_channel_t *ch, float t, float *out_
 
     const vgfx3d_keyframe_t *key0 = &ch->keyframes[k0];
     const vgfx3d_keyframe_t *key1 = &ch->keyframes[k1];
+    float pos0[3], rot0[4], scl0[3];
+    float pos1[3], rot1[4], scl1[3];
+    keyframe_effective_trs(key0, fallback_pos, fallback_rot, fallback_scl, pos0, rot0, scl0);
+    keyframe_effective_trs(key1, fallback_pos, fallback_rot, fallback_scl, pos1, rot1, scl1);
 
-    /* Interpolate position (linear) */
-    float pos[3];
-    for (int i = 0; i < 3; i++)
-        pos[i] = key0->position[i] + alpha * (key1->position[i] - key0->position[i]);
+    for (int i = 0; i < 3; i++) {
+        out_pos[i] = pos0[i] + alpha * (pos1[i] - pos0[i]);
+        out_scl[i] = scl0[i] + alpha * (scl1[i] - scl0[i]);
+    }
+    quat_slerp_float(rot0, rot1, alpha, out_rot);
+}
 
-    /* Interpolate rotation (SLERP) */
-    float rot[4];
-    quat_slerp_float(key0->rotation, key1->rotation, alpha, rot);
-
-    /* Interpolate scale (linear) */
-    float scl[3];
-    for (int i = 0; i < 3; i++)
-        scl[i] = key0->scale_xyz[i] + alpha * (key1->scale_xyz[i] - key0->scale_xyz[i]);
-
+/// @brief Sample a channel at time t, producing a local TRS matrix.
+static void sample_channel_with_fallback(const vgfx3d_anim_channel_t *ch,
+                                         float t,
+                                         const float *fallback_local,
+                                         float *out_local) {
+    float fallback_pos[3], fallback_rot[4], fallback_scl[3];
+    float pos[3], rot[4], scl[3];
+    mat4f_decompose_trs(fallback_local, fallback_pos, fallback_rot, fallback_scl);
+    sample_channel_trs_with_fallback(
+        ch, t, fallback_pos, fallback_rot, fallback_scl, pos, rot, scl);
     build_trs_float(pos, rot, scl, out_local);
 }
 
-/// @brief Sample a channel at time t, returning separate TRS components
-/// instead of a composed matrix. Used for crossfade blending.
-static void sample_channel_trs(
-    const vgfx3d_anim_channel_t *ch, float t, float *out_pos, float *out_rot, float *out_scl) {
-    if (ch->keyframe_count == 0) {
-        out_pos[0] = out_pos[1] = out_pos[2] = 0.0f;
-        out_rot[0] = out_rot[1] = out_rot[2] = 0.0f;
-        out_rot[3] = 1.0f; /* identity quaternion */
-        out_scl[0] = out_scl[1] = out_scl[2] = 1.0f;
-        return;
-    }
-    if (ch->keyframe_count == 1) {
-        memcpy(out_pos, ch->keyframes[0].position, 3 * sizeof(float));
-        memcpy(out_rot, ch->keyframes[0].rotation, 4 * sizeof(float));
-        memcpy(out_scl, ch->keyframes[0].scale_xyz, 3 * sizeof(float));
-        return;
-    }
-
-    /* Find bracketing keyframes (same logic as sample_channel) */
-    int k0 = 0, k1 = 1;
-    for (int i = 0; i < ch->keyframe_count - 1; i++) {
-        if (ch->keyframes[i + 1].time >= t) {
-            k0 = i;
-            k1 = i + 1;
-            break;
-        }
-        k0 = i;
-        k1 = i + 1;
-    }
-
-    float t0 = ch->keyframes[k0].time;
-    float t1 = ch->keyframes[k1].time;
-    float alpha = (t1 > t0) ? (t - t0) / (t1 - t0) : 0.0f;
-    if (alpha < 0.0f)
-        alpha = 0.0f;
-    if (alpha > 1.0f)
-        alpha = 1.0f;
-
-    const vgfx3d_keyframe_t *key0 = &ch->keyframes[k0];
-    const vgfx3d_keyframe_t *key1 = &ch->keyframes[k1];
-
-    for (int i = 0; i < 3; i++)
-        out_pos[i] = key0->position[i] + alpha * (key1->position[i] - key0->position[i]);
-    quat_slerp_float(key0->rotation, key1->rotation, alpha, out_rot);
-    for (int i = 0; i < 3; i++)
-        out_scl[i] = key0->scale_xyz[i] + alpha * (key1->scale_xyz[i] - key0->scale_xyz[i]);
+/// @brief Sample an animation's bone channel, falling back to bind pose when absent.
+static void sample_animation_trs_for_bone(const rt_animation3d *anim,
+                                          int32_t bone_index,
+                                          float time,
+                                          const float *fallback_local,
+                                          float *out_pos,
+                                          float *out_rot,
+                                          float *out_scl) {
+    float fallback_pos[3], fallback_rot[4], fallback_scl[3];
+    mat4f_decompose_trs(fallback_local, fallback_pos, fallback_rot, fallback_scl);
+    sample_channel_trs_with_fallback(animation3d_find_channel(anim, bone_index),
+                                     time,
+                                     fallback_pos,
+                                     fallback_rot,
+                                     fallback_scl,
+                                     out_pos,
+                                     out_rot,
+                                     out_scl);
 }
 
 /*==========================================================================
@@ -923,6 +1008,10 @@ static void rt_anim_player3d_finalize(void *obj) {
 /// The player holds the current playback time, the active and
 /// fading-out clip, and a per-bone palette buffer (3-frame ring
 /// for motion-blur previous-pose lookup).
+static void compute_bone_palette(rt_anim_player3d *p);
+static void compute_player_bind_pose(rt_anim_player3d *p);
+static int8_t anim_player_current_looping(const rt_anim_player3d *p);
+
 void *rt_anim_player3d_new(void *skeleton) {
     rt_skeleton3d *skel =
         (rt_skeleton3d *)rt_g3d_checked_or_null(skeleton, RT_G3D_SKELETON3D_CLASS_ID);
@@ -945,20 +1034,24 @@ void *rt_anim_player3d_new(void *skeleton) {
     p->crossfade_time = 0.0f;
     p->crossfade_duration = 0.0f;
     p->crossfade_from_time = 0.0f;
+    p->crossfade_from_speed = 1.0f;
     p->speed = 1.0f;
     p->playing = 0;
     p->loop_override_enabled = 0;
     p->loop_override_value = 0;
+    p->crossfade_from_looping = 0;
     p->last_motion_frame = 0;
     p->has_prev_motion_palette = 0;
 
     size_t palette_size = (size_t)skel->bone_count * 16 * sizeof(float);
-    p->bone_palette = (float *)calloc(1, palette_size);
-    p->prev_bone_palette = (float *)calloc(1, palette_size);
-    p->motion_palette_snapshot = (float *)calloc(1, palette_size);
-    p->local_transforms = (float *)calloc(1, palette_size);
-    if (!p->bone_palette || !p->prev_bone_palette || !p->motion_palette_snapshot ||
-        !p->local_transforms) {
+    p->bone_palette = palette_size > 0 ? (float *)calloc(1, palette_size) : NULL;
+    p->prev_bone_palette = palette_size > 0 ? (float *)calloc(1, palette_size) : NULL;
+    p->motion_palette_snapshot = palette_size > 0 ? (float *)calloc(1, palette_size) : NULL;
+    p->local_transforms = palette_size > 0 ? (float *)calloc(1, palette_size) : NULL;
+    p->globals_buf = palette_size > 0 ? (float *)calloc(1, palette_size) : NULL;
+    if (palette_size > 0 &&
+        (!p->bone_palette || !p->prev_bone_palette || !p->motion_palette_snapshot ||
+         !p->local_transforms || !p->globals_buf)) {
         rt_anim_player3d_finalize(p);
         if (rt_obj_release_check0(p))
             rt_obj_free(p);
@@ -966,11 +1059,11 @@ void *rt_anim_player3d_new(void *skeleton) {
         return NULL;
     }
 
-    /* Initialize palette to identity */
-    for (int32_t i = 0; i < skel->bone_count; i++) {
-        mat4f_identity(&p->bone_palette[i * 16]);
-        mat4f_identity(&p->prev_bone_palette[i * 16]);
-        mat4f_identity(&p->motion_palette_snapshot[i * 16]);
+    skeleton3d_freeze(skel);
+    compute_player_bind_pose(p);
+    if (palette_size > 0) {
+        memcpy(p->prev_bone_palette, p->bone_palette, palette_size);
+        memcpy(p->motion_palette_snapshot, p->bone_palette, palette_size);
     }
 
     rt_obj_set_finalizer(p, rt_anim_player3d_finalize);
@@ -988,8 +1081,12 @@ void rt_anim_player3d_play(void *obj, void *animation) {
     p->current_time = 0.0f;
     p->playing = anim ? 1 : 0;
     animation3d_assign_ref((void **)&p->crossfade_from, NULL);
+    p->crossfade_time = 0.0f;
+    p->crossfade_duration = 0.0f;
+    p->crossfade_from_time = 0.0f;
     p->has_prev_motion_palette = 0;
     p->last_motion_frame = 0;
+    compute_bone_palette(p);
 }
 
 /// @brief Cross-fade smoothly into a new animation clip over `duration` seconds.
@@ -1007,29 +1104,71 @@ void rt_anim_player3d_crossfade(void *obj, void *animation, double duration) {
     }
     animation3d_assign_ref((void **)&p->crossfade_from, p->current);
     p->crossfade_from_time = p->current_time;
+    p->crossfade_from_speed = isfinite(p->speed) ? p->speed : 1.0f;
+    p->crossfade_from_looping = anim_player_current_looping(p);
     animation3d_assign_ref((void **)&p->current, anim);
     p->current_time = 0.0f;
     p->crossfade_time = 0.0f;
-    p->crossfade_duration = (float)duration;
+    p->crossfade_duration = skeleton3d_clamp_nonnegative_float(duration, FLT_MAX);
     p->playing = 1;
     p->has_prev_motion_palette = 0;
     p->last_motion_frame = 0;
+    compute_bone_palette(p);
 }
 
-/// @brief Stop playback — bone palette stays at its current pose, but `update` becomes a no-op.
+/// @brief Stop playback and return the output pose to the skeleton bind pose.
 void rt_anim_player3d_stop(void *obj) {
     rt_anim_player3d *p = anim_player3d_checked(obj);
     if (!p)
         return;
     p->playing = 0;
+    animation3d_assign_ref((void **)&p->crossfade_from, NULL);
+    p->crossfade_time = 0.0f;
+    p->crossfade_duration = 0.0f;
+    p->crossfade_from_time = 0.0f;
     p->has_prev_motion_palette = 0;
     p->last_motion_frame = 0;
+    compute_player_bind_pose(p);
+}
+
+/// @brief Build global matrices and skinning palette from local bone transforms.
+static void compute_palette_from_locals(const rt_skeleton3d *skel,
+                                        const float *locals,
+                                        float *globals,
+                                        float *palette) {
+    if (!skel || !locals || !globals || !palette || skel->bone_count <= 0)
+        return;
+
+    for (int32_t i = 0; i < skel->bone_count; i++) {
+        if (skel->bones[i].parent_index >= 0) {
+            mat4f_mul_local(&globals[skel->bones[i].parent_index * 16],
+                            &locals[i * 16],
+                            &globals[i * 16]);
+        } else {
+            memcpy(&globals[i * 16], &locals[i * 16], 16 * sizeof(float));
+        }
+    }
+
+    for (int32_t i = 0; i < skel->bone_count; i++)
+        mat4f_mul_local(&globals[i * 16], skel->bones[i].inverse_bind, &palette[i * 16]);
+}
+
+/// @brief Force a player to the skeleton bind pose in both world and skinning buffers.
+static void compute_player_bind_pose(rt_anim_player3d *p) {
+    rt_skeleton3d *skel = p ? p->skeleton : NULL;
+    if (!p || !skel || skel->bone_count <= 0 || !p->local_transforms || !p->globals_buf ||
+        !p->bone_palette)
+        return;
+    for (int32_t i = 0; i < skel->bone_count; i++)
+        memcpy(&p->local_transforms[i * 16], skel->bones[i].bind_pose_local, 16 * sizeof(float));
+    compute_palette_from_locals(skel, p->local_transforms, p->globals_buf, p->bone_palette);
 }
 
 /// @brief Compute the bone palette from the current animation state.
 static void compute_bone_palette(rt_anim_player3d *p) {
-    rt_skeleton3d *skel = p->skeleton;
-    if (!skel || skel->bone_count == 0)
+    rt_skeleton3d *skel = p ? p->skeleton : NULL;
+    if (!p || !skel || skel->bone_count == 0 || !p->local_transforms || !p->globals_buf ||
+        !p->bone_palette)
         return;
 
     /* Start with bind pose for all bones */
@@ -1040,90 +1179,52 @@ static void compute_bone_palette(rt_anim_player3d *p) {
     if (p->current) {
         for (int32_t c = 0; c < p->current->channel_count; c++) {
             int32_t bone = p->current->channels[c].bone_index;
-            if (bone >= 0 && bone < skel->bone_count)
-                sample_channel(
-                    &p->current->channels[c], p->current_time, &p->local_transforms[bone * 16]);
+            if (bone >= 0 && bone < skel->bone_count) {
+                sample_channel_with_fallback(&p->current->channels[c],
+                                             p->current_time,
+                                             skel->bones[bone].bind_pose_local,
+                                             &p->local_transforms[bone * 16]);
+            }
         }
     }
 
-    /* Crossfade: blend with previous animation using TRS decomposition.
-     * SLERP quaternion rotation (avoids skew/shear from raw matrix lerp).
-     * Linear lerp for position and scale. */
+    /* Crossfade over every bone so target-only and source-only channels blend
+     * against bind pose instead of popping at transition boundaries. */
     if (p->crossfade_from && p->crossfade_duration > 0.0f) {
         float factor = p->crossfade_time / p->crossfade_duration;
         if (factor > 1.0f)
             factor = 1.0f;
+        if (factor < 0.0f)
+            factor = 0.0f;
 
-        for (int32_t c = 0; c < p->crossfade_from->channel_count; c++) {
-            int32_t bone = p->crossfade_from->channels[c].bone_index;
-            if (bone < 0 || bone >= skel->bone_count)
-                continue;
-
-            /* Sample "from" animation into TRS */
+        for (int32_t bone = 0; bone < skel->bone_count; bone++) {
             float from_pos[3], from_rot[4], from_scl[3];
-            sample_channel_trs(&p->crossfade_from->channels[c],
-                               p->crossfade_from_time,
-                               from_pos,
-                               from_rot,
-                               from_scl);
-
-            /* Sample "to" (current) animation into TRS for this bone */
             float to_pos[3], to_rot[4], to_scl[3];
-            /* Find the current animation's channel for this bone */
-            int found_to = 0;
-            if (p->current) {
-                for (int32_t tc = 0; tc < p->current->channel_count; tc++) {
-                    if (p->current->channels[tc].bone_index == bone) {
-                        sample_channel_trs(
-                            &p->current->channels[tc], p->current_time, to_pos, to_rot, to_scl);
-                        found_to = 1;
-                        break;
-                    }
-                }
-            }
-            if (!found_to) {
-                mat4f_decompose_trs(skel->bones[bone].bind_pose_local, to_pos, to_rot, to_scl);
-            }
-
-            /* Blend TRS components: lerp position/scale, SLERP rotation */
             float blend_pos[3], blend_rot[4], blend_scl[3];
+            sample_animation_trs_for_bone(p->crossfade_from,
+                                          bone,
+                                          p->crossfade_from_time,
+                                          skel->bones[bone].bind_pose_local,
+                                          from_pos,
+                                          from_rot,
+                                          from_scl);
+            sample_animation_trs_for_bone(p->current,
+                                          bone,
+                                          p->current_time,
+                                          skel->bones[bone].bind_pose_local,
+                                          to_pos,
+                                          to_rot,
+                                          to_scl);
             for (int i = 0; i < 3; i++) {
                 blend_pos[i] = from_pos[i] + factor * (to_pos[i] - from_pos[i]);
                 blend_scl[i] = from_scl[i] + factor * (to_scl[i] - from_scl[i]);
             }
             quat_slerp_float(from_rot, to_rot, factor, blend_rot);
-
-            /* Compose blended TRS back into local transform matrix */
             build_trs_float(blend_pos, blend_rot, blend_scl, &p->local_transforms[bone * 16]);
         }
     }
 
-    /* Two-phase computation: first build all global transforms, then
-     * multiply each by its inverse bind pose to produce the palette.
-     * Using bone_palette as scratch for globals would be wrong because
-     * palette entries include inverse_bind, which would corrupt children. */
-    /* Reuse globals workspace across frames to avoid per-frame malloc */
-    if (!p->globals_buf) {
-        p->globals_buf = (float *)malloc((size_t)skel->bone_count * 16 * sizeof(float));
-        if (!p->globals_buf)
-            return;
-    }
-    float *globals = p->globals_buf;
-
-    /* Phase 1: compute global transforms (parent_global * local) */
-    for (int32_t i = 0; i < skel->bone_count; i++) {
-        if (skel->bones[i].parent_index >= 0) {
-            mat4f_mul_local(&globals[skel->bones[i].parent_index * 16],
-                            &p->local_transforms[i * 16],
-                            &globals[i * 16]);
-        } else {
-            memcpy(&globals[i * 16], &p->local_transforms[i * 16], 16 * sizeof(float));
-        }
-    }
-
-    /* Phase 2: palette[i] = global[i] * inverse_bind[i] */
-    for (int32_t i = 0; i < skel->bone_count; i++)
-        mat4f_mul_local(&globals[i * 16], skel->bones[i].inverse_bind, &p->bone_palette[i * 16]);
+    compute_palette_from_locals(skel, p->local_transforms, p->globals_buf, p->bone_palette);
 }
 
 /// @brief True if the player's currently active clip is set to loop.
@@ -1151,7 +1252,7 @@ void rt_anim_player3d_update(void *obj, double delta_time) {
     if (!isfinite(p->speed))
         p->speed = 1.0f;
 
-    p->current_time += (float)(delta_time * p->speed);
+    p->current_time += skeleton3d_clamp_to_float(delta_time * (double)p->speed, 0.0f);
     if (!isfinite(p->current_time))
         p->current_time = 0.0f;
 
@@ -1171,14 +1272,15 @@ void rt_anim_player3d_update(void *obj, double delta_time) {
 
     /* Update crossfade */
     if (p->crossfade_from) {
-        p->crossfade_time += (float)delta_time;
-        p->crossfade_from_time += (float)(delta_time * p->speed);
+        p->crossfade_time += skeleton3d_clamp_to_float(delta_time, 0.0f);
+        p->crossfade_from_time +=
+            skeleton3d_clamp_to_float(delta_time * (double)p->crossfade_from_speed, 0.0f);
         if (!isfinite(p->crossfade_time))
             p->crossfade_time = 0.0f;
         if (!isfinite(p->crossfade_from_time))
             p->crossfade_from_time = 0.0f;
         if (p->crossfade_from->duration > 0.0f) {
-            if (p->crossfade_from->looping)
+            if (p->crossfade_from_looping)
                 p->crossfade_from_time =
                     animation3d_wrap_time(p->crossfade_from_time, p->crossfade_from->duration);
             else if (p->crossfade_from_time > p->crossfade_from->duration)
@@ -1199,7 +1301,7 @@ void rt_anim_player3d_set_speed(void *obj, double speed) {
     if (p) {
         if (!isfinite(speed))
             speed = 1.0;
-        p->speed = (float)speed;
+        p->speed = skeleton3d_clamp_to_float(speed, 1.0f);
     }
 }
 
@@ -1232,9 +1334,13 @@ void rt_anim_player3d_set_time(void *obj, double time) {
             time = 0.0;
         if (p->current && p->current->duration > 0.0f && time > p->current->duration)
             time = p->current->duration;
-        p->current_time = (float)time;
+        p->current_time = skeleton3d_float_or(time, 0.0f);
         p->has_prev_motion_palette = 0;
         p->last_motion_frame = 0;
+        if (p->current)
+            compute_bone_palette(p);
+        else
+            compute_player_bind_pose(p);
     }
 }
 
@@ -1268,7 +1374,11 @@ void *rt_anim_player3d_get_bone_matrix(void *obj, int64_t bone_index) {
         return NULL;
     if (bone_index < 0 || bone_index >= p->skeleton->bone_count)
         return NULL;
-    const float *m = &p->bone_palette[bone_index * 16];
+    if (!p->globals_buf)
+        compute_bone_palette(p);
+    if (!p->globals_buf)
+        return NULL;
+    const float *m = &p->globals_buf[bone_index * 16];
     return rt_mat4_new(m[0],
                        m[1],
                        m[2],
@@ -1302,6 +1412,7 @@ void rt_mesh3d_set_skeleton(void *mesh, void *skeleton) {
         return;
     mesh3d_assign_ref(&m->skeleton_ref, s);
     if (s) {
+        skeleton3d_freeze(s);
         m->bone_count = s->bone_count > VGFX3D_MAX_BONES ? VGFX3D_MAX_BONES : s->bone_count;
     } else {
         m->bone_count = 0;
@@ -1405,6 +1516,8 @@ void rt_canvas3d_draw_mesh_matrix_skinned_keyed(void *canvas,
     c = rt_canvas3d_checked_or_stack(canvas);
     if (!c)
         return;
+    if (rt_heap_is_payload(mesh_obj) && !rt_canvas3d_add_temp_object(canvas, mesh_obj))
+        return;
     if (c && c->backend && vgfx3d_backend_prefers_gpu_skinning(c->backend->name, bone_count)) {
         rt_mesh3d tmp = *mesh;
         tmp.bone_palette = bone_palette;
@@ -1452,6 +1565,8 @@ void rt_canvas3d_draw_mesh_skinned(
     if (!m || !p)
         return;
     if (m->vertex_count == 0 || !p->bone_palette)
+        return;
+    if (!rt_canvas3d_add_temp_object(canvas, anim_player))
         return;
     prev_palette = anim_player_prepare_prev_palette(p, rt_canvas3d_get_frame_serial(canvas));
     rt_canvas3d_draw_mesh_matrix_skinned_keyed(canvas,
@@ -1512,13 +1627,14 @@ void *rt_anim_blend3d_new(void *skel_obj) {
     b->has_prev_motion_palette = 0;
 
     size_t buf_sz = (size_t)skel->bone_count * 16 * sizeof(float);
-    b->bone_palette = (float *)calloc(1, buf_sz);
-    b->prev_bone_palette = (float *)calloc(1, buf_sz);
-    b->motion_palette_snapshot = (float *)calloc(1, buf_sz);
-    b->local_transforms = (float *)calloc(1, buf_sz);
-    b->temp_state_local = (float *)calloc(1, buf_sz);
-    if (!b->bone_palette || !b->prev_bone_palette || !b->motion_palette_snapshot ||
-        !b->local_transforms || !b->temp_state_local) {
+    b->bone_palette = buf_sz > 0 ? (float *)calloc(1, buf_sz) : NULL;
+    b->prev_bone_palette = buf_sz > 0 ? (float *)calloc(1, buf_sz) : NULL;
+    b->motion_palette_snapshot = buf_sz > 0 ? (float *)calloc(1, buf_sz) : NULL;
+    b->local_transforms = buf_sz > 0 ? (float *)calloc(1, buf_sz) : NULL;
+    b->temp_state_local = buf_sz > 0 ? (float *)calloc(1, buf_sz) : NULL;
+    if (buf_sz > 0 &&
+        (!b->bone_palette || !b->prev_bone_palette || !b->motion_palette_snapshot ||
+         !b->local_transforms || !b->temp_state_local)) {
         anim_blend3d_finalizer(b);
         if (rt_obj_release_check0(b))
             rt_obj_free(b);
@@ -1526,11 +1642,22 @@ void *rt_anim_blend3d_new(void *skel_obj) {
         return NULL;
     }
 
-    /* Initialize bone palette to identity */
-    for (int32_t i = 0; i < skel->bone_count; i++) {
-        mat4f_identity(&b->bone_palette[i * 16]);
-        mat4f_identity(&b->prev_bone_palette[i * 16]);
-        mat4f_identity(&b->motion_palette_snapshot[i * 16]);
+    skeleton3d_freeze(skel);
+    if (buf_sz > 0) {
+        float *globals = (float *)calloc(1, buf_sz);
+        if (!globals) {
+            anim_blend3d_finalizer(b);
+            if (rt_obj_release_check0(b))
+                rt_obj_free(b);
+            rt_trap("AnimBlend3D.New: allocation failed");
+            return NULL;
+        }
+        for (int32_t i = 0; i < skel->bone_count; i++)
+            memcpy(&b->local_transforms[i * 16], skel->bones[i].bind_pose_local, 16 * sizeof(float));
+        compute_palette_from_locals(skel, b->local_transforms, globals, b->bone_palette);
+        memcpy(b->prev_bone_palette, b->bone_palette, buf_sz);
+        memcpy(b->motion_palette_snapshot, b->bone_palette, buf_sz);
+        free(globals);
     }
 
     rt_obj_set_finalizer(b, anim_blend3d_finalizer);
@@ -1565,7 +1692,7 @@ int64_t rt_anim_blend3d_add_state(void *obj, rt_string name, void *anim_obj) {
     st->weight = 0.0f;
     st->anim_time = 0.0f;
     st->speed = 1.0f;
-    st->looping = 1;
+    st->looping = anim->looping ? 1 : 0;
     return b->state_count++;
 }
 
@@ -1626,7 +1753,7 @@ void rt_anim_blend3d_set_speed(void *obj, int64_t state, double speed) {
         return;
     if (!isfinite(speed))
         speed = 1.0;
-    b->states[state].speed = (float)speed;
+    b->states[state].speed = skeleton3d_clamp_to_float(speed, 1.0f);
 }
 
 /// @brief Advance every contributing state by `dt` seconds and recompute the blended bone palette.
@@ -1637,7 +1764,7 @@ void rt_anim_blend3d_set_speed(void *obj, int64_t state, double speed) {
 /// final pose. Output palette is then ready for skinning.
 void rt_anim_blend3d_update(void *obj, double dt) {
     rt_anim_blend3d *b = anim_blend3d_checked(obj);
-    if (!b || dt <= 0 || !isfinite(dt))
+    if (!b || dt < 0 || !isfinite(dt))
         return;
     rt_skeleton3d *skel = b->skeleton;
     if (!skel || skel->bone_count == 0)
@@ -1651,7 +1778,7 @@ void rt_anim_blend3d_update(void *obj, double dt) {
             continue;
         if (!isfinite(st->speed))
             st->speed = 1.0f;
-        st->anim_time += (float)dt * st->speed;
+        st->anim_time += skeleton3d_clamp_to_float(dt * (double)st->speed, 0.0f);
         if (!isfinite(st->anim_time))
             st->anim_time = 0.0f;
         if (st->looping && st->animation->duration > 0)
@@ -1684,8 +1811,10 @@ void rt_anim_blend3d_update(void *obj, double dt) {
             int32_t bone = st->animation->channels[c].bone_index;
             if (bone < 0 || bone >= bc)
                 continue;
-            sample_channel(
-                &st->animation->channels[c], st->anim_time, &b->temp_state_local[bone * 16]);
+            sample_channel_with_fallback(&st->animation->channels[c],
+                                         st->anim_time,
+                                         skel->bones[bone].bind_pose_local,
+                                         &b->temp_state_local[bone * 16]);
         }
 
         /* Weighted TRS blend into local_transforms. */
@@ -1780,6 +1909,8 @@ void rt_canvas3d_draw_mesh_blended(
         return;
 
     const float *prev_palette = anim_blend_prepare_prev_palette(b, rt_canvas3d_get_frame_serial(canvas));
+    if (!rt_canvas3d_add_temp_object(canvas, blend_obj))
+        return;
     rt_canvas3d_draw_mesh_matrix_skinned_keyed(canvas,
                                                mesh,
                                                transform_mat->m,

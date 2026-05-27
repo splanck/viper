@@ -108,6 +108,16 @@ static bool read_text_file(const char *path, std::string &out) {
     return true;
 }
 
+static bool write_text_file(const char *path, const char *text) {
+    FILE *f = std::fopen(path, "wb");
+    if (!f)
+        return false;
+    const size_t len = std::strlen(text);
+    const bool ok = len == 0 || std::fwrite(text, 1, len, f) == len;
+    const bool closed = std::fclose(f) == 0;
+    return ok && closed;
+}
+
 static void test_create_scene_and_node() {
     void *scene = rt_scene3d_new();
     EXPECT_TRUE(scene != nullptr, "Scene3D.New returns non-null");
@@ -679,7 +689,7 @@ static void test_scene_save_serializes_visibility_and_lod_metadata() {
                 "Scene3D.Save serializes material presence");
     EXPECT_TRUE(text.find("\"lod\": [") != std::string::npos,
                 "Scene3D.Save serializes LOD metadata");
-    EXPECT_TRUE(text.find("\"distance\": 10.000000") != std::string::npos,
+    EXPECT_TRUE(text.find("\"distance\": 10") != std::string::npos,
                 "Scene3D.Save serializes LOD distances");
 }
 
@@ -1230,7 +1240,7 @@ static void test_lod_culling_uses_selected_mesh_bounds() {
         "Scene3D increments culled count when the selected LOD mesh is outside the frustum");
 }
 
-static void test_dynamic_deformation_uses_conservative_frustum_culling() {
+static void test_dynamic_deformation_skips_static_frustum_culling() {
     vgfx3d_backend_t backend = {};
     backend.name = "opengl";
     backend.begin_frame = scene_test_begin_frame;
@@ -1259,10 +1269,10 @@ static void test_dynamic_deformation_uses_conservative_frustum_culling() {
 
     rt_scene3d_draw(scene, &canvas, camera);
 
-    EXPECT_TRUE(g_scene_submit_count == 0,
-                "Scene3D culls dynamic meshes when conservative bounds are outside the frustum");
-    EXPECT_TRUE(rt_scene3d_get_culled_count(scene) == 1,
-                "Scene3D records conservative dynamic-mesh frustum culls");
+    EXPECT_TRUE(g_scene_submit_count == 1,
+                "Scene3D draws dynamic meshes instead of culling against stale static bounds");
+    EXPECT_TRUE(rt_scene3d_get_culled_count(scene) == 0,
+                "Scene3D does not record frustum culls for dynamic-deformation meshes");
 }
 
 static void test_parent_animator_drives_child_skinned_meshes() {
@@ -1400,6 +1410,88 @@ static void test_scene_roundtrip_preserves_node_lights() {
                 "Scene3D.Load restores spot cone cosines");
 }
 
+static void test_scene_save_rejects_wrong_handle() {
+    void *node = rt_scene_node3d_new();
+    EXPECT_TRUE(rt_scene3d_save(node, rt_const_cstr("/tmp/viper_scene_wrong_handle.vscn")) == 0,
+                "Scene3D.Save rejects non-Scene3D handles");
+}
+
+static void test_scene_load_rejects_malformed_json() {
+    const char *path = "/tmp/viper_scene_malformed_json.vscn";
+    EXPECT_TRUE(write_text_file(path, "{\"format\":\"vscn\", \"nodes\": ["),
+                "Malformed VSCN fixture can be written");
+    void *loaded = rt_scene3d_load(rt_const_cstr(path));
+    EXPECT_TRUE(loaded == nullptr, "Scene3D.Load rejects malformed JSON instead of partial maps");
+}
+
+static void test_scene_load_rejects_invalid_node_references() {
+    const char *path = "/tmp/viper_scene_invalid_node_ref.vscn";
+    const char *json =
+        "{\n"
+        "  \"format\": \"vscn\",\n"
+        "  \"version\": 2,\n"
+        "  \"textures\": [],\n"
+        "  \"cubemaps\": [],\n"
+        "  \"materials\": [],\n"
+        "  \"meshes\": [],\n"
+        "  \"nodes\": [\n"
+        "    {\"name\": \"bad\", \"position\": [0,0,0], \"rotation\": [0,0,0,1], "
+        "\"scale\": [1,1,1], \"visible\": true, \"mesh\": 0, \"material\": -1}\n"
+        "  ]\n"
+        "}\n";
+    EXPECT_TRUE(write_text_file(path, json), "Invalid-reference VSCN fixture can be written");
+    void *loaded = rt_scene3d_load(rt_const_cstr(path));
+    EXPECT_TRUE(loaded == nullptr, "Scene3D.Load rejects node mesh references outside the mesh table");
+}
+
+static void test_scene_load_sanitizes_degenerate_rotation() {
+    const char *path = "/tmp/viper_scene_degenerate_rotation.vscn";
+    const char *json =
+        "{\n"
+        "  \"format\": \"vscn\",\n"
+        "  \"version\": 2,\n"
+        "  \"textures\": [],\n"
+        "  \"cubemaps\": [],\n"
+        "  \"materials\": [],\n"
+        "  \"meshes\": [],\n"
+        "  \"nodes\": [\n"
+        "    {\"name\": \"rot\", \"position\": [0,0,0], \"rotation\": [0,0,0,0], "
+        "\"scale\": [1,1,1], \"visible\": true, \"mesh\": -1, \"material\": -1}\n"
+        "  ]\n"
+        "}\n";
+    EXPECT_TRUE(write_text_file(path, json), "Degenerate-rotation VSCN fixture can be written");
+    void *loaded = rt_scene3d_load(rt_const_cstr(path));
+    EXPECT_TRUE(loaded != nullptr, "Scene3D.Load accepts valid scene with sanitized transform data");
+    if (!loaded)
+        return;
+    void *node = rt_scene3d_find(loaded, rt_const_cstr("rot"));
+    void *rotation = rt_scene_node3d_get_rotation(node);
+    EXPECT_NEAR(rt_quat_x(rotation), 0.0, 0.001, "Scene3D.Load resets degenerate rotation X");
+    EXPECT_NEAR(rt_quat_y(rotation), 0.0, 0.001, "Scene3D.Load resets degenerate rotation Y");
+    EXPECT_NEAR(rt_quat_z(rotation), 0.0, 0.001, "Scene3D.Load resets degenerate rotation Z");
+    EXPECT_NEAR(rt_quat_w(rotation), 1.0, 0.001, "Scene3D.Load resets degenerate rotation W");
+}
+
+static void test_scene_roundtrip_preserves_high_precision_transform() {
+    const char *path = "/tmp/viper_scene_precision_roundtrip.vscn";
+    void *scene = rt_scene3d_new();
+    void *node = rt_scene_node3d_new();
+    const double x = 0.000000123456789;
+    rt_scene_node3d_set_name(node, rt_const_cstr("precise"));
+    rt_scene_node3d_set_position(node, x, -2.5, 3.75);
+    rt_scene3d_add(scene, node);
+
+    EXPECT_TRUE(rt_scene3d_save(scene, rt_const_cstr(path)) == 1,
+                "Scene3D.Save writes high-precision transform scene");
+    void *loaded = rt_scene3d_load(rt_const_cstr(path));
+    EXPECT_TRUE(loaded != nullptr, "Scene3D.Load reads high-precision transform scene");
+    if (!loaded)
+        return;
+    void *loaded_node = rt_scene3d_find(loaded, rt_const_cstr("precise"));
+    void *pos = rt_scene_node3d_get_position(loaded_node);
+    EXPECT_NEAR(rt_vec3_x(pos), x, 1e-12, "Scene3D.Save/Load preserves sub-micro positions");
+}
+
 int main() {
     test_create_scene_and_node();
     test_add_remove_child();
@@ -1430,7 +1522,7 @@ int main() {
     test_node_aabb_refreshes_after_mesh_mutation();
     test_frustum_culled_count_initial();
     test_lod_culling_uses_selected_mesh_bounds();
-    test_dynamic_deformation_uses_conservative_frustum_culling();
+    test_dynamic_deformation_skips_static_frustum_culling();
     test_parent_animator_drives_child_skinned_meshes();
     test_scene_draw_reuses_active_frame();
     test_scene_draw_culling_uses_canvas_output_aspect();
@@ -1443,6 +1535,11 @@ int main() {
     test_node_animation_rejects_invalid_channel_data();
     test_scene_draw_includes_node_attached_lights();
     test_scene_roundtrip_preserves_node_lights();
+    test_scene_save_rejects_wrong_handle();
+    test_scene_load_rejects_malformed_json();
+    test_scene_load_rejects_invalid_node_references();
+    test_scene_load_sanitizes_degenerate_rotation();
+    test_scene_roundtrip_preserves_high_precision_transform();
 
     printf("Scene3D tests: %d/%d passed\n", tests_passed, tests_run);
     return tests_passed == tests_run ? 0 : 1;

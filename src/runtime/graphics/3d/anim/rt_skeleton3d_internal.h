@@ -31,6 +31,9 @@ typedef struct {
     float position[3];
     float rotation[4];
     float scale_xyz[3];
+    uint8_t position_mask;
+    uint8_t rotation_mask;
+    uint8_t scale_mask;
 } vgfx3d_keyframe_t;
 
 typedef struct {
@@ -44,6 +47,7 @@ typedef struct rt_skeleton3d {
     void *vptr;
     vgfx3d_bone_t *bones;
     int32_t bone_count;
+    int8_t frozen;
 } rt_skeleton3d;
 
 typedef struct rt_animation3d {
@@ -65,10 +69,12 @@ typedef struct rt_anim_player3d {
     float crossfade_time;
     float crossfade_duration;
     float crossfade_from_time;
+    float crossfade_from_speed;
     float speed;
     int8_t playing;
     int8_t loop_override_enabled;
     int8_t loop_override_value;
+    int8_t crossfade_from_looping;
     float *bone_palette;
     float *prev_bone_palette;
     float *motion_palette_snapshot;

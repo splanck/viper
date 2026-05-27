@@ -559,7 +559,7 @@ void rt_canvas3d_draw_mesh_matrix_morphed(void *canvas,
                                           const void *motion_key,
                                           void *morph_targets);
 /// @brief Internal: retain a GC-managed object until the current frame is fully submitted.
-void rt_canvas3d_add_temp_object(void *obj, void *value);
+int rt_canvas3d_add_temp_object(void *obj, void *value);
 /// @brief Internal: sample a cubemap direction into linear RGB components.
 void rt_cubemap_sample(const rt_cubemap3d *cm,
                        float dx,

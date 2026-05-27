@@ -686,7 +686,7 @@ static void quat_from_matrix_rows(double m00,
 /// Used when reading back world-space orientation after a node's
 /// world matrix has been composed from parent transforms — we need
 /// the rotation back as a quaternion for further composition.
-static void quat_from_world_matrix(const double *m, double *out) {
+static int scene_extract_rotation_basis(const double *m, double basis[9]) {
     double rx;
     double ry;
     double rz;
@@ -699,9 +699,9 @@ static void quat_from_world_matrix(const double *m, double *out) {
     double rlen;
     double ulen;
     double flen;
-    if (!m || !out) {
-        return;
-    }
+    double det;
+    if (!m || !basis)
+        return 0;
     rx = m[0];
     ry = m[4];
     rz = m[8];
@@ -714,10 +714,9 @@ static void quat_from_world_matrix(const double *m, double *out) {
     rlen = sqrt(rx * rx + ry * ry + rz * rz);
     ulen = sqrt(ux * ux + uy * uy + uz * uz);
     flen = sqrt(fx * fx + fy * fy + fz * fz);
-    if (rlen < 1e-12 || ulen < 1e-12 || flen < 1e-12) {
-        quat_identity(out);
-        return;
-    }
+    if (!isfinite(rlen) || !isfinite(ulen) || !isfinite(flen) || rlen < 1e-12 ||
+        ulen < 1e-12 || flen < 1e-12)
+        return 0;
     rx /= rlen;
     ry /= rlen;
     rz /= rlen;
@@ -727,7 +726,46 @@ static void quat_from_world_matrix(const double *m, double *out) {
     fx /= flen;
     fy /= flen;
     fz /= flen;
-    quat_from_matrix_rows(rx, ux, fx, ry, uy, fy, rz, uz, fz, out);
+    det = rx * (uy * fz - uz * fy) - ux * (ry * fz - rz * fy) +
+          fx * (ry * uz - rz * uy);
+    if (!isfinite(det))
+        return 0;
+    if (det < 0.0) {
+        if (rlen >= ulen && rlen >= flen) {
+            rx = -rx;
+            ry = -ry;
+            rz = -rz;
+        } else if (ulen >= flen) {
+            ux = -ux;
+            uy = -uy;
+            uz = -uz;
+        } else {
+            fx = -fx;
+            fy = -fy;
+            fz = -fz;
+        }
+    }
+    basis[0] = rx;
+    basis[1] = ux;
+    basis[2] = fx;
+    basis[3] = ry;
+    basis[4] = uy;
+    basis[5] = fy;
+    basis[6] = rz;
+    basis[7] = uz;
+    basis[8] = fz;
+    return 1;
+}
+
+static void quat_from_world_matrix(const double *m, double *out) {
+    double basis[9];
+    if (!out)
+        return;
+    if (!scene_extract_rotation_basis(m, basis)) {
+        quat_identity(out);
+        return;
+    }
+    quat_from_matrix_rows(basis[0], basis[1], basis[2], basis[3], basis[4], basis[5], basis[6], basis[7], basis[8], out);
 }
 
 /// @brief Decompose a row-major TRS matrix into translation, rotation, and scale.
@@ -1622,6 +1660,8 @@ static void scene_transform_node_light(rt_scene_node3d *node, const rt_light3d *
     float local_pos[3];
     float world_pos[3];
     float world_dir[3];
+    double basis[9];
+    double local_dir[3];
     if (!node || !src || !dst)
         return;
     recompute_world_matrix(node);
@@ -1634,15 +1674,21 @@ static void scene_transform_node_light(rt_scene_node3d *node, const rt_light3d *
     dst->position[1] = world_pos[1];
     dst->position[2] = world_pos[2];
 
-    world_dir[0] = (float)(node->world_matrix[0] * src->direction[0] +
-                           node->world_matrix[1] * src->direction[1] +
-                           node->world_matrix[2] * src->direction[2]);
-    world_dir[1] = (float)(node->world_matrix[4] * src->direction[0] +
-                           node->world_matrix[5] * src->direction[1] +
-                           node->world_matrix[6] * src->direction[2]);
-    world_dir[2] = (float)(node->world_matrix[8] * src->direction[0] +
-                           node->world_matrix[9] * src->direction[1] +
-                           node->world_matrix[10] * src->direction[2]);
+    local_dir[0] = scene3d_finite_or(src->direction[0], 0.0);
+    local_dir[1] = scene3d_finite_or(src->direction[1], 0.0);
+    local_dir[2] = scene3d_finite_or(src->direction[2], -1.0);
+    if (scene_extract_rotation_basis(node->world_matrix, basis)) {
+        world_dir[0] =
+            (float)(basis[0] * local_dir[0] + basis[1] * local_dir[1] + basis[2] * local_dir[2]);
+        world_dir[1] =
+            (float)(basis[3] * local_dir[0] + basis[4] * local_dir[1] + basis[5] * local_dir[2]);
+        world_dir[2] =
+            (float)(basis[6] * local_dir[0] + basis[7] * local_dir[1] + basis[8] * local_dir[2]);
+    } else {
+        world_dir[0] = (float)local_dir[0];
+        world_dir[1] = (float)local_dir[1];
+        world_dir[2] = (float)local_dir[2];
+    }
     scene_normalize_f32_vec3(world_dir, 0.0f, 0.0f, -1.0f);
     dst->direction[0] = world_dir[0];
     dst->direction[1] = world_dir[1];
@@ -1967,23 +2013,16 @@ static void draw_node(rt_scene_node3d *node,
                 (effective_animator != NULL || draw_mesh_impl->morph_targets_ref != NULL ||
                  draw_mesh_impl->morph_deltas != NULL || draw_mesh_impl->morph_weights != NULL ||
                  draw_mesh_impl->morph_shape_count > 0);
-            float cull_min[3] = {draw_min[0], draw_min[1], draw_min[2]};
-            float cull_max[3] = {draw_max[0], draw_max[1], draw_max[2]};
-            float world_min[3], world_max[3];
-            if (has_dynamic_deformation) {
-                float inflate = draw_radius > 0.0f ? draw_radius * 2.0f : 1.0f;
-                cull_min[0] -= inflate;
-                cull_min[1] -= inflate;
-                cull_min[2] -= inflate;
-                cull_max[0] += inflate;
-                cull_max[1] += inflate;
-                cull_max[2] += inflate;
-            }
-            vgfx3d_transform_aabb(cull_min, cull_max, current->world_matrix, world_min, world_max);
-            if (vgfx3d_frustum_test_aabb(frustum, world_min, world_max) == 0) {
-                draw_self = 0;
-                if (culled)
-                    (*culled)++;
+            if (!has_dynamic_deformation) {
+                float cull_min[3] = {draw_min[0], draw_min[1], draw_min[2]};
+                float cull_max[3] = {draw_max[0], draw_max[1], draw_max[2]};
+                float world_min[3], world_max[3];
+                vgfx3d_transform_aabb(cull_min, cull_max, current->world_matrix, world_min, world_max);
+                if (vgfx3d_frustum_test_aabb(frustum, world_min, world_max) == 0) {
+                    draw_self = 0;
+                    if (culled)
+                        (*culled)++;
+                }
             }
         }
 
@@ -2003,14 +2042,16 @@ static void draw_node(rt_scene_node3d *node,
             if (anim_palette && anim_bone_count > 0 && mesh_bone_count > 0) {
                 int32_t draw_bone_count =
                     anim_bone_count < mesh_bone_count ? anim_bone_count : mesh_bone_count;
-                rt_canvas3d_draw_mesh_matrix_skinned_keyed(canvas3d,
-                                                           draw_mesh,
-                                                           current->world_matrix,
-                                                           current->material,
-                                                           current,
-                                                           anim_palette,
-                                                           anim_prev_palette,
-                                                           draw_bone_count);
+                if (rt_canvas3d_add_temp_object(canvas3d, effective_animator)) {
+                    rt_canvas3d_draw_mesh_matrix_skinned_keyed(canvas3d,
+                                                               draw_mesh,
+                                                               current->world_matrix,
+                                                               current->material,
+                                                               current,
+                                                               anim_palette,
+                                                               anim_prev_palette,
+                                                               draw_bone_count);
+                }
             } else {
                 rt_canvas3d_draw_mesh_matrix_keyed(canvas3d,
                                                    draw_mesh,

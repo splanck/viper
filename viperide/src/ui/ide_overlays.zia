@@ -601,7 +601,14 @@ class IdeOverlays {
 
     hide func layoutSettingsPanel(shell: app_shell.AppShell) {
         if settingsPanel == null { return; }
-        var rootW = shell.app.GetWidth();
+        // GUI widgets lay out in physical pixels, but the dock breakpoints below
+        // are logical so the panel adapts identically on 1x and HiDPI displays.
+        // Convert the physical window width to logical, pick the dock width, then
+        // scale it back to physical for the layout engine. settingsDockWidth is
+        // stored in logical pixels so it stays stable across display scales.
+        var scale = shell.app.GetScale();
+        if scale < 1.0 { scale = 1.0; }
+        var rootW = Convert.NumToInt((1.0 * shell.app.GetWidth()) / scale);
         if rootW <= 0 { rootW = 1280; }
         var panelW = SETTINGS_DOCK_WIDTH;
         if rootW < 760 { panelW = SETTINGS_DOCK_MIN_WIDTH; }
@@ -614,7 +621,7 @@ class IdeOverlays {
         if panelW < 240 { panelW = 240; }
         if settingsDockWidth == panelW { return; }
         settingsDockWidth = panelW;
-        settingsPanel.SetSize(panelW, 0);
+        settingsPanel.SetSize(Convert.NumToInt(scale * panelW), 0);
     }
 
     hide func layoutAboutPanel(shell: app_shell.AppShell) {

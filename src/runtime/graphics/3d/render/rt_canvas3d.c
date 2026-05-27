@@ -3680,11 +3680,11 @@ int rt_canvas3d_add_temp_buffer(void *obj, void *buffer) {
 /// Lets a draw call reference an object (mesh, material, pixels)
 /// that might otherwise be collected before the deferred queue
 /// flushes. The canvas drops the reference in `rt_canvas3d_end`.
-void rt_canvas3d_add_temp_object(void *obj, void *value) {
+int rt_canvas3d_add_temp_object(void *obj, void *value) {
     rt_canvas3d *c = rt_canvas3d_checked_or_stack(obj);
     if (!c || !value)
-        return;
-    (void)canvas3d_track_temp_object(c, value);
+        return 0;
+    return canvas3d_track_temp_object(c, value);
 }
 
 /// @brief Get the current canvas width in pixels (updates on window resize).

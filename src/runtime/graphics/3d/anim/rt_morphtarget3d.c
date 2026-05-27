@@ -372,8 +372,11 @@ void *rt_morphtarget3d_clone(void *obj) {
         return NULL;
     for (int32_t i = 0; i < src->shape_count; i++) {
         int64_t shape = rt_morphtarget3d_add_shape(dst, rt_const_cstr(src->shapes[i].name));
-        if (shape < 0)
-            continue;
+        if (shape < 0) {
+            if (rt_obj_release_check0(dst))
+                rt_obj_free(dst);
+            return NULL;
+        }
         if (src->shapes[i].pos_deltas && dst->shapes[shape].pos_deltas) {
             memcpy(dst->shapes[shape].pos_deltas,
                    src->shapes[i].pos_deltas,
@@ -382,20 +385,26 @@ void *rt_morphtarget3d_clone(void *obj) {
         if (src->shapes[i].nrm_deltas) {
             dst->shapes[shape].nrm_deltas =
                 (float *)calloc((size_t)src->vertex_count * 3u, sizeof(float));
-            if (dst->shapes[shape].nrm_deltas) {
-                memcpy(dst->shapes[shape].nrm_deltas,
-                       src->shapes[i].nrm_deltas,
-                       (size_t)src->vertex_count * 3u * sizeof(float));
+            if (!dst->shapes[shape].nrm_deltas) {
+                if (rt_obj_release_check0(dst))
+                    rt_obj_free(dst);
+                return NULL;
             }
+            memcpy(dst->shapes[shape].nrm_deltas,
+                   src->shapes[i].nrm_deltas,
+                   (size_t)src->vertex_count * 3u * sizeof(float));
         }
         if (src->shapes[i].tan_deltas) {
             dst->shapes[shape].tan_deltas =
                 (float *)calloc((size_t)src->vertex_count * 3u, sizeof(float));
-            if (dst->shapes[shape].tan_deltas) {
-                memcpy(dst->shapes[shape].tan_deltas,
-                       src->shapes[i].tan_deltas,
-                       (size_t)src->vertex_count * 3u * sizeof(float));
+            if (!dst->shapes[shape].tan_deltas) {
+                if (rt_obj_release_check0(dst))
+                    rt_obj_free(dst);
+                return NULL;
             }
+            memcpy(dst->shapes[shape].tan_deltas,
+                   src->shapes[i].tan_deltas,
+                   (size_t)src->vertex_count * 3u * sizeof(float));
         }
         dst->weights[shape] = src->weights ? src->weights[i] : 0.0f;
         dst->prev_weights[shape] = src->prev_weights ? src->prev_weights[i] : 0.0f;
@@ -740,7 +749,8 @@ static void morphtarget_draw_mesh_matrix(void *canvas,
         const float *packed_normal_deltas = rt_morphtarget3d_get_packed_normal_deltas(mt);
         if (mt->shape_count > 0 && !packed_deltas)
             return;
-        rt_canvas3d_add_temp_object(canvas, mt);
+        if (!rt_canvas3d_add_temp_object(canvas, mt))
+            return;
 
         saved_ref = m->morph_targets_ref;
         saved_deltas = m->morph_deltas;
@@ -831,6 +841,11 @@ static void morphtarget_draw_mesh_matrix(void *canvas,
                 t[2] /= len;
             }
         }
+    }
+
+    if (rt_heap_is_payload(mesh) && !rt_canvas3d_add_temp_object(canvas, mesh)) {
+        free(morphed);
+        return;
     }
 
     /* Register buffer for end-of-frame cleanup (avoids use-after-free

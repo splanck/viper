@@ -720,6 +720,18 @@ int64_t rt_app_get_height(void *app) {
     return h;
 }
 
+/// @brief Get the window's HiDPI backing scale factor (>= 1.0).
+/// @details Window width/height are reported in physical pixels; dividing by this
+///          factor recovers the logical (point) dimensions used for layout
+///          breakpoints. Mirrors the scaling already applied by the monitor getters.
+double rt_app_get_scale(void *app) {
+    RT_ASSERT_MAIN_THREAD();
+    rt_gui_app_t *gui_app = rt_app_checked(app);
+    if (!gui_app)
+        return 1.0;
+    return (double)rt_app_window_scale(gui_app);
+}
+
 /// @brief Move the app window to a specific screen position.
 void rt_app_set_position(void *app, int64_t x, int64_t y) {
     RT_ASSERT_MAIN_THREAD();
@@ -1095,6 +1107,12 @@ int64_t rt_app_get_width(void *app) {
 int64_t rt_app_get_height(void *app) {
     (void)app;
     return 0;
+}
+
+/// @brief Stub: graphics disabled — no HiDPI scaling, returns 1.0.
+double rt_app_get_scale(void *app) {
+    (void)app;
+    return 1.0;
 }
 
 /// @brief Move the app window to a specific screen position.

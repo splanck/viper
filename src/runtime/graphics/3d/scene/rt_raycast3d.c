@@ -11,7 +11,7 @@
 //   method ray-AABB, quadratic ray-sphere, and AABB overlap/penetration.
 //
 // Key invariants:
-//   - Ray direction must be normalized for correct distance values.
+//   - Public ray queries normalize non-zero directions internally, so distances are world units.
 //   - Möller–Trumbore returns parametric t; t < 0 means behind ray origin.
 //   - Ray-mesh transforms the ray into object space via inverse model matrix.
 //   - AABB penetration returns the minimum push-out vector (shortest axis).
@@ -70,6 +70,21 @@ static int vec3_read_finite(void *obj, double *out) {
     out[1] = rt_vec3_y(obj);
     out[2] = rt_vec3_z(obj);
     return vec3_is_finite_raw(out);
+}
+
+static int vec3_normalize_raw(double *v) {
+    double len_sq;
+    double inv_len;
+    if (!vec3_is_finite_raw(v))
+        return 0;
+    len_sq = v[0] * v[0] + v[1] * v[1] + v[2] * v[2];
+    if (!isfinite(len_sq) || len_sq < EPSILON * EPSILON)
+        return 0;
+    inv_len = 1.0 / sqrt(len_sq);
+    v[0] *= inv_len;
+    v[1] *= inv_len;
+    v[2] *= inv_len;
+    return 1;
 }
 
 /// @brief Checked cast of an opaque handle to a Mat4 payload; NULL on class mismatch.
@@ -247,6 +262,9 @@ static double rt_ray3d_intersect_aabb_raw(const double *origin,
                                           const double *mn,
                                           const double *mx) {
     double tmin = -DBL_MAX, tmax = DBL_MAX;
+    double len_sq = dir[0] * dir[0] + dir[1] * dir[1] + dir[2] * dir[2];
+    if (!isfinite(len_sq) || len_sq < EPSILON * EPSILON)
+        return -1.0;
     for (int i = 0; i < 3; i++) {
         if (fabs(dir[i]) < EPSILON) {
             if (origin[i] < mn[i] || origin[i] > mx[i])
@@ -352,7 +370,7 @@ typedef struct {
  * barycentric coordinates (u, v) and distance t simultaneously.
  *=========================================================================*/
 
-/// @brief Möller–Trumbore ray-triangle intersection. Returns the parametric distance
+/// @brief Möller–Trumbore ray-triangle intersection. Returns the Euclidean distance
 /// `t` along the ray to the hit point (≥ 0 on hit), or -1 on miss / NULL inputs /
 /// degenerate (parallel) ray. Computes barycentric coordinates inline and rejects
 /// hits with `u`, `v`, or `1 - u - v` outside `[0, 1]`. The classic algorithm — no
@@ -368,6 +386,8 @@ double rt_ray3d_intersect_triangle(
     if (!vec3_read_finite(origin, o) || !vec3_read_finite(dir, d) ||
         !vec3_read_finite(v0_obj, a_pt) || !vec3_read_finite(v1_obj, b_pt) ||
         !vec3_read_finite(v2_obj, c_pt))
+        return -1.0;
+    if (!vec3_normalize_raw(d))
         return -1.0;
 
     double ox = o[0], oy = o[1], oz = o[2];
@@ -424,14 +444,16 @@ double rt_ray3d_intersect_triangle(
 ///          Uses the standard slab algorithm: project the ray onto each axis,
 ///          compute entry/exit intervals, and check for overlap.
 /// @param origin   Vec3 ray origin.
-/// @param dir      Vec3 ray direction (need not be normalized; length affects t).
+/// @param dir      Vec3 ray direction (need not be normalized; zero-length misses).
 /// @param aabb_min Vec3 minimum corner of the axis-aligned bounding box.
 /// @param aabb_max Vec3 maximum corner of the axis-aligned bounding box.
-/// @return Distance t along the ray to the nearest hit, or -1.0 on miss.
+/// @return Euclidean distance to the nearest hit, or -1.0 on miss.
 double rt_ray3d_intersect_aabb(void *origin, void *dir, void *aabb_min, void *aabb_max) {
     double o[3], d[3], mn[3], mx[3];
     if (!vec3_read_finite(origin, o) || !vec3_read_finite(dir, d) ||
         !vec3_read_finite(aabb_min, mn) || !vec3_read_finite(aabb_max, mx))
+        return -1.0;
+    if (!vec3_normalize_raw(d))
         return -1.0;
     aabb3d_canonicalize_raw(mn, mx);
     return rt_ray3d_intersect_aabb_raw(o, d, mn, mx);
@@ -454,6 +476,8 @@ double rt_ray3d_intersect_sphere(void *origin, void *dir, void *center, double r
     if (!vec3_read_finite(origin, o) || !vec3_read_finite(dir, d) ||
         !vec3_read_finite(center, cpt))
         return -1.0;
+    if (!vec3_normalize_raw(d))
+        return -1.0;
 
     double ox = o[0], oy = o[1], oz = o[2];
     double dx = d[0], dy = d[1], dz = d[2];
@@ -467,6 +491,8 @@ double rt_ray3d_intersect_sphere(void *origin, void *dir, void *center, double r
         return -1.0;
     double b = 2.0 * (lx * dx + ly * dy + lz * dz);
     double c = lx * lx + ly * ly + lz * lz - radius * radius;
+    if (c <= 0.0)
+        return 0.0;
 
     double disc = b * b - 4.0 * a * c;
     if (!isfinite(disc) || disc < 0.0)
@@ -504,6 +530,8 @@ void *rt_ray3d_intersect_mesh(void *origin, void *dir, void *mesh_obj, void *tra
     rt_mesh3d *m = (rt_mesh3d *)rt_g3d_checked_or_null(mesh_obj, RT_G3D_MESH3D_CLASS_ID);
     mat4_impl *transform = NULL;
     if (!vec3_read_finite(origin, world_origin) || !vec3_read_finite(dir, world_dir) || !m)
+        return NULL;
+    if (!vec3_normalize_raw(world_dir))
         return NULL;
     if (transform_obj) {
         transform = raycast3d_mat4_checked(transform_obj);
@@ -883,7 +911,7 @@ void *rt_sphere3d_penetration(void *center_a, double radius_a, void *center_b, d
     if (dist < 1e-12)
         return rt_vec3_new(0, depth, 0);
     double inv_dist = 1.0 / dist;
-    return rt_vec3_new(dx * inv_dist * depth, dy * inv_dist * depth, dz * inv_dist * depth);
+    return rt_vec3_new(-dx * inv_dist * depth, -dy * inv_dist * depth, -dz * inv_dist * depth);
 }
 
 /// @brief Find the closest point on an AABB surface to a given point.
