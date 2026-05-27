@@ -103,7 +103,7 @@ class WorldGame {
     expose func run() {
         Mouse.Capture();
 
-        while (Canvas3D.get_ShouldClose(canvas) == 0 && quitRequested == false) {
+        while (Canvas3D.get_ShouldClose(canvas) == false && quitRequested == false) {
             Canvas3D.Poll(canvas);
 
             var dt = (Canvas3D.get_DeltaTime(canvas) + 0.0) / 1000.0;
