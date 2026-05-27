@@ -130,6 +130,49 @@ void rt_game3d_layermask_set_bits(void *mask, int64_t bits);
 void *rt_game3d_layermask_include(void *mask, int64_t layer);
 int8_t rt_game3d_layermask_includes(void *mask, int64_t layer);
 
+void *rt_game3d_body_def_box(double half_x, double half_y, double half_z, double mass);
+void *rt_game3d_body_def_sphere(double radius, double mass);
+void *rt_game3d_body_def_capsule(double radius, double height, double mass);
+void *rt_game3d_body_def_static_box(double half_x, double half_y, double half_z);
+void *rt_game3d_body_def_static_plane(double size);
+int64_t rt_game3d_body_def_get_shape(void *def);
+void rt_game3d_body_def_set_shape(void *def, int64_t shape);
+double rt_game3d_body_def_get_mass(void *def);
+void rt_game3d_body_def_set_mass(void *def, double mass);
+double rt_game3d_body_def_get_friction(void *def);
+void rt_game3d_body_def_set_friction(void *def, double friction);
+double rt_game3d_body_def_get_restitution(void *def);
+void rt_game3d_body_def_set_restitution(void *def, double restitution);
+int8_t rt_game3d_body_def_get_static(void *def);
+void rt_game3d_body_def_set_static(void *def, int8_t is_static);
+int8_t rt_game3d_body_def_get_kinematic(void *def);
+void rt_game3d_body_def_set_kinematic(void *def, int8_t is_kinematic);
+int8_t rt_game3d_body_def_get_trigger(void *def);
+void rt_game3d_body_def_set_trigger(void *def, int8_t is_trigger);
+int8_t rt_game3d_body_def_get_use_ccd(void *def);
+void rt_game3d_body_def_set_use_ccd(void *def, int8_t use_ccd);
+int64_t rt_game3d_body_def_get_layer(void *def);
+void rt_game3d_body_def_set_layer_prop(void *def, int64_t layer);
+void *rt_game3d_body_def_get_mask(void *def);
+void rt_game3d_body_def_set_mask_prop(void *def, void *mask);
+int64_t rt_game3d_body_def_get_sync_mode(void *def);
+void rt_game3d_body_def_set_sync_mode_prop(void *def, int64_t sync_mode);
+void *rt_game3d_body_def_with_layer(void *def, int64_t layer);
+void *rt_game3d_body_def_with_mask(void *def, void *mask);
+void *rt_game3d_body_def_as_trigger(void *def);
+void *rt_game3d_body_def_with_sync(void *def, int64_t sync_mode);
+
+int64_t rt_game3d_collision_event_get_phase(void *event);
+void *rt_game3d_collision_event_get_a(void *event);
+void *rt_game3d_collision_event_get_b(void *event);
+void *rt_game3d_collision_event_get_raw(void *event);
+int8_t rt_game3d_collision_event_get_is_trigger(void *event);
+double rt_game3d_collision_event_get_relative_speed(void *event);
+double rt_game3d_collision_event_get_normal_impulse(void *event);
+void *rt_game3d_collision_event_point(void *event);
+void *rt_game3d_collision_event_normal(void *event);
+void *rt_game3d_collision_event_other(void *event, void *entity);
+
 void *rt_game3d_input_new(void);
 double rt_game3d_input_get_look_sensitivity(void *input);
 void rt_game3d_input_set_look_sensitivity(void *input, double sensitivity);
@@ -212,6 +255,18 @@ void *rt_game3d_prefab_sphere(double radius, int64_t segments, void *material);
 void *rt_game3d_prefab_cylinder(double radius, double height, int64_t segments, void *material);
 void *rt_game3d_prefab_plane(double width, double depth, void *material);
 void *rt_game3d_prefab_ground(double size, void *material);
+
+void *rt_game3d_assets_load_model(rt_string path);
+void *rt_game3d_assets_load_model_asset(rt_string path);
+void *rt_game3d_assets_load_model_template(rt_string path);
+void *rt_game3d_assets_load_model_template_asset(rt_string path);
+void rt_game3d_assets_preload(rt_string path);
+void rt_game3d_assets_clear_cache(void);
+
+void *rt_game3d_model_template_get_model(void *model_template);
+rt_string rt_game3d_model_template_get_path(void *model_template);
+int8_t rt_game3d_model_template_get_is_asset(void *model_template);
+void *rt_game3d_model_template_instantiate(void *model_template);
 
 void *rt_game3d_environment_outdoor(void *world);
 void *rt_game3d_environment_sunset(void *world);

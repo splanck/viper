@@ -9,7 +9,7 @@ This file tracks the public runtime-backed `Viper.Game3D` surface described in
 |---|---|---|---|---|---|---|---|---|
 | API-NS-001 | Confirm and expose `Viper.Game3D.*` namespace | `api-spec.md` Conventions | done | `runtime.def`, runtime signatures/classes | `test_rt_game3d`; `g3d_test_game3d_world_probe` | Game3D docs, `zia-feasibility.md`, `02-decisions.md` | focused ctests passed | D-001 closed |
 | API-ENUM-001 | `Layers` values: World, Dynamic, Player, Trigger, Debris | `api-spec.md` Enums | done | runtime constants | `test_rt_game3d` | Game3D docs | focused ctest passed | Single-bit values |
-| API-ENUM-002 | `BodyShape` values: Box, Sphere, Capsule | `api-spec.md` Enums | done | runtime constants | `test_rt_game3d` | Game3D docs | focused ctest passed | BodyDef helpers still Phase 4 |
+| API-ENUM-002 | `BodyShape` values: Box, Sphere, Capsule | `api-spec.md` Enums | done | runtime constants and BodyDef creation paths | `test_rt_game3d` | Game3D docs | focused ctest passed |  |
 | API-ENUM-003 | `SyncMode` values | `api-spec.md` Enums | done | runtime constants | `test_rt_game3d` | Game3D docs | focused ctest passed | Node/body/root-motion modes |
 | API-ENUM-004 | `AlphaMode` values | `api-spec.md` Enums | done | runtime constants | `test_rt_game3d` | Game3D docs | focused ctest passed |  |
 | API-ENUM-005 | `ShadingModel` values | `api-spec.md` Enums | done | runtime constants | `test_rt_game3d` | Game3D docs | focused ctest passed |  |
@@ -81,7 +81,7 @@ This file tracks the public runtime-backed `Viper.Game3D` surface described in
 | API-ENT-001 | Fields: id/node/mesh/material/body/anim/layer/collisionMask/name | `api-spec.md` Entity3D | done | runtime properties | `test_rt_game3d`; Zia world probe | Game3D docs | focused ctests passed |  |
 | API-ENT-002 | `Entity3D.New()` | `api-spec.md` Entity3D | done | runtime constructor | `test_rt_game3d` | Game3D docs | focused ctest passed |  |
 | API-ENT-003 | `Entity3D.Of(mesh, material)` | `api-spec.md` Entity3D | done | runtime method | `test_rt_game3d`, `g3d_test_game3d_world_probe` | Game3D docs | focused ctests passed |  |
-| API-ENT-004 | `Entity3D.FromNode(root)` | `api-spec.md` Entity3D | partial | runtime method | build coverage | Game3D docs | local build | Imported model subtree probe remains Phase 4 |
+| API-ENT-004 | `Entity3D.FromNode(root)` | `api-spec.md` Entity3D | partial | runtime method; Assets3D uses imported root groups | `test_rt_game3d`, `g3d_test_game3d_assets_probe` | Game3D docs | focused ctests passed | Direct public `FromNode` Zia probe remains nice-to-have |
 | API-ENT-005 | Fluent `setPosition(x,y,z)` | `api-spec.md` Entity3D | done | runtime method | `test_rt_game3d`, Zia world probe | Game3D docs | focused ctests passed |  |
 | API-ENT-006 | Fluent `setPositionV(p)` | `api-spec.md` Entity3D | done | runtime method | `test_rt_game3d` | Game3D docs | focused ctest passed |  |
 | API-ENT-007 | Fluent `setScale(s)` | `api-spec.md` Entity3D | done | runtime method | `test_rt_game3d` | Game3D docs | focused ctest passed |  |
@@ -94,7 +94,7 @@ This file tracks the public runtime-backed `Viper.Game3D` surface described in
 | API-ENT-014 | `setName(n)` | `api-spec.md` Entity3D | done | runtime method/property | `test_rt_game3d`, Zia world probe | Game3D docs | focused ctests passed |  |
 | API-ENT-015 | `setLayer(layer)` | `api-spec.md` Entity3D | done | runtime method/property | `test_rt_game3d`, Zia world probe | Game3D docs | focused ctests passed |  |
 | API-ENT-016 | `setCollisionMask(mask)` | `api-spec.md` Entity3D | done | runtime method/property | `test_rt_game3d`, Zia world probe | Game3D docs | focused ctests passed |  |
-| API-ENT-017 | `attachBody(def)` | `api-spec.md` Entity3D | partial | `attachBody` accepts raw `Physics3DBody` now | `test_rt_game3d` | Game3D docs | focused ctest passed | Higher-level `BodyDef` remains Phase 4 |
+| API-ENT-017 | `attachBody(def)` | `api-spec.md` Entity3D | done | `attachBody` accepts `BodyDef` and raw `Physics3DBody`, applies filters/flags, binds node, and registers spawned bodies | `test_rt_game3d`, `g3d_test_game3d_physics_probe` | Game3D docs | focused ctests passed | Raw body remains escape hatch |
 | API-ENT-018 | `applyImpulse(x,y,z)` | `api-spec.md` Entity3D | done | runtime method over attached body | `test_rt_game3d` | Game3D docs | focused ctest passed |  |
 | API-ENT-019 | `setVelocity(x,y,z)` | `api-spec.md` Entity3D | done | runtime method over attached body | `test_rt_game3d` | Game3D docs | focused ctest passed |  |
 | API-ENT-020 | Optional `onUpdate(fn)` | `api-spec.md` Entity3D | todo |  |  |  |  | Requires callback approval |
@@ -106,36 +106,36 @@ This file tracks the public runtime-backed `Viper.Game3D` surface described in
 | API-ENT-026 | `spawn` attaches node to world scene and registers entity | `api-spec.md` Entity3D Notes | done | runtime world registry/scene attach | `test_rt_game3d`, Zia world probe | Game3D docs | focused ctests passed |  |
 | API-ENT-027 | `despawn` removes registry, scene, physics, effects, child ownership | `api-spec.md` Entity3D Notes | partial | removes registry, scene, physics, children | `test_rt_game3d`, Zia world probe | Game3D docs | focused ctests passed | Per-entity effects remain later |
 | API-ENT-028 | Group despawn recurses over Game3D child entities | `api-spec.md` Entity3D Notes | done | recursive child despawn | `test_rt_game3d` | Game3D docs | focused ctest passed |  |
-| API-ENT-029 | Raw imported child nodes remain part of root node subtree | `api-spec.md` Entity3D Notes | partial | documented policy | imported model probe pending | Game3D docs | local docs update |  |
+| API-ENT-029 | Raw imported child nodes remain part of root node subtree | `api-spec.md` Entity3D Notes | done | `Assets3D` returns group entities with imported root node subtree intact | `test_rt_game3d`, `g3d_test_game3d_assets_probe` | Game3D docs | focused ctests passed |  |
 | API-ENT-030 | Destroyed world/entity diagnostics use `Game3D.<Type>.<method>` form | `api-spec.md` Entity3D Notes | partial | trap guards use Game3D prefixes | callback rejection negative probe | Game3D docs | focused ctest passed | Destroyed-handle negative probe pending |
 
 ## Physics and collisions
 
 | ID | Item | Source | Status | Impl | Tests | Docs | Proof / link | Notes |
 |---|---|---|---|---|---|---|---|---|
-| API-PHY-001 | `BodyDef` fields | `api-spec.md` BodyDef | todo |  |  |  |  | shape/mass/friction/restitution/static/kinematic/trigger/CCD/layer/mask/sync |
-| API-PHY-002 | `BodyDef.Box(...)` | `api-spec.md` BodyDef | todo |  |  |  |  |  |
-| API-PHY-003 | `BodyDef.Sphere(...)` | `api-spec.md` BodyDef | todo |  |  |  |  |  |
-| API-PHY-004 | `BodyDef.Capsule(...)` | `api-spec.md` BodyDef | todo |  |  |  |  |  |
-| API-PHY-005 | `BodyDef.StaticBox(...)` | `api-spec.md` BodyDef | todo |  |  |  |  |  |
-| API-PHY-006 | `BodyDef.StaticPlane(size)` | `api-spec.md` BodyDef | todo |  |  |  |  | Docs state thickness/origin |
-| API-PHY-007 | `BodyDef.withLayer(layer)` | `api-spec.md` BodyDef | todo |  |  |  |  |  |
-| API-PHY-008 | `BodyDef.withMask(mask)` | `api-spec.md` BodyDef | todo |  |  |  |  |  |
-| API-PHY-009 | `BodyDef.asTrigger()` | `api-spec.md` BodyDef | todo |  |  |  |  |  |
-| API-PHY-010 | `BodyDef.withSync(mode)` | `api-spec.md` BodyDef | todo |  |  |  |  |  |
-| API-PHY-011 | `attachBody` creates body, applies filters/flags, binds node, registers ownership | `api-spec.md` BodyDef | todo |  |  |  |  |  |
-| API-COL-001 | `Collision3DEvent.phase` | `api-spec.md` Collision3DEvent | todo |  |  |  |  |  |
-| API-COL-002 | `Collision3DEvent.a` / `b` | `api-spec.md` Collision3DEvent | todo |  |  |  |  |  |
-| API-COL-003 | `Collision3DEvent.raw` | `api-spec.md` Collision3DEvent | todo |  |  |  |  | Escape hatch |
-| API-COL-004 | `Collision3DEvent.isTrigger` | `api-spec.md` Collision3DEvent | todo |  |  |  |  |  |
-| API-COL-005 | `Collision3DEvent.relativeSpeed` | `api-spec.md` Collision3DEvent | todo |  |  |  |  |  |
-| API-COL-006 | `Collision3DEvent.normalImpulse` | `api-spec.md` Collision3DEvent | todo |  |  |  |  |  |
-| API-COL-007 | `Collision3DEvent.point()` | `api-spec.md` Collision3DEvent | todo |  |  |  |  |  |
-| API-COL-008 | `Collision3DEvent.normal()` | `api-spec.md` Collision3DEvent | todo |  |  |  |  |  |
-| API-COL-009 | `Collision3DEvent.other(e)` | `api-spec.md` Collision3DEvent | todo |  |  |  |  |  |
-| API-COL-010 | Runtime enter/stay/exit buffers are source of truth | `api-spec.md` Dispatch rules | todo |  |  |  |  |  |
-| API-COL-011 | Layer pair keys canonicalized for unordered handlers | `api-spec.md` Dispatch rules | todo |  |  |  |  |  |
-| API-COL-012 | `CollisionPhase.Any` receives enter, stay, and exit | `api-spec.md` Dispatch rules | todo |  |  |  |  |  |
+| API-PHY-001 | `BodyDef` fields | `api-spec.md` BodyDef | done | runtime class stores shape/mass/friction/restitution/static/kinematic/trigger/CCD/layer/mask/sync | `test_rt_game3d`, `g3d_test_game3d_physics_probe` | Game3D docs | focused ctests passed |  |
+| API-PHY-002 | `BodyDef.Box(...)` | `api-spec.md` BodyDef | done | runtime helper creates dynamic AABB BodyDef | `test_rt_game3d`, `g3d_test_game3d_collision_probe` | Game3D docs | focused ctests passed |  |
+| API-PHY-003 | `BodyDef.Sphere(...)` | `api-spec.md` BodyDef | done | runtime helper creates dynamic sphere BodyDef | `test_rt_game3d`, `g3d_test_game3d_physics_probe` | Game3D docs | focused ctests passed |  |
+| API-PHY-004 | `BodyDef.Capsule(...)` | `api-spec.md` BodyDef | done | runtime helper creates dynamic capsule BodyDef | build + runtime registration | Game3D docs | build passed | Attach path covered by shared BodyDef creation code; direct capsule Zia probe remains nice-to-have |
+| API-PHY-005 | `BodyDef.StaticBox(...)` | `api-spec.md` BodyDef | done | runtime helper creates static world-layer AABB BodyDef | `test_rt_game3d`, `g3d_test_game3d_collision_probe` | Game3D docs | focused ctests passed |  |
+| API-PHY-006 | `BodyDef.StaticPlane(size)` | `api-spec.md` BodyDef | done | runtime helper creates shallow static world-layer floor box | `test_rt_game3d`, `g3d_test_game3d_physics_probe` | Game3D docs | focused ctests passed | Docs state 0.1 total thickness and centered origin |
+| API-PHY-007 | `BodyDef.withLayer(layer)` | `api-spec.md` BodyDef | done | fluent runtime method marks explicit layer override | `test_rt_game3d`, `g3d_test_game3d_collision_probe` | Game3D docs | focused ctests passed |  |
+| API-PHY-008 | `BodyDef.withMask(mask)` | `api-spec.md` BodyDef | done | fluent runtime method copies mask bits | `test_rt_game3d`, `g3d_test_game3d_physics_probe` | Game3D docs | focused ctests passed |  |
+| API-PHY-009 | `BodyDef.asTrigger()` | `api-spec.md` BodyDef | done | fluent runtime method marks attached body trigger-only | `test_rt_game3d`, `g3d_test_game3d_collision_probe` | Game3D docs | focused ctests passed |  |
+| API-PHY-010 | `BodyDef.withSync(mode)` | `api-spec.md` BodyDef | done | fluent runtime method applies node/body sync mode on attachment | `test_rt_game3d` | Game3D docs | focused ctest passed |  |
+| API-PHY-011 | `attachBody` creates body, applies filters/flags, binds node, registers ownership | `api-spec.md` BodyDef | done | BodyDef attach path creates Physics3DBody, applies material/CCD/static/kinematic/trigger/filter flags, binds to node, and registers with spawned world | `test_rt_game3d`, `g3d_test_game3d_physics_probe` | Game3D docs | focused ctests passed |  |
+| API-COL-001 | `Collision3DEvent.phase` | `api-spec.md` Collision3DEvent | done | runtime wrapper property | `test_rt_game3d`, `g3d_test_game3d_collision_probe` | Game3D docs | focused ctests passed |  |
+| API-COL-002 | `Collision3DEvent.a` / `b` | `api-spec.md` Collision3DEvent | done | body-owner registry resolves raw bodies to Game3D entities | `test_rt_game3d`, `g3d_test_game3d_collision_probe` | Game3D docs | focused ctests passed |  |
+| API-COL-003 | `Collision3DEvent.raw` | `api-spec.md` Collision3DEvent | done | raw `Graphics3D.CollisionEvent3D` retained as escape hatch | `test_rt_game3d`, `g3d_test_game3d_collision_probe` | Game3D docs | focused ctests passed | Escape hatch |
+| API-COL-004 | `Collision3DEvent.isTrigger` | `api-spec.md` Collision3DEvent | done | forwarded from raw collision event | `test_rt_game3d`, `g3d_test_game3d_collision_probe` | Game3D docs | focused ctests passed |  |
+| API-COL-005 | `Collision3DEvent.relativeSpeed` | `api-spec.md` Collision3DEvent | done | forwarded from raw collision event | `test_rt_game3d` | Game3D docs | focused ctest passed |  |
+| API-COL-006 | `Collision3DEvent.normalImpulse` | `api-spec.md` Collision3DEvent | done | forwarded from raw collision event | `test_rt_game3d` | Game3D docs | focused ctest passed |  |
+| API-COL-007 | `Collision3DEvent.point()` | `api-spec.md` Collision3DEvent | done | returns first raw contact point as `Vec3` | `test_rt_game3d`, `g3d_test_game3d_collision_probe` | Game3D docs | focused ctests passed |  |
+| API-COL-008 | `Collision3DEvent.normal()` | `api-spec.md` Collision3DEvent | done | returns first raw contact normal as `Vec3` | `test_rt_game3d`, `g3d_test_game3d_collision_probe` | Game3D docs | focused ctests passed |  |
+| API-COL-009 | `Collision3DEvent.other(e)` | `api-spec.md` Collision3DEvent | done | resolves opposite Game3D entity for either event endpoint | `test_rt_game3d`, `g3d_test_game3d_collision_probe` | Game3D docs | focused ctests passed |  |
+| API-COL-010 | Runtime enter/stay/exit buffers are source of truth | `api-spec.md` Dispatch rules | done | World3D wrappers read physics world's enter/stay/exit buffers | `test_rt_game3d`, `g3d_test_game3d_collision_probe` | Game3D docs | focused ctests passed |  |
+| API-COL-011 | Layer pair keys canonicalized for unordered handlers | `api-spec.md` Dispatch rules | deferred | collision callback handler sugar not shipped under current callback policy | callback rejection probe | Game3D docs | explicit waiver | Event buffers do not need layer-pair handler keys |
+| API-COL-012 | `CollisionPhase.Any` receives enter, stay, and exit | `api-spec.md` Dispatch rules | done | Any count/index walks enter, stay, then exit buffers | `test_rt_game3d` | Game3D docs | focused ctest passed |  |
 
 ## Input, cameras, and character controller
 
@@ -174,13 +174,13 @@ This file tracks the public runtime-backed `Viper.Game3D` surface described in
 | API-ENV-003 | `EnvHandle.withWater(level)` | `api-spec.md` Environment | done | Spawns/replaces transparent water plane prefab | `test_rt_game3d`, `g3d_test_game3d_presets_probe` | Game3D docs | focused and graphics3d ctests passed |  |
 | API-ENV-004 | `EnvHandle.withFog(near,far)` | `api-spec.md` Environment | done | Applies fog through Canvas3D with environment clear color | `test_rt_game3d`, `g3d_test_game3d_presets_probe` | Game3D docs | focused and graphics3d ctests passed | Also fixed `World3D.setFog` argument forwarding |
 | API-PREF-001 | Prefabs: Box, BoxXYZ, Sphere, Cylinder, Plane, Ground | `api-spec.md` Prefabs | done | Runtime C prefab factories return `Entity3D` with mesh/material | `test_rt_game3d`, `g3d_test_game3d_presets_probe` | Game3D docs | focused and graphics3d ctests passed | Spawnable entities |
-| API-ASSETS-001 | `Assets3D.LoadModel(path)` | `api-spec.md` Assets | todo |  |  |  |  | Filesystem/dev |
-| API-ASSETS-002 | `Assets3D.LoadModelAsset(assetPath)` | `api-spec.md` Assets | partial | Runtime foundation: `Model3D.LoadAsset` and `GLTF.LoadAsset` package-aware paths | `test_rt_gltf`, `test_rt_model3d`, `g3d_test_model3d_load_asset` | docs updated | focused ctests passed | Game3D `Assets3D` wrapper pending |
-| API-ASSETS-003 | `Assets3D.LoadModelTemplate(path)` | `api-spec.md` Assets | todo |  |  |  |  | Cache |
-| API-ASSETS-004 | `Assets3D.LoadModelTemplateAsset(assetPath)` | `api-spec.md` Assets | todo |  |  |  |  | Package-aware cache |
-| API-ASSETS-005 | `Assets3D.Preload(path)` | `api-spec.md` Assets | todo |  |  |  |  |  |
-| API-ASSETS-006 | `Assets3D.ClearCache()` | `api-spec.md` Assets | todo |  |  |  |  |  |
-| API-ASSETS-007 | `ModelTemplate` caches loaded models and instantiates group entities cheaply | `api-spec.md` Assets | todo |  |  |  |  |  |
+| API-ASSETS-001 | `Assets3D.LoadModel(path)` | `api-spec.md` Assets | done | runtime C wrapper loads filesystem model and returns group Entity3D | `test_rt_game3d`, `g3d_test_game3d_assets_probe` | Game3D docs | focused ctests passed | Filesystem/dev |
+| API-ASSETS-002 | `Assets3D.LoadModelAsset(assetPath)` | `api-spec.md` Assets | done | runtime wrapper over `Model3D.LoadAsset` package-aware paths | `test_rt_gltf`, `test_rt_model3d`, `g3d_test_model3d_load_asset`, `g3d_test_game3d_assets_probe` | Game3D docs | focused ctests passed | Mounted package proof at lower layer; Game3D wrapper proof uses asset API |
+| API-ASSETS-003 | `Assets3D.LoadModelTemplate(path)` | `api-spec.md` Assets | done | filesystem template cache | `test_rt_game3d`, `g3d_test_game3d_assets_probe` | Game3D docs | focused ctests passed | C test verifies cache identity |
+| API-ASSETS-004 | `Assets3D.LoadModelTemplateAsset(assetPath)` | `api-spec.md` Assets | done | package-aware template cache | `test_rt_game3d`, `g3d_test_game3d_assets_probe` | Game3D docs | focused ctests passed | Records `isAsset` |
+| API-ASSETS-005 | `Assets3D.Preload(path)` | `api-spec.md` Assets | done | warms filesystem template cache | `test_rt_game3d`, `g3d_test_game3d_assets_probe` | Game3D docs | focused ctests passed |  |
+| API-ASSETS-006 | `Assets3D.ClearCache()` | `api-spec.md` Assets | done | releases cached template entries | `test_rt_game3d`, `g3d_test_game3d_assets_probe` | Game3D docs | focused ctests passed |  |
+| API-ASSETS-007 | `ModelTemplate` caches loaded models and instantiates group entities cheaply | `api-spec.md` Assets | done | runtime ModelTemplate exposes model/path/isAsset and clones root subtree on instantiate | `test_rt_game3d`, `g3d_test_game3d_assets_probe` | Game3D docs | focused ctests passed | `entity.anim` escape hatch set when root animator exists |
 
 ## Animation, audio, VFX, and debug
 

@@ -71,6 +71,9 @@ This is intentionally free of common-case `Mat4` calls. `Entity3D` owns the raw
 | `World3D` | Owns the canvas, camera, scene, physics world, input wrapper, audio listener, post-FX registry, timing state, and entity registry |
 | `Entity3D` | Spawnable game object with a scene node, optional mesh/material/body/anim handles, layer, collision mask, name, and child entities |
 | `LayerMask` | Bitmask helper for collision and gameplay filtering |
+| `BodyDef` | Runtime body recipe used by `Entity3D.attachBody` for common static, dynamic, trigger, and CCD bodies |
+| `Collision3DEvent` | Entity-aware wrapper around raw `Graphics3D.CollisionEvent3D` enter/stay/exit records |
+| `Assets3D` / `ModelTemplate` | Filesystem and package-aware model loading with cached reusable model templates |
 | `Input3D` | Named keyboard, mouse, movement-axis, and look-axis helper over the runtime input state |
 | `Audio3D` | World-owned 3D audio handle; Phase 1 exposes the active listener |
 | `EffectRegistry3D` | World-owned effects handle; Phase 1 exposes the world post-FX chain |
@@ -273,6 +276,7 @@ This boundary is covered by `g3d_test_game3d_runframes_callback_reject`.
 | `setName(name)` | Name the entity and backing node for lookup |
 | `setLayer(layer)` | Set gameplay/physics layer |
 | `setCollisionMask(mask)` | Set the layer mask used by attached bodies |
+| `attachBody(bodyDef)` | Create and attach a `Physics3DBody` from a `BodyDef` |
 | `position()` / `worldPosition()` | Read local/world position |
 | `isSpawned()` / `isDestroyed()` | Inspect lifecycle state |
 
@@ -285,6 +289,106 @@ subtree.
 Use `LayerMask.None()`, `LayerMask.All()`, `LayerMask.Of(layer)`,
 `include(layer)`, and `includes(layer)` for readable filters. Layer values are
 validated as single-bit masks.
+
+`attachBody` also accepts a raw `Viper.Graphics3D.Physics3DBody` as an escape
+hatch. The common path should use `BodyDef`, because it applies filters, node
+binding, sync mode, and world registration consistently.
+
+---
+
+## Assets3D
+
+`Assets3D` loads `Model3D` assets into spawnable Game3D entities without manual
+scene-node cloning:
+
+```zia
+var crate = Game3D.Assets3D.LoadModel("assets/crate.glb");
+Game3D.Entity3D.setPosition(crate, 0.0, 0.5, -3.0);
+Game3D.World3D.spawn(world, crate);
+
+var enemyTemplate = Game3D.Assets3D.LoadModelTemplateAsset("models/enemy.glb");
+var enemy = Game3D.ModelTemplate.instantiate(enemyTemplate);
+Game3D.World3D.spawn(world, enemy);
+```
+
+| Method | Purpose |
+|--------|---------|
+| `LoadModel(path)` | Load a filesystem/development model and return a group `Entity3D` |
+| `LoadModelAsset(assetPath)` | Load through the asset resolver first, with filesystem fallback for development |
+| `LoadModelTemplate(path)` | Load or reuse a cached filesystem `ModelTemplate` |
+| `LoadModelTemplateAsset(assetPath)` | Load or reuse a cached package-aware `ModelTemplate` |
+| `Preload(path)` | Warm the filesystem template cache |
+| `ClearCache()` | Release cached template entries |
+| `ModelTemplate.instantiate()` | Clone the template root subtree into a group `Entity3D` |
+
+Loaded entities are groups whose backing node is the instantiated model root.
+The raw imported child nodes remain under that root and are not separate
+Game3D child entities. Despawning the group removes the whole subtree from the
+scene. If the imported root has a skeletal animator, `entity.anim` is populated
+as an escape hatch; the higher-level `Animator3D` helpers are tracked in the
+animation phase.
+
+`LoadModelAsset` and `LoadModelTemplateAsset` use the runtime asset resolver, so
+mounted packages and `asset://` paths work the same way as lower-level
+`Model3D.LoadAsset`. Relative glTF buffers and textures resolve relative to the
+model asset.
+
+---
+
+## BodyDef And Collision Events
+
+`BodyDef` describes the body that `Entity3D.attachBody` should create:
+
+```zia
+var ground = Game3D.Prefab.Ground(40.0, Game3D.Materials.Rubber(0.25, 0.35, 0.25));
+Game3D.Entity3D.attachBody(ground, Game3D.BodyDef.StaticPlane(40.0));
+Game3D.World3D.spawn(world, ground);
+
+var ball = Game3D.Prefab.Sphere(0.5, 24, Game3D.Materials.Plastic(0.9, 0.2, 0.2));
+var body = Game3D.BodyDef.Sphere(0.5, 1.0);
+Game3D.BodyDef.set_restitution(body, 0.35);
+Game3D.BodyDef.set_useCCD(body, true);
+Game3D.BodyDef.withMask(body, Game3D.LayerMask.Of(Game3D.Layers.get_World()));
+Game3D.Entity3D.attachBody(ball, body);
+Game3D.World3D.spawn(world, ball);
+```
+
+| API | Purpose |
+|-----|---------|
+| `BodyDef.Box(halfX, halfY, halfZ, mass)` | Dynamic box body |
+| `BodyDef.Sphere(radius, mass)` | Dynamic sphere body |
+| `BodyDef.Capsule(radius, height, mass)` | Dynamic capsule body |
+| `BodyDef.StaticBox(halfX, halfY, halfZ)` | Static world-layer box |
+| `BodyDef.StaticPlane(size)` | Static world-layer floor, implemented as a shallow box |
+| `withLayer(layer)` / `withMask(mask)` | Apply collision layer/filter bits |
+| `asTrigger()` | Mark the body trigger-only |
+| `withSync(mode)` | Set the node/body sync policy |
+
+`BodyDef` exposes `shape`, `mass`, `friction`, `restitution`, `isStatic`,
+`isKinematic`, `isTrigger`, `useCCD`, `layer`, `mask`, and `syncMode`
+properties. Dynamic body definitions inherit the entity's current layer unless
+`withLayer` or `set_layer` is used. `StaticBox` and `StaticPlane` default to
+`Game3D.Layers.World`. `StaticPlane(size)` is centered on the entity node, spans
+`size` on X/Z, and uses a total thickness of `0.1` world units.
+
+`World3D.collisionEventCount(phase)` and `collisionEvent(phase, index)` expose
+the runtime enter/stay/exit buffers through `Collision3DEvent`:
+
+```zia
+Game3D.World3D.stepSimulation(world, 0.016);
+var count = Game3D.World3D.collisionEventCount(world, Game3D.CollisionPhase.get_Enter());
+if (count > 0) {
+    var evt = Game3D.World3D.collisionEvent(world, Game3D.CollisionPhase.get_Enter(), 0);
+    var other = Game3D.Collision3DEvent.other(evt, ball);
+    var point = Game3D.Collision3DEvent.point(evt);
+}
+```
+
+The wrapper exposes `phase`, `a`, `b`, `raw`, `isTrigger`, `relativeSpeed`,
+`normalImpulse`, `point()`, `normal()`, and `other(entity)`. `CollisionPhase.Any`
+iterates enter, stay, and exit records. Optional world/entity collision callback
+sugar remains deferred until the VM callback trampoline policy is implemented;
+polling the event buffers is the supported interpreted-Zia path.
 
 ---
 
@@ -374,6 +478,9 @@ The Game3D runtime is covered by:
 | `g3d_test_game3d_camera_controllers_probe` | Zia free-fly synthetic input, orbit drag/zoom, and follow camera post-physics tracking |
 | `g3d_test_game3d_character_controller_probe` | Zia first-person character movement and late-update camera alignment |
 | `g3d_test_game3d_presets_probe` | Zia material/prefab presets, lighting, quality fallback, post-FX, environment chaining, physics body setup, and final-overlay debug capture |
+| `g3d_test_game3d_assets_probe` | Zia `Assets3D` filesystem/asset loading, cached templates, and model-template instantiation |
+| `g3d_test_game3d_physics_probe` | Zia `BodyDef` static/dynamic body attachment, CCD/filter flags, gravity, and collision production |
+| `g3d_test_game3d_collision_probe` | Zia entity-aware collision wrappers for enter/stay/exit and trigger events |
 | `g3d_walk_min_visual_probe` | Game3D sample final-frame baseline, crisp overlay, directional lighting, and grounded synthetic first-person movement |
 
 Run the focused set with:
@@ -392,12 +499,12 @@ ctest --test-dir build -L graphics3d --output-on-failure
 
 ## Current Boundaries
 
-The core world/entity/input layer and built-in camera/character controllers now
-live in the C runtime. `examples/3d/walk_min.zia` is the current small Game3D
-walking sample. `BodyDef` construction, rich Game3D collision event wrappers,
-prefabs, environment presets, `Assets3D`, animation helpers, 3D audio playback
-helpers, VFX presets, starter templates, and showcase samples remain tracked in
-the 3D Next Level plan.
+The core world/entity/input layer, built-in camera/character controllers,
+presets, prefabs, environment/debug helpers, `Assets3D`, `BodyDef`, and
+entity-aware collision event wrappers now live in the C runtime.
+`examples/3d/walk_min.zia` is the current small Game3D walking sample.
+Animation helpers, 3D audio playback helpers, VFX presets, starter templates,
+and showcase samples remain tracked in the 3D Next Level plan.
 
 Use the lower-level `Viper.Graphics3D` and `Viper.Sound` APIs as escape hatches
 while those higher-level Game3D helpers are being implemented.

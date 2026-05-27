@@ -1,0 +1,63 @@
+module test_game3d_physics_probe;
+
+bind Viper.Game3D as Game3D;
+bind Viper.Graphics3D as G3D;
+bind Viper.Math as Math;
+bind Viper.Terminal as Terminal;
+
+func fail(message: String) {
+    Terminal.Say("FAIL: " + message);
+}
+
+func start() {
+    var world = Game3D.World3D.New("Game3D Physics Probe", 80, 60);
+    Game3D.World3D.setGravity(world, 0.0, -9.81, 0.0);
+
+    var ground = Game3D.Prefab.Ground(12.0, Game3D.Materials.Rubber(0.25, 0.35, 0.25));
+    Game3D.Entity3D.attachBody(ground, Game3D.BodyDef.StaticPlane(12.0));
+    Game3D.World3D.spawn(world, ground);
+
+    var ball = Game3D.Prefab.Sphere(0.5, 16, Game3D.Materials.Plastic(0.9, 0.2, 0.2));
+    Game3D.Entity3D.setPosition(ball, 0.0, 3.0, 0.0);
+    var ballDef = Game3D.BodyDef.Sphere(0.5, 1.0);
+    Game3D.BodyDef.set_friction(ballDef, 0.6);
+    Game3D.BodyDef.set_restitution(ballDef, 0.0);
+    Game3D.BodyDef.set_useCCD(ballDef, true);
+    Game3D.BodyDef.withMask(ballDef, Game3D.LayerMask.Of(Game3D.Layers.get_World()));
+    Game3D.Entity3D.attachBody(ball, ballDef);
+    Game3D.World3D.spawn(world, ball);
+
+    if (G3D.Physics3DBody.get_CollisionLayer(Game3D.Entity3D.get_body(ground)) !=
+        Game3D.Layers.get_World()) {
+        fail("StaticPlane did not use world layer");
+        return;
+    }
+    if (G3D.Physics3DBody.get_UseCCD(Game3D.Entity3D.get_body(ball)) == false) {
+        fail("BodyDef did not apply CCD flag");
+        return;
+    }
+
+    var before = G3D.Physics3DBody.get_Position(Game3D.Entity3D.get_body(ball));
+    Game3D.World3D.runFramesOnly(world, 90, 0.016);
+    var after = G3D.Physics3DBody.get_Position(Game3D.Entity3D.get_body(ball));
+    if (Math.Vec3.get_Y(after) >= Math.Vec3.get_Y(before)) {
+        fail("ball did not fall under gravity");
+        return;
+    }
+    if (Game3D.World3D.collisionEventCount(world, Game3D.CollisionPhase.get_Any()) <= 0) {
+        fail("physics probe produced no collision events");
+        return;
+    }
+
+    Game3D.World3D.runFramesOnly(world, 150, 0.016);
+    var restPos = G3D.Physics3DBody.get_Position(Game3D.Entity3D.get_body(ball));
+    var restVel = G3D.Physics3DBody.get_Velocity(Game3D.Entity3D.get_body(ball));
+    if (Math.Vec3.get_Y(restPos) < 0.45 || Math.Vec3.get_Y(restPos) > 0.85 ||
+        Math.Vec3.get_Y(restVel) < -0.20 || Math.Vec3.get_Y(restVel) > 0.20) {
+        fail("ball did not settle on the ground body");
+        return;
+    }
+
+    Game3D.World3D.destroy(world);
+    Terminal.Say("PASS");
+}

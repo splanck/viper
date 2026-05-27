@@ -23,6 +23,7 @@
 #include "rt_collider3d.h"
 #include "rt_input.h"
 #include "rt_mat4.h"
+#include "rt_model3d.h"
 #include "rt_object.h"
 #include "rt_physics3d.h"
 #include "rt_postfx3d.h"
@@ -120,6 +121,44 @@ typedef struct rt_game3d_env_handle {
     void *water_entity;
 } rt_game3d_env_handle;
 
+typedef struct rt_game3d_body_def {
+    int64_t shape;
+    double half_extents[3];
+    double radius;
+    double height;
+    double mass;
+    double friction;
+    double restitution;
+    int64_t layer;
+    int64_t mask_bits;
+    int64_t sync_mode;
+    int8_t has_layer;
+    int8_t has_mask;
+    int8_t is_static;
+    int8_t is_kinematic;
+    int8_t is_trigger;
+    int8_t use_ccd;
+} rt_game3d_body_def;
+
+typedef struct rt_game3d_collision_event {
+    int64_t phase;
+    void *a;
+    void *b;
+    void *raw;
+} rt_game3d_collision_event;
+
+typedef struct rt_game3d_model_template {
+    rt_string path;
+    int8_t asset_path;
+    void *model;
+} rt_game3d_model_template;
+
+typedef struct rt_game3d_model_cache_entry {
+    rt_string path;
+    int8_t asset_path;
+    void *model_template;
+} rt_game3d_model_cache_entry;
+
 typedef struct rt_game3d_character_controller {
     void *world;
     void *entity;
@@ -198,6 +237,10 @@ typedef struct rt_game3d_world {
 
 typedef void (*rt_game3d_update_fn)(double dt);
 typedef void (*rt_game3d_overlay_fn)(void);
+
+static rt_game3d_model_cache_entry *g_game3d_model_cache = NULL;
+static int32_t g_game3d_model_cache_count = 0;
+static int32_t g_game3d_model_cache_capacity = 0;
 
 static int game3d_callback_pointer_is_native(void *callback) {
     if (!callback)
@@ -361,6 +404,32 @@ static rt_game3d_env_handle *game3d_env_handle_checked(void *obj, const char *me
     if (!env)
         rt_trap(method);
     return env;
+}
+
+static rt_game3d_body_def *game3d_body_def_checked(void *obj, const char *method) {
+    rt_game3d_body_def *def =
+        (rt_game3d_body_def *)rt_g3d_checked_or_null(obj, RT_G3D_GAME3D_BODYDEF_CLASS_ID);
+    if (!def)
+        rt_trap(method);
+    return def;
+}
+
+static rt_game3d_collision_event *game3d_collision_event_checked(void *obj, const char *method) {
+    rt_game3d_collision_event *event =
+        (rt_game3d_collision_event *)rt_g3d_checked_or_null(
+            obj, RT_G3D_GAME3D_COLLISION_EVENT_CLASS_ID);
+    if (!event)
+        rt_trap(method);
+    return event;
+}
+
+static rt_game3d_model_template *game3d_model_template_checked(void *obj, const char *method) {
+    rt_game3d_model_template *model_template =
+        (rt_game3d_model_template *)rt_g3d_checked_or_null(
+            obj, RT_G3D_GAME3D_MODEL_TEMPLATE_CLASS_ID);
+    if (!model_template)
+        rt_trap(method);
+    return model_template;
 }
 
 static rt_game3d_world *game3d_world_checked_allow_destroyed(void *obj, const char *method) {
@@ -531,6 +600,337 @@ int8_t rt_game3d_layermask_includes(void *obj, int64_t layer) {
     if (!game3d_valid_layer(layer))
         return 0;
     return mask && (mask->bits & layer) != 0 ? 1 : 0;
+}
+
+static void game3d_body_def_defaults(rt_game3d_body_def *def) {
+    if (!def)
+        return;
+    memset(def, 0, sizeof(*def));
+    def->shape = RT_GAME3D_BODY_SHAPE_BOX;
+    def->half_extents[0] = 0.5;
+    def->half_extents[1] = 0.5;
+    def->half_extents[2] = 0.5;
+    def->radius = 0.5;
+    def->height = 1.0;
+    def->mass = 1.0;
+    def->friction = 0.5;
+    def->restitution = 0.3;
+    def->layer = RT_GAME3D_LAYER_DYNAMIC;
+    def->mask_bits = INT64_MAX;
+    def->sync_mode = RT_GAME3D_SYNC_NODE_FROM_BODY;
+}
+
+static void *game3d_body_def_alloc(const char *method) {
+    rt_game3d_body_def *def =
+        (rt_game3d_body_def *)rt_obj_new_i64(RT_G3D_GAME3D_BODYDEF_CLASS_ID, (int64_t)sizeof(*def));
+    if (!def) {
+        rt_trap(method ? method : "Game3D.BodyDef: allocation failed");
+        return NULL;
+    }
+    game3d_body_def_defaults(def);
+    return def;
+}
+
+static int64_t game3d_valid_sync_or_default(int64_t sync_mode) {
+    switch (sync_mode) {
+    case RT_GAME3D_SYNC_NODE_FROM_BODY:
+    case RT_GAME3D_SYNC_BODY_FROM_NODE:
+    case RT_GAME3D_SYNC_NODE_FROM_ANIM_ROOT_MOTION:
+    case RT_GAME3D_SYNC_TWO_WAY_KINEMATIC:
+        return sync_mode;
+    default:
+        return RT_GAME3D_SYNC_NODE_FROM_BODY;
+    }
+}
+
+static double game3d_bodydef_extent_or(double value, double fallback) {
+    value = game3d_finite_or(value, fallback);
+    return value > 0.0 ? value : fallback;
+}
+
+void *rt_game3d_body_def_box(double half_x, double half_y, double half_z, double mass) {
+    rt_game3d_body_def *def =
+        (rt_game3d_body_def *)game3d_body_def_alloc("Game3D.BodyDef.Box: allocation failed");
+    if (!def)
+        return NULL;
+    def->shape = RT_GAME3D_BODY_SHAPE_BOX;
+    def->half_extents[0] = game3d_bodydef_extent_or(half_x, 0.5);
+    def->half_extents[1] = game3d_bodydef_extent_or(half_y, 0.5);
+    def->half_extents[2] = game3d_bodydef_extent_or(half_z, 0.5);
+    def->mass = game3d_nonnegative_or(mass, 1.0);
+    def->is_static = def->mass <= 1e-12 ? 1 : 0;
+    return def;
+}
+
+void *rt_game3d_body_def_sphere(double radius, double mass) {
+    rt_game3d_body_def *def =
+        (rt_game3d_body_def *)game3d_body_def_alloc("Game3D.BodyDef.Sphere: allocation failed");
+    if (!def)
+        return NULL;
+    def->shape = RT_GAME3D_BODY_SHAPE_SPHERE;
+    def->radius = game3d_bodydef_extent_or(radius, 0.5);
+    def->mass = game3d_nonnegative_or(mass, 1.0);
+    def->is_static = def->mass <= 1e-12 ? 1 : 0;
+    return def;
+}
+
+void *rt_game3d_body_def_capsule(double radius, double height, double mass) {
+    rt_game3d_body_def *def =
+        (rt_game3d_body_def *)game3d_body_def_alloc("Game3D.BodyDef.Capsule: allocation failed");
+    if (!def)
+        return NULL;
+    def->shape = RT_GAME3D_BODY_SHAPE_CAPSULE;
+    def->radius = game3d_bodydef_extent_or(radius, 0.25);
+    def->height = game3d_bodydef_extent_or(height, def->radius * 2.0);
+    if (def->height < def->radius * 2.0)
+        def->height = def->radius * 2.0;
+    def->mass = game3d_nonnegative_or(mass, 1.0);
+    def->is_static = def->mass <= 1e-12 ? 1 : 0;
+    return def;
+}
+
+void *rt_game3d_body_def_static_box(double half_x, double half_y, double half_z) {
+    rt_game3d_body_def *def =
+        (rt_game3d_body_def *)rt_game3d_body_def_box(half_x, half_y, half_z, 0.0);
+    if (!def)
+        return NULL;
+    def->is_static = 1;
+    def->layer = RT_GAME3D_LAYER_WORLD;
+    def->has_layer = 1;
+    return def;
+}
+
+void *rt_game3d_body_def_static_plane(double size) {
+    double half = game3d_bodydef_extent_or(size, 1.0) * 0.5;
+    rt_game3d_body_def *def =
+        (rt_game3d_body_def *)rt_game3d_body_def_static_box(half, 0.05, half);
+    return def;
+}
+
+int64_t rt_game3d_body_def_get_shape(void *obj) {
+    rt_game3d_body_def *def =
+        game3d_body_def_checked(obj, "Game3D.BodyDef.get_shape: invalid BodyDef");
+    return def ? def->shape : RT_GAME3D_BODY_SHAPE_BOX;
+}
+
+void rt_game3d_body_def_set_shape(void *obj, int64_t shape) {
+    rt_game3d_body_def *def =
+        game3d_body_def_checked(obj, "Game3D.BodyDef.set_shape: invalid BodyDef");
+    if (!def)
+        return;
+    switch (shape) {
+    case RT_GAME3D_BODY_SHAPE_BOX:
+    case RT_GAME3D_BODY_SHAPE_SPHERE:
+    case RT_GAME3D_BODY_SHAPE_CAPSULE:
+        def->shape = shape;
+        break;
+    default:
+        rt_trap("Game3D.BodyDef.set_shape: invalid BodyShape");
+        break;
+    }
+}
+
+double rt_game3d_body_def_get_mass(void *obj) {
+    rt_game3d_body_def *def =
+        game3d_body_def_checked(obj, "Game3D.BodyDef.get_mass: invalid BodyDef");
+    return def ? def->mass : 0.0;
+}
+
+void rt_game3d_body_def_set_mass(void *obj, double mass) {
+    rt_game3d_body_def *def =
+        game3d_body_def_checked(obj, "Game3D.BodyDef.set_mass: invalid BodyDef");
+    if (def) {
+        def->mass = game3d_nonnegative_or(mass, def->mass);
+        if (def->mass > 1e-12)
+            def->is_static = 0;
+    }
+}
+
+double rt_game3d_body_def_get_friction(void *obj) {
+    rt_game3d_body_def *def =
+        game3d_body_def_checked(obj, "Game3D.BodyDef.get_friction: invalid BodyDef");
+    return def ? def->friction : 0.0;
+}
+
+void rt_game3d_body_def_set_friction(void *obj, double friction) {
+    rt_game3d_body_def *def =
+        game3d_body_def_checked(obj, "Game3D.BodyDef.set_friction: invalid BodyDef");
+    if (def)
+        def->friction = game3d_nonnegative_or(friction, def->friction);
+}
+
+double rt_game3d_body_def_get_restitution(void *obj) {
+    rt_game3d_body_def *def =
+        game3d_body_def_checked(obj, "Game3D.BodyDef.get_restitution: invalid BodyDef");
+    return def ? def->restitution : 0.0;
+}
+
+void rt_game3d_body_def_set_restitution(void *obj, double restitution) {
+    rt_game3d_body_def *def =
+        game3d_body_def_checked(obj, "Game3D.BodyDef.set_restitution: invalid BodyDef");
+    if (def)
+        def->restitution = game3d_clamp(restitution, 0.0, 1.0);
+}
+
+int8_t rt_game3d_body_def_get_static(void *obj) {
+    rt_game3d_body_def *def =
+        game3d_body_def_checked(obj, "Game3D.BodyDef.get_isStatic: invalid BodyDef");
+    return def ? def->is_static : 0;
+}
+
+void rt_game3d_body_def_set_static(void *obj, int8_t is_static) {
+    rt_game3d_body_def *def =
+        game3d_body_def_checked(obj, "Game3D.BodyDef.set_isStatic: invalid BodyDef");
+    if (def) {
+        def->is_static = is_static ? 1 : 0;
+        if (def->is_static)
+            def->mass = 0.0;
+    }
+}
+
+int8_t rt_game3d_body_def_get_kinematic(void *obj) {
+    rt_game3d_body_def *def =
+        game3d_body_def_checked(obj, "Game3D.BodyDef.get_isKinematic: invalid BodyDef");
+    return def ? def->is_kinematic : 0;
+}
+
+void rt_game3d_body_def_set_kinematic(void *obj, int8_t is_kinematic) {
+    rt_game3d_body_def *def =
+        game3d_body_def_checked(obj, "Game3D.BodyDef.set_isKinematic: invalid BodyDef");
+    if (def) {
+        def->is_kinematic = is_kinematic ? 1 : 0;
+        if (def->is_kinematic)
+            def->is_static = 0;
+    }
+}
+
+int8_t rt_game3d_body_def_get_trigger(void *obj) {
+    rt_game3d_body_def *def =
+        game3d_body_def_checked(obj, "Game3D.BodyDef.get_isTrigger: invalid BodyDef");
+    return def ? def->is_trigger : 0;
+}
+
+void rt_game3d_body_def_set_trigger(void *obj, int8_t is_trigger) {
+    rt_game3d_body_def *def =
+        game3d_body_def_checked(obj, "Game3D.BodyDef.set_isTrigger: invalid BodyDef");
+    if (def)
+        def->is_trigger = is_trigger ? 1 : 0;
+}
+
+int8_t rt_game3d_body_def_get_use_ccd(void *obj) {
+    rt_game3d_body_def *def =
+        game3d_body_def_checked(obj, "Game3D.BodyDef.get_useCCD: invalid BodyDef");
+    return def ? def->use_ccd : 0;
+}
+
+void rt_game3d_body_def_set_use_ccd(void *obj, int8_t use_ccd) {
+    rt_game3d_body_def *def =
+        game3d_body_def_checked(obj, "Game3D.BodyDef.set_useCCD: invalid BodyDef");
+    if (def)
+        def->use_ccd = use_ccd ? 1 : 0;
+}
+
+int64_t rt_game3d_body_def_get_layer(void *obj) {
+    rt_game3d_body_def *def =
+        game3d_body_def_checked(obj, "Game3D.BodyDef.get_layer: invalid BodyDef");
+    return def ? def->layer : RT_GAME3D_LAYER_DYNAMIC;
+}
+
+void rt_game3d_body_def_set_layer_prop(void *obj, int64_t layer) {
+    (void)rt_game3d_body_def_with_layer(obj, layer);
+}
+
+void *rt_game3d_body_def_get_mask(void *obj) {
+    rt_game3d_body_def *def =
+        game3d_body_def_checked(obj, "Game3D.BodyDef.get_mask: invalid BodyDef");
+    return def ? game3d_layermask_new_bits(def->mask_bits) : NULL;
+}
+
+void rt_game3d_body_def_set_mask_prop(void *obj, void *mask) {
+    (void)rt_game3d_body_def_with_mask(obj, mask);
+}
+
+int64_t rt_game3d_body_def_get_sync_mode(void *obj) {
+    rt_game3d_body_def *def =
+        game3d_body_def_checked(obj, "Game3D.BodyDef.get_syncMode: invalid BodyDef");
+    return def ? def->sync_mode : RT_GAME3D_SYNC_NODE_FROM_BODY;
+}
+
+void rt_game3d_body_def_set_sync_mode_prop(void *obj, int64_t sync_mode) {
+    (void)rt_game3d_body_def_with_sync(obj, sync_mode);
+}
+
+void *rt_game3d_body_def_with_layer(void *obj, int64_t layer) {
+    rt_game3d_body_def *def =
+        game3d_body_def_checked(obj, "Game3D.BodyDef.withLayer: invalid BodyDef");
+    if (!game3d_valid_layer(layer))
+        rt_trap("Game3D.BodyDef.withLayer: layer must be a single positive bit");
+    if (def) {
+        def->layer = layer;
+        def->has_layer = 1;
+    }
+    return obj;
+}
+
+void *rt_game3d_body_def_with_mask(void *obj, void *mask_obj) {
+    rt_game3d_body_def *def =
+        game3d_body_def_checked(obj, "Game3D.BodyDef.withMask: invalid BodyDef");
+    rt_game3d_layermask *mask =
+        game3d_layermask_checked(mask_obj, "Game3D.BodyDef.withMask: invalid mask");
+    if (def && mask) {
+        def->mask_bits = mask->bits;
+        def->has_mask = 1;
+    }
+    return obj;
+}
+
+void *rt_game3d_body_def_as_trigger(void *obj) {
+    rt_game3d_body_def *def =
+        game3d_body_def_checked(obj, "Game3D.BodyDef.asTrigger: invalid BodyDef");
+    if (def)
+        def->is_trigger = 1;
+    return obj;
+}
+
+void *rt_game3d_body_def_with_sync(void *obj, int64_t sync_mode) {
+    rt_game3d_body_def *def =
+        game3d_body_def_checked(obj, "Game3D.BodyDef.withSync: invalid BodyDef");
+    if (def)
+        def->sync_mode = game3d_valid_sync_or_default(sync_mode);
+    return obj;
+}
+
+static void *game3d_body_def_create_body(rt_game3d_body_def *def) {
+    void *body = NULL;
+    if (!def)
+        return NULL;
+    switch (def->shape) {
+    case RT_GAME3D_BODY_SHAPE_SPHERE:
+        body = rt_body3d_new_sphere(def->radius, def->is_static ? 0.0 : def->mass);
+        break;
+    case RT_GAME3D_BODY_SHAPE_CAPSULE:
+        body = rt_body3d_new_capsule(def->radius, def->height, def->is_static ? 0.0 : def->mass);
+        break;
+    case RT_GAME3D_BODY_SHAPE_BOX:
+    default:
+        body = rt_body3d_new_aabb(
+            def->half_extents[0], def->half_extents[1], def->half_extents[2],
+            def->is_static ? 0.0 : def->mass);
+        break;
+    }
+    if (!body)
+        return NULL;
+    rt_body3d_set_friction(body, def->friction);
+    rt_body3d_set_restitution(body, def->restitution);
+    if (def->is_static)
+        rt_body3d_set_static(body, 1);
+    else if (def->is_kinematic)
+        rt_body3d_set_kinematic(body, 1);
+    rt_body3d_set_trigger(body, def->is_trigger);
+    rt_body3d_set_use_ccd(body, def->use_ccd);
+    rt_body3d_set_collision_layer(body, def->layer);
+    rt_body3d_set_collision_mask(body, def->mask_bits);
+    return body;
 }
 
 void *rt_game3d_input_new(void) {
@@ -900,23 +1300,49 @@ void *rt_game3d_entity_set_collision_mask(void *obj, void *mask_obj) {
     return obj;
 }
 
-void *rt_game3d_entity_attach_body(void *obj, void *body) {
+void *rt_game3d_entity_attach_body(void *obj, void *body_or_def) {
     rt_game3d_entity *entity = game3d_entity_checked(obj, "Game3D.Entity3D.attachBody: invalid entity");
-    if (body && !rt_g3d_has_class(body, RT_G3D_BODY3D_CLASS_ID))
-        rt_trap("Game3D.Entity3D.attachBody: expected Physics3DBody");
+    void *body = body_or_def;
+    void *created_body = NULL;
+    rt_game3d_body_def *def =
+        (rt_game3d_body_def *)rt_g3d_checked_or_null(body_or_def, RT_G3D_GAME3D_BODYDEF_CLASS_ID);
+    if (def) {
+        created_body = game3d_body_def_create_body(def);
+        body = created_body;
+    } else if (body && !rt_g3d_has_class(body, RT_G3D_BODY3D_CLASS_ID)) {
+        rt_trap("Game3D.Entity3D.attachBody: expected Physics3DBody or BodyDef");
+    }
     if (entity) {
+        rt_game3d_world *world = (rt_game3d_world *)entity->world;
+        if (entity->body && entity->body != body && entity->spawned && world && world->physics)
+            rt_world3d_remove(world->physics, entity->body);
+        if (def && def->has_layer)
+            entity->layer = def->layer;
+        if (def && def->has_mask)
+            entity->collision_mask_bits = def->mask_bits;
         game3d_assign_ref(&entity->body, body);
         if (body) {
             rt_body3d_set_collision_layer(body, entity->layer);
             rt_body3d_set_collision_mask(body, entity->collision_mask_bits);
-            if (entity->node)
+            if (entity->node) {
+                void *pos = rt_scene_node3d_get_world_position(entity->node);
+                rt_body3d_set_position(
+                    body,
+                    pos ? rt_vec3_x(pos) : 0.0,
+                    pos ? rt_vec3_y(pos) : 0.0,
+                    pos ? rt_vec3_z(pos) : 0.0);
+                game3d_release_ref(&pos);
+                if (def)
+                    rt_scene_node3d_set_sync_mode(entity->node, def->sync_mode);
                 rt_scene_node3d_bind_body(entity->node, body);
-            if (entity->spawned && entity->world)
-                rt_world3d_add(((rt_game3d_world *)entity->world)->physics, body);
+            }
+            if (entity->spawned && world && world->physics)
+                rt_world3d_add(world->physics, body);
         } else if (entity->node) {
             rt_scene_node3d_clear_body_binding(entity->node);
         }
     }
+    game3d_release_ref(&created_body);
     return obj;
 }
 
@@ -1338,6 +1764,189 @@ void *rt_game3d_prefab_ground(double size, void *material) {
         rt_game3d_entity_set_layer(entity, RT_GAME3D_LAYER_WORLD);
     }
     return entity;
+}
+
+static void game3d_model_template_finalize(void *obj) {
+    rt_game3d_model_template *model_template = (rt_game3d_model_template *)obj;
+    if (!model_template)
+        return;
+    game3d_release_ref(&model_template->model);
+    game3d_release_ref((void **)&model_template->path);
+}
+
+static int game3d_model_cache_grow(int32_t need) {
+    if (g_game3d_model_cache_capacity >= need)
+        return 1;
+    int32_t new_cap = g_game3d_model_cache_capacity > 0 ? g_game3d_model_cache_capacity * 2 : 8;
+    if (new_cap < need)
+        new_cap = need;
+    rt_game3d_model_cache_entry *grown = (rt_game3d_model_cache_entry *)realloc(
+        g_game3d_model_cache, (size_t)new_cap * sizeof(*grown));
+    if (!grown)
+        return 0;
+    memset(
+        grown + g_game3d_model_cache_capacity,
+        0,
+        (size_t)(new_cap - g_game3d_model_cache_capacity) * sizeof(*grown));
+    g_game3d_model_cache = grown;
+    g_game3d_model_cache_capacity = new_cap;
+    return 1;
+}
+
+static int game3d_string_equals(rt_string a, rt_string b) {
+    const char *as = a ? rt_string_cstr(a) : "";
+    const char *bs = b ? rt_string_cstr(b) : "";
+    return as && bs && strcmp(as, bs) == 0;
+}
+
+static rt_game3d_model_template *game3d_model_cache_find(rt_string path, int8_t asset_path) {
+    for (int32_t i = 0; i < g_game3d_model_cache_count; ++i) {
+        rt_game3d_model_cache_entry *entry = &g_game3d_model_cache[i];
+        if (entry->asset_path == asset_path && game3d_string_equals(entry->path, path))
+            return (rt_game3d_model_template *)entry->model_template;
+    }
+    return NULL;
+}
+
+static rt_game3d_model_template *game3d_model_template_new(rt_string path, int8_t asset_path, void *model) {
+    rt_game3d_model_template *model_template =
+        (rt_game3d_model_template *)rt_obj_new_i64(
+            RT_G3D_GAME3D_MODEL_TEMPLATE_CLASS_ID, (int64_t)sizeof(*model_template));
+    if (!model_template) {
+        rt_trap("Game3D.ModelTemplate: allocation failed");
+        return NULL;
+    }
+    memset(model_template, 0, sizeof(*model_template));
+    rt_obj_set_finalizer(model_template, game3d_model_template_finalize);
+    model_template->asset_path = asset_path ? 1 : 0;
+    game3d_assign_ref((void **)&model_template->path, path ? path : rt_const_cstr(""));
+    game3d_assign_ref(&model_template->model, model);
+    return model_template;
+}
+
+static rt_game3d_model_template *game3d_assets_load_template_uncached(
+    rt_string path, int8_t asset_path, const char *method) {
+    void *model = asset_path ? rt_model3d_load_asset(path) : rt_model3d_load(path);
+    rt_game3d_model_template *model_template;
+    if (!model) {
+        rt_trap(method);
+        return NULL;
+    }
+    model_template = game3d_model_template_new(path, asset_path, model);
+    game3d_release_ref(&model);
+    return model_template;
+}
+
+static rt_game3d_model_template *game3d_assets_load_template_cached(
+    rt_string path, int8_t asset_path, const char *method) {
+    rt_game3d_model_template *cached = game3d_model_cache_find(path, asset_path);
+    if (cached) {
+        rt_obj_retain_maybe(cached);
+        return cached;
+    }
+    rt_game3d_model_template *model_template =
+        game3d_assets_load_template_uncached(path, asset_path, method);
+    if (!model_template)
+        return NULL;
+    if (!game3d_model_cache_grow(g_game3d_model_cache_count + 1)) {
+        if (rt_obj_release_check0(model_template))
+            rt_obj_free(model_template);
+        rt_trap("Game3D.Assets3D: model cache allocation failed");
+        return NULL;
+    }
+    rt_game3d_model_cache_entry *entry = &g_game3d_model_cache[g_game3d_model_cache_count++];
+    game3d_assign_ref((void **)&entry->path, path ? path : rt_const_cstr(""));
+    entry->asset_path = asset_path ? 1 : 0;
+    game3d_assign_ref(&entry->model_template, model_template);
+    return model_template;
+}
+
+static void *game3d_entity_from_model_root(void *root) {
+    rt_game3d_entity *entity;
+    void *animator;
+    if (!root)
+        return NULL;
+    entity = (rt_game3d_entity *)rt_game3d_entity_from_node(root);
+    if (!entity)
+        return NULL;
+    animator = rt_scene_node3d_get_animator(root);
+    if (animator)
+        game3d_assign_ref(&entity->anim, animator);
+    return entity;
+}
+
+void *rt_game3d_model_template_get_model(void *obj) {
+    rt_game3d_model_template *model_template =
+        game3d_model_template_checked(obj, "Game3D.ModelTemplate.get_model: invalid template");
+    return model_template ? model_template->model : NULL;
+}
+
+rt_string rt_game3d_model_template_get_path(void *obj) {
+    rt_game3d_model_template *model_template =
+        game3d_model_template_checked(obj, "Game3D.ModelTemplate.get_path: invalid template");
+    return model_template && model_template->path ? model_template->path : rt_const_cstr("");
+}
+
+int8_t rt_game3d_model_template_get_is_asset(void *obj) {
+    rt_game3d_model_template *model_template =
+        game3d_model_template_checked(obj, "Game3D.ModelTemplate.get_isAsset: invalid template");
+    return model_template ? model_template->asset_path : 0;
+}
+
+void *rt_game3d_model_template_instantiate(void *obj) {
+    rt_game3d_model_template *model_template =
+        game3d_model_template_checked(obj, "Game3D.ModelTemplate.instantiate: invalid template");
+    if (!model_template || !model_template->model)
+        return NULL;
+    void *root = rt_model3d_instantiate(model_template->model);
+    void *entity = game3d_entity_from_model_root(root);
+    game3d_release_ref(&root);
+    return entity;
+}
+
+void *rt_game3d_assets_load_model(rt_string path) {
+    rt_game3d_model_template *model_template =
+        game3d_assets_load_template_uncached(path, 0, "Game3D.Assets3D.LoadModel: failed to load model");
+    if (!model_template)
+        return NULL;
+    void *entity = rt_game3d_model_template_instantiate(model_template);
+    if (rt_obj_release_check0(model_template))
+        rt_obj_free(model_template);
+    return entity;
+}
+
+void *rt_game3d_assets_load_model_asset(rt_string path) {
+    rt_game3d_model_template *model_template =
+        game3d_assets_load_template_uncached(path, 1, "Game3D.Assets3D.LoadModelAsset: failed to load model asset");
+    if (!model_template)
+        return NULL;
+    void *entity = rt_game3d_model_template_instantiate(model_template);
+    if (rt_obj_release_check0(model_template))
+        rt_obj_free(model_template);
+    return entity;
+}
+
+void *rt_game3d_assets_load_model_template(rt_string path) {
+    return game3d_assets_load_template_cached(
+        path, 0, "Game3D.Assets3D.LoadModelTemplate: failed to load model");
+}
+
+void *rt_game3d_assets_load_model_template_asset(rt_string path) {
+    return game3d_assets_load_template_cached(
+        path, 1, "Game3D.Assets3D.LoadModelTemplateAsset: failed to load model asset");
+}
+
+void rt_game3d_assets_preload(rt_string path) {
+    void *model_template = rt_game3d_assets_load_model_template(path);
+    game3d_release_ref(&model_template);
+}
+
+void rt_game3d_assets_clear_cache(void) {
+    for (int32_t i = 0; i < g_game3d_model_cache_count; ++i) {
+        game3d_release_ref((void **)&g_game3d_model_cache[i].path);
+        game3d_release_ref(&g_game3d_model_cache[i].model_template);
+    }
+    g_game3d_model_cache_count = 0;
 }
 
 static void game3d_env_handle_finalize(void *obj) {
@@ -2268,6 +2877,17 @@ static int32_t game3d_world_find_entity_index(rt_game3d_world *world, rt_game3d_
     return -1;
 }
 
+static rt_game3d_entity *game3d_world_find_entity_by_body(rt_game3d_world *world, void *body) {
+    if (!world || !body)
+        return NULL;
+    for (int32_t i = 0; i < world->entity_count; ++i) {
+        rt_game3d_entity *entity = world->entities[i];
+        if (entity && entity->body == body)
+            return entity;
+    }
+    return NULL;
+}
+
 static void game3d_world_registry_remove(rt_game3d_world *world, rt_game3d_entity *entity) {
     int32_t index = game3d_world_find_entity_index(world, entity);
     if (index < 0)
@@ -2632,15 +3252,49 @@ int64_t rt_game3d_world_collision_event_count(void *obj, int64_t phase) {
         return rt_world3d_get_exit_event_count(world->physics);
     case RT_GAME3D_COLLISION_ANY:
     default:
-        return rt_world3d_get_collision_event_count(world->physics);
+        return rt_world3d_get_enter_event_count(world->physics) +
+               rt_world3d_get_stay_event_count(world->physics) +
+               rt_world3d_get_exit_event_count(world->physics);
     }
 }
 
-void *rt_game3d_world_collision_event(void *obj, int64_t phase, int64_t index) {
-    rt_game3d_world *world =
-        game3d_world_checked(obj, "Game3D.World3D.collisionEvent: invalid world");
-    if (!world || !world->physics)
+static void game3d_collision_event_finalize(void *obj) {
+    rt_game3d_collision_event *event = (rt_game3d_collision_event *)obj;
+    if (!event)
+        return;
+    game3d_release_ref(&event->raw);
+    game3d_release_ref(&event->b);
+    game3d_release_ref(&event->a);
+}
+
+static void *game3d_collision_event_wrap(rt_game3d_world *world, int64_t phase, void *raw_event) {
+    rt_game3d_collision_event *event;
+    if (!raw_event)
         return NULL;
+    event = (rt_game3d_collision_event *)rt_obj_new_i64(
+        RT_G3D_GAME3D_COLLISION_EVENT_CLASS_ID, (int64_t)sizeof(*event));
+    if (!event) {
+        game3d_release_ref(&raw_event);
+        rt_trap("Game3D.Collision3DEvent: allocation failed");
+        return NULL;
+    }
+    memset(event, 0, sizeof(*event));
+    rt_obj_set_finalizer(event, game3d_collision_event_finalize);
+    event->phase = phase;
+    event->raw = raw_event;
+    void *body_a = rt_collision_event3d_get_body_a(raw_event);
+    void *body_b = rt_collision_event3d_get_body_b(raw_event);
+    game3d_assign_ref(&event->a, game3d_world_find_entity_by_body(world, body_a));
+    game3d_assign_ref(&event->b, game3d_world_find_entity_by_body(world, body_b));
+    return event;
+}
+
+static void *game3d_world_raw_collision_event(
+    rt_game3d_world *world, int64_t phase, int64_t index, int64_t *actual_phase) {
+    if (!world || !world->physics || index < 0)
+        return NULL;
+    if (actual_phase)
+        *actual_phase = phase;
     switch (phase) {
     case RT_GAME3D_COLLISION_ENTER:
         return rt_world3d_get_enter_event(world->physics, index);
@@ -2649,9 +3303,36 @@ void *rt_game3d_world_collision_event(void *obj, int64_t phase, int64_t index) {
     case RT_GAME3D_COLLISION_EXIT:
         return rt_world3d_get_exit_event(world->physics, index);
     case RT_GAME3D_COLLISION_ANY:
-    default:
-        return rt_world3d_get_collision_event(world->physics, index);
+    default: {
+        int64_t enter_count = rt_world3d_get_enter_event_count(world->physics);
+        if (index < enter_count) {
+            if (actual_phase)
+                *actual_phase = RT_GAME3D_COLLISION_ENTER;
+            return rt_world3d_get_enter_event(world->physics, index);
+        }
+        index -= enter_count;
+        int64_t stay_count = rt_world3d_get_stay_event_count(world->physics);
+        if (index < stay_count) {
+            if (actual_phase)
+                *actual_phase = RT_GAME3D_COLLISION_STAY;
+            return rt_world3d_get_stay_event(world->physics, index);
+        }
+        index -= stay_count;
+        if (actual_phase)
+            *actual_phase = RT_GAME3D_COLLISION_EXIT;
+        return rt_world3d_get_exit_event(world->physics, index);
     }
+    }
+}
+
+void *rt_game3d_world_collision_event(void *obj, int64_t phase, int64_t index) {
+    rt_game3d_world *world =
+        game3d_world_checked(obj, "Game3D.World3D.collisionEvent: invalid world");
+    if (!world || !world->physics)
+        return NULL;
+    int64_t actual_phase = phase;
+    void *raw_event = game3d_world_raw_collision_event(world, phase, index, &actual_phase);
+    return game3d_collision_event_wrap(world, actual_phase, raw_event);
 }
 
 void rt_game3d_world_clear_collision_events(void *obj) {
@@ -2659,6 +3340,76 @@ void rt_game3d_world_clear_collision_events(void *obj) {
         game3d_world_checked(obj, "Game3D.World3D.clearCollisionEvents: invalid world");
     if (world && world->physics)
         rt_world3d_clear_collision_events(world->physics);
+}
+
+int64_t rt_game3d_collision_event_get_phase(void *obj) {
+    rt_game3d_collision_event *event =
+        game3d_collision_event_checked(obj, "Game3D.Collision3DEvent.get_phase: invalid event");
+    return event ? event->phase : RT_GAME3D_COLLISION_ANY;
+}
+
+void *rt_game3d_collision_event_get_a(void *obj) {
+    rt_game3d_collision_event *event =
+        game3d_collision_event_checked(obj, "Game3D.Collision3DEvent.get_a: invalid event");
+    return event ? event->a : NULL;
+}
+
+void *rt_game3d_collision_event_get_b(void *obj) {
+    rt_game3d_collision_event *event =
+        game3d_collision_event_checked(obj, "Game3D.Collision3DEvent.get_b: invalid event");
+    return event ? event->b : NULL;
+}
+
+void *rt_game3d_collision_event_get_raw(void *obj) {
+    rt_game3d_collision_event *event =
+        game3d_collision_event_checked(obj, "Game3D.Collision3DEvent.get_raw: invalid event");
+    return event ? event->raw : NULL;
+}
+
+int8_t rt_game3d_collision_event_get_is_trigger(void *obj) {
+    rt_game3d_collision_event *event =
+        game3d_collision_event_checked(obj, "Game3D.Collision3DEvent.get_isTrigger: invalid event");
+    return event && event->raw ? rt_collision_event3d_get_is_trigger(event->raw) : 0;
+}
+
+double rt_game3d_collision_event_get_relative_speed(void *obj) {
+    rt_game3d_collision_event *event =
+        game3d_collision_event_checked(obj, "Game3D.Collision3DEvent.get_relativeSpeed: invalid event");
+    return event && event->raw ? rt_collision_event3d_get_relative_speed(event->raw) : 0.0;
+}
+
+double rt_game3d_collision_event_get_normal_impulse(void *obj) {
+    rt_game3d_collision_event *event =
+        game3d_collision_event_checked(obj, "Game3D.Collision3DEvent.get_normalImpulse: invalid event");
+    return event && event->raw ? rt_collision_event3d_get_normal_impulse(event->raw) : 0.0;
+}
+
+void *rt_game3d_collision_event_point(void *obj) {
+    rt_game3d_collision_event *event =
+        game3d_collision_event_checked(obj, "Game3D.Collision3DEvent.point: invalid event");
+    return event && event->raw ? rt_collision_event3d_get_contact_point(event->raw, 0)
+                               : rt_vec3_new(0.0, 0.0, 0.0);
+}
+
+void *rt_game3d_collision_event_normal(void *obj) {
+    rt_game3d_collision_event *event =
+        game3d_collision_event_checked(obj, "Game3D.Collision3DEvent.normal: invalid event");
+    return event && event->raw ? rt_collision_event3d_get_contact_normal(event->raw, 0)
+                               : rt_vec3_new(0.0, 1.0, 0.0);
+}
+
+void *rt_game3d_collision_event_other(void *obj, void *entity_obj) {
+    rt_game3d_collision_event *event =
+        game3d_collision_event_checked(obj, "Game3D.Collision3DEvent.other: invalid event");
+    rt_game3d_entity *entity =
+        game3d_entity_checked(entity_obj, "Game3D.Collision3DEvent.other: entity must be Entity3D");
+    if (!event || !entity)
+        return NULL;
+    if (event->a == entity)
+        return event->b;
+    if (event->b == entity)
+        return event->a;
+    return NULL;
 }
 
 void rt_game3d_world_set_gravity(void *obj, double x, double y, double z) {

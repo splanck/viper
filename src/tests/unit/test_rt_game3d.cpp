@@ -18,6 +18,7 @@
 #include "rt_canvas3d.h"
 #include "rt_game3d.h"
 #include "rt_input.h"
+#include "rt_model3d.h"
 #include "rt_physics3d.h"
 #include "rt_pixels.h"
 #include "rt_postfx3d.h"
@@ -96,6 +97,16 @@ extern "C" void vm_trap(const char *msg) {
             return false;                                                                          \
         }                                                                                          \
     } while (0)
+
+static rt_string test_fixture_path(const char *relative) {
+#ifdef VIPER_SOURCE_DIR
+    char path[4096];
+    std::snprintf(path, sizeof(path), "%s/%s", VIPER_SOURCE_DIR, relative);
+    return rt_const_cstr(path);
+#else
+    return rt_const_cstr(relative);
+#endif
+}
 
 template <typename Fn>
 static bool expect_trap_contains(Fn &&fn, const char *needle) {
@@ -567,6 +578,207 @@ static bool test_phase3_world_presets_environment_and_debug() {
     PASS();
 }
 
+static bool test_phase4_assets3d_model_templates() {
+    TEST("Assets3D loads models and caches ModelTemplate objects");
+    rt_string path = test_fixture_path("tests/runtime/assets/gltf/load_asset_triangle.gltf");
+
+    rt_game3d_assets_clear_cache();
+
+    void *model_entity = rt_game3d_assets_load_model(path);
+    EXPECT_TRUE(model_entity != nullptr, "Assets3D.LoadModel returns an entity");
+    EXPECT_TRUE(rt_game3d_entity_is_group(model_entity) != 0, "loaded model entity is a group");
+    EXPECT_EQ_INT(rt_scene_node3d_child_count(rt_game3d_entity_get_node(model_entity)),
+                  1,
+                  "loaded model preserves imported root children");
+
+    void *asset_entity = rt_game3d_assets_load_model_asset(path);
+    EXPECT_TRUE(asset_entity != nullptr, "Assets3D.LoadModelAsset returns an entity");
+    EXPECT_EQ_INT(rt_scene_node3d_child_count(rt_game3d_entity_get_node(asset_entity)),
+                  1,
+                  "asset-loaded model preserves imported root children");
+
+    void *tpl1 = rt_game3d_assets_load_model_template(path);
+    void *tpl2 = rt_game3d_assets_load_model_template(path);
+    EXPECT_TRUE(tpl1 != nullptr && tpl1 == tpl2, "LoadModelTemplate reuses cached template");
+    EXPECT_TRUE(rt_game3d_model_template_get_model(tpl1) != nullptr,
+                "ModelTemplate exposes raw Model3D");
+    EXPECT_EQ_INT(rt_model3d_get_mesh_count(rt_game3d_model_template_get_model(tpl1)),
+                  1,
+                  "ModelTemplate retains imported meshes");
+    EXPECT_TRUE(rt_game3d_model_template_get_is_asset(tpl1) == 0,
+                "filesystem template reports non-asset path");
+
+    void *inst = rt_game3d_model_template_instantiate(tpl1);
+    EXPECT_TRUE(inst != nullptr, "ModelTemplate.instantiate returns an Entity3D");
+    EXPECT_EQ_INT(rt_scene_node3d_child_count(rt_game3d_entity_get_node(inst)),
+                  1,
+                  "ModelTemplate.instantiate clones the model root subtree");
+
+    void *asset_tpl = rt_game3d_assets_load_model_template_asset(path);
+    EXPECT_TRUE(asset_tpl != nullptr, "LoadModelTemplateAsset returns a template");
+    EXPECT_TRUE(rt_game3d_model_template_get_is_asset(asset_tpl) != 0,
+                "asset template records asset resolver path");
+    EXPECT_EQ_INT(rt_model3d_get_mesh_count(rt_game3d_model_template_get_model(asset_tpl)),
+                  1,
+                  "asset template retains imported meshes");
+
+    rt_game3d_assets_preload(path);
+    rt_game3d_assets_clear_cache();
+    PASS();
+}
+
+static bool test_phase4_body_def_attach_body() {
+    TEST("BodyDef creates attached bodies with filters and sync policy");
+    void *world = rt_game3d_world_new(rt_const_cstr("Game3D BodyDef Unit"), 80, 60);
+    void *entity = rt_game3d_entity_new();
+    rt_game3d_entity_set_position(entity, 1.0, 2.0, 3.0);
+    rt_game3d_entity_set_layer(entity, rt_game3d_layers_player());
+
+    void *def = rt_game3d_body_def_sphere(0.5, 2.0);
+    rt_game3d_body_def_set_friction(def, 0.7);
+    rt_game3d_body_def_set_restitution(def, 0.15);
+    rt_game3d_body_def_set_use_ccd(def, 1);
+    rt_game3d_body_def_with_mask(def, rt_game3d_layermask_of(rt_game3d_layers_world()));
+    rt_game3d_body_def_with_sync(def, rt_game3d_sync_mode_body_from_node());
+
+    rt_game3d_entity_attach_body(entity, def);
+    void *body = rt_game3d_entity_get_body(entity);
+    EXPECT_TRUE(body != nullptr, "attachBody accepts BodyDef");
+    EXPECT_EQ_INT(rt_body3d_get_collision_layer(body),
+                  rt_game3d_layers_player(),
+                  "BodyDef without explicit layer inherits entity layer");
+    EXPECT_EQ_INT(rt_body3d_get_collision_mask(body),
+                  rt_game3d_layers_world(),
+                  "BodyDef mask applies to attached body");
+    EXPECT_NEAR(rt_body3d_get_mass(body), 2.0, 0.0001, "BodyDef mass applies");
+    EXPECT_NEAR(rt_body3d_get_friction(body), 0.7, 0.0001, "BodyDef friction applies");
+    EXPECT_NEAR(rt_body3d_get_restitution(body), 0.15, 0.0001, "BodyDef restitution applies");
+    EXPECT_TRUE(rt_body3d_get_use_ccd(body) != 0, "BodyDef CCD applies");
+    EXPECT_EQ_INT(rt_scene_node3d_get_sync_mode(rt_game3d_entity_get_node(entity)),
+                  rt_game3d_sync_mode_body_from_node(),
+                  "BodyDef sync mode applies to scene node");
+
+    rt_game3d_world_spawn(world, entity);
+    EXPECT_EQ_INT(rt_world3d_body_count(rt_game3d_world_get_physics(world)),
+                  1,
+                  "spawning BodyDef-attached entity registers the body");
+
+    void *trigger = rt_game3d_entity_new();
+    void *trigger_def = rt_game3d_body_def_static_box(1.0, 1.0, 1.0);
+    rt_game3d_body_def_with_layer(trigger_def, rt_game3d_layers_trigger());
+    rt_game3d_body_def_as_trigger(trigger_def);
+    rt_game3d_entity_attach_body(trigger, trigger_def);
+    rt_game3d_entity_set_position(trigger, 0.0, 3.0, 0.0);
+    EXPECT_EQ_INT(rt_game3d_entity_get_layer(trigger),
+                  rt_game3d_layers_trigger(),
+                  "explicit BodyDef layer applies to entity");
+    EXPECT_TRUE(rt_body3d_is_static(rt_game3d_entity_get_body(trigger)) != 0,
+                "StaticBox creates a static body");
+    EXPECT_TRUE(rt_body3d_is_trigger(rt_game3d_entity_get_body(trigger)) != 0,
+                "asTrigger marks the body trigger-only");
+
+    void *ground = rt_game3d_entity_new();
+    rt_game3d_entity_attach_body(ground, rt_game3d_body_def_static_plane(10.0));
+    EXPECT_EQ_INT(rt_game3d_entity_get_layer(ground),
+                  rt_game3d_layers_world(),
+                  "StaticPlane defaults to the World layer");
+    EXPECT_TRUE(rt_body3d_is_static(rt_game3d_entity_get_body(ground)) != 0,
+                "StaticPlane creates a static body");
+
+    rt_game3d_world_destroy(world);
+    PASS();
+}
+
+static int event_mentions(void *event, void *a, void *b) {
+    return (rt_game3d_collision_event_get_a(event) == a &&
+            rt_game3d_collision_event_get_b(event) == b) ||
+           (rt_game3d_collision_event_get_a(event) == b &&
+            rt_game3d_collision_event_get_b(event) == a);
+}
+
+static bool test_phase4_collision_events_wrapped_with_entities() {
+    TEST("Collision3DEvent wraps raw contacts with phases and owning entities");
+    void *world = rt_game3d_world_new(rt_const_cstr("Game3D Collision Unit"), 80, 60);
+    rt_game3d_world_set_gravity(world, 0.0, 0.0, 0.0);
+
+    void *ground = rt_game3d_entity_new();
+    rt_game3d_entity_set_name(ground, rt_const_cstr("Ground"));
+    rt_game3d_entity_attach_body(ground, rt_game3d_body_def_static_plane(8.0));
+    rt_game3d_entity_set_position(ground, 0.0, 0.0, 0.0);
+
+    void *ball = rt_game3d_entity_new();
+    rt_game3d_entity_set_name(ball, rt_const_cstr("Ball"));
+    void *ball_def = rt_game3d_body_def_sphere(0.5, 1.0);
+    rt_game3d_body_def_with_mask(ball_def, rt_game3d_layermask_of(rt_game3d_layers_world()));
+    rt_game3d_entity_attach_body(ball, ball_def);
+    rt_game3d_entity_set_position(ball, 0.0, 0.45, 0.0);
+
+    rt_game3d_world_spawn(world, ground);
+    rt_game3d_world_spawn(world, ball);
+    rt_game3d_world_step_simulation(world, 1.0 / 60.0);
+
+    EXPECT_TRUE(rt_game3d_world_collision_event_count(world, rt_game3d_collision_enter()) > 0,
+                "first overlap emits enter event");
+    void *enter = rt_game3d_world_collision_event(world, rt_game3d_collision_enter(), 0);
+    EXPECT_TRUE(enter != nullptr, "collisionEvent returns Game3D event wrapper");
+    EXPECT_EQ_INT(rt_game3d_collision_event_get_phase(enter),
+                  rt_game3d_collision_enter(),
+                  "enter event reports Enter phase");
+    EXPECT_TRUE(event_mentions(enter, ground, ball), "event maps bodies back to owning entities");
+    EXPECT_TRUE(rt_game3d_collision_event_other(enter, ground) == ball,
+                "Collision3DEvent.other returns the opposite entity");
+    EXPECT_TRUE(rt_game3d_collision_event_get_raw(enter) != nullptr,
+                "Collision3DEvent exposes raw Graphics3D event");
+    EXPECT_TRUE(rt_game3d_collision_event_point(enter) != nullptr,
+                "Collision3DEvent.point returns a Vec3");
+    EXPECT_TRUE(rt_game3d_collision_event_normal(enter) != nullptr,
+                "Collision3DEvent.normal returns a Vec3");
+    EXPECT_TRUE(rt_game3d_world_collision_event_count(world, rt_game3d_collision_any()) >=
+                    rt_game3d_world_collision_event_count(world, rt_game3d_collision_enter()),
+                "Any phase includes transition buffers");
+
+    rt_game3d_world_step_simulation(world, 1.0 / 60.0);
+    EXPECT_TRUE(rt_game3d_world_collision_event_count(world, rt_game3d_collision_stay()) > 0,
+                "second overlap emits stay event");
+
+    rt_game3d_entity_set_position(ball, 0.0, 5.0, 0.0);
+    rt_game3d_world_step_simulation(world, 1.0 / 60.0);
+    EXPECT_TRUE(rt_game3d_world_collision_event_count(world, rt_game3d_collision_exit()) > 0,
+                "separating bodies emits exit event");
+    void *exit = rt_game3d_world_collision_event(world, rt_game3d_collision_exit(), 0);
+    EXPECT_EQ_INT(rt_game3d_collision_event_get_phase(exit),
+                  rt_game3d_collision_exit(),
+                  "exit event reports Exit phase");
+
+    rt_game3d_world_destroy(world);
+
+    world = rt_game3d_world_new(rt_const_cstr("Game3D Trigger Collision Unit"), 80, 60);
+    rt_game3d_world_set_gravity(world, 0.0, 0.0, 0.0);
+    void *trigger = rt_game3d_entity_new();
+    void *trigger_def = rt_game3d_body_def_static_box(1.0, 1.0, 1.0);
+    rt_game3d_body_def_with_layer(trigger_def, rt_game3d_layers_trigger());
+    rt_game3d_body_def_as_trigger(trigger_def);
+    rt_game3d_entity_attach_body(trigger, trigger_def);
+    rt_game3d_entity_set_position(trigger, 0.0, 0.0, 0.0);
+    ball = rt_game3d_entity_new();
+    ball_def = rt_game3d_body_def_sphere(0.5, 1.0);
+    void *trigger_mask = rt_game3d_layermask_of(rt_game3d_layers_world());
+    rt_game3d_layermask_include(trigger_mask, rt_game3d_layers_trigger());
+    rt_game3d_body_def_with_mask(ball_def, trigger_mask);
+    rt_game3d_entity_attach_body(ball, ball_def);
+    rt_game3d_entity_set_position(ball, 0.0, 0.0, 0.0);
+    rt_game3d_world_spawn(world, trigger);
+    rt_game3d_world_spawn(world, ball);
+    rt_game3d_world_step_simulation(world, 1.0 / 60.0);
+    void *trigger_event = rt_game3d_world_collision_event(world, rt_game3d_collision_enter(), 0);
+    EXPECT_TRUE(trigger_event != nullptr, "trigger overlap emits an event");
+    EXPECT_TRUE(rt_game3d_collision_event_get_is_trigger(trigger_event) != 0,
+                "trigger event reports trigger status");
+
+    rt_game3d_world_destroy(world);
+    PASS();
+}
+
 int main() {
     set_software_backend_env();
     bool ok = true;
@@ -579,6 +791,9 @@ int main() {
     ok = test_first_person_character_controller_same_frame_motion() && ok;
     ok = test_phase3_material_presets_and_prefabs() && ok;
     ok = test_phase3_world_presets_environment_and_debug() && ok;
+    ok = test_phase4_assets3d_model_templates() && ok;
+    ok = test_phase4_body_def_attach_body() && ok;
+    ok = test_phase4_collision_events_wrapped_with_entities() && ok;
 
     std::printf("\nGame3D runtime tests: %d/%d passed\n", g_tests_passed, g_tests_total);
     return ok && g_tests_passed == g_tests_total ? 0 : 1;
