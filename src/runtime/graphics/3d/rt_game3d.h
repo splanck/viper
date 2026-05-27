@@ -186,6 +186,47 @@ int8_t rt_game3d_entity_is_destroyed(void *entity);
 void *rt_game3d_audio_get_listener(void *audio);
 void *rt_game3d_effects_get_postfx(void *effects);
 
+void rt_game3d_lighting_studio(void *world);
+void rt_game3d_lighting_outdoor(void *world, void *sun_dir);
+void rt_game3d_lighting_night(void *world);
+void rt_game3d_lighting_interior(void *world);
+void rt_game3d_lighting_clear(void *world);
+
+void *rt_game3d_materials_plastic(double r, double g, double b);
+void *rt_game3d_materials_metal(double r, double g, double b);
+void *rt_game3d_materials_rubber(double r, double g, double b);
+void *rt_game3d_materials_glass(double r, double g, double b, double alpha);
+void *rt_game3d_materials_emissive(double r, double g, double b, double intensity);
+void *rt_game3d_materials_unlit(double r, double g, double b);
+void *rt_game3d_materials_from_albedo_map(void *pixels);
+
+void rt_game3d_postfx_cinematic(void *world);
+void rt_game3d_postfx_crisp(void *world);
+void rt_game3d_postfx_none(void *world);
+
+void rt_game3d_quality_apply(void *world, int64_t quality);
+
+void *rt_game3d_prefab_box(double size, void *material);
+void *rt_game3d_prefab_box_xyz(double width, double height, double depth, void *material);
+void *rt_game3d_prefab_sphere(double radius, int64_t segments, void *material);
+void *rt_game3d_prefab_cylinder(double radius, double height, int64_t segments, void *material);
+void *rt_game3d_prefab_plane(double width, double depth, void *material);
+void *rt_game3d_prefab_ground(double size, void *material);
+
+void *rt_game3d_environment_outdoor(void *world);
+void *rt_game3d_environment_sunset(void *world);
+void *rt_game3d_environment_overcast(void *world);
+void *rt_game3d_environment_night(void *world);
+void *rt_game3d_env_handle_with_terrain(void *env, double size, double height);
+void *rt_game3d_env_handle_with_water(void *env, double level);
+void *rt_game3d_env_handle_with_fog(void *env, double near_plane, double far_plane);
+
+void rt_game3d_debug_show_overlay(void *world, int8_t enabled);
+void rt_game3d_debug_draw_axes(void *world, void *origin, double size);
+void rt_game3d_debug_draw_physics(void *world, int8_t enabled);
+void rt_game3d_debug_draw_camera_info(void *world, int8_t enabled);
+void rt_game3d_debug_draw_capabilities(void *world, int8_t enabled);
+
 void *rt_game3d_character_controller_new(
     void *world, void *entity, double radius, double height, double mass);
 void *rt_game3d_character_controller_get_character(void *controller);

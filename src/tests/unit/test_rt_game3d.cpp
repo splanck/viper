@@ -20,6 +20,7 @@
 #include "rt_input.h"
 #include "rt_physics3d.h"
 #include "rt_pixels.h"
+#include "rt_postfx3d.h"
 #include "rt_scene3d.h"
 #include "rt_string.h"
 #include "rt_vec2.h"
@@ -431,6 +432,141 @@ static bool test_first_person_character_controller_same_frame_motion() {
     PASS();
 }
 
+static bool test_phase3_material_presets_and_prefabs() {
+    TEST("Game3D material presets and prefab factories create usable runtime objects");
+    void *plastic = rt_game3d_materials_plastic(0.8, 0.2, 0.1);
+    void *metal = rt_game3d_materials_metal(0.7, 0.72, 0.75);
+    void *rubber = rt_game3d_materials_rubber(0.05, 0.05, 0.05);
+    void *glass = rt_game3d_materials_glass(0.2, 0.6, 0.8, 0.35);
+    void *emissive = rt_game3d_materials_emissive(0.8, 0.3, 0.1, 2.5);
+    void *unlit = rt_game3d_materials_unlit(0.1, 0.9, 0.4);
+    void *pixels = rt_pixels_new(2, 2);
+    void *textured = rt_game3d_materials_from_albedo_map(pixels);
+
+    EXPECT_TRUE(plastic != nullptr, "Plastic returns Material3D");
+    EXPECT_EQ_INT(rt_material3d_get_shading_model(plastic),
+                  rt_game3d_shading_model_pbr(),
+                  "Plastic uses PBR shading");
+    EXPECT_NEAR(rt_material3d_get_metallic(plastic), 0.0, 0.0001, "Plastic metallic");
+    EXPECT_NEAR(rt_material3d_get_metallic(metal), 1.0, 0.0001, "Metal metallic");
+    EXPECT_TRUE(rt_material3d_get_roughness(rubber) > 0.80, "Rubber is rough");
+    EXPECT_EQ_INT(rt_material3d_get_alpha_mode(glass),
+                  rt_game3d_alpha_mode_blend(),
+                  "Glass uses blend alpha");
+    EXPECT_NEAR(rt_material3d_get_alpha(glass), 0.35, 0.0001, "Glass alpha");
+    EXPECT_TRUE(rt_material3d_get_double_sided(glass) != 0, "Glass is double-sided");
+    EXPECT_EQ_INT(rt_material3d_get_shading_model(emissive),
+                  rt_game3d_shading_model_emissive(),
+                  "Emissive uses emissive shading");
+    EXPECT_NEAR(rt_material3d_get_emissive_intensity(emissive),
+                2.5,
+                0.0001,
+                "Emissive intensity");
+    EXPECT_TRUE(rt_material3d_get_unlit(unlit) != 0, "Unlit marks material unlit");
+    EXPECT_TRUE(textured != nullptr, "FromAlbedoMap returns Material3D");
+
+    void *box = rt_game3d_prefab_box(1.5, plastic);
+    void *box_xyz = rt_game3d_prefab_box_xyz(1.0, 2.0, 3.0, metal);
+    void *sphere = rt_game3d_prefab_sphere(0.75, 16, rubber);
+    void *cylinder = rt_game3d_prefab_cylinder(0.5, 2.0, 16, glass);
+    void *plane = rt_game3d_prefab_plane(4.0, 5.0, unlit);
+    void *ground = rt_game3d_prefab_ground(10.0, plastic);
+
+    EXPECT_TRUE(rt_game3d_entity_get_mesh(box) != nullptr, "Box prefab has mesh");
+    EXPECT_EQ_INT(rt_mesh3d_get_triangle_count(rt_game3d_entity_get_mesh(box)),
+                  12,
+                  "Box prefab uses box mesh");
+    EXPECT_TRUE(rt_game3d_entity_get_material(box) == plastic, "Box prefab retains caller material");
+    EXPECT_TRUE(rt_game3d_entity_get_mesh(box_xyz) != nullptr, "BoxXYZ prefab has mesh");
+    EXPECT_TRUE(rt_mesh3d_get_triangle_count(rt_game3d_entity_get_mesh(sphere)) > 0,
+                "Sphere prefab has triangles");
+    EXPECT_TRUE(rt_mesh3d_get_triangle_count(rt_game3d_entity_get_mesh(cylinder)) > 0,
+                "Cylinder prefab has triangles");
+    EXPECT_EQ_INT(rt_mesh3d_get_triangle_count(rt_game3d_entity_get_mesh(plane)),
+                  2,
+                  "Plane prefab is a quad");
+    EXPECT_EQ_INT(rt_game3d_entity_get_layer(ground),
+                  rt_game3d_layers_world(),
+                  "Ground prefab uses world layer");
+    PASS();
+}
+
+static bool test_phase3_world_presets_environment_and_debug() {
+    TEST("Game3D lighting, quality, environment, post-FX, and debug helpers compose");
+    void *world = rt_game3d_world_new(rt_const_cstr("Game3D Unit Presets"), 96, 72);
+    void *canvas = rt_game3d_world_get_canvas(world);
+
+    rt_game3d_lighting_studio(world);
+    EXPECT_EQ_INT(rt_canvas3d_get_light_count(canvas), 2, "Studio lighting installs two lights");
+
+    void *sun = rt_vec3_new(-0.2, -1.0, -0.3);
+    rt_game3d_lighting_outdoor(world, sun);
+    EXPECT_EQ_INT(rt_canvas3d_get_light_count(canvas), 1, "Outdoor lighting installs one sun");
+    rt_game3d_lighting_night(world);
+    EXPECT_EQ_INT(rt_canvas3d_get_light_count(canvas), 2, "Night lighting installs moon and fill");
+    rt_game3d_lighting_interior(world);
+    EXPECT_EQ_INT(rt_canvas3d_get_light_count(canvas), 2, "Interior lighting installs key and rim");
+    rt_game3d_lighting_clear(world);
+    EXPECT_EQ_INT(rt_canvas3d_get_light_count(canvas), 0, "Lighting.Clear removes lights");
+
+    rt_game3d_quality_apply(world, rt_game3d_quality_cinematic());
+    EXPECT_EQ_INT(rt_canvas3d_get_quality_requested(canvas),
+                  rt_game3d_quality_cinematic(),
+                  "Quality.Apply records requested level");
+    EXPECT_TRUE(rt_canvas3d_get_quality_active(canvas) >= rt_game3d_quality_performance() &&
+                    rt_canvas3d_get_quality_active(canvas) <= rt_game3d_quality_cinematic(),
+                "Quality.Apply leaves a valid active level after fallback");
+
+    rt_game3d_postfx_cinematic(world);
+    void *fx = rt_game3d_effects_get_postfx(rt_game3d_world_get_effects(world));
+    EXPECT_TRUE(fx != nullptr, "PostFX.Cinematic installs a chain");
+    EXPECT_TRUE(rt_postfx3d_get_effect_count(fx) >= 4, "PostFX.Cinematic has visible effects");
+    rt_game3d_postfx_crisp(world);
+    fx = rt_game3d_effects_get_postfx(rt_game3d_world_get_effects(world));
+    EXPECT_TRUE(fx != nullptr, "PostFX.Crisp installs a chain");
+    EXPECT_TRUE(rt_postfx3d_get_effect_count(fx) >= 2, "PostFX.Crisp has visible effects");
+    rt_game3d_postfx_none(world);
+    fx = rt_game3d_effects_get_postfx(rt_game3d_world_get_effects(world));
+    EXPECT_TRUE(fx != nullptr && rt_postfx3d_get_enabled(fx) == 0, "PostFX.None disables chain");
+
+    int64_t nodes_before = rt_scene3d_get_node_count(rt_game3d_world_get_scene(world));
+    void *env = rt_game3d_environment_outdoor(world);
+    EXPECT_TRUE(env != nullptr, "Environment.Outdoor returns EnvHandle");
+    EXPECT_TRUE(rt_scene3d_get_node_count(rt_game3d_world_get_scene(world)) > nodes_before,
+                "Environment.Outdoor spawns terrain");
+    EXPECT_TRUE(rt_world3d_body_count(rt_game3d_world_get_physics(world)) >= 1,
+                "Environment terrain gets a static body");
+    rt_game3d_env_handle_with_terrain(env, 48.0, -0.05);
+    rt_game3d_env_handle_with_water(env, 0.05);
+    rt_game3d_env_handle_with_fog(env, 5.0, 50.0);
+    EXPECT_TRUE(rt_scene3d_get_node_count(rt_game3d_world_get_scene(world)) > nodes_before + 1,
+                "EnvHandle.withWater spawns water");
+    EXPECT_TRUE(rt_game3d_environment_sunset(world) != nullptr,
+                "Environment.Sunset returns EnvHandle");
+    EXPECT_TRUE(rt_game3d_environment_overcast(world) != nullptr,
+                "Environment.Overcast returns EnvHandle");
+    EXPECT_TRUE(rt_game3d_environment_night(world) != nullptr,
+                "Environment.Night returns EnvHandle");
+
+    rt_game3d_debug_show_overlay(world, 1);
+    rt_game3d_debug_draw_axes(world, rt_vec3_new(0.0, 0.0, 0.0), 1.5);
+    rt_game3d_debug_draw_physics(world, 1);
+    rt_game3d_debug_draw_camera_info(world, 1);
+    rt_game3d_debug_draw_capabilities(world, 1);
+
+    rt_game3d_world_begin_frame(world);
+    rt_game3d_world_draw_scene(world);
+    rt_game3d_world_draw_effects(world);
+    rt_game3d_world_end_scene(world);
+    void *final_pixels = rt_game3d_world_capture_final_frame(world);
+    EXPECT_TRUE(final_pixels != nullptr, "debug overlay finalizes into captured Pixels");
+    EXPECT_EQ_INT(rt_pixels_width(final_pixels), 96, "debug final frame width");
+    EXPECT_EQ_INT(rt_pixels_height(final_pixels), 72, "debug final frame height");
+
+    rt_game3d_world_destroy(world);
+    PASS();
+}
+
 int main() {
     set_software_backend_env();
     bool ok = true;
@@ -441,6 +577,8 @@ int main() {
     ok = test_free_fly_controller_synthetic_input() && ok;
     ok = test_orbit_and_follow_controllers() && ok;
     ok = test_first_person_character_controller_same_frame_motion() && ok;
+    ok = test_phase3_material_presets_and_prefabs() && ok;
+    ok = test_phase3_world_presets_environment_and_debug() && ok;
 
     std::printf("\nGame3D runtime tests: %d/%d passed\n", g_tests_passed, g_tests_total);
     return ok && g_tests_passed == g_tests_total ? 0 : 1;

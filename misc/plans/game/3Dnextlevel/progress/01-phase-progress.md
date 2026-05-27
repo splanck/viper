@@ -35,20 +35,20 @@ API, test, and docs items are tracked in the sibling files.
 | P0B-014 | Prove `ScreenshotFinal()` then `Flip()` does not double-apply finalization | `roadmap.md` Phase 0B Exit | done | finalization idempotence implemented; probe calls `ScreenshotFinal()` then `Flip()` | `test_rt_canvas3d_gpu_paths`, `g3d_walk_min_visual_probe` |  | ctests passed | Direct fake-backend `Flip` counter remains impractical because `Flip` enters `vgfx_update` |
 | P0B-015 | Build passes on macOS, Windows, Linux | `roadmap.md` Phase 0B Exit | partial | local macOS build passed |  |  | `cmake --build build -j...` | Windows/Linux pending |
 | P0B-016 | `check_runtime_completeness.sh` passes | `roadmap.md` Phase 0B Exit | done | runtime.def complete | script |  | `scripts/check_runtime_completeness.sh` |  |
-| P0B-017 | `ctest --test-dir build -L graphics3d` passes | `roadmap.md` Phase 0B Exit | done | graphics3d regression green | 44/44 ctests |  | `ctest --test-dir build -L graphics3d --output-on-failure` | Includes Phase 0A surface probe, synthetic input, quality profiles, model asset loading, Game3D controller probes, and `walk_min` visual probe |
+| P0B-017 | `ctest --test-dir build -L graphics3d` passes | `roadmap.md` Phase 0B Exit | done | graphics3d regression green | 45/45 ctests |  | `ctest --test-dir build -L graphics3d --output-on-failure` | Includes Phase 0A surface probe, synthetic input, quality profiles, model asset loading, Game3D controller probes, and `walk_min` visual probe |
 
 ## Phase 0C - deterministic test input, clock, and backend-safe quality
 
 | ID | Item | Source | Status | Impl | Tests | Docs | Proof / link | Notes |
 |---|---|---|---|---|---|---|---|---|
-| P0C-001 | Implement backend-safe quality policy | `roadmap.md` Phase 0C | done | `Canvas3D.SetQuality`, `PostFX3D.NewQuality`, fallback inspection | `test_rt_canvas3d_gpu_paths`, `g3d_test_canvas3d_quality_profiles` | `docs/graphics3d-guide.md`, `docs/viperlib/graphics/rendering3d.md` | focused ctests passed | Game3D wrappers still tracked in Phase 3 |
+| P0C-001 | Implement backend-safe quality policy | `roadmap.md` Phase 0C | done | `Canvas3D.SetQuality`, `PostFX3D.NewQuality`, fallback inspection | `test_rt_canvas3d_gpu_paths`, `g3d_test_canvas3d_quality_profiles` | `docs/graphics3d-guide.md`, `docs/viperlib/graphics/rendering3d.md` | focused ctests passed | Game3D wrappers completed in Phase 3 |
 | P0C-002 | Implement synthetic input and synthetic clock | `roadmap.md` Phase 0C | done | Canvas3D input/clock source APIs implemented in C runtime and runtime.def | `test_rt_canvas3d_gpu_paths`, `g3d_test_canvas3d_synthetic_input` | `docs/graphics3d-guide.md`, `docs/viperlib/graphics/rendering3d.md` | focused ctests passed | Runtime-first; no Zia helper library |
 | P0C-003 | Add `World3D.runFrames` probe scaffolding if needed | `roadmap.md` Phase 0C | done | Not needed before Game3D runtime exists; Canvas3D deterministic frame APIs cover the Phase 0C contract | `g3d_test_canvas3d_synthetic_input` |  | ctest passed | Not a separate runtime |
 | P0C-004 | Add software-backend probes for every quality profile | `roadmap.md` Phase 0C | done | Performance/Balanced/Cinematic applied on software without GPU-only traps | `g3d_test_canvas3d_quality_profiles` |  | ctest passed |  |
 | P0C-005 | Prove scripted WASD + mouse-look is deterministic across two runs | `roadmap.md` Phase 0C Exit | done | Canvas3D deterministic camera probe compares two identical scripted frames | `g3d_test_canvas3d_synthetic_input` |  | ctest passed | Full Game3D simulation-state proof remains in later `World3D.runFrames` rows |
 | P0C-006 | Final-frame comparison uses tolerance/region checks | `roadmap.md` Phase 0C Exit | done | `walk_min` visual probe uses region/tolerance assertions and baseline diff | `g3d_walk_min_visual_probe` |  | graphics3d ctest passed |  |
 | P0C-007 | Software backend applies all quality profiles without traps | `roadmap.md` Phase 0C Exit | done | software ctest runs Performance/Balanced/Cinematic through finalization/screenshot | `g3d_test_canvas3d_quality_profiles` |  | ctest passed |  |
-| P0C-008 | Debug/capability output reports quality fallback | `roadmap.md` Phase 0C Exit | partial | Canvas3D fallback flag/reason exposed for Debug3D | `test_rt_canvas3d_gpu_paths`, `g3d_test_canvas3d_quality_profiles` | docs updated | focused ctests passed | Actual Debug3D overlay pending Phase 3 |
+| P0C-008 | Debug/capability output reports quality fallback | `roadmap.md` Phase 0C Exit | done | Canvas3D fallback flag/reason exposed and Debug3D reports requested/active/fallback state | `test_rt_canvas3d_gpu_paths`, `g3d_test_canvas3d_quality_profiles`, `g3d_test_game3d_presets_probe` | docs updated | focused ctests passed |  |
 
 ## Phase 0D - package-aware model/audio asset loading
 
@@ -71,10 +71,10 @@ API, test, and docs items are tracked in the sibling files.
 | ID | Item | Source | Status | Impl | Tests | Docs | Proof / link | Notes |
 |---|---|---|---|---|---|---|---|---|
 | P1-001 | Implement runtime-backed `Viper.Game3D` classes/functions in C runtime tree | `roadmap.md` Phase 1 | done | `src/runtime/graphics/3d/rt_game3d.c`, `rt_game3d.h` | `test_rt_game3d`; Zia probes | `docs/viperlib/graphics/game3d.md` | focused ctests passed | Normal C runtime implementation; not a Zia library |
-| P1-002 | Add `runtime.def` entries, headers, disabled-graphics stubs, docs, completeness checks | `roadmap.md` Phase 1 | done | `runtime.def`, runtime signatures/classes, CMake, graphics stubs | focused build passed; graphics3d 44/44 | Game3D docs added | `scripts/check_runtime_completeness.sh` passed |  |
+| P1-002 | Add `runtime.def` entries, headers, disabled-graphics stubs, docs, completeness checks | `roadmap.md` Phase 1 | done | `runtime.def`, runtime signatures/classes, CMake, graphics stubs | focused build passed; graphics3d 45/45 | Game3D docs added | `scripts/check_runtime_completeness.sh` passed |  |
 | P1-003 | Add only thin Zia sample/import convenience where useful | `roadmap.md` Phase 1 | done | Zia probes consume runtime namespace directly | `g3d_test_game3d_world_probe`, `g3d_test_game3d_runframes_probe` | docs explain runtime-first policy | focused ctests passed | No authoritative Zia helper package added |
 | P1-004 | `World3D.New` creates canvas/camera/scene/physics/input/audio/effects | `roadmap.md` Phase 1 | done | `rt_game3d_world_new_with_camera` | `test_rt_game3d`, `g3d_test_game3d_world_probe` | Game3D docs | focused ctests passed |  |
-| P1-005 | `World3D.New` applies explicit default environment | `roadmap.md` Phase 1 | done | default camera, lighting, ambient, quality, frustum culling | `test_rt_game3d`, `g3d_test_game3d_world_probe` | Game3D docs | focused ctests passed | Environment presets remain Phase 3 |
+| P1-005 | `World3D.New` applies explicit default environment | `roadmap.md` Phase 1 | done | default camera, lighting, ambient, quality, frustum culling | `test_rt_game3d`, `g3d_test_game3d_world_probe` | Game3D docs | focused ctests passed | Additional environment presets completed in Phase 3 |
 | P1-006 | Implement `run`, `runFixed`, `runFrames` | `roadmap.md` Phase 1 | partial | Native callback loops plus `runFramesOnly` | C native callback path; Zia `runFramesOnly`; callback rejection probe | Game3D callback-boundary docs | focused ctests passed | Interpreted Zia callback trampoline is deferred; manual APIs are required in interpreted Zia |
 | P1-007 | Implement manual loop methods and final-frame capture | `roadmap.md` Phase 1 | done | `tick`, `stepSimulation`, `beginFrame`, `drawScene`, `drawEffects`, `endScene`, `captureFinalFrame`, `present` | `test_rt_game3d`, `g3d_test_game3d_world_probe` | Game3D docs | focused ctests passed |  |
 | P1-008 | Implement documented frame order | `roadmap.md` Phase 1 | done | managed loop helpers share `game3d_world_render_once` and manual frame stages | `test_rt_game3d` | Game3D docs | focused ctests passed |  |
@@ -84,7 +84,7 @@ API, test, and docs items are tracked in the sibling files.
 | P1-012 | Document raw escape-hatch lifetimes | `roadmap.md` Phase 1 | done |  |  | `docs/viperlib/graphics/game3d.md` | local docs update | Escape hatches still need richer examples |
 | P1-013 | `Input3D` reads named keyboard/mouse state, not `Canvas3D.Poll()` bitmasks | `roadmap.md` Phase 1 | done | `rt_game3d_input_*` over runtime keyboard/mouse APIs | `test_rt_game3d` | Game3D docs | focused ctest passed |  |
 | P1-014 | API-spec hello-world compiles and renders | `roadmap.md` Phase 1 Exit | partial | docs quick start mirrors passing world probe structure | `g3d_test_game3d_world_probe` renders/captures | Game3D docs | focused ctest passed | Dedicated snippet ctest still pending |
-| P1-015 | `world_probe.zia` covers construction, cleanup, find, resize, final-frame render, tick, step, runFrames, destroy, diagnostics | `roadmap.md` Phase 1 Exit | partial | world/runframes/callback-reject probes added | `g3d_test_game3d_world_probe`, `g3d_test_game3d_runframes_probe`, `g3d_test_game3d_runframes_callback_reject`; graphics3d 44/44 | Game3D docs | ctests passed | Tick/step and destroyed-handle diagnostics need explicit Zia probe coverage |
+| P1-015 | `world_probe.zia` covers construction, cleanup, find, resize, final-frame render, tick, step, runFrames, destroy, diagnostics | `roadmap.md` Phase 1 Exit | partial | world/runframes/callback-reject probes added | `g3d_test_game3d_world_probe`, `g3d_test_game3d_runframes_probe`, `g3d_test_game3d_runframes_callback_reject`; graphics3d 45/45 | Game3D docs | ctests passed | Tick/step and destroyed-handle diagnostics need explicit Zia probe coverage |
 | P1-016 | No common-case sample uses `Mat4.` | `roadmap.md` Phase 1 Exit | partial | Game3D docs/probes and `walk_min` use entity transform helpers | `g3d_test_game3d_world_probe`; `g3d_walk_min_visual_probe` | Game3D docs; `examples/3d/README.md` | focused ctests passed | Final starter/showcase samples still pending |
 
 ## Phase 2 - cameras and walkable movement
@@ -108,20 +108,20 @@ API, test, and docs items are tracked in the sibling files.
 
 | ID | Item | Source | Status | Impl | Tests | Docs | Proof / link | Notes |
 |---|---|---|---|---|---|---|---|---|
-| P3-001 | Implement `Lighting.*` | `roadmap.md` Phase 3 | todo |  |  |  |  |  |
-| P3-002 | Implement `Materials.*` | `roadmap.md` Phase 3 | todo |  |  |  |  |  |
-| P3-003 | Implement `PostFX.*` | `roadmap.md` Phase 3 | todo |  |  |  |  |  |
-| P3-004 | Implement `Quality.Apply` | `roadmap.md` Phase 3 | todo |  |  |  |  |  |
-| P3-005 | Implement `Prefab.*` | `roadmap.md` Phase 3 | todo |  |  |  |  |  |
-| P3-006 | Implement `Environment.*` | `roadmap.md` Phase 3 | todo |  |  |  |  |  |
-| P3-007 | Implement `Debug3D` | `roadmap.md` Phase 3 | todo |  |  |  |  |  |
-| P3-008 | Quality controls shadows/post-FX/culling/diagnostics capability-safely | `roadmap.md` Phase 3 | todo |  |  |  |  |  |
-| P3-009 | Debug shows backend, caps, quality/fallback, FPS, draw/cull counts, axes, camera, physics | `roadmap.md` Phase 3 | todo |  |  |  |  |  |
-| P3-010 | Preset swaps visibly change sample | `roadmap.md` Phase 3 Exit | todo |  |  |  |  |  |
-| P3-011 | Each prefab returns a spawnable entity | `roadmap.md` Phase 3 Exit | todo |  |  |  |  |  |
-| P3-012 | `Environment.*` yields instantly respectable scene | `roadmap.md` Phase 3 Exit | todo |  |  |  |  |  |
-| P3-013 | Debug text uses final overlay path | `roadmap.md` Phase 3 Exit | todo |  |  |  |  |  |
-| P3-014 | `presets_probe.zia` validates ranges and backend fallback | `roadmap.md` Phase 3 Exit | todo |  |  |  |  |  |
+| P3-001 | Implement `Lighting.*` | `roadmap.md` Phase 3 | done | `Lighting.Studio/Outdoor/Night/Interior/Clear` in `rt_game3d.c` | `test_rt_game3d`, `g3d_test_game3d_presets_probe` | Game3D docs | focused and graphics3d ctests passed | Runtime C surface, not a Zia helper package |
+| P3-002 | Implement `Materials.*` | `roadmap.md` Phase 3 | done | `Materials.Plastic/Metal/Rubber/Glass/Emissive/Unlit/FromAlbedoMap` | `test_rt_game3d`, `g3d_test_game3d_presets_probe` | Game3D docs | focused and graphics3d ctests passed | PBR/default material ranges covered |
+| P3-003 | Implement `PostFX.*` | `roadmap.md` Phase 3 | done | `PostFX.Cinematic/Crisp/None` update world effect registry and canvas | `test_rt_game3d`, `g3d_test_game3d_presets_probe` | Game3D docs | focused and graphics3d ctests passed | Uses backend-safe software/GPU-compatible chains |
+| P3-004 | Implement `Quality.Apply` | `roadmap.md` Phase 3 | done | Applies Canvas3D quality, frustum culling, and shadow policy by capability | `test_rt_game3d`, `g3d_test_game3d_presets_probe` | Game3D docs | focused and graphics3d ctests passed | Valid active profile after fallback |
+| P3-005 | Implement `Prefab.*` | `roadmap.md` Phase 3 | done | `Prefab.Box/BoxXYZ/Sphere/Cylinder/Plane/Ground` | `test_rt_game3d`, `g3d_test_game3d_presets_probe` | Game3D docs | focused and graphics3d ctests passed | Returns normal spawnable `Entity3D` |
+| P3-006 | Implement `Environment.*` | `roadmap.md` Phase 3 | done | `Environment.Outdoor/Sunset/Overcast/Night` plus `EnvHandle.withTerrain/withWater/withFog` | `test_rt_game3d`, `g3d_test_game3d_presets_probe` | Game3D docs | focused and graphics3d ctests passed | Terrain is a ground entity with static body in this phase |
+| P3-007 | Implement `Debug3D` | `roadmap.md` Phase 3 | done | `Debug3D.ShowOverlay/DrawAxes/DrawPhysics/DrawCameraInfo/DrawCapabilities` | `test_rt_game3d`, `g3d_test_game3d_presets_probe` | Game3D docs | focused and graphics3d ctests passed | Text uses final overlay; axes/physics render in `drawEffects` |
+| P3-008 | Quality controls shadows/post-FX/culling/diagnostics capability-safely | `roadmap.md` Phase 3 | done | `Quality.Apply` gates shadows via backend capability and keeps Canvas3D fallback state | `test_rt_game3d`, `g3d_test_game3d_presets_probe` | Game3D docs | focused and graphics3d ctests passed | Software backend safely disables shadow maps |
+| P3-009 | Debug shows backend, caps, quality/fallback, FPS, draw/cull counts, axes, camera, physics | `roadmap.md` Phase 3 | done | Debug overlay text plus 3D axes/AABB wire debug | `test_rt_game3d`, `g3d_test_game3d_presets_probe` | Game3D docs | focused and graphics3d ctests passed | Physics debug uses body AABBs |
+| P3-010 | Preset swaps visibly change sample | `roadmap.md` Phase 3 Exit | done | Lighting changes clear/ambient/lights; environment changes sky/fog/ground/water; post-FX swaps chains | `test_rt_game3d`, `g3d_test_game3d_presets_probe` | Game3D docs | focused and graphics3d ctests passed | Dedicated visual baseline for presets can be added later if needed |
+| P3-011 | Each prefab returns a spawnable entity | `roadmap.md` Phase 3 Exit | done | Prefabs create `Entity3D` with mesh/material and ground layer | `test_rt_game3d`, `g3d_test_game3d_presets_probe` | Game3D docs | focused and graphics3d ctests passed | Zia probe spawns box/sphere/ground |
+| P3-012 | `Environment.*` yields instantly respectable scene | `roadmap.md` Phase 3 Exit | done | Environment constructors apply lighting, fog, clear color, terrain, and optional water | `test_rt_game3d`, `g3d_test_game3d_presets_probe` | Game3D docs | focused and graphics3d ctests passed | Outdoor/sunset/overcast/night constructors covered in C |
+| P3-013 | Debug text uses final overlay path | `roadmap.md` Phase 3 Exit | done | `World3D.endScene` records Debug3D overlay after `Canvas3D.End` | `test_rt_game3d`, `g3d_test_game3d_presets_probe` | Game3D docs | focused and graphics3d ctests passed | Captured via `captureFinalFrame` |
+| P3-014 | `presets_probe.zia` validates ranges and backend fallback | `roadmap.md` Phase 3 Exit | done | `tests/runtime/test_game3d_presets_probe.zia` registered under ctest | `g3d_test_game3d_presets_probe` | Game3D docs | ctest passed | Included in focused and full graphics3d validation |
 
 ## Phase 4 - assets, physics, and collision events
 

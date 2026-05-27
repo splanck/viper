@@ -20,6 +20,7 @@
 #include "rt_audiolistener3d.h"
 #include "rt_canvas3d.h"
 #include "rt_canvas3d_internal.h"
+#include "rt_collider3d.h"
 #include "rt_input.h"
 #include "rt_mat4.h"
 #include "rt_object.h"
@@ -37,6 +38,8 @@
 #include <math.h>
 #include <stddef.h>
 #include <stdint.h>
+#include <stdarg.h>
+#include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 #if defined(_WIN32)
@@ -111,6 +114,12 @@ typedef struct rt_game3d_effects {
     void *postfx;
 } rt_game3d_effects;
 
+typedef struct rt_game3d_env_handle {
+    void *world;
+    void *terrain_entity;
+    void *water_entity;
+} rt_game3d_env_handle;
+
 typedef struct rt_game3d_character_controller {
     void *world;
     void *entity;
@@ -174,6 +183,16 @@ typedef struct rt_game3d_world {
     int64_t frame;
     int64_t width;
     int64_t height;
+    double clear_r;
+    double clear_g;
+    double clear_b;
+    void *debug_axis_origin;
+    double debug_axis_size;
+    int8_t debug_overlay_enabled;
+    int8_t debug_axes_enabled;
+    int8_t debug_physics_enabled;
+    int8_t debug_camera_enabled;
+    int8_t debug_caps_enabled;
     int8_t destroyed;
 } rt_game3d_world;
 
@@ -334,6 +353,14 @@ static rt_game3d_effects *game3d_effects_checked(void *obj, const char *method) 
     if (!effects)
         rt_trap(method);
     return effects;
+}
+
+static rt_game3d_env_handle *game3d_env_handle_checked(void *obj, const char *method) {
+    rt_game3d_env_handle *env =
+        (rt_game3d_env_handle *)rt_g3d_checked_or_null(obj, RT_G3D_GAME3D_ENV_HANDLE_CLASS_ID);
+    if (!env)
+        rt_trap(method);
+    return env;
 }
 
 static rt_game3d_world *game3d_world_checked_allow_destroyed(void *obj, const char *method) {
@@ -984,6 +1011,524 @@ void *rt_game3d_effects_get_postfx(void *obj) {
     rt_game3d_effects *effects =
         game3d_effects_checked(obj, "Game3D.EffectRegistry3D.get_PostFX: invalid effects");
     return effects ? effects->postfx : NULL;
+}
+
+static void game3d_world_set_clear_color(
+    rt_game3d_world *world, double r, double g, double b) {
+    if (!world)
+        return;
+    world->clear_r = game3d_clamp(r, 0.0, 1.0);
+    world->clear_g = game3d_clamp(g, 0.0, 1.0);
+    world->clear_b = game3d_clamp(b, 0.0, 1.0);
+}
+
+static void game3d_world_assign_postfx(rt_game3d_world *world, void *postfx) {
+    if (!world || !world->canvas)
+        return;
+    rt_game3d_effects *effects = (rt_game3d_effects *)world->effects;
+    if (effects)
+        game3d_assign_ref(&effects->postfx, postfx);
+    rt_canvas3d_set_post_fx(world->canvas, postfx);
+}
+
+static void game3d_world_install_light(rt_game3d_world *world, int64_t slot, void *light) {
+    if (!world || !world->canvas || !light)
+        return;
+    rt_canvas3d_set_light(world->canvas, slot, light);
+}
+
+void rt_game3d_lighting_clear(void *obj) {
+    rt_game3d_world *world = game3d_world_checked(obj, "Game3D.Lighting.Clear: invalid world");
+    if (!world || !world->canvas)
+        return;
+    rt_canvas3d_clear_lights(world->canvas);
+    rt_canvas3d_set_ambient(world->canvas, 0.18, 0.18, 0.20);
+}
+
+void rt_game3d_lighting_studio(void *obj) {
+    rt_game3d_world *world = game3d_world_checked(obj, "Game3D.Lighting.Studio: invalid world");
+    if (!world || !world->canvas)
+        return;
+    rt_game3d_lighting_clear(world);
+    rt_canvas3d_set_ambient(world->canvas, 0.30, 0.32, 0.36);
+    game3d_world_set_clear_color(world, 0.055, 0.060, 0.070);
+
+    void *key_dir = rt_vec3_new(-0.35, -0.85, -0.30);
+    void *fill_dir = rt_vec3_new(0.75, -0.35, 0.40);
+    void *key = rt_light3d_new_directional(key_dir, 1.0, 0.96, 0.88);
+    void *fill = rt_light3d_new_directional(fill_dir, 0.55, 0.65, 1.0);
+    if (key)
+        rt_light3d_set_intensity(key, 1.35);
+    if (fill)
+        rt_light3d_set_intensity(fill, 0.35);
+    game3d_world_install_light(world, 0, key);
+    game3d_world_install_light(world, 1, fill);
+    game3d_release_ref(&key);
+    game3d_release_ref(&fill);
+    game3d_release_ref(&key_dir);
+    game3d_release_ref(&fill_dir);
+}
+
+void rt_game3d_lighting_outdoor(void *obj, void *sun_dir) {
+    rt_game3d_world *world = game3d_world_checked(obj, "Game3D.Lighting.Outdoor: invalid world");
+    if (!world || !world->canvas)
+        return;
+    void *dir = sun_dir;
+    int owns_dir = 0;
+    if (!dir) {
+        dir = rt_vec3_new(-0.45, -1.00, -0.22);
+        owns_dir = 1;
+    } else if (!rt_g3d_is_vec3(dir)) {
+        rt_trap("Game3D.Lighting.Outdoor: sunDir must be Vec3");
+    }
+
+    rt_game3d_lighting_clear(world);
+    rt_canvas3d_set_ambient(world->canvas, 0.38, 0.42, 0.46);
+    game3d_world_set_clear_color(world, 0.50, 0.66, 0.86);
+    void *sun = rt_light3d_new_directional(dir, 1.0, 0.94, 0.82);
+    if (sun)
+        rt_light3d_set_intensity(sun, 1.55);
+    game3d_world_install_light(world, 0, sun);
+    game3d_release_ref(&sun);
+    if (owns_dir)
+        game3d_release_ref(&dir);
+}
+
+void rt_game3d_lighting_night(void *obj) {
+    rt_game3d_world *world = game3d_world_checked(obj, "Game3D.Lighting.Night: invalid world");
+    if (!world || !world->canvas)
+        return;
+    rt_game3d_lighting_clear(world);
+    rt_canvas3d_set_ambient(world->canvas, 0.045, 0.055, 0.095);
+    game3d_world_set_clear_color(world, 0.015, 0.020, 0.040);
+    void *moon_dir = rt_vec3_new(0.25, -1.0, 0.35);
+    void *moon = rt_light3d_new_directional(moon_dir, 0.55, 0.68, 1.0);
+    void *lamp_pos = rt_vec3_new(0.0, 4.0, 2.0);
+    void *lamp = rt_light3d_new_point(lamp_pos, 0.55, 0.64, 1.0, 0.12);
+    if (moon)
+        rt_light3d_set_intensity(moon, 0.55);
+    if (lamp)
+        rt_light3d_set_intensity(lamp, 0.80);
+    game3d_world_install_light(world, 0, moon);
+    game3d_world_install_light(world, 1, lamp);
+    game3d_release_ref(&moon);
+    game3d_release_ref(&lamp);
+    game3d_release_ref(&moon_dir);
+    game3d_release_ref(&lamp_pos);
+}
+
+void rt_game3d_lighting_interior(void *obj) {
+    rt_game3d_world *world = game3d_world_checked(obj, "Game3D.Lighting.Interior: invalid world");
+    if (!world || !world->canvas)
+        return;
+    rt_game3d_lighting_clear(world);
+    rt_canvas3d_set_ambient(world->canvas, 0.22, 0.20, 0.18);
+    game3d_world_set_clear_color(world, 0.055, 0.052, 0.048);
+    void *key_pos = rt_vec3_new(0.0, 4.0, 2.5);
+    void *rim_pos = rt_vec3_new(-3.5, 2.0, -2.0);
+    void *key = rt_light3d_new_point(key_pos, 1.0, 0.78, 0.52, 0.08);
+    void *rim = rt_light3d_new_point(rim_pos, 0.50, 0.62, 1.0, 0.12);
+    if (key)
+        rt_light3d_set_intensity(key, 1.25);
+    if (rim)
+        rt_light3d_set_intensity(rim, 0.45);
+    game3d_world_install_light(world, 0, key);
+    game3d_world_install_light(world, 1, rim);
+    game3d_release_ref(&key);
+    game3d_release_ref(&rim);
+    game3d_release_ref(&key_pos);
+    game3d_release_ref(&rim_pos);
+}
+
+static void *game3d_material_pbr(double r, double g, double b, double metallic, double roughness) {
+    void *mat = rt_material3d_new_pbr(
+        game3d_clamp(r, 0.0, 1.0), game3d_clamp(g, 0.0, 1.0), game3d_clamp(b, 0.0, 1.0));
+    if (mat) {
+        rt_material3d_set_shading_model(mat, RT_GAME3D_SHADING_PBR);
+        rt_material3d_set_metallic(mat, game3d_clamp(metallic, 0.0, 1.0));
+        rt_material3d_set_roughness(mat, game3d_clamp(roughness, 0.0, 1.0));
+        rt_material3d_set_ao(mat, 1.0);
+        rt_material3d_set_alpha(mat, 1.0);
+        rt_material3d_set_alpha_mode(mat, RT_GAME3D_ALPHA_OPAQUE);
+    }
+    return mat;
+}
+
+void *rt_game3d_materials_plastic(double r, double g, double b) {
+    return game3d_material_pbr(r, g, b, 0.0, 0.46);
+}
+
+void *rt_game3d_materials_metal(double r, double g, double b) {
+    void *mat = game3d_material_pbr(r, g, b, 1.0, 0.22);
+    if (mat)
+        rt_material3d_set_reflectivity(mat, 0.35);
+    return mat;
+}
+
+void *rt_game3d_materials_rubber(double r, double g, double b) {
+    return game3d_material_pbr(r, g, b, 0.0, 0.88);
+}
+
+void *rt_game3d_materials_glass(double r, double g, double b, double alpha) {
+    void *mat = game3d_material_pbr(r, g, b, 0.0, 0.08);
+    if (mat) {
+        rt_material3d_set_alpha(mat, game3d_clamp(alpha, 0.05, 1.0));
+        rt_material3d_set_alpha_mode(mat, RT_GAME3D_ALPHA_BLEND);
+        rt_material3d_set_double_sided(mat, 1);
+        rt_material3d_set_reflectivity(mat, 0.50);
+    }
+    return mat;
+}
+
+void *rt_game3d_materials_emissive(double r, double g, double b, double intensity) {
+    void *mat = rt_material3d_new_color(
+        game3d_clamp(r, 0.0, 1.0), game3d_clamp(g, 0.0, 1.0), game3d_clamp(b, 0.0, 1.0));
+    if (mat) {
+        rt_material3d_set_shading_model(mat, RT_GAME3D_SHADING_EMISSIVE);
+        rt_material3d_set_emissive_color(mat, r, g, b);
+        rt_material3d_set_emissive_intensity(mat, game3d_nonnegative_or(intensity, 1.0));
+    }
+    return mat;
+}
+
+void *rt_game3d_materials_unlit(double r, double g, double b) {
+    void *mat = rt_material3d_new_color(
+        game3d_clamp(r, 0.0, 1.0), game3d_clamp(g, 0.0, 1.0), game3d_clamp(b, 0.0, 1.0));
+    if (mat) {
+        rt_material3d_set_unlit(mat, 1);
+        rt_material3d_set_shading_model(mat, RT_GAME3D_SHADING_UNLIT);
+    }
+    return mat;
+}
+
+void *rt_game3d_materials_from_albedo_map(void *pixels) {
+    void *mat = rt_material3d_new_textured(pixels);
+    if (mat) {
+        rt_material3d_set_shading_model(mat, RT_GAME3D_SHADING_PBR);
+        rt_material3d_set_metallic(mat, 0.0);
+        rt_material3d_set_roughness(mat, 0.55);
+        rt_material3d_set_ao(mat, 1.0);
+    }
+    return mat;
+}
+
+void rt_game3d_postfx_cinematic(void *obj) {
+    rt_game3d_world *world = game3d_world_checked(obj, "Game3D.PostFX.Cinematic: invalid world");
+    if (!world)
+        return;
+    void *fx = rt_postfx3d_new();
+    if (!fx)
+        return;
+    rt_postfx3d_add_bloom(fx, 0.78, 0.22, 2);
+    rt_postfx3d_add_tonemap(fx, 2, 1.10);
+    rt_postfx3d_add_fxaa(fx);
+    rt_postfx3d_add_color_grade(fx, 0.015, 1.08, 1.06);
+    rt_postfx3d_add_vignette(fx, 0.72, 0.16);
+    game3d_world_assign_postfx(world, fx);
+    game3d_release_ref(&fx);
+}
+
+void rt_game3d_postfx_crisp(void *obj) {
+    rt_game3d_world *world = game3d_world_checked(obj, "Game3D.PostFX.Crisp: invalid world");
+    if (!world)
+        return;
+    void *fx = rt_postfx3d_new();
+    if (!fx)
+        return;
+    rt_postfx3d_add_tonemap(fx, 1, 1.02);
+    rt_postfx3d_add_fxaa(fx);
+    rt_postfx3d_add_color_grade(fx, 0.0, 1.05, 1.02);
+    game3d_world_assign_postfx(world, fx);
+    game3d_release_ref(&fx);
+}
+
+void rt_game3d_postfx_none(void *obj) {
+    rt_game3d_world *world = game3d_world_checked(obj, "Game3D.PostFX.None: invalid world");
+    if (!world)
+        return;
+    void *fx = rt_postfx3d_new();
+    if (fx)
+        rt_postfx3d_set_enabled(fx, 0);
+    game3d_world_assign_postfx(world, fx);
+    game3d_release_ref(&fx);
+}
+
+void rt_game3d_quality_apply(void *obj, int64_t quality) {
+    rt_game3d_world *world = game3d_world_checked(obj, "Game3D.Quality.Apply: invalid world");
+    if (!world || !world->canvas)
+        return;
+    if (quality < RT_GAME3D_QUALITY_PERFORMANCE || quality > RT_GAME3D_QUALITY_CINEMATIC)
+        quality = RT_GAME3D_QUALITY_BALANCED;
+
+    rt_game3d_world_set_quality(world, quality);
+    rt_canvas3d_set_frustum_culling(world->canvas, 1);
+    if (quality == RT_GAME3D_QUALITY_PERFORMANCE) {
+        rt_canvas3d_disable_shadows(world->canvas);
+        return;
+    }
+
+    if (rt_canvas3d_backend_supports(world->canvas, rt_const_cstr("shadows"))) {
+        rt_canvas3d_enable_shadows(
+            world->canvas, quality == RT_GAME3D_QUALITY_CINEMATIC ? 2048 : 1024);
+        rt_canvas3d_set_shadow_bias(
+            world->canvas, quality == RT_GAME3D_QUALITY_CINEMATIC ? 0.003 : 0.005);
+    } else {
+        rt_canvas3d_disable_shadows(world->canvas);
+    }
+}
+
+static int64_t game3d_sanitize_segments(int64_t segments, int64_t fallback) {
+    if (segments < 8)
+        return fallback < 8 ? 8 : fallback;
+    if (segments > 256)
+        return 256;
+    return segments;
+}
+
+static void *game3d_prefab_from_mesh(void *mesh, void *material, const char *name) {
+    int owns_material = 0;
+    if (!material) {
+        material = rt_game3d_materials_plastic(0.72, 0.74, 0.76);
+        owns_material = 1;
+    }
+    void *entity = rt_game3d_entity_of(mesh, material);
+    if (entity && name)
+        rt_game3d_entity_set_name(entity, rt_const_cstr(name));
+    game3d_release_ref(&mesh);
+    if (owns_material)
+        game3d_release_ref(&material);
+    return entity;
+}
+
+void *rt_game3d_prefab_box(double size, void *material) {
+    double s = game3d_positive_or(size, 1.0);
+    return game3d_prefab_from_mesh(rt_mesh3d_new_box(s, s, s), material, "Box");
+}
+
+void *rt_game3d_prefab_box_xyz(double width, double height, double depth, void *material) {
+    double w = game3d_positive_or(width, 1.0);
+    double h = game3d_positive_or(height, 1.0);
+    double d = game3d_positive_or(depth, 1.0);
+    return game3d_prefab_from_mesh(rt_mesh3d_new_box(w, h, d), material, "BoxXYZ");
+}
+
+void *rt_game3d_prefab_sphere(double radius, int64_t segments, void *material) {
+    double r = game3d_positive_or(radius, 0.5);
+    return game3d_prefab_from_mesh(
+        rt_mesh3d_new_sphere(r, game3d_sanitize_segments(segments, 32)), material, "Sphere");
+}
+
+void *rt_game3d_prefab_cylinder(double radius, double height, int64_t segments, void *material) {
+    double r = game3d_positive_or(radius, 0.5);
+    double h = game3d_positive_or(height, 1.0);
+    return game3d_prefab_from_mesh(
+        rt_mesh3d_new_cylinder(r, h, game3d_sanitize_segments(segments, 24)), material, "Cylinder");
+}
+
+void *rt_game3d_prefab_plane(double width, double depth, void *material) {
+    double w = game3d_positive_or(width, 1.0);
+    double d = game3d_positive_or(depth, 1.0);
+    return game3d_prefab_from_mesh(rt_mesh3d_new_plane(w, d), material, "Plane");
+}
+
+void *rt_game3d_prefab_ground(double size, void *material) {
+    void *entity = rt_game3d_prefab_plane(size, size, material);
+    if (entity) {
+        rt_game3d_entity_set_name(entity, rt_const_cstr("Ground"));
+        rt_game3d_entity_set_layer(entity, RT_GAME3D_LAYER_WORLD);
+    }
+    return entity;
+}
+
+static void game3d_env_handle_finalize(void *obj) {
+    rt_game3d_env_handle *env = (rt_game3d_env_handle *)obj;
+    if (!env)
+        return;
+    game3d_release_ref(&env->water_entity);
+    game3d_release_ref(&env->terrain_entity);
+    game3d_release_ref(&env->world);
+}
+
+static void *game3d_env_handle_new(rt_game3d_world *world) {
+    rt_game3d_env_handle *env =
+        (rt_game3d_env_handle *)rt_obj_new_i64(RT_G3D_GAME3D_ENV_HANDLE_CLASS_ID, (int64_t)sizeof(*env));
+    if (!env) {
+        rt_trap("Game3D.Environment: allocation failed");
+        return NULL;
+    }
+    memset(env, 0, sizeof(*env));
+    rt_obj_set_finalizer(env, game3d_env_handle_finalize);
+    game3d_assign_ref(&env->world, world);
+    return env;
+}
+
+static rt_game3d_world *game3d_env_world(rt_game3d_env_handle *env, const char *method) {
+    if (!env || !env->world)
+        rt_trap(method);
+    return game3d_world_checked(env->world, method);
+}
+
+void *rt_game3d_env_handle_with_terrain(void *obj, double size, double height) {
+    rt_game3d_env_handle *env =
+        game3d_env_handle_checked(obj, "Game3D.EnvHandle.withTerrain: invalid environment");
+    rt_game3d_world *world = game3d_env_world(env, "Game3D.EnvHandle.withTerrain: invalid world");
+    if (!env || !world)
+        return obj;
+    if (env->terrain_entity) {
+        rt_game3d_entity *old = (rt_game3d_entity *)env->terrain_entity;
+        if (!old->destroyed && old->spawned && old->world == world)
+            rt_game3d_world_despawn(world, env->terrain_entity);
+        game3d_release_ref(&env->terrain_entity);
+    }
+
+    double s = game3d_positive_or(size, 80.0);
+    double y = game3d_finite_or(height, 0.0);
+    void *mat = rt_game3d_materials_rubber(0.30, 0.45, 0.24);
+    void *terrain = rt_game3d_prefab_ground(s, mat);
+    if (terrain) {
+        rt_game3d_entity_set_name(terrain, rt_const_cstr("Environment Terrain"));
+        rt_game3d_entity_set_position(terrain, 0.0, y, 0.0);
+        void *body = rt_body3d_new_aabb(s * 0.5, 0.10, s * 0.5, 0.0);
+        rt_game3d_entity_attach_body(terrain, body);
+        rt_game3d_world_spawn(world, terrain);
+        game3d_assign_ref(&env->terrain_entity, terrain);
+        game3d_release_ref(&body);
+    }
+    game3d_release_ref(&terrain);
+    game3d_release_ref(&mat);
+    return obj;
+}
+
+void *rt_game3d_env_handle_with_water(void *obj, double level) {
+    rt_game3d_env_handle *env =
+        game3d_env_handle_checked(obj, "Game3D.EnvHandle.withWater: invalid environment");
+    rt_game3d_world *world = game3d_env_world(env, "Game3D.EnvHandle.withWater: invalid world");
+    if (!env || !world)
+        return obj;
+    if (env->water_entity) {
+        rt_game3d_entity *old = (rt_game3d_entity *)env->water_entity;
+        if (!old->destroyed && old->spawned && old->world == world)
+            rt_game3d_world_despawn(world, env->water_entity);
+        game3d_release_ref(&env->water_entity);
+    }
+
+    double y = game3d_finite_or(level, 0.0);
+    void *mat = rt_game3d_materials_glass(0.18, 0.42, 0.62, 0.48);
+    void *water = rt_game3d_prefab_plane(80.0, 80.0, mat);
+    if (water) {
+        rt_game3d_entity_set_name(water, rt_const_cstr("Environment Water"));
+        rt_game3d_entity_set_position(water, 0.0, y, 0.0);
+        rt_game3d_world_spawn(world, water);
+        game3d_assign_ref(&env->water_entity, water);
+    }
+    game3d_release_ref(&water);
+    game3d_release_ref(&mat);
+    return obj;
+}
+
+void *rt_game3d_env_handle_with_fog(void *obj, double near_plane, double far_plane) {
+    rt_game3d_env_handle *env =
+        game3d_env_handle_checked(obj, "Game3D.EnvHandle.withFog: invalid environment");
+    rt_game3d_world *world = game3d_env_world(env, "Game3D.EnvHandle.withFog: invalid world");
+    if (world && world->canvas)
+        rt_canvas3d_set_fog(
+            world->canvas,
+            game3d_nonnegative_or(near_plane, 18.0),
+            game3d_positive_or(far_plane, 120.0),
+            world->clear_r,
+            world->clear_g,
+            world->clear_b);
+    return obj;
+}
+
+void *rt_game3d_environment_outdoor(void *obj) {
+    rt_game3d_world *world = game3d_world_checked(obj, "Game3D.Environment.Outdoor: invalid world");
+    void *env = game3d_env_handle_new(world);
+    void *sun = rt_vec3_new(-0.45, -1.00, -0.22);
+    rt_game3d_lighting_outdoor(world, sun);
+    rt_game3d_env_handle_with_terrain(env, 96.0, 0.0);
+    rt_game3d_env_handle_with_fog(env, 45.0, 220.0);
+    game3d_release_ref(&sun);
+    return env;
+}
+
+void *rt_game3d_environment_sunset(void *obj) {
+    rt_game3d_world *world = game3d_world_checked(obj, "Game3D.Environment.Sunset: invalid world");
+    void *env = game3d_env_handle_new(world);
+    void *sun = rt_vec3_new(-0.75, -0.45, -0.20);
+    rt_game3d_lighting_outdoor(world, sun);
+    if (world && world->canvas) {
+        rt_canvas3d_set_ambient(world->canvas, 0.42, 0.30, 0.24);
+        game3d_world_set_clear_color(world, 0.90, 0.48, 0.30);
+    }
+    rt_game3d_env_handle_with_terrain(env, 96.0, 0.0);
+    rt_game3d_env_handle_with_fog(env, 28.0, 160.0);
+    game3d_release_ref(&sun);
+    return env;
+}
+
+void *rt_game3d_environment_overcast(void *obj) {
+    rt_game3d_world *world = game3d_world_checked(obj, "Game3D.Environment.Overcast: invalid world");
+    void *env = game3d_env_handle_new(world);
+    rt_game3d_lighting_clear(world);
+    if (world && world->canvas) {
+        rt_canvas3d_set_ambient(world->canvas, 0.48, 0.50, 0.52);
+        game3d_world_set_clear_color(world, 0.56, 0.60, 0.62);
+    }
+    void *dir = rt_vec3_new(-0.20, -1.0, 0.10);
+    void *sun = rt_light3d_new_directional(dir, 0.74, 0.78, 0.82);
+    if (sun)
+        rt_light3d_set_intensity(sun, 0.70);
+    game3d_world_install_light(world, 0, sun);
+    rt_game3d_env_handle_with_terrain(env, 96.0, 0.0);
+    rt_game3d_env_handle_with_fog(env, 20.0, 110.0);
+    game3d_release_ref(&sun);
+    game3d_release_ref(&dir);
+    return env;
+}
+
+void *rt_game3d_environment_night(void *obj) {
+    rt_game3d_world *world = game3d_world_checked(obj, "Game3D.Environment.Night: invalid world");
+    void *env = game3d_env_handle_new(world);
+    rt_game3d_lighting_night(world);
+    rt_game3d_env_handle_with_terrain(env, 96.0, 0.0);
+    rt_game3d_env_handle_with_fog(env, 20.0, 95.0);
+    return env;
+}
+
+void rt_game3d_debug_show_overlay(void *obj, int8_t enabled) {
+    rt_game3d_world *world = game3d_world_checked(obj, "Game3D.Debug3D.ShowOverlay: invalid world");
+    if (world)
+        world->debug_overlay_enabled = enabled ? 1 : 0;
+}
+
+void rt_game3d_debug_draw_axes(void *obj, void *origin, double size) {
+    rt_game3d_world *world = game3d_world_checked(obj, "Game3D.Debug3D.DrawAxes: invalid world");
+    if (!origin || !rt_g3d_is_vec3(origin))
+        rt_trap("Game3D.Debug3D.DrawAxes: origin must be Vec3");
+    if (world) {
+        game3d_assign_ref(&world->debug_axis_origin, origin);
+        world->debug_axis_size = game3d_positive_or(size, 1.0);
+        world->debug_axes_enabled = 1;
+    }
+}
+
+void rt_game3d_debug_draw_physics(void *obj, int8_t enabled) {
+    rt_game3d_world *world = game3d_world_checked(obj, "Game3D.Debug3D.DrawPhysics: invalid world");
+    if (world)
+        world->debug_physics_enabled = enabled ? 1 : 0;
+}
+
+void rt_game3d_debug_draw_camera_info(void *obj, int8_t enabled) {
+    rt_game3d_world *world = game3d_world_checked(obj, "Game3D.Debug3D.DrawCameraInfo: invalid world");
+    if (world)
+        world->debug_camera_enabled = enabled ? 1 : 0;
+}
+
+void rt_game3d_debug_draw_capabilities(void *obj, int8_t enabled) {
+    rt_game3d_world *world = game3d_world_checked(obj, "Game3D.Debug3D.DrawCapabilities: invalid world");
+    if (world)
+        world->debug_caps_enabled = enabled ? 1 : 0;
 }
 
 static void game3d_character_controller_finalize(void *obj) {
@@ -1807,6 +2352,7 @@ static void game3d_world_release_runtime(rt_game3d_world *world, int mark_entiti
         }
     }
     game3d_release_ref(&world->camera_controller);
+    game3d_release_ref(&world->debug_axis_origin);
     game3d_release_ref(&world->effects);
     game3d_release_ref(&world->audio);
     game3d_release_ref(&world->input);
@@ -1857,6 +2403,10 @@ void *rt_game3d_world_new_with_camera(
     world->height = height;
     world->next_entity_id = 1;
     world->dt = RT_GAME3D_DEFAULT_DT;
+    world->clear_r = 0.04;
+    world->clear_g = 0.055;
+    world->clear_b = 0.065;
+    world->debug_axis_size = 1.0;
 
     world->canvas = rt_canvas3d_new(title, width, height);
     world->scene = rt_scene3d_new();
@@ -2051,7 +2601,7 @@ void rt_game3d_world_set_fog(
     void *obj, double r, double g, double b, double near_plane, double far_plane) {
     rt_game3d_world *world = game3d_world_checked(obj, "Game3D.World3D.setFog: invalid world");
     if (world && world->canvas)
-        rt_canvas3d_set_fog(world->canvas, r, g, b, near_plane, far_plane);
+        rt_canvas3d_set_fog(world->canvas, near_plane, far_plane, r, g, b);
 }
 
 void rt_game3d_world_set_quality(void *obj, int64_t quality) {
@@ -2146,11 +2696,143 @@ void rt_game3d_world_step_simulation(void *obj, double step_sec) {
     game3d_world_late_update_controller(world, dt);
 }
 
+static void game3d_world_debug_draw_physics(rt_game3d_world *world) {
+    if (!world || !world->canvas)
+        return;
+    for (int32_t i = 0; i < world->entity_count; ++i) {
+        rt_game3d_entity *entity = world->entities[i];
+        if (!entity || entity->destroyed || !entity->body)
+            continue;
+        void *collider = rt_body3d_get_collider(entity->body);
+        if (!collider)
+            continue;
+        double mn_raw[3] = {0.0, 0.0, 0.0};
+        double mx_raw[3] = {0.0, 0.0, 0.0};
+        rt_collider3d_get_local_bounds_raw(collider, mn_raw, mx_raw);
+        void *pos = rt_body3d_get_position(entity->body);
+        double px = pos ? rt_vec3_x(pos) : 0.0;
+        double py = pos ? rt_vec3_y(pos) : 0.0;
+        double pz = pos ? rt_vec3_z(pos) : 0.0;
+        void *mn = rt_vec3_new(px + mn_raw[0], py + mn_raw[1], pz + mn_raw[2]);
+        void *mx = rt_vec3_new(px + mx_raw[0], py + mx_raw[1], pz + mx_raw[2]);
+        rt_canvas3d_draw_aabb_wire(world->canvas, mn, mx, 0xFFCC33);
+        game3d_release_ref(&mx);
+        game3d_release_ref(&mn);
+        game3d_release_ref(&pos);
+    }
+}
+
+static void game3d_world_debug_text(
+    rt_game3d_world *world, int64_t x, int64_t y, const char *text, int64_t color) {
+    if (!world || !world->canvas || !text)
+        return;
+    rt_string line = rt_string_from_bytes(text, strlen(text));
+    rt_canvas3d_draw_text2d(world->canvas, x, y, line, color);
+    game3d_release_ref((void **)&line);
+}
+
+#if defined(__GNUC__) || defined(__clang__)
+#define RT_GAME3D_PRINTF(fmt_index, first_arg) __attribute__((format(printf, fmt_index, first_arg)))
+#else
+#define RT_GAME3D_PRINTF(fmt_index, first_arg)
+#endif
+
+static void game3d_world_debug_textf(
+    rt_game3d_world *world,
+    int64_t x,
+    int64_t y,
+    int64_t color,
+    const char *fmt,
+    ...) RT_GAME3D_PRINTF(5, 6);
+
+static void game3d_world_debug_textf(
+    rt_game3d_world *world, int64_t x, int64_t y, int64_t color, const char *fmt, ...) {
+    char buf[192];
+    va_list args;
+    va_start(args, fmt);
+    int n = vsnprintf(buf, sizeof(buf), fmt, args);
+    va_end(args);
+    if (n < 0)
+        return;
+    buf[sizeof(buf) - 1] = '\0';
+    game3d_world_debug_text(world, x, y, buf, color);
+}
+
+#undef RT_GAME3D_PRINTF
+
+static const char *game3d_quality_name(int64_t quality) {
+    switch (quality) {
+    case RT_GAME3D_QUALITY_PERFORMANCE:
+        return "performance";
+    case RT_GAME3D_QUALITY_CINEMATIC:
+        return "cinematic";
+    case RT_GAME3D_QUALITY_BALANCED:
+    default:
+        return "balanced";
+    }
+}
+
+static void game3d_world_draw_debug_overlay(rt_game3d_world *world) {
+    if (!world || !world->canvas || !world->debug_overlay_enabled)
+        return;
+    rt_canvas3d_begin_overlay(world->canvas);
+    rt_canvas3d_draw_rect2d(world->canvas, 8, 8, 250, 106, 0x111820);
+    game3d_world_debug_text(world, 14, 14, "Game3D Debug", 0xFFFFFF);
+    rt_string backend = rt_canvas3d_get_backend(world->canvas);
+    const char *backend_cs = backend ? rt_string_cstr(backend) : "unknown";
+    game3d_world_debug_textf(
+        world,
+        14,
+        28,
+        0xD7E7FF,
+        "backend %s fps %lld",
+        backend_cs ? backend_cs : "unknown",
+        (long long)rt_canvas3d_get_fps(world->canvas));
+    game3d_world_debug_textf(
+        world,
+        14,
+        42,
+        0xD7E7FF,
+        "quality %s active %s%s",
+        game3d_quality_name(rt_canvas3d_get_quality_requested(world->canvas)),
+        game3d_quality_name(rt_canvas3d_get_quality_active(world->canvas)),
+        rt_canvas3d_get_quality_fallback(world->canvas) ? " fallback" : "");
+    game3d_world_debug_textf(
+        world,
+        14,
+        56,
+        0xD7E7FF,
+        "nodes %lld culled %lld bodies %lld",
+        (long long)(world->scene ? rt_scene3d_get_node_count(world->scene) : 0),
+        (long long)(world->scene ? rt_scene3d_get_culled_count(world->scene) : 0),
+        (long long)(world->physics ? rt_world3d_body_count(world->physics) : 0));
+    if (world->debug_camera_enabled && world->camera) {
+        void *pos = rt_camera3d_get_position(world->camera);
+        game3d_world_debug_textf(
+            world,
+            14,
+            70,
+            0xCDEECC,
+            "camera %.2f %.2f %.2f",
+            pos ? rt_vec3_x(pos) : 0.0,
+            pos ? rt_vec3_y(pos) : 0.0,
+            pos ? rt_vec3_z(pos) : 0.0);
+        game3d_release_ref(&pos);
+    }
+    if (world->debug_caps_enabled) {
+        int64_t caps = rt_canvas3d_get_backend_capabilities(world->canvas);
+        game3d_world_debug_textf(world, 14, 84, 0xFFE5AA, "caps 0x%llx", (long long)caps);
+    }
+    if (world->debug_physics_enabled)
+        game3d_world_debug_text(world, 14, 98, "physics wire enabled", 0xFFE5AA);
+    rt_canvas3d_end_overlay(world->canvas);
+}
+
 void rt_game3d_world_begin_frame(void *obj) {
     rt_game3d_world *world = game3d_world_checked(obj, "Game3D.World3D.beginFrame: invalid world");
     if (!world || !world->canvas || !world->camera)
         return;
-    rt_canvas3d_clear(world->canvas, 0.04, 0.055, 0.065);
+    rt_canvas3d_clear(world->canvas, world->clear_r, world->clear_g, world->clear_b);
     rt_canvas3d_begin(world->canvas, world->camera);
 }
 
@@ -2161,13 +2843,21 @@ void rt_game3d_world_draw_scene(void *obj) {
 }
 
 void rt_game3d_world_draw_effects(void *obj) {
-    (void)game3d_world_checked(obj, "Game3D.World3D.drawEffects: invalid world");
+    rt_game3d_world *world = game3d_world_checked(obj, "Game3D.World3D.drawEffects: invalid world");
+    if (!world || !world->canvas)
+        return;
+    if (world->debug_axes_enabled && world->debug_axis_origin)
+        rt_canvas3d_draw_axis(world->canvas, world->debug_axis_origin, world->debug_axis_size);
+    if (world->debug_physics_enabled)
+        game3d_world_debug_draw_physics(world);
 }
 
 void rt_game3d_world_end_scene(void *obj) {
     rt_game3d_world *world = game3d_world_checked(obj, "Game3D.World3D.endScene: invalid world");
-    if (world && world->canvas)
+    if (world && world->canvas) {
         rt_canvas3d_end(world->canvas);
+        game3d_world_draw_debug_overlay(world);
+    }
 }
 
 void rt_game3d_world_draw_overlay(void *obj, void *overlay) {

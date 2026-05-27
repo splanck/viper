@@ -27,19 +27,22 @@ module HelloGame3D;
 
 bind Viper.Game3D as Game3D;
 bind Viper.Graphics as Graphics;
-bind Viper.Graphics3D as G3D;
 bind Viper.Math as Math;
 bind Viper.Terminal as Terminal;
 
 func start() {
     var world = Game3D.World3D.New("Hello Game3D", 640, 480);
+    var env = Game3D.Environment.Outdoor(world);
+    Game3D.EnvHandle.withWater(env, -0.05);
 
-    var mesh = G3D.Mesh3D.NewBox(1.0, 1.0, 1.0);
-    var mat = G3D.Material3D.NewColor(0.2, 0.7, 0.9);
-    var cube = Game3D.Entity3D.Of(mesh, mat);
+    var mat = Game3D.Materials.Metal(0.2, 0.7, 0.9);
+    var cube = Game3D.Prefab.Box(1.0, mat);
     Game3D.Entity3D.setName(cube, "Cube");
+    Game3D.Entity3D.setPosition(cube, 0.0, 0.75, 0.0);
     Game3D.World3D.spawn(world, cube);
 
+    Game3D.PostFX.Crisp(world);
+    Game3D.Quality.Apply(world, Game3D.QualityLevel.get_Balanced());
     Game3D.World3D.lookAt(world, new Math.Vec3(0.0, 0.0, 0.0));
     Game3D.World3D.beginFrame(world);
     Game3D.World3D.drawScene(world);
@@ -76,6 +79,13 @@ This is intentionally free of common-case `Mat4` calls. `Entity3D` owns the raw
 | `OrbitController` | Target-orbit camera with drag orbit, wheel zoom, distance clamp, and pitch clamp |
 | `FollowController` | Late-update camera follower that tracks an entity's post-physics pose with an offset and damping |
 | `CharacterController3D` | Game3D wrapper around `Viper.Graphics3D.Character3D` with camera-relative movement, gravity, jump speed, grounding, and entity sync |
+| `Lighting` | One-call readable lighting rigs: studio, outdoor, night, interior, and clear |
+| `Materials` | PBR-oriented material presets for plastic, metal, rubber, glass, emissive, unlit, and albedo-map workflows |
+| `PostFX` | Backend-safe post-processing presets: cinematic, crisp, and none |
+| `Quality` | Applies backend-safe quality policy for post-FX, shadows, and culling |
+| `Prefab` | Mesh+material entity factories for boxes, spheres, cylinders, planes, and ground |
+| `Environment` / `EnvHandle` | Outdoor/sunset/overcast/night scene setup with terrain, water, and fog chaining |
+| `Debug3D` | Final-overlay diagnostics plus axes and physics wire debug rendering |
 
 Constant classes are runtime-backed too: `Layers`, `BodyShape`, `SyncMode`,
 `AlphaMode`, `ShadingModel`, `QualityLevel`, `CollisionPhase`, `Keys`, and
@@ -104,6 +114,78 @@ setup code.
 
 `World3D.NewWithCamera(title, width, height, fov, near, far)` uses the same
 defaults with custom camera projection values.
+
+---
+
+## Presets And Prefabs
+
+Phase 3 adds runtime-backed convenience for the setup code that made small 3D
+games noisy:
+
+| API | Purpose |
+|-----|---------|
+| `Lighting.Studio(world)` | Balanced key/fill lighting for object inspection and samples |
+| `Lighting.Outdoor(world, sunDir)` | Sunlight and ambient sky for outdoor scenes |
+| `Lighting.Night(world)` / `Interior(world)` / `Clear(world)` | Night, indoor, or empty lighting rigs |
+| `Materials.Plastic/Metal/Rubber(r, g, b)` | Common PBR material presets |
+| `Materials.Glass(r, g, b, alpha)` | Transparent, double-sided reflective material |
+| `Materials.Emissive(r, g, b, intensity)` | Emissive material for lights, pickups, and UI-like meshes |
+| `Materials.Unlit(r, g, b)` | Flat unlit material |
+| `Materials.FromAlbedoMap(pixels)` | Textured material from a `Pixels` albedo map |
+| `PostFX.Cinematic(world)` / `Crisp(world)` / `None(world)` | Backend-safe effect chains |
+| `Quality.Apply(world, QualityLevel.*)` | Applies quality, post-FX, frustum culling, and shadow policy safely |
+
+Prefab factories return normal spawnable `Entity3D` objects with mesh and
+material already wired:
+
+```zia
+var metal = Game3D.Materials.Metal(0.65, 0.68, 0.72);
+var crate = Game3D.Prefab.BoxXYZ(1.0, 0.8, 1.4, metal);
+Game3D.Entity3D.setPosition(crate, 0.0, 0.4, -2.0);
+Game3D.World3D.spawn(world, crate);
+```
+
+Available prefab factories are `Box`, `BoxXYZ`, `Sphere`, `Cylinder`, `Plane`,
+and `Ground`. `Ground` also sets the entity layer to `Game3D.Layers.World`.
+
+---
+
+## Environment
+
+`Environment.Outdoor(world)`, `Sunset(world)`, `Overcast(world)`, and
+`Night(world)` apply clear color, ambient/light setup, fog, and a basic ground
+entity immediately. The returned `EnvHandle` can refine the scene:
+
+```zia
+var env = Game3D.Environment.Outdoor(world);
+Game3D.EnvHandle.withTerrain(env, 96.0, 0.0);
+Game3D.EnvHandle.withWater(env, -0.05);
+Game3D.EnvHandle.withFog(env, 20.0, 160.0);
+```
+
+Terrain is represented as a spawnable ground entity with a static body in this
+phase, so character/physics samples get a useful floor without manual collider
+setup. Water is a transparent plane prefab.
+
+---
+
+## Debug3D
+
+`Debug3D` uses the same final overlay path as user HUDs, so its text is drawn
+after post-FX rather than being bloomed, toned, or blurred.
+
+```zia
+Game3D.Debug3D.ShowOverlay(world, true);
+Game3D.Debug3D.DrawAxes(world, new Math.Vec3(0.0, 0.0, 0.0), 1.5);
+Game3D.Debug3D.DrawPhysics(world, true);
+Game3D.Debug3D.DrawCameraInfo(world, true);
+Game3D.Debug3D.DrawCapabilities(world, true);
+```
+
+The overlay reports backend, FPS, requested/active quality, fallback state,
+scene node/cull counts, physics body count, optional camera position, backend
+capability bits, and whether physics wire debug is enabled. `drawEffects()`
+draws axes and physics wire helpers during the 3D pass.
 
 ---
 
@@ -285,12 +367,13 @@ The Game3D runtime is covered by:
 
 | Test | Coverage |
 |------|----------|
-| `test_rt_game3d` | C runtime contracts for constants, masks, input, world defaults, spawn/despawn, collision-event clearing, native callback loops, overlay hooks, final capture, synthetic controller input, orbit/follow late update, and first-person character movement |
+| `test_rt_game3d` | C runtime contracts for constants, masks, input, world defaults, spawn/despawn, collision-event clearing, native callback loops, overlay hooks, final capture, synthetic controller input, orbit/follow late update, first-person character movement, material presets, prefabs, lighting, quality, environment, post-FX, and debug helpers |
 | `g3d_test_game3d_world_probe` | Zia construction, default subsystems, layer masks, entity spawn/find/despawn, resize/aspect, manual frame path, final capture, and destroy |
 | `g3d_test_game3d_runframes_probe` | Zia deterministic `runFramesOnly`, dt/elapsed/frame accounting, and final capture |
 | `g3d_test_game3d_runframes_callback_reject` | Interpreted Zia callback rejection diagnostic for native callback-loop APIs |
 | `g3d_test_game3d_camera_controllers_probe` | Zia free-fly synthetic input, orbit drag/zoom, and follow camera post-physics tracking |
 | `g3d_test_game3d_character_controller_probe` | Zia first-person character movement and late-update camera alignment |
+| `g3d_test_game3d_presets_probe` | Zia material/prefab presets, lighting, quality fallback, post-FX, environment chaining, physics body setup, and final-overlay debug capture |
 | `g3d_walk_min_visual_probe` | Game3D sample final-frame baseline, crisp overlay, directional lighting, and grounded synthetic first-person movement |
 
 Run the focused set with:

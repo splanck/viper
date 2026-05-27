@@ -165,15 +165,15 @@ This file tracks the public runtime-backed `Viper.Game3D` surface described in
 
 | ID | Item | Source | Status | Impl | Tests | Docs | Proof / link | Notes |
 |---|---|---|---|---|---|---|---|---|
-| API-LIGHT-001 | `Lighting.Studio/Outdoor/Night/Interior/Clear` | `api-spec.md` Presets | todo |  |  |  |  | Clear managed slots and tune shadows |
-| API-MAT-001 | Material presets: Plastic/Metal/Rubber/Glass/Emissive/Unlit/FromAlbedoMap | `api-spec.md` Presets | todo |  |  |  |  | Set shading/alpha modes |
-| API-FX-001 | `PostFX.Cinematic/Crisp/None` | `api-spec.md` Presets | partial | Runtime foundation: `PostFX3D.NewQuality(canvas, profile)` and `Canvas3D.SetQuality(profile)` | `test_rt_canvas3d_gpu_paths`, `g3d_test_canvas3d_quality_profiles` | docs updated | focused ctests passed | Game3D `PostFX.*` wrappers pending |
-| API-QUAL-001 | `Quality.Apply(world, Performance/Balanced/Cinematic)` | `api-spec.md` Presets | partial | Runtime foundation: Canvas3D quality profiles and fallback diagnostics | `test_rt_canvas3d_gpu_paths`, `g3d_test_canvas3d_quality_profiles` | docs updated | focused ctests passed | Game3D `Quality.Apply` wrapper pending |
-| API-ENV-001 | `Environment.Outdoor/Sunset/Overcast/Night` | `api-spec.md` Environment | todo |  |  |  |  | Good default scene |
-| API-ENV-002 | `EnvHandle.withTerrain(size,height)` | `api-spec.md` Environment | todo |  |  |  |  |  |
-| API-ENV-003 | `EnvHandle.withWater(level)` | `api-spec.md` Environment | todo |  |  |  |  |  |
-| API-ENV-004 | `EnvHandle.withFog(near,far)` | `api-spec.md` Environment | todo |  |  |  |  |  |
-| API-PREF-001 | Prefabs: Box, BoxXYZ, Sphere, Cylinder, Plane, Ground | `api-spec.md` Prefabs | todo |  |  |  |  | Spawnable entities |
+| API-LIGHT-001 | `Lighting.Studio/Outdoor/Night/Interior/Clear` | `api-spec.md` Presets | done | Runtime C methods clear/install light slots and tune ambient/clear color | `test_rt_game3d`, `g3d_test_game3d_presets_probe` | Game3D docs | focused and graphics3d ctests passed | Clear managed slots and install readable rigs |
+| API-MAT-001 | Material presets: Plastic/Metal/Rubber/Glass/Emissive/Unlit/FromAlbedoMap | `api-spec.md` Presets | done | Runtime C material factories set PBR/shading/alpha/emissive/unlit state | `test_rt_game3d`, `g3d_test_game3d_presets_probe` | Game3D docs | focused and graphics3d ctests passed | Set shading/alpha modes |
+| API-FX-001 | `PostFX.Cinematic/Crisp/None` | `api-spec.md` Presets | done | Runtime C wrappers update world effect registry and canvas post-FX binding | `test_rt_game3d`, `g3d_test_game3d_presets_probe` | Game3D docs | focused and graphics3d ctests passed | Built on lower-level `PostFX3D` profile primitives |
+| API-QUAL-001 | `Quality.Apply(world, Performance/Balanced/Cinematic)` | `api-spec.md` Presets | done | Runtime C wrapper applies quality, frustum culling, and shadow capability policy | `test_rt_game3d`, `g3d_test_game3d_presets_probe` | Game3D docs | focused and graphics3d ctests passed | Canvas fallback diagnostics remain source of truth |
+| API-ENV-001 | `Environment.Outdoor/Sunset/Overcast/Night` | `api-spec.md` Environment | done | Runtime C constructors apply lighting, clear color, fog, terrain | `test_rt_game3d`, `g3d_test_game3d_presets_probe` | Game3D docs | focused and graphics3d ctests passed | Good default scene |
+| API-ENV-002 | `EnvHandle.withTerrain(size,height)` | `api-spec.md` Environment | done | Spawns/replaces ground entity with static body | `test_rt_game3d`, `g3d_test_game3d_presets_probe` | Game3D docs | focused and graphics3d ctests passed | Height controls entity Y |
+| API-ENV-003 | `EnvHandle.withWater(level)` | `api-spec.md` Environment | done | Spawns/replaces transparent water plane prefab | `test_rt_game3d`, `g3d_test_game3d_presets_probe` | Game3D docs | focused and graphics3d ctests passed |  |
+| API-ENV-004 | `EnvHandle.withFog(near,far)` | `api-spec.md` Environment | done | Applies fog through Canvas3D with environment clear color | `test_rt_game3d`, `g3d_test_game3d_presets_probe` | Game3D docs | focused and graphics3d ctests passed | Also fixed `World3D.setFog` argument forwarding |
+| API-PREF-001 | Prefabs: Box, BoxXYZ, Sphere, Cylinder, Plane, Ground | `api-spec.md` Prefabs | done | Runtime C prefab factories return `Entity3D` with mesh/material | `test_rt_game3d`, `g3d_test_game3d_presets_probe` | Game3D docs | focused and graphics3d ctests passed | Spawnable entities |
 | API-ASSETS-001 | `Assets3D.LoadModel(path)` | `api-spec.md` Assets | todo |  |  |  |  | Filesystem/dev |
 | API-ASSETS-002 | `Assets3D.LoadModelAsset(assetPath)` | `api-spec.md` Assets | partial | Runtime foundation: `Model3D.LoadAsset` and `GLTF.LoadAsset` package-aware paths | `test_rt_gltf`, `test_rt_model3d`, `g3d_test_model3d_load_asset` | docs updated | focused ctests passed | Game3D `Assets3D` wrapper pending |
 | API-ASSETS-003 | `Assets3D.LoadModelTemplate(path)` | `api-spec.md` Assets | todo |  |  |  |  | Cache |
@@ -203,12 +203,12 @@ This file tracks the public runtime-backed `Viper.Game3D` surface described in
 | API-VFX-003 | `EffectRegistry3D.addDecal(d)` | `api-spec.md` VFX | todo |  |  |  |  |  |
 | API-VFX-004 | `EffectRegistry3D.update(dt)` / `draw(canvas,camera)` / `clear()` | `api-spec.md` VFX | partial | Phase 1 exposes world `postfx` and `drawEffects()` placeholder | `test_rt_game3d`, Zia world probe | Game3D docs | focused ctests passed | Particle/decal registry remains Phase 6 |
 | API-VFX-005 | Effects draw after scene and before final overlay | `api-spec.md` VFX | partial | `World3D` frame order reserves `drawEffects()` between scene and overlay | `test_rt_game3d` | Game3D docs | focused ctest passed | Rich VFX drawing remains Phase 6 |
-| API-DBG-001 | `Debug3D.ShowOverlay` | `api-spec.md` Debug3D | todo |  |  |  |  |  |
-| API-DBG-002 | `Debug3D.DrawAxes` | `api-spec.md` Debug3D | todo |  |  |  |  |  |
-| API-DBG-003 | `Debug3D.DrawPhysics` | `api-spec.md` Debug3D | todo |  |  |  |  |  |
-| API-DBG-004 | `Debug3D.DrawCameraInfo` | `api-spec.md` Debug3D | todo |  |  |  |  |  |
-| API-DBG-005 | `Debug3D.DrawCapabilities` | `api-spec.md` Debug3D | todo |  |  |  |  |  |
-| API-DBG-006 | Debug text uses final overlay path | `api-spec.md` Debug3D | todo |  |  |  |  |  |
+| API-DBG-001 | `Debug3D.ShowOverlay` | `api-spec.md` Debug3D | done | Runtime C flag rendered from `World3D.endScene` | `test_rt_game3d`, `g3d_test_game3d_presets_probe` | Game3D docs | focused and graphics3d ctests passed |  |
+| API-DBG-002 | `Debug3D.DrawAxes` | `api-spec.md` Debug3D | done | Runtime C stores origin/size and draws in `drawEffects` | `test_rt_game3d`, `g3d_test_game3d_presets_probe` | Game3D docs | focused and graphics3d ctests passed |  |
+| API-DBG-003 | `Debug3D.DrawPhysics` | `api-spec.md` Debug3D | done | Runtime C draws body AABB wires and reports physics debug state | `test_rt_game3d`, `g3d_test_game3d_presets_probe` | Game3D docs | focused and graphics3d ctests passed |  |
+| API-DBG-004 | `Debug3D.DrawCameraInfo` | `api-spec.md` Debug3D | done | Runtime C overlay reports camera position when enabled | `test_rt_game3d`, `g3d_test_game3d_presets_probe` | Game3D docs | focused and graphics3d ctests passed |  |
+| API-DBG-005 | `Debug3D.DrawCapabilities` | `api-spec.md` Debug3D | done | Runtime C overlay reports backend capability bitmask when enabled | `test_rt_game3d`, `g3d_test_game3d_presets_probe` | Game3D docs | focused and graphics3d ctests passed |  |
+| API-DBG-006 | Debug text uses final overlay path | `api-spec.md` Debug3D | done | `World3D.endScene` records overlay with `Canvas3D.BeginOverlay/EndOverlay` | `test_rt_game3d`, `g3d_test_game3d_presets_probe` | Game3D docs | focused and graphics3d ctests passed | Captured by `captureFinalFrame` |
 
 ## API examples
 
