@@ -1521,6 +1521,18 @@ if (EXISTS "${GAME3D_EFFECTS_PROBE}")
             TIMEOUT 30)
 endif ()
 
+set(GAME3D_DOCS_SNIPPETS_PROBE "${G3D_TESTS_DIR}/test_game3d_docs_snippets.zia")
+if (EXISTS "${GAME3D_DOCS_SNIPPETS_PROBE}")
+    add_test(NAME g3d_test_game3d_docs_snippets
+            COMMAND $<TARGET_FILE:viper> run "${GAME3D_DOCS_SNIPPETS_PROBE}"
+            WORKING_DIRECTORY "${CMAKE_SOURCE_DIR}")
+    set_tests_properties(g3d_test_game3d_docs_snippets PROPERTIES
+            PASS_REGULAR_EXPRESSION "PASS"
+            LABELS "runtime;graphics3d;zia;requires_display"
+            ENVIRONMENT "VIPER_3D_BACKEND=software"
+            TIMEOUT 30)
+endif ()
+
 set(CANVAS3D_QUALITY_PROFILES_PROBE "${G3D_TESTS_DIR}/test_canvas3d_quality_profiles.zia")
 if (EXISTS "${CANVAS3D_QUALITY_PROFILES_PROBE}")
     add_test(NAME g3d_test_canvas3d_quality_profiles
@@ -1540,6 +1552,63 @@ if (EXISTS "${WALK_MIN_VISUAL_PROBE}")
             WORKING_DIRECTORY "${CMAKE_SOURCE_DIR}")
     set_tests_properties(g3d_walk_min_visual_probe PROPERTIES
             PASS_REGULAR_EXPRESSION "RESULT: ok"
+            LABELS "runtime;graphics3d;zia;requires_display"
+            ENVIRONMENT "VIPER_3D_BACKEND=software"
+            TIMEOUT 30)
+endif ()
+
+set(GAME3D_SHOWCASE_PROBE "${CMAKE_SOURCE_DIR}/examples/3d/game3d_showcase/showcase.zia")
+if (EXISTS "${GAME3D_SHOWCASE_PROBE}")
+    add_test(NAME g3d_game3d_showcase
+            COMMAND $<TARGET_FILE:viper> run "${GAME3D_SHOWCASE_PROBE}"
+            WORKING_DIRECTORY "${CMAKE_SOURCE_DIR}")
+    set_tests_properties(g3d_game3d_showcase PROPERTIES
+            PASS_REGULAR_EXPRESSION "PASS"
+            LABELS "runtime;graphics3d;zia;requires_display"
+            ENVIRONMENT "VIPER_3D_BACKEND=software"
+            TIMEOUT 45)
+endif ()
+
+set(GAME3D_HELLO_PROBE "${CMAKE_SOURCE_DIR}/examples/3d/game3d_hello.zia")
+if (EXISTS "${GAME3D_HELLO_PROBE}")
+    add_test(NAME g3d_game3d_hello
+            COMMAND $<TARGET_FILE:viper> run "${GAME3D_HELLO_PROBE}"
+            WORKING_DIRECTORY "${CMAKE_SOURCE_DIR}")
+    set_tests_properties(g3d_game3d_hello PROPERTIES
+            PASS_REGULAR_EXPRESSION "PASS"
+            LABELS "runtime;graphics3d;zia;requires_display"
+            ENVIRONMENT "VIPER_3D_BACKEND=software"
+            TIMEOUT 30)
+endif ()
+
+set(GAME3D_STARTER_DIR "${CMAKE_SOURCE_DIR}/examples/3d/game3d_starter")
+set(GAME3D_STARTER_PROBE "${GAME3D_STARTER_DIR}/test.zia")
+if (EXISTS "${GAME3D_STARTER_PROBE}")
+    add_test(NAME g3d_game3d_starter_probe
+            COMMAND $<TARGET_FILE:viper> run "test.zia"
+            WORKING_DIRECTORY "${GAME3D_STARTER_DIR}")
+    set_tests_properties(g3d_game3d_starter_probe PROPERTIES
+            PASS_REGULAR_EXPRESSION "PASS"
+            LABELS "runtime;graphics3d;zia;requires_display"
+            ENVIRONMENT "VIPER_3D_BACKEND=software"
+            TIMEOUT 30)
+
+    add_test(NAME g3d_game3d_starter_package_dry_run
+            COMMAND $<TARGET_FILE:viper> package "." --target tarball --dry-run
+            WORKING_DIRECTORY "${GAME3D_STARTER_DIR}")
+    set_tests_properties(g3d_game3d_starter_package_dry_run PROPERTIES
+            PASS_REGULAR_EXPRESSION "Asset: assets -> assets"
+            LABELS "runtime;graphics3d;zia"
+            TIMEOUT 30)
+endif ()
+
+set(GAME3D_BOWLING_SETUP_PROBE "${CMAKE_SOURCE_DIR}/examples/games/3dbowling/game3d/game3d_setup.zia")
+if (EXISTS "${GAME3D_BOWLING_SETUP_PROBE}")
+    add_test(NAME g3d_game3d_bowling_setup
+            COMMAND $<TARGET_FILE:viper> run "${GAME3D_BOWLING_SETUP_PROBE}"
+            WORKING_DIRECTORY "${CMAKE_SOURCE_DIR}")
+    set_tests_properties(g3d_game3d_bowling_setup PROPERTIES
+            PASS_REGULAR_EXPRESSION "PASS"
             LABELS "runtime;graphics3d;zia;requires_display"
             ENVIRONMENT "VIPER_3D_BACKEND=software"
             TIMEOUT 30)

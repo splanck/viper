@@ -11,7 +11,7 @@ can move from design to broad implementation.
 | D-009 | Runtime object lifetime policy | `runtime-changes.md` §10 | partial | Explicit destroy/despawn invalidation and diagnostics |  | Phase 4/7 | `test_rt_game3d`; `g3d_test_game3d_assets_probe`; `docs/viperlib/graphics/game3d.md` | Core world/entity ownership and imported template groups covered; effects/animation diagnostics still open |
 | D-010 | Starter project delivery mechanism | `roadmap.md` Phase 7 | todo | `examples/3d/game3d_starter/` vs project-template generator |  | Phase 7 |  | Must be code-first and package-aware |
 | D-011 | Software visual baseline storage/update policy | `roadmap.md` Testing strategy | todo | Baseline artifact path, tolerance file, update command |  | Phase 0B |  | Prevent brittle visual tests |
-| D-012 | Test waiver location | `roadmap.md` Required ctest inventory | todo | Roadmap row, issue tracker, or dedicated waiver file |  | First waiver |  | No untracked coverage gaps |
+| D-012 | Test waiver location | `roadmap.md` Required ctest inventory | done | Dedicated tracker file | `progress/06-waivers.md` | Phase 7 waivers recorded | 2026-05-27 | No untracked coverage gaps |
 
 ## Closed decisions
 

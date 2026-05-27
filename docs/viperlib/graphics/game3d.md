@@ -246,6 +246,18 @@ For deterministic interpreted-Zia tests, use `runFramesOnly(frameCount, stepSec)
 or call the manual methods explicitly. `runFramesOnly` uses the synthetic clock
 path and leaves the final frame capturable.
 
+The raw `Canvas3D` finalization calls map to the Game3D frame helpers this way:
+
+| Raw call | Meaning |
+|----------|---------|
+| `Canvas3D.End()` | Close the 3D scene pass. This does not replay final overlays, read pixels, or present. |
+| `Canvas3D.FinalizeFrame()` | Idempotently apply post-FX and replay recorded final overlays. |
+| `Canvas3D.ScreenshotFinal()` | Finalize the frame, then read back the post-FX-plus-overlay pixels. |
+| `Canvas3D.Flip()` | Finalize the frame if needed, then present it. |
+
+`World3D.endScene()`, `captureFinalFrame()`, and `present()` are the Game3D
+wrappers for that contract.
+
 ---
 
 ## Callback Boundary
@@ -581,6 +593,19 @@ smoothing.
 
 ---
 
+## Troubleshooting
+
+| Symptom | Check |
+|---------|-------|
+| `LoadModelAsset` or `Audio3D.loadAsset` returns `null` | Run from the project root or package the asset path in `viper.project`; source-tree samples use `asset assets assets` or repository-relative fixture paths. |
+| Final overlay pixels look post-processed | Draw HUD after `World3D.endScene()` with `Canvas3D.BeginOverlay()` / `EndOverlay()`, then call `captureFinalFrame()` or `present()`. |
+| Interpreted Zia callback loop traps | Use manual `tick`/`stepSimulation`/frame methods or `runFramesOnly`; native callback loops require C-callable function pointers. |
+| Software backend disables a requested quality feature | Inspect `Canvas3D.get_QualityActive()` and `get_QualityFallback()`; `Quality.Apply` avoids unsupported shadow/post-FX paths. |
+| A body does not collide with another body | Verify the entity layer, `BodyDef.withLayer`, and `BodyDef.withMask`; masks must include the other body layer. |
+| A handle fails after teardown | Destroy the `World3D` last. Spawned entities, effects, and audio source bindings are owned by the world. |
+
+---
+
 ## Tests
 
 The Game3D runtime is covered by:
@@ -600,7 +625,13 @@ The Game3D runtime is covered by:
 | `g3d_test_game3d_anim_probe` | Zia Animator3D play/crossfade/state-time/events, entity attachment, raw controller wrapping, and root-motion world stepping |
 | `g3d_test_game3d_audio_probe` | Zia listener follow/manual pose, attenuation defaults, positional playback, attached-source sync, 2D playback, and source cleanup |
 | `g3d_test_game3d_effects_probe` | Zia Effects3D presets, registry diagnostics, draw path, auto-expiry, manual particle/decal registration, and collision-triggered VFX |
+| `g3d_test_game3d_docs_snippets` | Copy-paste docs surfaces for setup, presets, assets, physics, audio/VFX, deterministic frame helpers, and manual final-frame capture |
 | `g3d_walk_min_visual_probe` | Game3D sample final-frame baseline, crisp overlay, directional lighting, and grounded synthetic first-person movement |
+| `g3d_game3d_hello` | <=20-line hello-world scene with lighting, walkable ground, first-person character, and no `Mat4` |
+| `g3d_game3d_starter_probe` | Starter project deterministic movement, package-aware model asset, final capture, and grounded character path |
+| `g3d_game3d_starter_package_dry_run` | Starter `viper.project` asset packaging layout |
+| `g3d_game3d_showcase` | Full-stack sample smoke, software final-frame structural/HUD assertion, asset/audio/VFX/camera/physics/animation integration, and deterministic replay |
+| `g3d_game3d_bowling_setup` | Bowling setup migration smoke and deterministic replay |
 
 Run the focused set with:
 
@@ -622,9 +653,9 @@ The core world/entity/input layer, built-in camera/character controllers,
 presets, prefabs, environment/debug helpers, `Assets3D`, `BodyDef`,
 entity-aware collision event wrappers, `Animator3D`, `Audio3D`, and `Effects3D`
 now live in the C runtime.
-`examples/3d/walk_min.zia` is the current small Game3D walking sample.
-Starter templates and showcase samples remain tracked in the 3D Next Level
-plan.
+`examples/3d/walk_min.zia`, `examples/3d/game3d_starter/`, and
+`examples/3d/game3d_showcase/` are the current code-first samples. The bowling
+setup migration lives at `examples/games/3dbowling/game3d/`.
 
 Use the lower-level `Viper.Graphics3D` and `Viper.Sound` APIs as escape hatches
-while those higher-level Game3D helpers are being implemented.
+when a sample needs behavior outside the Game3D convenience layer.

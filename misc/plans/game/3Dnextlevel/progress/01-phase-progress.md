@@ -180,30 +180,30 @@ API, test, and docs items are tracked in the sibling files.
 
 | ID | Item | Source | Status | Impl | Tests | Docs | Proof / link | Notes |
 |---|---|---|---|---|---|---|---|---|
-| P7-001 | Build `examples/3d/game3d_showcase/` cohesive mini-game | `roadmap.md` Phase 7 | todo |  |  |  |  | Full feature stack |
-| P7-002 | Showcase uses `runFixed` and `runFrames` deterministic replay | `roadmap.md` Phase 7 | todo |  |  |  |  |  |
-| P7-003 | Showcase includes final-frame post-FX plus crisp HUD/debug overlay | `roadmap.md` Phase 7 | todo |  |  |  |  |  |
-| P7-004 | Showcase includes lighting/material/post-FX/quality/environment toggles | `roadmap.md` Phase 7 | todo |  |  |  |  |  |
-| P7-005 | Showcase includes terrain/ground, water or fog, prefabs, packaged GLB/glTF props | `roadmap.md` Phase 7 | todo |  |  |  |  |  |
-| P7-006 | Showcase includes first-person and follow/orbit cameras | `roadmap.md` Phase 7 | todo |  |  |  |  |  |
-| P7-007 | Showcase includes character controller or player-controlled physics body | `roadmap.md` Phase 7 | todo |  |  |  |  |  |
-| P7-008 | Showcase includes layers, bodies, triggers, collision event handling | `roadmap.md` Phase 7 | todo |  |  |  |  |  |
-| P7-009 | Showcase includes animated skinned model with animation events | `roadmap.md` Phase 7 | todo |  |  |  |  |  |
-| P7-010 | Showcase includes positional, attached, and non-spatial audio | `roadmap.md` Phase 7 | todo |  |  |  |  |  |
-| P7-011 | Showcase includes VFX particles/decals from collisions | `roadmap.md` Phase 7 | todo |  |  |  |  |  |
-| P7-012 | Showcase includes package-aware model/audio loading | `roadmap.md` Phase 7 | todo |  |  |  |  |  |
-| P7-013 | Showcase includes raw escape-hatch usage in marked advanced section | `roadmap.md` Phase 7 | todo |  |  |  |  |  |
-| P7-014 | Port/re-skin 3D bowling setup to Game3D | `roadmap.md` Phase 7 | todo |  |  |  |  |  |
-| P7-015 | Record bowling setup-code reduction and clarity notes | `roadmap.md` Phase 7 | todo |  |  |  |  | Target >= 50% scaffolding reduction |
-| P7-016 | Add `examples/3d/game3d_starter/` or project-template equivalent | `roadmap.md` Phase 7 | todo |  |  |  |  | Source/assets/package/test |
-| P7-017 | Add docs under `docs/viperlib/graphics/` for all planned topics | `roadmap.md` Phase 7 | todo |  |  |  |  | See docs tracker |
-| P7-018 | Update API reference for every new runtime function and Game3D API area | `roadmap.md` Phase 7 | todo |  |  |  |  |  |
-| P7-019 | Runtime docs distinguish `End`, `FinalizeFrame`, `ScreenshotFinal`, `Flip` | `roadmap.md` Phase 7 | todo |  |  |  |  |  |
-| P7-020 | Every docs page includes a copy-pasteable snippet covered by ctest/import | `roadmap.md` Phase 7 | todo |  |  |  |  |  |
-| P7-021 | Showcase runs at interactive framerate on at least one GPU backend | `roadmap.md` Phase 7 Exit | todo |  |  |  |  |  |
-| P7-022 | Showcase has documented software-backend baseline | `roadmap.md` Phase 7 Exit | todo |  |  |  |  |  |
-| P7-023 | Showcase final-frame visual regression passes on software backend | `roadmap.md` Phase 7 Exit | todo |  |  |  |  |  |
-| P7-024 | Showcase deterministic replay reaches same gameplay state | `roadmap.md` Phase 7 Exit | todo |  |  |  |  |  |
-| P7-025 | Starter can be copied/generated, run, package assets, and execute deterministic ctest | `roadmap.md` Phase 7 Exit | todo |  |  |  |  |  |
-| P7-026 | Docs contain copy-pasteable examples that compile | `roadmap.md` Phase 7 Exit | todo |  |  |  |  |  |
-| P7-027 | All new runtime functions/API areas/samples/docs snippets have ctest coverage or waiver | `roadmap.md` Phase 7 Exit | todo |  |  |  |  |  |
+| P7-001 | Build `examples/3d/game3d_showcase/` cohesive mini-game | `roadmap.md` Phase 7 | done | `examples/3d/game3d_showcase/showcase.zia` | `g3d_game3d_showcase` | Showcase README, examples README | manual probe passed | Full feature stack with W-003/W-004 |
+| P7-002 | Showcase uses `runFixed` and `runFrames` deterministic replay | `roadmap.md` Phase 7 | partial | Manual fixed-step gameplay plus `runFramesOnly` helper proof and replay comparison | `g3d_game3d_showcase`, `g3d_test_game3d_runframes_probe`, callback rejection probe | Game3D docs | manual probe passed | Native `runFixed` callback remains W-001 |
+| P7-003 | Showcase includes final-frame post-FX plus crisp HUD/debug overlay | `roadmap.md` Phase 7 | done | Post-FX plus final-overlay HUD pixel assertion | `g3d_game3d_showcase` | Showcase README | manual probe passed | Avoids helper Canvas param lifetime edge |
+| P7-004 | Showcase includes lighting/material/post-FX/quality/environment toggles | `roadmap.md` Phase 7 | done | Runtime quality/post-FX/material/fog swaps | `g3d_game3d_showcase` | Showcase README | manual probe passed |  |
+| P7-005 | Showcase includes terrain/ground, water or fog, prefabs, packaged GLB/glTF props | `roadmap.md` Phase 7 | done | Outdoor env, water/fog, prefabs, `LoadModelAsset` glTF prop | `g3d_game3d_showcase` | Showcase README | manual probe passed |  |
+| P7-006 | Showcase includes first-person and follow/orbit cameras | `roadmap.md` Phase 7 | done | FPS -> follow -> orbit controller switches | `g3d_game3d_showcase` | Showcase README | manual probe passed |  |
+| P7-007 | Showcase includes character controller or player-controlled physics body | `roadmap.md` Phase 7 | done | `CharacterController3D` player plus physics ball | `g3d_game3d_showcase` | Showcase README | manual probe passed |  |
+| P7-008 | Showcase includes layers, bodies, triggers, collision event handling | `roadmap.md` Phase 7 | done | `LayerMask`, `BodyDef`, trigger body, collision event polling | `g3d_game3d_showcase` | Showcase README | manual probe passed |  |
+| P7-009 | Showcase includes animated skinned model with animation events | `roadmap.md` Phase 7 | partial | Procedural skeleton `Animator3D` with event/root-motion | `g3d_game3d_showcase`, `g3d_test_game3d_anim_probe` | Showcase README | manual probe passed | Imported skinned art fixture waived under W-003 |
+| P7-010 | Showcase includes positional, attached, and non-spatial audio | `roadmap.md` Phase 7 | done | `playAt`, `playAttached`, `play2D` | `g3d_game3d_showcase` | Showcase README | manual probe passed |  |
+| P7-011 | Showcase includes VFX particles/decals from collisions | `roadmap.md` Phase 7 | done | `Effects3D.Dust` and `ImpactDecal` from collision point/normal | `g3d_game3d_showcase` | Showcase README | manual probe passed |  |
+| P7-012 | Showcase includes package-aware model/audio loading | `roadmap.md` Phase 7 | done | `Assets3D.LoadModelAsset`, `Audio3D.loadAsset`; starter package dry-run validates packaged asset layout | `g3d_game3d_showcase`, `g3d_game3d_starter_package_dry_run` | Showcase/starter READMEs | manual probes passed |  |
+| P7-013 | Showcase includes raw escape-hatch usage in marked advanced section | `roadmap.md` Phase 7 | done | Direct `Canvas3D`, `SceneNode3D`, `Sound` usage | `g3d_game3d_showcase` | Showcase README | manual probe passed |  |
+| P7-014 | Port/re-skin 3D bowling setup to Game3D | `roadmap.md` Phase 7 | done | `examples/games/3dbowling/game3d/game3d_setup.zia` | `g3d_game3d_bowling_setup` | Bowling Game3D README | manual probe passed |  |
+| P7-015 | Record bowling setup-code reduction and clarity notes | `roadmap.md` Phase 7 | done | 789 LOC original renderer/camera/HUD -> 129 LOC Game3D setup | `g3d_game3d_bowling_setup` | Bowling Game3D README | `wc -l` recorded | 83.7% reduction |
+| P7-016 | Add `examples/3d/game3d_starter/` or project-template equivalent | `roadmap.md` Phase 7 | done | Starter source/assets/manifest/test/README | `g3d_game3d_starter_probe`, `g3d_game3d_starter_package_dry_run` | Starter README | manual probes passed |  |
+| P7-017 | Add docs under `docs/viperlib/graphics/` for all planned topics | `roadmap.md` Phase 7 | done | Game3D guide plus examples READMEs | `g3d_test_game3d_docs_snippets` | Game3D docs | manual probe passed |  |
+| P7-018 | Update API reference for every new runtime function and Game3D API area | `roadmap.md` Phase 7 | done | Game3D docs cover Phase 1-7 surfaces | subsystem probes plus docs snippets | Game3D docs | manual probe passed | Waivers in `06-waivers.md` |
+| P7-019 | Runtime docs distinguish `End`, `FinalizeFrame`, `ScreenshotFinal`, `Flip` | `roadmap.md` Phase 7 | done | Raw Canvas3D finalization table | `g3d_test_game3d_docs_snippets`, visual probes | Game3D docs | manual probe passed |  |
+| P7-020 | Every docs page includes a copy-pasteable snippet covered by ctest/import | `roadmap.md` Phase 7 | done | Dedicated docs snippet probe | `g3d_test_game3d_docs_snippets` | Game3D docs | manual probe passed |  |
+| P7-021 | Showcase runs at interactive framerate on at least one GPU backend | `roadmap.md` Phase 7 Exit | waived | Software correctness lane complete |  | W-002 |  | GPU timing requires reference hardware/CI |
+| P7-022 | Showcase has documented software-backend baseline | `roadmap.md` Phase 7 Exit | done | Structural baseline and saved `/tmp` image documented | `g3d_game3d_showcase` | Showcase README | manual probe passed | Exact showcase PNG waived under W-004 |
+| P7-023 | Showcase final-frame visual regression passes on software backend | `roadmap.md` Phase 7 Exit | done | Dimensions, crisp HUD pixel, scene-structure contrast | `g3d_game3d_showcase` | Showcase README | manual probe passed |  |
+| P7-024 | Showcase deterministic replay reaches same gameplay state | `roadmap.md` Phase 7 Exit | done | Rendered and non-rendered scenario metric compare | `g3d_game3d_showcase` | Showcase README | manual probe passed |  |
+| P7-025 | Starter can be copied/generated, run, package assets, and execute deterministic ctest | `roadmap.md` Phase 7 Exit | done | Starter source/assets/manifest/test | `g3d_game3d_starter_probe`, `g3d_game3d_starter_package_dry_run` | Starter README | manual probes passed |  |
+| P7-026 | Docs contain copy-pasteable examples that compile | `roadmap.md` Phase 7 Exit | done | Docs snippet probe | `g3d_test_game3d_docs_snippets` | Game3D docs | manual probe passed |  |
+| P7-027 | All new runtime functions/API areas/samples/docs snippets have ctest coverage or waiver | `roadmap.md` Phase 7 Exit | done | Phase 7 ctests plus `06-waivers.md` | all Game3D probes | Game3D docs | manual probes passed |  |

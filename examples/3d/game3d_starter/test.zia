@@ -1,0 +1,70 @@
+module game3d_starter_test;
+
+bind Viper.Game3D;
+bind Viper.Graphics.Pixels as Pixels;
+bind Viper.Graphics3D;
+bind Viper.Math;
+bind Viper.Terminal as Terminal;
+bind "./main";
+
+func near(a: Float, b: Float, eps: Float) -> Boolean {
+    var d = a - b;
+    if (d < 0.0) { d = 0.0 - d; }
+    return d <= eps;
+}
+
+func fail(message: String) -> Float {
+    Terminal.Say("FAIL: " + message);
+    return -99999.0;
+}
+
+func runStarterReplay() -> Float {
+    var game = new StarterGame();
+    game.setup("Game3D Starter Test", 128, 96);
+
+    var canvas = game.getCanvas();
+    Canvas3D.SetInputSource(canvas, 1);
+    Canvas3D.PushSyntheticKey(canvas, Keys.get_W(), true);
+    World3D.tick(game.getWorld());
+    game.step(0.100);
+    Canvas3D.ClearSyntheticInput(canvas);
+
+    var i = 0;
+    while (i < 8) {
+        game.step(1.0 / 60.0);
+        i = i + 1;
+    }
+
+    game.renderFrame();
+    var snap = World3D.captureFinalFrame(game.getWorld());
+    if (snap == null ||
+        Pixels.get_Width(snap) != 128 ||
+        Pixels.get_Height(snap) != 96) {
+        game.destroy();
+        return fail("starter final-frame capture failed");
+    }
+    if (Canvas3D.get_FrameFinalized(canvas) == false) {
+        game.destroy();
+        return fail("starter frame was not finalized");
+    }
+    if (CharacterController3D.grounded(game.getCharacter()) == false) {
+        game.destroy();
+        return fail("starter character did not stay grounded");
+    }
+
+    var pos = Entity3D.position(game.getPlayer());
+    var metric = Vec3.get_X(pos) + Vec3.get_Y(pos) + Vec3.get_Z(pos);
+    game.destroy();
+    return metric;
+}
+
+func start() {
+    var a = runStarterReplay();
+    if (a < -90000.0) { return; }
+    var b = runStarterReplay();
+    if (near(a, b, 0.0001) == false) {
+        Terminal.Say("FAIL: starter replay diverged");
+        return;
+    }
+    Terminal.Say("PASS");
+}
