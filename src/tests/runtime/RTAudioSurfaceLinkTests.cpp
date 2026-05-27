@@ -48,6 +48,7 @@ int main() {
         fn_bits(&rt_audio_update),
         fn_bits(&rt_audio_stop_all_sounds),
         fn_bits(&rt_sound_load),
+        fn_bits(&rt_sound_load_asset),
         fn_bits(&rt_sound_load_mem),
         fn_bits(&rt_sound_destroy),
         fn_bits(&rt_sound_play),

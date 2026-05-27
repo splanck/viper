@@ -78,8 +78,39 @@ int64_t rt_canvas3d_get_delta_time(void *obj);
 double rt_canvas3d_get_delta_time_sec(void *obj);
 /// @brief Cap the per-frame delta time (smooths spikes after pause/breakpoint).
 void rt_canvas3d_set_dt_max(void *obj, int64_t max_ms);
+/// @brief Apply a backend-safe quality profile (0 performance, 1 balanced, 2 cinematic).
+void rt_canvas3d_set_quality(void *obj, int64_t quality);
+/// @brief Last quality profile requested through SetQuality.
+int64_t rt_canvas3d_get_quality_requested(void *obj);
+/// @brief Quality profile actually active after backend fallback.
+int64_t rt_canvas3d_get_quality_active(void *obj);
+/// @brief True when the active quality profile was degraded for backend safety.
+int8_t rt_canvas3d_get_quality_fallback(void *obj);
+/// @brief Reason for the last quality fallback, or an empty string.
+rt_string rt_canvas3d_get_quality_fallback_reason(void *obj);
+/// @brief Select live, synthetic, or live+synthetic input for this canvas (0, 1, or 2).
+void rt_canvas3d_set_input_source(void *obj, int64_t mode);
+/// @brief Queue a synthetic keyboard transition for the next synthetic input frame.
+void rt_canvas3d_push_synthetic_key(void *obj, int64_t key, int8_t down);
+/// @brief Queue a synthetic mouse sample for the next synthetic input frame.
+void rt_canvas3d_push_synthetic_mouse(
+    void *obj, double dx, double dy, int64_t buttons, double wheel);
+/// @brief Drop queued synthetic input and release keys/buttons held by the synthetic source.
+void rt_canvas3d_clear_synthetic_input(void *obj);
+/// @brief Select live wall-clock or fixed synthetic delta-time source (0 or 1).
+void rt_canvas3d_set_clock_source(void *obj, int64_t mode);
+/// @brief Set the fixed synthetic delta time in seconds.
+void rt_canvas3d_set_synthetic_delta_time_sec(void *obj, double dt);
+/// @brief Advance one deterministic input/timing frame without pumping platform events.
+void rt_canvas3d_advance_synthetic_frame(void *obj);
 /// @brief Bind or clear a Light3D slot; the canvas retains the assigned light until replaced.
 void rt_canvas3d_set_light(void *obj, int64_t index, void *light);
+/// @brief Clear all retained canvas light slots.
+void rt_canvas3d_clear_lights(void *obj);
+/// @brief Install a conservative key/fill/ambient setup for readable default scenes.
+void rt_canvas3d_set_default_lighting(void *obj);
+/// @brief Count currently assigned canvas light slots.
+int64_t rt_canvas3d_get_light_count(void *obj);
 /// @brief Set the ambient light color applied to all lit materials.
 void rt_canvas3d_set_ambient(void *obj, double r, double g, double b);
 /// @brief Draw a debug 3D line between two Vec3 points.
@@ -98,6 +129,9 @@ rt_string rt_canvas3d_get_backend(void *obj);
 #define RT_CANVAS3D_BACKEND_CAP_HARDWARE_INSTANCING 0x0040LL
 #define RT_CANVAS3D_BACKEND_CAP_POSTFX 0x0080LL
 #define RT_CANVAS3D_BACKEND_CAP_GPU_POSTFX 0x0100LL
+#define RT_CANVAS3D_BACKEND_CAP_POSTFX_OVERLAY 0x0200LL
+#define RT_CANVAS3D_BACKEND_CAP_FINAL_SCREENSHOT 0x0400LL
+#define RT_CANVAS3D_BACKEND_CAP_GPU_POSTFX_OVERLAY 0x0800LL
 
 /// @brief Return an RT_CANVAS3D_BACKEND_CAP_* bitmask for the active backend.
 int64_t rt_canvas3d_get_backend_capabilities(void *obj);
@@ -105,6 +139,18 @@ int64_t rt_canvas3d_get_backend_capabilities(void *obj);
 int8_t rt_canvas3d_backend_supports(void *obj, rt_string capability);
 /// @brief Capture the current back-buffer contents into a fresh Pixels object.
 void *rt_canvas3d_screenshot(void *obj);
+/// @brief Begin recording a final overlay pass composited after post-FX during finalization.
+void rt_canvas3d_begin_overlay(void *obj);
+/// @brief Finish recording the final overlay pass started by BeginOverlay.
+void rt_canvas3d_end_overlay(void *obj);
+/// @brief Discard any recorded final overlay commands for the current frame.
+void rt_canvas3d_clear_overlay(void *obj);
+/// @brief Apply post-FX and final overlay exactly once, without presenting.
+void rt_canvas3d_finalize_frame(void *obj);
+/// @brief Capture finalized pixels, finalizing first if needed.
+void *rt_canvas3d_screenshot_final(void *obj);
+/// @brief Return whether the current frame has already been finalized.
+int8_t rt_canvas3d_get_frame_finalized(void *obj);
 
 //=========================================================================
 // CubeMap3D — 6-face cube map for skybox + reflections
@@ -239,6 +285,8 @@ void *rt_material3d_clone(void *obj);
 void *rt_material3d_make_instance(void *obj);
 /// @brief Set the diffuse / base color (legacy or PBR depending on workflow).
 void rt_material3d_set_color(void *obj, double r, double g, double b);
+/// @brief Read the diffuse / base color as a Vec3.
+void *rt_material3d_get_color(void *obj);
 /// @brief Set the diffuse texture (legacy workflow); aliased to albedo for PBR.
 void rt_material3d_set_texture(void *obj, void *pixels);
 /// @brief Set the PBR albedo (base color) texture.
@@ -247,8 +295,12 @@ void rt_material3d_set_albedo_map(void *obj, void *pixels);
 void rt_material3d_set_shininess(void *obj, double s);
 /// @brief Mark the material as unlit (skip lighting calculations entirely).
 void rt_material3d_set_unlit(void *obj, int8_t unlit);
+/// @brief True if unlit mode is enabled.
+int8_t rt_material3d_get_unlit(void *obj);
 /// @brief Switch shading model (0 = legacy Phong, 1 = PBR metallic-roughness).
 void rt_material3d_set_shading_model(void *obj, int64_t model);
+/// @brief Read the current shading model.
+int64_t rt_material3d_get_shading_model(void *obj);
 /// @brief Write a value to a backend-specific custom shader parameter slot.
 void rt_material3d_set_custom_param(void *obj, int64_t index, double value);
 /// @brief Set the material alpha multiplier (1.0 = opaque, 0.0 = invisible).
@@ -319,6 +371,20 @@ void *rt_light3d_new_spot(void *position,
 void rt_light3d_set_intensity(void *obj, double intensity);
 /// @brief Replace the light color (without altering intensity).
 void rt_light3d_set_color(void *obj, double r, double g, double b);
+/// @brief Get the light type (0=directional, 1=point, 2=ambient, 3=spot).
+int64_t rt_light3d_get_type(void *obj);
+/// @brief Get the light color as a Vec3.
+void *rt_light3d_get_color(void *obj);
+/// @brief Get the brightness multiplier.
+double rt_light3d_get_intensity(void *obj);
+/// @brief Enable or disable a light without removing it from its slot.
+void rt_light3d_set_enabled(void *obj, int8_t enabled);
+/// @brief True if the light contributes to backend light params.
+int8_t rt_light3d_get_enabled(void *obj);
+/// @brief Get the normalized light direction as a Vec3.
+void *rt_light3d_get_direction(void *obj);
+/// @brief Get the light position as a Vec3.
+void *rt_light3d_get_position(void *obj);
 
 /// @brief Register a temporary buffer to be freed at the end of the current frame.
 /// @return 1 when ownership transfers to the canvas, 0 when the caller still owns `buffer`.

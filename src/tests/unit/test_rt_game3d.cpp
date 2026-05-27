@@ -1,0 +1,340 @@
+//===----------------------------------------------------------------------===//
+//
+// Part of the Viper project, under the GNU GPL v3.
+// See LICENSE for license information.
+//
+//===----------------------------------------------------------------------===//
+//
+// File: tests/unit/test_rt_game3d.cpp
+// Purpose: Unit tests for the runtime-backed Viper.Game3D helper layer.
+//
+//===----------------------------------------------------------------------===//
+
+#ifndef VIPER_ENABLE_GRAPHICS
+#define VIPER_ENABLE_GRAPHICS 1
+#endif
+
+#include "rt.hpp"
+#include "rt_canvas3d.h"
+#include "rt_game3d.h"
+#include "rt_input.h"
+#include "rt_physics3d.h"
+#include "rt_pixels.h"
+#include "rt_scene3d.h"
+#include "rt_string.h"
+#include "rt_vec2.h"
+#include "rt_vec3.h"
+
+#include <cmath>
+#include <csetjmp>
+#include <cstdint>
+#include <cstdio>
+#include <cstdlib>
+#include <cstring>
+
+namespace {
+static std::jmp_buf g_trap_jmp;
+static const char *g_last_trap = nullptr;
+static bool g_expect_trap = false;
+static int g_tests_passed = 0;
+static int g_tests_total = 0;
+static int g_update_calls = 0;
+static int g_overlay_calls = 0;
+static double g_update_dt_sum = 0.0;
+} // namespace
+
+extern "C" void vm_trap(const char *msg) {
+    g_last_trap = msg;
+    if (g_expect_trap)
+        std::longjmp(g_trap_jmp, 1);
+    std::fprintf(stderr, "unexpected runtime trap: %s\n", msg ? msg : "(null)");
+    std::abort();
+}
+
+#define TEST(name)                                                                                 \
+    do {                                                                                           \
+        ++g_tests_total;                                                                           \
+        std::printf("  [%d] %s... ", g_tests_total, name);                                         \
+    } while (0)
+
+#define PASS()                                                                                     \
+    do {                                                                                           \
+        ++g_tests_passed;                                                                          \
+        std::printf("ok\n");                                                                      \
+        return true;                                                                               \
+    } while (0)
+
+#define FAIL(msg)                                                                                  \
+    do {                                                                                           \
+        std::printf("FAIL: %s\n", msg);                                                           \
+        return false;                                                                              \
+    } while (0)
+
+#define EXPECT_TRUE(cond, msg)                                                                     \
+    do {                                                                                           \
+        if (!(cond))                                                                               \
+            FAIL(msg);                                                                             \
+    } while (0)
+
+#define EXPECT_EQ_INT(actual, expected, msg)                                                        \
+    do {                                                                                           \
+        const long long got_ = (long long)(actual);                                                 \
+        const long long want_ = (long long)(expected);                                              \
+        if (got_ != want_) {                                                                       \
+            std::printf("FAIL: %s (got %lld, expected %lld)\n", msg, got_, want_);                 \
+            return false;                                                                          \
+        }                                                                                          \
+    } while (0)
+
+#define EXPECT_NEAR(actual, expected, eps, msg)                                                     \
+    do {                                                                                           \
+        const double got_ = (double)(actual);                                                       \
+        const double want_ = (double)(expected);                                                    \
+        if (std::fabs(got_ - want_) > (eps)) {                                                      \
+            std::printf("FAIL: %s (got %.6f, expected %.6f)\n", msg, got_, want_);                 \
+            return false;                                                                          \
+        }                                                                                          \
+    } while (0)
+
+template <typename Fn>
+static bool expect_trap_contains(Fn &&fn, const char *needle) {
+    g_last_trap = nullptr;
+    g_expect_trap = true;
+    if (setjmp(g_trap_jmp) == 0) {
+        fn();
+        g_expect_trap = false;
+        return false;
+    }
+    g_expect_trap = false;
+    return g_last_trap && (!needle || std::strstr(g_last_trap, needle) != nullptr);
+}
+
+static void set_software_backend_env() {
+#ifdef _WIN32
+    _putenv_s("VIPER_3D_BACKEND", "software");
+#else
+    setenv("VIPER_3D_BACKEND", "software", 1);
+#endif
+}
+
+extern "C" void game3d_test_update(double dt) {
+    ++g_update_calls;
+    g_update_dt_sum += dt;
+}
+
+extern "C" void game3d_test_overlay(void) {
+    ++g_overlay_calls;
+}
+
+static bool test_layermasks_and_constants() {
+    TEST("Game3D constants and LayerMask operations");
+    EXPECT_EQ_INT(rt_game3d_layers_world(), 1, "World layer bit");
+    EXPECT_EQ_INT(rt_game3d_layers_dynamic(), 2, "Dynamic layer bit");
+    EXPECT_EQ_INT(rt_game3d_layers_player(), 4, "Player layer bit");
+    EXPECT_EQ_INT(rt_game3d_quality_balanced(), 1, "Balanced quality value");
+    EXPECT_EQ_INT(rt_game3d_collision_any(), 3, "Any collision phase value");
+
+    void *mask = rt_game3d_layermask_of(rt_game3d_layers_world());
+    EXPECT_TRUE(mask != nullptr, "LayerMask.Of returns an object");
+    EXPECT_EQ_INT(rt_game3d_layermask_get_bits(mask),
+                  rt_game3d_layers_world(),
+                  "LayerMask.Of stores the layer bit");
+    EXPECT_TRUE(rt_game3d_layermask_include(mask, rt_game3d_layers_player()) == mask,
+                "LayerMask.include is fluent");
+    EXPECT_TRUE(rt_game3d_layermask_includes(mask, rt_game3d_layers_world()) != 0,
+                "LayerMask includes initial layer");
+    EXPECT_TRUE(rt_game3d_layermask_includes(mask, rt_game3d_layers_player()) != 0,
+                "LayerMask includes appended layer");
+    EXPECT_TRUE(rt_game3d_layermask_includes(mask, rt_game3d_layers_trigger()) == 0,
+                "LayerMask excludes missing layer");
+
+    void *all = rt_game3d_layermask_all();
+    EXPECT_EQ_INT(rt_game3d_layermask_get_bits(all), INT64_MAX, "LayerMask.All uses all safe bits");
+    rt_game3d_layermask_set_bits(all, -1);
+    EXPECT_EQ_INT(rt_game3d_layermask_get_bits(all), INT64_MAX, "negative mask bits clamp to all");
+
+    EXPECT_TRUE(expect_trap_contains([&] { rt_game3d_layermask_of(3); }, "single positive bit"),
+                "LayerMask.Of rejects multi-bit layers");
+    EXPECT_TRUE(expect_trap_contains([&] { rt_game3d_layermask_include(mask, 0); },
+                                     "single positive bit"),
+                "LayerMask.include rejects zero layer");
+    PASS();
+}
+
+static bool test_input_axes() {
+    TEST("Input3D delegates named input and exposes move/look axes");
+    rt_keyboard_init();
+    rt_mouse_init();
+    rt_keyboard_begin_frame();
+    rt_mouse_begin_frame();
+
+    void *input = rt_game3d_input_new();
+    rt_game3d_input_set_look_sensitivity(input, 0.05);
+
+    rt_keyboard_on_key_down(rt_game3d_key_w());
+    rt_keyboard_on_key_down(rt_game3d_key_space());
+    rt_mouse_force_delta(12, -4);
+    rt_mouse_button_down(rt_game3d_mouse_left());
+    rt_mouse_update_wheel(0.0, 1.25);
+
+    EXPECT_TRUE(rt_game3d_input_is_down(input, rt_game3d_key_w()) != 0, "W is down");
+    EXPECT_TRUE(rt_game3d_input_pressed(input, rt_game3d_key_w()) != 0, "W was pressed");
+    EXPECT_TRUE(rt_game3d_input_mouse_button(input, rt_game3d_mouse_left()) != 0,
+                "left mouse is down");
+    EXPECT_TRUE(rt_game3d_input_mouse_pressed(input, rt_game3d_mouse_left()) != 0,
+                "left mouse was pressed");
+    EXPECT_NEAR(rt_game3d_input_wheel_y(input), 1.25, 0.0001, "wheelY is delegated");
+
+    void *move = rt_game3d_input_move_axis(input);
+    EXPECT_NEAR(rt_vec3_x(move), 0.0, 0.0001, "move axis x");
+    EXPECT_NEAR(rt_vec3_y(move), 1.0, 0.0001, "move axis y");
+    EXPECT_NEAR(rt_vec3_z(move), 1.0, 0.0001, "move axis z");
+
+    void *look = rt_game3d_input_look_axis(input);
+    EXPECT_NEAR(rt_vec2_x(look), 0.60, 0.0001, "look axis x scales mouse delta");
+    EXPECT_NEAR(rt_vec2_y(look), -0.20, 0.0001, "look axis y scales mouse delta");
+
+    rt_keyboard_begin_frame();
+    rt_mouse_begin_frame();
+    rt_keyboard_on_key_up(rt_game3d_key_w());
+    rt_keyboard_on_key_up(rt_game3d_key_space());
+    rt_mouse_button_up(rt_game3d_mouse_left());
+    EXPECT_TRUE(rt_game3d_input_released(input, rt_game3d_key_w()) != 0, "W was released");
+    PASS();
+}
+
+static bool test_world_entity_registry_and_collision_clear() {
+    TEST("World3D owns entities, bodies, names, and collision events");
+    void *world = rt_game3d_world_new(rt_const_cstr("Game3D Unit Registry"), 80, 60);
+    EXPECT_TRUE(world != nullptr, "World3D.New returns an object");
+    EXPECT_TRUE(rt_game3d_world_get_canvas(world) != nullptr, "World3D has a canvas");
+    EXPECT_TRUE(rt_game3d_world_get_camera(world) != nullptr, "World3D has a camera");
+    EXPECT_TRUE(rt_game3d_world_get_scene(world) != nullptr, "World3D has a scene");
+    EXPECT_TRUE(rt_game3d_world_get_physics(world) != nullptr, "World3D has physics");
+    EXPECT_TRUE(rt_game3d_world_get_input(world) != nullptr, "World3D has input");
+    EXPECT_TRUE(rt_game3d_world_get_audio(world) != nullptr, "World3D has audio");
+    EXPECT_TRUE(rt_game3d_audio_get_listener(rt_game3d_world_get_audio(world)) != nullptr,
+                "World3D audio creates a listener");
+    EXPECT_TRUE(rt_game3d_world_get_effects(world) != nullptr, "World3D has effects");
+    EXPECT_TRUE(rt_game3d_effects_get_postfx(rt_game3d_world_get_effects(world)) != nullptr,
+                "World3D effects create post-FX");
+
+    void *mesh = rt_mesh3d_new_box(1.0, 1.0, 1.0);
+    void *material = rt_material3d_new_color(0.8, 0.2, 0.1);
+    void *parent = rt_game3d_entity_of(mesh, material);
+    void *child = rt_game3d_entity_new();
+    void *body = rt_body3d_new_aabb(1.0, 1.0, 1.0, 1.0);
+    void *other_body = rt_body3d_new_aabb(1.0, 1.0, 1.0, 0.0);
+    void *other = rt_game3d_entity_new();
+
+    rt_game3d_entity_set_name(parent, rt_const_cstr("Player"));
+    rt_game3d_entity_set_name(child, rt_const_cstr("Muzzle"));
+    rt_game3d_entity_set_name(other, rt_const_cstr("Wall"));
+    rt_game3d_entity_add_child(parent, child);
+    rt_game3d_entity_set_layer(parent, rt_game3d_layers_player());
+    rt_game3d_entity_set_collision_mask(
+        parent, rt_game3d_layermask_of(rt_game3d_layers_world()));
+    rt_game3d_entity_attach_body(parent, body);
+    rt_game3d_entity_set_layer(other, rt_game3d_layers_world());
+    rt_game3d_entity_attach_body(other, other_body);
+    rt_game3d_entity_set_position(parent, 0.5, 0.0, 0.0);
+    rt_game3d_entity_set_position(other, 0.0, 0.0, 0.0);
+
+    EXPECT_TRUE(rt_game3d_entity_is_group(parent) != 0, "Entity3D.addChild marks group");
+    rt_game3d_world_spawn(world, parent);
+    rt_game3d_world_spawn(world, other);
+
+    EXPECT_EQ_INT(rt_game3d_entity_get_id(parent), 1, "spawn assigns parent id");
+    EXPECT_EQ_INT(rt_game3d_entity_get_id(child), 2, "spawn assigns child id");
+    EXPECT_TRUE(rt_game3d_entity_is_spawned(parent) != 0, "parent is spawned");
+    EXPECT_TRUE(rt_game3d_entity_is_spawned(child) != 0, "child is spawned");
+    EXPECT_EQ_INT(rt_world3d_body_count(rt_game3d_world_get_physics(world)),
+                  2,
+                  "spawn registers entity bodies with physics");
+    EXPECT_EQ_INT(rt_body3d_get_collision_layer(body),
+                  rt_game3d_layers_player(),
+                  "entity layer propagates to body");
+    EXPECT_EQ_INT(rt_body3d_get_collision_mask(body),
+                  rt_game3d_layers_world(),
+                  "entity collision mask propagates to body");
+    EXPECT_TRUE(rt_game3d_world_find_node(world, rt_const_cstr("Muzzle")) ==
+                    rt_game3d_entity_get_node(child),
+                "findNode sees child scene node");
+    EXPECT_TRUE(rt_game3d_world_find_entity(world, rt_const_cstr("Player")) == parent,
+                "findEntity returns registered entity");
+    EXPECT_EQ_INT(rt_scene3d_get_node_count(rt_game3d_world_get_scene(world)),
+                  4,
+                  "scene contains root, parent, child, and wall");
+
+    rt_game3d_world_step_simulation(world, 1.0 / 60.0);
+    EXPECT_TRUE(rt_game3d_world_collision_event_count(world, rt_game3d_collision_any()) > 0,
+                "overlapping spawned bodies emit collisions");
+    EXPECT_TRUE(rt_game3d_world_collision_event(world, rt_game3d_collision_any(), 0) != nullptr,
+                "collisionEvent returns a boxed event");
+    rt_game3d_world_clear_collision_events(world);
+    EXPECT_EQ_INT(rt_game3d_world_collision_event_count(world, rt_game3d_collision_any()),
+                  0,
+                  "clearCollisionEvents clears live contacts");
+    EXPECT_EQ_INT(rt_game3d_world_collision_event_count(world, rt_game3d_collision_enter()),
+                  0,
+                  "clearCollisionEvents clears enter events");
+
+    rt_game3d_world_despawn(world, parent);
+    EXPECT_TRUE(rt_game3d_entity_is_spawned(parent) == 0, "despawn clears parent spawned flag");
+    EXPECT_TRUE(rt_game3d_entity_is_spawned(child) == 0, "despawn clears child spawned flag");
+    EXPECT_EQ_INT(rt_world3d_body_count(rt_game3d_world_get_physics(world)),
+                  1,
+                  "despawn removes entity body from physics");
+    EXPECT_EQ_INT(rt_scene3d_get_node_count(rt_game3d_world_get_scene(world)),
+                  2,
+                  "despawn detaches the parent subtree from the scene");
+
+    rt_game3d_world_destroy(world);
+    EXPECT_TRUE(rt_game3d_world_is_destroyed(world) != 0, "destroy marks world destroyed");
+    EXPECT_TRUE(rt_game3d_entity_is_destroyed(other) != 0,
+                "destroy marks still-spawned entities destroyed");
+    PASS();
+}
+
+static bool test_frame_loop_manual_frame_and_final_capture() {
+    TEST("World3D runFrames, manual frame API, overlay, and final capture");
+    void *world = rt_game3d_world_new(rt_const_cstr("Game3D Unit Frames"), 64, 48);
+    EXPECT_TRUE(world != nullptr, "World3D.New returns an object");
+
+    g_update_calls = 0;
+    g_update_dt_sum = 0.0;
+    rt_game3d_world_run_frames(world, 3, 0.02, (void *)&game3d_test_update);
+    EXPECT_EQ_INT(g_update_calls, 3, "runFrames invokes the update callback once per frame");
+    EXPECT_NEAR(g_update_dt_sum, 0.06, 0.0001, "runFrames passes fixed dt to callback");
+    EXPECT_EQ_INT(rt_game3d_world_get_frame(world), 3, "runFrames increments frame count");
+    EXPECT_NEAR(rt_game3d_world_get_dt(world), 0.02, 0.0001, "runFrames stores dt");
+    EXPECT_NEAR(rt_game3d_world_get_elapsed(world), 0.06, 0.0001, "runFrames stores elapsed time");
+
+    g_overlay_calls = 0;
+    rt_game3d_world_begin_frame(world);
+    rt_game3d_world_draw_scene(world);
+    rt_game3d_world_draw_effects(world);
+    rt_game3d_world_end_scene(world);
+    rt_game3d_world_draw_overlay(world, (void *)&game3d_test_overlay);
+    EXPECT_EQ_INT(g_overlay_calls, 1, "drawOverlay invokes overlay callback");
+
+    void *pixels = rt_game3d_world_capture_final_frame(world);
+    EXPECT_TRUE(pixels != nullptr, "captureFinalFrame returns Pixels");
+    EXPECT_EQ_INT(rt_pixels_width(pixels), 64, "captured final frame width");
+    EXPECT_EQ_INT(rt_pixels_height(pixels), 48, "captured final frame height");
+    rt_game3d_world_present(world);
+    rt_game3d_world_destroy(world);
+    PASS();
+}
+
+int main() {
+    set_software_backend_env();
+    bool ok = true;
+    ok = test_layermasks_and_constants() && ok;
+    ok = test_input_axes() && ok;
+    ok = test_world_entity_registry_and_collision_clear() && ok;
+    ok = test_frame_loop_manual_frame_and_final_capture() && ok;
+
+    std::printf("\nGame3D runtime tests: %d/%d passed\n", g_tests_passed, g_tests_total);
+    return ok && g_tests_passed == g_tests_total ? 0 : 1;
+}

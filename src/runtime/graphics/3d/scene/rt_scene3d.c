@@ -2256,6 +2256,33 @@ void *rt_scene_node3d_get_world_matrix(void *obj) {
                        m[15]);
 }
 
+/// @brief Read the world-space translation as a Vec3.
+void *rt_scene_node3d_get_world_position(void *obj) {
+    rt_scene_node3d *n = scene_node3d_checked(obj);
+    double x = 0.0;
+    double y = 0.0;
+    double z = 0.0;
+    scene_node_get_world_position(n, &x, &y, &z);
+    return rt_vec3_new(x, y, z);
+}
+
+/// @brief Read world-space scale magnitudes from the composed matrix basis vectors.
+void *rt_scene_node3d_get_world_scale(void *obj) {
+    rt_scene_node3d *n = scene_node3d_checked(obj);
+    const double *m;
+    double sx;
+    double sy;
+    double sz;
+    if (!n)
+        return rt_vec3_new(1.0, 1.0, 1.0);
+    recompute_world_matrix(n);
+    m = n->world_matrix;
+    sx = sqrt(m[0] * m[0] + m[4] * m[4] + m[8] * m[8]);
+    sy = sqrt(m[1] * m[1] + m[5] * m[5] + m[9] * m[9]);
+    sz = sqrt(m[2] * m[2] + m[6] * m[6] + m[10] * m[10]);
+    return rt_vec3_new(sx, sy, sz);
+}
+
 /*==========================================================================
  * SceneNode3D — hierarchy
  *=========================================================================*/

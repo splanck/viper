@@ -33,6 +33,7 @@
 //===----------------------------------------------------------------------===//
 
 #include "rt_audio.h"
+#include "rt_asset.h"
 #include "rt_error.h"
 #include "rt_mixgroup.h"
 #include "rt_mp3.h"
@@ -41,6 +42,7 @@
 #include "rt_platform.h"
 #include "rt_string.h"
 #include "rt_time.h"
+#include "rt_trap.h"
 #include "rt_vorbis.h"
 
 #include <stddef.h>
@@ -1559,6 +1561,28 @@ void *rt_sound_load(rt_string path) {
     return wrapper;
 }
 
+/// @brief Load a sound effect through the runtime asset manager.
+void *rt_sound_load_asset(rt_string name) {
+    if (!name)
+        return NULL;
+
+    size_t data_size = 0;
+    uint8_t *data = rt_asset_load_raw(name, &data_size);
+    if (!data || data_size == 0) {
+        free(data);
+        rt_trap("Sound.LoadAsset: asset not found");
+        return NULL;
+    }
+    if (data_size > (size_t)INT64_MAX) {
+        free(data);
+        return NULL;
+    }
+
+    void *sound = rt_sound_load_mem(data, (int64_t)data_size);
+    free(data);
+    return sound;
+}
+
 /// @brief Load a sound effect from an in-memory buffer (WAV/OGG/MP3 supported).
 void *rt_sound_load_mem(const void *data, int64_t size) {
     if (!data || size <= 0)
@@ -2606,6 +2630,14 @@ void *rt_sound_load(rt_string path) {
         return NULL;
     (void)path;
     rt_audio_unavailable_("Sound.Load: audio support not compiled in");
+    return NULL;
+}
+
+void *rt_sound_load_asset(rt_string name) {
+    if (!name)
+        return NULL;
+    (void)name;
+    rt_audio_unavailable_("Sound.LoadAsset: audio support not compiled in");
     return NULL;
 }
 

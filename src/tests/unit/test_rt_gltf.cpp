@@ -11,6 +11,7 @@
 
 #include "rt_canvas3d.h"
 #include "rt_canvas3d_internal.h"
+#include "rt_asset.h"
 #include "rt_gltf.h"
 #include "rt_morphtarget3d.h"
 #include "rt_pixels.h"
@@ -23,6 +24,8 @@
 #include <cstring>
 #include <string>
 #include <vector>
+
+#include "VpaWriter.hpp"
 
 extern "C" {
 extern void *rt_obj_new_i64(int64_t class_id, int64_t byte_size);
@@ -328,6 +331,186 @@ static void test_gltf_resolves_percent_encoded_external_buffers() {
         return;
     EXPECT_NEAR(mesh->vertices[1].pos[0], 2.0, 0.001, "External buffer vertex X is loaded");
     EXPECT_NEAR(mesh->vertices[2].pos[1], 3.0, 0.001, "External buffer vertex Y is loaded");
+}
+
+static void test_gltf_load_asset_resolves_mounted_external_buffers() {
+    const char *pack_path = "/tmp/viper_gltf_asset_pack.vpa";
+    const char *png_path = "/tmp/viper_gltf_asset_texture.png";
+    void *pixels = rt_pixels_new(1, 1);
+    rt_pixels_set(pixels, 0, 0, 0x224466FFll);
+    EXPECT_TRUE(rt_pixels_save_png(pixels, rt_const_cstr(png_path)) == 1,
+                "Package texture PNG can be written");
+    std::vector<uint8_t> png_bytes;
+    EXPECT_TRUE(read_file_bytes(png_path, png_bytes), "Package texture PNG can be read");
+    if (png_bytes.empty())
+        return;
+
+    std::vector<uint8_t> gltf_buffer;
+    const float positions[9] = {0.0f, 0.0f, 0.0f, 4.0f, 0.0f,
+                                0.0f, 0.0f, 5.0f, 0.0f};
+    const uint16_t indices[3] = {0, 1, 2};
+
+    for (float v : positions)
+        append_bytes(gltf_buffer, v);
+    for (uint16_t v : indices)
+        append_bytes(gltf_buffer, v);
+
+    std::string gltf_json =
+        "{"
+        "\"asset\":{\"version\":\"2.0\"},"
+        "\"buffers\":[{\"uri\":\"buffers/tri.bin\",\"byteLength\":" +
+        std::to_string(gltf_buffer.size()) + "}],"
+        "\"bufferViews\":["
+        "{\"buffer\":0,\"byteOffset\":0,\"byteLength\":36},"
+        "{\"buffer\":0,\"byteOffset\":36,\"byteLength\":6}"
+        "],"
+        "\"accessors\":["
+        "{\"bufferView\":0,\"componentType\":5126,\"count\":3,\"type\":\"VEC3\"},"
+        "{\"bufferView\":1,\"componentType\":5123,\"count\":3,\"type\":\"SCALAR\"}"
+        "],"
+        "\"images\":[{\"uri\":\"textures/albedo.png\"}],"
+        "\"textures\":[{\"source\":0}],"
+        "\"materials\":[{\"pbrMetallicRoughness\":{\"baseColorTexture\":{\"index\":0}}}],"
+        "\"meshes\":[{\"primitives\":[{\"attributes\":{\"POSITION\":0},\"indices\":1,"
+        "\"material\":0}]}]"
+        "}";
+
+    viper::asset::VpaWriter writer;
+    writer.addEntry("assets/models/tri.gltf",
+                    reinterpret_cast<const uint8_t *>(gltf_json.data()),
+                    gltf_json.size(),
+                    false);
+    writer.addEntry("assets/models/buffers/tri.bin", gltf_buffer.data(), gltf_buffer.size(), false);
+    writer.addEntry("assets/models/textures/albedo.png", png_bytes.data(), png_bytes.size(), false);
+    std::string err;
+    bool wrote_pack = writer.writeToFile(pack_path, err);
+    EXPECT_TRUE(wrote_pack, "Mounted glTF asset pack can be written");
+    if (!err.empty())
+        std::fprintf(stderr, "VPA write detail: %s\n", err.c_str());
+    if (!wrote_pack)
+        return;
+
+    bool mounted = rt_asset_mount(rt_const_cstr(pack_path)) == 1;
+    EXPECT_TRUE(mounted, "Mounted glTF asset pack can mount");
+    if (!mounted)
+        return;
+    void *asset = rt_gltf_load_asset(rt_const_cstr("asset://assets/models/tri.gltf"));
+    EXPECT_TRUE(asset != nullptr, "GLTF.LoadAsset loads a root model from a mounted asset URI");
+    if (asset) {
+        auto *mesh = static_cast<rt_mesh3d *>(rt_gltf_get_mesh(asset, 0));
+        auto *material = static_cast<rt_material3d *>(rt_gltf_get_material(asset, 0));
+        EXPECT_TRUE(mesh != nullptr && mesh->vertex_count == 3 && mesh->index_count == 3,
+                    "GLTF.LoadAsset imports geometry from a mounted external buffer");
+        EXPECT_TRUE(material != nullptr && material->texture != nullptr &&
+                        rt_pixels_get(material->texture, 0, 0) == 0x224466FFll,
+                    "GLTF.LoadAsset imports package-relative external textures");
+        if (mesh) {
+            EXPECT_NEAR(mesh->vertices[1].pos[0],
+                        4.0,
+                        0.001,
+                        "Mounted external buffer vertex X is loaded");
+            EXPECT_NEAR(mesh->vertices[2].pos[1],
+                        5.0,
+                        0.001,
+                        "Mounted external buffer vertex Y is loaded");
+        }
+    }
+
+    rt_asset_unmount(rt_const_cstr(pack_path));
+    std::remove(png_path);
+    std::remove(pack_path);
+}
+
+static std::vector<uint8_t> make_triangle_glb(float x1, float y2) {
+    std::vector<uint8_t> bin;
+    const float positions[9] = {0.0f, 0.0f, 0.0f, x1, 0.0f, 0.0f, 0.0f, y2, 0.0f};
+    const uint16_t indices[3] = {0, 1, 2};
+    for (float v : positions)
+        append_bytes(bin, v);
+    for (uint16_t v : indices)
+        append_bytes(bin, v);
+    size_t gltf_byte_length = bin.size();
+    while ((bin.size() & 3u) != 0)
+        bin.push_back(0);
+
+    std::string json =
+        "{"
+        "\"asset\":{\"version\":\"2.0\"},"
+        "\"buffers\":[{\"byteLength\":" +
+        std::to_string(gltf_byte_length) + "}],"
+        "\"bufferViews\":["
+        "{\"buffer\":0,\"byteOffset\":0,\"byteLength\":36},"
+        "{\"buffer\":0,\"byteOffset\":36,\"byteLength\":6}"
+        "],"
+        "\"accessors\":["
+        "{\"bufferView\":0,\"componentType\":5126,\"count\":3,\"type\":\"VEC3\"},"
+        "{\"bufferView\":1,\"componentType\":5123,\"count\":3,\"type\":\"SCALAR\"}"
+        "],"
+        "\"meshes\":[{\"primitives\":[{\"attributes\":{\"POSITION\":0},\"indices\":1}]}]"
+        "}";
+    while ((json.size() & 3u) != 0)
+        json.push_back(' ');
+
+    std::vector<uint8_t> glb;
+    glb.insert(glb.end(), {'g', 'l', 'T', 'F'});
+    append_u32_le(glb, 2);
+    append_u32_le(glb, (uint32_t)(12 + 8 + json.size() + 8 + bin.size()));
+    append_u32_le(glb, (uint32_t)json.size());
+    append_u32_le(glb, 0x4E4F534Au);
+    glb.insert(glb.end(), json.begin(), json.end());
+    append_u32_le(glb, (uint32_t)bin.size());
+    append_u32_le(glb, 0x004E4942u);
+    glb.insert(glb.end(), bin.begin(), bin.end());
+    return glb;
+}
+
+static void test_gltf_load_asset_handles_glb_filesystem_and_mounted_package() {
+    const char *glb_path = "/tmp/viper_gltf_asset_triangle.glb";
+    const char *pack_path = "/tmp/viper_gltf_asset_glb_pack.vpa";
+    std::vector<uint8_t> glb = make_triangle_glb(8.0f, 9.0f);
+
+    FILE *f = std::fopen(glb_path, "wb");
+    EXPECT_TRUE(f != nullptr, "GLB fixture can be written");
+    if (!f)
+        return;
+    std::fwrite(glb.data(), 1, glb.size(), f);
+    std::fclose(f);
+
+    void *fs_asset = rt_gltf_load_asset(rt_const_cstr(glb_path));
+    EXPECT_TRUE(fs_asset != nullptr, "GLTF.LoadAsset loads GLB through filesystem fallback");
+    if (fs_asset) {
+        auto *mesh = static_cast<rt_mesh3d *>(rt_gltf_get_mesh(fs_asset, 0));
+        EXPECT_TRUE(mesh != nullptr && mesh->vertex_count == 3 && mesh->index_count == 3,
+                    "Filesystem GLB imports embedded BIN geometry");
+        if (mesh) {
+            EXPECT_NEAR(mesh->vertices[1].pos[0], 8.0, 0.001, "Filesystem GLB vertex X loads");
+            EXPECT_NEAR(mesh->vertices[2].pos[1], 9.0, 0.001, "Filesystem GLB vertex Y loads");
+        }
+    }
+
+    viper::asset::VpaWriter writer;
+    writer.addEntry("assets/models/tri.glb", glb.data(), glb.size(), false);
+    std::string err;
+    bool wrote_pack = writer.writeToFile(pack_path, err);
+    EXPECT_TRUE(wrote_pack, "GLB asset pack can be written");
+    if (!wrote_pack)
+        return;
+    bool mounted = rt_asset_mount(rt_const_cstr(pack_path)) == 1;
+    EXPECT_TRUE(mounted, "GLB asset pack can mount");
+    if (!mounted)
+        return;
+
+    void *pack_asset = rt_gltf_load_asset(rt_const_cstr("asset://assets/models/tri.glb"));
+    EXPECT_TRUE(pack_asset != nullptr, "GLTF.LoadAsset loads GLB from a mounted package");
+    if (pack_asset) {
+        auto *mesh = static_cast<rt_mesh3d *>(rt_gltf_get_mesh(pack_asset, 0));
+        EXPECT_TRUE(mesh != nullptr && mesh->vertex_count == 3 && mesh->index_count == 3,
+                    "Mounted GLB imports embedded BIN geometry");
+    }
+
+    rt_asset_unmount(rt_const_cstr(pack_path));
+    std::remove(pack_path);
+    std::remove(glb_path);
 }
 
 static void test_gltf_rejects_out_of_range_indices() {
@@ -1636,6 +1819,8 @@ int main() {
     test_gltf_accessors_reject_wrong_handles();
     test_gltf_loads_data_uri_buffers_and_embedded_textures();
     test_gltf_resolves_percent_encoded_external_buffers();
+    test_gltf_load_asset_resolves_mounted_external_buffers();
+    test_gltf_load_asset_handles_glb_filesystem_and_mounted_package();
     test_gltf_rejects_out_of_range_indices();
     test_gltf_builds_scene_hierarchy_for_active_scene();
     test_gltf_imports_extended_vertex_attributes_and_triangle_strips();

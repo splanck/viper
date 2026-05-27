@@ -186,6 +186,25 @@ static void test_translation_propagation() {
     EXPECT_NEAR(mv->m[11], 0.0, 0.001, "Child world Z = 0");
 }
 
+static void test_world_position_and_scale_getters() {
+    void *parent = rt_scene_node3d_new();
+    void *child = rt_scene_node3d_new();
+    rt_scene_node3d_set_position(parent, 5.0, 2.0, -1.0);
+    rt_scene_node3d_set_scale(parent, 2.0, 3.0, 4.0);
+    rt_scene_node3d_set_position(child, 1.0, 0.0, 0.5);
+    rt_scene_node3d_set_scale(child, 0.5, 2.0, 0.25);
+    rt_scene_node3d_add_child(parent, child);
+
+    void *world_pos = rt_scene_node3d_get_world_position(child);
+    void *world_scale = rt_scene_node3d_get_world_scale(child);
+    EXPECT_NEAR(rt_vec3_x(world_pos), 7.0, 0.001, "WorldPosition includes parent scaled X");
+    EXPECT_NEAR(rt_vec3_y(world_pos), 2.0, 0.001, "WorldPosition includes parent Y");
+    EXPECT_NEAR(rt_vec3_z(world_pos), 1.0, 0.001, "WorldPosition includes parent scaled Z");
+    EXPECT_NEAR(rt_vec3_x(world_scale), 1.0, 0.001, "WorldScale X composes parent/child");
+    EXPECT_NEAR(rt_vec3_y(world_scale), 6.0, 0.001, "WorldScale Y composes parent/child");
+    EXPECT_NEAR(rt_vec3_z(world_scale), 1.0, 0.001, "WorldScale Z composes parent/child");
+}
+
 static void test_rotation_propagation() {
     void *parent = rt_scene_node3d_new();
     void *child = rt_scene_node3d_new();
@@ -1497,6 +1516,7 @@ int main() {
     test_add_remove_child();
     test_scene_remove_ignores_nodes_from_other_scenes();
     test_translation_propagation();
+    test_world_position_and_scale_getters();
     test_rotation_propagation();
     test_scale_propagation();
     test_deep_hierarchy();

@@ -1,0 +1,240 @@
+//===----------------------------------------------------------------------===//
+//
+// Part of the Viper project, under the GNU GPL v3.
+// See LICENSE for license information.
+//
+//===----------------------------------------------------------------------===//
+//
+// File: src/runtime/graphics/3d/rt_game3d.h
+// Purpose: Runtime-backed Viper.Game3D ergonomic layer over the lower-level
+//   Graphics3D, Physics3D, input, audio, and post-FX primitives.
+//
+//===----------------------------------------------------------------------===//
+#pragma once
+
+#include "rt_string.h"
+#include <stdint.h>
+
+#ifdef __cplusplus
+extern "C" {
+#endif
+
+enum {
+    RT_GAME3D_LAYER_WORLD = 1,
+    RT_GAME3D_LAYER_DYNAMIC = 2,
+    RT_GAME3D_LAYER_PLAYER = 4,
+    RT_GAME3D_LAYER_TRIGGER = 8,
+    RT_GAME3D_LAYER_DEBRIS = 16,
+};
+
+enum {
+    RT_GAME3D_BODY_SHAPE_BOX = 0,
+    RT_GAME3D_BODY_SHAPE_SPHERE = 1,
+    RT_GAME3D_BODY_SHAPE_CAPSULE = 2,
+};
+
+enum {
+    RT_GAME3D_SYNC_NODE_FROM_BODY = 0,
+    RT_GAME3D_SYNC_BODY_FROM_NODE = 1,
+    RT_GAME3D_SYNC_NODE_FROM_ANIM_ROOT_MOTION = 2,
+    RT_GAME3D_SYNC_TWO_WAY_KINEMATIC = 3,
+};
+
+enum {
+    RT_GAME3D_ALPHA_OPAQUE = 0,
+    RT_GAME3D_ALPHA_MASK = 1,
+    RT_GAME3D_ALPHA_BLEND = 2,
+};
+
+enum {
+    RT_GAME3D_SHADING_PHONG = 0,
+    RT_GAME3D_SHADING_TOON = 1,
+    RT_GAME3D_SHADING_PBR = 2,
+    RT_GAME3D_SHADING_FRESNEL = 3,
+    RT_GAME3D_SHADING_EMISSIVE = 4,
+    RT_GAME3D_SHADING_UNLIT = 5,
+};
+
+enum {
+    RT_GAME3D_QUALITY_PERFORMANCE = 0,
+    RT_GAME3D_QUALITY_BALANCED = 1,
+    RT_GAME3D_QUALITY_CINEMATIC = 2,
+};
+
+enum {
+    RT_GAME3D_COLLISION_ENTER = 0,
+    RT_GAME3D_COLLISION_STAY = 1,
+    RT_GAME3D_COLLISION_EXIT = 2,
+    RT_GAME3D_COLLISION_ANY = 3,
+};
+
+int64_t rt_game3d_layers_world(void);
+int64_t rt_game3d_layers_dynamic(void);
+int64_t rt_game3d_layers_player(void);
+int64_t rt_game3d_layers_trigger(void);
+int64_t rt_game3d_layers_debris(void);
+
+int64_t rt_game3d_body_shape_box(void);
+int64_t rt_game3d_body_shape_sphere(void);
+int64_t rt_game3d_body_shape_capsule(void);
+
+int64_t rt_game3d_sync_mode_node_from_body(void);
+int64_t rt_game3d_sync_mode_body_from_node(void);
+int64_t rt_game3d_sync_mode_node_from_anim_root_motion(void);
+int64_t rt_game3d_sync_mode_two_way_kinematic(void);
+
+int64_t rt_game3d_alpha_mode_opaque(void);
+int64_t rt_game3d_alpha_mode_mask(void);
+int64_t rt_game3d_alpha_mode_blend(void);
+
+int64_t rt_game3d_shading_model_phong(void);
+int64_t rt_game3d_shading_model_toon(void);
+int64_t rt_game3d_shading_model_pbr(void);
+int64_t rt_game3d_shading_model_fresnel(void);
+int64_t rt_game3d_shading_model_emissive(void);
+int64_t rt_game3d_shading_model_unlit(void);
+
+int64_t rt_game3d_quality_performance(void);
+int64_t rt_game3d_quality_balanced(void);
+int64_t rt_game3d_quality_cinematic(void);
+
+int64_t rt_game3d_collision_enter(void);
+int64_t rt_game3d_collision_stay(void);
+int64_t rt_game3d_collision_exit(void);
+int64_t rt_game3d_collision_any(void);
+
+int64_t rt_game3d_key_w(void);
+int64_t rt_game3d_key_a(void);
+int64_t rt_game3d_key_s(void);
+int64_t rt_game3d_key_d(void);
+int64_t rt_game3d_key_space(void);
+int64_t rt_game3d_key_escape(void);
+int64_t rt_game3d_key_shift(void);
+int64_t rt_game3d_key_ctrl(void);
+int64_t rt_game3d_key_up(void);
+int64_t rt_game3d_key_down(void);
+int64_t rt_game3d_key_left(void);
+int64_t rt_game3d_key_right(void);
+
+int64_t rt_game3d_mouse_left(void);
+int64_t rt_game3d_mouse_right(void);
+int64_t rt_game3d_mouse_middle(void);
+int64_t rt_game3d_mouse_x1(void);
+int64_t rt_game3d_mouse_x2(void);
+
+void *rt_game3d_layermask_none(void);
+void *rt_game3d_layermask_all(void);
+void *rt_game3d_layermask_of(int64_t layer);
+int64_t rt_game3d_layermask_get_bits(void *mask);
+void rt_game3d_layermask_set_bits(void *mask, int64_t bits);
+void *rt_game3d_layermask_include(void *mask, int64_t layer);
+int8_t rt_game3d_layermask_includes(void *mask, int64_t layer);
+
+void *rt_game3d_input_new(void);
+double rt_game3d_input_get_look_sensitivity(void *input);
+void rt_game3d_input_set_look_sensitivity(void *input, double sensitivity);
+void rt_game3d_input_update(void *input);
+int8_t rt_game3d_input_is_down(void *input, int64_t key);
+int8_t rt_game3d_input_pressed(void *input, int64_t key);
+int8_t rt_game3d_input_released(void *input, int64_t key);
+void *rt_game3d_input_mouse_delta(void *input);
+int8_t rt_game3d_input_mouse_button(void *input, int64_t button);
+int8_t rt_game3d_input_mouse_pressed(void *input, int64_t button);
+double rt_game3d_input_wheel_y(void *input);
+void *rt_game3d_input_move_axis(void *input);
+void *rt_game3d_input_look_axis(void *input);
+void rt_game3d_input_capture_mouse(void *input);
+void rt_game3d_input_release_mouse(void *input);
+
+void *rt_game3d_entity_new(void);
+void *rt_game3d_entity_of(void *mesh, void *material);
+void *rt_game3d_entity_from_node(void *root);
+int64_t rt_game3d_entity_get_id(void *entity);
+void *rt_game3d_entity_get_node(void *entity);
+void *rt_game3d_entity_get_mesh(void *entity);
+void rt_game3d_entity_set_mesh_prop(void *entity, void *mesh);
+void *rt_game3d_entity_get_material(void *entity);
+void rt_game3d_entity_set_material_prop(void *entity, void *material);
+void *rt_game3d_entity_get_body(void *entity);
+void *rt_game3d_entity_get_anim(void *entity);
+int64_t rt_game3d_entity_get_layer(void *entity);
+void rt_game3d_entity_set_layer_prop(void *entity, int64_t layer);
+void *rt_game3d_entity_get_collision_mask(void *entity);
+void rt_game3d_entity_set_collision_mask_prop(void *entity, void *mask);
+rt_string rt_game3d_entity_get_name(void *entity);
+void rt_game3d_entity_set_name_prop(void *entity, rt_string name);
+void *rt_game3d_entity_set_position(void *entity, double x, double y, double z);
+void *rt_game3d_entity_set_position_v(void *entity, void *position);
+void *rt_game3d_entity_set_scale(void *entity, double scale);
+void *rt_game3d_entity_set_scale_xyz(void *entity, double x, double y, double z);
+void *rt_game3d_entity_set_rotation_euler(void *entity, double x_deg, double y_deg, double z_deg);
+void *rt_game3d_entity_set_mesh(void *entity, void *mesh);
+void *rt_game3d_entity_set_material(void *entity, void *material);
+void *rt_game3d_entity_add_child(void *entity, void *child);
+int8_t rt_game3d_entity_is_group(void *entity);
+void *rt_game3d_entity_set_name(void *entity, rt_string name);
+void *rt_game3d_entity_set_layer(void *entity, int64_t layer);
+void *rt_game3d_entity_set_collision_mask(void *entity, void *mask);
+void *rt_game3d_entity_attach_body(void *entity, void *body_or_def);
+void rt_game3d_entity_apply_impulse(void *entity, double x, double y, double z);
+void rt_game3d_entity_set_velocity(void *entity, double x, double y, double z);
+void *rt_game3d_entity_position(void *entity);
+void *rt_game3d_entity_world_position(void *entity);
+int8_t rt_game3d_entity_is_spawned(void *entity);
+int8_t rt_game3d_entity_is_destroyed(void *entity);
+
+void *rt_game3d_audio_get_listener(void *audio);
+void *rt_game3d_effects_get_postfx(void *effects);
+
+void *rt_game3d_world_new(rt_string title, int64_t width, int64_t height);
+void *rt_game3d_world_new_with_camera(
+    rt_string title, int64_t width, int64_t height, double fov_deg, double near_plane, double far_plane);
+void rt_game3d_world_destroy(void *world);
+int8_t rt_game3d_world_is_destroyed(void *world);
+void *rt_game3d_world_get_canvas(void *world);
+void *rt_game3d_world_get_camera(void *world);
+void *rt_game3d_world_get_scene(void *world);
+void *rt_game3d_world_get_physics(void *world);
+void *rt_game3d_world_get_input(void *world);
+void *rt_game3d_world_get_audio(void *world);
+void *rt_game3d_world_get_effects(void *world);
+double rt_game3d_world_get_dt(void *world);
+double rt_game3d_world_get_elapsed(void *world);
+int64_t rt_game3d_world_get_frame(void *world);
+void *rt_game3d_world_spawn(void *world, void *entity);
+void rt_game3d_world_despawn(void *world, void *entity);
+void *rt_game3d_world_find_node(void *world, rt_string name);
+void *rt_game3d_world_find_entity(void *world, rt_string name);
+void rt_game3d_world_set_camera_controller(void *world, void *controller);
+void rt_game3d_world_look_at(void *world, void *target);
+void rt_game3d_world_on_resize(void *world, int64_t width, int64_t height);
+void rt_game3d_world_set_ambient(void *world, double r, double g, double b);
+void rt_game3d_world_add_light(void *world, int64_t slot, void *light);
+void rt_game3d_world_clear_lights(void *world);
+void rt_game3d_world_set_skybox(void *world, void *cubemap);
+void rt_game3d_world_set_fog(
+    void *world, double r, double g, double b, double near_plane, double far_plane);
+void rt_game3d_world_set_quality(void *world, int64_t quality);
+int64_t rt_game3d_world_collision_event_count(void *world, int64_t phase);
+void *rt_game3d_world_collision_event(void *world, int64_t phase, int64_t index);
+void rt_game3d_world_clear_collision_events(void *world);
+void rt_game3d_world_set_gravity(void *world, double x, double y, double z);
+void rt_game3d_world_run(void *world, void *update);
+void rt_game3d_world_run_with_overlay(void *world, void *update, void *overlay);
+void rt_game3d_world_run_fixed(void *world, double step_sec, void *update);
+void rt_game3d_world_run_fixed_with_overlay(void *world, double step_sec, void *update, void *overlay);
+void rt_game3d_world_run_frames(void *world, int64_t frame_count, double step_sec, void *update);
+void rt_game3d_world_run_frames_only(void *world, int64_t frame_count, double step_sec);
+int8_t rt_game3d_world_tick(void *world);
+void rt_game3d_world_step_simulation(void *world, double step_sec);
+void rt_game3d_world_begin_frame(void *world);
+void rt_game3d_world_draw_scene(void *world);
+void rt_game3d_world_draw_effects(void *world);
+void rt_game3d_world_end_scene(void *world);
+void rt_game3d_world_draw_overlay(void *world, void *overlay);
+void *rt_game3d_world_capture_final_frame(void *world);
+void rt_game3d_world_present(void *world);
+
+#ifdef __cplusplus
+}
+#endif

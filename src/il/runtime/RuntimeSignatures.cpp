@@ -125,6 +125,7 @@
 #include "rt_future.h"
 #include "rt_fuzzy_match.h"
 #include "rt_gameui.h"
+#include "rt_game3d.h"
 #include "rt_gc.h"
 #include "rt_glob.h"
 #include "rt_gltf.h"

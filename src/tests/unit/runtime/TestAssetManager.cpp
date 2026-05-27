@@ -97,6 +97,31 @@ TEST(AssetManager, LoadBytesFromPack) {
     remove(vpaPath);
 }
 
+TEST(AssetManager, AssetSchemeUsesMountedPack) {
+    const uint8_t data[] = "asset uri payload";
+    const char *vpaPath =
+        write_vpa_temp("asset_scheme.vpa", "models/payload.bin", data, sizeof(data) - 1);
+    ASSERT_TRUE(vpaPath != nullptr);
+
+    rt_string path_str = rt_const_cstr(vpaPath);
+    EXPECT_EQ(rt_asset_mount(path_str), 1);
+
+    rt_string uri = rt_const_cstr("asset://models/payload.bin");
+    void *bytes = rt_asset_load_bytes(uri);
+    ASSERT_TRUE(bytes != nullptr);
+    EXPECT_EQ(rt_bytes_len(bytes), (int64_t)(sizeof(data) - 1));
+
+    size_t raw_len = 0;
+    uint8_t *raw = rt_asset_load_raw(uri, &raw_len);
+    ASSERT_TRUE(raw != nullptr);
+    EXPECT_EQ(raw_len, sizeof(data) - 1);
+    EXPECT_EQ(std::memcmp(raw, data, raw_len), 0);
+    std::free(raw);
+
+    rt_asset_unmount(path_str);
+    remove(vpaPath);
+}
+
 TEST(AssetManager, ExistsReturnsFalse) {
     rt_string name = rt_const_cstr("definitely_nonexistent_12345.xyz");
     EXPECT_EQ(rt_asset_exists(name), 0);

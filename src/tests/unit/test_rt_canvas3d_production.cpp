@@ -139,8 +139,19 @@ static void test_software_backend_reports_canvas_fallback_features() {
                 "software backend supports CPU post effects");
     EXPECT_TRUE((caps & RT_CANVAS3D_BACKEND_CAP_GPU_POSTFX) == 0,
                 "software backend does not advertise GPU post effects");
+    EXPECT_TRUE((caps & RT_CANVAS3D_BACKEND_CAP_POSTFX_OVERLAY) != 0,
+                "software backend advertises final overlays after CPU post effects");
+    EXPECT_TRUE((caps & RT_CANVAS3D_BACKEND_CAP_FINAL_SCREENSHOT) != 0,
+                "software backend advertises final-frame screenshots");
+    EXPECT_TRUE((caps & RT_CANVAS3D_BACKEND_CAP_GPU_POSTFX_OVERLAY) == 0,
+                "software backend does not advertise GPU postfx overlay composition");
     EXPECT_TRUE((caps & RT_CANVAS3D_BACKEND_CAP_HARDWARE_INSTANCING) == 0,
                 "software backend does not advertise hardware instancing");
+
+    EXPECT_TRUE(backend_supports(&canvas, "postfx-overlay"),
+                "BackendSupports accepts postfx-overlay alias");
+    EXPECT_TRUE(backend_supports(&canvas, "final_screenshot"),
+                "BackendSupports accepts final_screenshot alias");
 }
 
 static void test_gpu_backend_capability_bits_and_names() {
@@ -166,6 +177,12 @@ static void test_gpu_backend_capability_bits_and_names() {
                 "GPU backend advertises post effects when present_postfx exists");
     EXPECT_TRUE((caps & RT_CANVAS3D_BACKEND_CAP_GPU_POSTFX) != 0,
                 "GPU backend advertises GPU post effects when present_postfx exists");
+    EXPECT_TRUE((caps & RT_CANVAS3D_BACKEND_CAP_POSTFX_OVERLAY) == 0,
+                "GPU backend does not advertise final overlay after GPU postfx by default");
+    EXPECT_TRUE((caps & RT_CANVAS3D_BACKEND_CAP_FINAL_SCREENSHOT) != 0,
+                "GPU backend advertises final screenshots when readback hook exists");
+    EXPECT_TRUE((caps & RT_CANVAS3D_BACKEND_CAP_GPU_POSTFX_OVERLAY) == 0,
+                "GPU backend does not advertise GPU postfx overlay composition until implemented");
 
     EXPECT_TRUE(backend_supports(&canvas, "hardware_instancing"),
                 "BackendSupports accepts hardware_instancing");
@@ -173,6 +190,10 @@ static void test_gpu_backend_capability_bits_and_names() {
     EXPECT_TRUE(backend_supports(&canvas, "readback"), "BackendSupports accepts readback alias");
     EXPECT_TRUE(backend_supports(&canvas, "gpu_post_fx"),
                 "BackendSupports accepts gpu_post_fx alias");
+    EXPECT_TRUE(backend_supports(&canvas, "final-screenshot"),
+                "BackendSupports accepts final-screenshot alias");
+    EXPECT_TRUE(!backend_supports(&canvas, "gpu-postfx-overlay"),
+                "BackendSupports reports GPU postfx overlay unsupported until implemented");
     EXPECT_TRUE(!backend_supports(&canvas, "missing_feature"),
                 "BackendSupports rejects unknown capability names");
 }

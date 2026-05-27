@@ -81,6 +81,8 @@ void *rt_world3d_get_stay_event(void *world, int64_t index);
 int64_t rt_world3d_get_exit_event_count(void *world);
 /// @brief Get the @p index-th exit event.
 void *rt_world3d_get_exit_event(void *world, int64_t index);
+/// @brief Clear live and transition collision buffers without stepping the simulation.
+void rt_world3d_clear_collision_events(void *world);
 
 /* World queries */
 /// @brief Cast a ray; returns the closest PhysicsHit3D within @p max_distance, or NULL if none.

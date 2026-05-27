@@ -1,0 +1,116 @@
+module test_canvas3d_synthetic_input;
+
+bind Viper.Graphics3D;
+bind Viper.Input.Keyboard as Keyboard;
+bind Viper.Input.Mouse as Mouse;
+bind Viper.Math;
+bind Viper.Terminal as Terminal;
+
+func near(a: Float, b: Float, eps: Float) -> Boolean {
+    var d = a - b;
+    if (d < 0.0) { d = 0.0 - d; }
+    return d <= eps;
+}
+
+func fail(message: String) {
+    Terminal.Say("FAIL: " + message);
+}
+
+func applyCameraInput(cam: Camera3D, dt: Float) {
+    Camera3D.FPSUpdate(
+        cam,
+        Mouse.DeltaX() * 0.01,
+        0.0 - Mouse.DeltaY() * 0.01,
+        1.0,
+        0.0,
+        0.0,
+        10.0,
+        dt);
+}
+
+func setupCamera() -> Camera3D {
+    var cam = Camera3D.New(60.0, 1.0, 0.1, 100.0);
+    Camera3D.LookAt(
+        cam,
+        new Vec3(0.0, 1.0, 5.0),
+        new Vec3(0.0, 1.0, 4.0),
+        new Vec3(0.0, 1.0, 0.0));
+    Camera3D.FPSInit(cam);
+    return cam;
+}
+
+func start() {
+    var canvas = Canvas3D.New("Canvas3D Synthetic Input Probe", 96, 64);
+    Canvas3D.SetInputSource(canvas, 1);
+    Canvas3D.SetClockSource(canvas, 1);
+    Canvas3D.SetSyntheticDeltaTimeSec(canvas, 0.1);
+
+    var leftMask = 1;
+    var keyW = Keyboard.get_KEY_W();
+    var camA = setupCamera();
+    var camB = setupCamera();
+
+    Canvas3D.PushSyntheticKey(canvas, keyW, true);
+    Canvas3D.PushSyntheticMouse(canvas, 9.0, -4.0, leftMask, 2.0);
+    Canvas3D.AdvanceSyntheticFrame(canvas);
+
+    if (Keyboard.WasPressed(keyW) == false || Keyboard.IsDown(keyW) == false) {
+        fail("synthetic key down did not reach Keyboard");
+        return;
+    }
+    if (Mouse.DeltaX() != 9 || Mouse.DeltaY() != -4) {
+        fail("synthetic mouse delta mismatch");
+        return;
+    }
+    if (Mouse.WasPressed(Mouse.get_BUTTON_LEFT()) == false || Mouse.Left() == false) {
+        fail("synthetic mouse button press mismatch");
+        return;
+    }
+    if (near(Mouse.WheelYF(), 2.0, 0.001) == false) {
+        fail("synthetic wheel precision mismatch");
+        return;
+    }
+    if (near(Canvas3D.get_DeltaTimeSec(canvas), 0.1, 0.0001) == false) {
+        fail("synthetic clock mismatch");
+        return;
+    }
+
+    applyCameraInput(camA, Canvas3D.get_DeltaTimeSec(canvas));
+    var aPos = Camera3D.get_Position(camA);
+    if (Vec3.get_Z(aPos) >= 5.0) {
+        fail("synthetic WASD frame did not move camera forward");
+        return;
+    }
+
+    Canvas3D.PushSyntheticKey(canvas, keyW, false);
+    Canvas3D.PushSyntheticMouse(canvas, 0.0, 0.0, 0, 0.0);
+    Canvas3D.AdvanceSyntheticFrame(canvas);
+    if (Keyboard.WasReleased(keyW) == false || Keyboard.IsUp(keyW) == false) {
+        fail("synthetic key up did not reach Keyboard");
+        return;
+    }
+    if (Mouse.WasReleased(Mouse.get_BUTTON_LEFT()) == false || Mouse.Left()) {
+        fail("synthetic mouse button release mismatch");
+        return;
+    }
+    if (Mouse.DeltaX() != 0 || Mouse.DeltaY() != 0 || near(Mouse.WheelYF(), 0.0, 0.001) == false) {
+        fail("synthetic queues were not consumed exactly once");
+        return;
+    }
+
+    Canvas3D.PushSyntheticKey(canvas, keyW, true);
+    Canvas3D.PushSyntheticMouse(canvas, 9.0, -4.0, leftMask, 2.0);
+    Canvas3D.AdvanceSyntheticFrame(canvas);
+    applyCameraInput(camB, Canvas3D.get_DeltaTimeSec(canvas));
+    var bPos = Camera3D.get_Position(camB);
+
+    if (near(Vec3.get_X(aPos), Vec3.get_X(bPos), 0.0001) == false ||
+        near(Vec3.get_Y(aPos), Vec3.get_Y(bPos), 0.0001) == false ||
+        near(Vec3.get_Z(aPos), Vec3.get_Z(bPos), 0.0001) == false) {
+        fail("same synthetic frame did not produce deterministic camera motion");
+        return;
+    }
+
+    Canvas3D.ClearSyntheticInput(canvas);
+    Terminal.Say("PASS");
+}

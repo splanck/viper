@@ -1,0 +1,81 @@
+// Phase 0A probe for the planned Viper.Game3D consumer surface.
+module Game3DSurfaceProbe;
+
+bind Viper.Graphics3D as G3D;
+bind Viper.Input.Keyboard as Keyboard;
+bind Viper.Terminal as Terminal;
+
+interface CameraController {
+    func update(dt: Float);
+    func lateUpdate(dt: Float);
+    func name() -> String;
+}
+
+class ProbeCameraController implements CameraController {
+    expose Float total;
+    expose Integer lateCalls;
+
+    expose func init() {
+        total = 0.0;
+        lateCalls = 0;
+    }
+
+    expose func update(dt: Float) {
+        total = total + dt;
+    }
+
+    expose func lateUpdate(dt: Float) {
+        total = total + dt;
+        lateCalls = lateCalls + 1;
+    }
+
+    expose func name() -> String {
+        return "probe";
+    }
+}
+
+func runUpdate(fn: (Float) -> Unit, dt: Float) {
+    fn(dt);
+}
+
+func start() {
+    var box = G3D.Mesh3D.NewBox(1.0, 1.0, 1.0);
+    if (G3D.Mesh3D.get_TriangleCount(box) != 12) {
+        Terminal.Say("FAIL: namespace alias did not call Mesh3D.NewBox");
+        return;
+    }
+
+    var controller = new ProbeCameraController();
+    var maybeController: CameraController? = controller;
+    var missingController: CameraController? = null;
+
+    var blockUpdate = (dt: Float) => {
+        controller.update(dt);
+    };
+    runUpdate(blockUpdate, 0.25);
+
+    maybeController?.lateUpdate(0.5);
+    missingController?.lateUpdate(8.0);
+
+    if (controller.total < 0.74 || controller.total > 0.76) {
+        Terminal.Say("FAIL: block lambda, void callback, or optional controller dispatch failed");
+        return;
+    }
+    if (controller.lateCalls != 1) {
+        Terminal.Say("FAIL: optional interface method call count mismatch");
+        return;
+    }
+    if ((maybeController?.name() ?? "missing") != "probe") {
+        Terminal.Say("FAIL: optional interface value call failed");
+        return;
+    }
+
+    var canvas = G3D.Canvas3D.New("Game3D Surface Probe", 64, 64);
+    G3D.Canvas3D.Poll(canvas);
+    var wDown = Keyboard.IsDown(Keyboard.get_KEY_W());
+    if (wDown) {
+        controller.lateCalls = controller.lateCalls + 0;
+    }
+
+    Terminal.Say("PASS");
+}

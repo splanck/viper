@@ -1,0 +1,49 @@
+module test_canvas3d_quality_profiles;
+
+bind Viper.Graphics3D;
+bind Viper.Terminal as Terminal;
+
+func fail(message: String) {
+    Terminal.Say("RESULT: fail " + message);
+}
+
+func runProfile(canvas: Canvas3D, quality: Integer, expectFallback: Boolean) -> Boolean {
+    Canvas3D.SetQuality(canvas, quality);
+
+    if (Canvas3D.get_QualityRequested(canvas) != quality) {
+        fail("requested quality mismatch");
+        return false;
+    }
+    if (Canvas3D.get_QualityActive(canvas) != quality) {
+        fail("active quality mismatch");
+        return false;
+    }
+    if (Canvas3D.get_QualityFallback(canvas) != expectFallback) {
+        fail("fallback flag mismatch");
+        return false;
+    }
+    if (expectFallback && Canvas3D.get_QualityFallbackReason(canvas) == "") {
+        fail("missing fallback reason");
+        return false;
+    }
+
+    Canvas3D.Clear(canvas, 0.04 + quality * 0.02, 0.05, 0.07);
+    Canvas3D.FinalizeFrame(canvas);
+    var snap = Canvas3D.ScreenshotFinal(canvas);
+    if (snap == null) {
+        fail("final screenshot null");
+        return false;
+    }
+    Canvas3D.Flip(canvas);
+    return true;
+}
+
+func start() {
+    var canvas = Canvas3D.New("Canvas3D Quality Profiles", 96, 64);
+
+    if (runProfile(canvas, 0, false) == false) { return; }
+    if (runProfile(canvas, 1, false) == false) { return; }
+    if (runProfile(canvas, 2, true) == false) { return; }
+
+    Terminal.Say("RESULT: ok");
+}

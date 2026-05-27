@@ -9,6 +9,7 @@
 #define VIPER_ENABLE_GRAPHICS 1
 #endif
 
+#include "rt_asset.h"
 #include "rt_animcontroller3d.h"
 #include "rt_canvas3d_internal.h"
 #include "rt_model3d.h"
@@ -24,6 +25,8 @@
 #include <cstring>
 #include <string>
 #include <vector>
+
+#include "VpaWriter.hpp"
 
 extern "C" {
 extern rt_string rt_const_cstr(const char *s);
@@ -784,6 +787,118 @@ static void test_model3d_adapts_gltf_scene_graphs() {
                 "glTF-backed Model3D instances preserve child names");
 }
 
+static void test_model3d_load_asset_resolves_mounted_gltf_dependencies() {
+    const char *pack_path = "/tmp/viper_model3d_asset_pack.vpa";
+    std::vector<uint8_t> gltf_buffer;
+    const float positions[9] = {0.0f, 0.0f, 0.0f, 6.0f, 0.0f,
+                                0.0f, 0.0f, 7.0f, 0.0f};
+    const uint16_t indices[3] = {0, 1, 2};
+
+    for (float v : positions)
+        append_bytes(gltf_buffer, v);
+    for (uint16_t v : indices)
+        append_bytes(gltf_buffer, v);
+
+    std::string gltf_json =
+        "{"
+        "\"asset\":{\"version\":\"2.0\"},"
+        "\"buffers\":[{\"uri\":\"buffers/tri.bin\",\"byteLength\":" +
+        std::to_string(gltf_buffer.size()) + "}],"
+        "\"bufferViews\":["
+        "{\"buffer\":0,\"byteOffset\":0,\"byteLength\":36},"
+        "{\"buffer\":0,\"byteOffset\":36,\"byteLength\":6}"
+        "],"
+        "\"accessors\":["
+        "{\"bufferView\":0,\"componentType\":5126,\"count\":3,\"type\":\"VEC3\"},"
+        "{\"bufferView\":1,\"componentType\":5123,\"count\":3,\"type\":\"SCALAR\"}"
+        "],"
+        "\"meshes\":[{\"primitives\":[{\"attributes\":{\"POSITION\":0},\"indices\":1}]}]"
+        "}";
+
+    viper::asset::VpaWriter writer;
+    writer.addEntry("assets/models/model.gltf",
+                    reinterpret_cast<const uint8_t *>(gltf_json.data()),
+                    gltf_json.size(),
+                    false);
+    writer.addEntry("assets/models/buffers/tri.bin", gltf_buffer.data(), gltf_buffer.size(), false);
+    std::string err;
+    bool wrote_pack = writer.writeToFile(pack_path, err);
+    EXPECT_TRUE(wrote_pack, "Model3D asset pack can be written");
+    if (!wrote_pack)
+        return;
+    bool mounted = rt_asset_mount(rt_const_cstr(pack_path)) == 1;
+    EXPECT_TRUE(mounted, "Model3D asset pack can mount");
+    if (!mounted)
+        return;
+
+    void *model = rt_model3d_load_asset(rt_const_cstr("assets/models/model.gltf"));
+    EXPECT_TRUE(model != nullptr, "Model3D.LoadAsset loads a mounted glTF model path");
+    if (model) {
+        EXPECT_TRUE(rt_model3d_get_mesh_count(model) == 1,
+                    "Model3D.LoadAsset exposes meshes loaded from mounted dependencies");
+        auto *mesh = static_cast<rt_mesh3d *>(rt_model3d_get_mesh(model, 0));
+        EXPECT_TRUE(mesh != nullptr && mesh->vertex_count == 3 && mesh->index_count == 3,
+                    "Model3D.LoadAsset imports geometry from a package-relative buffer");
+        if (mesh) {
+            EXPECT_NEAR(mesh->vertices[1].pos[0],
+                        6.0,
+                        0.001,
+                        "Model3D.LoadAsset keeps mounted buffer vertex X");
+            EXPECT_NEAR(mesh->vertices[2].pos[1],
+                        7.0,
+                        0.001,
+                        "Model3D.LoadAsset keeps mounted buffer vertex Y");
+        }
+    }
+
+    rt_asset_unmount(rt_const_cstr(pack_path));
+    std::remove(pack_path);
+}
+
+static void test_model3d_load_asset_diagnostics_name_missing_dependency() {
+    const char *pack_path = "/tmp/viper_model3d_missing_dep_pack.vpa";
+    std::string gltf_json =
+        "{"
+        "\"asset\":{\"version\":\"2.0\"},"
+        "\"buffers\":[{\"uri\":\"missing.bin\",\"byteLength\":12}],"
+        "\"bufferViews\":[{\"buffer\":0,\"byteOffset\":0,\"byteLength\":12}],"
+        "\"accessors\":[{\"bufferView\":0,\"componentType\":5126,\"count\":1,\"type\":\"VEC3\"}],"
+        "\"meshes\":[{\"primitives\":[{\"attributes\":{\"POSITION\":0}}]}]"
+        "}";
+
+    viper::asset::VpaWriter writer;
+    writer.addEntry("assets/models/missing_dep.gltf",
+                    reinterpret_cast<const uint8_t *>(gltf_json.data()),
+                    gltf_json.size(),
+                    false);
+    std::string err;
+    bool wrote_pack = writer.writeToFile(pack_path, err);
+    EXPECT_TRUE(wrote_pack, "Missing-dependency asset pack can be written");
+    if (!wrote_pack)
+        return;
+    bool mounted = rt_asset_mount(rt_const_cstr(pack_path)) == 1;
+    EXPECT_TRUE(mounted, "Missing-dependency asset pack can mount");
+    if (!mounted)
+        return;
+
+    g_last_trap = nullptr;
+    g_expect_trap = true;
+    if (setjmp(g_trap_jmp) == 0) {
+        (void)rt_model3d_load_asset(rt_const_cstr("asset://assets/models/missing_dep.gltf"));
+        g_expect_trap = false;
+        EXPECT_TRUE(false, "Model3D.LoadAsset traps on missing external glTF dependencies");
+    } else {
+        g_expect_trap = false;
+        EXPECT_TRUE(g_last_trap != nullptr &&
+                        std::strstr(g_last_trap, "assets/models/missing_dep.gltf") != nullptr &&
+                        std::strstr(g_last_trap, "assets/models/missing.bin") != nullptr,
+                    "Model3D.LoadAsset diagnostics name the model and missing dependency");
+    }
+
+    rt_asset_unmount(rt_const_cstr(pack_path));
+    std::remove(pack_path);
+}
+
 static void test_model3d_adapts_fbx_scene_graphs() {
     const char *path = "/tmp/viper_model3d_fixture.fbx";
     bool wrote_fixture = write_fbx_fixture(path);
@@ -1125,6 +1240,8 @@ int main() {
     test_model3d_rejects_wrong_handle_types();
     test_model3d_roundtrips_vscn_assets();
     test_model3d_adapts_gltf_scene_graphs();
+    test_model3d_load_asset_resolves_mounted_gltf_dependencies();
+    test_model3d_load_asset_diagnostics_name_missing_dependency();
     test_model3d_adapts_fbx_scene_graphs();
     test_model3d_loads_obj_as_template_asset();
     test_model3d_imports_fbx_skinning_and_grouped_animation();

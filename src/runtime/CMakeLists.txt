@@ -256,6 +256,7 @@ set(RT_GRAPHICS_SOURCES
         graphics/3d/render/rt_canvas3d.c
         graphics/3d/render/rt_canvas3d_overlay.c
         graphics/3d/backend/vgfx3d_backend_sw.c
+        graphics/3d/rt_game3d.c
         graphics/3d/render/rt_mesh3d.c
         graphics/3d/render/rt_camera3d.c
         graphics/3d/render/rt_material3d.c
@@ -343,6 +344,7 @@ set(RT_GRAPHICS_DISABLED_SOURCES
         graphics/text/rt_bitmapfont.c
         graphics/2d/rt_graphics2d.c
         graphics/text/fonts/embedded_font.c
+        graphics/3d/rt_game3d.c
         graphics/media/rt_avi.c
         graphics/media/rt_theora.c
         graphics/media/rt_ycbcr.c

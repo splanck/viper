@@ -30,6 +30,10 @@ extern "C" {
 
 /// @brief Load a glTF/GLB asset from @p path. @return an asset handle, or NULL.
 void *rt_gltf_load(rt_string path);
+/// @brief Load a glTF/GLB asset through the runtime asset manager.
+/// @details Supports mounted/embedded assets plus dev filesystem fallback. External
+///          .gltf buffers/images resolve relative to the parent model asset.
+void *rt_gltf_load_asset(rt_string path);
 /// @brief Number of meshes in the asset.
 int64_t rt_gltf_mesh_count(void *asset);
 /// @brief Get the mesh at @p index (NULL if out of range).

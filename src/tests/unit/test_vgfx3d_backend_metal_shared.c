@@ -7,7 +7,12 @@
 #include <limits.h>
 #include <math.h>
 #include <stdio.h>
+#include <stdlib.h>
 #include <string.h>
+
+#ifndef VIPER_SOURCE_DIR
+#define VIPER_SOURCE_DIR "."
+#endif
 
 static int tests_run = 0;
 static int tests_passed = 0;
@@ -294,6 +299,64 @@ static void test_capacity_mip_and_morph_cache_helpers(void) {
                 "Morph cache reuse compares against the clamped Metal shape count");
 }
 
+static char *read_text_file(const char *path) {
+    FILE *f = fopen(path, "rb");
+    long size;
+    char *text;
+
+    if (!f)
+        return NULL;
+    if (fseek(f, 0, SEEK_END) != 0) {
+        fclose(f);
+        return NULL;
+    }
+    size = ftell(f);
+    if (size < 0) {
+        fclose(f);
+        return NULL;
+    }
+    rewind(f);
+    text = (char *)malloc((size_t)size + 1u);
+    if (!text) {
+        fclose(f);
+        return NULL;
+    }
+    if (fread(text, 1u, (size_t)size, f) != (size_t)size) {
+        free(text);
+        fclose(f);
+        return NULL;
+    }
+    text[size] = '\0';
+    fclose(f);
+    return text;
+}
+
+static void test_metal_shader_source_uses_safe_normalization(void) {
+    char path[1024];
+    char *source;
+
+    snprintf(path, sizeof(path), "%s/src/runtime/graphics/3d/backend/vgfx3d_backend_metal.m",
+             VIPER_SOURCE_DIR);
+    source = read_text_file(path);
+    EXPECT_TRUE(source != NULL, "Metal backend source is readable for shader-source regression checks");
+    if (!source)
+        return;
+
+    EXPECT_TRUE(strstr(source, "return (len2 > 1e-12 && len2 < 1e20) ? v * rsqrt(len2) : fallback;") !=
+                    NULL,
+                "Metal safe_normalize3 rejects non-finite and huge vector lengths");
+    EXPECT_TRUE(strstr(source, "skybox_safe_normalize3") != NULL,
+                "Metal skybox shader defines a safe normalization helper");
+    EXPECT_TRUE(strstr(source, "worldDir = skybox_safe_normalize3") != NULL,
+                "Metal skybox camera-forward path uses safe normalization");
+    EXPECT_TRUE(strstr(source, "float3 viewDir = skybox_safe_normalize3") != NULL,
+                "Metal skybox inverse-projection path uses safe normalization");
+    EXPECT_TRUE(strstr(source, " normalize(") == NULL,
+                "Metal shader source avoids raw normalize calls");
+
+    free(source);
+}
+
 int main(void) {
     test_pack_bone_palette_identity_pads_unused_bones();
     test_pack_bone_palette_identity_pads_empty_source();
@@ -302,6 +365,7 @@ int main(void) {
     test_frame_history_preserves_scene_state_across_overlay_passes();
     test_target_kind_blend_motion_and_readback_helpers();
     test_capacity_mip_and_morph_cache_helpers();
+    test_metal_shader_source_uses_safe_normalization();
 
     printf("vgfx3d metal shared tests: %d/%d passed\n", tests_passed, tests_run);
     return tests_passed == tests_run ? 0 : 1;

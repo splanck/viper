@@ -217,6 +217,15 @@ static const char *asset_name_cstr(rt_string name) {
     return (const char *)data;
 }
 
+static const char *asset_logical_name_cstr(rt_string name) {
+    const char *cname = asset_name_cstr(name);
+    if (!cname)
+        return NULL;
+    if (strncmp(cname, "asset://", 8) == 0)
+        return cname + 8;
+    return cname;
+}
+
 static int asset_is_separator(char ch) {
     return ch == '/' || ch == '\\';
 }
@@ -631,7 +640,7 @@ void *rt_asset_load(rt_string name) {
         return NULL;
     ensure_init();
 
-    const char *cname = asset_name_cstr(name);
+    const char *cname = asset_logical_name_cstr(name);
     if (!asset_name_is_safe(cname))
         return NULL;
     size_t data_size = 0;
@@ -662,7 +671,7 @@ void *rt_asset_load_bytes(rt_string name) {
         return NULL;
     ensure_init();
 
-    const char *cname = asset_name_cstr(name);
+    const char *cname = asset_logical_name_cstr(name);
     if (!asset_name_is_safe(cname))
         return NULL;
     size_t data_size = 0;
@@ -677,6 +686,24 @@ void *rt_asset_load_bytes(rt_string name) {
     return result;
 }
 
+/// @brief Load an asset into a malloc-owned raw byte buffer.
+uint8_t *rt_asset_load_raw(rt_string name, size_t *out_size) {
+    if (out_size)
+        *out_size = 0;
+    if (!name)
+        return NULL;
+    ensure_init();
+
+    const char *cname = asset_logical_name_cstr(name);
+    if (!asset_name_is_safe(cname))
+        return NULL;
+
+    asset_lock();
+    uint8_t *data = asset_find_data(cname, out_size);
+    asset_unlock();
+    return data;
+}
+
 // ─── rt_asset_exists ────────────────────────────────────────────────────────
 
 /// @brief Check whether an asset exists in any source (embedded, packs, or filesystem).
@@ -685,7 +712,7 @@ int64_t rt_asset_exists(rt_string name) {
         return 0;
     ensure_init();
 
-    const char *cname = asset_name_cstr(name);
+    const char *cname = asset_logical_name_cstr(name);
     if (!asset_name_is_safe(cname))
         return 0;
 
@@ -722,7 +749,7 @@ int64_t rt_asset_size(rt_string name) {
         return -1;
     ensure_init();
 
-    const char *cname = asset_name_cstr(name);
+    const char *cname = asset_logical_name_cstr(name);
     if (!asset_name_is_safe(cname))
         return -1;
 

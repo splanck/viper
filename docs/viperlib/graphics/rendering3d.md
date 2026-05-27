@@ -1,7 +1,7 @@
 ---
 status: active
 audience: public
-last-verified: 2026-05-26
+last-verified: 2026-05-27
 ---
 
 # 3D Rendering, Animation, and Environment
@@ -13,9 +13,118 @@ last-verified: 2026-05-26
 
 This page documents the `Viper.Graphics3D` runtime surface for classes not covered by [3D Physics](physics3d.md). For mesh loading, material authoring, scene graphs, and the full 3D asset pipeline, see the [Graphics 3D Guide](../../graphics3d-guide.md).
 
+For the higher-level code-first game workflow, see [Game3D](game3d.md).
+`Viper.Game3D` is implemented in the same C runtime layer and wraps the lower
+level rendering, physics, input, audio, and final-frame contracts documented
+here.
+
 ---
 
 ## Camera And Rendering
+
+### Canvas3D Frame Finalization
+
+`Canvas3D.End()` closes the current 3D or 2D draw pass. It does not present the
+frame and does not run post-processing. Finalization is the step that applies
+`PostFX3D` and composites any final overlay recorded for the frame.
+
+| Method | Signature | Description |
+|--------|-----------|-------------|
+| `BeginOverlay()` | `Void()` | Start recording a final 2D overlay pass |
+| `EndOverlay()` | `Void()` | Finish final overlay recording |
+| `ClearOverlay()` | `Void()` | Discard the current frame's recorded final overlay |
+| `FinalizeFrame()` | `Void()` | Apply post-FX and final overlay once, without presenting |
+| `ScreenshotFinal()` | `Object()` | Finalize if needed, then capture finalized pixels |
+| `FrameFinalized` | `Boolean` | True once the current frame has been finalized |
+
+Use final overlays for HUD text, reticles, debug labels, and capture annotations
+that must remain crisp after bloom, tonemapping, or color grading. `Flip()`
+finalizes automatically if the frame has not already been finalized, so
+`ScreenshotFinal()` can be followed by `Flip()` without re-running post-FX.
+
+```rust
+Canvas3D.Begin(canvas, cam)
+Canvas3D.DrawMesh(canvas, mesh, model, material)
+Canvas3D.End(canvas)
+
+Canvas3D.BeginOverlay(canvas)
+Canvas3D.DrawText2D(canvas, 12, 12, "READY", 0xFFFFFFFF)
+Canvas3D.EndOverlay(canvas)
+
+var capture = Canvas3D.ScreenshotFinal(canvas)
+Canvas3D.Flip(canvas)
+```
+
+The repo-level sample `examples/3d/walk_min.zia` shows the complete Phase 0B
+frame path in one small program: explicit default lighting, a primitive scene,
+CPU-safe post-FX, final overlay recording, and `ScreenshotFinal()` coverage.
+`examples/3d/walk_min_probe.zia` is registered as a software-backend ctest and
+compares against `examples/3d/baselines/walk_min_software.png`.
+
+### Canvas3D Synthetic Input and Clock
+
+Live loops call `Canvas3D.Poll()` once per frame and then read
+`Viper.Input.Keyboard`, `Viper.Input.Mouse`, gamepad, or action APIs. `Poll()`
+returns the last raw window event code, but gameplay should normally use those
+state APIs because they expose coherent `WasPressed`, `WasReleased`, held, and
+mouse-delta state.
+
+Deterministic tests can switch a canvas to scripted input and fixed time:
+
+| Method | Signature | Description |
+|--------|-----------|-------------|
+| `SetInputSource(mode)` | `Void(Integer)` | `0` live, `1` synthetic, `2` live plus synthetic |
+| `PushSyntheticKey(key, down)` | `Void(Integer, Boolean)` | Queue a synthetic key transition |
+| `PushSyntheticMouse(dx, dy, buttons, wheel)` | `Void(Double, Double, Integer, Double)` | Queue mouse delta, button bitmask, and vertical wheel |
+| `ClearSyntheticInput()` | `Void()` | Clear queues and release synthetic-held buttons/keys |
+| `SetClockSource(mode)` | `Void(Integer)` | `0` live wall clock, `1` fixed synthetic dt |
+| `SetSyntheticDeltaTimeSec(dt)` | `Void(Double)` | Configure fixed synthetic dt in seconds |
+| `AdvanceSyntheticFrame()` | `Void()` | Advance one deterministic input/timing frame without pumping OS events |
+
+Synthetic events are applied through the same keyboard and mouse state update
+functions as live events. That means camera controllers and action bindings do
+not need a test-only input path. `DeltaTime`/`DeltaTimeSec` can be zero on the
+first live frame before the first `Flip()`; with the synthetic clock selected,
+they report the configured fixed dt after `AdvanceSyntheticFrame()`, synthetic
+`Poll()`, or `Flip()`.
+
+### Canvas3D Quality Profiles
+
+`Canvas3D.SetQuality(profile)` installs a backend-safe post-FX profile:
+
+| Profile | Value | Behavior |
+|---------|-------|----------|
+| Performance | `0` | Minimal CPU-safe chain |
+| Balanced | `1` | CPU-safe bloom, tonemap, FXAA, and color grade |
+| Cinematic | `2` | CPU-safe cinematic chain, plus SSAO/DOF/motion blur only on GPU-window post-FX |
+
+The fallback state is inspectable for debug overlays:
+
+| Property | Type | Description |
+|----------|------|-------------|
+| `QualityRequested` | `Integer` | Last requested profile |
+| `QualityActive` | `Integer` | Active profile after fallback |
+| `QualityFallback` | `Boolean` | True when unsupported GPU-only effects were omitted |
+| `QualityFallbackReason` | `String` | Empty when no fallback occurred |
+
+`PostFX3D.NewQuality(canvas, profile)` builds the same chain without attaching
+it. Game3D quality helpers should wrap these runtime APIs rather than hand-roll
+backend checks in Zia code.
+
+### Canvas3D Lighting Helpers
+
+`Canvas3D.SetDefaultLighting()` installs an explicit key/fill directional setup
+and a readable ambient color. It is not implicit fallback lighting: scenes stay
+dark after `ClearLights()` plus low ambient unless the caller opts into new
+lights.
+
+| Method / Property | Signature | Description |
+|-------------------|-----------|-------------|
+| `SetLight(index, light)` | `Void(Integer, Object)` | Bind or clear a retained light slot |
+| `ClearLights()` | `Void()` | Clear every retained canvas light slot |
+| `SetDefaultLighting()` | `Void()` | Install conservative key/fill/ambient defaults |
+| `LightCount` | `Integer` | Count active enabled canvas-slot lights |
+| `SetAmbient(r, g, b)` | `Void(Double, Double, Double)` | Set ambient color |
 
 ### Viper.Graphics3D.Camera3D
 
@@ -108,7 +217,7 @@ Cubemap texture resource for environment mapping and skyboxes. Use `Canvas3D.Loa
 
 ### Viper.Graphics3D.Light3D
 
-Scene light with configurable color and intensity. Directional, point, and spot variants are created via the `Canvas3D` scene light API.
+Scene light with configurable color, intensity, and enabled state.
 
 **Type:** Instance (obj)
 **Constructor:** `Canvas3D.AddDirectionalLight(...)` (returned as `Light3D`)
@@ -119,6 +228,18 @@ Scene light with configurable color and intensity. Directional, point, and spot 
 |--------|-----------|-------------|
 | `SetIntensity(value)` | `Void(Double)` | Set light intensity multiplier |
 | `SetColor(r, g, b)` | `Void(Double, Double, Double)` | Set light color using normalized RGB components |
+| `SetEnabled(enabled)` | `Void(Boolean)` | Toggle contribution without clearing the light slot |
+
+#### Properties
+
+| Property | Type | Access | Description |
+|----------|------|--------|-------------|
+| `Type` | Integer | Read | `0=directional`, `1=point`, `2=ambient`, `3=spot` |
+| `Color` | Object | Read | RGB `Vec3` |
+| `Intensity` | Double | Read | Brightness multiplier |
+| `Enabled` | Boolean | Read/Write | Disabled lights are skipped by rendering |
+| `Direction` | Object | Read | Direction `Vec3` |
+| `Position` | Object | Read | Position `Vec3` |
 
 ---
 
@@ -578,7 +699,7 @@ var listener = AudioListener3D.New()
 listener.IsActive = true
 listener.BindCamera(cam)
 
-var explosion = Sound.Load("assets/explosion.ogg")
+var explosion = Sound.LoadAsset("assets/explosion.ogg")
 var src = AudioSource3D.New(explosion)
 src.MaxDistance = 40.0
 src.SetPosition(Vec3.New(10.0, 0.0, 0.0))
@@ -904,5 +1025,5 @@ Texture atlas for 3D rendering with named-region management.
 - `Transform3D` is distinct from `SceneNode3D` — use `Transform3D` for standalone matrix math and non-scene-graph transforms; attach nodes to the scene for scene-managed transform hierarchies.
 - `AnimController3D.PollEvent` returns events one at a time per call; poll it in a loop until an empty string is returned if multiple events fire in one update.
 - `NavMesh3D` is rebuilt by `NavMesh3D.Build`; the mesh is not dynamic. Rebuild when geometry changes.
-- `Particles3D.Draw` should be called after `Canvas3D.Flush` to render particles on top of opaque geometry.
+- `Particles3D.Draw` should be called inside the `Canvas3D.Begin`/`End` scene pass after opaque geometry when you want particles over the main scene.
 - `Audio3D.SyncBindings` must be called once per frame after physics/animation updates so bound sources and listeners track their nodes.

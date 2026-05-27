@@ -75,6 +75,8 @@ Documentation for the Viper compiler toolchain: two language frontends ([Zia](zi
 
 **[Graphics](viperlib/graphics/README.md)** (11 classes) — [Canvas](viperlib/graphics/canvas.md) · [Scene](viperlib/graphics/scene.md) · [Pixels](viperlib/graphics/pixels.md) · [Fonts](viperlib/graphics/fonts.md)
 
+**[Game3D](viperlib/graphics/game3d.md)** — code-first 3D game workflow helpers over `Viper.Graphics3D`
+
 **[Graphics3D](graphics3d-guide.md)** (45 classes) — [Guide](graphics3d-guide.md) · [Architecture](graphics3d-architecture.md)
 
 **[GUI](viperlib/gui/README.md)** (46 classes) — [Application](viperlib/gui/application.md) · [Core](viperlib/gui/core.md) · [Widgets](viperlib/gui/widgets.md) · [Containers](viperlib/gui/containers.md) · [Layout](viperlib/gui/layout.md)

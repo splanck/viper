@@ -50,6 +50,113 @@
 
 #define CANVAS3D_MAX_FALLBACK_INSTANCES 65536
 #define CANVAS3D_FLOAT_ABS_MAX 3.40282346638528859812e38
+#define CANVAS3D_SYNTHETIC_KEY_QUEUE_MAX 64
+#define CANVAS3D_SYNTHETIC_DT_DEFAULT_US 16667LL
+#define CANVAS3D_SYNTHETIC_DT_MAX_US 10000000LL
+#define CANVAS3D_SYNTHETIC_MOUSE_ABS_MAX 1000000.0
+
+static int32_t canvas3d_input_source_from_mode(int64_t mode) {
+    return (mode >= 0 && mode <= 2) ? (int32_t)mode : 0;
+}
+
+static int32_t canvas3d_clock_source_from_mode(int64_t mode) {
+    return mode == 1 ? 1 : 0;
+}
+
+static int64_t canvas3d_synthetic_seconds_to_us(double dt) {
+    if (!isfinite(dt) || dt < 0.0)
+        return 0;
+    if (dt > (double)CANVAS3D_SYNTHETIC_DT_MAX_US / 1000000.0)
+        return CANVAS3D_SYNTHETIC_DT_MAX_US;
+    return (int64_t)(dt * 1000000.0 + 0.5);
+}
+
+static int64_t canvas3d_round_synthetic_mouse_delta(double value) {
+    if (!isfinite(value))
+        return 0;
+    if (value > CANVAS3D_SYNTHETIC_MOUSE_ABS_MAX)
+        value = CANVAS3D_SYNTHETIC_MOUSE_ABS_MAX;
+    else if (value < -CANVAS3D_SYNTHETIC_MOUSE_ABS_MAX)
+        value = -CANVAS3D_SYNTHETIC_MOUSE_ABS_MAX;
+    return value >= 0.0 ? (int64_t)(value + 0.5) : (int64_t)(value - 0.5);
+}
+
+static void canvas3d_apply_synthetic_clock(rt_canvas3d *c) {
+    if (!c)
+        return;
+    if (c->synthetic_dt_us < 0)
+        c->synthetic_dt_us = 0;
+    c->delta_time_us = c->synthetic_dt_us;
+    c->delta_time_ms = c->synthetic_dt_us > 0 ? c->synthetic_dt_us / 1000 : 0;
+}
+
+static void canvas3d_apply_synthetic_input(rt_canvas3d *c) {
+    if (!c)
+        return;
+
+    for (int32_t i = 0; i < c->synthetic_key_count; i++) {
+        int64_t key = c->synthetic_key_keys[i];
+        if (key <= 0 || key >= VIPER_KEY_MAX)
+            continue;
+        if (c->synthetic_key_downs[i]) {
+            rt_keyboard_on_key_down(key);
+            c->synthetic_key_state[key] = 1;
+        } else {
+            rt_keyboard_on_key_up(key);
+            c->synthetic_key_state[key] = 0;
+        }
+    }
+    c->synthetic_key_count = 0;
+
+    int64_t dx = canvas3d_round_synthetic_mouse_delta(c->synthetic_mouse_dx);
+    int64_t dy = canvas3d_round_synthetic_mouse_delta(c->synthetic_mouse_dy);
+    if (dx != 0 || dy != 0)
+        rt_mouse_force_delta(dx, dy);
+    c->synthetic_mouse_dx = 0.0;
+    c->synthetic_mouse_dy = 0.0;
+
+    if (c->synthetic_mouse_has_buttons) {
+        for (int i = 0; i < VIPER_MOUSE_BUTTON_MAX; i++) {
+            uint8_t down = (uint8_t)((c->synthetic_mouse_buttons >> i) & 1LL);
+            if (down && !c->synthetic_mouse_button_state[i]) {
+                rt_mouse_button_down(i);
+                c->synthetic_mouse_button_state[i] = 1;
+            } else if (!down && c->synthetic_mouse_button_state[i]) {
+                rt_mouse_button_up(i);
+                c->synthetic_mouse_button_state[i] = 0;
+            }
+        }
+    }
+    c->synthetic_mouse_has_buttons = 0;
+    c->synthetic_mouse_buttons = 0;
+
+    if (isfinite(c->synthetic_mouse_wheel_y) && c->synthetic_mouse_wheel_y != 0.0)
+        rt_mouse_update_wheel(0.0, c->synthetic_mouse_wheel_y);
+    c->synthetic_mouse_wheel_y = 0.0;
+}
+
+static void canvas3d_release_synthetic_input(rt_canvas3d *c) {
+    if (!c)
+        return;
+    for (int i = 1; i < VIPER_KEY_MAX; i++) {
+        if (c->synthetic_key_state[i]) {
+            rt_keyboard_on_key_up(i);
+            c->synthetic_key_state[i] = 0;
+        }
+    }
+    for (int i = 0; i < VIPER_MOUSE_BUTTON_MAX; i++) {
+        if (c->synthetic_mouse_button_state[i]) {
+            rt_mouse_button_up(i);
+            c->synthetic_mouse_button_state[i] = 0;
+        }
+    }
+    c->synthetic_key_count = 0;
+    c->synthetic_mouse_dx = 0.0;
+    c->synthetic_mouse_dy = 0.0;
+    c->synthetic_mouse_wheel_y = 0.0;
+    c->synthetic_mouse_buttons = 0;
+    c->synthetic_mouse_has_buttons = 0;
+}
 
 /// @brief True when the active backend can apply GPU post-FX during present.
 ///
@@ -785,14 +892,14 @@ static int32_t build_light_params(const rt_canvas3d *c, vgfx3d_light_params_t *o
         return 0;
     for (int i = 0; i < VGFX3D_MAX_LIGHTS && count < max; i++) {
         const rt_light3d *l = c->lights[i];
-        if (!l)
+        if (!l || !l->enabled)
             continue;
         canvas3d_copy_light_params(l, &out[count]);
         count++;
     }
     for (int i = 0; i < c->scene_light_count && i < VGFX3D_MAX_LIGHTS && count < max; i++) {
         const rt_light3d *l = c->scene_lights[i];
-        if (!l)
+        if (!l || !l->enabled)
             continue;
         canvas3d_copy_light_params(l, &out[count]);
         count++;
@@ -966,6 +1073,33 @@ static int canvas3d_track_temp_buffer(rt_canvas3d *c, void *buffer) {
     return 1;
 }
 
+/// @brief Track a malloc'd buffer used by deferred final-overlay commands.
+///
+/// Final overlays are recorded before frame finalization and replayed after
+/// post-FX. Their geometry must survive normal End() cleanup, so they use a
+/// separate temp-buffer list cleared after Flip() or ClearOverlay().
+static int canvas3d_track_final_overlay_temp_buffer(rt_canvas3d *c, void *buffer) {
+    if (!c || !buffer)
+        return 0;
+    if (c->final_overlay_temp_buf_count >= c->final_overlay_temp_buf_capacity) {
+        if (c->final_overlay_temp_buf_capacity > INT32_MAX / 2)
+            return 0;
+        int32_t new_cap = c->final_overlay_temp_buf_capacity == 0
+                              ? 8
+                              : c->final_overlay_temp_buf_capacity * 2;
+        if ((size_t)new_cap > SIZE_MAX / sizeof(void *))
+            return 0;
+        void **nb = (void **)realloc(c->final_overlay_temp_buffers,
+                                     (size_t)new_cap * sizeof(void *));
+        if (!nb)
+            return 0;
+        c->final_overlay_temp_buffers = nb;
+        c->final_overlay_temp_buf_capacity = new_cap;
+    }
+    c->final_overlay_temp_buffers[c->final_overlay_temp_buf_count++] = buffer;
+    return 1;
+}
+
 /// @brief Track a GC-managed object for end-of-frame release.
 ///
 /// Retains `obj` immediately so it survives at least until the
@@ -1057,6 +1191,17 @@ static void canvas3d_clear_temp_buffers(rt_canvas3d *c) {
     for (int32_t i = 0; i < c->temp_buf_count; i++)
         free(c->temp_buffers[i]);
     c->temp_buf_count = 0;
+}
+
+/// @brief Discard recorded final-overlay commands and owned geometry buffers.
+void canvas3d_clear_final_overlay(rt_canvas3d *c) {
+    if (!c)
+        return;
+    for (int32_t i = 0; i < c->final_overlay_temp_buf_count; i++)
+        free(c->final_overlay_temp_buffers[i]);
+    c->final_overlay_temp_buf_count = 0;
+    c->final_overlay_count = 0;
+    c->final_overlay_recording = 0;
 }
 
 /// @brief Release every tracked transient GC object (called at end of frame).
@@ -1503,6 +1648,35 @@ static int canvas3d_enqueue_draw(rt_canvas3d *c,
                                 wireframe,
                                 backface_cull,
                                 sort_key,
+                                local_bounds_min,
+                                local_bounds_max);
+    return 1;
+}
+
+/// @brief Append a draw to the final-overlay queue for replay after post-FX.
+static int canvas3d_enqueue_final_overlay_draw(rt_canvas3d *c,
+                                               const vgfx3d_draw_cmd_t *cmd,
+                                               const float *local_bounds_min,
+                                               const float *local_bounds_max) {
+    deferred_draw_t *dd;
+
+    if (!c || !cmd)
+        return 0;
+    if (!ensure_deferred_capacity(
+            &c->final_overlay_cmds, &c->final_overlay_capacity, c->final_overlay_count + 1))
+        return 0;
+    dd = &((deferred_draw_t *)c->final_overlay_cmds)[c->final_overlay_count++];
+    canvas3d_fill_deferred_draw(c,
+                                dd,
+                                cmd,
+                                DEFERRED_DRAW_MESH,
+                                DEFERRED_PASS_MAIN,
+                                NULL,
+                                0,
+                                0,
+                                0,
+                                0,
+                                0.0f,
                                 local_bounds_min,
                                 local_bounds_max);
     return 1;
@@ -2170,6 +2344,13 @@ static void rt_canvas3d_finalize(void *obj) {
     free(c->trans_cmds);
     c->trans_cmds = NULL;
     c->trans_capacity = 0;
+    canvas3d_clear_final_overlay(c);
+    free(c->final_overlay_cmds);
+    c->final_overlay_cmds = NULL;
+    c->final_overlay_capacity = 0;
+    free(c->final_overlay_temp_buffers);
+    c->final_overlay_temp_buffers = NULL;
+    c->final_overlay_temp_buf_capacity = 0;
     free(c->motion_history);
     c->motion_history = NULL;
     c->motion_history_count = c->motion_history_capacity = 0;
@@ -2325,6 +2506,13 @@ void *rt_canvas3d_new(rt_string title, int64_t w, int64_t h) {
     c->frame_is_2d = 0;
     c->has_last_scene_vp = 0;
     c->dt_max_ms = 100;
+    c->quality_requested = RT_GRAPHICS3D_QUALITY_BALANCED;
+    c->quality_active = RT_GRAPHICS3D_QUALITY_BALANCED;
+    c->quality_fallback = 0;
+    c->quality_fallback_reason = 0;
+    c->input_source = 0;
+    c->clock_source = 0;
+    c->synthetic_dt_us = CANVAS3D_SYNTHETIC_DT_DEFAULT_US;
 
     rt_keyboard_set_canvas(c->gfx_win);
     rt_mouse_set_canvas(c->gfx_win);
@@ -2346,6 +2534,11 @@ void rt_canvas3d_clear(void *obj, double r, double g, double b) {
         return;
     if (!c->gfx_win || !c->backend)
         return;
+    if (c->frame_finalized) {
+        canvas3d_clear_final_overlay(c);
+        c->frame_finalized = 0;
+        c->frame_presented_by_finalize = 0;
+    }
     float cr = canvas3d_clamp01_f64(r);
     float cg = canvas3d_clamp01_f64(g);
     float cb = canvas3d_clamp01_f64(b);
@@ -2419,10 +2612,6 @@ static int canvas3d_queue_screen_geometry(rt_canvas3d *c,
     indices_copy = (uint32_t *)(block + vertex_bytes);
     memcpy(verts_copy, vertices, vertex_bytes);
     memcpy(indices_copy, indices, index_bytes);
-    if (!canvas3d_track_temp_buffer(c, block)) {
-        free(block);
-        return 0;
-    }
 
     memset(&cmd, 0, sizeof(cmd));
     cmd.vertices = verts_copy;
@@ -2436,6 +2625,19 @@ static int canvas3d_queue_screen_geometry(rt_canvas3d *c,
     cmd.diffuse_color[3] = a;
     cmd.alpha = a;
     cmd.unlit = 1;
+
+    if (c->final_overlay_recording) {
+        if (!canvas3d_track_final_overlay_temp_buffer(c, block)) {
+            free(block);
+            return 0;
+        }
+        return canvas3d_enqueue_final_overlay_draw(c, &cmd, NULL, NULL);
+    }
+
+    if (!canvas3d_track_temp_buffer(c, block)) {
+        free(block);
+        return 0;
+    }
 
     return canvas3d_enqueue_draw(c,
                                  &cmd,
@@ -2546,6 +2748,11 @@ void rt_canvas3d_begin_2d(void *obj) {
         rt_trap("Canvas3D.Begin2D: Begin/End must not nest");
         return;
     }
+    if (c->frame_finalized) {
+        canvas3d_clear_final_overlay(c);
+        c->frame_finalized = 0;
+        c->frame_presented_by_finalize = 0;
+    }
     if (c->backend->show_gpu_layer)
         c->backend->show_gpu_layer(c->backend_ctx);
 
@@ -2581,6 +2788,64 @@ void rt_canvas3d_begin_2d(void *obj) {
     canvas3d_latch_gpu_postfx_state(c);
     c->backend->begin_frame(c->backend_ctx, &params);
     c->in_frame = 1;
+}
+
+/// @brief Begin recording a final overlay pass that is composited after post-FX.
+void rt_canvas3d_begin_overlay(void *obj) {
+    vgfx3d_camera_params_t params;
+
+    rt_canvas3d *c = rt_canvas3d_checked_or_stack(obj);
+    if (!c)
+        return;
+    if (!c->backend)
+        return;
+    if (c->frame_finalized) {
+        rt_trap("Canvas3D.BeginOverlay: frame is already finalized");
+        return;
+    }
+    if (c->in_frame) {
+        rt_trap("Canvas3D.BeginOverlay: Begin/End must not nest");
+        return;
+    }
+
+    canvas3d_build_ortho_camera(c, &params);
+    c->cached_cam_pos[0] = 0.0f;
+    c->cached_cam_pos[1] = 0.0f;
+    c->cached_cam_pos[2] = 1.0f;
+    c->cached_cam_forward[0] = params.forward[0];
+    c->cached_cam_forward[1] = params.forward[1];
+    c->cached_cam_forward[2] = params.forward[2];
+    c->cached_cam_is_ortho = params.is_ortho;
+    c->frame_is_2d = 1;
+    for (int r = 0; r < 4; r++)
+        for (int col = 0; col < 4; col++)
+            c->cached_vp[r * 4 + col] =
+                params.projection[r * 4 + 0] * params.view[0 * 4 + col] +
+                params.projection[r * 4 + 1] * params.view[1 * 4 + col] +
+                params.projection[r * 4 + 2] * params.view[2 * 4 + col] +
+                params.projection[r * 4 + 3] * params.view[3 * 4 + col];
+    c->final_overlay_recording = 1;
+    c->in_frame = 1;
+}
+
+/// @brief Finish recording a final overlay pass.
+void rt_canvas3d_end_overlay(void *obj) {
+    rt_canvas3d *c = rt_canvas3d_checked_or_stack(obj);
+    if (!c)
+        return;
+    if (!c->final_overlay_recording)
+        return;
+    c->final_overlay_recording = 0;
+    c->in_frame = 0;
+    c->frame_is_2d = 0;
+}
+
+/// @brief Discard recorded final-overlay commands for the current frame.
+void rt_canvas3d_clear_overlay(void *obj) {
+    rt_canvas3d *c = rt_canvas3d_checked_or_stack(obj);
+    if (!c)
+        return;
+    canvas3d_clear_final_overlay(c);
 }
 
 /// @brief Draw a filled rectangle through the 3D pipeline (screen-space coords).
@@ -2774,6 +3039,11 @@ void rt_canvas3d_begin(void *obj, void *camera) {
     if (c->in_frame) {
         rt_trap("Canvas3D.Begin: Begin/End must not nest");
         return;
+    }
+    if (c->frame_finalized) {
+        canvas3d_clear_final_overlay(c);
+        c->frame_finalized = 0;
+        c->frame_presented_by_finalize = 0;
     }
 
     /* Show GPU layer for 3D rendering (in case it was hidden for 2D menu) */
@@ -3219,7 +3489,7 @@ void rt_canvas3d_queue_instanced_batch(void *canvas_obj,
     }
 }
 
-/// @brief End-of-frame: flush all deferred passes, run postFX, present, and bookkeep.
+/// @brief End drawing for the current scene or 2D pass and flush deferred draws.
 /// @details Processes the deferred queue built during Begin/DrawMesh calls
 ///          in this strict pass order:
 ///          1. Skybox (if attached) into the scene color buffer.
@@ -3230,9 +3500,11 @@ void rt_canvas3d_queue_instanced_batch(void *canvas_obj,
 ///          4. Translucent main draws — sorted back-to-front so alpha
 ///             blends compose correctly.
 ///          5. Pre/post-3D HUD overlay draws via `begin_overlay_frame`.
-///          Must be called after all DrawMesh calls and before Flip.
+///          Must be called after all DrawMesh calls and before finalization or Flip.
 ///          Side effects: increments `frame_serial`, clears `draw_count`,
 ///          drains temp-buffer + temp-object queues, resets `in_frame`.
+///          Post-FX, final overlay replay, screenshots, and presentation happen
+///          in `FinalizeFrame`, `ScreenshotFinal`, and `Flip`, not here.
 void rt_canvas3d_end(void *obj) {
     deferred_draw_t *cmds;
     int32_t queued_draw_count;
@@ -3469,13 +3741,70 @@ void rt_canvas3d_end(void *obj) {
 }
 
 /*==========================================================================
- * Window lifecycle — same as before, no backend involvement
+ * Finalization and window lifecycle
  *=========================================================================*/
 
+/// @brief Replay recorded final-overlay commands after post-FX.
+static void canvas3d_replay_final_overlay(rt_canvas3d *c) {
+    deferred_draw_t *cmds;
+
+    if (!c || c->final_overlay_count <= 0 || !c->backend)
+        return;
+    if (!canvas3d_begin_overlay_frame(c, 1))
+        return;
+    cmds = (deferred_draw_t *)c->final_overlay_cmds;
+    for (int32_t i = 0; i < c->final_overlay_count; i++)
+        canvas3d_submit_deferred(c, &cmds[i]);
+    c->backend->end_frame(c->backend_ctx);
+    c->in_frame = 0;
+    c->frame_is_2d = 0;
+}
+
+/// @brief Apply post-FX and final overlay exactly once.
+void rt_canvas3d_finalize_frame(void *obj) {
+    rt_canvas3d *c = rt_canvas3d_checked_or_stack(obj);
+    if (!c)
+        return;
+    if (!c->gfx_win)
+        return;
+    if (c->frame_finalized)
+        return;
+
+    if (c->final_overlay_recording)
+        rt_canvas3d_end_overlay(obj);
+    if (c->in_frame)
+        rt_canvas3d_end(obj);
+
+    if (canvas3d_backend_uses_gpu_postfx(c)) {
+        if (c->frame_gpu_postfx_enabled) {
+            c->backend->present_postfx(c->backend_ctx, &c->frame_postfx_chain);
+            c->frame_presented_by_finalize = 1;
+            c->frame_finalized = 1;
+            return;
+        }
+    }
+
+    rt_postfx3d_apply_to_canvas(obj);
+    canvas3d_replay_final_overlay(c);
+    c->frame_finalized = 1;
+}
+
+/// @brief Return whether the current frame has already been finalized.
+int8_t rt_canvas3d_get_frame_finalized(void *obj) {
+    rt_canvas3d *c = rt_canvas3d_checked_or_stack(obj);
+    return c && c->frame_finalized ? 1 : 0;
+}
+
+/// @brief Capture finalized frame pixels, finalizing first if needed.
+void *rt_canvas3d_screenshot_final(void *obj) {
+    rt_canvas3d_finalize_frame(obj);
+    return rt_canvas3d_screenshot(obj);
+}
+
 /// @brief Present the rendered frame to the window (swaps buffers).
-/// @details Applies post-processing effects (if any), then presents the
-///          framebuffer via the backend's present function. Updates the FPS
-///          counter and delta-time calculation for the next frame.
+/// @details Finalizes the frame if needed, then presents finalized pixels.
+///          Updates the FPS counter and delta-time calculation for the next
+///          frame.
 void rt_canvas3d_flip(void *obj) {
     rt_canvas3d *c = rt_canvas3d_checked_or_stack(obj);
     if (!c)
@@ -3483,22 +3812,11 @@ void rt_canvas3d_flip(void *obj) {
     if (!c->gfx_win)
         return;
 
-    int gpu_postfx_presented = 0;
-    if (canvas3d_backend_uses_gpu_postfx(c)) {
-        if (c->frame_gpu_postfx_enabled) {
-            c->backend->present_postfx(c->backend_ctx, &c->frame_postfx_chain);
-            gpu_postfx_presented = 1;
-        }
-    }
-
-    if (!gpu_postfx_presented) {
-        /* Apply post-processing effects to the software framebuffer */
-        rt_postfx3d_apply_to_canvas(obj);
-    }
+    rt_canvas3d_finalize_frame(obj);
 
     /* Present the GPU drawable / swap the back buffer after all queued passes
      * for the frame have rendered into the backend's scene targets. */
-    if (!gpu_postfx_presented && c->backend && c->backend->present)
+    if (!c->frame_presented_by_finalize && c->backend && c->backend->present)
         c->backend->present(c->backend_ctx);
 
     /* Always call vgfx_update to keep the window alive and process display
@@ -3506,18 +3824,25 @@ void rt_canvas3d_flip(void *obj) {
     vgfx_update(c->gfx_win);
     c->frame_postfx_state_latched = 0;
     c->frame_gpu_postfx_enabled = 0;
+    c->frame_finalized = 0;
+    c->frame_presented_by_finalize = 0;
+    canvas3d_clear_final_overlay(c);
     vgfx3d_postfx_chain_reset(&c->frame_postfx_chain);
 
-    int64_t now_us = rt_clock_ticks_us();
-    if (c->last_flip_us > 0) {
-        int64_t delta_us = now_us - c->last_flip_us;
-        c->delta_time_us = delta_us > 0 ? delta_us : 0;
-        c->delta_time_ms = delta_us > 0 ? delta_us / 1000 : 0;
+    if (c->clock_source == 1) {
+        canvas3d_apply_synthetic_clock(c);
     } else {
-        c->delta_time_us = 0;
-        c->delta_time_ms = 0;
+        int64_t now_us = rt_clock_ticks_us();
+        if (c->last_flip_us > 0) {
+            int64_t delta_us = now_us - c->last_flip_us;
+            c->delta_time_us = delta_us > 0 ? delta_us : 0;
+            c->delta_time_ms = delta_us > 0 ? delta_us / 1000 : 0;
+        } else {
+            c->delta_time_us = 0;
+            c->delta_time_ms = 0;
+        }
+        c->last_flip_us = now_us;
     }
-    c->last_flip_us = now_us;
 
     if (vgfx_close_requested(c->gfx_win))
         canvas3d_close_window(c);
@@ -3547,94 +3872,105 @@ int64_t rt_canvas3d_poll(void *obj) {
     rt_canvas3d *c = rt_canvas3d_checked_or_stack(obj);
     if (!c)
         return 0;
-    if (!c->gfx_win)
+    if (!c->gfx_win && c->input_source != 1)
         return 0;
 
-    int8_t captured = rt_mouse_is_captured();
+    int8_t use_live = c->input_source != 1;
+    int8_t use_synthetic = c->input_source != 0;
+    int64_t last_event_type = VGFX_EVENT_NONE;
+    int8_t captured = use_live ? rt_mouse_is_captured() : 0;
 
     /* Begin frame (resets per-frame state for keyboard/mouse/pad) */
     rt_keyboard_begin_frame();
     rt_mouse_begin_frame();
     rt_pad_begin_frame();
-    rt_pad_poll();
 
-    if (!vgfx_pump_events(c->gfx_win)) {
-        canvas3d_close_window(c);
-        rt_action_update();
-        return VGFX_EVENT_NONE;
-    }
+    if (use_live) {
+        rt_pad_poll();
 
-    /* Read current platform mouse position */
-    int32_t mx, my;
-    vgfx_mouse_pos(c->gfx_win, &mx, &my);
-
-    /* For captured (FPS) mode: compute delta as offset from window center.
-     * This avoids issues with warp timing, stale events, and OS mouse tracking. */
-    if (captured) {
-        int32_t cw, ch;
-        vgfx_get_size(c->gfx_win, &cw, &ch);
-        int32_t cx = cw / 2, cy = ch / 2;
-        float scale = vgfx_window_get_scale(c->gfx_win);
-        if (scale < 0.001f)
-            scale = 1.0f;
-        int64_t dx = (int64_t)(((double)mx - (double)cx) / (double)scale);
-        int64_t dy = (int64_t)(((double)my - (double)cy) / (double)scale);
-        rt_mouse_force_delta(dx, dy);
-    } else {
-        rt_canvas3d_update_mouse_from_physical(c->gfx_win, mx, my);
-    }
-
-    /* Process events (keyboard + mouse buttons only — mouse moves handled above) */
-    vgfx_event_t evt;
-    int64_t last_event_type = VGFX_EVENT_NONE;
-    while (vgfx_poll_event(c->gfx_win, &evt)) {
-        last_event_type = (int64_t)evt.type;
-        if (evt.type == VGFX_EVENT_KEY_DOWN)
-            rt_keyboard_on_vgfx_key_down((int64_t)evt.data.key.key);
-        else if (evt.type == VGFX_EVENT_KEY_UP)
-            rt_keyboard_on_vgfx_key_up((int64_t)evt.data.key.key);
-        else if (evt.type == VGFX_EVENT_TEXT_INPUT)
-            rt_keyboard_text_input((int32_t)evt.data.text.codepoint);
-        else if (evt.type == VGFX_EVENT_CLOSE) {
+        if (!vgfx_pump_events(c->gfx_win)) {
             canvas3d_close_window(c);
-            break;
+            rt_action_update();
+            return VGFX_EVENT_NONE;
         }
-        else if (!captured && evt.type == VGFX_EVENT_MOUSE_MOVE) {
-            rt_canvas3d_update_mouse_from_physical(
-                c->gfx_win, evt.data.mouse_move.x, evt.data.mouse_move.y);
-        } else if (evt.type == VGFX_EVENT_MOUSE_DOWN) {
-            rt_canvas3d_update_mouse_from_physical(
-                c->gfx_win, evt.data.mouse_button.x, evt.data.mouse_button.y);
-            rt_mouse_button_down((int64_t)evt.data.mouse_button.button);
-        } else if (evt.type == VGFX_EVENT_MOUSE_UP) {
-            rt_canvas3d_update_mouse_from_physical(
-                c->gfx_win, evt.data.mouse_button.x, evt.data.mouse_button.y);
-            rt_mouse_button_up((int64_t)evt.data.mouse_button.button);
-        } else if (evt.type == VGFX_EVENT_RESIZE) {
-            rt_canvas3d_apply_resize(c, evt.data.resize.width, evt.data.resize.height);
-        } else if (evt.type == VGFX_EVENT_SCROLL) {
-            rt_canvas3d_update_mouse_from_physical(c->gfx_win, evt.data.scroll.x, evt.data.scroll.y);
-            rt_mouse_update_wheel((double)evt.data.scroll.delta_x,
-                                  (double)evt.data.scroll.delta_y);
-        }
-    }
 
-    if (!c->gfx_win) {
-        rt_action_update();
-        return last_event_type;
-    }
-
-    if (!captured) {
+        /* Read current platform mouse position */
+        int32_t mx, my;
         vgfx_mouse_pos(c->gfx_win, &mx, &my);
-        rt_canvas3d_update_mouse_from_physical(c->gfx_win, mx, my);
+
+        /* For captured (FPS) mode: compute delta as offset from window center.
+         * This avoids issues with warp timing, stale events, and OS mouse tracking. */
+        if (captured) {
+            int32_t cw, ch;
+            vgfx_get_size(c->gfx_win, &cw, &ch);
+            int32_t cx = cw / 2, cy = ch / 2;
+            float scale = vgfx_window_get_scale(c->gfx_win);
+            if (scale < 0.001f)
+                scale = 1.0f;
+            int64_t dx = (int64_t)(((double)mx - (double)cx) / (double)scale);
+            int64_t dy = (int64_t)(((double)my - (double)cy) / (double)scale);
+            rt_mouse_force_delta(dx, dy);
+        } else {
+            rt_canvas3d_update_mouse_from_physical(c->gfx_win, mx, my);
+        }
+
+        /* Process events (keyboard + mouse buttons only — mouse moves handled above) */
+        vgfx_event_t evt;
+        while (vgfx_poll_event(c->gfx_win, &evt)) {
+            last_event_type = (int64_t)evt.type;
+            if (evt.type == VGFX_EVENT_KEY_DOWN)
+                rt_keyboard_on_vgfx_key_down((int64_t)evt.data.key.key);
+            else if (evt.type == VGFX_EVENT_KEY_UP)
+                rt_keyboard_on_vgfx_key_up((int64_t)evt.data.key.key);
+            else if (evt.type == VGFX_EVENT_TEXT_INPUT)
+                rt_keyboard_text_input((int32_t)evt.data.text.codepoint);
+            else if (evt.type == VGFX_EVENT_CLOSE) {
+                canvas3d_close_window(c);
+                break;
+            } else if (!captured && evt.type == VGFX_EVENT_MOUSE_MOVE) {
+                rt_canvas3d_update_mouse_from_physical(
+                    c->gfx_win, evt.data.mouse_move.x, evt.data.mouse_move.y);
+            } else if (evt.type == VGFX_EVENT_MOUSE_DOWN) {
+                rt_canvas3d_update_mouse_from_physical(
+                    c->gfx_win, evt.data.mouse_button.x, evt.data.mouse_button.y);
+                rt_mouse_button_down((int64_t)evt.data.mouse_button.button);
+            } else if (evt.type == VGFX_EVENT_MOUSE_UP) {
+                rt_canvas3d_update_mouse_from_physical(
+                    c->gfx_win, evt.data.mouse_button.x, evt.data.mouse_button.y);
+                rt_mouse_button_up((int64_t)evt.data.mouse_button.button);
+            } else if (evt.type == VGFX_EVENT_RESIZE) {
+                rt_canvas3d_apply_resize(c, evt.data.resize.width, evt.data.resize.height);
+            } else if (evt.type == VGFX_EVENT_SCROLL) {
+                rt_canvas3d_update_mouse_from_physical(
+                    c->gfx_win, evt.data.scroll.x, evt.data.scroll.y);
+                rt_mouse_update_wheel((double)evt.data.scroll.delta_x,
+                                      (double)evt.data.scroll.delta_y);
+            }
+        }
+
+        if (!c->gfx_win) {
+            rt_action_update();
+            return last_event_type;
+        }
+
+        if (!captured) {
+            vgfx_mouse_pos(c->gfx_win, &mx, &my);
+            rt_canvas3d_update_mouse_from_physical(c->gfx_win, mx, my);
+        }
     }
+
+    if (use_synthetic)
+        canvas3d_apply_synthetic_input(c);
 
     /* Update action mapping state after input devices and event queues are
      * finalized so action queries observe this frame's input. */
     rt_action_update();
 
+    if (c->clock_source == 1)
+        canvas3d_apply_synthetic_clock(c);
+
     /* Warp cursor to center for next frame (only when captured) */
-    if (captured) {
+    if (use_live && captured) {
         int32_t cw, ch;
         vgfx_get_size(c->gfx_win, &cw, &ch);
         vgfx_warp_cursor(c->gfx_win, cw / 2, ch / 2);
@@ -3755,6 +4091,86 @@ void rt_canvas3d_set_dt_max(void *obj, int64_t max_ms) {
         c->dt_max_ms = max_ms > 0 ? max_ms : 0;
 }
 
+/// @brief Select live, synthetic, or live+synthetic input.
+void rt_canvas3d_set_input_source(void *obj, int64_t mode) {
+    rt_canvas3d *c = rt_canvas3d_checked_or_stack(obj);
+    if (!c)
+        return;
+    int32_t next = canvas3d_input_source_from_mode(mode);
+    if (next == 0 && c->input_source != 0)
+        canvas3d_release_synthetic_input(c);
+    c->input_source = next;
+}
+
+/// @brief Queue a synthetic keyboard transition for the next synthetic input frame.
+void rt_canvas3d_push_synthetic_key(void *obj, int64_t key, int8_t down) {
+    rt_canvas3d *c = rt_canvas3d_checked_or_stack(obj);
+    if (!c || key <= 0 || key >= VIPER_KEY_MAX)
+        return;
+    if (c->synthetic_key_count >= CANVAS3D_SYNTHETIC_KEY_QUEUE_MAX)
+        return;
+    int32_t idx = c->synthetic_key_count++;
+    c->synthetic_key_keys[idx] = key;
+    c->synthetic_key_downs[idx] = down ? 1 : 0;
+}
+
+/// @brief Queue a synthetic mouse movement/button/wheel sample.
+void rt_canvas3d_push_synthetic_mouse(
+    void *obj, double dx, double dy, int64_t buttons, double wheel) {
+    rt_canvas3d *c = rt_canvas3d_checked_or_stack(obj);
+    if (!c)
+        return;
+    if (isfinite(dx))
+        c->synthetic_mouse_dx += dx;
+    if (isfinite(dy))
+        c->synthetic_mouse_dy += dy;
+    if (isfinite(wheel))
+        c->synthetic_mouse_wheel_y += wheel;
+    c->synthetic_mouse_buttons =
+        buttons > 0 ? buttons & ((1LL << VIPER_MOUSE_BUTTON_MAX) - 1LL) : 0;
+    c->synthetic_mouse_has_buttons = 1;
+}
+
+/// @brief Clear queued synthetic input and release keys/buttons held by the synthetic source.
+void rt_canvas3d_clear_synthetic_input(void *obj) {
+    rt_canvas3d *c = rt_canvas3d_checked_or_stack(obj);
+    canvas3d_release_synthetic_input(c);
+}
+
+/// @brief Select live wall-clock or fixed synthetic delta-time source.
+void rt_canvas3d_set_clock_source(void *obj, int64_t mode) {
+    rt_canvas3d *c = rt_canvas3d_checked_or_stack(obj);
+    if (!c)
+        return;
+    c->clock_source = canvas3d_clock_source_from_mode(mode);
+    if (c->clock_source == 1)
+        canvas3d_apply_synthetic_clock(c);
+}
+
+/// @brief Set the fixed synthetic delta time in seconds.
+void rt_canvas3d_set_synthetic_delta_time_sec(void *obj, double dt) {
+    rt_canvas3d *c = rt_canvas3d_checked_or_stack(obj);
+    if (!c)
+        return;
+    c->synthetic_dt_us = canvas3d_synthetic_seconds_to_us(dt);
+    if (c->clock_source == 1)
+        canvas3d_apply_synthetic_clock(c);
+}
+
+/// @brief Advance one deterministic synthetic input/timing frame.
+void rt_canvas3d_advance_synthetic_frame(void *obj) {
+    rt_canvas3d *c = rt_canvas3d_checked_or_stack(obj);
+    if (!c)
+        return;
+    rt_keyboard_begin_frame();
+    rt_mouse_begin_frame();
+    rt_pad_begin_frame();
+    canvas3d_apply_synthetic_input(c);
+    rt_action_update();
+    if (c->clock_source == 1)
+        canvas3d_apply_synthetic_clock(c);
+}
+
 /// @brief Assign a light to one of the per-canvas light slots.
 /// @details Slot index must be in [0, VGFX3D_MAX_LIGHTS). Pass NULL to clear a slot.
 void rt_canvas3d_set_light(void *obj, int64_t index, void *light) {
@@ -3764,6 +4180,64 @@ void rt_canvas3d_set_light(void *obj, int64_t index, void *light) {
     if (light && !rt_g3d_has_class(light, RT_G3D_LIGHT3D_CLASS_ID))
         return;
     canvas3d_assign_owned_ref((void **)&c->lights[index], light);
+}
+
+/// @brief Clear every retained per-canvas light slot.
+void rt_canvas3d_clear_lights(void *obj) {
+    rt_canvas3d *c = rt_canvas3d_checked_or_stack(obj);
+    if (!c)
+        return;
+    for (int32_t i = 0; i < VGFX3D_MAX_LIGHTS; i++)
+        canvas3d_release_owned_ref((void **)&c->lights[i]);
+}
+
+/// @brief Count active per-canvas light slots.
+int64_t rt_canvas3d_get_light_count(void *obj) {
+    rt_canvas3d *c = rt_canvas3d_checked_or_stack(obj);
+    int64_t count = 0;
+    if (!c)
+        return 0;
+    for (int32_t i = 0; i < VGFX3D_MAX_LIGHTS; i++) {
+        if (c->lights[i] && c->lights[i]->enabled)
+            count++;
+    }
+    return count;
+}
+
+/// @brief Install a readable key/fill/ambient setup without enabling implicit fallback lighting.
+void rt_canvas3d_set_default_lighting(void *obj) {
+    rt_canvas3d *c = rt_canvas3d_checked_or_stack(obj);
+    void *key_dir;
+    void *fill_dir;
+    void *key;
+    void *fill;
+    if (!c)
+        return;
+
+    rt_canvas3d_clear_lights(c);
+    c->ambient[0] = 0.18f;
+    c->ambient[1] = 0.18f;
+    c->ambient[2] = 0.20f;
+    if (c->shadows_enabled && (!isfinite(c->shadow_bias) || c->shadow_bias <= 0.0f))
+        c->shadow_bias = 0.005f;
+
+    key_dir = rt_vec3_new(-0.45, -0.75, -0.48);
+    fill_dir = rt_vec3_new(0.65, -0.35, 0.55);
+    key = key_dir ? rt_light3d_new_directional(key_dir, 1.0, 0.96, 0.88) : NULL;
+    fill = fill_dir ? rt_light3d_new_directional(fill_dir, 0.55, 0.65, 1.0) : NULL;
+    rt_light3d_set_intensity(key, 1.35);
+    rt_light3d_set_intensity(fill, 0.35);
+    canvas3d_assign_owned_ref((void **)&c->lights[0], key);
+    canvas3d_assign_owned_ref((void **)&c->lights[1], fill);
+
+    if (key && rt_obj_release_check0(key))
+        rt_obj_free(key);
+    if (fill && rt_obj_release_check0(fill))
+        rt_obj_free(fill);
+    if (key_dir && rt_obj_release_check0(key_dir))
+        rt_obj_free(key_dir);
+    if (fill_dir && rt_obj_release_check0(fill_dir))
+        rt_obj_free(fill_dir);
 }
 
 /// @brief Set the global ambient light color for the canvas (applied to all surfaces).

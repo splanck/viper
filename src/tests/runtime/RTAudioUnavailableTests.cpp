@@ -50,6 +50,10 @@ static void trap_sound_load() {
     (void)rt_sound_load(rt_const_cstr("missing.wav"));
 }
 
+static void trap_sound_load_asset() {
+    (void)rt_sound_load_asset(rt_const_cstr("asset://missing.wav"));
+}
+
 static void trap_sound_play() {
     (void)rt_sound_play(reinterpret_cast<void *>(1));
 }
@@ -86,6 +90,7 @@ static void test_soundbank_register_returns_failure_without_trapping() {
 
 static void test_null_handle_apis_do_not_trap() {
     assert(rt_sound_load(nullptr) == nullptr);
+    assert(rt_sound_load_asset(nullptr) == nullptr);
     assert(rt_sound_load_mem(nullptr, 16) == nullptr);
     assert(rt_sound_load_mem("RIFF", 0) == nullptr);
     assert(rt_sound_play(nullptr) == -1);
@@ -124,6 +129,7 @@ int main() {
 #else
     assert(rt_audio_is_available() == 0);
     expect_invalid_operation(trap_sound_load, "not compiled in");
+    expect_invalid_operation(trap_sound_load_asset, "not compiled in");
     expect_invalid_operation(trap_sound_play, "not compiled in");
     expect_invalid_operation(trap_music_load, "not compiled in");
     expect_invalid_operation(trap_music_play, "not compiled in");

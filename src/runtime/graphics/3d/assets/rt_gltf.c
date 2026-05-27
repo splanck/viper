@@ -23,6 +23,7 @@
 #ifdef VIPER_ENABLE_GRAPHICS
 
 #include "rt_gltf.h"
+#include "rt_asset.h"
 #include "rt_scene3d_internal.h"
 #include "rt_canvas3d.h"
 #include "rt_canvas3d_internal.h"
@@ -1767,6 +1768,7 @@ static void *gltf_new_punctual_light(void *light_json) {
     light->direction[0] = 0.0;
     light->direction[1] = 0.0;
     light->direction[2] = -1.0;
+    light->enabled = 1;
 
     if (strcmp(type, "directional") == 0) {
         light->type = 0;
@@ -2044,6 +2046,122 @@ static void gltf_resolve_relative_path(const char *base_path,
         strncpy(out, decoded_uri, out_cap - 1);
         out[out_cap - 1] = '\0';
     }
+}
+
+static int gltf_is_asset_uri(const char *path) {
+    return path && strncmp(path, "asset://", 8) == 0;
+}
+
+static uint8_t *gltf_read_file_bytes(const char *filepath, size_t *out_size) {
+    if (out_size)
+        *out_size = 0;
+    if (!filepath)
+        return NULL;
+    FILE *f = fopen(filepath, "rb");
+    if (!f)
+        return NULL;
+    if (fseek(f, 0, SEEK_END) != 0) {
+        fclose(f);
+        return NULL;
+    }
+    long fsize = ftell(f);
+    if (fseek(f, 0, SEEK_SET) != 0) {
+        fclose(f);
+        return NULL;
+    }
+    if (fsize <= 0 || fsize > 256 * 1024 * 1024) {
+        fclose(f);
+        return NULL;
+    }
+    uint8_t *file_data = (uint8_t *)malloc((size_t)fsize);
+    if (!file_data) {
+        fclose(f);
+        return NULL;
+    }
+    if (fread(file_data, 1, (size_t)fsize, f) != (size_t)fsize) {
+        free(file_data);
+        fclose(f);
+        return NULL;
+    }
+    fclose(f);
+    if (out_size)
+        *out_size = (size_t)fsize;
+    return file_data;
+}
+
+static void gltf_trap_asset_dependency(const char *model_path,
+                                       const char *dependency_path,
+                                       const char *kind) {
+    char msg[2048];
+    snprintf(msg,
+             sizeof(msg),
+             "GLTF.LoadAsset: failed to load %s dependency '%s' for model '%s'",
+             kind ? kind : "asset",
+             dependency_path ? dependency_path : "",
+             model_path ? model_path : "");
+    rt_trap(msg);
+}
+
+static uint8_t *gltf_load_root_bytes(rt_string path,
+                                     const char *filepath,
+                                     int load_assets,
+                                     size_t *out_size) {
+    uint8_t *data = NULL;
+    if (out_size)
+        *out_size = 0;
+    if (load_assets) {
+        data = rt_asset_load_raw(path, out_size);
+        if (data || gltf_is_asset_uri(filepath))
+            return data;
+    }
+    return gltf_read_file_bytes(filepath, out_size);
+}
+
+static uint8_t *gltf_load_dependency_bytes(const char *resource_path,
+                                           int load_assets,
+                                           size_t required_len,
+                                           size_t *out_size) {
+    uint8_t *data = NULL;
+    size_t len = 0;
+    if (out_size)
+        *out_size = 0;
+    if (!resource_path)
+        return NULL;
+    if (load_assets) {
+        data = rt_asset_load_raw(rt_const_cstr(resource_path), &len);
+        if (data || gltf_is_asset_uri(resource_path))
+            goto done;
+    }
+    data = gltf_read_file_bytes(resource_path, &len);
+
+done:
+    if (!data)
+        return NULL;
+    if (len < required_len) {
+        free(data);
+        return NULL;
+    }
+    if (out_size)
+        *out_size = len;
+    return data;
+}
+
+static void *gltf_load_dependency_image(const char *resource_path, int load_assets) {
+    if (!resource_path || resource_path[0] == '\0')
+        return NULL;
+    if (load_assets) {
+        size_t data_len = 0;
+        uint8_t *data = rt_asset_load_raw(rt_const_cstr(resource_path), &data_len);
+        if (data) {
+            void *decoded = rt_asset_decode_typed(resource_path, data, data_len);
+            free(data);
+            if (decoded)
+                return decoded;
+        }
+        if (gltf_is_asset_uri(resource_path))
+            return NULL;
+    }
+    return rt_pixels_load(rt_const_cstr(resource_path));
 }
 
 /// @brief Synthesize a name for an embedded resource (e.g. `inline-image-3.png`).
@@ -3150,35 +3268,21 @@ static void gltf_parse_node_animations(rt_gltf_asset *asset,
 ///          the caller never sees a half-built asset.
 /// @param path File path to `.gltf` or `.glb`.
 /// @return Opaque rt_gltf_asset*, or NULL on failure.
-void *rt_gltf_load(rt_string path) {
+static void *rt_gltf_load_impl(rt_string path, int load_assets) {
     if (!path)
         return NULL;
     const char *filepath = rt_string_cstr(path);
     if (!filepath)
         return NULL;
 
-    // Read file
-    FILE *f = fopen(filepath, "rb");
-    if (!f)
-        return NULL;
-    fseek(f, 0, SEEK_END);
-    long fsize = ftell(f);
-    fseek(f, 0, SEEK_SET);
-    if (fsize <= 0 || fsize > 256 * 1024 * 1024) {
-        fclose(f);
-        return NULL;
-    }
-    uint8_t *file_data = (uint8_t *)malloc((size_t)fsize);
+    size_t file_size = 0;
+    uint8_t *file_data = gltf_load_root_bytes(path, filepath, load_assets, &file_size);
     if (!file_data) {
-        fclose(f);
+        if (load_assets)
+            gltf_trap_asset_dependency(filepath, filepath, "model");
         return NULL;
     }
-    if (fread(file_data, 1, (size_t)fsize, f) != (size_t)fsize) {
-        free(file_data);
-        fclose(f);
-        return NULL;
-    }
-    fclose(f);
+    long fsize = (long)file_size;
 
     // Detect .glb vs .gltf
     char *json_str = NULL;
@@ -3349,22 +3453,13 @@ void *rt_gltf_load(rt_string path) {
                     load_failed = 1;
                     break;
                 }
-                FILE *bf = fopen(buf_path, "rb");
-                if (bf) {
-                    fseek(bf, 0, SEEK_END);
-                    long blen = ftell(bf);
-                    fseek(bf, 0, SEEK_SET);
-                    if (blen >= 0 && (size_t)blen >= byte_length) {
-                        buffers[i].data = (uint8_t *)malloc(byte_length > 0 ? byte_length : 1);
-                        if (buffers[i].data) {
-                            if (byte_length == 0 ||
-                                fread(buffers[i].data, 1, byte_length, bf) == byte_length)
-                                buffers[i].len = byte_length;
-                        }
-                    }
-                    fclose(bf);
-                }
+                buffers[i].data =
+                    gltf_load_dependency_bytes(buf_path, load_assets, byte_length, NULL);
+                if (buffers[i].data)
+                    buffers[i].len = byte_length;
                 if (byte_length > 0 && (!buffers[i].data || buffers[i].len < byte_length)) {
+                    if (load_assets)
+                        gltf_trap_asset_dependency(filepath, buf_path, "buffer");
                     load_failed = 1;
                     break;
                 }
@@ -3444,7 +3539,12 @@ void *rt_gltf_load(rt_string path) {
             char image_path[1024];
             gltf_resolve_relative_path(filepath, uri, image_path, sizeof(image_path));
             if (image_path[0] != '\0')
-                images[i] = rt_pixels_load(rt_const_cstr(image_path));
+                images[i] = gltf_load_dependency_image(image_path, load_assets);
+            if (!images[i] && load_assets) {
+                gltf_trap_asset_dependency(filepath, image_path, "image");
+                load_failed = 1;
+                break;
+            }
         } else {
             int64_t view_idx = jint(image_json, "bufferView", -1);
             image_data = gltf_get_buffer_view_data(root, view_idx, buffers, buf_count, &image_len);
@@ -4235,6 +4335,14 @@ void *rt_gltf_load(rt_string path) {
         return NULL;
     }
     return asset;
+}
+
+void *rt_gltf_load(rt_string path) {
+    return rt_gltf_load_impl(path, 0);
+}
+
+void *rt_gltf_load_asset(rt_string path) {
+    return rt_gltf_load_impl(path, 1);
 }
 
 /// @brief Get the number of meshes extracted from the GLTF file.

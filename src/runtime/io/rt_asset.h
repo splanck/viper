@@ -28,6 +28,7 @@
 #pragma once
 
 #include "rt_string.h"
+#include <stddef.h>
 #include <stdint.h>
 
 #ifdef __cplusplus
@@ -47,6 +48,14 @@ void *rt_asset_load(rt_string name);
 /// @brief Load an asset by name as raw Bytes, regardless of extension.
 /// Returns NULL if not found.
 void *rt_asset_load_bytes(rt_string name);
+
+/// @brief Load an asset by name into a malloc-owned raw buffer.
+/// @details Runtime-internal convenience for asset-aware decoders that need to
+///          parse bytes directly. Resolution matches LoadBytes().
+/// @param name Asset name. The optional asset:// scheme is stripped before lookup.
+/// @param out_size Receives the byte count on success, 0 on failure.
+/// @return malloc-owned byte buffer, or NULL if not found/invalid. Caller frees.
+uint8_t *rt_asset_load_raw(rt_string name, size_t *out_size);
 
 /// @brief Check if an asset exists (embedded, in pack, or on disk).
 /// @return 1 if found, 0 otherwise.

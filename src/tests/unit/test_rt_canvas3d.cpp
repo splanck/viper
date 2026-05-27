@@ -773,6 +773,24 @@ static void test_material_new_textured() {
     PASS();
 }
 
+static void test_material_inspection_getters() {
+    TEST("Material3D inspection getters");
+    void *m = rt_material3d_new_color(0.25, 0.5, 0.75);
+    assert(m);
+    void *color = rt_material3d_get_color(m);
+    EXPECT_NEAR(rt_vec3_x(color), 0.25, 0.001);
+    EXPECT_NEAR(rt_vec3_y(color), 0.5, 0.001);
+    EXPECT_NEAR(rt_vec3_z(color), 0.75, 0.001);
+    EXPECT_EQ(rt_material3d_get_unlit(m), 0);
+    rt_material3d_set_unlit(m, 1);
+    EXPECT_EQ(rt_material3d_get_unlit(m), 1);
+    rt_material3d_set_shading_model(m, 4);
+    EXPECT_EQ(rt_material3d_get_shading_model(m), 4);
+    rt_material3d_set_shading_model(m, 99);
+    EXPECT_EQ(rt_material3d_get_shading_model(m), 0);
+    PASS();
+}
+
 //=============================================================================
 // Light3D tests
 //=============================================================================
@@ -812,6 +830,32 @@ static void test_light_set_color() {
     TEST("Light3D.SetColor — no crash");
     void *l = rt_light3d_new_ambient(0.1, 0.1, 0.1);
     rt_light3d_set_color(l, 0.5, 0.5, 0.5);
+    PASS();
+}
+
+static void test_light_inspection_getters_and_enabled() {
+    TEST("Light3D inspection getters and Enabled");
+    void *dir = rt_vec3_new(0.0, -2.0, 0.0);
+    void *pos = rt_vec3_new(1.0, 2.0, 3.0);
+    void *sun = rt_light3d_new_directional(dir, 1.0, 0.8, 0.6);
+    void *point = rt_light3d_new_point(pos, 0.25, 0.5, 0.75, 0.2);
+    assert(sun && point);
+    void *sun_dir = rt_light3d_get_direction(sun);
+    void *point_pos = rt_light3d_get_position(point);
+    void *point_color = rt_light3d_get_color(point);
+    EXPECT_EQ(rt_light3d_get_type(sun), 0);
+    EXPECT_EQ(rt_light3d_get_type(point), 1);
+    EXPECT_EQ(rt_light3d_get_enabled(point), 1);
+    EXPECT_NEAR(rt_light3d_get_intensity(point), 1.0, 0.001);
+    EXPECT_NEAR(rt_vec3_y(sun_dir), -1.0, 0.001);
+    EXPECT_NEAR(rt_vec3_x(point_pos), 1.0, 0.001);
+    EXPECT_NEAR(rt_vec3_y(point_pos), 2.0, 0.001);
+    EXPECT_NEAR(rt_vec3_z(point_pos), 3.0, 0.001);
+    EXPECT_NEAR(rt_vec3_x(point_color), 0.25, 0.001);
+    EXPECT_NEAR(rt_vec3_y(point_color), 0.5, 0.001);
+    EXPECT_NEAR(rt_vec3_z(point_color), 0.75, 0.001);
+    rt_light3d_set_enabled(point, 0);
+    EXPECT_EQ(rt_light3d_get_enabled(point), 0);
     PASS();
 }
 
@@ -1984,6 +2028,34 @@ static void test_canvas_light_supports_last_slot() {
     PASS();
 }
 
+static void test_canvas_default_lighting_and_clear_lights() {
+    TEST("Canvas3D.SetDefaultLighting and ClearLights");
+    rt_canvas3d canvas;
+    memset(&canvas, 0, sizeof(canvas));
+    g_light_release_count = 0;
+
+    rt_canvas3d_set_default_lighting(&canvas);
+    EXPECT_EQ(rt_canvas3d_get_light_count(&canvas), 2);
+    EXPECT_TRUE(canvas.lights[0] != nullptr && canvas.lights[1] != nullptr,
+                "Default lighting installs key/fill lights");
+    EXPECT_EQ(rt_light3d_get_type(canvas.lights[0]), 0);
+    EXPECT_NEAR(canvas.ambient[0], 0.18, 0.001);
+    EXPECT_NEAR(canvas.ambient[1], 0.18, 0.001);
+    EXPECT_NEAR(canvas.ambient[2], 0.20, 0.001);
+    rt_obj_set_finalizer(canvas.lights[0], tracked_light_finalizer);
+    rt_obj_set_finalizer(canvas.lights[1], tracked_light_finalizer);
+
+    rt_light3d_set_enabled(canvas.lights[1], 0);
+    EXPECT_EQ(rt_canvas3d_get_light_count(&canvas), 1);
+
+    rt_canvas3d_clear_lights(&canvas);
+    EXPECT_EQ(rt_canvas3d_get_light_count(&canvas), 0);
+    EXPECT_TRUE(canvas.lights[0] == nullptr && canvas.lights[1] == nullptr,
+                "ClearLights clears retained slots");
+    EXPECT_EQ(g_light_release_count, 2);
+    PASS();
+}
+
 static void test_rendertarget_as_pixels_syncs_gpu_color_on_demand() {
     TEST("RenderTarget3D.AsPixels syncs backend-owned color on demand");
     rt_rendertarget3d *rt = (rt_rendertarget3d *)rt_rendertarget3d_new(1, 1);
@@ -3146,6 +3218,7 @@ int main() {
     test_material_new();
     test_material_new_color();
     test_material_new_textured();
+    test_material_inspection_getters();
     test_material_set_color();
     test_material_sanitizes_numeric_inputs();
     test_material_set_shininess();
@@ -3158,6 +3231,7 @@ int main() {
     test_light_ambient();
     test_light_set_intensity();
     test_light_set_color();
+    test_light_inspection_getters_and_enabled();
     test_light_null_safety();
     test_light_spot();
     test_light_spot_intensity();
@@ -3220,6 +3294,7 @@ int main() {
     test_canvas_render_target_rejects_mid_frame_changes();
     test_canvas_light_retains_owned_reference();
     test_canvas_light_supports_last_slot();
+    test_canvas_default_lighting_and_clear_lights();
     test_canvas_delta_time_preserves_first_zero();
     test_canvas_delta_time_cap_and_disable();
     test_canvas_fps_uses_microsecond_delta();

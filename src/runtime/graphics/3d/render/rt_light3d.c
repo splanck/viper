@@ -29,6 +29,7 @@
 #include "rt_canvas3d.h"
 #include "rt_canvas3d_internal.h"
 #include "rt_graphics3d_ids.h"
+#include "rt_vec3.h"
 
 #include <math.h>
 #include <stdint.h>
@@ -175,6 +176,7 @@ void *rt_light3d_new_directional(void *direction, double r, double g, double b) 
     light->color[2] = clamp01(b);
     light->intensity = 1.0;
     light->attenuation = 0.0;
+    light->enabled = 1;
     return light;
 }
 
@@ -210,6 +212,7 @@ void *rt_light3d_new_point(void *position, double r, double g, double b, double 
     light->color[2] = clamp01(b);
     light->intensity = 1.0;
     light->attenuation = clamp_min0(attenuation);
+    light->enabled = 1;
     return light;
 }
 
@@ -237,6 +240,7 @@ void *rt_light3d_new_ambient(double r, double g, double b) {
     light->color[2] = clamp01(b);
     light->intensity = 1.0;
     light->attenuation = 0.0;
+    light->enabled = 1;
     return light;
 }
 
@@ -291,6 +295,7 @@ void *rt_light3d_new_spot(void *position,
     sanitize_spot_angles(&inner_angle, &outer_angle);
     light->inner_cos = cos(inner_angle * pi / 180.0);
     light->outer_cos = cos(outer_angle * pi / 180.0);
+    light->enabled = 1;
     return light;
 }
 
@@ -319,6 +324,62 @@ void rt_light3d_set_color(void *obj, double r, double g, double b) {
     l->color[0] = clamp01(r);
     l->color[1] = clamp01(g);
     l->color[2] = clamp01(b);
+}
+
+/// @brief Read the light type enum value.
+int64_t rt_light3d_get_type(void *obj) {
+    rt_light3d *light = light3d_checked(obj);
+    if (!light)
+        return 0;
+    return light->type;
+}
+
+/// @brief Read the light color as a fresh Vec3.
+void *rt_light3d_get_color(void *obj) {
+    rt_light3d *light = light3d_checked(obj);
+    if (!light)
+        return rt_vec3_new(0.0, 0.0, 0.0);
+    return rt_vec3_new(light->color[0], light->color[1], light->color[2]);
+}
+
+/// @brief Read the light intensity.
+double rt_light3d_get_intensity(void *obj) {
+    rt_light3d *light = light3d_checked(obj);
+    if (!light)
+        return 0.0;
+    return light->intensity;
+}
+
+/// @brief Enable or disable a light without removing it from its owning slot.
+void rt_light3d_set_enabled(void *obj, int8_t enabled) {
+    rt_light3d *light = light3d_checked(obj);
+    if (!light)
+        return;
+    light->enabled = enabled ? 1 : 0;
+}
+
+/// @brief Return whether this light currently contributes to rendering.
+int8_t rt_light3d_get_enabled(void *obj) {
+    rt_light3d *light = light3d_checked(obj);
+    if (!light)
+        return 0;
+    return light->enabled ? 1 : 0;
+}
+
+/// @brief Read the light direction as a fresh Vec3.
+void *rt_light3d_get_direction(void *obj) {
+    rt_light3d *light = light3d_checked(obj);
+    if (!light)
+        return rt_vec3_new(0.0, -1.0, 0.0);
+    return rt_vec3_new(light->direction[0], light->direction[1], light->direction[2]);
+}
+
+/// @brief Read the light position as a fresh Vec3.
+void *rt_light3d_get_position(void *obj) {
+    rt_light3d *light = light3d_checked(obj);
+    if (!light)
+        return rt_vec3_new(0.0, 0.0, 0.0);
+    return rt_vec3_new(light->position[0], light->position[1], light->position[2]);
 }
 
 #else

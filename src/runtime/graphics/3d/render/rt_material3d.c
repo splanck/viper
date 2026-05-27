@@ -32,6 +32,7 @@
 #include "rt_canvas3d_internal.h"
 #include "rt_pixels.h"
 #include "rt_pixels_internal.h"
+#include "rt_vec3.h"
 
 #include <math.h>
 #include <stdint.h>
@@ -412,6 +413,14 @@ void rt_material3d_set_color(void *obj, double r, double g, double b) {
     mat->diffuse[2] = sanitize_color(b);
 }
 
+/// @brief Read the material diffuse/base color as a fresh Vec3.
+void *rt_material3d_get_color(void *obj) {
+    rt_material3d *mat = material_checked(obj);
+    if (!mat)
+        return rt_vec3_new(1.0, 1.0, 1.0);
+    return rt_vec3_new(mat->diffuse[0], mat->diffuse[1], mat->diffuse[2]);
+}
+
 /// @brief Set or replace the diffuse texture map.
 void rt_material3d_set_texture(void *obj, void *pixels) {
     rt_material3d *mat = material_checked(obj);
@@ -543,6 +552,14 @@ void rt_material3d_set_unlit(void *obj, int8_t unlit) {
     mat->unlit = unlit ? 1 : 0;
 }
 
+/// @brief Return whether unlit mode is enabled.
+int8_t rt_material3d_get_unlit(void *obj) {
+    rt_material3d *mat = material_checked(obj);
+    if (!mat)
+        return 0;
+    return mat->unlit ? 1 : 0;
+}
+
 /// @brief Select the shading model (0=Phong, 1=Blinn-Phong, 2=flat, etc.).
 /// @details Model values outside [0,5] are clamped to 0 (Phong).
 void rt_material3d_set_shading_model(void *obj, int64_t model) {
@@ -552,6 +569,14 @@ void rt_material3d_set_shading_model(void *obj, int64_t model) {
     if (model < 0 || model > 5)
         model = 0;
     mat->shading_model = (int32_t)model;
+}
+
+/// @brief Read the current shading model.
+int64_t rt_material3d_get_shading_model(void *obj) {
+    rt_material3d *mat = material_checked(obj);
+    if (!mat)
+        return 0;
+    return mat->shading_model;
 }
 
 /// @brief Set a custom shader parameter by index (0–7) for advanced shading effects.

@@ -23,6 +23,7 @@
 
 #include "rt_heap.h"
 #include "rt_graphics3d_ids.h"
+#include "rt_input.h"
 #include "vgfx.h"
 #include "rt_postfx3d.h"
 #include "vgfx3d_frustum.h"
@@ -236,6 +237,7 @@ typedef struct {
     double attenuation;
     double inner_cos; /* spot light inner cone cosine (full brightness inside) */
     double outer_cos; /* spot light outer cone cosine (zero brightness outside) */
+    int8_t enabled;
 } rt_light3d;
 
 //=============================================================================
@@ -417,6 +419,15 @@ typedef struct {
     int32_t draw_capacity;
     void *trans_cmds; /* reusable transparent draw scratch buffer */
     int32_t trans_capacity;
+    void *final_overlay_cmds; /* dynamic array of deferred_draw_t, replayed after post-FX */
+    int32_t final_overlay_count;
+    int32_t final_overlay_capacity;
+    void **final_overlay_temp_buffers;
+    int32_t final_overlay_temp_buf_count;
+    int32_t final_overlay_temp_buf_capacity;
+    int8_t final_overlay_recording;
+    int8_t frame_finalized;
+    int8_t frame_presented_by_finalize;
 
     /* Render target (NULL = render to window) */
     vgfx3d_rendertarget_t *render_target;
@@ -444,6 +455,10 @@ typedef struct {
     vgfx3d_postfx_chain_t frame_postfx_chain;
     int8_t frame_gpu_postfx_enabled;
     int8_t frame_postfx_state_latched;
+    int32_t quality_requested;
+    int32_t quality_active;
+    int32_t quality_fallback_reason;
+    int8_t quality_fallback;
 
     /* Temporary raw buffers freed at end of frame (e.g., skinned vertex data) */
     void **temp_buffers;
@@ -492,6 +507,19 @@ typedef struct {
     int64_t delta_time_us;
     int64_t delta_time_ms;
     int64_t dt_max_ms;
+    int32_t input_source;
+    int32_t clock_source;
+    int64_t synthetic_dt_us;
+    int64_t synthetic_key_keys[64];
+    int8_t synthetic_key_downs[64];
+    int32_t synthetic_key_count;
+    uint8_t synthetic_key_state[VIPER_KEY_MAX];
+    double synthetic_mouse_dx;
+    double synthetic_mouse_dy;
+    double synthetic_mouse_wheel_y;
+    int64_t synthetic_mouse_buttons;
+    int8_t synthetic_mouse_has_buttons;
+    uint8_t synthetic_mouse_button_state[VIPER_MOUSE_BUTTON_MAX];
     int8_t should_close;
 
     /* Previous-frame transform history for motion blur */
@@ -609,5 +637,7 @@ int canvas3d_queue_screen_line(rt_canvas3d *c,
                                float g,
                                float b,
                                float a);
+/// @brief Internal: discard recorded final-overlay commands and their temp buffers.
+void canvas3d_clear_final_overlay(rt_canvas3d *c);
 
 #endif /* VIPER_ENABLE_GRAPHICS */

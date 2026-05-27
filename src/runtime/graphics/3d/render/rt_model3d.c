@@ -546,12 +546,13 @@ static void model_build_synth_mesh_nodes(rt_model3d *model) {
 /// the scene-node template tree from the source asset, retaining each component for the model's
 /// lifetime. Returns NULL (with a trap message) for invalid path / unsupported extension /
 /// underlying loader failure. Use `_instantiate` to spawn a clone in a live scene.
-void *rt_model3d_load(rt_string path) {
+static void *rt_model3d_load_impl(rt_string path, int load_assets) {
     const char *path_cstr = path ? rt_string_cstr(path) : NULL;
+    const char *api_name = load_assets ? "Model3D.LoadAsset" : "Model3D.Load";
     rt_model3d *model;
 
     if (!path || !path_cstr) {
-        rt_trap("Model3D.Load: invalid path");
+        rt_trap(load_assets ? "Model3D.LoadAsset: invalid path" : "Model3D.Load: invalid path");
         return NULL;
     }
 
@@ -573,7 +574,7 @@ void *rt_model3d_load(rt_string path) {
         }
         model_release_local(scene);
     } else if (model_has_ext(path_cstr, ".gltf") || model_has_ext(path_cstr, ".glb")) {
-        void *asset = rt_gltf_load(path);
+        void *asset = load_assets ? rt_gltf_load_asset(path) : rt_gltf_load(path);
         int64_t mesh_count;
         int64_t material_count;
         int64_t skeleton_count;
@@ -747,7 +748,9 @@ void *rt_model3d_load(rt_string path) {
         model_release_local(mesh);
         model_build_synth_mesh_nodes(model);
     } else {
-        rt_trap("Model3D.Load: unsupported file extension");
+        char msg[160];
+        snprintf(msg, sizeof(msg), "%s: unsupported file extension", api_name);
+        rt_trap(msg);
         goto fail;
     }
 
@@ -756,6 +759,14 @@ void *rt_model3d_load(rt_string path) {
 fail:
     model_release_local(model);
     return NULL;
+}
+
+void *rt_model3d_load(rt_string path) {
+    return rt_model3d_load_impl(path, 0);
+}
+
+void *rt_model3d_load_asset(rt_string path) {
+    return rt_model3d_load_impl(path, 1);
 }
 
 /// @brief Number of meshes loaded into this model.

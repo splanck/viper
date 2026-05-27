@@ -32,6 +32,10 @@ extern "C" {
 /// @brief Load a 3D model asset (mesh/material/skeleton/animation graph) from
 ///        a file. @return New Model3D handle, or NULL on failure.
 void *rt_model3d_load(rt_string path);
+/// @brief Load a 3D model asset through the runtime asset manager.
+/// @details glTF/GLB assets resolve external dependencies relative to the model
+///          asset and search mounted/embedded packages before dev filesystem files.
+void *rt_model3d_load_asset(rt_string path);
 
 /// @brief Number of meshes contained in the model.
 int64_t rt_model3d_get_mesh_count(void *obj);

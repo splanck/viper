@@ -1668,6 +1668,7 @@ static rt_light3d *vscn_parse_light(void *light_obj) {
         light->type = 1;
     light->direction[2] = -1.0;
     light->color[0] = light->color[1] = light->color[2] = 1.0;
+    light->enabled = 1;
     light->intensity = vscn_nonnegative_or(vjson_f64(light_obj, "intensity", 1.0), 1.0);
     light->attenuation = vscn_nonnegative_or(vjson_f64(light_obj, "attenuation", 0.0), 0.0);
     light->inner_cos = vjson_f64(light_obj, "innerCos", 1.0);

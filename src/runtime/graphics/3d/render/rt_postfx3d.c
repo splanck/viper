@@ -35,6 +35,7 @@
 #include "rt_canvas3d_internal.h"
 #include "rt_graphics3d_ids.h"
 #include "vgfx.h"
+#include "vgfx3d_backend.h"
 #include "vgfx3d_backend_utils.h"
 
 #include <math.h>
@@ -926,6 +927,122 @@ void rt_canvas3d_set_post_fx(void *canvas, void *postfx) {
     if (c->postfx && rt_obj_release_check0(c->postfx))
         rt_obj_free(c->postfx);
     c->postfx = postfx;
+}
+
+enum {
+    POSTFX3D_QUALITY_FALLBACK_NONE = 0,
+    POSTFX3D_QUALITY_FALLBACK_GPU_POSTFX_UNAVAILABLE = 1,
+};
+
+static int32_t postfx3d_quality_level(int64_t quality) {
+    if (quality < RT_GRAPHICS3D_QUALITY_PERFORMANCE)
+        return RT_GRAPHICS3D_QUALITY_PERFORMANCE;
+    if (quality > RT_GRAPHICS3D_QUALITY_CINEMATIC)
+        return RT_GRAPHICS3D_QUALITY_CINEMATIC;
+    return (int32_t)quality;
+}
+
+static int postfx3d_canvas_supports_gpu_scene_effects(const rt_canvas3d *c) {
+    return c && c->backend && c->backend->present_postfx && c->render_target == NULL;
+}
+
+static const char *postfx3d_quality_fallback_reason_text(int32_t reason) {
+    switch (reason) {
+        case POSTFX3D_QUALITY_FALLBACK_GPU_POSTFX_UNAVAILABLE:
+            return "gpu-postfx unavailable; using CPU-safe cinematic postfx";
+        default:
+            return "";
+    }
+}
+
+static void postfx3d_configure_quality_profile(rt_postfx3d *fx,
+                                               rt_canvas3d *canvas,
+                                               int32_t quality) {
+    int gpu_scene_effects = postfx3d_canvas_supports_gpu_scene_effects(canvas);
+
+    if (!fx)
+        return;
+    rt_postfx3d_clear(fx);
+
+    if (canvas) {
+        canvas->quality_requested = quality;
+        canvas->quality_active = quality;
+        canvas->quality_fallback = 0;
+        canvas->quality_fallback_reason = POSTFX3D_QUALITY_FALLBACK_NONE;
+    }
+
+    switch (quality) {
+        case RT_GRAPHICS3D_QUALITY_PERFORMANCE:
+            rt_postfx3d_add_fxaa(fx);
+            break;
+        case RT_GRAPHICS3D_QUALITY_BALANCED:
+            rt_postfx3d_add_bloom(fx, 0.88, 0.12, 1);
+            rt_postfx3d_add_tonemap(fx, 1, 1.05);
+            rt_postfx3d_add_fxaa(fx);
+            rt_postfx3d_add_color_grade(fx, 0.0, 1.04, 1.03);
+            break;
+        case RT_GRAPHICS3D_QUALITY_CINEMATIC:
+        default:
+            rt_postfx3d_add_bloom(fx, 0.78, 0.22, 2);
+            rt_postfx3d_add_tonemap(fx, 2, 1.10);
+            rt_postfx3d_add_fxaa(fx);
+            rt_postfx3d_add_color_grade(fx, 0.015, 1.08, 1.06);
+            rt_postfx3d_add_vignette(fx, 0.72, 0.16);
+            if (gpu_scene_effects) {
+                rt_postfx3d_add_ssao(fx, 0.5, 0.65, 16);
+                rt_postfx3d_add_dof(fx, 10.0, 0.08, 3.0);
+                rt_postfx3d_add_motion_blur(fx, 0.12, 6);
+            } else if (canvas) {
+                canvas->quality_fallback = 1;
+                canvas->quality_fallback_reason =
+                    POSTFX3D_QUALITY_FALLBACK_GPU_POSTFX_UNAVAILABLE;
+            }
+            break;
+    }
+}
+
+/// @brief Build a backend-safe PostFX chain for a canvas and requested quality level.
+void *rt_postfx3d_new_quality(void *canvas, int64_t quality) {
+    rt_canvas3d *c = rt_canvas3d_checked_or_stack(canvas);
+    if (!c)
+        return NULL;
+    rt_postfx3d *fx = (rt_postfx3d *)rt_postfx3d_new();
+    if (!fx)
+        return NULL;
+    postfx3d_configure_quality_profile(fx, c, postfx3d_quality_level(quality));
+    return fx;
+}
+
+/// @brief Apply a backend-safe quality profile to a Canvas3D.
+void rt_canvas3d_set_quality(void *canvas, int64_t quality) {
+    void *fx = rt_postfx3d_new_quality(canvas, quality);
+    if (!fx)
+        return;
+    rt_canvas3d_set_post_fx(canvas, fx);
+    if (rt_obj_release_check0(fx))
+        rt_obj_free(fx);
+}
+
+int64_t rt_canvas3d_get_quality_requested(void *canvas) {
+    rt_canvas3d *c = rt_canvas3d_checked_or_stack(canvas);
+    return c ? c->quality_requested : RT_GRAPHICS3D_QUALITY_PERFORMANCE;
+}
+
+int64_t rt_canvas3d_get_quality_active(void *canvas) {
+    rt_canvas3d *c = rt_canvas3d_checked_or_stack(canvas);
+    return c ? c->quality_active : RT_GRAPHICS3D_QUALITY_PERFORMANCE;
+}
+
+int8_t rt_canvas3d_get_quality_fallback(void *canvas) {
+    rt_canvas3d *c = rt_canvas3d_checked_or_stack(canvas);
+    return c && c->quality_fallback ? 1 : 0;
+}
+
+rt_string rt_canvas3d_get_quality_fallback_reason(void *canvas) {
+    rt_canvas3d *c = rt_canvas3d_checked_or_stack(canvas);
+    const char *reason =
+        c ? postfx3d_quality_fallback_reason_text(c->quality_fallback_reason) : "";
+    return rt_string_from_bytes(reason, strlen(reason));
 }
 
 /// @brief Apply the canvas's attached post-FX chain in place to its framebuffer pixels. Called

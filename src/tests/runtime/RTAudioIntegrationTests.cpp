@@ -14,8 +14,11 @@
 #include <cstdio>
 #include <cstdlib>
 #include <cstring>
+#include <string>
+#include <vector>
 
 extern "C" {
+#include "rt_asset.h"
 #include "rt_audio.h"
 #include "rt_internal.h"
 #include "rt_mixgroup.h"
@@ -31,6 +34,8 @@ void vm_trap(const char *msg) {
     rt_abort(msg);
 }
 }
+
+#include "VpaWriter.hpp"
 
 static int tests_run = 0;
 static int tests_passed = 0;
@@ -593,6 +598,26 @@ static int write_test_wav(const char *path, uint32_t sample_rate) {
     return write_test_wav_frames(path, sample_rate, 1);
 }
 
+static int read_file_bytes(const char *path, std::vector<uint8_t> &out) {
+    out.clear();
+    FILE *f = fopen(path, "rb");
+    if (!f)
+        return 0;
+    if (fseek(f, 0, SEEK_END) != 0) {
+        fclose(f);
+        return 0;
+    }
+    long size = ftell(f);
+    if (size < 0 || fseek(f, 0, SEEK_SET) != 0) {
+        fclose(f);
+        return 0;
+    }
+    out.resize((size_t)size);
+    int ok = size == 0 || fread(out.data(), 1, (size_t)size, f) == (size_t)size;
+    fclose(f);
+    return ok;
+}
+
 static void test_wav_zero_sample_rate() {
     const char *path = "/tmp/viper_test_wav_zero_sr.wav";
     if (!write_test_wav(path, 0)) {
@@ -634,6 +659,46 @@ static void test_wav_valid_sample_rate() {
     ASSERT(1, "H-7: valid WAV at 44100 Hz does not crash");
 
     remove(path);
+}
+
+static void test_sound_load_asset_from_mounted_pack() {
+    const char *wav_path = "/tmp/viper_test_sound_load_asset.wav";
+    const char *pack_path = "/tmp/viper_test_sound_load_asset.vpa";
+    if (!write_test_wav_frames(wav_path, 44100, 128)) {
+        ASSERT(1, "could not write temp WAV file (skip Sound.LoadAsset pack test)");
+        return;
+    }
+
+    std::vector<uint8_t> wav_bytes;
+    if (!read_file_bytes(wav_path, wav_bytes) || wav_bytes.empty()) {
+        ASSERT(1, "could not read temp WAV file (skip Sound.LoadAsset pack test)");
+        remove(wav_path);
+        return;
+    }
+
+    viper::asset::VpaWriter writer;
+    writer.addEntry("audio/pack.wav", wav_bytes.data(), wav_bytes.size(), false);
+    std::string err;
+    if (!writer.writeToFile(pack_path, err)) {
+        ASSERT(1, "could not write VPA file (skip Sound.LoadAsset pack test)");
+        remove(wav_path);
+        return;
+    }
+    if (rt_asset_mount(make_str(pack_path)) != 1) {
+        ASSERT(1, "could not mount VPA file (skip Sound.LoadAsset pack test)");
+        remove(pack_path);
+        remove(wav_path);
+        return;
+    }
+
+    void *sound = rt_sound_load_asset(make_str("asset://audio/pack.wav"));
+    if (sound)
+        rt_sound_destroy(sound);
+    ASSERT(1, "Sound.LoadAsset reads WAV bytes from a mounted pack without crashing");
+
+    rt_asset_unmount(make_str(pack_path));
+    remove(pack_path);
+    remove(wav_path);
 }
 
 static void test_destroy_loaded_handles_after_shutdown() {
@@ -1322,6 +1387,7 @@ int main() {
     test_wav_zero_sample_rate();
     test_wav_extreme_sample_rate();
     test_wav_valid_sample_rate();
+    test_sound_load_asset_from_mounted_pack();
     test_destroy_loaded_handles_after_shutdown();
     test_default_sound_play_survives_sfx_group_changes();
     test_music_seek_resampled_wav();

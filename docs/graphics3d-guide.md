@@ -6,12 +6,19 @@ Viper.Graphics3D is a 3D rendering module for the Viper runtime. It provides a s
 
 **Namespace:** `Viper.Graphics3D`
 
+For code-first game projects that want a world/entity/input layer over these
+primitives, use the runtime-backed `Viper.Game3D` API documented in
+[`docs/viperlib/graphics/game3d.md`](viperlib/graphics/game3d.md). Game3D is C
+runtime code like the rest of the Viper runtime, not a separate Zia helper
+library.
+
 ---
 
 ### Table of Contents
 
 **Getting Started**
 - [Quick Start](#quick-start)
+- [Game3D](viperlib/graphics/game3d.md) — World/entity/input helpers for 3D games
 
 **Core Classes**
 - [Canvas3D](#canvas3d) — Window, frame loop, drawing, lighting
@@ -162,11 +169,16 @@ The rendering surface. Creates a window and manages the render loop.
 | `Width` | Integer | read | Active output width in pixels (window, or current RenderTarget3D when bound) |
 | `Height` | Integer | read | Active output height in pixels (window, or current RenderTarget3D when bound) |
 | `Fps` | Integer | read | Frames per second |
-| `DeltaTime` | Integer | read | Milliseconds since last Flip (first frame = 0, capped to 100ms by default) |
+| `DeltaTime` | Integer | read | Milliseconds since last Flip, or fixed synthetic dt when synthetic clock is selected (first live frame = 0, capped to 100ms by default) |
 | `DeltaTimeMs` | Integer | read | Explicit millisecond alias for `DeltaTime` |
-| `DeltaTimeSec` | Number | read | Seconds since last Flip, using the same clamp as `DeltaTime` |
+| `DeltaTimeSec` | Number | read | Seconds since last Flip or synthetic frame, using the same clamp as `DeltaTime` |
 | `Backend` | String | read | Active renderer: "software", "metal", "d3d11", "opengl" |
 | `BackendCapabilities` | Integer | read | Bitmask of `Canvas3D` backend capabilities |
+| `QualityRequested` | Integer | read | Last requested quality profile (`0` performance, `1` balanced, `2` cinematic) |
+| `QualityActive` | Integer | read | Active quality profile after backend fallback |
+| `QualityFallback` | Boolean | read | True when quality setup degraded to stay backend-safe |
+| `QualityFallbackReason` | String | read | Human-readable fallback reason, or empty string |
+| `FrameFinalized` | Boolean | read | True after `FinalizeFrame()` or `ScreenshotFinal()` has applied post-FX/final overlays for the current frame |
 | `Wireframe` | Boolean | write | Toggle wireframe rendering (default: off) |
 
 ### Constructors
@@ -182,10 +194,15 @@ The rendering surface. Creates a window and manages the render loop.
 | `Clear(r, g, b)` | `void(f64, f64, f64)` | Clear framebuffer and depth buffer (0.0-1.0 per channel) |
 | `Begin(camera)` | `void(obj)` | Start 3D frame — must be called before DrawMesh |
 | `Begin2D()` | `void()` | Start 2D overlay mode for the active output (closed by `End()`) |
-| `End()` | `void()` | End frame — must be called after all draw calls |
-| `Flip()` | `void()` | Present frame to screen, compute DeltaTime |
-| `Poll()` | `i64()` | Process window events (call once per frame) |
-| `BackendSupports(capability)` | `i1(str)` | Test a named backend capability such as `shadows`, `skybox`, `render_target`, `window_readback`, `hardware_instancing`, `postfx`, or `gpu_postfx` |
+| `BeginOverlay()` | `void()` | Start recording a final overlay pass composited after post-FX |
+| `EndOverlay()` | `void()` | Finish final overlay recording |
+| `ClearOverlay()` | `void()` | Discard recorded final overlay commands for the current frame |
+| `End()` | `void()` | End the current 3D or 2D draw pass; this does not run post-FX or present |
+| `FinalizeFrame()` | `void()` | Apply post-FX and replay the final overlay once, without presenting |
+| `ScreenshotFinal()` | `obj()` | Finalize if needed, then capture the final frame as `Pixels` |
+| `Flip()` | `void()` | Finalize if needed, present frame to screen, compute DeltaTime |
+| `Poll()` | `i64()` | Process window events and update `Keyboard`/`Mouse`/actions; returns the last raw window event code |
+| `BackendSupports(capability)` | `i1(str)` | Test a named backend capability such as `shadows`, `skybox`, `render_target`, `window_readback`, `hardware_instancing`, `postfx`, `gpu_postfx`, `postfx-overlay`, `final-screenshot`, or `gpu-postfx-overlay` |
 
 ### Drawing Methods
 
@@ -207,6 +224,9 @@ The rendering surface. Creates a window and manages the render loop.
 | Method | Signature | Description |
 |--------|-----------|-------------|
 | `SetLight(index, light)` | `void(i64, obj)` | Bind or clear a retained Light3D slot (0-15) |
+| `ClearLights()` | `void()` | Clear every retained canvas light slot |
+| `SetDefaultLighting()` | `void()` | Install a conservative directional key/fill plus readable ambient |
+| `LightCount` | `i64` property | Count active enabled canvas-slot lights |
 | `SetAmbient(r, g, b)` | `void(f64, f64, f64)` | Set ambient light color; values are clamped to `0..1` |
 | `SetSkybox(cubemap)` | `void(obj)` | Set CubeMap3D skybox |
 | `ClearSkybox()` | `void()` | Remove skybox |
@@ -222,11 +242,55 @@ The rendering surface. Creates a window and manages the render loop.
 |--------|-----------|-------------|
 | `SetBackfaceCull(enabled)` | `void(i1)` | Toggle backface culling (default: on) |
 | `SetDTMax(ms)` | `void(i64)` | Cap DeltaTime to prevent spiral-of-death (`ms <= 0` disables the cap; default cap is 100ms) |
+| `SetQuality(profile)` | `void(i64)` | Apply a backend-safe post-FX profile: `0` performance, `1` balanced, `2` cinematic |
+| `SetInputSource(mode)` | `void(i64)` | Select input source: `0` live, `1` synthetic, `2` live plus synthetic |
+| `PushSyntheticKey(key, down)` | `void(i64, i1)` | Queue a synthetic keyboard transition for the next synthetic frame |
+| `PushSyntheticMouse(dx, dy, buttons, wheel)` | `void(f64, f64, i64, f64)` | Queue synthetic mouse delta, button bitmask, and vertical wheel delta |
+| `ClearSyntheticInput()` | `void()` | Clear queued synthetic input and release synthetic-held keys/buttons |
+| `SetClockSource(mode)` | `void(i64)` | Select clock source: `0` live wall clock, `1` fixed synthetic dt |
+| `SetSyntheticDeltaTimeSec(dt)` | `void(f64)` | Set fixed synthetic delta time in seconds |
+| `AdvanceSyntheticFrame()` | `void()` | Advance one deterministic input/timing frame without pumping platform events |
 | `SetRenderTarget(target)` | `void(obj)` | Redirect rendering to offscreen RenderTarget3D |
 | `ResetRenderTarget()` | `void()` | Return to window rendering |
-| `SetPostFX(fx)` | `void(obj)` | Set PostFX3D chain applied in `Flip()` to the window or active render target; SSAO/DOF/motion blur require GPU window postfx |
+| `SetPostFX(fx)` | `void(obj)` | Set PostFX3D chain applied during frame finalization to the window or active render target; SSAO/DOF/motion blur require GPU window postfx |
 | `SetFrustumCulling(enabled)` | `void(i1)` | Toggle coarse CPU frustum rejection plus front-to-back opaque ordering |
 | `SetOcclusionCulling(enabled)` | `void(i1)` | Compatibility alias for `SetFrustumCulling`; this is not hardware occlusion-query culling |
+
+`Poll()` is the live-loop input boundary. It updates `Viper.Input.Keyboard`,
+`Viper.Input.Mouse`, gamepad state, and action mappings; most gameplay code
+should read those APIs instead of branching on the raw event code returned by
+`Poll()`. The raw return is useful for diagnostics or low-level integrations.
+
+For deterministic tests, select synthetic input and clock before the scripted
+frames:
+
+```rust
+Canvas3D.SetInputSource(canvas, 1)
+Canvas3D.SetClockSource(canvas, 1)
+Canvas3D.SetSyntheticDeltaTimeSec(canvas, 1.0 / 60.0)
+Canvas3D.PushSyntheticKey(canvas, Keyboard.get_KEY_W(), true)
+Canvas3D.PushSyntheticMouse(canvas, 8.0, -2.0, 1, 0.0)
+Canvas3D.AdvanceSyntheticFrame(canvas)
+```
+
+Synthetic keys and mouse samples flow through the normal `Keyboard` and `Mouse`
+state paths, so `WasPressed`, `IsDown`, `Mouse.DeltaX`, button edges, and action
+bindings observe the same state shape as live input. `ClearSyntheticInput()`
+also releases keys/buttons held by the synthetic source so tests do not leak
+state into the next run.
+
+First-frame live timing can be zero because `DeltaTime` is measured after the
+first `Flip()`. Code-first loops should seed or clamp their first `dt` before
+moving gameplay. The synthetic clock reports the configured fixed dt after
+`AdvanceSyntheticFrame()`, `Poll()` in synthetic mode, or `Flip()`.
+
+`SetQuality()` currently configures the canvas post-FX chain. Performance and
+Balanced use CPU/software-safe effects only. Cinematic adds SSAO, depth of field,
+and motion blur only when the active canvas can present GPU post-FX to the
+window; otherwise it uses a CPU-safe cinematic chain and sets
+`QualityFallback`/`QualityFallbackReason` for debug overlays. Re-apply quality
+after changing output mode if a game switches between a GPU window and a
+render target.
 
 Render targets must be bound or reset outside a `Begin`/`End` frame. Changing the active output
 mid-frame is rejected so queued draws, overlays, post-processing, and readback state all target one
@@ -242,7 +306,8 @@ consistent surface.
 | `DrawSphereWire(center, radius, color)` | `void(obj, f64, i64)` | Draw wireframe sphere |
 | `DrawDebugRay(origin, dir, length, color)` | `void(obj, obj, f64, i64)` | Draw debug ray |
 | `DrawAxis(transform, size)` | `void(obj, f64)` | Draw XYZ axes at a Mat4 position |
-| `Screenshot()` | `obj()` | Capture the active output as Pixels (window or current RenderTarget3D) |
+| `Screenshot()` | `obj()` | Capture the active output as `Pixels` without forcing finalization |
+| `ScreenshotFinal()` | `obj()` | Finalize first, then capture post-FX plus final-overlay pixels as `Pixels` |
 
 ### HUD Overlay (2D)
 
@@ -251,6 +316,12 @@ consistent surface.
 | `DrawRect2D(x, y, w, h, color)` | `void(i64, i64, i64, i64, i64)` | Draw 2D rectangle on screen |
 | `DrawText2D(x, y, text, color)` | `void(i64, i64, str, i64)` | Draw 2D text on screen |
 | `DrawCrosshair(color, size)` | `void(i64, i64)` | Draw centered crosshair |
+
+`DrawRect2D`, `DrawText2D`, and `DrawCrosshair` remain convenient immediate HUD helpers.
+When called between `End()` and `Flip()`, they use the legacy overlay path and are part of
+the frame before final post-processing. Use `BeginOverlay()` and `EndOverlay()` for HUD,
+debug text, reticles, and capture overlays that must stay crisp after bloom, tonemapping,
+or color grading.
 
 ### Zia Example
 
@@ -289,9 +360,11 @@ func start() {
         Canvas3D.DrawMesh(canvas, box, Mat4.RotateY(angle), mat);
         Canvas3D.End(canvas);
 
-        // HUD overlay (between End and Flip)
+        // Final HUD overlay, composited after post-FX.
+        Canvas3D.BeginOverlay(canvas);
         Canvas3D.DrawText2D(canvas, 10, 10, "Hello 3D!", 0xFFFFFF);
         Canvas3D.DrawCrosshair(canvas, 0xFFFFFF, 12);
+        Canvas3D.EndOverlay(canvas);
 
         Canvas3D.Flip(canvas);
         angle = angle + 0.02;
@@ -299,9 +372,20 @@ func start() {
 }
 ```
 
-**Frame lifecycle:** `Poll → Clear → Begin → DrawMesh (repeated) → End → [HUD overlay] → Flip`
+**Frame lifecycle:** `Poll → Clear → Begin → DrawMesh (repeated) → End → [BeginOverlay → HUD/debug draws → EndOverlay] → Flip`
 
-**Important:** `Begin`/`End` must not nest. All 3D draw calls go between `Begin` and `End`; `DrawTerrain` and `DrawVegetation` are rejected during `Begin2D`. HUD overlay calls (`DrawRect2D`, `DrawText2D`, `DrawCrosshair`) go between `End` and `Flip`. `DrawMesh` and instanced draws require finite transform matrices; invalid matrices are rejected before they reach culling or backend submission. Draw submission clamps material colors and PBR scalars before narrowing to backend floats.
+`End()` only flushes queued geometry for the current 3D or 2D pass. `FinalizeFrame()`
+is the idempotent boundary that applies post-FX and replays the final overlay. `Flip()`
+calls `FinalizeFrame()` if needed, then presents. `ScreenshotFinal()` also calls
+`FinalizeFrame()` if needed and captures the finalized pixels without presenting, so
+the usual capture path is `EndOverlay → ScreenshotFinal → Flip`.
+
+For a compact, executable example of this path, see
+`examples/3d/walk_min.zia`. Its companion `walk_min_probe.zia` renders one
+software-backend frame, captures with `ScreenshotFinal()`, checks the crisp final
+overlay, and compares to the committed baseline in `examples/3d/baselines/`.
+
+**Important:** `Begin`/`End` and `BeginOverlay`/`EndOverlay` must not nest. All 3D draw calls go between `Begin` and `End`; `DrawTerrain` and `DrawVegetation` are rejected during `Begin2D`. Legacy HUD overlay calls (`DrawRect2D`, `DrawText2D`, `DrawCrosshair`) may still be called between `End` and `Flip`, but final overlays should be grouped with `BeginOverlay`/`EndOverlay`. `DrawMesh` and instanced draws require finite transform matrices; invalid matrices are rejected before they reach culling or backend submission. Draw submission clamps material colors and PBR scalars before narrowing to backend floats.
 
 ## Mesh3D
 
@@ -494,6 +578,9 @@ Surface appearance for meshes, models, decals, and other 3D drawables.
 | `AlphaMode` | Integer | read/write | `0=Opaque`, `1=Mask`, `2=Blend` |
 | `DoubleSided` | Bool | read/write | Disable backface culling when true |
 | `Reflectivity` | Float | read/write | Environment reflection strength [0.0-1.0] |
+| `Color` | Vec3 | read | Current diffuse/base color |
+| `Unlit` | Bool | read | Whether lighting is ignored |
+| `ShadingModel` | Integer | read | Current shading model index |
 
 ### Methods
 
@@ -592,6 +679,18 @@ Light sources for the scene. Up to 16 lights simultaneously.
 |--------|-----------|-------------|
 | `SetIntensity(value)` | `void(f64)` | Brightness multiplier (default 1.0) |
 | `SetColor(r, g, b)` | `void(f64, f64, f64)` | Change light color |
+| `SetEnabled(enabled)` | `void(i1)` | Toggle whether the light contributes without clearing its slot |
+
+### Properties
+
+| Property | Type | Access | Description |
+|----------|------|--------|-------------|
+| `Type` | Integer | read | `0=directional`, `1=point`, `2=ambient`, `3=spot` |
+| `Color` | Vec3 | read | Current normalized RGB color |
+| `Intensity` | Float | read | Current brightness multiplier |
+| `Enabled` | Bool | read/write | Disabled lights are skipped by `Canvas3D` light submission |
+| `Direction` | Vec3 | read | Normalized direction for directional and spot lights |
+| `Position` | Vec3 | read | Position for point and spot lights |
 
 Light colors are clamped to `[0, 1]`, intensities and attenuations are clamped to non-negative values, and non-finite positions/directions fall back to finite defaults. Spot cone angles are clamped to `0..89` degrees and reordered when needed so `inner_cos >= outer_cos`.
 
@@ -807,6 +906,8 @@ Individual node in a Scene3D tree with transform, mesh, material, and child hier
 | `Rotation` | Quat | read/write | Local rotation |
 | `Scale` | Vec3 | read | Local scale |
 | `WorldMatrix` | Mat4 | read | Computed world transform (lazy) |
+| `WorldPosition` | Vec3 | read | World-space position without manual matrix decomposition |
+| `WorldScale` | Vec3 | read | World-space scale magnitudes without manual matrix decomposition |
 | `ChildCount` | Integer | read | Number of child nodes |
 | `Parent` | SceneNode3D | read | Parent node (null if root) |
 | `Visible` | Boolean | read/write | Visibility (hides node + all descendants) |
@@ -934,6 +1035,7 @@ Current scope:
 | Method | Signature | Description |
 |--------|-----------|-------------|
 | `Load(path)` | `obj(str)` | Load `.vscn`, `.fbx`, `.gltf`, `.glb`, or `.obj` into a `Model3D` |
+| `LoadAsset(path)` | `obj(str)` | Load through `Viper.IO.Assets`; `.gltf` external buffers/images resolve relative to the model asset |
 | `GetMesh(index)` | `obj(i64)` | Get a shared `Mesh3D` by index |
 | `GetMaterial(index)` | `obj(i64)` | Get a shared `Material3D` by index |
 | `GetSkeleton(index)` | `obj(i64)` | Get a shared `Skeleton3D` by index |
@@ -972,7 +1074,7 @@ func start() {
 }
 ```
 
-For game-facing asset loading, prefer `Model3D.Load`. Use the lower-level `FBX` and `GLTF` helpers when you explicitly want extractor-style access to importer-native arrays.
+For game-facing asset loading, prefer `Model3D.Load` for loose filesystem files during early development and `Model3D.LoadAsset` for code that should also work from embedded or mounted `.vpa` packages. `LoadAsset` accepts both plain asset paths such as `"assets/tree.glb"` and explicit URIs such as `"asset://tree.glb"`; mounted assets are checked before the development filesystem fallback. Use the lower-level `FBX` and `GLTF` helpers when you explicitly want extractor-style access to importer-native arrays.
 
 Format note:
 - `.vscn`, FBX, and glTF imports can populate shared skeletons and animation clips when the source format contains supported skin/animation data.
@@ -986,7 +1088,7 @@ Format note:
 - Triangle-list, triangle-strip, and triangle-fan glTF primitives are triangulated on import.
 - Materialless glTF primitives receive a shared default white PBR material so valid assets render through `Scene3D` / `Model3D` without manual material assignment.
 - VSCN round-trips the current `vgfx3d_vertex_le_v2` vertex layout, per-slot material texture metadata, node-attached lights, and high-precision node transforms, while still loading older `vgfx3d_vertex_le_v1` scenes. The loader rejects malformed JSON/base64, invalid mesh index buffers, broken node references, and partial child subtrees; finite transform/material/light values are sanitized during load.
-- `.glb` files are validated as GLB 2.0 containers before JSON parse. External `.gltf` buffers and images are resolved relative to the asset path and reject absolute paths, URI schemes, and `.` / `..` traversal segments.
+- `.glb` files are validated as GLB 2.0 containers before JSON parse. External `.gltf` buffers and images are resolved relative to the asset path and reject absolute paths, URI schemes, and `.` / `..` traversal segments. In `LoadAsset`, those external dependencies are loaded through `Viper.IO.Assets` first and missing-dependency diagnostics name both the parent model and dependency path.
 - glTF `extensionsRequired` is enforced. Required `KHR_texture_transform`, `KHR_materials_emissive_strength`, `KHR_materials_unlit`, and `KHR_lights_punctual` are accepted; unsupported required extensions such as Draco, Meshopt, Basis/KTX2, DDS, and exact advanced material extensions fail load rather than rendering incomplete fallback data.
 
 ## Skeleton3D
@@ -1296,6 +1398,7 @@ Low-level extractor API for meshes and materials from glTF 2.0 files. `Model3D.L
 | Function | Signature | Description |
 |----------|-----------|-------------|
 | `GLTF.Load(path)` | `obj(str)` | Parse glTF file |
+| `GLTF.LoadAsset(path)` | `obj(str)` | Parse glTF/GLB through `Viper.IO.Assets`, including package-relative external dependencies |
 | `GLTF.get_MeshCount(asset)` | `i64(obj)` | Number of meshes |
 | `GLTF.GetMesh(asset, index)` | `obj(obj, i64)` | Get Mesh3D by index |
 | `GLTF.get_MaterialCount(asset)` | `i64(obj)` | Number of materials |
@@ -1446,6 +1549,7 @@ Full-screen post-processing effect chain applied automatically in `Canvas3D.Flip
 
 | Method | Signature | Description |
 |--------|-----------|-------------|
+| `NewQuality(canvas, profile)` | `obj(obj, i64)` | Create a backend-safe quality chain for a canvas (`0` performance, `1` balanced, `2` cinematic) |
 | `AddBloom(threshold, intensity, passes)` | `void(f64, f64, i64)` | Bloom glow effect |
 | `AddTonemap(mode, exposure)` | `void(i64, f64)` | Tone mapping (0=off, 1=Reinhard, 2=ACES) |
 | `AddFXAA()` | `void()` | Fast approximate anti-aliasing |

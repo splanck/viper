@@ -316,6 +316,10 @@ int64_t rt_canvas3d_get_backend_capabilities(void *obj) {
         caps |= RT_CANVAS3D_BACKEND_CAP_POSTFX;
     if (backend->present_postfx)
         caps |= RT_CANVAS3D_BACKEND_CAP_GPU_POSTFX;
+    if (caps & RT_CANVAS3D_BACKEND_CAP_SOFTWARE)
+        caps |= RT_CANVAS3D_BACKEND_CAP_POSTFX_OVERLAY;
+    if (caps & RT_CANVAS3D_BACKEND_CAP_WINDOW_READBACK)
+        caps |= RT_CANVAS3D_BACKEND_CAP_FINAL_SCREENSHOT;
 
     return caps;
 }
@@ -348,6 +352,14 @@ static int64_t canvas3d_capability_from_name(const char *name) {
         return RT_CANVAS3D_BACKEND_CAP_POSTFX;
     if (strcmp(name, "gpu_postfx") == 0 || strcmp(name, "gpu_post_fx") == 0)
         return RT_CANVAS3D_BACKEND_CAP_GPU_POSTFX;
+    if (strcmp(name, "postfx-overlay") == 0 || strcmp(name, "postfx_overlay") == 0 ||
+        strcmp(name, "post_fx_overlay") == 0)
+        return RT_CANVAS3D_BACKEND_CAP_POSTFX_OVERLAY;
+    if (strcmp(name, "final-screenshot") == 0 || strcmp(name, "final_screenshot") == 0)
+        return RT_CANVAS3D_BACKEND_CAP_FINAL_SCREENSHOT;
+    if (strcmp(name, "gpu-postfx-overlay") == 0 || strcmp(name, "gpu_postfx_overlay") == 0 ||
+        strcmp(name, "gpu_post_fx_overlay") == 0)
+        return RT_CANVAS3D_BACKEND_CAP_GPU_POSTFX_OVERLAY;
     return 0;
 }
 

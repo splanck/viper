@@ -2221,6 +2221,68 @@ void rt_canvas3d_set_dt_max(void *o, int64_t m) {
     (void)m;
 }
 
+void rt_canvas3d_set_quality(void *o, int64_t quality) {
+    (void)o;
+    (void)quality;
+}
+
+int64_t rt_canvas3d_get_quality_requested(void *o) {
+    (void)o;
+    return 0;
+}
+
+int64_t rt_canvas3d_get_quality_active(void *o) {
+    (void)o;
+    return 0;
+}
+
+int8_t rt_canvas3d_get_quality_fallback(void *o) {
+    (void)o;
+    return 0;
+}
+
+rt_string rt_canvas3d_get_quality_fallback_reason(void *o) {
+    (void)o;
+    return rt_string_from_bytes("", 0);
+}
+
+void rt_canvas3d_set_input_source(void *o, int64_t mode) {
+    (void)o;
+    (void)mode;
+}
+
+void rt_canvas3d_push_synthetic_key(void *o, int64_t key, int8_t down) {
+    (void)o;
+    (void)key;
+    (void)down;
+}
+
+void rt_canvas3d_push_synthetic_mouse(void *o, double dx, double dy, int64_t buttons, double wheel) {
+    (void)o;
+    (void)dx;
+    (void)dy;
+    (void)buttons;
+    (void)wheel;
+}
+
+void rt_canvas3d_clear_synthetic_input(void *o) {
+    (void)o;
+}
+
+void rt_canvas3d_set_clock_source(void *o, int64_t mode) {
+    (void)o;
+    (void)mode;
+}
+
+void rt_canvas3d_set_synthetic_delta_time_sec(void *o, double dt) {
+    (void)o;
+    (void)dt;
+}
+
+void rt_canvas3d_advance_synthetic_frame(void *o) {
+    (void)o;
+}
+
 /// @brief Stub for `Canvas3D.SetLight` — would normally bind a Light3D to
 ///        slot `i` of the per-frame light array (up to `VGFX3D_MAX_LIGHTS` lights).
 ///
@@ -2233,6 +2295,19 @@ void rt_canvas3d_set_light(void *o, int64_t i, void *l) {
     (void)o;
     (void)i;
     (void)l;
+}
+
+void rt_canvas3d_clear_lights(void *o) {
+    (void)o;
+}
+
+void rt_canvas3d_set_default_lighting(void *o) {
+    (void)o;
+}
+
+int64_t rt_canvas3d_get_light_count(void *o) {
+    (void)o;
+    return 0;
 }
 
 /// @brief Stub for `Canvas3D.SetAmbient` — would normally set the global
@@ -2699,6 +2774,15 @@ void rt_camera3d_set_position(void *o, void *p) {
     (void)p;
 }
 
+/// @brief Stub for the internal render-aspect sync used by higher-level
+///        Game3D window resize/tick helpers.
+///
+/// Silent no-op stub.
+void rt_camera3d_sync_render_aspect(void *o, double aspect) {
+    (void)o;
+    (void)aspect;
+}
+
 /// @brief Stub for `Camera3D.Forward` — get the camera's normalized
 ///        forward direction as a Vec3 (the "look" axis).
 ///
@@ -2856,6 +2940,11 @@ void rt_material3d_set_color(void *o, double r, double g, double b) {
     (void)r;
     (void)g;
     (void)b;
+}
+
+void *rt_material3d_get_color(void *o) {
+    (void)o;
+    return NULL;
 }
 
 /// @brief Stub for `Material3D.SetTexture` — would normally bind a Pixels
@@ -3030,6 +3119,11 @@ void rt_material3d_set_unlit(void *o, int8_t u) {
     (void)u;
 }
 
+int8_t rt_material3d_get_unlit(void *o) {
+    (void)o;
+    return 0;
+}
+
 /// @brief Stub for `Material3D.SetShadingModel` — selects the per-material
 ///        fragment shading path: 0=BlinnPhong (default), 1=Toon, 4=Fresnel,
 ///        5=Emissive.
@@ -3041,6 +3135,11 @@ void rt_material3d_set_unlit(void *o, int8_t u) {
 void rt_material3d_set_shading_model(void *o, int64_t m) {
     (void)o;
     (void)m;
+}
+
+int64_t rt_material3d_get_shading_model(void *o) {
+    (void)o;
+    return 0;
 }
 
 /// @brief Stub for `Material3D.SetCustomParam` — write to one of the 8
@@ -3337,6 +3436,41 @@ void rt_light3d_set_color(void *o, double r, double g, double b) {
     (void)b;
 }
 
+int64_t rt_light3d_get_type(void *o) {
+    (void)o;
+    return 0;
+}
+
+void *rt_light3d_get_color(void *o) {
+    (void)o;
+    return NULL;
+}
+
+double rt_light3d_get_intensity(void *o) {
+    (void)o;
+    return 0.0;
+}
+
+void rt_light3d_set_enabled(void *o, int8_t enabled) {
+    (void)o;
+    (void)enabled;
+}
+
+int8_t rt_light3d_get_enabled(void *o) {
+    (void)o;
+    return 0;
+}
+
+void *rt_light3d_get_direction(void *o) {
+    (void)o;
+    return NULL;
+}
+
+void *rt_light3d_get_position(void *o) {
+    (void)o;
+    return NULL;
+}
+
 /* Scene3D / SceneNode3D stubs */
 
 /// @brief Stub for `Scene3D.New` — would normally create an empty scene
@@ -3593,6 +3727,16 @@ void *rt_scene_node3d_get_scale(void *n) {
 ///
 /// @return `NULL`.
 void *rt_scene_node3d_get_world_matrix(void *n) {
+    (void)n;
+    return NULL;
+}
+
+void *rt_scene_node3d_get_world_position(void *n) {
+    (void)n;
+    return NULL;
+}
+
+void *rt_scene_node3d_get_world_scale(void *n) {
     (void)n;
     return NULL;
 }
@@ -4564,6 +4708,12 @@ void *rt_gltf_load(rt_string p) {
     return NULL;
 }
 
+void *rt_gltf_load_asset(rt_string p) {
+    (void)p;
+    rt_graphics_unavailable_("GLTF.LoadAsset: graphics support not compiled in");
+    return NULL;
+}
+
 /// @brief Stub for `glTF.MeshCount` — number of meshes in the loaded
 ///        document.
 ///
@@ -4660,6 +4810,12 @@ void *rt_gltf_get_scene_root(void *g) {
 void *rt_model3d_load(rt_string p) {
     (void)p;
     rt_graphics_unavailable_("Model3D.Load: graphics support not compiled in");
+    return NULL;
+}
+
+void *rt_model3d_load_asset(rt_string p) {
+    (void)p;
+    rt_graphics_unavailable_("Model3D.LoadAsset: graphics support not compiled in");
     return NULL;
 }
 
@@ -5316,6 +5472,13 @@ int8_t rt_particles3d_get_emitting(void *o) {
 /// @return Never returns normally.
 void *rt_postfx3d_new(void) {
     rt_graphics_unavailable_("PostFX3D.New: graphics support not compiled in");
+    return NULL;
+}
+
+void *rt_postfx3d_new_quality(void *canvas, int64_t quality) {
+    (void)canvas;
+    (void)quality;
+    rt_graphics_unavailable_("PostFX3D.NewQuality: graphics support not compiled in");
     return NULL;
 }
 
@@ -6785,6 +6948,13 @@ void *rt_world3d_get_exit_event(void *w, int64_t i) {
     (void)w;
     (void)i;
     return NULL;
+}
+
+/// @brief Stub for `Physics3DWorld.ClearCollisionEvents`.
+///
+/// Silent no-op stub.
+void rt_world3d_clear_collision_events(void *w) {
+    (void)w;
 }
 
 /// @brief Stub for `Physics3DWorld.Raycast` — single-hit raycast

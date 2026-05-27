@@ -76,6 +76,11 @@ void rt_audio_stop_all_sounds(void);
 /// @return Opaque sound handle, or NULL on failure.
 void *rt_sound_load(rt_string path);
 
+/// @brief Load a sound effect through the runtime asset manager.
+/// @param name Mounted/embedded asset name, asset:// URI, or dev filesystem path.
+/// @return Opaque sound handle, or NULL on failure.
+void *rt_sound_load_asset(rt_string name);
+
 /// @brief Load a sound effect from in-memory WAV, OGG, or MP3 data.
 /// @param data Pointer to file data in memory.
 /// @param size Size of the data in bytes.

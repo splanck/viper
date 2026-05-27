@@ -79,6 +79,10 @@ void rt_scene_node3d_set_scale(void *node, double x, double y, double z);
 void *rt_scene_node3d_get_scale(void *node);
 /// @brief Get the node's world-space transform as a Mat4 (lazily recomputed when dirty).
 void *rt_scene_node3d_get_world_matrix(void *node);
+/// @brief Get the node's world-space position as a Vec3.
+void *rt_scene_node3d_get_world_position(void *node);
+/// @brief Get the node's world-space scale magnitudes as a Vec3.
+void *rt_scene_node3d_get_world_scale(void *node);
 /// @brief Attach @p child as a child of @p node (detaches from any prior parent).
 void rt_scene_node3d_add_child(void *node, void *child);
 /// @brief Detach @p child from @p node (no-op if not actually a child).

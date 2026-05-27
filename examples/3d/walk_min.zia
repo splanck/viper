@@ -1,0 +1,181 @@
+module walk_min;
+
+bind Viper.Graphics3D;
+bind Viper.Input.Keyboard as Keyboard;
+bind Viper.Input.Mouse as Mouse;
+bind Viper.Math;
+bind Viper.Terminal as Terminal;
+
+class WalkMinGame {
+    hide Canvas3D canvas;
+    hide Camera3D camera;
+    hide Mesh3D groundMesh;
+    hide Mesh3D boxMesh;
+    hide Mesh3D sphereMesh;
+    hide Mesh3D cylinderMesh;
+    hide Material3D groundMat;
+    hide Material3D crateMat;
+    hide Material3D orbMat;
+    hide Material3D columnMat;
+    hide Material3D markerMat;
+    hide PostFX3D postfx;
+    hide Float sceneTime;
+    hide Boolean quitRequested;
+
+    expose func setup(title: String, width: Integer, height: Integer) {
+        canvas = Canvas3D.New(title, width, height);
+        Canvas3D.SetDTMax(canvas, 50);
+        Canvas3D.SetFog(canvas, 16.0, 42.0, 0.025, 0.035, 0.050);
+        Canvas3D.SetDefaultLighting(canvas);
+
+        var aspect = (width + 0.0) / (height + 0.0);
+        camera = Camera3D.New(62.0, aspect, 0.1, 100.0);
+        Camera3D.LookAt(
+            camera,
+            new Vec3(3.2, 2.15, 5.4),
+            new Vec3(0.0, 0.55, 0.0),
+            new Vec3(0.0, 1.0, 0.0));
+
+        groundMesh = Mesh3D.NewPlane(18.0, 18.0);
+        boxMesh = Mesh3D.NewBox(1.0, 1.0, 1.0);
+        sphereMesh = Mesh3D.NewSphere(0.55, 22);
+        cylinderMesh = Mesh3D.NewCylinder(0.36, 1.35, 18);
+
+        groundMat = Material3D.NewColor(0.24, 0.36, 0.30);
+        Material3D.set_Roughness(groundMat, 0.82);
+
+        crateMat = Material3D.NewColor(0.72, 0.34, 0.18);
+        Material3D.set_Roughness(crateMat, 0.58);
+        Material3D.SetShininess(crateMat, 36.0);
+
+        orbMat = Material3D.NewColor(0.08, 0.42, 0.94);
+        Material3D.SetEmissiveColor(orbMat, 0.02, 0.14, 0.52);
+        Material3D.set_EmissiveIntensity(orbMat, 0.75);
+        Material3D.set_Roughness(orbMat, 0.34);
+
+        columnMat = Material3D.NewColor(0.78, 0.70, 0.52);
+        Material3D.set_Roughness(columnMat, 0.46);
+
+        markerMat = Material3D.NewColor(1.0, 0.82, 0.28);
+        Material3D.SetEmissiveColor(markerMat, 0.35, 0.20, 0.02);
+        Material3D.set_EmissiveIntensity(markerMat, 1.1);
+
+        postfx = PostFX3D.New();
+        PostFX3D.AddTonemap(postfx, 1, 1.14);
+        PostFX3D.AddBloom(postfx, 0.78, 0.18, 2);
+        PostFX3D.AddColorGrade(postfx, 0.015, 1.08, 1.06);
+        PostFX3D.AddVignette(postfx, 0.72, 0.14);
+        Canvas3D.SetPostFX(canvas, postfx);
+
+        sceneTime = 0.0;
+        quitRequested = false;
+    }
+
+    expose func getCanvas() -> Canvas3D {
+        return canvas;
+    }
+
+    expose func step(dt: Float) {
+        sceneTime = sceneTime + dt;
+
+        if (Keyboard.WasPressed(Keyboard.get_KEY_ESCAPE())) {
+            quitRequested = true;
+            return;
+        }
+
+        var fwd = 0.0;
+        var right = 0.0;
+        var climb = 0.0;
+        if (Keyboard.IsDown(Keyboard.get_KEY_W())) { fwd = 1.0; }
+        if (Keyboard.IsDown(Keyboard.get_KEY_S())) { fwd = -1.0; }
+        if (Keyboard.IsDown(Keyboard.get_KEY_A())) { right = -1.0; }
+        if (Keyboard.IsDown(Keyboard.get_KEY_D())) { right = 1.0; }
+        if (Keyboard.IsDown(Keyboard.get_KEY_Q())) { climb = -0.5; }
+        if (Keyboard.IsDown(Keyboard.get_KEY_E())) { climb = 0.5; }
+
+        var speed = 3.2;
+        if (Keyboard.IsDown(Keyboard.get_KEY_LSHIFT())) { speed = 5.2; }
+
+        Camera3D.FPSUpdate(
+            camera,
+            Mouse.DeltaX() * 0.003,
+            0.0 - Mouse.DeltaY() * 0.003,
+            fwd,
+            right,
+            climb,
+            speed,
+            dt);
+    }
+
+    expose func renderFrame() {
+        Canvas3D.Clear(canvas, 0.025, 0.035, 0.050);
+        Canvas3D.Begin(canvas, camera);
+        drawGroundAndProps();
+        Canvas3D.End(canvas);
+
+        Canvas3D.BeginOverlay(canvas);
+        drawFinalOverlay();
+        Canvas3D.EndOverlay(canvas);
+    }
+
+    expose func run() {
+        Mouse.Capture();
+
+        while (Canvas3D.get_ShouldClose(canvas) == false && quitRequested == false) {
+            Canvas3D.Poll(canvas);
+
+            var dt = (Canvas3D.get_DeltaTime(canvas) + 0.0) / 1000.0;
+            if (dt <= 0.0) { dt = 0.016; }
+            if (dt > 0.050) { dt = 0.050; }
+
+            step(dt);
+            renderFrame();
+            Canvas3D.Flip(canvas);
+        }
+
+        Mouse.Release();
+    }
+
+    hide func drawGroundAndProps() {
+        Canvas3D.DrawMesh(canvas, groundMesh, Mat4.Translate(0.0, 0.0, 0.0), groundMat);
+
+        var crateXform =
+            Mat4.Mul(Mat4.Translate(-1.22, 0.55, 0.16), Mat4.Scale(1.10, 1.10, 1.10));
+        Canvas3D.DrawMesh(canvas, boxMesh, crateXform, crateMat);
+
+        var orbBob = 0.09 * Sin(sceneTime * 2.2);
+        Canvas3D.DrawMesh(canvas, sphereMesh, Mat4.Translate(1.25, 0.72 + orbBob, -0.78), orbMat);
+
+        var columnXform =
+            Mat4.Mul(Mat4.Translate(0.22, 0.68, 1.42), Mat4.Scale(1.0, 1.0, 1.0));
+        Canvas3D.DrawMesh(canvas, cylinderMesh, columnXform, columnMat);
+
+        var markerSpin = Mat4.RotateY(sceneTime * 0.75);
+        var markerXform =
+            Mat4.Mul(
+                Mat4.Mul(Mat4.Translate(0.22, 1.55, 1.42), markerSpin),
+                Mat4.Scale(0.26, 0.26, 0.26));
+        Canvas3D.DrawMesh(canvas, boxMesh, markerXform, markerMat);
+    }
+
+    hide func drawFinalOverlay() {
+        var w = Canvas3D.get_Width(canvas);
+        var h = Canvas3D.get_Height(canvas);
+
+        Canvas3D.DrawRect2D(canvas, 12, 12, 280, 54, 0x101722);
+        Canvas3D.DrawRect2D(canvas, 12, 12, 280, 3, 0x00E8FF);
+        Canvas3D.DrawText2D(canvas, 24, 26, "WALK_MIN", 0xFFFFFF);
+        Canvas3D.DrawText2D(canvas, 104, 26, "WASD move  mouse look  Q/E climb", 0xC6D6E8);
+
+        Canvas3D.DrawRect2D(canvas, w - 54, h - 54, 38, 38, 0x00E8FF);
+        Canvas3D.DrawRect2D(canvas, w - 48, h - 48, 26, 26, 0x101722);
+        Canvas3D.DrawRect2D(canvas, w - 42, h - 42, 14, 14, 0x00E8FF);
+    }
+}
+
+func start() {
+    var game = new WalkMinGame();
+    game.setup("Viper Walk Min", 960, 540);
+    game.run();
+    Terminal.Say("RESULT: ok");
+}

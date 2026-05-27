@@ -1,0 +1,43 @@
+module test_game3d_runframes_probe;
+
+bind Viper.Game3D as Game3D;
+bind Viper.Graphics as Graphics;
+bind Viper.Terminal as Terminal;
+
+func fail(message: String) {
+    Terminal.Say("FAIL: " + message);
+}
+
+func near(a: Float, b: Float, eps: Float) -> Boolean {
+    var d = a - b;
+    if (d < 0.0) {
+        d = 0.0 - d;
+    }
+    return d <= eps;
+}
+
+func start() {
+    var world = Game3D.World3D.New("Game3D RunFrames Probe", 64, 48);
+    Game3D.World3D.runFramesOnly(world, 3, 0.025);
+
+    if (Game3D.World3D.get_frame(world) != 3) {
+        fail("runFramesOnly did not advance World3D.frame");
+        return;
+    }
+    if (near(Game3D.World3D.get_dt(world), 0.025, 0.0001) == false ||
+        near(Game3D.World3D.get_elapsed(world), 0.075, 0.0001) == false) {
+        fail("runFramesOnly did not update World3D dt/elapsed");
+        return;
+    }
+
+    var snap = Game3D.World3D.captureFinalFrame(world);
+    if (snap == null ||
+        Graphics.Pixels.get_Width(snap) != 64 ||
+        Graphics.Pixels.get_Height(snap) != 48) {
+        fail("runFramesOnly did not leave a capturable final frame");
+        return;
+    }
+
+    Game3D.World3D.destroy(world);
+    Terminal.Say("PASS");
+}

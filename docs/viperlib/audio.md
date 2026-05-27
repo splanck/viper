@@ -42,6 +42,7 @@ Sound effect class for short audio clips. Sounds are loaded entirely into memory
 | Method       | Signature        | Description                                       |
 |--------------|------------------|---------------------------------------------------|
 | `Load(path)` | `Sound(String)`  | Load a sound from WAV, OGG Vorbis, or MP3. Returns `null` on failure |
+| `LoadAsset(path)` | `Sound(String)` | Load WAV, OGG Vorbis, or MP3 bytes through `Viper.IO.Assets`; accepts plain asset paths and `asset://` URIs |
 
 ### Methods
 
@@ -81,7 +82,7 @@ bind Viper.Text.Fmt as Fmt;
 func start() {
     Audio.Init();
 
-    var snd = Sound.Load("laser.wav");
+    var snd = Sound.LoadAsset("assets/audio/laser.wav");
     if snd != null {
         // Play with default settings
         var id = snd.Play();

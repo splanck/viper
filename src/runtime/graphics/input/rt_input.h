@@ -424,6 +424,9 @@ void rt_mouse_begin_frame(void);
 /// @param y Current Y position.
 void rt_mouse_update_pos(int64_t x, int64_t y);
 
+/// @brief Override mouse delta for the current frame without moving the cursor.
+void rt_mouse_force_delta(int64_t dx, int64_t dy);
+
 /// @brief Register a mouse button press event.
 /// @param button Button index.
 void rt_mouse_button_down(int64_t button);
@@ -440,6 +443,12 @@ void rt_mouse_update_wheel(double dx, double dy);
 /// @brief Set the active Canvas for mouse input.
 /// @param canvas Canvas handle (opaque pointer to vgfx window).
 void rt_mouse_set_canvas(void *canvas);
+
+/// @brief Clear the keyboard binding if it points at the given canvas.
+void rt_keyboard_clear_canvas_if_matches(void *canvas);
+
+/// @brief Clear the mouse binding if it points at the given canvas.
+void rt_mouse_clear_canvas_if_matches(void *canvas);
 
 //=========================================================================
 // Position Methods

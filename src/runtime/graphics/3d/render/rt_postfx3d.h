@@ -51,6 +51,23 @@ int64_t rt_postfx3d_get_effect_count(void *obj);
 /// @brief Bind a PostFX chain to a Canvas3D for automatic application during Flip to the active output.
 void rt_canvas3d_set_post_fx(void *canvas, void *postfx);
 
+#define RT_GRAPHICS3D_QUALITY_PERFORMANCE 0
+#define RT_GRAPHICS3D_QUALITY_BALANCED 1
+#define RT_GRAPHICS3D_QUALITY_CINEMATIC 2
+
+/// @brief Build a backend-safe PostFX profile for a canvas and quality level.
+void *rt_postfx3d_new_quality(void *canvas, int64_t quality);
+/// @brief Apply a backend-safe quality profile to a Canvas3D.
+void rt_canvas3d_set_quality(void *canvas, int64_t quality);
+/// @brief Last requested quality profile.
+int64_t rt_canvas3d_get_quality_requested(void *canvas);
+/// @brief Active quality profile after capability fallback.
+int64_t rt_canvas3d_get_quality_active(void *canvas);
+/// @brief True when the last quality application degraded for backend safety.
+int8_t rt_canvas3d_get_quality_fallback(void *canvas);
+/// @brief Human-readable reason for the last quality fallback, or empty string.
+rt_string rt_canvas3d_get_quality_fallback_reason(void *canvas);
+
 /* Phase F additions */
 /// @brief Append an SSAO (screen-space ambient occlusion) pass with sample radius and intensity.
 void rt_postfx3d_add_ssao(void *obj, double radius, double intensity, int64_t samples);

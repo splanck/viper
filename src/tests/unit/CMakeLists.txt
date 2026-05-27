@@ -757,13 +757,18 @@ function(viper_add_runtime_tests)
     viper_add_ctest(test_rt_scene3d_bindings test_rt_scene3d_bindings)
     viper_add_test_labels(test_rt_scene3d_bindings graphics3d unit)
 
+    viper_add_test(test_rt_game3d ${VIPER_TESTS_DIR}/unit/test_rt_game3d.cpp)
+    target_link_libraries(test_rt_game3d PRIVATE ${VIPER_RUNTIME_TEST_LIBS})
+    viper_add_ctest(test_rt_game3d test_rt_game3d)
+    viper_add_test_labels(test_rt_game3d graphics3d unit)
+
     viper_add_test(test_rt_gltf ${VIPER_TESTS_DIR}/unit/test_rt_gltf.cpp)
-    target_link_libraries(test_rt_gltf PRIVATE ${VIPER_RUNTIME_TEST_LIBS})
+    target_link_libraries(test_rt_gltf PRIVATE ${VIPER_RUNTIME_TEST_LIBS} viper_packaging)
     viper_add_ctest(test_rt_gltf test_rt_gltf)
     viper_add_test_labels(test_rt_gltf graphics3d unit)
 
     viper_add_test(test_rt_model3d ${VIPER_TESTS_DIR}/unit/test_rt_model3d.cpp)
-    target_link_libraries(test_rt_model3d PRIVATE ${VIPER_RUNTIME_TEST_LIBS})
+    target_link_libraries(test_rt_model3d PRIVATE ${VIPER_RUNTIME_TEST_LIBS} viper_packaging)
     target_compile_definitions(test_rt_model3d PRIVATE VIPER_SOURCE_DIR="${CMAKE_SOURCE_DIR}")
     viper_add_ctest(test_rt_model3d test_rt_model3d)
     viper_add_test_labels(test_rt_model3d graphics3d unit)
@@ -800,6 +805,7 @@ function(viper_add_runtime_tests)
 
     viper_add_test(test_vgfx3d_backend_metal_shared ${VIPER_TESTS_DIR}/unit/test_vgfx3d_backend_metal_shared.c)
     target_link_libraries(test_vgfx3d_backend_metal_shared PRIVATE ${VIPER_RUNTIME_TEST_LIBS})
+    target_compile_definitions(test_vgfx3d_backend_metal_shared PRIVATE VIPER_SOURCE_DIR="${CMAKE_SOURCE_DIR}")
     viper_add_ctest(test_vgfx3d_backend_metal_shared test_vgfx3d_backend_metal_shared)
     viper_add_test_labels(test_vgfx3d_backend_metal_shared graphics3d unit)
 
@@ -2037,7 +2043,7 @@ function(viper_add_runtime_tests)
     viper_add_ctest(test_rt_physics2d test_rt_physics2d)
 
     viper_add_test(test_rt_audio_integration ${VIPER_TESTS_DIR}/runtime/RTAudioIntegrationTests.cpp)
-    target_link_libraries(test_rt_audio_integration PRIVATE ${VIPER_RUNTIME_TEST_LIBS})
+    target_link_libraries(test_rt_audio_integration PRIVATE ${VIPER_RUNTIME_TEST_LIBS} viper_packaging)
     viper_add_ctest(test_rt_audio_integration test_rt_audio_integration)
 
     viper_add_test(test_rt_heap_alloc ${VIPER_TESTS_DIR}/runtime/RTHeapAllocTests.cpp)

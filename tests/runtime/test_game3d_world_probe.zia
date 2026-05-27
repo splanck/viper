@@ -1,0 +1,98 @@
+module test_game3d_world_probe;
+
+bind Viper.Game3D as Game3D;
+bind Viper.Graphics as Graphics;
+bind Viper.Graphics3D as G3D;
+bind Viper.Math as Math;
+bind Viper.Terminal as Terminal;
+
+func fail(message: String) {
+    Terminal.Say("FAIL: " + message);
+}
+
+func near(a: Float, b: Float, eps: Float) -> Boolean {
+    var d = a - b;
+    if (d < 0.0) {
+        d = 0.0 - d;
+    }
+    return d <= eps;
+}
+
+func start() {
+    var world = Game3D.World3D.New("Game3D World Probe", 64, 48);
+    if (world == null) {
+        fail("World3D.New returned null");
+        return;
+    }
+    if (Game3D.World3D.get_canvas(world) == null ||
+        Game3D.World3D.get_camera(world) == null ||
+        Game3D.World3D.get_scene(world) == null ||
+        Game3D.World3D.get_physics(world) == null ||
+        Game3D.World3D.get_input(world) == null ||
+        Game3D.World3D.get_audio(world) == null ||
+        Game3D.World3D.get_effects(world) == null) {
+        fail("World3D.New did not create the expected runtime components");
+        return;
+    }
+
+    var mask = Game3D.LayerMask.Of(Game3D.Layers.get_World());
+    Game3D.LayerMask.include(mask, Game3D.Layers.get_Player());
+    if (Game3D.LayerMask.includes(mask, Game3D.Layers.get_Player()) == false) {
+        fail("LayerMask include/includes failed");
+        return;
+    }
+
+    var mesh = G3D.Mesh3D.NewBox(1.0, 1.0, 1.0);
+    var mat = G3D.Material3D.NewColor(0.2, 0.7, 0.9);
+    var player = Game3D.Entity3D.Of(mesh, mat);
+    Game3D.Entity3D.setName(player, "Player");
+    Game3D.Entity3D.setPosition(player, 0.0, 0.0, 0.0);
+    Game3D.Entity3D.setLayer(player, Game3D.Layers.get_Player());
+    Game3D.Entity3D.setCollisionMask(player, mask);
+    Game3D.World3D.spawn(world, player);
+
+    if (Game3D.Entity3D.isSpawned(player) == false) {
+        fail("World3D.spawn did not mark the entity spawned");
+        return;
+    }
+    if (Game3D.World3D.findEntity(world, "Player") == null) {
+        fail("World3D.findEntity did not find the spawned entity");
+        return;
+    }
+    if (Game3D.World3D.findNode(world, "Player") == null) {
+        fail("World3D.findNode did not find the entity node");
+        return;
+    }
+
+    Game3D.World3D.setAmbient(world, 0.18, 0.20, 0.24);
+    Game3D.World3D.setQuality(world, Game3D.QualityLevel.get_Balanced());
+    Game3D.World3D.lookAt(world, new Math.Vec3(0.0, 0.0, 0.0));
+    Game3D.World3D.onResize(world, 64, 48);
+    Game3D.World3D.beginFrame(world);
+    Game3D.World3D.drawScene(world);
+    Game3D.World3D.drawEffects(world);
+    Game3D.World3D.endScene(world);
+    var snap = Game3D.World3D.captureFinalFrame(world);
+    if (snap == null) {
+        fail("World3D.captureFinalFrame returned null");
+        return;
+    }
+    if (Graphics.Pixels.get_Width(snap) != 64 || Graphics.Pixels.get_Height(snap) != 48) {
+        fail("World3D.captureFinalFrame returned the wrong size");
+        return;
+    }
+    Game3D.World3D.present(world);
+
+    Game3D.World3D.despawn(world, player);
+    if (Game3D.Entity3D.isSpawned(player)) {
+        fail("World3D.despawn did not clear spawned state");
+        return;
+    }
+    Game3D.World3D.destroy(world);
+    if (Game3D.World3D.isDestroyed(world) == false) {
+        fail("World3D.destroy did not mark the world destroyed");
+        return;
+    }
+
+    Terminal.Say("PASS");
+}

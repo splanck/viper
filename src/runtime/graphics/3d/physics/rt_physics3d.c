@@ -4117,6 +4117,22 @@ void *rt_world3d_get_exit_event(void *obj, int64_t index) {
     return collision_event3d_new_from_contact(&w->exit_events[index]);
 }
 
+/// @brief Clear all collision buffers currently visible to event/query APIs.
+///
+/// This is intentionally stronger than only zeroing this frame's contacts:
+/// callers use it after handling events, so the next `Step` should not report
+/// stale `stay` or `exit` transitions from the cleared frame.
+void rt_world3d_clear_collision_events(void *obj) {
+    rt_world3d *w = world3d_checked(obj);
+    if (!w)
+        return;
+    w->contact_count = 0;
+    w->previous_contact_count = 0;
+    w->enter_event_count = 0;
+    w->stay_event_count = 0;
+    w->exit_event_count = 0;
+}
+
 // Boxed `CollisionEvent3D` field accessors — exposed to Zia as
 // properties on the event object. Borrowed references for body /
 // collider (the event already holds a retained ref).
