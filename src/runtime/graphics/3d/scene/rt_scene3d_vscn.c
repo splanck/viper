@@ -5,7 +5,7 @@
 //
 //===----------------------------------------------------------------------===//
 //
-// File: src/runtime/graphics/rt_scene3d_vscn.c
+// File: src/runtime/graphics/3d/scene/rt_scene3d_vscn.c
 // Purpose: Scene3D .vscn save/load support and asset serialization helpers.
 //   Implements the JSON-based scene format that embeds binary asset payloads
 //   (textures, mesh buffers) as base64 to stay textual. Pointer-deduplication
@@ -373,11 +373,14 @@ static int vjson_is_map(void *obj) {
            rt_obj_class_id(obj) == RT_MAP_CLASS_ID;
 }
 
+/// @brief True if @p obj is a parsed-JSON array (a seq payload), not a string/map.
 static int vjson_is_seq(void *obj) {
     return obj && !rt_string_is_handle(obj) && rt_heap_is_payload(obj) &&
            rt_obj_class_id(obj) == RT_SEQ_CLASS_ID;
 }
 
+/// @brief Look up @p key in a parsed-JSON object; returns the value or NULL if @p obj is
+///   not a map or the key is absent.
 static void *vjson_get(void *obj, const char *key) {
     if (!obj || !key)
         return NULL;
@@ -468,10 +471,12 @@ static int64_t vjson_arr_i64(void *arr, int64_t index, int64_t def) {
     return vjson_value_i64(rt_seq_get(arr, index), def);
 }
 
+/// @brief Return @p value if finite, else @p fallback. Base sanitizer for loaded JSON numbers.
 static double vscn_finite_or(double value, double fallback) {
     return isfinite(value) ? value : fallback;
 }
 
+/// @brief Sanitize @p value (fallback if non-finite) and clamp to ±VSCN_ABS_MAX.
 static double vscn_clamp_abs_or(double value, double fallback) {
     value = vscn_finite_or(value, fallback);
     if (value > VSCN_ABS_MAX)
@@ -481,6 +486,7 @@ static double vscn_clamp_abs_or(double value, double fallback) {
     return value;
 }
 
+/// @brief Sanitize @p value (fallback if non-finite) and clamp to [lo, hi].
 static double vscn_clamp_or(double value, double fallback, double lo, double hi) {
     value = vscn_finite_or(value, fallback);
     if (value < lo)
@@ -490,23 +496,27 @@ static double vscn_clamp_or(double value, double fallback, double lo, double hi)
     return value;
 }
 
+/// @brief Sanitize @p value (fallback if non-finite) and clamp negatives to 0.
 static double vscn_nonnegative_or(double value, double fallback) {
     value = vscn_finite_or(value, fallback);
     return value < 0.0 ? 0.0 : value;
 }
 
+/// @brief Accept a material workflow id (legacy/PBR) from JSON, else use @p fallback.
 static int32_t vscn_material_workflow_or(int64_t value, int32_t fallback) {
     if (value == RT_MATERIAL3D_WORKFLOW_LEGACY || value == RT_MATERIAL3D_WORKFLOW_PBR)
         return (int32_t)value;
     return fallback;
 }
 
+/// @brief Accept an alpha-mode id (opaque/mask/blend) from JSON, else use @p fallback.
 static int32_t vscn_alpha_mode_or(int64_t value, int32_t fallback) {
     if (value >= RT_MATERIAL3D_ALPHA_MODE_OPAQUE && value <= RT_MATERIAL3D_ALPHA_MODE_BLEND)
         return (int32_t)value;
     return fallback;
 }
 
+/// @brief Accept a texture-wrap mode (repeat/clamp/mirror) from JSON, else use @p fallback.
 static int32_t vscn_wrap_or(int64_t value, int32_t fallback) {
     if (value == RT_MATERIAL3D_TEXTURE_WRAP_REPEAT ||
         value == RT_MATERIAL3D_TEXTURE_WRAP_CLAMP_TO_EDGE ||
@@ -515,6 +525,7 @@ static int32_t vscn_wrap_or(int64_t value, int32_t fallback) {
     return fallback;
 }
 
+/// @brief Accept a texture-filter mode (nearest/linear) from JSON, else use @p fallback.
 static int32_t vscn_filter_or(int64_t value, int32_t fallback) {
     if (value == RT_MATERIAL3D_TEXTURE_FILTER_NEAREST ||
         value == RT_MATERIAL3D_TEXTURE_FILTER_LINEAR)
@@ -522,6 +533,8 @@ static int32_t vscn_filter_or(int64_t value, int32_t fallback) {
     return fallback;
 }
 
+/// @brief Normalize a loaded quaternion in place; non-finite or near-zero-length values
+///   reset to the identity quaternion (0,0,0,1).
 static void vscn_normalize_quat(double q[4]) {
     if (!q)
         return;
@@ -547,6 +560,8 @@ static void vscn_normalize_quat(double q[4]) {
     q[3] *= inv_len;
 }
 
+/// @brief Normalize a loaded vec3 in place; a near-zero or non-finite length falls back
+///   to the (fx, fy, fz) direction.
 static void vscn_normalize_vec3(double v[3], double fx, double fy, double fz) {
     if (!v)
         return;
@@ -563,6 +578,8 @@ static void vscn_normalize_vec3(double v[3], double fx, double fy, double fz) {
     v[2] *= inv_len;
 }
 
+/// @brief Read an optional integer index reference (e.g. a mesh/material index) from
+///   @p key into @p out_index. Missing key → -1 and success; a value < -1 → failure (0).
 static int vscn_read_index_ref(void *obj, const char *key, int64_t *out_index) {
     void *value;
     int64_t index;
@@ -599,8 +616,8 @@ static void vscn_make_indent(char *indent, size_t indent_cap, int depth) {
     indent[count] = '\0';
 }
 
-/// @brief Append `src_len` raw bytes to a growing `*buf`, doubling capacity as needed.
-/// @return 1 on success, 0 on alloc failure.
+/// @brief Ensure `*buf` has at least `needed` bytes of capacity, doubling (starting at
+///   4096) until it fits. @return 1 on success, 0 on alloc failure.
 static int vscn_reserve(char **buf, size_t *cap, size_t needed) {
     char *nb;
     size_t new_cap;
@@ -626,6 +643,8 @@ static int vscn_reserve(char **buf, size_t *cap, size_t needed) {
     return 1;
 }
 
+/// @brief Append `src_len` raw bytes to the growing `*buf` (reserving capacity first and
+///   keeping the buffer NUL-terminated). @return 1 on success, 0 on overflow/alloc failure.
 static int vscn_append_raw(char **buf, size_t *len, size_t *cap, const char *src, size_t src_len) {
     if (!buf || !len || !cap || (!src && src_len > 0))
         return 0;

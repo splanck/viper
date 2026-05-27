@@ -5,7 +5,7 @@
 //
 //===----------------------------------------------------------------------===//
 //
-// File: src/runtime/graphics/rt_canvas3d_overlay.c
+// File: src/runtime/graphics/3d/render/rt_canvas3d_overlay.c
 // Purpose: Canvas3D screen-space overlay, screenshot, and debug-draw helpers.
 //   Implements Viper.Graphics3D.Canvas3D's debug visualizers (lines, points,
 //   AABB / sphere wireframes, axis gizmos), HUD primitives (rect, crosshair,

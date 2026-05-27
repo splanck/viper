@@ -3,7 +3,7 @@
 // Part of the Viper project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
-// File: src/runtime/graphics/vgfx3d_backend_utils.h
+// File: src/runtime/graphics/3d/backend/vgfx3d_backend_utils.h
 // Purpose: Backend-agnostic helper declarations shared by the vgfx3d render
 //   backends — Pixels-to-RGBA8 decoding and other small format/utility
 //   routines used when uploading CPU images to GPU textures.
@@ -15,7 +15,7 @@
 //   - Functions that return/allocate buffers transfer ownership to the
 //     caller (caller frees); inputs are borrowed and not retained.
 //
-// Links: src/runtime/graphics/vgfx3d_backend_utils.c (implementation)
+// Links: src/runtime/graphics/3d/backend/vgfx3d_backend_utils.c (implementation)
 //
 //===----------------------------------------------------------------------===//
 #pragma once

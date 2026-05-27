@@ -5,7 +5,7 @@
 //
 //===----------------------------------------------------------------------===//
 //
-// File: src/runtime/graphics/rt_decal3d.c
+// File: src/runtime/graphics/3d/render/rt_decal3d.c
 // Purpose: 3D decals — surface-aligned textured quads with lifetime/fade.
 //
 // Key invariants:

@@ -99,7 +99,9 @@ tokens, collinear triangles, and overflowing OBJ face indices; generated planes 
 spheres avoid zero-area pole triangles, importers skip isolated degenerate faces, normals/tangents skip
 overflowing intermediate vectors, bone weights are filtered and renormalized, and failed mesh builds
 are not cloned as drawable meshes. Empty or unsupported OBJ files are rejected instead of returning
-drawable zero-triangle meshes.
+drawable zero-triangle meshes. Negative-determinant mesh transforms reverse triangle winding to keep
+mirrored geometry cullable from the expected side. Exact binary STL files stream triangle records
+directly from disk, while non-exact or ASCII STL files keep the bounded buffered path.
 `Particles3D` bounds emitter ranges,
 rates, alpha, spread, shape, update time, positions, gravity, and emitter extents. `InstanceBatch3D`
 stores only finite float-range matrix elements for culling and backend submission. `Light3D` clamps colors, intensities, attenuations, spot angles,
@@ -177,6 +179,10 @@ The OpenGL backend now follows the same high-level split, adapted to its GLX/swa
 - target/readback validation: OpenGL rejects invalid RTT dimensions, bounds HDR readback allocation math, sanitizes shadow indices against completed slots, and falls back to raw scene readback when postfx readback cannot allocate or apply the chain
 
 Like D3D11, this keeps the no-postfx path cheap while preserving the scene depth/history inputs required by the advanced GPU postfx path.
+
+Canvas finalization owns the shared ordering contract above the backends: recorded final overlays are
+replayed into the backend overlay target before `present_postfx`, and `ScreenshotFinal()` uses the same
+post-FX-plus-overlay ordering as `Flip()`.
 
 ### RenderTarget3D Readback Ownership
 
@@ -464,8 +470,9 @@ Canvas3D coexists with the existing 2D Canvas system:
 
 `Scene3D.SyncBindings(dt)` is the explicit integration step for node bindings. It applies body-driven transforms, node-driven kinematic pushes, and animator root motion before rendering.
 
-`Canvas3D.SetFrustumCulling(true)` applies the same coarse AABB-vs-frustum rejection to the
-deferred canvas draw queue before opaque front-to-back sorting. The older
+Canvas3D sorts opaque deferred draws front-to-back before submission, independent of whether visibility
+culling is enabled. `Canvas3D.SetFrustumCulling(true)` additionally applies the same coarse
+AABB-vs-frustum rejection to the deferred canvas draw queue. The older
 `SetOcclusionCulling` name remains as a compatibility alias; it is not a hardware occlusion-query
 or Hi-Z visibility system.
 

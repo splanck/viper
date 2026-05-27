@@ -5,7 +5,7 @@
 //
 //===----------------------------------------------------------------------===//
 //
-// File: src/runtime/graphics/rt_particles3d.h
+// File: src/runtime/graphics/3d/world/rt_particles3d.h
 // Purpose: 3D particle system with emitter-based spawning, physics (gravity,
 //   velocity), lifetime management, size/color/alpha interpolation, and
 //   camera-facing billboard rendering with batched draw calls.

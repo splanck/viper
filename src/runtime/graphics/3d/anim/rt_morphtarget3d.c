@@ -5,7 +5,7 @@
 //
 //===----------------------------------------------------------------------===//
 //
-// File: src/runtime/graphics/rt_morphtarget3d.c
+// File: src/runtime/graphics/3d/anim/rt_morphtarget3d.c
 // Purpose: MorphTarget3D — named blend shapes with per-vertex position, normal,
 //   and tangent deltas. Applied on GPU when the active backend can carry the
 //   payload, otherwise on CPU before draw submission.

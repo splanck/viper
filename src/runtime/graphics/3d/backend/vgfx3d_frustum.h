@@ -5,7 +5,7 @@
 //
 //===----------------------------------------------------------------------===//
 //
-// File: src/runtime/graphics/vgfx3d_frustum.h
+// File: src/runtime/graphics/3d/backend/vgfx3d_frustum.h
 // Purpose: View frustum extraction and AABB/sphere intersection tests for
 //   culling objects outside the camera's view volume.
 //

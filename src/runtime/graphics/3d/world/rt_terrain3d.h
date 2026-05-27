@@ -5,7 +5,7 @@
 //
 //===----------------------------------------------------------------------===//
 //
-// File: src/runtime/graphics/rt_terrain3d.h
+// File: src/runtime/graphics/3d/world/rt_terrain3d.h
 // Purpose: Heightmap-based terrain with chunked rendering, bilinear height
 //   queries, and normal computation for physics/AI.
 //

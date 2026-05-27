@@ -5,7 +5,7 @@
 //
 //===----------------------------------------------------------------------===//
 //
-// File: src/runtime/graphics/rt_water3d.h
+// File: src/runtime/graphics/3d/world/rt_water3d.h
 // Purpose: Water plane with animated sine-based waves, transparency,
 //   and optional tinted color. Rendered as a dynamic mesh updated each frame.
 //

@@ -5,7 +5,7 @@
 //
 //===----------------------------------------------------------------------===//
 //
-// File: src/runtime/graphics/rt_raycast3d.c
+// File: src/runtime/graphics/3d/scene/rt_raycast3d.c
 // Purpose: 3D raycasting and AABB collision detection for picking, shooting,
 //   and physics. Implements Möller–Trumbore ray-triangle intersection, slab
 //   method ray-AABB, quadratic ray-sphere, and AABB overlap/penetration.
@@ -72,6 +72,8 @@ static int vec3_read_finite(void *obj, double *out) {
     return vec3_is_finite_raw(out);
 }
 
+/// @brief Normalize a vec3 in place; returns 0 (leaving @p v unchanged) if it is
+///   non-finite or shorter than EPSILON, else 1.
 static int vec3_normalize_raw(double *v) {
     double len_sq;
     double inv_len;

@@ -5,7 +5,7 @@
 //
 //===----------------------------------------------------------------------===//
 //
-// File: src/runtime/graphics/vgfx3d_skinning.c
+// File: src/runtime/graphics/3d/backend/vgfx3d_skinning.c
 // Purpose: CPU-side skeletal vertex skinning. Transforms each vertex's
 //   position and normal by up to 4 weighted bone matrices from the palette.
 //

@@ -5,7 +5,7 @@
 //
 //===----------------------------------------------------------------------===//
 //
-// File: src/runtime/graphics/rt_postfx3d.c
+// File: src/runtime/graphics/3d/render/rt_postfx3d.c
 // Purpose: PostFX3D — full-screen post-processing effects applied per-pixel
 //   to the rendered framebuffer. Supports bloom (bright extract + blur +
 //   composite), tone mapping (Reinhard / ACES filmic), FXAA, color grading,
@@ -934,6 +934,7 @@ enum {
     POSTFX3D_QUALITY_FALLBACK_GPU_POSTFX_UNAVAILABLE = 1,
 };
 
+/// @brief Clamp an arbitrary quality value to the valid PERFORMANCE..CINEMATIC range.
 static int32_t postfx3d_quality_level(int64_t quality) {
     if (quality < RT_GRAPHICS3D_QUALITY_PERFORMANCE)
         return RT_GRAPHICS3D_QUALITY_PERFORMANCE;
@@ -942,10 +943,14 @@ static int32_t postfx3d_quality_level(int64_t quality) {
     return (int32_t)quality;
 }
 
+/// @brief True if the canvas can run GPU scene-buffer effects (SSAO/DoF/motion blur):
+///   it must have a backend with a present_postfx hook and be rendering to the window
+///   (no offscreen render target).
 static int postfx3d_canvas_supports_gpu_scene_effects(const rt_canvas3d *c) {
     return c && c->backend && c->backend->present_postfx && c->render_target == NULL;
 }
 
+/// @brief Human-readable text for a quality-fallback reason code (empty when none).
 static const char *postfx3d_quality_fallback_reason_text(int32_t reason) {
     switch (reason) {
         case POSTFX3D_QUALITY_FALLBACK_GPU_POSTFX_UNAVAILABLE:
@@ -955,6 +960,10 @@ static const char *postfx3d_quality_fallback_reason_text(int32_t reason) {
     }
 }
 
+/// @brief Populate a PostFX chain with the preset effect stack for @p quality
+///   (performance/balanced/cinematic) and record the requested/active quality on the
+///   canvas. Cinematic adds GPU scene effects only when supported, otherwise it records
+///   a quality fallback so callers can report the downgrade.
 static void postfx3d_configure_quality_profile(rt_postfx3d *fx,
                                                rt_canvas3d *canvas,
                                                int32_t quality) {
@@ -1023,21 +1032,25 @@ void rt_canvas3d_set_quality(void *canvas, int64_t quality) {
         rt_obj_free(fx);
 }
 
+/// @brief Get the last quality level requested via SetQuality. See header.
 int64_t rt_canvas3d_get_quality_requested(void *canvas) {
     rt_canvas3d *c = rt_canvas3d_checked_or_stack(canvas);
     return c ? c->quality_requested : RT_GRAPHICS3D_QUALITY_PERFORMANCE;
 }
 
+/// @brief Get the quality level actually active after capability fallback. See header.
 int64_t rt_canvas3d_get_quality_active(void *canvas) {
     rt_canvas3d *c = rt_canvas3d_checked_or_stack(canvas);
     return c ? c->quality_active : RT_GRAPHICS3D_QUALITY_PERFORMANCE;
 }
 
+/// @brief True if the last quality application was degraded for backend safety. See header.
 int8_t rt_canvas3d_get_quality_fallback(void *canvas) {
     rt_canvas3d *c = rt_canvas3d_checked_or_stack(canvas);
     return c && c->quality_fallback ? 1 : 0;
 }
 
+/// @brief Get a human-readable reason for the last quality fallback (empty if none). See header.
 rt_string rt_canvas3d_get_quality_fallback_reason(void *canvas) {
     rt_canvas3d *c = rt_canvas3d_checked_or_stack(canvas);
     const char *reason =

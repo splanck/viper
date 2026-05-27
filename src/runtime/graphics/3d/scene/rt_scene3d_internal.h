@@ -5,8 +5,10 @@
 //
 //===----------------------------------------------------------------------===//
 //
-// File: src/runtime/graphics/rt_scene3d_internal.h
-// Purpose: Internal shared structs for Scene3D / SceneNode3D implementation.
+// File: src/runtime/graphics/3d/scene/rt_scene3d_internal.h
+// Purpose: Internal shared structs for Scene3D / SceneNode3D implementation,
+//   including node-animation (glTF-style channel) types. Private to the scene
+//   runtime — not part of the public Graphics3D ABI.
 //
 //===----------------------------------------------------------------------===//
 #pragma once
@@ -25,6 +27,9 @@
 #define RT_NODE_ANIM_INTERP_STEP 1
 #define RT_NODE_ANIM_INTERP_CUBICSPLINE 2
 
+/// @brief One node-animation channel (glTF-style): the target node name, the animated
+///   path (TRS/weights), interpolation mode, and the keyframe times/values plus optional
+///   cubic-spline in/out tangents.
 typedef struct {
     rt_string target_name;
     int32_t path;
@@ -37,6 +42,7 @@ typedef struct {
     float *out_tangents;
 } rt_node_anim_channel3d;
 
+/// @brief A node-animation clip: a named, fixed-duration set of channels plus a loop flag.
 typedef struct rt_node_animation3d {
     void *vptr;
     rt_string name;
@@ -47,6 +53,8 @@ typedef struct rt_node_animation3d {
     int8_t looping;
 } rt_node_animation3d;
 
+/// @brief A node animator: a set of clips plus playback cursor (current clip, time, speed,
+///   playing flag) rooted at the scene node whose subtree it drives.
 typedef struct rt_node_animator3d {
     void *vptr;
     rt_node_animation3d **animations;
@@ -58,6 +66,9 @@ typedef struct rt_node_animator3d {
     struct rt_scene_node3d *root;
 } rt_node_animator3d;
 
+/// @brief SceneNode3D payload: local TRS, lazily-recomputed world matrix with dirty flag,
+///   parent/children links, bound mesh/material/light/body/animator(s) and sync mode,
+///   visibility, name, cached subtree AABB/bounding-sphere, and LOD mesh levels.
 typedef struct rt_scene_node3d {
     void *vptr;
 
@@ -97,6 +108,8 @@ typedef struct rt_scene_node3d {
     int32_t lod_capacity;
 } rt_scene_node3d;
 
+/// @brief Scene3D payload: the implicit root node, total node count, and the
+///   frustum-culled count from the most recent draw (a perf metric).
 typedef struct {
     void *vptr;
     rt_scene_node3d *root;

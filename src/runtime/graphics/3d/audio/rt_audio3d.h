@@ -5,7 +5,7 @@
 //
 //===----------------------------------------------------------------------===//
 //
-// File: src/runtime/graphics/rt_audio3d.h
+// File: src/runtime/graphics/3d/audio/rt_audio3d.h
 // Purpose: Spatial audio — distance attenuation and stereo panning based on
 //   3D listener and source positions. Wraps the existing 2D audio API.
 //
@@ -20,6 +20,8 @@
 extern "C" {
 #endif
 
+/// @brief Snapshot of a listener's spatial pose for voice-parameter math: world
+///   position, orthonormal forward/right basis, velocity (Doppler), and a `valid` flag.
 typedef struct rt_audio3d_listener_state {
     double position[3];
     double forward[3];

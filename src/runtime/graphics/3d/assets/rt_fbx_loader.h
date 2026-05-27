@@ -5,7 +5,7 @@
 //
 //===----------------------------------------------------------------------===//
 //
-// File: src/runtime/graphics/rt_fbx_loader.h
+// File: src/runtime/graphics/3d/assets/rt_fbx_loader.h
 // Purpose: FBX binary file loader — extracts Mesh3D, Skeleton3D, Animation3D,
 //   and Material3D from .fbx files. Supports both v<7500 (32-bit offsets) and
 //   v>=7500 (64-bit offsets). Uses rt_compress_inflate for zlib decompression.

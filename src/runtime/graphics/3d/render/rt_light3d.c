@@ -5,7 +5,7 @@
 //
 //===----------------------------------------------------------------------===//
 //
-// File: src/runtime/graphics/rt_light3d.c
+// File: src/runtime/graphics/3d/render/rt_light3d.c
 // Purpose: Viper.Graphics3D.Light3D — directional, point, and ambient lights.
 //
 // Key invariants:
@@ -276,6 +276,7 @@ void *rt_light3d_new_spot(void *position,
         rt_trap("Light3D.NewSpot: memory allocation failed");
         return NULL;
     }
+    memset(light, 0, sizeof(*light));
     light->vptr = NULL;
     light->type = 3; /* spot */
     light->direction[0] = rt_vec3_x(direction);

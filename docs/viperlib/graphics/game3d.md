@@ -95,6 +95,9 @@ Constant classes are runtime-backed too: `Layers`, `BodyShape`, `SyncMode`,
 `AlphaMode`, `ShadingModel`, `QualityLevel`, `CollisionPhase`, `Keys`, and
 `MouseButtons`.
 
+`ShadingModel` mirrors `Viper.Graphics3D.Material3D`: `Phong=0`, `Toon=1`,
+`PBR=2`, `Unlit=3`, `Fresnel=4`, and `Emissive=5`.
+
 ---
 
 ## World3D Defaults
@@ -177,6 +180,8 @@ setup. Water is a transparent plane prefab.
 
 `Debug3D` uses the same final overlay path as user HUDs, so its text is drawn
 after post-FX rather than being bloomed, toned, or blurred.
+On GPU post-FX backends, final overlays are replayed before `present_postfx`
+composites the frame so capture and presentation use the same ordering.
 
 ```zia
 Game3D.Debug3D.ShowOverlay(world, true);
@@ -523,7 +528,10 @@ polling the event buffers is the supported interpreted-Zia path.
 ## Input3D
 
 `Input3D` reads the same keyboard and mouse state updated by `Canvas3D.Poll()` or
-the synthetic input path.
+the synthetic input path. Calling `update()` snapshots key/button transitions,
+mouse deltas, and wheel motion for the current Game3D frame, so later polling or
+synthetic input changes do not mutate controller decisions already made for that
+frame.
 
 | Method / property | Purpose |
 |-------------------|---------|
@@ -557,8 +565,8 @@ Game3D.World3D.runFramesOnly(world, 1, 0.016);
 ```
 
 `FreeFlyController.New(world)` is the quickest camera for debug views and
-editor-like movement. It reads `Input3D.moveAxis()` and raw mouse deltas, moves
-through the camera basis, and can capture or release mouse input with
+editor-like movement. It reads `Input3D.moveAxis()` and the frame's snapshotted
+mouse deltas, moves through the camera basis, and can capture or release mouse input with
 `captureMouse()` / `releaseMouse()`.
 
 `FirstPersonController.New(world)` uses the same look controls. Without a

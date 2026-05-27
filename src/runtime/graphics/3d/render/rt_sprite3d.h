@@ -5,7 +5,7 @@
 //
 //===----------------------------------------------------------------------===//
 //
-// File: src/runtime/graphics/rt_sprite3d.h
+// File: src/runtime/graphics/3d/render/rt_sprite3d.h
 // Purpose: 3D sprite — camera-facing textured billboard with sprite sheet
 //   frame support. Used for 2D characters in 3D worlds, RPG items, trees.
 //

@@ -5,7 +5,7 @@
 //
 //===----------------------------------------------------------------------===//
 //
-// File: src/runtime/graphics/rt_canvas3d_internal.h
+// File: src/runtime/graphics/3d/render/rt_canvas3d_internal.h
 // Purpose: Internal struct definitions for Viper.Graphics3D types.
 //   Shared between rt_canvas3d.c, rt_mesh3d.c, rt_camera3d.c, etc.
 //
@@ -37,6 +37,8 @@
 // Vertex format
 //=============================================================================
 
+/// @brief Interleaved 92-byte vertex: position, normal, two UV sets, RGBA color, tangent
+///   (with handedness in .w), and 4 bone index/weight pairs for skinning.
 typedef struct {
     float pos[3];            /* object-space position */
     float normal[3];         /* vertex normal */
@@ -52,6 +54,8 @@ typedef struct {
 // Mesh3D
 //=============================================================================
 
+/// @brief Mesh3D payload: growable vertex/index arrays, cached AABB/bounding-sphere,
+///   a geometry revision counter, and transient skinning/morph pointers set per draw.
 typedef struct {
     void *vptr;
     vgfx3d_vertex_t *vertices;
@@ -137,6 +141,8 @@ static inline void rt_mesh3d_refresh_bounds(rt_mesh3d *mesh) {
 // Camera3D
 //=============================================================================
 
+/// @brief Camera3D payload: cached view/projection matrices, eye position, perspective
+///   or ortho parameters, FPS yaw/pitch, and camera-shake state.
 typedef struct {
     void *vptr;
     double view[16];       /* view matrix, row-major */
@@ -177,6 +183,9 @@ void rt_camera3d_update_shake_for_frame(void *cam, double dt);
 #define RT_MATERIAL3D_TEXTURE_SLOT_AO 5
 #define RT_MATERIAL3D_TEXTURE_SLOT_COUNT 6
 
+/// @brief Material3D payload: diffuse/specular/emissive colors, PBR metallic-roughness
+///   factors, six texture-map slots with per-slot sampler/UV state, alpha/blend mode,
+///   environment reflectivity, shading model, and custom shader params.
 typedef struct {
     void *vptr;
     double diffuse[4]; /* RGBA diffuse color */
@@ -227,6 +236,8 @@ typedef struct {
 // Light3D
 //=============================================================================
 
+/// @brief Light3D payload: light kind, direction/position, color/intensity/attenuation,
+///   spot cone cosines, and an enabled flag.
 typedef struct {
     void *vptr;
     int32_t type; /* 0=directional, 1=point, 2=ambient, 3=spot */
@@ -254,6 +265,8 @@ typedef struct vgfx3d_backend vgfx3d_backend_t;
 // CubeMap3D — 6-face cube map texture for skybox + reflections
 //=============================================================================
 
+/// @brief CubeMap3D payload: six square Pixels faces (±X, ±Y, ±Z) plus a cache identity
+///   used as a stable GPU-upload key across allocator reuse.
 typedef struct {
     void *vptr;
     void *faces[6];    /* Pixels objects: +X, -X, +Y, -Y, +Z, -Z */
@@ -268,11 +281,15 @@ typedef struct {
 typedef struct vgfx3d_rendertarget vgfx3d_rendertarget_t;
 typedef int (*vgfx3d_rendertarget_sync_fn)(void *userdata, vgfx3d_rendertarget_t *target);
 
+/// @brief Render-target color format: 8-bit UNORM (LDR) or 16-bit float (HDR).
 typedef enum {
     VGFX3D_RENDERTARGET_COLOR_FORMAT_UNORM8 = 0,
     VGFX3D_RENDERTARGET_COLOR_FORMAT_HDR16F = 1,
 } vgfx3d_rendertarget_color_format_t;
 
+/// @brief Offscreen render target: lazily-allocated LDR/HDR color and depth buffers,
+///   dimensions/stride/format, dirty flags, and a backend color-sync callback that
+///   refreshes the CPU mirror from a GPU surface on readback.
 struct vgfx3d_rendertarget {
     uint8_t *color_buf; /* RGBA pixels (software path) */
     float *hdr_color_buf; /* linear RGBA32F CPU mirror for HDR GPU readback */
@@ -335,7 +352,25 @@ static inline int vgfx3d_rendertarget_ensure_hdr_color(vgfx3d_rendertarget_t *ta
     return target->hdr_color_buf != NULL;
 }
 
-/// @brief Lazily allocate the float depth buffer, initialized to FLT_MAX.
+/// @brief Flood a depth buffer with FLT_MAX (the "infinitely far" clear value) using
+///   exponential-doubling memcpy — write one float, then repeatedly copy the filled
+///   prefix over the rest, doubling each pass (memset can't write a 4-byte pattern).
+static inline void vgfx3d_rendertarget_fill_depth_max(float *depth, size_t pixel_count) {
+    size_t filled = 1u;
+    if (!depth || pixel_count == 0)
+        return;
+    depth[0] = FLT_MAX;
+    while (filled < pixel_count) {
+        size_t copy_count = filled;
+        if (copy_count > pixel_count - filled)
+            copy_count = pixel_count - filled;
+        memcpy(depth + filled, depth, copy_count * sizeof(float));
+        filled += copy_count;
+    }
+}
+
+/// @brief Lazily allocate the float depth buffer and initialize it to FLT_MAX.
+/// @details No-op if already allocated; fails on invalid dims or size overflow.
 /// @return 1 if the depth buffer is available, 0 on failure.
 static inline int vgfx3d_rendertarget_ensure_depth(vgfx3d_rendertarget_t *target) {
     size_t pixel_count;
@@ -353,8 +388,7 @@ static inline int vgfx3d_rendertarget_ensure_depth(vgfx3d_rendertarget_t *target
     target->depth_buf = (float *)malloc(pixel_count * sizeof(float));
     if (!target->depth_buf)
         return 0;
-    for (size_t i = 0; i < pixel_count; i++)
-        target->depth_buf[i] = FLT_MAX;
+    vgfx3d_rendertarget_fill_depth_max(target->depth_buf, pixel_count);
     return 1;
 }
 
@@ -385,6 +419,8 @@ static inline void vgfx3d_rendertarget_clear_sync(vgfx3d_rendertarget_t *target)
     target->sync_color_userdata = NULL;
 }
 
+/// @brief RenderTarget3D payload: a GC wrapper holding the backing render target plus
+///   its width/height.
 typedef struct {
     void *vptr;
     vgfx3d_rendertarget_t *target;
@@ -392,6 +428,12 @@ typedef struct {
     int64_t height;
 } rt_rendertarget3d;
 
+/// @brief Canvas3D payload — the central 3D rendering context. Holds the window and
+///   selected backend vtable+ctx, per-frame state and the deferred draw-command queues
+///   (opaque/transparent/overlay) used for transparency sorting, retained lights/skybox/
+///   post-FX chain, fog and shadow-map state, pending terrain-splat inputs, per-frame
+///   temp buffers/objects, frame timing plus synthetic input/clock state for deterministic
+///   runs, and motion-blur transform history.
 typedef struct {
     void *vptr;
     vgfx_window_t gfx_win; /* underlying vgfx window (owns framebuffer) */
@@ -560,6 +602,8 @@ static inline rt_camera3d *rt_camera3d_checked_or_stack(void *obj) {
 // Mat4 internal access (matches rt_mat4.c layout)
 //=============================================================================
 
+/// @brief Internal Mat4 layout (row-major m[r*4+c]) matching rt_mat4.c, used to read a
+///   Mat4 object's matrix without going through the public accessor API.
 typedef struct {
     double m[16]; /* row-major: m[r*4+c] */
 } mat4_impl;

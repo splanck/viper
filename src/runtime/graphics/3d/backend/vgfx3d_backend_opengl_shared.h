@@ -3,7 +3,7 @@
 // Part of the Viper project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
-// File: src/runtime/graphics/vgfx3d_backend_opengl_shared.h
+// File: src/runtime/graphics/3d/backend/vgfx3d_backend_opengl_shared.h
 // Purpose: Shared declarations/constants for the OpenGL vgfx3d backend —
 //   blend-mode enums and shared state used by the OpenGL backend and its
 //   shared support unit.
@@ -16,8 +16,8 @@
 // Ownership/Lifetime:
 //   - Declarations only; no allocation or ownership semantics here.
 //
-// Links: src/runtime/graphics/vgfx3d_backend_opengl.c,
-//        src/runtime/graphics/vgfx3d_backend_opengl_shared.c
+// Links: src/runtime/graphics/3d/backend/vgfx3d_backend_opengl.c,
+//        src/runtime/graphics/3d/backend/vgfx3d_backend_opengl_shared.c
 //
 //===----------------------------------------------------------------------===//
 #pragma once
@@ -36,33 +36,40 @@ extern "C" {
 #define VGFX3D_OPENGL_BONE_PALETTE_BYTES (sizeof(float) * VGFX3D_OPENGL_BONE_PALETTE_FLOATS)
 #define VGFX3D_OPENGL_MAX_MORPH_SHAPES 32
 
+/// @brief Blend state required by a draw: opaque, standard alpha, or additive.
 typedef enum {
     VGFX3D_OPENGL_BLEND_OPAQUE = 0,
     VGFX3D_OPENGL_BLEND_ALPHA = 1,
     VGFX3D_OPENGL_BLEND_ADDITIVE = 2,
 } vgfx3d_opengl_blend_mode_t;
 
+/// @brief Render-target classification: swapchain (default FBO), offscreen HDR scene, or RTT.
 typedef enum {
     VGFX3D_OPENGL_TARGET_SWAPCHAIN = 0,
     VGFX3D_OPENGL_TARGET_SCENE = 1,
     VGFX3D_OPENGL_TARGET_RTT = 2,
 } vgfx3d_opengl_target_kind_t;
 
+/// @brief Color format of a target: 8-bit UNORM (display) or 16-bit float (HDR scene).
 typedef enum {
     VGFX3D_OPENGL_COLOR_FORMAT_UNORM8 = 0,
     VGFX3D_OPENGL_COLOR_FORMAT_HDR16F = 1,
 } vgfx3d_opengl_color_format_t;
 
+/// @brief Whether a pass attaches only color or also the motion-vector target.
 typedef enum {
     VGFX3D_OPENGL_MOTION_ATTACHMENTS_COLOR_ONLY = 0,
     VGFX3D_OPENGL_MOTION_ATTACHMENTS_COLOR_AND_MOTION = 1,
 } vgfx3d_opengl_motion_attachment_mode_t;
 
+/// @brief Source for canvas readback: the swapchain or the post-FX composite.
 typedef enum {
     VGFX3D_OPENGL_READBACK_BACKBUFFER = 0,
     VGFX3D_OPENGL_READBACK_POSTFX_COMPOSITE = 1,
 } vgfx3d_opengl_readback_kind_t;
 
+/// @brief Per-frame view/projection history for motion vectors (current/previous/inverse
+///   scene VP, the draw's previous VP, camera position, and scene-history validity).
 typedef struct {
     float scene_vp[16];
     float scene_prev_vp[16];

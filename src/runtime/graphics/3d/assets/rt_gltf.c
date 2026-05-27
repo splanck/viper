@@ -5,7 +5,7 @@
 //
 //===----------------------------------------------------------------------===//
 //
-// File: src/runtime/graphics/rt_gltf.c
+// File: src/runtime/graphics/3d/assets/rt_gltf.c
 // Purpose: glTF 2.0 (.gltf/.glb) loader implementation.
 // Key invariants:
 //   - Uses existing rt_json parser for JSON content
@@ -111,6 +111,7 @@ typedef struct {
     int32_t node_count;
 } rt_gltf_asset;
 
+/// @brief Validate @p obj as a GLTF asset handle, returning NULL on class mismatch.
 static rt_gltf_asset *gltf_asset_checked(void *obj) {
     return (rt_gltf_asset *)rt_g3d_checked_or_null(obj, RT_G3D_GLTF_ASSET_CLASS_ID);
 }
@@ -1567,6 +1568,8 @@ static void gltf_normalize_joint_influences(float *weights) {
     }
 }
 
+/// @brief True if vertices i0/i1/i2 form a non-degenerate triangle (positive squared
+///   cross-product area); rejects out-of-range indices and collinear/zero-area triples.
 static int gltf_triangle_positions_form_triangle(const rt_mesh3d *mesh,
                                                  uint32_t i0,
                                                  uint32_t i1,
@@ -2048,10 +2051,13 @@ static void gltf_resolve_relative_path(const char *base_path,
     }
 }
 
+/// @brief True if @p path uses the `asset://` scheme (a packed/mounted asset URI).
 static int gltf_is_asset_uri(const char *path) {
     return path && strncmp(path, "asset://", 8) == 0;
 }
 
+/// @brief Read an entire file into a freshly malloc'd buffer (caller frees), capping at
+///   256 MiB; returns NULL and zeroes @p out_size on any error.
 static uint8_t *gltf_read_file_bytes(const char *filepath, size_t *out_size) {
     if (out_size)
         *out_size = 0;
@@ -2089,6 +2095,8 @@ static uint8_t *gltf_read_file_bytes(const char *filepath, size_t *out_size) {
     return file_data;
 }
 
+/// @brief Trap with a formatted message reporting that a model's @p kind dependency
+///   (buffer/image) at @p dependency_path could not be loaded.
 static void gltf_trap_asset_dependency(const char *model_path,
                                        const char *dependency_path,
                                        const char *kind) {
@@ -2102,6 +2110,8 @@ static void gltf_trap_asset_dependency(const char *model_path,
     rt_trap(msg);
 }
 
+/// @brief Load the root .gltf/.glb bytes: when @p load_assets, try the asset manager
+///   first (and stop there for `asset://` URIs), otherwise fall back to the filesystem.
 static uint8_t *gltf_load_root_bytes(rt_string path,
                                      const char *filepath,
                                      int load_assets,
@@ -2117,6 +2127,8 @@ static uint8_t *gltf_load_root_bytes(rt_string path,
     return gltf_read_file_bytes(filepath, out_size);
 }
 
+/// @brief Load an external dependency's bytes (asset manager when @p load_assets, else
+///   filesystem), failing if fewer than @p required_len bytes are available.
 static uint8_t *gltf_load_dependency_bytes(const char *resource_path,
                                            int load_assets,
                                            size_t required_len,
@@ -2146,6 +2158,8 @@ done:
     return data;
 }
 
+/// @brief Load and decode an external image dependency into a Pixels object: asset
+///   manager (decoded by type) when @p load_assets, otherwise rt_pixels_load from disk.
 static void *gltf_load_dependency_image(const char *resource_path, int load_assets) {
     if (!resource_path || resource_path[0] == '\0')
         return NULL;
@@ -4337,10 +4351,12 @@ static void *rt_gltf_load_impl(rt_string path, int load_assets) {
     return asset;
 }
 
+/// @brief Load a glTF/GLB from the filesystem (no asset-manager resolution). See header.
 void *rt_gltf_load(rt_string path) {
     return rt_gltf_load_impl(path, 0);
 }
 
+/// @brief Load a glTF/GLB through the asset manager (mounted/embedded + dev fallback). See header.
 void *rt_gltf_load_asset(rt_string path) {
     return rt_gltf_load_impl(path, 1);
 }

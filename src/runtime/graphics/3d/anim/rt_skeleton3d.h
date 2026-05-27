@@ -5,7 +5,7 @@
 //
 //===----------------------------------------------------------------------===//
 //
-// File: src/runtime/graphics/rt_skeleton3d.h
+// File: src/runtime/graphics/3d/anim/rt_skeleton3d.h
 // Purpose: Skeleton3D, Animation3D, and AnimPlayer3D — skeletal animation
 //   with bone hierarchies, keyframe interpolation (SLERP for rotation),
 //   CPU skinning, and animation crossfade.

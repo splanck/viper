@@ -5,7 +5,7 @@
 //
 //===----------------------------------------------------------------------===//
 //
-// File: src/runtime/graphics/rt_collider3d.c
+// File: src/runtime/graphics/3d/physics/rt_collider3d.c
 // Purpose: Collider3D runtime implementation for reusable 3D collision shapes.
 //   Implements Viper.Graphics3D.Collider3D — box / sphere / capsule / convex
 //   hull / triangle mesh / compound / heightfield primitives that physics

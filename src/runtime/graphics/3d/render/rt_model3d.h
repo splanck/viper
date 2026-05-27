@@ -5,7 +5,7 @@
 //
 //===----------------------------------------------------------------------===//
 //
-// File: src/runtime/graphics/rt_model3d.h
+// File: src/runtime/graphics/3d/render/rt_model3d.h
 // Purpose: High-level imported 3D asset container for meshes, materials,
 //   skeletons, animations, and an instantiable template node hierarchy.
 //

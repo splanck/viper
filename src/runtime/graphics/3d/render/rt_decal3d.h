@@ -5,7 +5,7 @@
 //
 //===----------------------------------------------------------------------===//
 //
-// File: src/runtime/graphics/rt_decal3d.h
+// File: src/runtime/graphics/3d/render/rt_decal3d.h
 // Purpose: 3D decals — surface-oriented quads with texture, lifetime, fade.
 //   Used for bullet holes, blood splatters, footprints, tire marks.
 //

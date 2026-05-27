@@ -5,7 +5,7 @@
 //
 //===----------------------------------------------------------------------===//
 //
-// File: src/runtime/graphics/rt_path3d.h
+// File: src/runtime/graphics/3d/nav/rt_path3d.h
 // Purpose: 3D Catmull-Rom spline path for camera dollies, patrol routes,
 //   missile trajectories. Evaluate position/direction at t in [0,1].
 //

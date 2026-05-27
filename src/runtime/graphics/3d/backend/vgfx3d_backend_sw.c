@@ -5,7 +5,7 @@
 //
 //===----------------------------------------------------------------------===//
 //
-// File: src/runtime/graphics/vgfx3d_backend_sw.c
+// File: src/runtime/graphics/3d/backend/vgfx3d_backend_sw.c
 // Purpose: Software rasterizer backend for Viper.Graphics3D. Implements the
 //   vgfx3d_backend_t vtable using CPU-based edge-function rasterization.
 //
@@ -79,6 +79,8 @@ static inline void sw_compute_view_vector(const sw_context_t *ctx,
                                           float *out_vy,
                                           float *out_vz);
 
+/// @brief Normalize the vector (*x,*y,*z) in place; on non-finite or near-zero length,
+///   substitute the fallback vector and return 0, else return 1.
 static int sw_normalize3(float *x, float *y, float *z, float fallback_x, float fallback_y, float fallback_z) {
     float len;
     if (!x || !y || !z || !isfinite(*x) || !isfinite(*y) || !isfinite(*z)) {
@@ -103,6 +105,8 @@ static int sw_normalize3(float *x, float *y, float *z, float fallback_x, float f
     return 1;
 }
 
+/// @brief Recount the contiguous run of complete shadow slots (complete flag + valid
+///   depth buffer/dimensions), stopping at the first gap, and cache it on the context.
 static void sw_recompute_shadow_count(sw_context_t *ctx) {
     int8_t count = 0;
     if (!ctx)
@@ -618,6 +622,8 @@ static int setup_pixels_view(const void *pixels_obj, sw_pixels_view *out) {
     return 1;
 }
 
+/// @brief Validate that a draw has full terrain-splat data (weight map + all 4 layers)
+///   and open Pixels views over each; returns 0 if splatting is inactive or incomplete.
 static int sw_setup_complete_splat(const vgfx3d_draw_cmd_t *cmd,
                                    sw_pixels_view *splat_view,
                                    sw_pixels_view layer_views[4]) {

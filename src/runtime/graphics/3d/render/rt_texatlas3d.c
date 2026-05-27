@@ -5,7 +5,7 @@
 //
 //===----------------------------------------------------------------------===//
 //
-// File: src/runtime/graphics/rt_texatlas3d.c
+// File: src/runtime/graphics/3d/render/rt_texatlas3d.c
 // Purpose: Texture atlas with shelf-based bin packing.
 //
 // Key invariants:

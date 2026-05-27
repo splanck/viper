@@ -5,7 +5,7 @@
 //
 //===----------------------------------------------------------------------===//
 //
-// File: src/runtime/graphics/rt_cubemap3d.c
+// File: src/runtime/graphics/3d/render/rt_cubemap3d.c
 // Purpose: Viper.Graphics3D.CubeMap3D — 6-face cube map texture for
 //   skybox rendering and environment reflections.
 //

@@ -5,7 +5,7 @@
 //
 //===----------------------------------------------------------------------===//
 //
-// File: src/runtime/graphics/rt_fbx_loader.c
+// File: src/runtime/graphics/3d/assets/rt_fbx_loader.c
 // Purpose: FBX binary format parser and asset extractor. Parses the binary
 //   node tree, resolves connections, and extracts geometry, skeleton,
 //   animation, and material data into runtime objects.

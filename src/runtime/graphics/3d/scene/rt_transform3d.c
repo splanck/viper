@@ -5,7 +5,7 @@
 //
 //===----------------------------------------------------------------------===//
 //
-// File: src/runtime/graphics/rt_transform3d.c
+// File: src/runtime/graphics/3d/scene/rt_transform3d.c
 // Purpose: Transform3D — position/rotation/scale wrapper with lazy TRS matrix.
 //
 // Key invariants:

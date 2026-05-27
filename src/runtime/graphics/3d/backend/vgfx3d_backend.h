@@ -5,7 +5,7 @@
 //
 //===----------------------------------------------------------------------===//
 //
-// File: src/runtime/graphics/vgfx3d_backend.h
+// File: src/runtime/graphics/3d/backend/vgfx3d_backend.h
 // Purpose: Backend abstraction vtable for Viper.Graphics3D. All rendering
 //   backends (software, Metal, D3D11, OpenGL) implement this interface.
 //   Canvas3D dispatches through the vtable; backend selection is automatic.
@@ -33,6 +33,10 @@
  * Draw command — submitted between begin_frame/end_frame
  *=========================================================================*/
 
+/// @brief One renderable submission: geometry (with an optional stable cache key),
+///   model/previous-model matrices, the full resolved material (colors, PBR factors,
+///   texture slots + samplers, alpha/cull state), and optional GPU skinning, morph,
+///   instancing, and terrain-splat payloads. Built by Canvas3D, consumed by submit_draw.
 typedef struct {
     const vgfx3d_vertex_t *vertices;
     uint32_t vertex_count;
@@ -100,6 +104,9 @@ typedef struct {
     float custom_params[8]; /* user-defined shader parameters */
 } vgfx3d_draw_cmd_t;
 
+/// @brief True if the command needs standard (non-additive) alpha blending. Honors an
+///   explicit alpha_mode (BLEND/MASK) first, treats PBR as opaque, and otherwise infers
+///   transparency from a sub-1.0 alpha or diffuse alpha.
 static inline int vgfx3d_draw_cmd_uses_alpha_blend(const vgfx3d_draw_cmd_t *cmd) {
     if (!cmd)
         return 0;
@@ -114,6 +121,8 @@ static inline int vgfx3d_draw_cmd_uses_alpha_blend(const vgfx3d_draw_cmd_t *cmd)
     return (cmd->alpha < 0.999f || cmd->diffuse_color[3] < 0.999f) ? 1 : 0;
 }
 
+/// @brief True if the command is transparent in any way — additive OR alpha-blended —
+///   i.e. it must be drawn in the transparent (depth-sorted, non-depth-writing) pass.
 static inline int vgfx3d_draw_cmd_uses_transparent_blend(const vgfx3d_draw_cmd_t *cmd) {
     if (!cmd)
         return 0;
@@ -124,6 +133,9 @@ static inline int vgfx3d_draw_cmd_uses_transparent_blend(const vgfx3d_draw_cmd_t
  * Camera parameters — passed to begin_frame
  *=========================================================================*/
 
+/// @brief Per-frame camera state passed to begin_frame: view/projection matrices, eye
+///   position/forward, ortho flag, optional distance fog, and load-existing color/depth
+///   flags for overlay/secondary passes.
 typedef struct {
     float view[16];       /* view matrix, row-major float */
     float projection[16]; /* projection matrix, row-major float */
@@ -144,6 +156,9 @@ typedef struct {
  * Lighting parameters — set before begin_frame
  *=========================================================================*/
 
+/// @brief One light passed to submit_draw: kind (directional/point/ambient/spot), an
+///   optional shadow-map slot index, direction/position/color/intensity/attenuation, and
+///   spot inner/outer cone cosines.
 typedef struct {
     int32_t type; /* 0=directional, 1=point, 2=ambient, 3=spot */
     int32_t shadow_index; /* -1 = unshadowed, otherwise [0, VGFX3D_MAX_SHADOW_LIGHTS) */
@@ -160,6 +175,11 @@ typedef struct {
  * Backend vtable
  *=========================================================================*/
 
+/// @brief Renderer abstraction vtable. Each backend (software/Metal/D3D11/OpenGL) fills
+///   in these function pointers; Canvas3D dispatches through them without knowing the
+///   concrete backend. Core lifecycle/frame/draw hooks must be non-NULL; optional hooks
+///   (shadows, skybox, instancing, present, readback, GPU post-FX, layer show/hide) may
+///   be NULL, signaling Canvas3D to use its software fallback for that capability.
 typedef struct vgfx3d_backend {
     const char *name; /* "software", "metal", "d3d11", "opengl" */
 
@@ -249,19 +269,24 @@ typedef struct vgfx3d_backend {
  * Backend registry
  *=========================================================================*/
 
+/// @brief The always-available CPU software backend (fallback of last resort).
 extern const vgfx3d_backend_t vgfx3d_software_backend;
 
 #if defined(__APPLE__)
+/// @brief The Metal GPU backend (macOS only).
 extern const vgfx3d_backend_t vgfx3d_metal_backend;
 #endif
 #if defined(_WIN32)
+/// @brief The Direct3D 11 GPU backend (Windows only).
 extern const vgfx3d_backend_t vgfx3d_d3d11_backend;
 #endif
 #if defined(__linux__)
+/// @brief The OpenGL GPU backend (Linux only).
 extern const vgfx3d_backend_t vgfx3d_opengl_backend;
 #endif
 
-/* Select the best available backend. Tries GPU first, falls back to software. */
+/// @brief Select the best available backend: try the platform GPU backend first, then
+///   fall back to the software backend. Returns a borrowed pointer to a static vtable.
 const vgfx3d_backend_t *vgfx3d_select_backend(void);
 
 #endif /* VIPER_ENABLE_GRAPHICS */

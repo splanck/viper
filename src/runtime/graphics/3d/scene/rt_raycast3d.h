@@ -5,7 +5,7 @@
 //
 //===----------------------------------------------------------------------===//
 //
-// File: src/runtime/graphics/rt_raycast3d.h
+// File: src/runtime/graphics/3d/scene/rt_raycast3d.h
 // Purpose: 3D raycasting and AABB collision — ray-triangle (Möller–Trumbore),
 //   ray-mesh (with AABB early-out), ray-AABB (slab method), ray-sphere,
 //   and AABB-AABB overlap/penetration tests.

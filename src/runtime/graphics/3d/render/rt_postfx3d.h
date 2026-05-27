@@ -5,7 +5,7 @@
 //
 //===----------------------------------------------------------------------===//
 //
-// File: src/runtime/graphics/rt_postfx3d.h
+// File: src/runtime/graphics/3d/render/rt_postfx3d.h
 // Purpose: PostFX3D — full-screen post-processing effect chain (bloom, tone
 //   mapping, FXAA, color grading, vignette). Applied to the rendered
 //   framebuffer after scene drawing completes.
@@ -78,6 +78,8 @@ void rt_postfx3d_add_motion_blur(void *obj, double intensity, int64_t samples);
 
 /* Backend-facing PostFX snapshot (MTL-11): compact effect params for GPU backends.
  * Exported from rt_postfx3d.c — backends should NOT inspect the private rt_postfx3d struct. */
+/// @brief Compact, backend-readable snapshot of a PostFX chain's enabled effects and
+///   their parameters — GPU backends consume this instead of the private rt_postfx3d struct.
 typedef struct {
     int8_t enabled;
     int8_t bloom_enabled;
@@ -101,6 +103,7 @@ typedef struct {
     int32_t motion_blur_samples;
 } vgfx3d_postfx_snapshot_t;
 
+/// @brief Discriminator identifying which post-processing effect a chain entry describes.
 typedef enum {
     VGFX3D_POSTFX_EFFECT_BLOOM = 0,
     VGFX3D_POSTFX_EFFECT_TONEMAP,
@@ -112,11 +115,14 @@ typedef enum {
     VGFX3D_POSTFX_EFFECT_MOTION_BLUR,
 } vgfx3d_postfx_effect_kind_t;
 
+/// @brief One ordered chain entry: an effect kind plus its parameter snapshot.
 typedef struct {
     int32_t type; /* vgfx3d_postfx_effect_kind_t */
     vgfx3d_postfx_snapshot_t snapshot;
 } vgfx3d_postfx_effect_desc_t;
 
+/// @brief Backend-facing ordered effect chain: an enabled flag and a growable array of
+///   effect descriptors in application order.
 typedef struct {
     int8_t enabled;
     int32_t effect_count;
@@ -124,17 +130,17 @@ typedef struct {
     vgfx3d_postfx_effect_desc_t *effects;
 } vgfx3d_postfx_chain_t;
 
-/* Fill snapshot from a PostFX3D object. Returns 0 if postfx is NULL or disabled. */
+/// @brief Fill a flat snapshot from a PostFX3D object; returns 0 if it is NULL or disabled.
 int vgfx3d_postfx_get_snapshot(void *postfx, vgfx3d_postfx_snapshot_t *out);
-/* Export the ordered PostFX chain for GPU backends. Reuses `out` storage when possible. */
+/// @brief Export the ordered PostFX chain for GPU backends, reusing @p out's storage when possible.
 int vgfx3d_postfx_get_chain(void *postfx, vgfx3d_postfx_chain_t *out);
-/* Return non-zero if the chain contains effects that require scene depth/motion GPU buffers. */
+/// @brief Non-zero if the chain has effects (SSAO/DoF/motion blur) needing scene depth/motion buffers.
 int vgfx3d_postfx_requires_gpu_scene_buffers(void *postfx);
-/* Deep-copy one exported PostFX chain into another. */
+/// @brief Deep-copy one exported PostFX chain into another (grows @p dst as needed).
 int vgfx3d_postfx_chain_copy(vgfx3d_postfx_chain_t *dst, const vgfx3d_postfx_chain_t *src);
-/* Reset an exported PostFX chain to empty while preserving its allocation. */
+/// @brief Reset an exported PostFX chain to empty while keeping its allocation for reuse.
 void vgfx3d_postfx_chain_reset(vgfx3d_postfx_chain_t *chain);
-/* Release any storage owned by an exported PostFX chain. */
+/// @brief Release any storage owned by an exported PostFX chain.
 void vgfx3d_postfx_chain_free(vgfx3d_postfx_chain_t *chain);
 
 #ifdef __cplusplus

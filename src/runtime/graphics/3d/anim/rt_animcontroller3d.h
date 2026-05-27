@@ -5,7 +5,7 @@
 //
 //===----------------------------------------------------------------------===//
 //
-// File: src/runtime/graphics/rt_animcontroller3d.h
+// File: src/runtime/graphics/3d/anim/rt_animcontroller3d.h
 // Purpose: High-level 3D animation state controller built on skeletal clips.
 //
 //===----------------------------------------------------------------------===//

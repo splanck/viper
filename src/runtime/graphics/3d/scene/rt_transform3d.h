@@ -5,7 +5,7 @@
 //
 //===----------------------------------------------------------------------===//
 //
-// File: src/runtime/graphics/rt_transform3d.h
+// File: src/runtime/graphics/3d/scene/rt_transform3d.h
 // Purpose: Transform3D — position + quaternion rotation + scale with lazy
 //   TRS matrix recomputation. Eliminates manual Mat4 composition chains.
 //

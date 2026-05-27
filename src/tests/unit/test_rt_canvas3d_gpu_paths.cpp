@@ -100,9 +100,16 @@ static int final_end_frame_calls = 0;
 static int final_readback_calls = 0;
 static int final_readback_saw_finalized = 0;
 static int final_readback_saw_submit_count = 0;
+static int final_present_postfx_calls = 0;
+static int final_present_postfx_saw_submit_count = 0;
 
 static void noop_end_frame(void *) {}
 static void noop_present_postfx(void *, const vgfx3d_postfx_chain_t *) {}
+
+static void record_present_postfx(void *, const vgfx3d_postfx_chain_t *) {
+    final_present_postfx_calls++;
+    final_present_postfx_saw_submit_count = final_submit_draw_calls;
+}
 
 static void noop_draw(void *,
                       vgfx_window_t,
@@ -267,6 +274,8 @@ static void reset_final_frame_records(void) {
     final_readback_calls = 0;
     final_readback_saw_finalized = 0;
     final_readback_saw_submit_count = 0;
+    final_present_postfx_calls = 0;
+    final_present_postfx_saw_submit_count = 0;
     last_readback_w = 0;
     last_readback_h = 0;
     last_readback_stride = 0;
@@ -1971,6 +1980,39 @@ static void test_final_overlay_replays_after_finalize(void) {
     cleanup_fake_canvas(&canvas);
 }
 
+static void test_gpu_postfx_final_overlay_replays_before_present(void) {
+    vgfx3d_backend_t backend = {};
+    backend.name = "testgpu";
+    backend.begin_frame = record_begin_frame;
+    backend.submit_draw = record_final_draw;
+    backend.end_frame = record_final_end_frame;
+    backend.present_postfx = record_present_postfx;
+
+    rt_canvas3d canvas;
+    init_fake_canvas(&canvas, &backend);
+    canvas.in_frame = 0;
+    canvas.width = 64;
+    canvas.height = 48;
+    canvas.frame_gpu_postfx_enabled = 1;
+    canvas.frame_postfx_state_latched = 1;
+    reset_postfx_records();
+    reset_final_frame_records();
+
+    rt_canvas3d_begin_overlay(&canvas);
+    rt_canvas3d_draw_rect2d(&canvas, 4, 5, 12, 8, 0xFF00FFFF);
+    rt_canvas3d_end_overlay(&canvas);
+    rt_canvas3d_finalize_frame(&canvas);
+
+    EXPECT_TRUE(final_submit_draw_calls == 1,
+                "GPU postfx finalize replays final overlay before presentation");
+    EXPECT_TRUE(final_present_postfx_calls == 1, "GPU postfx finalize presents once");
+    EXPECT_TRUE(final_present_postfx_saw_submit_count == 1,
+                "GPU postfx present sees final overlay already submitted");
+    EXPECT_TRUE(rt_canvas3d_get_frame_finalized(&canvas) == 1,
+                "GPU postfx finalize marks the frame finalized");
+    cleanup_fake_canvas(&canvas);
+}
+
 static void test_screenshot_final_finalizes_before_readback(void) {
     typedef struct {
         int64_t w;
@@ -2294,6 +2336,7 @@ int main() {
     test_disabled_lights_are_not_submitted();
     test_screenshot_prefers_backend_readback();
     test_final_overlay_replays_after_finalize();
+    test_gpu_postfx_final_overlay_replays_before_present();
     test_screenshot_final_finalizes_before_readback();
     test_gpu_postfx_state_latches_across_overlay_pass();
     test_begin_frame_forwards_camera_forward_and_ortho_flag();

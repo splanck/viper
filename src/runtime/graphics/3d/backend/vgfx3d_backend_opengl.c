@@ -5,7 +5,7 @@
 //
 //===----------------------------------------------------------------------===//
 //
-// File: src/runtime/graphics/vgfx3d_backend_opengl.c
+// File: src/runtime/graphics/3d/backend/vgfx3d_backend_opengl.c
 // Purpose: OpenGL 3.3 Core GPU backend for Viper.Graphics3D (Linux).
 //   Implements the vgfx3d_backend_t vtable on a GLX-bound OpenGL context,
 //   with GLSL shaders compiled at runtime, FBO-based scene targets for
@@ -2325,6 +2325,9 @@ static void destroy_shadow_targets(gl_context_t *ctx) {
     ctx->shadow_count = 0;
 }
 
+/// @brief Recount the contiguous run of fully-prepared shadow slots (complete + valid
+///   depth texture/FBO/dimensions), stopping at the first gap, and cache it on the
+///   context as the shadow count advertised to GLSL.
 static void gl_recompute_shadow_count(gl_context_t *ctx) {
     int32_t count = 0;
     if (!ctx)
@@ -2663,6 +2666,8 @@ static int gl_apply_postfx_chain(gl_context_t *ctx,
     return 1;
 }
 
+/// @brief Multiply two size_t values with overflow checking; writes the product to @p out
+///   and returns 1, or zeroes @p out and returns 0 on overflow or a NULL out pointer.
 static int gl_checked_mul_size(size_t a, size_t b, size_t *out) {
     if (out)
         *out = 0;
@@ -3058,6 +3063,7 @@ static int configure_instance_attributes(gl_context_t *ctx,
     return 1;
 }
 
+/// @brief Write a 4×4 identity matrix into @p dst (row-major).
 static void store_identity4x4(float *dst) {
     memset(dst, 0, sizeof(float) * 16u);
     dst[0] = 1.0f;
@@ -3161,6 +3167,9 @@ static int gl_upload_transient_morph_payload(gl_context_t *ctx,
     return 1;
 }
 
+/// @brief Compute the byte size of a morph delta texture-buffer payload
+///   (morph_count × vertex_count × 3 floats) with overflow checking; writes @p out_bytes
+///   and returns 1, or zeroes it and returns 0 on overflow or zero counts.
 static int gl_compute_morph_payload_bytes(uint32_t vertex_count,
                                           int32_t morph_count,
                                           size_t *out_bytes) {

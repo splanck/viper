@@ -5,7 +5,7 @@
 //
 //===----------------------------------------------------------------------===//
 //
-// File: src/runtime/graphics/rt_audio3d_objects.c
+// File: src/runtime/graphics/3d/audio/rt_audio3d_objects.c
 // Purpose: Object-backed 3D audio listener/source APIs layered on top of the
 //   low-level Audio3D helpers and the existing 2D voice runtime. Backs
 //   `Viper.Graphics3D.AudioListener3D` and `Viper.Graphics3D.AudioSource3D`.

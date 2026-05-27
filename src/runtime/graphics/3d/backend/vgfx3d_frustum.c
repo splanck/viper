@@ -5,7 +5,7 @@
 //
 //===----------------------------------------------------------------------===//
 //
-// File: src/runtime/graphics/vgfx3d_frustum.c
+// File: src/runtime/graphics/3d/backend/vgfx3d_frustum.c
 // Purpose: View frustum plane extraction and bounding volume intersection
 //   tests. Used by the scene graph (Phase 12) to cull objects outside the
 //   camera's view volume before submitting draw calls.
@@ -38,6 +38,8 @@
  * (positive half-space = inside the frustum).
  *=========================================================================*/
 
+/// @brief Zero out all six planes, yielding a degenerate frustum that classifies every
+///   object as intersecting — the conservative fallback when VP extraction is unusable.
 static void vgfx3d_frustum_make_conservative(vgfx3d_frustum_t *f) {
     if (!f)
         return;
@@ -46,6 +48,8 @@ static void vgfx3d_frustum_make_conservative(vgfx3d_frustum_t *f) {
             f->planes[i][j] = 0.0f;
 }
 
+/// @brief True if a plane is finite and has a non-degenerate normal (length² > 1e-12),
+///   so it can be normalized and used for distance tests.
 static int vgfx3d_frustum_plane_is_valid(const float plane[4]) {
     float len_sq;
 
@@ -59,6 +63,7 @@ static int vgfx3d_frustum_plane_is_valid(const float plane[4]) {
     return len_sq > 1e-12f;
 }
 
+/// @brief True if all three components of a vec3 are finite (no NaN/Inf).
 static int vgfx3d_vec3_is_finite(const float v[3]) {
     return v && isfinite(v[0]) && isfinite(v[1]) && isfinite(v[2]);
 }

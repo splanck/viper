@@ -473,7 +473,7 @@ All mesh generators and the OBJ loader produce **counter-clockwise (CCW)** windi
 
 **OBJ loader:** Supports v/vn/vt tuples, negative indices, inline face comments, and arbitrary n-gons through fan triangulation. The loader deduplicates identical `(position, uv, normal)` tuples so indexed assets do not balloon into one vertex per face corner. Invalid face indices trap and abort the load instead of emitting corrupt geometry. `.mtl`, `usemtl`, `g`, and `o` directives are parsed and flattened but do not create per-material submeshes.
 
-**STL loader:** Auto-detects binary vs ASCII format, computes normals.
+**STL loader:** Auto-detects binary vs ASCII format, streams exact binary STL payloads without buffering the full file, and computes normals for valid triangles.
 
 ## Camera3D
 
@@ -504,7 +504,8 @@ Perspective or orthographic camera with view and projection matrices.
 |--------|-----------|-------------|
 | `LookAt(eye, target, up)` | `void(obj, obj, obj)` | Point camera from eye toward target (Vec3 args) |
 | `Orbit(target, distance, yaw, pitch)` | `void(obj, f64, f64, f64)` | Orbit around target (angles in degrees) |
-| `ScreenToRay(sx, sy, sw, sh)` | `obj(i64, i64, i64, i64)` | Return a normalized world-space pick direction (Vec3). For perspective cameras, combine it with `GetPosition()`. Orthographic cameras return their forward direction. During active `Shake`, the ray matches the shaken render pose. |
+| `ScreenToRay(sx, sy, sw, sh)` | `obj(i64, i64, i64, i64)` | Return a normalized world-space pick direction (Vec3). Perspective rays should pair it with `ScreenToRayOrigin()` or `GetPosition()`. Orthographic cameras return their forward direction. During active `Shake`, the ray matches the shaken render pose. |
+| `ScreenToRayOrigin(sx, sy, sw, sh)` | `obj(i64, i64, i64, i64)` | Return the matching world-space pick origin (Vec3). Perspective cameras return the shaken render eye; orthographic cameras return the unprojected near-plane point for that screen pixel. |
 | `Shake(intensity, duration, decay)` | `void(f64, f64, f64)` | Apply camera shake effect |
 | `SmoothFollow(target, speed, height, distance, dt)` | `void(obj, f64, f64, f64, f64)` | Smoothly follow a Vec3 target position |
 | `SmoothLookAt(target, speed, dt)` | `void(obj, f64, f64)` | Smoothly rotate toward a Vec3 target |
@@ -513,7 +514,7 @@ Perspective or orthographic camera with view and projection matrices.
 
 `Yaw`, `Pitch`, `Orbit`, and `Light3D.NewSpot` all use degrees. Writing `Yaw` or `Pitch` updates the camera view immediately.
 `Canvas3D.Begin(canvas, camera)` uses the active output's aspect ratio (window or bound `RenderTarget3D`) when building that frame's projection, so perspective remains correct across resizes and RTT passes without mutating the camera object's stored projection/aspect.
-Camera constructors and control methods sanitize invalid numeric inputs at the API boundary: non-finite FOV/aspect/clip planes, degenerate `LookAt` vectors, invalid FPS deltas, and invalid shake/follow parameters fall back to finite defaults so view matrices, projection matrices, and `ScreenToRay()` results remain usable.
+Camera constructors and control methods sanitize invalid numeric inputs at the API boundary: non-finite FOV/aspect/clip planes, degenerate `LookAt` vectors, invalid FPS deltas, and invalid shake/follow parameters fall back to finite defaults so view matrices, projection matrices, `ScreenToRay()`, and `ScreenToRayOrigin()` results remain usable.
 
 ### Zia Example
 
@@ -610,7 +611,7 @@ Surface appearance for meshes, models, decals, and other 3D drawables.
 
 ### Workflow Notes
 
-- `NewPBR` selects the metallic/roughness workflow directly.
+- `NewPBR` and `SetShadingModel(2)` select the metallic/roughness workflow directly.
 - Calling `SetMetallic`, `SetRoughness`, `SetAO`, `SetMetallicRoughnessMap`, or `SetAOMap` on a legacy material promotes it into the PBR workflow.
 - `Clone()` and `MakeInstance()` both return independent material objects. They eagerly copy scalar state and share the currently referenced texture/cubemap objects by pointer. After cloning, either material can replace its maps independently.
 - Color and scalar setters sanitize input at the runtime boundary: colors and PBR factors are clamped to valid ranges, non-finite custom parameters become `0`, and non-finite shadow/fog/material values fall back to deterministic safe defaults. The draw path repeats finite/clamp validation before backend command submission.
@@ -626,7 +627,7 @@ Surface appearance for meshes, models, decals, and other 3D drawables.
 **Shading models:** `SetShadingModel` selects how the surface is shaded on the legacy path and can post-process the PBR result:
 - **0 (BlinnPhong)**: Default. Diffuse + specular highlight.
 - **1 (Toon)**: Quantized diffuse bands. `custom[0]` = number of bands (default 4).
-- **2 (Reserved)**: Accepted for forward compatibility. Current backends fall back to the default Blinn-Phong path.
+- **2 (PBR)**: Selects the metallic/roughness workflow. Use the dedicated PBR setters for material data.
 - **3 (Unlit)**: Same visual result as `SetUnlit(true)`.
 - **4 (Fresnel)**: Angle-dependent alpha — edges glow brighter. `custom[0]` = power (default 3), `custom[1]` = bias.
 - **5 (Emissive)**: Boosted emissive glow. `custom[0]` = strength multiplier (default 2).

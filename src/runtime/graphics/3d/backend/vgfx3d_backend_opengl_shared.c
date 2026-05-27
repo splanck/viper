@@ -5,7 +5,7 @@
 //
 //===----------------------------------------------------------------------===//
 //
-// File: src/runtime/graphics/vgfx3d_backend_opengl_shared.c
+// File: src/runtime/graphics/3d/backend/vgfx3d_backend_opengl_shared.c
 // Purpose: OpenGL backend helpers shared with sister backends — frame history,
 //   mip math, capacity growth, and policy choices for render-target,
 //   readback, and morph-cache reuse.
@@ -82,6 +82,8 @@ int32_t vgfx3d_opengl_next_capacity(int32_t current_capacity,
     return next_capacity;
 }
 
+/// @brief Multiply two size_t values with overflow checking; writes the product to @p out
+///   and returns 1, or zeroes @p out and returns 0 on overflow or a NULL out pointer.
 static int vgfx3d_opengl_checked_mul_size(size_t a, size_t b, size_t *out) {
     if (out)
         *out = 0;

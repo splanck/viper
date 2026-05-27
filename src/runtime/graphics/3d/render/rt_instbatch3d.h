@@ -5,7 +5,7 @@
 //
 //===----------------------------------------------------------------------===//
 //
-// File: src/runtime/graphics/rt_instbatch3d.h
+// File: src/runtime/graphics/3d/render/rt_instbatch3d.h
 // Purpose: Instanced rendering — draw N copies of one mesh with different
 //   transforms in a single draw call. Software fallback loops individual draws.
 //

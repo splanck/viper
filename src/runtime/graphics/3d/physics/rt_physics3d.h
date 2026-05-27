@@ -5,7 +5,7 @@
 //
 //===----------------------------------------------------------------------===//
 //
-// File: src/runtime/graphics/rt_physics3d.h
+// File: src/runtime/graphics/3d/physics/rt_physics3d.h
 // Purpose: 3D physics world with AABB/sphere/capsule collision, impulse
 //   resolution, rotational body state, collision layers, and character
 //   controller with slide/step movement.

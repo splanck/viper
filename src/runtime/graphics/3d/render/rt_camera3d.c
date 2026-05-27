@@ -5,7 +5,7 @@
 //
 //===----------------------------------------------------------------------===//
 //
-// File: src/runtime/graphics/rt_camera3d.c
+// File: src/runtime/graphics/3d/render/rt_camera3d.c
 // Purpose: Viper.Graphics3D.Camera3D — perspective camera with view/projection.
 //   Uses existing Mat4 perspective/lookAt math from rt_mat4.c.
 //
@@ -868,6 +868,63 @@ void *rt_camera3d_screen_to_ray(void *obj, int64_t sx, int64_t sy, int64_t sw, i
     }
 
     return rt_vec3_new(dx, dy, dz);
+}
+
+/// @brief Return the world-space origin for a screen-space picking ray.
+/// @details Perspective cameras originate at the rendered eye position. Orthographic
+///          cameras originate at the unprojected near-plane point for the requested
+///          pixel, because each screen pixel has a distinct parallel ray.
+void *rt_camera3d_screen_to_ray_origin(void *obj, int64_t sx, int64_t sy, int64_t sw, int64_t sh) {
+    rt_camera3d *cam = rt_camera3d_checked_or_stack(obj);
+    if (!cam || sw <= 0 || sh <= 0)
+        return rt_vec3_new(0.0, 0.0, 0.0);
+
+    double eye_x = cam->eye[0] + cam->shake_offset[0];
+    double eye_y = cam->eye[1] + cam->shake_offset[1];
+    double eye_z = cam->eye[2] + cam->shake_offset[2];
+    if (!cam->is_ortho)
+        return rt_vec3_new(eye_x, eye_y, eye_z);
+
+    double ndc_x = (2.0 * (double)sx / (double)sw) - 1.0;
+    double ndc_y = 1.0 - (2.0 * (double)sy / (double)sh);
+    double near_plane = cam->near_plane;
+    double far_plane = cam->far_plane;
+    sanitize_clip_planes(&near_plane, &far_plane);
+    double aspect = sanitize_aspect((double)sw / (double)sh);
+    double half_h = sanitize_ortho_size(cam->ortho_size);
+    double half_w = half_h * aspect;
+    double projection[16];
+    build_ortho(projection, -half_w, half_w, -half_h, half_h, near_plane, far_plane);
+
+    double vp[16];
+    for (int r = 0; r < 4; r++) {
+        for (int c = 0; c < 4; c++) {
+            vp[r * 4 + c] = projection[r * 4 + 0] * cam->view[0 * 4 + c] +
+                            projection[r * 4 + 1] * cam->view[1 * 4 + c] +
+                            projection[r * 4 + 2] * cam->view[2 * 4 + c] +
+                            projection[r * 4 + 3] * cam->view[3 * 4 + c];
+        }
+    }
+
+    double inv_vp[16];
+    if (mat4d_invert(vp, inv_vp) != 0)
+        return rt_vec3_new(eye_x, eye_y, eye_z);
+
+    double p[4] = {ndc_x, ndc_y, -1.0, 1.0};
+    double world[4];
+    world[0] = inv_vp[0] * p[0] + inv_vp[1] * p[1] + inv_vp[2] * p[2] + inv_vp[3] * p[3];
+    world[1] = inv_vp[4] * p[0] + inv_vp[5] * p[1] + inv_vp[6] * p[2] + inv_vp[7] * p[3];
+    world[2] = inv_vp[8] * p[0] + inv_vp[9] * p[1] + inv_vp[10] * p[2] + inv_vp[11] * p[3];
+    world[3] = inv_vp[12] * p[0] + inv_vp[13] * p[1] + inv_vp[14] * p[2] + inv_vp[15] * p[3];
+
+    if (isfinite(world[3]) && fabs(world[3]) > 1e-12) {
+        world[0] /= world[3];
+        world[1] /= world[3];
+        world[2] /= world[3];
+    }
+    if (!isfinite(world[0]) || !isfinite(world[1]) || !isfinite(world[2]))
+        return rt_vec3_new(eye_x, eye_y, eye_z);
+    return rt_vec3_new(world[0], world[1], world[2]);
 }
 
 /*==========================================================================

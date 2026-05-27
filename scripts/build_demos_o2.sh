@@ -64,6 +64,7 @@ BASIC_DEMOS=(
 ZIA_DEMOS=(
     "paint:${APPS_DIR}/paint"
     "3dbowling:${GAMES_DIR}/3dbowling"
+    "game3d-showcase:${GAMES_DIR}/game3d-showcase"
     "crackman:${GAMES_DIR}/crackman"
     "vipersql:${APPS_DIR}/vipersql"
     "chess-zia:${GAMES_DIR}/chess"

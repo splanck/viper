@@ -5,7 +5,7 @@
 //
 //===----------------------------------------------------------------------===//
 //
-// File: src/runtime/graphics/rt_material3d.c
+// File: src/runtime/graphics/3d/render/rt_material3d.c
 // Purpose: Viper.Graphics3D.Material3D — legacy + PBR surface appearance.
 //
 // Key invariants:
@@ -560,8 +560,9 @@ int8_t rt_material3d_get_unlit(void *obj) {
     return mat->unlit ? 1 : 0;
 }
 
-/// @brief Select the shading model (0=Phong, 1=Blinn-Phong, 2=flat, etc.).
-/// @details Model values outside [0,5] are clamped to 0 (Phong).
+/// @brief Select the renderer shading model (0=Phong, 1=Toon, 3=Unlit, 4=Fresnel, 5=Emissive).
+/// @details Model values outside [0,5] are clamped to 0. Model 2 is kept for
+///          Game3D's PBR enum and promotes the material to the PBR workflow.
 void rt_material3d_set_shading_model(void *obj, int64_t model) {
     rt_material3d *mat = material_checked(obj);
     if (!mat)
@@ -569,6 +570,8 @@ void rt_material3d_set_shading_model(void *obj, int64_t model) {
     if (model < 0 || model > 5)
         model = 0;
     mat->shading_model = (int32_t)model;
+    if (model == 2)
+        material_promote_to_pbr(mat);
 }
 
 /// @brief Read the current shading model.

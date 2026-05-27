@@ -5,7 +5,7 @@
 //
 //===----------------------------------------------------------------------===//
 //
-// File: src/runtime/graphics/rt_rendertarget3d.c
+// File: src/runtime/graphics/3d/render/rt_rendertarget3d.c
 // Purpose: Viper.Graphics3D.RenderTarget3D — offscreen rendering target
 //   with color + depth buffers. Enables render-to-texture for effects
 //   like shadow maps, reflections, and post-processing.

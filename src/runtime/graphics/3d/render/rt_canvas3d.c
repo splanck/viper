@@ -5,7 +5,7 @@
 //
 //===----------------------------------------------------------------------===//
 //
-// File: src/runtime/graphics/rt_canvas3d.c
+// File: src/runtime/graphics/3d/render/rt_canvas3d.c
 // Purpose: Viper.Graphics3D.Canvas3D — 3D rendering surface that dispatches
 //   through the vgfx3d_backend_t vtable. Backend selection is automatic
 //   and platform-specific, with software fallback always available.
@@ -55,14 +55,19 @@
 #define CANVAS3D_SYNTHETIC_DT_MAX_US 10000000LL
 #define CANVAS3D_SYNTHETIC_MOUSE_ABS_MAX 1000000.0
 
+/// @brief Sanitize an input-source mode (0 live, 1 synthetic, 2 live+synthetic); out of
+///   range falls back to 0 (live).
 static int32_t canvas3d_input_source_from_mode(int64_t mode) {
     return (mode >= 0 && mode <= 2) ? (int32_t)mode : 0;
 }
 
+/// @brief Sanitize a clock-source mode: 1 = fixed synthetic delta, anything else = live.
 static int32_t canvas3d_clock_source_from_mode(int64_t mode) {
     return mode == 1 ? 1 : 0;
 }
 
+/// @brief Convert a synthetic frame delta (seconds) to microseconds, clamping negatives
+///   to 0 and capping at CANVAS3D_SYNTHETIC_DT_MAX_US.
 static int64_t canvas3d_synthetic_seconds_to_us(double dt) {
     if (!isfinite(dt) || dt < 0.0)
         return 0;
@@ -71,6 +76,8 @@ static int64_t canvas3d_synthetic_seconds_to_us(double dt) {
     return (int64_t)(dt * 1000000.0 + 0.5);
 }
 
+/// @brief Round a synthetic mouse delta to an integer (half-away-from-zero), clamped to
+///   ±CANVAS3D_SYNTHETIC_MOUSE_ABS_MAX; non-finite → 0.
 static int64_t canvas3d_round_synthetic_mouse_delta(double value) {
     if (!isfinite(value))
         return 0;
@@ -81,6 +88,27 @@ static int64_t canvas3d_round_synthetic_mouse_delta(double value) {
     return value >= 0.0 ? (int64_t)(value + 0.5) : (int64_t)(value - 0.5);
 }
 
+/// @brief Accumulate a queued synthetic mouse delta onto the running total, saturating
+///   at ±CANVAS3D_SYNTHETIC_MOUSE_ABS_MAX and treating non-finite inputs safely.
+static double canvas3d_accumulate_synthetic_mouse_delta(double current, double delta) {
+    double next;
+    if (!isfinite(delta))
+        return current;
+    if (!isfinite(current))
+        current = 0.0;
+    next = current + delta;
+    if (!isfinite(next))
+        return delta > 0.0 ? CANVAS3D_SYNTHETIC_MOUSE_ABS_MAX
+                           : -CANVAS3D_SYNTHETIC_MOUSE_ABS_MAX;
+    if (next > CANVAS3D_SYNTHETIC_MOUSE_ABS_MAX)
+        return CANVAS3D_SYNTHETIC_MOUSE_ABS_MAX;
+    if (next < -CANVAS3D_SYNTHETIC_MOUSE_ABS_MAX)
+        return -CANVAS3D_SYNTHETIC_MOUSE_ABS_MAX;
+    return next;
+}
+
+/// @brief Drive the canvas's delta-time fields from the latched synthetic timestep
+///   (used when the clock source is synthetic for deterministic frames).
 static void canvas3d_apply_synthetic_clock(rt_canvas3d *c) {
     if (!c)
         return;
@@ -90,6 +118,9 @@ static void canvas3d_apply_synthetic_clock(rt_canvas3d *c) {
     c->delta_time_ms = c->synthetic_dt_us > 0 ? c->synthetic_dt_us / 1000 : 0;
 }
 
+/// @brief Replay queued synthetic input into the live input runtime for one frame:
+///   apply pending key transitions, the accumulated mouse delta, button state changes,
+///   and wheel scroll, then clear the queues.
 static void canvas3d_apply_synthetic_input(rt_canvas3d *c) {
     if (!c)
         return;
@@ -135,6 +166,8 @@ static void canvas3d_apply_synthetic_input(rt_canvas3d *c) {
     c->synthetic_mouse_wheel_y = 0.0;
 }
 
+/// @brief Release every key/button the synthetic source is currently holding (called
+///   when synthetic input is cleared/disabled) so no key stays stuck down.
 static void canvas3d_release_synthetic_input(rt_canvas3d *c) {
     if (!c)
         return;
@@ -274,6 +307,8 @@ static float canvas3d_clamp_f64_to_float(double value, double lo, double hi, flo
     return (float)value;
 }
 
+/// @brief Validate an RGBA8 readback target: positive dimensions, a non-negative stride
+///   at least 4·w bytes, and no 32-bit overflow in the row size.
 static int canvas3d_rgba8_stride_valid(int32_t w, int32_t h, int32_t stride) {
     int64_t required;
     if (w <= 0 || h <= 0 || stride < 0)
@@ -450,6 +485,7 @@ typedef struct {
     int8_t wireframe;
     int8_t backface_cull;
     int8_t has_local_bounds;
+    int8_t visible;
     float local_bounds_min[3];
     float local_bounds_max[3];
     float sort_key; /* bounds-aware view-depth key for deferred draw sorting */
@@ -807,6 +843,8 @@ static void canvas3d_resolve_previous_model(rt_canvas3d *c,
     entry->last_frame_seen = c->frame_serial;
 }
 
+/// @brief Mix one pointer/value into a running motion-history hash key (boost-style
+///   hash_combine with the golden-ratio constant) so per-object motion vectors stay stable.
 static uintptr_t canvas3d_mix_motion_key(uintptr_t key, uintptr_t value) {
     key ^= value + (uintptr_t)0x9e3779b97f4a7c15ull + (key << 6) + (key >> 2);
     return key;
@@ -849,19 +887,19 @@ static void canvas3d_copy_light_params(const rt_light3d *l, vgfx3d_light_params_
     memset(out, 0, sizeof(*out));
     out->type = l->type;
     out->shadow_index = -1;
-    out->direction[0] = (float)l->direction[0];
-    out->direction[1] = (float)l->direction[1];
-    out->direction[2] = (float)l->direction[2];
-    out->position[0] = (float)l->position[0];
-    out->position[1] = (float)l->position[1];
-    out->position[2] = (float)l->position[2];
-    out->color[0] = (float)l->color[0];
-    out->color[1] = (float)l->color[1];
-    out->color[2] = (float)l->color[2];
-    out->intensity = (float)l->intensity;
-    out->attenuation = (float)l->attenuation;
-    out->inner_cos = (float)l->inner_cos;
-    out->outer_cos = (float)l->outer_cos;
+    out->direction[0] = canvas3d_sanitize_f64_to_float(l->direction[0], 0.0f);
+    out->direction[1] = canvas3d_sanitize_f64_to_float(l->direction[1], -1.0f);
+    out->direction[2] = canvas3d_sanitize_f64_to_float(l->direction[2], 0.0f);
+    out->position[0] = canvas3d_sanitize_f64_to_float(l->position[0], 0.0f);
+    out->position[1] = canvas3d_sanitize_f64_to_float(l->position[1], 0.0f);
+    out->position[2] = canvas3d_sanitize_f64_to_float(l->position[2], 0.0f);
+    out->color[0] = canvas3d_clamp01_f64(l->color[0]);
+    out->color[1] = canvas3d_clamp01_f64(l->color[1]);
+    out->color[2] = canvas3d_clamp01_f64(l->color[2]);
+    out->intensity = canvas3d_sanitize_nonnegative_f64(l->intensity, 1.0f);
+    out->attenuation = canvas3d_sanitize_nonnegative_f64(l->attenuation, 1.0f);
+    out->inner_cos = canvas3d_clamp_f64_to_float(l->inner_cos, -1.0, 1.0, 1.0f);
+    out->outer_cos = canvas3d_clamp_f64_to_float(l->outer_cos, -1.0, 1.0, 0.0f);
 }
 
 /// @brief Score a directional light by luminance-weighted intensity.
@@ -1576,6 +1614,7 @@ static void canvas3d_fill_deferred_draw(rt_canvas3d *c,
     memset(dd, 0, sizeof(*dd));
     dd->kind = kind;
     dd->pass_kind = pass_kind;
+    dd->visible = 1;
     dd->cmd = *cmd;
     dd->instance_matrices = instance_matrices;
     dd->instance_count = instance_count;
@@ -2077,7 +2116,12 @@ static int canvas3d_ensure_shadow_targets(rt_canvas3d *c, int32_t resolution) {
         }
         return 0;
     }
-    depth_bytes = (size_t)resolution * (size_t)resolution * sizeof(float);
+    if ((size_t)resolution > SIZE_MAX / (size_t)resolution)
+        return 0;
+    depth_bytes = (size_t)resolution * (size_t)resolution;
+    if (depth_bytes > SIZE_MAX / sizeof(float))
+        return 0;
+    depth_bytes *= sizeof(float);
     for (int32_t slot = 0; slot < VGFX3D_MAX_SHADOW_LIGHTS; slot++) {
         vgfx3d_rendertarget_t *rt = c->shadow_rts[slot];
 
@@ -2126,6 +2170,20 @@ void rt_canvas3d_invalidate_skybox_cache(rt_canvas3d *c) {
     memset(c->skybox_cpu_cache_forward, 0, sizeof(c->skybox_cpu_cache_forward));
 }
 
+/// @brief True if two float arrays match element-wise within @p eps; any non-finite
+///   element or NULL/negative input fails the comparison.
+static int canvas3d_float_array_close(const float *a, const float *b, int32_t count, float eps) {
+    if (!a || !b || count < 0)
+        return 0;
+    for (int32_t i = 0; i < count; i++) {
+        if (!isfinite(a[i]) || !isfinite(b[i]))
+            return 0;
+        if (fabsf(a[i] - b[i]) > eps)
+            return 0;
+    }
+    return 1;
+}
+
 /// @brief CPU-rasterize the bound skybox cubemap into a destination pixel buffer.
 /// @details For perspective cameras, unprojects each destination pixel from NDC
 ///   back to a world-space direction by multiplying through `inverse(VP)`, then
@@ -2156,14 +2214,21 @@ static int canvas3d_render_skybox_cpu(rt_canvas3d *c,
                           &r,
                           &g,
                           &b);
-        for (int32_t y = 0; y < dst_h; y++) {
-            for (int32_t x = 0; x < dst_w; x++) {
-                uint8_t *dst = &dst_pixels[y * dst_stride + x * 4];
-                dst[0] = canvas3d_clamp01_to_u8(r);
-                dst[1] = canvas3d_clamp01_to_u8(g);
-                dst[2] = canvas3d_clamp01_to_u8(b);
-                dst[3] = 0xFF;
-            }
+        uint8_t r8 = canvas3d_clamp01_to_u8(r);
+        uint8_t g8 = canvas3d_clamp01_to_u8(g);
+        uint8_t b8 = canvas3d_clamp01_to_u8(b);
+        size_t row_bytes = (size_t)dst_w * 4u;
+        uint8_t *first_row = dst_pixels;
+        for (int32_t x = 0; x < dst_w; x++) {
+            uint8_t *dst = &first_row[(size_t)x * 4u];
+            dst[0] = r8;
+            dst[1] = g8;
+            dst[2] = b8;
+            dst[3] = 0xFF;
+        }
+        for (int32_t y = 1; y < dst_h; y++) {
+            uint8_t *dst = &dst_pixels[(size_t)y * (size_t)dst_stride];
+            memcpy(dst, first_row, row_bytes);
         }
         return 1;
     }
@@ -2172,10 +2237,13 @@ static int canvas3d_render_skybox_cpu(rt_canvas3d *c,
     if (vgfx3d_invert_matrix4(c->cached_vp, inv_vp) != 0)
         return 0;
 
+    float inv_w = 1.0f / (float)dst_w;
+    float inv_h = 1.0f / (float)dst_h;
     for (int32_t y = 0; y < dst_h; y++) {
-        float ndc_y = 1.0f - 2.0f * ((float)y + 0.5f) / (float)dst_h;
+        float ndc_y = 1.0f - 2.0f * ((float)y + 0.5f) * inv_h;
+        uint8_t *row = &dst_pixels[(size_t)y * (size_t)dst_stride];
         for (int32_t x = 0; x < dst_w; x++) {
-            float ndc_x = 2.0f * ((float)x + 0.5f) / (float)dst_w - 1.0f;
+            float ndc_x = 2.0f * ((float)x + 0.5f) * inv_w - 1.0f;
             float clip[4] = {ndc_x, ndc_y, 1.0f, 1.0f};
             float world[4];
             float dx;
@@ -2210,7 +2278,7 @@ static int canvas3d_render_skybox_cpu(rt_canvas3d *c,
                 dz /= dl;
             }
             rt_cubemap_sample(c->skybox, dx, dy, dz, &r, &g, &b);
-            dst = &dst_pixels[y * dst_stride + x * 4];
+            dst = &row[(size_t)x * 4u];
             dst[0] = canvas3d_clamp01_to_u8(r);
             dst[1] = canvas3d_clamp01_to_u8(g);
             dst[2] = canvas3d_clamp01_to_u8(b);
@@ -2240,13 +2308,10 @@ static int canvas3d_skybox_cache_matches(const rt_canvas3d *c,
         c->skybox_cpu_cache_is_ortho != c->cached_cam_is_ortho)
         return 0;
     if (c->cached_cam_is_ortho)
-        return memcmp(c->skybox_cpu_cache_forward,
-                      c->cached_cam_forward,
-                      sizeof(c->skybox_cpu_cache_forward)) == 0;
-    return memcmp(c->skybox_cpu_cache_vp, c->cached_vp, sizeof(c->skybox_cpu_cache_vp)) == 0 &&
-           memcmp(c->skybox_cpu_cache_cam_pos,
-                  c->cached_cam_pos,
-                  sizeof(c->skybox_cpu_cache_cam_pos)) == 0;
+        return canvas3d_float_array_close(
+            c->skybox_cpu_cache_forward, c->cached_cam_forward, 3, 1e-6f);
+    return canvas3d_float_array_close(c->skybox_cpu_cache_vp, c->cached_vp, 16, 1e-6f) &&
+           canvas3d_float_array_close(c->skybox_cpu_cache_cam_pos, c->cached_cam_pos, 3, 1e-6f);
 }
 
 /// @brief Populate (or refresh) the CPU skybox cache so it's ready for blitting.
@@ -2462,6 +2527,14 @@ void *rt_canvas3d_new(rt_string title, int64_t w, int64_t h) {
 
     /* Select and initialize the platform-default backend, with software fallback. */
     c->backend = vgfx3d_select_backend();
+    if (!c->backend || !c->backend->create_ctx)
+        c->backend = &vgfx3d_software_backend;
+    if (!c->backend || !c->backend->create_ctx) {
+        if (rt_obj_release_check0(c))
+            rt_obj_free(c);
+        rt_trap("Canvas3D.New: no 3D backend is available");
+        return NULL;
+    }
     c->backend_ctx = c->backend->create_ctx(c->gfx_win, initial_width, initial_height);
     if (!c->backend_ctx) {
         /* Selected backend failed — fall back to software. */
@@ -2555,15 +2628,18 @@ void rt_canvas3d_clear(void *obj, double r, double g, double b) {
             uint8_t r8 = canvas3d_clamp01_to_u8(cr);
             uint8_t g8 = canvas3d_clamp01_to_u8(cg);
             uint8_t b8 = canvas3d_clamp01_to_u8(cb);
-            for (int32_t y = 0; y < fb.height; y++) {
+            size_t row_bytes = (size_t)fb.width * 4u;
+            uint8_t *first_row = fb.pixels;
+            for (int32_t x = 0; x < fb.width; x++) {
+                uint8_t *px = &first_row[(size_t)x * 4u];
+                px[0] = r8;
+                px[1] = g8;
+                px[2] = b8;
+                px[3] = 0xFF;
+            }
+            for (int32_t y = 1; y < fb.height; y++) {
                 uint8_t *row = &fb.pixels[(size_t)y * (size_t)fb.stride];
-                for (int32_t x = 0; x < fb.width; x++) {
-                    uint8_t *px = &row[(size_t)x * 4u];
-                    px[0] = r8;
-                    px[1] = g8;
-                    px[2] = b8;
-                    px[3] = 0xFF;
-                }
+                memcpy(row, first_row, row_bytes);
             }
         }
     }
@@ -2701,6 +2777,13 @@ int canvas3d_queue_screen_line(rt_canvas3d *c,
     float half;
     vgfx3d_vertex_t verts[4];
     static const uint32_t indices[6] = {0, 1, 2, 0, 2, 3};
+
+    if (!isfinite(x0) || !isfinite(y0) || !isfinite(x1) || !isfinite(y1))
+        return 0;
+    if (!isfinite(thickness) || thickness <= 0.0f)
+        thickness = 1.0f;
+    if (thickness > 4096.0f)
+        thickness = 4096.0f;
 
     dx = x1 - x0;
     dy = y1 - y0;
@@ -3179,6 +3262,7 @@ void rt_canvas3d_draw_mesh_matrix_keyed(void *obj,
         mesh->morph_shape_count == 0) {
         rt_canvas3d_draw_mesh_matrix_morphed(
             obj, mesh_obj, model_matrix, material_obj, motion_key, mesh->morph_targets_ref);
+        canvas3d_clear_pending_splat(c);
         return;
     }
 
@@ -3205,6 +3289,7 @@ void rt_canvas3d_draw_mesh_matrix_keyed(void *obj,
     memset(dd, 0, sizeof(*dd));
     dd->kind = DEFERRED_DRAW_MESH;
     dd->pass_kind = DEFERRED_PASS_MAIN;
+    dd->visible = 1;
 
     vgfx3d_vertex_t *queued_vertices = mesh->vertices;
     uint32_t *queued_indices = mesh->indices;
@@ -3633,22 +3718,26 @@ void rt_canvas3d_end(void *obj) {
 
     if (main_count > 0) {
         vgfx3d_frustum_t visibility_frustum;
-        int8_t use_visibility_frustum = 0;
 
         if (c->occlusion_culling) {
             vgfx3d_frustum_extract(&visibility_frustum, c->cached_vp);
-            use_visibility_frustum = 1;
+            for (int32_t i = 0; i < c->draw_count; i++) {
+                if (cmds[i].pass_kind == DEFERRED_PASS_MAIN)
+                    cmds[i].visible =
+                        (int8_t)canvas3d_deferred_intersects_frustum(&cmds[i], &visibility_frustum);
+            }
+        } else {
+            for (int32_t i = 0; i < c->draw_count; i++) {
+                if (cmds[i].pass_kind == DEFERRED_PASS_MAIN)
+                    cmds[i].visible = 1;
+            }
         }
 
-        if (c->occlusion_culling) {
-            /* This mode performs coarse CPU visibility rejection against the
-             * camera frustum before front-to-back sorting opaque draws. */
+        {
             int32_t opaque_count = 0;
             for (int32_t i = 0; i < c->draw_count; i++) {
                 if (cmds[i].pass_kind == DEFERRED_PASS_MAIN &&
-                    !canvas3d_cmd_requires_blend(&cmds[i].cmd) &&
-                    (!use_visibility_frustum ||
-                     canvas3d_deferred_intersects_frustum(&cmds[i], &visibility_frustum)))
+                    !canvas3d_cmd_requires_blend(&cmds[i].cmd) && cmds[i].visible)
                     opaque_count++;
             }
             if (opaque_count > 0) {
@@ -3657,9 +3746,7 @@ void rt_canvas3d_end(void *obj) {
                     int32_t oi = 0;
                     for (int32_t i = 0; i < c->draw_count; i++) {
                         if (cmds[i].pass_kind == DEFERRED_PASS_MAIN &&
-                            !canvas3d_cmd_requires_blend(&cmds[i].cmd) &&
-                            (!use_visibility_frustum ||
-                             canvas3d_deferred_intersects_frustum(&cmds[i], &visibility_frustum)))
+                            !canvas3d_cmd_requires_blend(&cmds[i].cmd) && cmds[i].visible)
                             opaque[oi++] = cmds[i];
                     }
                     qsort(opaque, (size_t)opaque_count, sizeof(deferred_draw_t), cmp_front_to_back);
@@ -3668,18 +3755,10 @@ void rt_canvas3d_end(void *obj) {
                 } else {
                     for (int32_t i = 0; i < c->draw_count; i++) {
                         if (cmds[i].pass_kind == DEFERRED_PASS_MAIN &&
-                            !canvas3d_cmd_requires_blend(&cmds[i].cmd) &&
-                            (!use_visibility_frustum ||
-                             canvas3d_deferred_intersects_frustum(&cmds[i], &visibility_frustum)))
+                            !canvas3d_cmd_requires_blend(&cmds[i].cmd) && cmds[i].visible)
                             canvas3d_submit_deferred(c, &cmds[i]);
                     }
                 }
-            }
-        } else {
-            for (int32_t i = 0; i < c->draw_count; i++) {
-                if (cmds[i].pass_kind == DEFERRED_PASS_MAIN &&
-                    !canvas3d_cmd_requires_blend(&cmds[i].cmd))
-                    canvas3d_submit_deferred(c, &cmds[i]);
             }
         }
 
@@ -3687,9 +3766,7 @@ void rt_canvas3d_end(void *obj) {
             int32_t trans_count = 0;
             for (int32_t i = 0; i < c->draw_count; i++) {
                 if (cmds[i].pass_kind == DEFERRED_PASS_MAIN &&
-                    canvas3d_cmd_requires_blend(&cmds[i].cmd) &&
-                    (!use_visibility_frustum ||
-                     canvas3d_deferred_intersects_frustum(&cmds[i], &visibility_frustum)))
+                    canvas3d_cmd_requires_blend(&cmds[i].cmd) && cmds[i].visible)
                     trans_count++;
             }
             if (trans_count > 0) {
@@ -3698,9 +3775,7 @@ void rt_canvas3d_end(void *obj) {
                     int32_t ti = 0;
                     for (int32_t i = 0; i < c->draw_count; i++) {
                         if (cmds[i].pass_kind == DEFERRED_PASS_MAIN &&
-                            canvas3d_cmd_requires_blend(&cmds[i].cmd) &&
-                            (!use_visibility_frustum ||
-                             canvas3d_deferred_intersects_frustum(&cmds[i], &visibility_frustum)))
+                            canvas3d_cmd_requires_blend(&cmds[i].cmd) && cmds[i].visible)
                             trans[ti++] = cmds[i];
                     }
                     qsort(trans, (size_t)trans_count, sizeof(deferred_draw_t), cmp_back_to_front);
@@ -3709,9 +3784,7 @@ void rt_canvas3d_end(void *obj) {
                 } else {
                     for (int32_t i = 0; i < c->draw_count; i++) {
                         if (cmds[i].pass_kind == DEFERRED_PASS_MAIN &&
-                            canvas3d_cmd_requires_blend(&cmds[i].cmd) &&
-                            (!use_visibility_frustum ||
-                             canvas3d_deferred_intersects_frustum(&cmds[i], &visibility_frustum)))
+                            canvas3d_cmd_requires_blend(&cmds[i].cmd) && cmds[i].visible)
                             canvas3d_submit_deferred(c, &cmds[i]);
                     }
                 }
@@ -3777,6 +3850,7 @@ void rt_canvas3d_finalize_frame(void *obj) {
 
     if (canvas3d_backend_uses_gpu_postfx(c)) {
         if (c->frame_gpu_postfx_enabled) {
+            canvas3d_replay_final_overlay(c);
             c->backend->present_postfx(c->backend_ctx, &c->frame_postfx_chain);
             c->frame_presented_by_finalize = 1;
             c->frame_finalized = 1;
@@ -4077,8 +4151,12 @@ double rt_canvas3d_get_delta_time_sec(void *obj) {
         return 0.0;
     if (c->delta_time_us > 0) {
         int64_t dt_us = c->delta_time_us;
-        if (c->dt_max_ms > 0 && dt_us > c->dt_max_ms * 1000)
-            dt_us = c->dt_max_ms * 1000;
+        if (c->dt_max_ms > 0) {
+            int64_t max_us =
+                c->dt_max_ms <= INT64_MAX / 1000 ? c->dt_max_ms * 1000 : INT64_MAX;
+            if (dt_us > max_us)
+                dt_us = max_us;
+        }
         return (double)dt_us / 1000000.0;
     }
     return (double)rt_canvas3d_get_delta_time(obj) / 1000.0;
@@ -4088,7 +4166,7 @@ double rt_canvas3d_get_delta_time_sec(void *obj) {
 void rt_canvas3d_set_dt_max(void *obj, int64_t max_ms) {
     rt_canvas3d *c = rt_canvas3d_checked_or_stack(obj);
     if (c)
-        c->dt_max_ms = max_ms > 0 ? max_ms : 0;
+        c->dt_max_ms = max_ms > 0 ? (max_ms > INT64_MAX / 1000 ? INT64_MAX / 1000 : max_ms) : 0;
 }
 
 /// @brief Select live, synthetic, or live+synthetic input.
@@ -4120,12 +4198,10 @@ void rt_canvas3d_push_synthetic_mouse(
     rt_canvas3d *c = rt_canvas3d_checked_or_stack(obj);
     if (!c)
         return;
-    if (isfinite(dx))
-        c->synthetic_mouse_dx += dx;
-    if (isfinite(dy))
-        c->synthetic_mouse_dy += dy;
-    if (isfinite(wheel))
-        c->synthetic_mouse_wheel_y += wheel;
+    c->synthetic_mouse_dx = canvas3d_accumulate_synthetic_mouse_delta(c->synthetic_mouse_dx, dx);
+    c->synthetic_mouse_dy = canvas3d_accumulate_synthetic_mouse_delta(c->synthetic_mouse_dy, dy);
+    c->synthetic_mouse_wheel_y =
+        canvas3d_accumulate_synthetic_mouse_delta(c->synthetic_mouse_wheel_y, wheel);
     c->synthetic_mouse_buttons =
         buttons > 0 ? buttons & ((1LL << VIPER_MOUSE_BUTTON_MAX) - 1LL) : 0;
     c->synthetic_mouse_has_buttons = 1;

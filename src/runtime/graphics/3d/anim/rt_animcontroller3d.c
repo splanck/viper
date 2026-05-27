@@ -5,7 +5,7 @@
 //
 //===----------------------------------------------------------------------===//
 //
-// File: src/runtime/graphics/rt_animcontroller3d.c
+// File: src/runtime/graphics/3d/anim/rt_animcontroller3d.c
 // Purpose: High-level skeletal animation controller backing
 //          `Viper.Graphics3D.AnimController3D`. Provides named states,
 //          transitions, events, root-motion extraction, and simple
@@ -130,6 +130,8 @@ static rt_animation3d *animation3d_checked(void *obj) {
     return (rt_animation3d *)rt_g3d_checked_or_null(obj, RT_G3D_ANIMATION3D_CLASS_ID);
 }
 
+/// @brief Narrow a double to float, returning `fallback` for non-finite input and
+///   saturating to ±FLT_MAX on overflow (keeps NaN/Inf out of the float pipeline).
 static float controller_clamp_to_float(double value, float fallback) {
     if (!isfinite(value))
         return fallback;
@@ -140,6 +142,8 @@ static float controller_clamp_to_float(double value, float fallback) {
     return (float)value;
 }
 
+/// @brief Narrow a double to a non-negative float; non-finite or ≤0 yields 0, overflow
+///   saturates to FLT_MAX. For durations/speeds that must stay ≥ 0.
 static float controller_clamp_nonnegative_float(double value) {
     if (!isfinite(value) || value <= 0.0)
         return 0.0f;
@@ -607,6 +611,8 @@ static void controller_decompose_trs_float(const float *m,
     out_rot[3] = (float)rot[3];
 }
 
+/// @brief Find the animation channel targeting @p bone_index, or NULL if the clip has
+///   no channel for that bone.
 static const vgfx3d_anim_channel_t *controller_find_animation_channel(const rt_animation3d *anim,
                                                                       int32_t bone_index) {
     if (!anim || bone_index < 0)
@@ -618,6 +624,9 @@ static const vgfx3d_anim_channel_t *controller_find_animation_channel(const rt_a
     return NULL;
 }
 
+/// @brief Resolve a keyframe's translation/rotation/scale, substituting the bind-pose
+///   fallback for any channel component the keyframe's presence masks leave unset
+///   (rotation is all-or-nothing: only used when all four quaternion lanes are present).
 static void controller_keyframe_effective_trs(const vgfx3d_keyframe_t *key,
                                               const float *fallback_pos,
                                               const float *fallback_rot,
@@ -638,6 +647,9 @@ static void controller_keyframe_effective_trs(const vgfx3d_keyframe_t *key,
         memcpy(out_rot, fallback_rot, 4 * sizeof(float));
 }
 
+/// @brief Sample a channel's TRS at @p time, interpolating between the surrounding
+///   keyframes (linear for position/scale, SLERP for rotation). Empty channels return
+///   the fallback bind-pose; single-keyframe channels return that key directly.
 static void controller_sample_channel_trs(const vgfx3d_anim_channel_t *channel,
                                           float time,
                                           const float *fallback_pos,
@@ -705,6 +717,8 @@ static void controller_sample_channel_trs(const vgfx3d_anim_channel_t *channel,
     controller_quat_slerp_float(rot0, rot1, alpha, out_rot);
 }
 
+/// @brief Compute one bone's local transform matrix for @p animation at @p time: sample
+///   the bone's channel (falling back to its bind pose) and recompose into @p out_local.
 static void controller_sample_animation_local_matrix(const rt_skeleton3d *skeleton,
                                                      const rt_animation3d *animation,
                                                      int32_t bone_index,
@@ -725,6 +739,9 @@ static void controller_sample_animation_local_matrix(const rt_skeleton3d *skelet
     controller_build_trs_float(pos, rot, scl, out_local);
 }
 
+/// @brief Compute the world-space matrix of @p bone_index for the given state at @p time
+///   by sampling every bone's local transform and walking the parent chain; returns 0
+///   on invalid controller/state/bone, else 1 with the result in @p out_global.
 static int controller_sample_state_global_matrix(const rt_anim_controller3d *controller,
                                                  int32_t state_index,
                                                  float time,

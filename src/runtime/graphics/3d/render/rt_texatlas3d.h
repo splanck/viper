@@ -5,7 +5,7 @@
 //
 //===----------------------------------------------------------------------===//
 //
-// File: src/runtime/graphics/rt_texatlas3d.h
+// File: src/runtime/graphics/3d/render/rt_texatlas3d.h
 // Purpose: Texture atlas — packs multiple textures into one large texture
 //   to reduce texture switches during rendering.
 //

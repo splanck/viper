@@ -5,7 +5,7 @@
 //
 //===----------------------------------------------------------------------===//
 //
-// File: src/runtime/graphics/rt_audiolistener3d.h
+// File: src/runtime/graphics/3d/audio/rt_audiolistener3d.h
 // Purpose: Gameplay-facing active-listener object for 3D audio.
 //
 //===----------------------------------------------------------------------===//

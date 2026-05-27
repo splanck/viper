@@ -5,7 +5,7 @@
 //
 //===----------------------------------------------------------------------===//
 //
-// File: src/runtime/graphics/rt_water3d.c
+// File: src/runtime/graphics/3d/world/rt_water3d.c
 // Purpose: Animated water plane with sine-based waves.
 //
 // Key invariants:

@@ -3,7 +3,7 @@
 // Part of the Viper project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
-// File: src/runtime/graphics/vgfx3d_backend_metal_shared.h
+// File: src/runtime/graphics/3d/backend/vgfx3d_backend_metal_shared.h
 // Purpose: Shared declarations/constants for the Metal vgfx3d backend —
 //   bone-palette limits and shared uniform layouts used by the Objective-C
 //   Metal backend and its C shared support unit.
@@ -16,7 +16,7 @@
 // Ownership/Lifetime:
 //   - Declarations only; no allocation or ownership semantics here.
 //
-// Links: src/runtime/graphics/vgfx3d_backend_metal_shared.c
+// Links: src/runtime/graphics/3d/backend/vgfx3d_backend_metal_shared.c
 //
 //===----------------------------------------------------------------------===//
 #pragma once
@@ -35,12 +35,14 @@ extern "C" {
 #define VGFX3D_METAL_BONE_PALETTE_BYTES (sizeof(float) * VGFX3D_METAL_BONE_PALETTE_FLOATS)
 #define VGFX3D_METAL_MAX_MORPH_SHAPES 32
 
+/// @brief Blend state required by a draw: opaque, standard alpha, or additive.
 typedef enum {
     VGFX3D_METAL_BLEND_OPAQUE = 0,
     VGFX3D_METAL_BLEND_ALPHA = 1,
     VGFX3D_METAL_BLEND_ADDITIVE = 2,
 } vgfx3d_metal_blend_mode_t;
 
+/// @brief Render-target classification: swapchain, offscreen HDR scene, RTT, or overlay.
 typedef enum {
     VGFX3D_METAL_TARGET_SWAPCHAIN = 0,
     VGFX3D_METAL_TARGET_SCENE = 1,
@@ -48,21 +50,26 @@ typedef enum {
     VGFX3D_METAL_TARGET_OVERLAY = 3,
 } vgfx3d_metal_target_kind_t;
 
+/// @brief Color format of a target: 8-bit UNORM (display) or 16-bit float (HDR scene).
 typedef enum {
     VGFX3D_METAL_COLOR_FORMAT_UNORM8 = 0,
     VGFX3D_METAL_COLOR_FORMAT_HDR16F = 1,
 } vgfx3d_metal_color_format_t;
 
+/// @brief Whether a pass attaches only color or also the motion-vector target.
 typedef enum {
     VGFX3D_METAL_MOTION_ATTACHMENTS_COLOR_ONLY = 0,
     VGFX3D_METAL_MOTION_ATTACHMENTS_COLOR_AND_MOTION = 1,
 } vgfx3d_metal_motion_attachment_mode_t;
 
+/// @brief Source for canvas readback: the presented backbuffer or the post-FX composite.
 typedef enum {
     VGFX3D_METAL_READBACK_BACKBUFFER = 0,
     VGFX3D_METAL_READBACK_POSTFX_COMPOSITE = 1,
 } vgfx3d_metal_readback_kind_t;
 
+/// @brief Per-frame view/projection history for motion vectors (current/previous/inverse
+///   scene VP, draw's previous VP, camera position, and scene/overlay validity flags).
 typedef struct {
     float scene_vp[16];
     float scene_prev_vp[16];
@@ -73,6 +80,8 @@ typedef struct {
     int8_t overlay_used_this_frame;
 } vgfx3d_metal_frame_history_t;
 
+/// @brief One per-instance Metal buffer entry: model, normal, and previous-frame model
+///   matrices (column-major-transposed for MSL by fill_instance_data).
 typedef struct {
     float model[16];
     float normal[16];

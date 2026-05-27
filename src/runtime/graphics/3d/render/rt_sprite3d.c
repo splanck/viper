@@ -5,7 +5,7 @@
 //
 //===----------------------------------------------------------------------===//
 //
-// File: src/runtime/graphics/rt_sprite3d.c
+// File: src/runtime/graphics/3d/render/rt_sprite3d.c
 // Purpose: 3D sprite — camera-facing billboard with sprite sheet frames.
 //
 // Key invariants:

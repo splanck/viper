@@ -5,7 +5,7 @@
 //
 //===----------------------------------------------------------------------===//
 //
-// File: src/runtime/graphics/rt_scene3d.h
+// File: src/runtime/graphics/3d/scene/rt_scene3d.h
 // Purpose: Viper.Graphics3D.Scene3D and SceneNode3D — hierarchical scene graph
 //   with parent-child transform propagation. Nodes hold local TRS (translate,
 //   rotate, scale) and compute world matrices by multiplying up the hierarchy.
@@ -30,6 +30,8 @@
 extern "C" {
 #endif
 
+/// @brief Direction a SceneNode3D synchronizes transforms with its bound physics body:
+///   physics→node, node→physics, animation-root-motion→node, or bidirectional kinematic.
 enum {
     RT_SCENE_NODE3D_SYNC_NODE_FROM_BODY = 0,
     RT_SCENE_NODE3D_SYNC_BODY_FROM_NODE = 1,

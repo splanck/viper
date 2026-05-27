@@ -5,7 +5,7 @@
 //
 //===----------------------------------------------------------------------===//
 //
-// File: src/runtime/graphics/rt_gltf.h
+// File: src/runtime/graphics/3d/assets/rt_gltf.h
 // Purpose: glTF 2.0 (.gltf/.glb) asset loader.
 // Key invariants:
 //   - Supports .gltf (JSON + external files) and .glb (binary container)

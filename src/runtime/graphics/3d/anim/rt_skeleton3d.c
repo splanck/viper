@@ -5,7 +5,7 @@
 //
 //===----------------------------------------------------------------------===//
 //
-// File: src/runtime/graphics/rt_skeleton3d.c
+// File: src/runtime/graphics/3d/anim/rt_skeleton3d.c
 // Purpose: Skeleton3D (bone hierarchy + bind pose), Animation3D (keyframe
 //   clips), and AnimPlayer3D (playback, sampling, crossfade, palette output).
 //

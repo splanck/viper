@@ -3,7 +3,7 @@
 // Part of the Viper project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
-// File: src/runtime/graphics/vgfx3d_backend_d3d11_shared.h
+// File: src/runtime/graphics/3d/backend/vgfx3d_backend_d3d11_shared.h
 // Purpose: Shared declarations/constants for the Direct3D 11 vgfx3d backend —
 //   bone-palette limits, shared constant-buffer layouts, and helper routines
 //   used by both the main D3D11 backend and its shared support unit.
@@ -16,8 +16,8 @@
 // Ownership/Lifetime:
 //   - Declarations only; no allocation or ownership semantics here.
 //
-// Links: src/runtime/graphics/vgfx3d_backend_d3d11.c,
-//        src/runtime/graphics/vgfx3d_backend_d3d11_shared.c
+// Links: src/runtime/graphics/3d/backend/vgfx3d_backend_d3d11.c,
+//        src/runtime/graphics/3d/backend/vgfx3d_backend_d3d11_shared.c
 //
 //===----------------------------------------------------------------------===//
 #pragma once
@@ -41,12 +41,15 @@ extern "C" {
 #define VGFX3D_D3D11_MAX_TEXTURE2D_DIMENSION 16384
 #define VGFX3D_D3D11_MAX_CUBEMAP_DIMENSION 16384
 
+/// @brief Blend state required by a draw: opaque, standard alpha, or additive.
 typedef enum {
     VGFX3D_D3D11_BLEND_OPAQUE = 0,
     VGFX3D_D3D11_BLEND_ALPHA = 1,
     VGFX3D_D3D11_BLEND_ADDITIVE = 2,
 } vgfx3d_d3d11_blend_mode_t;
 
+/// @brief Render-target classification: the swapchain back buffer, the offscreen HDR
+///   scene target, a user render-to-texture target, or the overlay target.
 typedef enum {
     VGFX3D_D3D11_TARGET_SWAPCHAIN = 0,
     VGFX3D_D3D11_TARGET_SCENE = 1,
@@ -54,16 +57,20 @@ typedef enum {
     VGFX3D_D3D11_TARGET_OVERLAY = 3,
 } vgfx3d_d3d11_target_kind_t;
 
+/// @brief Color format of a target: 8-bit UNORM (display) or 16-bit float (HDR scene).
 typedef enum {
     VGFX3D_D3D11_COLOR_FORMAT_UNORM8 = 0,
     VGFX3D_D3D11_COLOR_FORMAT_HDR16F = 1,
 } vgfx3d_d3d11_color_format_t;
 
+/// @brief Whether a pass attaches only color or also the motion-vector target.
 typedef enum {
     VGFX3D_D3D11_MOTION_ATTACHMENTS_COLOR_ONLY = 0,
     VGFX3D_D3D11_MOTION_ATTACHMENTS_COLOR_AND_MOTION = 1,
 } vgfx3d_d3d11_motion_attachment_mode_t;
 
+/// @brief Per-object HLSL constant buffer: model/prev-model/normal matrices plus skinning,
+///   morph, and instancing flags and packed morph weights.
 typedef struct {
     float model[16];
     float prev_model[16];
@@ -80,6 +87,9 @@ typedef struct {
     float prev_morph_weights_packed[VGFX3D_D3D11_PACKED_MORPH_WEIGHT_VECS][4];
 } vgfx3d_d3d11_per_object_t;
 
+/// @brief Per-material HLSL constant buffer: colors, scalar/PBR factor banks, flag banks,
+///   terrain-splat scales, shading model, packed custom params, and per-slot UV set +
+///   transform data.
 typedef struct {
     float diffuse[4];
     float specular[4];
@@ -100,12 +110,16 @@ typedef struct {
     float texture_uv_transform1[VGFX3D_D3D11_TEXTURE_SLOT_COUNT][4];
 } vgfx3d_d3d11_per_material_t;
 
+/// @brief One per-instance vertex-buffer entry for instanced draws: model, normal, and
+///   previous-frame model matrices.
 typedef struct {
     float model[16];
     float normal[16];
     float prev_model[16];
 } vgfx3d_d3d11_instance_data_t;
 
+/// @brief Per-frame view/projection history for motion vectors: current/previous/inverse
+///   scene VP, the draw's previous VP, camera position, and scene/overlay validity flags.
 typedef struct {
     float scene_vp[16];
     float scene_prev_vp[16];

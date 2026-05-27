@@ -5,7 +5,7 @@
 //
 //===----------------------------------------------------------------------===//
 //
-// File: src/runtime/graphics/rt_audiosource3d.h
+// File: src/runtime/graphics/3d/audio/rt_audiosource3d.h
 // Purpose: Gameplay-facing spatial source object for 3D audio.
 //
 //===----------------------------------------------------------------------===//

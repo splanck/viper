@@ -5,7 +5,7 @@
 //
 //===----------------------------------------------------------------------===//
 //
-// File: src/runtime/graphics/rt_scene3d.c
+// File: src/runtime/graphics/3d/scene/rt_scene3d.c
 // Purpose: Viper.Graphics3D.Scene3D / SceneNode3D — 3D scene graph with
 //   parent-child transform propagation. Each node holds local TRS, and the
 //   world matrix is lazily recomputed on access or draw.
@@ -757,6 +757,8 @@ static int scene_extract_rotation_basis(const double *m, double basis[9]) {
     return 1;
 }
 
+/// @brief Extract a unit quaternion from a world matrix's rotation, normalizing the basis
+///   first; falls back to identity when the matrix has no recoverable rotation.
 static void quat_from_world_matrix(const double *m, double *out) {
     double basis[9];
     if (!out)

@@ -5,7 +5,7 @@
 //
 //===----------------------------------------------------------------------===//
 //
-// File: src/runtime/graphics/rt_mesh3d.c
+// File: src/runtime/graphics/3d/render/rt_mesh3d.c
 // Purpose: Viper.Graphics3D.Mesh3D — dynamic vertex/index mesh storage
 //   with programmatic construction and procedural generators.
 //
@@ -602,11 +602,12 @@ void *rt_mesh3d_clone(void *obj) {
 ///          computes that once and the per-vertex loop reuses it.
 ///
 ///          The matrix determinant is inspected for a handedness flip (det < 0): when
-///          the transform mirrors the mesh, the tangent-space bitangent must be negated
-///          to keep the TBN frame right-handed. That flip is encoded in the tangent's
-///          W component (stored in `t[3]`) so the shader can reconstruct the bitangent
-///          with `cross(N,T) * W`. We preserve any existing W (treating 0 as the
-///          canonical +1 for legacy meshes), then multiply by the handedness sign.
+///          the transform mirrors the mesh, triangle winding is reversed to preserve
+///          backface-culling semantics, and the tangent-space bitangent is negated to
+///          keep the TBN frame right-handed. That tangent flip is encoded in the
+///          tangent's W component (stored in `t[3]`) so the shader can reconstruct the
+///          bitangent with `cross(N,T) * W`. We preserve any existing W (treating 0 as
+///          the canonical +1 for legacy meshes), then multiply by the handedness sign.
 ///
 ///          Normals and tangents are renormalized after transform — shear / non-uniform
 ///          scale otherwise produce non-unit vectors. After the pass, geometry is
@@ -718,6 +719,13 @@ void rt_mesh3d_transform(void *obj, void *mat4_obj) {
             t[2] /= len;
         }
         t[3] = (handedness == 0.0f ? 1.0f : handedness) * handedness_sign;
+    }
+    if (handedness_sign < 0.0f) {
+        for (uint32_t i = 0; i + 2 < m->index_count; i += 3) {
+            uint32_t tmp = m->indices[i + 1];
+            m->indices[i + 1] = m->indices[i + 2];
+            m->indices[i + 2] = tmp;
+        }
     }
     rt_mesh3d_touch_geometry(m);
     rt_mesh3d_refresh_bounds(m);
@@ -1628,18 +1636,15 @@ void *rt_mesh3d_from_obj(rt_string path) {
             /* Face: f v1[/vt1[/vn1]] v2[/vt2[/vn2]] ... */
             p += 2;
             size_t face_capacity = 8;
-            int64_t *face_vi = (int64_t *)malloc(face_capacity * sizeof(int64_t));
-            int64_t *face_ti = (int64_t *)malloc(face_capacity * sizeof(int64_t));
-            int64_t *face_ni = (int64_t *)malloc(face_capacity * sizeof(int64_t));
-            uint32_t *mesh_indices = NULL;
+            int64_t face_vi_stack[8];
+            int64_t face_ti_stack[8];
+            int64_t face_ni_stack[8];
+            uint32_t mesh_indices_stack[8];
+            int64_t *face_vi = face_vi_stack;
+            int64_t *face_ti = face_ti_stack;
+            int64_t *face_ni = face_ni_stack;
+            uint32_t *mesh_indices = mesh_indices_stack;
             int face_count = 0;
-            if (!face_vi || !face_ti || !face_ni) {
-                free(face_vi);
-                free(face_ti);
-                free(face_ni);
-                parse_failed = 1;
-                break;
-            }
 
             while (*p && *p != '\n' && *p != '\r') {
                 while (*p == ' ' || *p == '\t')
@@ -1667,9 +1672,12 @@ void *rt_mesh3d_from_obj(rt_string path) {
                     memcpy(new_vi, face_vi, (size_t)face_count * sizeof(int64_t));
                     memcpy(new_ti, face_ti, (size_t)face_count * sizeof(int64_t));
                     memcpy(new_ni, face_ni, (size_t)face_count * sizeof(int64_t));
-                    free(face_vi);
-                    free(face_ti);
-                    free(face_ni);
+                    if (face_vi != face_vi_stack)
+                        free(face_vi);
+                    if (face_ti != face_ti_stack)
+                        free(face_ti);
+                    if (face_ni != face_ni_stack)
+                        free(face_ni);
                     face_vi = new_vi;
                     face_ti = new_ti;
                     face_ni = new_ni;
@@ -1687,26 +1695,37 @@ void *rt_mesh3d_from_obj(rt_string path) {
             }
 
             if (parse_failed) {
-                free(face_vi);
-                free(face_ti);
-                free(face_ni);
+                if (face_vi != face_vi_stack)
+                    free(face_vi);
+                if (face_ti != face_ti_stack)
+                    free(face_ti);
+                if (face_ni != face_ni_stack)
+                    free(face_ni);
                 break;
             }
 
             if (face_count < 3) {
-                free(face_vi);
-                free(face_ti);
-                free(face_ni);
+                if (face_vi != face_vi_stack)
+                    free(face_vi);
+                if (face_ti != face_ti_stack)
+                    free(face_ti);
+                if (face_ni != face_ni_stack)
+                    free(face_ni);
                 continue;
             }
 
-            mesh_indices = (uint32_t *)malloc((size_t)face_count * sizeof(uint32_t));
-            if (!mesh_indices) {
-                free(face_vi);
-                free(face_ti);
-                free(face_ni);
-                parse_failed = 1;
-                break;
+            if (face_count > (int)(sizeof(mesh_indices_stack) / sizeof(mesh_indices_stack[0]))) {
+                mesh_indices = (uint32_t *)malloc((size_t)face_count * sizeof(uint32_t));
+                if (!mesh_indices) {
+                    if (face_vi != face_vi_stack)
+                        free(face_vi);
+                    if (face_ti != face_ti_stack)
+                        free(face_ti);
+                    if (face_ni != face_ni_stack)
+                        free(face_ni);
+                    parse_failed = 1;
+                    break;
+                }
             }
 
             /* Resolve indices and emit or reuse vertices */
@@ -1752,10 +1771,14 @@ void *rt_mesh3d_from_obj(rt_string path) {
                     }
                 }
             }
-            free(face_vi);
-            free(face_ti);
-            free(face_ni);
-            free(mesh_indices);
+            if (face_vi != face_vi_stack)
+                free(face_vi);
+            if (face_ti != face_ti_stack)
+                free(face_ti);
+            if (face_ni != face_ni_stack)
+                free(face_ni);
+            if (mesh_indices != mesh_indices_stack)
+                free(mesh_indices);
             if (parse_failed)
                 break;
         } else if (strncmp(p, "mtllib ", 7) == 0 || strncmp(p, "usemtl ", 7) == 0 ||
@@ -1903,6 +1926,59 @@ static void *stl_load_binary(const uint8_t *data, size_t len) {
 
     for (uint32_t i = 0; i < tri_count; i++) {
         const uint8_t *tri = data + 84 + (size_t)i * 50;
+        float normal[3] = {
+            stl_read_f32_le(tri + 0),
+            stl_read_f32_le(tri + 4),
+            stl_read_f32_le(tri + 8),
+        };
+        float verts[9] = {
+            stl_read_f32_le(tri + 12),
+            stl_read_f32_le(tri + 16),
+            stl_read_f32_le(tri + 20),
+            stl_read_f32_le(tri + 24),
+            stl_read_f32_le(tri + 28),
+            stl_read_f32_le(tri + 32),
+            stl_read_f32_le(tri + 36),
+            stl_read_f32_le(tri + 40),
+            stl_read_f32_le(tri + 44),
+        };
+        if (!isfinite(verts[0]) || !isfinite(verts[1]) || !isfinite(verts[2]) ||
+            !isfinite(verts[3]) || !isfinite(verts[4]) || !isfinite(verts[5]) ||
+            !isfinite(verts[6]) || !isfinite(verts[7]) || !isfinite(verts[8])) {
+            mesh_mark_build_failed((rt_mesh3d *)mesh);
+            break;
+        }
+        if (!stl_emit_triangle(mesh, verts, normal))
+            break;
+    }
+
+    if (((rt_mesh3d *)mesh)->build_failed)
+        return mesh_return_null_if_build_failed(mesh);
+    if (((rt_mesh3d *)mesh)->index_count == 0) {
+        if (rt_obj_release_check0(mesh))
+            rt_obj_free(mesh);
+        return NULL;
+    }
+    rt_mesh3d_recalc_normals(mesh);
+    return mesh;
+}
+
+/// @brief Read @p tri_count triangles from an open binary-STL stream (positioned at the
+///   first facet record) into a new Mesh3D with recomputed normals; returns NULL on a
+///   zero/overflowing count or read error.
+static void *stl_load_binary_stream(FILE *f, uint32_t tri_count) {
+    if (!f || tri_count == 0 || tri_count > UINT32_MAX / 3u)
+        return NULL;
+    void *mesh = rt_mesh3d_new();
+    if (!mesh)
+        return NULL;
+
+    uint8_t tri[50];
+    for (uint32_t i = 0; i < tri_count; i++) {
+        if (fread(tri, 1, sizeof(tri), f) != sizeof(tri)) {
+            mesh_mark_build_failed((rt_mesh3d *)mesh);
+            break;
+        }
         float normal[3] = {
             stl_read_f32_le(tri + 0),
             stl_read_f32_le(tri + 4),
@@ -2175,7 +2251,34 @@ void *rt_mesh3d_from_stl(rt_string path) {
         return NULL;
     }
 
-    if (file_len <= 0 || file_len > 512 * 1024 * 1024) {
+    if (file_len <= 0) {
+        fclose(f);
+        return NULL;
+    }
+
+    void *mesh = NULL;
+    if (file_len >= 84) {
+        uint8_t header[84];
+        if (fread(header, 1, sizeof(header), f) != sizeof(header)) {
+            fclose(f);
+            return NULL;
+        }
+        uint32_t tri_count = stl_read_u32_le(header + 80);
+        size_t expected_binary = 0;
+        if ((size_t)tri_count <= (SIZE_MAX - 84u) / 50u)
+            expected_binary = 84u + (size_t)tri_count * 50u;
+        if (expected_binary != 0 && (size_t)file_len == expected_binary && tri_count > 0) {
+            mesh = stl_load_binary_stream(f, tri_count);
+            fclose(f);
+            return mesh;
+        }
+        if (fseek(f, 0, SEEK_SET) != 0) {
+            fclose(f);
+            return NULL;
+        }
+    }
+
+    if (file_len > 512 * 1024 * 1024) {
         fclose(f);
         return NULL;
     }
@@ -2193,7 +2296,7 @@ void *rt_mesh3d_from_stl(rt_string path) {
     fclose(f);
 
     // Auto-detect: binary STL has predictable size based on triangle count at offset 80
-    void *mesh = NULL;
+    mesh = NULL;
     if ((size_t)file_len >= 84) {
         uint32_t tri_count = stl_read_u32_le(data + 80);
         size_t expected_binary = 0;

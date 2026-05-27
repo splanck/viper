@@ -5,7 +5,7 @@
 //
 //===----------------------------------------------------------------------===//
 //
-// File: src/runtime/graphics/vgfx3d_backend_metal_shared.c
+// File: src/runtime/graphics/3d/backend/vgfx3d_backend_metal_shared.c
 // Purpose: Metal backend helpers shared with sister backends — bone palette /
 //   instance-buffer packing (with column-major transpose for MSL), frame
 //   history, and policy choices for target/blend/format selection.

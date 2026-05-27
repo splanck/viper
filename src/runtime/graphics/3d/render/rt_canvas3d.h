@@ -5,7 +5,7 @@
 //
 //===----------------------------------------------------------------------===//
 //
-// File: src/runtime/graphics/rt_canvas3d.h
+// File: src/runtime/graphics/3d/render/rt_canvas3d.h
 // Purpose: Runtime bridge for Viper.Graphics3D — Canvas3D, Mesh3D, Camera3D,
 //   Material3D, and Light3D types. Provides 3D rendering via a software
 //   rasterizer (Phase 1) with GPU backend abstraction (Phase 2+).
@@ -256,9 +256,11 @@ void *rt_camera3d_get_forward(void *obj);
 /// @brief Get the unit right vector (perpendicular to forward and up).
 void *rt_camera3d_get_right(void *obj);
 /// @brief Return a normalized world-space picking direction for screen pixel (sx, sy).
-/// Combine it with `GetPosition()` as the origin for perspective picking.
+/// Combine it with `ScreenToRayOrigin()` for perspective and orthographic picking.
 /// Orthographic cameras return their forward direction (parallel rays).
 void *rt_camera3d_screen_to_ray(void *obj, int64_t sx, int64_t sy, int64_t sw, int64_t sh);
+/// @brief Return the world-space origin for a screen-space picking ray.
+void *rt_camera3d_screen_to_ray_origin(void *obj, int64_t sx, int64_t sy, int64_t sw, int64_t sh);
 
 //=========================================================================
 // Material3D — surface appearance (color, texture, shininess)
@@ -297,7 +299,7 @@ void rt_material3d_set_shininess(void *obj, double s);
 void rt_material3d_set_unlit(void *obj, int8_t unlit);
 /// @brief True if unlit mode is enabled.
 int8_t rt_material3d_get_unlit(void *obj);
-/// @brief Switch shading model (0 = legacy Phong, 1 = PBR metallic-roughness).
+/// @brief Switch shading model (0=Phong, 1=Toon, 2=PBR workflow, 3=Unlit, 4=Fresnel, 5=Emissive).
 void rt_material3d_set_shading_model(void *obj, int64_t model);
 /// @brief Read the current shading model.
 int64_t rt_material3d_get_shading_model(void *obj);

@@ -5,7 +5,7 @@
 //
 //===----------------------------------------------------------------------===//
 //
-// File: src/runtime/graphics/vgfx3d_backend_d3d11.c
+// File: src/runtime/graphics/3d/backend/vgfx3d_backend_d3d11.c
 // Purpose: Direct3D 11 GPU backend for Viper.Graphics3D (Windows).
 //
 // Key invariants:
@@ -5000,6 +5000,9 @@ static void d3d11_end_frame(void *ctx_ptr) {
     ctx->rtt_target->hdr_color_valid = 0;
 }
 
+/// @brief Rebuild the swapchain-derived main render targets (back-buffer RTV, scene/depth
+///   textures) at @p width × @p height after a resize or device reset; @p log_context
+///   tags any failure log. Returns the first failing HRESULT, or S_OK on success.
 static HRESULT d3d11_recreate_swapchain_main_targets(d3d11_context_t *ctx,
                                                      int32_t width,
                                                      int32_t height,

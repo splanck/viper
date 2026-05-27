@@ -2834,6 +2834,17 @@ void *rt_camera3d_screen_to_ray(void *o, int64_t sx, int64_t sy, int64_t sw, int
     return NULL;
 }
 
+/// @brief Stub for `Camera3D.ScreenToRayOrigin`.
+/// @return `NULL`.
+void *rt_camera3d_screen_to_ray_origin(void *o, int64_t sx, int64_t sy, int64_t sw, int64_t sh) {
+    (void)o;
+    (void)sx;
+    (void)sy;
+    (void)sw;
+    (void)sh;
+    return NULL;
+}
+
 /// @brief Stub for `Material3D.New` — would normally create a default
 ///        Blinn-Phong material (white diffuse, no textures, shininess 32).
 ///        Use `NewColor`, `NewTextured`, or `NewPBR` for shorthand

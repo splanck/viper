@@ -5,7 +5,7 @@
 //
 //===----------------------------------------------------------------------===//
 //
-// File: src/runtime/graphics/rt_vegetation3d.c
+// File: src/runtime/graphics/3d/world/rt_vegetation3d.c
 // Purpose: Instanced vegetation rendering with cross-billboard blades,
 //   wind animation, density map population, and distance-based LOD.
 //

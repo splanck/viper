@@ -5,7 +5,7 @@
 //
 //===----------------------------------------------------------------------===//
 //
-// File: src/runtime/graphics/rt_physics3d.c
+// File: src/runtime/graphics/3d/physics/rt_physics3d.c
 // Purpose: 3D physics world — AABB/sphere/capsule bodies, symplectic Euler
 //   integration, impulse-based collision response with Baumgarte correction,
 //   bidirectional layer/mask filtering, and character controller.
@@ -862,11 +862,13 @@ static void transform_point_to_local(const rt_collider_pose *pose,
         local_point[2] /= pose->scale[2];
 }
 
+/// @brief Absolute scale factor sanitized for division: non-finite or near-zero → 1.0.
 static double pose_abs_scale_or_unit(double value) {
     value = fabs(value);
     return isfinite(value) && value > 1e-12 ? value : 1.0;
 }
 
+/// @brief Absolute scale factor with non-finite mapped to 1.0 (zero is preserved).
 static double pose_abs_scale_or_zero(double value) {
     value = fabs(value);
     return isfinite(value) ? value : 1.0;
@@ -911,6 +913,8 @@ static void transform_normal_from_local(const rt_collider_pose *pose,
         vec3_set(world_normal, 0.0, 1.0, 0.0);
 }
 
+/// @brief Choose how many points to sample along a capsule's central axis when
+///   approximating it for collision: spacing ≈ radius/2 (min 1e-4), clamped to [1, 256].
 static int capsule_axis_sample_count(double axis_len, double radius) {
     double spacing;
     int samples;
@@ -1847,6 +1851,8 @@ static int build_simple_proxy(const rt_collider_pose *pose,
     }
 }
 
+/// @brief Compute a box collider's world half-extents by scaling its raw local
+///   half-extents by the pose's absolute per-axis scale.
 static void box_scaled_half_extents(void *collider,
                                     const rt_collider_pose *pose,
                                     double *half_extents) {
@@ -1857,6 +1863,8 @@ static void box_scaled_half_extents(void *collider,
     half_extents[2] = raw[2] * pose_abs_scale_or_zero(pose ? pose->scale[2] : 1.0);
 }
 
+/// @brief Derive the pose's three orthonormal world axes (rows of its rotation) by
+///   rotating the local basis vectors; degenerate axes fall back to the identity basis.
 static void pose_rotation_axes(const rt_collider_pose *pose, double axes[3][3]) {
     const double local_x[3] = {1.0, 0.0, 0.0};
     const double local_y[3] = {0.0, 1.0, 0.0};
@@ -1872,6 +1880,8 @@ static void pose_rotation_axes(const rt_collider_pose *pose, double axes[3][3]) 
     }
 }
 
+/// @brief SAT helper: if @p penetration is the smallest seen so far, record it and the
+///   signed separating axis as the current best (minimum-penetration) result.
 static void obb_record_axis(const double *axis,
                             double sign,
                             double penetration,
@@ -2063,6 +2073,10 @@ static int test_box_capsule_pose(void *box_collider,
     return 1;
 }
 
+/// @brief Narrow-phase dispatch for two posed primitive colliders (box/sphere/capsule):
+///   routes to the matching box-box/box-sphere/box-capsule (etc.) test, flipping the
+///   returned normal so it always points from A toward B. Returns 1 on overlap with
+///   @p normal/@p depth filled, else 0.
 static int test_simple_collider_pose_collision(void *a_collider,
                                                const rt_collider_pose *a_pose,
                                                void *b_collider,
@@ -2475,6 +2489,8 @@ static int test_meshlike_capsule(rt_mesh3d *mesh,
     return 1;
 }
 
+/// @brief Initialize a collider pose (identity scale) from a body's position and
+///   orientation — used to bring a body proxy into the SAT routines.
 static void body_pose_from_proxy(const rt_body3d *body, rt_collider_pose *pose) {
     collider_pose_identity(pose);
     if (!body)
@@ -2486,6 +2502,9 @@ static void body_pose_from_proxy(const rt_body3d *body, rt_collider_pose *pose) 
     pose->rotation[3] = body->orientation[3];
 }
 
+/// @brief One SAT axis test for a triangle vs a box (in the box's local frame): project
+///   both onto the normalized @p axis_in; returns 0 if they are separated, else 1 and
+///   updates the running minimum-overlap axis/sign. Zero-length axes are skipped (return 1).
 static int test_triangle_box_local_axis(const double tri[3][3],
                                         const double he[3],
                                         const double axis_in[3],
@@ -2523,6 +2542,10 @@ static int test_triangle_box_local_axis(const double tri[3][3],
     return 1;
 }
 
+/// @brief Full triangle-vs-oriented-box overlap test via the separating-axis theorem:
+///   transforms the triangle into the box's local space and tests the 3 box axes, the
+///   triangle normal, and the 9 edge cross-product axes. Returns 1 on overlap with the
+///   world-space @p normal (pointing out of the box) and penetration @p depth.
 static int test_triangle_box_obb(const double *world_a,
                                  const double *world_b,
                                  const double *world_c,
@@ -2579,6 +2602,9 @@ static int test_triangle_box_obb(const double *world_a,
     return 1;
 }
 
+/// @brief Test a posed triangle mesh against a box body by running the triangle-vs-OBB
+///   SAT test over every mesh triangle and keeping the deepest contact. Returns 1 on any
+///   overlap with @p normal/@p depth from the deepest triangle, else 0.
 static int test_meshlike_box(rt_mesh3d *mesh,
                              const rt_collider_pose *mesh_pose,
                              const rt_body3d *box,
@@ -4942,6 +4968,10 @@ static int raycast_capsule_raw(const double *origin,
     return 1;
 }
 
+/// @brief Raycast against a posed box (optionally Minkowski-expanded by @p expand_radius
+///   for swept-sphere tests): transform the ray into box-local space and slab-test the
+///   AABB. Returns 1 on hit with distance @p out_t, world normal @p out_normal, and
+///   @p out_started set when the ray began already inside the box.
 static int raycast_box_pose_raw(void *box_collider,
                                 const rt_collider_pose *pose,
                                 const double *origin,
@@ -4984,6 +5014,9 @@ static int raycast_box_pose_raw(void *box_collider,
     return 1;
 }
 
+/// @brief Möller-Trumbore ray/triangle intersection in world space. Returns 1 on a hit
+///   within @p max_distance with distance @p out_t and the geometric face normal
+///   @p out_normal, else 0 (including parallel rays and barycentric misses).
 static int raycast_triangle_world(const double *origin,
                                   const double *dir,
                                   const double *a,
@@ -5022,6 +5055,9 @@ static int raycast_triangle_world(const double *origin,
     return 1;
 }
 
+/// @brief Raycast a posed triangle mesh by transforming each triangle to world space and
+///   keeping the nearest Möller-Trumbore hit within @p max_distance. Returns 1 on hit
+///   with @p out_t/@p out_normal; meshes are surfaces so @p out_started is always 0.
 static int raycast_meshlike_pose_raw(rt_mesh3d *mesh,
                                      const rt_collider_pose *pose,
                                      const double *origin,
@@ -5072,6 +5108,9 @@ static int raycast_meshlike_pose_raw(rt_mesh3d *mesh,
     return 1;
 }
 
+/// @brief Raycast a posed heightfield collider: clip the ray to the field AABB, then
+///   march in local space sampling terrain height until the ray dips below the surface.
+///   Returns 1 on hit with @p out_t/@p out_normal (sampled surface normal), else 0.
 static int raycast_heightfield_pose_raw(void *heightfield,
                                         const rt_collider_pose *pose,
                                         const double *origin,
@@ -5152,6 +5191,10 @@ static int raycast_heightfield_pose_raw(void *heightfield,
     return 0;
 }
 
+/// @brief Top-level raycast dispatch for any posed collider: routes by collider type to
+///   the box/sphere/capsule/mesh/heightfield/compound raycast (recursing into compound
+///   children and returning the hit leaf via @p out_leaf). Returns 1 on the nearest hit
+///   within @p max_distance with @p out_t/@p out_normal/@p out_started filled.
 static int raycast_collider_pose(void *collider,
                                  const rt_collider_pose *pose,
                                  const double *origin,

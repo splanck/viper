@@ -5,7 +5,7 @@
 //
 //===----------------------------------------------------------------------===//
 //
-// File: src/runtime/graphics/rt_particles3d.c
+// File: src/runtime/graphics/3d/world/rt_particles3d.c
 // Purpose: 3D particle system — emitter spawning, Euler integration physics,
 //   lifetime/size/color interpolation, camera-facing billboard quads,
 //   and blend-mode-aware billboard rendering.

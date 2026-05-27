@@ -5,7 +5,7 @@
 //
 //===----------------------------------------------------------------------===//
 //
-// File: src/runtime/graphics/rt_morphtarget3d.h
+// File: src/runtime/graphics/3d/anim/rt_morphtarget3d.h
 // Purpose: MorphTarget3D — per-vertex position/normal/tangent deltas blended by
 //   weight. Enables facial animation, muscle flex, and shape-based deformation.
 //

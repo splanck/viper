@@ -191,6 +191,9 @@ static bool test_layermasks_and_constants() {
     EXPECT_EQ_INT(rt_game3d_layers_player(), 4, "Player layer bit");
     EXPECT_EQ_INT(rt_game3d_quality_balanced(), 1, "Balanced quality value");
     EXPECT_EQ_INT(rt_game3d_collision_any(), 3, "Any collision phase value");
+    EXPECT_EQ_INT(rt_game3d_shading_model_unlit(), 3, "Game3D unlit matches backend shading slot");
+    EXPECT_EQ_INT(rt_game3d_shading_model_fresnel(), 4, "Game3D fresnel matches backend shading slot");
+    EXPECT_EQ_INT(rt_game3d_shading_model_emissive(), 5, "Game3D emissive matches backend shading slot");
 
     void *mask = rt_game3d_layermask_of(rt_game3d_layers_world());
     EXPECT_TRUE(mask != nullptr, "LayerMask.Of returns an object");
@@ -258,6 +261,37 @@ static bool test_input_axes() {
     rt_keyboard_on_key_up(rt_game3d_key_space());
     rt_mouse_button_up(rt_game3d_mouse_left());
     EXPECT_TRUE(rt_game3d_input_released(input, rt_game3d_key_w()) != 0, "W was released");
+    PASS();
+}
+
+static bool test_input_update_snapshots_frame_state() {
+    TEST("Input3D.update snapshots frame state");
+    rt_keyboard_init();
+    rt_mouse_init();
+    rt_keyboard_begin_frame();
+    rt_mouse_begin_frame();
+
+    void *input = rt_game3d_input_new();
+    rt_game3d_input_set_look_sensitivity(input, 0.1);
+    rt_keyboard_on_key_down(rt_game3d_key_w());
+    rt_mouse_force_delta(5, -2);
+    rt_mouse_update_wheel(0.0, 0.75);
+    rt_game3d_input_update(input);
+
+    rt_keyboard_begin_frame();
+    rt_mouse_begin_frame();
+    rt_keyboard_on_key_up(rt_game3d_key_w());
+    rt_mouse_force_delta(100, 100);
+    rt_mouse_update_wheel(0.0, 9.0);
+
+    EXPECT_TRUE(rt_game3d_input_is_down(input, rt_game3d_key_w()) != 0,
+                "snapshot preserves held key state");
+    EXPECT_TRUE(rt_game3d_input_pressed(input, rt_game3d_key_w()) != 0,
+                "snapshot preserves pressed edge");
+    void *look = rt_game3d_input_look_axis(input);
+    EXPECT_NEAR(rt_vec2_x(look), 0.5, 0.0001, "snapshot preserves mouse dx");
+    EXPECT_NEAR(rt_vec2_y(look), -0.2, 0.0001, "snapshot preserves mouse dy");
+    EXPECT_NEAR(rt_game3d_input_wheel_y(input), 0.75, 0.0001, "snapshot preserves wheel");
     PASS();
 }
 
@@ -1025,6 +1059,7 @@ int main() {
     bool ok = true;
     ok = test_layermasks_and_constants() && ok;
     ok = test_input_axes() && ok;
+    ok = test_input_update_snapshots_frame_state() && ok;
     ok = test_world_entity_registry_and_collision_clear() && ok;
     ok = test_frame_loop_manual_frame_and_final_capture() && ok;
     ok = test_free_fly_controller_synthetic_input() && ok;

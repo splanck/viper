@@ -5,7 +5,7 @@
 //
 //===----------------------------------------------------------------------===//
 //
-// File: src/runtime/graphics/rt_navmesh3d.h
+// File: src/runtime/graphics/3d/nav/rt_navmesh3d.h
 // Purpose: 3D navigation mesh — slope-filtered walkable triangles from level
 //   geometry, A* pathfinding on triangle adjacency graph, position snapping.
 //

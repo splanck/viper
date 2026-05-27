@@ -5,7 +5,7 @@
 //
 //===----------------------------------------------------------------------===//
 //
-// File: src/runtime/graphics/rt_terrain3d.c
+// File: src/runtime/graphics/3d/world/rt_terrain3d.c
 // Purpose: Heightmap terrain — chunked mesh generation, bilinear height/normal
 //   queries, frustum-culled per-chunk rendering.
 //

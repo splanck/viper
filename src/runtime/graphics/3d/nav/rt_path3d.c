@@ -5,7 +5,7 @@
 //
 //===----------------------------------------------------------------------===//
 //
-// File: src/runtime/graphics/rt_path3d.c
+// File: src/runtime/graphics/3d/nav/rt_path3d.c
 // Purpose: 3D Catmull-Rom spline path with position/direction evaluation.
 //
 // Key invariants:

@@ -5,8 +5,10 @@
 //
 //===----------------------------------------------------------------------===//
 //
-// File: src/runtime/graphics/rt_skeleton3d_internal.h
-// Purpose: Internal shared animation/runtime structs for skeletal animation.
+// File: src/runtime/graphics/3d/anim/rt_skeleton3d_internal.h
+// Purpose: Internal shared animation/runtime structs for skeletal animation,
+//   plus the internal keyed-skinning draw fast path. Layouts are private to the
+//   anim runtime — not part of the public Graphics3D ABI.
 //
 //===----------------------------------------------------------------------===//
 
@@ -19,6 +21,8 @@
 #define VGFX3D_MAX_BONES 256
 #define RT_ANIM_BLEND3D_MAX_STATES 8
 
+/// @brief One bone: name, parent index (-1 = root), local bind-pose matrix, and the
+///   precomputed inverse bind-pose used to build the skinning palette.
 typedef struct {
     char name[64];
     int32_t parent_index;
@@ -26,6 +30,8 @@ typedef struct {
     float inverse_bind[16];
 } vgfx3d_bone_t;
 
+/// @brief One animation keyframe: time plus position/rotation/scale samples, each gated
+///   by a presence mask so unset channels fall through to neighboring keys.
 typedef struct {
     float time;
     float position[3];
@@ -36,6 +42,8 @@ typedef struct {
     uint8_t scale_mask;
 } vgfx3d_keyframe_t;
 
+/// @brief A per-bone animation channel: the target bone index and its growable,
+///   time-sorted keyframe array.
 typedef struct {
     int32_t bone_index;
     vgfx3d_keyframe_t *keyframes;
@@ -43,6 +51,8 @@ typedef struct {
     int32_t keyframe_capacity;
 } vgfx3d_anim_channel_t;
 
+/// @brief Skeleton3D payload: the bone array (topological order) and a `frozen` flag set
+///   once inverse-bind matrices are computed (bones immutable thereafter).
 typedef struct rt_skeleton3d {
     void *vptr;
     vgfx3d_bone_t *bones;
@@ -50,6 +60,8 @@ typedef struct rt_skeleton3d {
     int8_t frozen;
 } rt_skeleton3d;
 
+/// @brief Animation3D payload: a named clip holding per-bone channels, total duration,
+///   and the loop flag.
 typedef struct rt_animation3d {
     void *vptr;
     char name[64];
@@ -60,6 +72,9 @@ typedef struct rt_animation3d {
     int8_t looping;
 } rt_animation3d;
 
+/// @brief AnimPlayer3D payload: the skeleton, current and crossfade-source clips with
+///   their timers/speeds, loop overrides, and the current/previous/motion bone palettes
+///   plus scratch transform buffers used while evaluating a pose.
 typedef struct rt_anim_player3d {
     void *vptr;
     rt_skeleton3d *skeleton;
@@ -84,6 +99,8 @@ typedef struct rt_anim_player3d {
     int8_t has_prev_motion_palette;
 } rt_anim_player3d;
 
+/// @brief One AnimBlend3D state: a named clip with its own weight, playback time, speed,
+///   and loop flag — all states evaluated and weighted together each update.
 typedef struct anim_blend_state_t {
     char name[64];
     rt_animation3d *animation;
@@ -93,6 +110,8 @@ typedef struct anim_blend_state_t {
     int8_t looping;
 } anim_blend_state_t;
 
+/// @brief AnimBlend3D payload: the skeleton, a fixed array of weighted blend states, and
+///   the current/previous/motion bone palettes plus scratch transform buffers.
 typedef struct rt_anim_blend3d {
     void *vptr;
     rt_skeleton3d *skeleton;

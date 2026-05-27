@@ -5,7 +5,7 @@
 //
 //===----------------------------------------------------------------------===//
 //
-// File: src/runtime/graphics/rt_navagent3d.c
+// File: src/runtime/graphics/3d/nav/rt_navagent3d.c
 // Purpose: Gameplay-facing single-agent navigation built on NavMesh3D path
 //   queries, with optional Character3D and SceneNode3D bindings.
 //

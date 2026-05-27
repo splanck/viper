@@ -3,7 +3,7 @@
 // Part of the Viper project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
-// File: src/runtime/graphics/rt_joints3d.h
+// File: src/runtime/graphics/3d/physics/rt_joints3d.h
 // Purpose: 3D physics joint constraints — distance and spring joints.
 //
 // Key invariants:

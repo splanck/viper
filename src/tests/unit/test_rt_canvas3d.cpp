@@ -396,12 +396,16 @@ static void test_mesh_transform_flips_tangent_handedness_for_mirrors() {
     rt_mesh3d_add_triangle(m, 0, 1, 2);
     rt_mesh3d_calc_tangents(m);
     EXPECT_TRUE(m->vertices[0].tangent[3] > 0.0f, "Baseline tangent handedness starts positive");
+    uint32_t before_i1 = m->indices[1];
+    uint32_t before_i2 = m->indices[2];
 
     void *mirror = rt_mat4_scale(-1.0, 1.0, 1.0);
     rt_mesh3d_transform(m, mirror);
 
     EXPECT_TRUE(m->vertices[0].tangent[3] < 0.0f,
                 "Mirrored transforms flip tangent handedness for normal mapping");
+    EXPECT_EQ(m->indices[1], before_i2);
+    EXPECT_EQ(m->indices[2], before_i1);
     PASS();
 }
 
@@ -1036,6 +1040,26 @@ static void test_camera_ortho_screen_to_ray_parallel() {
     EXPECT_NEAR(rt_vec3_x(center), rt_vec3_x(corner), 0.0001);
     EXPECT_NEAR(rt_vec3_y(center), rt_vec3_y(corner), 0.0001);
     EXPECT_NEAR(rt_vec3_z(center), rt_vec3_z(corner), 0.0001);
+    PASS();
+}
+
+static void test_camera_screen_to_ray_origin_handles_ortho_pixels() {
+    TEST("Camera3D.ScreenToRayOrigin gives orthographic pixels distinct origins");
+    void *cam = rt_camera3d_new_ortho(5.0, 1.0, 0.1, 100.0);
+    void *eye = rt_vec3_new(0.0, 0.0, 5.0);
+    void *target = rt_vec3_new(0.0, 0.0, 0.0);
+    void *up = rt_vec3_new(0.0, 1.0, 0.0);
+    rt_camera3d_look_at(cam, eye, target, up);
+
+    void *center = rt_camera3d_screen_to_ray_origin(cam, 320, 240, 640, 480);
+    void *corner = rt_camera3d_screen_to_ray_origin(cam, 0, 0, 640, 480);
+    EXPECT_TRUE(center != nullptr && corner != nullptr, "ScreenToRayOrigin returns Vec3 objects");
+    EXPECT_NEAR(rt_vec3_x(center), 0.0, 0.01);
+    EXPECT_NEAR(rt_vec3_y(center), 0.0, 0.01);
+    EXPECT_TRUE(std::fabs(rt_vec3_x(corner) - rt_vec3_x(center)) > 1.0,
+                "orthographic corner ray starts at a different X");
+    EXPECT_TRUE(std::fabs(rt_vec3_y(corner) - rt_vec3_y(center)) > 1.0,
+                "orthographic corner ray starts at a different Y");
     PASS();
 }
 
@@ -1817,6 +1841,7 @@ static int g_canvas_submit_draw_calls = 0;
 static int g_canvas_submit_draw_instanced_calls = 0;
 static int g_last_instanced_count = 0;
 static vgfx3d_camera_params_t g_canvas_begin_frame_params = {};
+static vgfx3d_draw_cmd_t g_last_draw_cmd = {};
 } // namespace
 
 typedef struct {
@@ -1869,13 +1894,15 @@ static void tracked_end_frame(void *) {
 
 static void tracked_submit_draw(void *,
                                 vgfx_window_t,
-                                const vgfx3d_draw_cmd_t *,
+                                const vgfx3d_draw_cmd_t *cmd,
                                 const vgfx3d_light_params_t *,
                                 int32_t,
                                 const float *,
                                 int8_t,
                                 int8_t) {
     g_canvas_submit_draw_calls++;
+    if (cmd)
+        g_last_draw_cmd = *cmd;
 }
 
 static void tracked_submit_draw_instanced(void *,
@@ -2457,6 +2484,32 @@ static void test_canvas_delta_time_cap_and_disable() {
     PASS();
 }
 
+static void test_canvas_delta_time_sec_clamps_huge_dtmax_without_overflow() {
+    TEST("Canvas3D.GetDeltaTimeSec handles huge SetDTMax values");
+    rt_canvas3d canvas;
+    memset(&canvas, 0, sizeof(canvas));
+    rt_canvas3d_set_dt_max(&canvas, INT64_MAX);
+    canvas.delta_time_us = 500000;
+    EXPECT_NEAR(rt_canvas3d_get_delta_time_sec(&canvas), 0.5, 0.0001);
+    EXPECT_TRUE(canvas.dt_max_ms <= INT64_MAX / 1000, "SetDTMax clamps to checked multiply range");
+    PASS();
+}
+
+static void test_canvas_synthetic_mouse_accumulation_clamps() {
+    TEST("Canvas3D synthetic mouse accumulation clamps instead of overflowing");
+    rt_canvas3d canvas;
+    memset(&canvas, 0, sizeof(canvas));
+    rt_canvas3d_push_synthetic_mouse(&canvas, 900000.0, -900000.0, 0, 900000.0);
+    rt_canvas3d_push_synthetic_mouse(&canvas, 900000.0, -900000.0, 0, 900000.0);
+    EXPECT_NEAR(canvas.synthetic_mouse_dx, 1000000.0, 0.001);
+    EXPECT_NEAR(canvas.synthetic_mouse_dy, -1000000.0, 0.001);
+    EXPECT_NEAR(canvas.synthetic_mouse_wheel_y, 1000000.0, 0.001);
+    rt_canvas3d_push_synthetic_mouse(&canvas, INFINITY, NAN, 0, -INFINITY);
+    EXPECT_NEAR(canvas.synthetic_mouse_dx, 1000000.0, 0.001);
+    EXPECT_NEAR(canvas.synthetic_mouse_dy, -1000000.0, 0.001);
+    PASS();
+}
+
 static void test_canvas_fps_uses_microsecond_delta() {
     TEST("Canvas3D.GetFPS uses microsecond frame timing");
     rt_canvas3d canvas;
@@ -2481,6 +2534,58 @@ static void test_canvas_boolean_setters_normalize() {
     rt_canvas3d_set_backface_cull(&canvas, 0);
     EXPECT_EQ(canvas.wireframe, 0);
     EXPECT_EQ(canvas.backface_cull, 0);
+    PASS();
+}
+
+static void test_canvas_material_shading_model_mapping() {
+    TEST("Canvas3D maps material shading models to backend draw commands");
+    vgfx3d_backend_t backend = {};
+    rt_canvas3d canvas;
+    void *cam = rt_camera3d_new(60.0, 1.0, 0.1, 100.0);
+    void *mesh = rt_mesh3d_new_plane(1.0, 1.0);
+    void *mat = rt_material3d_new();
+    void *xf = rt_mat4_identity();
+    backend.name = "opengl";
+    backend.begin_frame = tracked_begin_frame;
+    backend.submit_draw = tracked_submit_draw;
+    backend.end_frame = tracked_end_frame;
+
+    memset(&canvas, 0, sizeof(canvas));
+    canvas.backend = &backend;
+    canvas.gfx_win = (vgfx_window_t)1;
+    canvas.width = 64;
+    canvas.height = 64;
+
+    rt_material3d_set_shading_model(mat, 5);
+    memset(&g_last_draw_cmd, 0, sizeof(g_last_draw_cmd));
+    rt_canvas3d_begin(&canvas, cam);
+    rt_canvas3d_draw_mesh(&canvas, mesh, xf, mat);
+    rt_canvas3d_end(&canvas);
+    EXPECT_EQ(g_last_draw_cmd.shading_model, 5);
+    EXPECT_EQ(g_last_draw_cmd.unlit, 0);
+
+    rt_material3d_set_shading_model(mat, 4);
+    memset(&g_last_draw_cmd, 0, sizeof(g_last_draw_cmd));
+    rt_canvas3d_begin(&canvas, cam);
+    rt_canvas3d_draw_mesh(&canvas, mesh, xf, mat);
+    rt_canvas3d_end(&canvas);
+    EXPECT_EQ(g_last_draw_cmd.shading_model, 4);
+
+    rt_material3d_set_shading_model(mat, 2);
+    memset(&g_last_draw_cmd, 0, sizeof(g_last_draw_cmd));
+    rt_canvas3d_begin(&canvas, cam);
+    rt_canvas3d_draw_mesh(&canvas, mesh, xf, mat);
+    rt_canvas3d_end(&canvas);
+    EXPECT_EQ(g_last_draw_cmd.workflow, RT_MATERIAL3D_WORKFLOW_PBR);
+
+    rt_material3d_set_unlit(mat, 0);
+    rt_material3d_set_shading_model(mat, 3);
+    memset(&g_last_draw_cmd, 0, sizeof(g_last_draw_cmd));
+    rt_canvas3d_begin(&canvas, cam);
+    rt_canvas3d_draw_mesh(&canvas, mesh, xf, mat);
+    rt_canvas3d_end(&canvas);
+    EXPECT_EQ(g_last_draw_cmd.unlit, 1);
+    EXPECT_EQ(g_last_draw_cmd.shading_model, 0);
     PASS();
 }
 
@@ -3210,6 +3315,7 @@ int main() {
     test_camera_shake_overshoot_clears_immediately();
     test_camera_ortho_set_fov_preserves_projection();
     test_camera_ortho_screen_to_ray_parallel();
+    test_camera_screen_to_ray_origin_handles_ortho_pixels();
     test_camera_screen_to_ray_tracks_shaken_view();
     test_camera_shake_does_not_drift_eye_in_smooth_follow();
     test_camera_sanitizes_nonfinite_inputs();
@@ -3297,8 +3403,11 @@ int main() {
     test_canvas_default_lighting_and_clear_lights();
     test_canvas_delta_time_preserves_first_zero();
     test_canvas_delta_time_cap_and_disable();
+    test_canvas_delta_time_sec_clamps_huge_dtmax_without_overflow();
+    test_canvas_synthetic_mouse_accumulation_clamps();
     test_canvas_fps_uses_microsecond_delta();
     test_canvas_boolean_setters_normalize();
+    test_canvas_material_shading_model_mapping();
     test_canvas_draw_mesh_clears_pending_splat_on_failed_draw();
     test_canvas_draw_terrain_rejects_2d_frame();
 

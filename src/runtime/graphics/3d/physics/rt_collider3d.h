@@ -5,7 +5,7 @@
 //
 //===----------------------------------------------------------------------===//
 //
-// File: src/runtime/graphics/rt_collider3d.h
+// File: src/runtime/graphics/3d/physics/rt_collider3d.h
 // Purpose: Collider3D runtime surface for reusable 3D collision shapes.
 //
 // Key invariants:

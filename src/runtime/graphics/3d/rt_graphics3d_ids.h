@@ -5,10 +5,10 @@
 //
 //===----------------------------------------------------------------------===//
 //
-// File: src/runtime/graphics/rt_graphics3d_ids.h
-// Purpose: Stable runtime class identifiers for Viper.Graphics3D objects, plus
-//   small inline helpers that validate/cast opaque object handles against
-//   those ids before the 3D runtime modules dereference them.
+// File: src/runtime/graphics/3d/rt_graphics3d_ids.h
+// Purpose: Stable runtime class identifiers for Viper.Graphics3D and Viper.Game3D
+//   objects, plus small inline helpers that validate/cast opaque object handles
+//   against those ids before the 3D runtime modules dereference them.
 //
 // Key invariants:
 //   - Class id constants are permanent ABI; never renumber an existing id.
@@ -21,7 +21,7 @@
 //   - Header-only; no allocation. Helpers never take ownership of @p obj.
 //
 // Links: src/runtime/graphics/rt_heap.h (heap header introspection),
-//        src/runtime/graphics/rt_canvas3d.c and sibling rt_*3d.c consumers
+//        src/runtime/graphics/3d/render/rt_canvas3d.c and sibling rt_*3d.c consumers
 //
 //===----------------------------------------------------------------------===//
 #pragma once
@@ -34,6 +34,9 @@
 /// @brief Return the runtime class id of an object (0 if none/plain value).
 extern int64_t rt_obj_class_id(void *p);
 
+// Permanent ABI class-id sentinels, one per Graphics3D/Game3D runtime type. Each
+// names the class it tags (RT_G3D_<TYPE>_CLASS_ID); values are frozen negative
+// constants — append new ids at the end, never renumber or reuse an existing one.
 #define RT_G3D_CUBEMAP3D_CLASS_ID INT64_C(-0x603001)
 #define RT_G3D_RENDERTARGET3D_CLASS_ID INT64_C(-0x603002)
 #define RT_G3D_CANVAS3D_CLASS_ID INT64_C(-0x603003)

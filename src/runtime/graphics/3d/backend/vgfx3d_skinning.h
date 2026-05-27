@@ -5,7 +5,7 @@
 //
 //===----------------------------------------------------------------------===//
 //
-// File: src/runtime/graphics/vgfx3d_skinning.h
+// File: src/runtime/graphics/3d/backend/vgfx3d_skinning.h
 // Purpose: CPU-side vertex skinning — transforms vertices by a bone palette.
 //   Each vertex has up to 4 bone indices + weights (from vgfx3d_vertex_t).
 //

@@ -5,7 +5,7 @@
 //
 //===----------------------------------------------------------------------===//
 //
-// File: src/runtime/graphics/rt_navagent3d.h
+// File: src/runtime/graphics/3d/nav/rt_navagent3d.h
 // Purpose: Gameplay-facing single-agent navigation layer on top of NavMesh3D.
 //
 // Key invariants:

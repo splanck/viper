@@ -5,7 +5,7 @@
 //
 //===----------------------------------------------------------------------===//
 //
-// File: src/runtime/graphics/rt_vegetation3d.h
+// File: src/runtime/graphics/3d/world/rt_vegetation3d.h
 // Purpose: Instanced vegetation rendering — grass blades, foliage, etc.
 //   Cross-billboard geometry with wind animation and distance LOD.
 //

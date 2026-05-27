@@ -5,7 +5,7 @@
 //
 //===----------------------------------------------------------------------===//
 //
-// File: src/runtime/graphics/vgfx3d_backend_d3d11_shared.c
+// File: src/runtime/graphics/3d/backend/vgfx3d_backend_d3d11_shared.c
 // Purpose: D3D11 backend helpers shared with other backends — constant-buffer
 //   packing (HLSL float4 alignment), instance/bone palette upload prep,
 //   per-frame TAA history, mip count math, capacity growth, and policy

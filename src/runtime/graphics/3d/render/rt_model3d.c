@@ -5,7 +5,7 @@
 //
 //===----------------------------------------------------------------------===//
 //
-// File: src/runtime/graphics/rt_model3d.c
+// File: src/runtime/graphics/3d/render/rt_model3d.c
 // Purpose: Model3D high-level asset wrapper over imported scene/resources.
 //   Owns a template scene-graph root and per-asset reference arrays for
 //   meshes, materials, skeletons, animations, and node animations imported
@@ -761,10 +761,12 @@ fail:
     return NULL;
 }
 
+/// @brief Load a model from the filesystem (no asset-manager resolution). See header.
 void *rt_model3d_load(rt_string path) {
     return rt_model3d_load_impl(path, 0);
 }
 
+/// @brief Load a model through the asset manager (mounted/embedded + dev fallback). See header.
 void *rt_model3d_load_asset(rt_string path) {
     return rt_model3d_load_impl(path, 1);
 }

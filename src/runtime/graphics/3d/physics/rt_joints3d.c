@@ -5,7 +5,7 @@
 //
 //===----------------------------------------------------------------------===//
 //
-// File: src/runtime/graphics/rt_joints3d.c
+// File: src/runtime/graphics/3d/physics/rt_joints3d.c
 // Purpose: 3D physics joint constraints. Distance joints maintain fixed
 //   separation via positional correction. Spring joints apply Hooke's law
 //   forces with damping. Both operate on Body3D position/velocity directly.

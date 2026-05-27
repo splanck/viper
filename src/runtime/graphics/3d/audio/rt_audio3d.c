@@ -5,7 +5,7 @@
 //
 //===----------------------------------------------------------------------===//
 //
-// File: src/runtime/graphics/rt_audio3d.c
+// File: src/runtime/graphics/3d/audio/rt_audio3d.c
 // Purpose: Spatial audio backing `Viper.Graphics3D.Audio3D` — computes distance
 //   attenuation and stereo pan from 3D positions, then delegates to the
 //   existing 2D audio API for actual sample playback.

@@ -5,7 +5,7 @@
 //
 //===----------------------------------------------------------------------===//
 //
-// File: src/runtime/graphics/rt_instbatch3d.c
+// File: src/runtime/graphics/3d/render/rt_instbatch3d.c
 // Purpose: Instanced rendering batch — stores N transforms for one mesh+material.
 //   Canvas3D.DrawInstanced culls per-instance and dispatches via backend.
 //

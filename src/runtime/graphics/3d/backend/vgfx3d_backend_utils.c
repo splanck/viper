@@ -5,7 +5,7 @@
 //
 //===----------------------------------------------------------------------===//
 //
-// File: src/runtime/graphics/vgfx3d_backend_utils.c
+// File: src/runtime/graphics/3d/backend/vgfx3d_backend_utils.c
 // Purpose: Cross-backend utility helpers shared between the Metal/OpenGL/D3D11
 //   3D backends — pixel/cubemap unpack to RGBA8, generation tracking,
 //   row-flip, normal-matrix derivation from a model matrix, and 4×4 inverse.
@@ -247,6 +247,8 @@ uint8_t vgfx3d_hdr_to_unorm8(float value) {
     return vgfx3d_float_to_unorm8(value / (1.0f + value));
 }
 
+/// @brief Validate a row-copy request: positive extents, non-negative strides, no 32-bit
+///   overflow in the per-row byte/unit math, and strides large enough for one row.
 static int vgfx3d_copy_dims_are_valid(int32_t copy_w,
                                       int32_t copy_h,
                                       int32_t dst_stride_units,
@@ -358,6 +360,8 @@ void vgfx3d_copy_linear_rgba32f_to_rgba8(uint8_t *dst_rgba,
     }
 }
 
+/// @brief Write a 4×4 identity matrix into @p out_matrix — the normal-matrix fallback
+///   when the model matrix is singular and cannot be inverse-transposed.
 static void vgfx3d_store_identity_normal_matrix4(float *out_matrix) {
     memset(out_matrix, 0, sizeof(float) * 16);
     out_matrix[0] = 1.0f;
