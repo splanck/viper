@@ -45,6 +45,10 @@ rt_string rt_anim_controller3d_get_previous_state(void *controller);
 int8_t rt_anim_controller3d_get_is_transitioning(void *controller);
 /// @brief Number of registered states.
 int64_t rt_anim_controller3d_get_state_count(void *controller);
+/// @brief Current base-layer playback time in seconds.
+double rt_anim_controller3d_get_state_time(void *controller);
+/// @brief True if the named state is the active, playing base-layer state.
+int8_t rt_anim_controller3d_is_state_playing(void *controller, rt_string state_name);
 
 /// @brief Override the per-state playback speed multiplier.
 void rt_anim_controller3d_set_state_speed(void *controller, rt_string state_name, double speed);

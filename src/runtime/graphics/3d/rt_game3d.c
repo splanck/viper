@@ -16,6 +16,7 @@
 
 #include "rt_game3d.h"
 
+#include "rt_animcontroller3d.h"
 #include "rt_audio3d.h"
 #include "rt_audiolistener3d.h"
 #include "rt_canvas3d.h"
@@ -63,6 +64,7 @@
 #define RT_GAME3D_DEFAULT_GRAVITY -20.0
 #define RT_GAME3D_DEFAULT_FOLLOW_DAMPING 12.0
 #define RT_GAME3D_PI 3.14159265358979323846
+#define RT_GAME3D_ANIM_EVENT_MAX 64
 
 void rt_camera3d_look_at(void *obj, void *eye_v, void *target_v, void *up_v);
 void rt_camera3d_fps_init(void *obj);
@@ -146,6 +148,12 @@ typedef struct rt_game3d_collision_event {
     void *b;
     void *raw;
 } rt_game3d_collision_event;
+
+typedef struct rt_game3d_animator {
+    void *controller;
+    rt_string events[RT_GAME3D_ANIM_EVENT_MAX];
+    int32_t event_count;
+} rt_game3d_animator;
 
 typedef struct rt_game3d_model_template {
     rt_string path;
@@ -421,6 +429,15 @@ static rt_game3d_collision_event *game3d_collision_event_checked(void *obj, cons
     if (!event)
         rt_trap(method);
     return event;
+}
+
+static rt_game3d_animator *game3d_animator_checked(void *obj, const char *method) {
+    rt_game3d_animator *animator =
+        (rt_game3d_animator *)rt_g3d_checked_or_null(
+            obj, RT_G3D_GAME3D_ANIMATOR3D_CLASS_ID);
+    if (!animator)
+        rt_trap(method);
+    return animator;
 }
 
 static rt_game3d_model_template *game3d_model_template_checked(void *obj, const char *method) {
@@ -1384,6 +1401,167 @@ int8_t rt_game3d_entity_is_destroyed(void *obj) {
     return entity && entity->destroyed ? 1 : 0;
 }
 
+static void game3d_animator_clear_events(rt_game3d_animator *animator) {
+    if (!animator)
+        return;
+    for (int32_t i = 0; i < animator->event_count; ++i)
+        game3d_release_ref((void **)&animator->events[i]);
+    animator->event_count = 0;
+}
+
+static void game3d_animator_drain_events(rt_game3d_animator *animator) {
+    if (!animator || !animator->controller)
+        return;
+    while (animator->event_count < RT_GAME3D_ANIM_EVENT_MAX) {
+        rt_string event_name = rt_anim_controller3d_poll_event(animator->controller);
+        const char *name = event_name ? rt_string_cstr(event_name) : "";
+        if (!name || name[0] == '\0') {
+            game3d_release_ref((void **)&event_name);
+            break;
+        }
+        game3d_assign_ref((void **)&animator->events[animator->event_count++], event_name);
+        game3d_release_ref((void **)&event_name);
+    }
+}
+
+static void game3d_animator_finalize(void *obj) {
+    rt_game3d_animator *animator = (rt_game3d_animator *)obj;
+    if (!animator)
+        return;
+    game3d_animator_clear_events(animator);
+    game3d_release_ref(&animator->controller);
+}
+
+void *rt_game3d_animator_new(void *controller) {
+    rt_game3d_animator *animator;
+    if (!rt_g3d_has_class(controller, RT_G3D_ANIMCONTROLLER3D_CLASS_ID)) {
+        rt_trap("Game3D.Animator3D.New: controller must be AnimController3D");
+        return NULL;
+    }
+    animator = (rt_game3d_animator *)rt_obj_new_i64(
+        RT_G3D_GAME3D_ANIMATOR3D_CLASS_ID, (int64_t)sizeof(*animator));
+    if (!animator) {
+        rt_trap("Game3D.Animator3D.New: allocation failed");
+        return NULL;
+    }
+    memset(animator, 0, sizeof(*animator));
+    rt_obj_set_finalizer(animator, game3d_animator_finalize);
+    game3d_assign_ref(&animator->controller, controller);
+    return animator;
+}
+
+void *rt_game3d_animator_get_controller(void *obj) {
+    rt_game3d_animator *animator =
+        game3d_animator_checked(obj, "Game3D.Animator3D.get_controller: invalid animator");
+    return animator ? animator->controller : NULL;
+}
+
+int8_t rt_game3d_animator_play(void *obj, rt_string name) {
+    rt_game3d_animator *animator =
+        game3d_animator_checked(obj, "Game3D.Animator3D.play: invalid animator");
+    int8_t ok;
+    if (!animator || !animator->controller)
+        return 0;
+    game3d_animator_clear_events(animator);
+    ok = rt_anim_controller3d_play(animator->controller, name);
+    if (ok)
+        game3d_animator_drain_events(animator);
+    return ok;
+}
+
+int8_t rt_game3d_animator_crossfade(void *obj, rt_string name, double seconds) {
+    rt_game3d_animator *animator =
+        game3d_animator_checked(obj, "Game3D.Animator3D.crossfade: invalid animator");
+    int8_t ok;
+    if (!animator || !animator->controller)
+        return 0;
+    game3d_animator_clear_events(animator);
+    ok = rt_anim_controller3d_crossfade(animator->controller, name, seconds);
+    if (ok)
+        game3d_animator_drain_events(animator);
+    return ok;
+}
+
+void rt_game3d_animator_set_speed(void *obj, rt_string name, double speed) {
+    rt_game3d_animator *animator =
+        game3d_animator_checked(obj, "Game3D.Animator3D.setSpeed: invalid animator");
+    if (animator && animator->controller)
+        rt_anim_controller3d_set_state_speed(animator->controller, name, speed);
+}
+
+int8_t rt_game3d_animator_is_playing(void *obj, rt_string name) {
+    rt_game3d_animator *animator =
+        game3d_animator_checked(obj, "Game3D.Animator3D.isPlaying: invalid animator");
+    return animator && animator->controller
+               ? rt_anim_controller3d_is_state_playing(animator->controller, name)
+               : 0;
+}
+
+double rt_game3d_animator_state_time(void *obj) {
+    rt_game3d_animator *animator =
+        game3d_animator_checked(obj, "Game3D.Animator3D.stateTime: invalid animator");
+    return animator && animator->controller
+               ? rt_anim_controller3d_get_state_time(animator->controller)
+               : 0.0;
+}
+
+int64_t rt_game3d_animator_event_count(void *obj) {
+    rt_game3d_animator *animator =
+        game3d_animator_checked(obj, "Game3D.Animator3D.eventCount: invalid animator");
+    return animator ? animator->event_count : 0;
+}
+
+rt_string rt_game3d_animator_event_name(void *obj, int64_t index) {
+    rt_game3d_animator *animator =
+        game3d_animator_checked(obj, "Game3D.Animator3D.eventName: invalid animator");
+    if (!animator || index < 0 || index >= animator->event_count)
+        return rt_const_cstr("");
+    return animator->events[index] ? animator->events[index] : rt_const_cstr("");
+}
+
+void rt_game3d_animator_update(void *obj, double dt) {
+    rt_game3d_animator *animator =
+        game3d_animator_checked(obj, "Game3D.Animator3D.update: invalid animator");
+    if (!animator || !animator->controller)
+        return;
+    if (!isfinite(dt) || dt < 0.0)
+        dt = 0.0;
+    game3d_animator_clear_events(animator);
+    rt_anim_controller3d_update(animator->controller, dt);
+    game3d_animator_drain_events(animator);
+}
+
+void *rt_game3d_entity_attach_animator(void *obj, void *animator_or_controller) {
+    rt_game3d_entity *entity =
+        game3d_entity_checked(obj, "Game3D.Entity3D.attachAnimator: invalid entity");
+    void *animator = animator_or_controller;
+    void *created_animator = NULL;
+    if (animator_or_controller &&
+        rt_g3d_has_class(animator_or_controller, RT_G3D_ANIMCONTROLLER3D_CLASS_ID)) {
+        created_animator = rt_game3d_animator_new(animator_or_controller);
+        animator = created_animator;
+    } else if (animator_or_controller &&
+               !rt_g3d_has_class(animator_or_controller, RT_G3D_GAME3D_ANIMATOR3D_CLASS_ID)) {
+        rt_trap("Game3D.Entity3D.attachAnimator: expected Animator3D or AnimController3D");
+        return obj;
+    }
+    if (entity) {
+        game3d_assign_ref(&entity->anim, animator);
+        if (entity->node) {
+            if (animator) {
+                rt_game3d_animator *game_animator =
+                    game3d_animator_checked(animator, "Game3D.Entity3D.attachAnimator: invalid animator");
+                rt_scene_node3d_bind_animator(entity->node,
+                                              game_animator ? game_animator->controller : NULL);
+            } else {
+                rt_scene_node3d_clear_animator_binding(entity->node);
+            }
+        }
+    }
+    game3d_release_ref(&created_animator);
+    return obj;
+}
+
 static void game3d_audio_finalize(void *obj) {
     rt_game3d_audio *audio = (rt_game3d_audio *)obj;
     if (audio)
@@ -1871,7 +2049,7 @@ static void *game3d_entity_from_model_root(void *root) {
         return NULL;
     animator = rt_scene_node3d_get_animator(root);
     if (animator)
-        game3d_assign_ref(&entity->anim, animator);
+        rt_game3d_entity_attach_animator(entity, animator);
     return entity;
 }
 
@@ -2831,6 +3009,18 @@ static void game3d_world_update_controller(rt_game3d_world *world, double dt) {
     }
 }
 
+static void game3d_world_update_animations(rt_game3d_world *world, double dt) {
+    if (!world)
+        return;
+    for (int32_t i = 0; i < world->entity_count; ++i) {
+        rt_game3d_entity *entity = world->entities[i];
+        if (!entity || entity->destroyed || !entity->anim)
+            continue;
+        if (rt_g3d_has_class(entity->anim, RT_G3D_GAME3D_ANIMATOR3D_CLASS_ID))
+            rt_game3d_animator_update(entity->anim, dt);
+    }
+}
+
 static void game3d_world_late_update_controller(rt_game3d_world *world, double dt) {
     if (!world || !world->camera_controller)
         return;
@@ -3439,6 +3629,7 @@ void rt_game3d_world_step_simulation(void *obj, double step_sec) {
     if (!world)
         return;
     game3d_world_update_controller(world, dt);
+    game3d_world_update_animations(world, dt);
     if (world->physics)
         rt_world3d_step(world->physics, dt);
     if (world->scene)

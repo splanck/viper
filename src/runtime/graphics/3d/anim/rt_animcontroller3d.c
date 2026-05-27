@@ -1437,6 +1437,36 @@ int64_t rt_anim_controller3d_get_state_count(void *obj) {
     return controller ? controller->state_count : 0;
 }
 
+/// @brief Current base-layer playback time in seconds.
+double rt_anim_controller3d_get_state_time(void *obj) {
+    rt_anim_controller3d *controller = anim_controller3d_checked(obj);
+    anim_controller3d_layer_t *layer;
+    if (!controller)
+        return 0.0;
+    layer = &controller->layers[0];
+    if (!layer->player || layer->current_state < 0 ||
+        layer->current_state >= controller->state_count)
+        return 0.0;
+    return rt_anim_player3d_get_time(layer->player);
+}
+
+/// @brief True if the named state is the active, playing base-layer state.
+int8_t rt_anim_controller3d_is_state_playing(void *obj, rt_string state_name) {
+    rt_anim_controller3d *controller = anim_controller3d_checked(obj);
+    anim_controller3d_layer_t *layer;
+    int32_t state_index;
+    if (!controller)
+        return 0;
+    state_index = controller_find_state(controller, state_name);
+    if (state_index < 0)
+        return 0;
+    layer = &controller->layers[0];
+    return layer->current_state == state_index && layer->player &&
+                   rt_anim_player3d_is_playing(layer->player)
+               ? 1
+               : 0;
+}
+
 /// @brief Override the playback speed multiplier for a state. Applied immediately to any
 /// layer currently playing that state. Negative speeds are accepted (reverse playback).
 void rt_anim_controller3d_set_state_speed(void *obj, rt_string state_name, double speed) {

@@ -74,6 +74,7 @@ This is intentionally free of common-case `Mat4` calls. `Entity3D` owns the raw
 | `BodyDef` | Runtime body recipe used by `Entity3D.attachBody` for common static, dynamic, trigger, and CCD bodies |
 | `Collision3DEvent` | Entity-aware wrapper around raw `Graphics3D.CollisionEvent3D` enter/stay/exit records |
 | `Assets3D` / `ModelTemplate` | Filesystem and package-aware model loading with cached reusable model templates |
+| `Animator3D` | Game3D wrapper over `Graphics3D.AnimController3D` for play/crossfade/state-time/events/root-motion attachment |
 | `Input3D` | Named keyboard, mouse, movement-axis, and look-axis helper over the runtime input state |
 | `Audio3D` | World-owned 3D audio handle; Phase 1 exposes the active listener |
 | `EffectRegistry3D` | World-owned effects handle; Phase 1 exposes the world post-FX chain |
@@ -200,14 +201,15 @@ The managed frame helpers use this order:
 2. Update `world.dt`, `world.elapsed`, and `world.frame`.
 3. Run gameplay update if a native callback loop is being used.
 4. Run the installed Game3D camera/controller `update`.
-5. Step physics.
-6. Sync physics-owned nodes and 3D audio bindings.
-7. Run the installed Game3D camera/controller `lateUpdate`.
-8. Begin the frame and draw the scene.
-9. Draw the effects registry.
-10. End the scene.
-11. Draw the final overlay if a native overlay callback is being used.
-12. Finalize/present, or leave the finalized frame available for capture.
+5. Advance spawned `Entity3D.anim` controllers and collect animation events.
+6. Step physics.
+7. Sync physics-owned nodes, animation root motion, and 3D audio bindings.
+8. Run the installed Game3D camera/controller `lateUpdate`.
+9. Begin the frame and draw the scene.
+10. Draw the effects registry.
+11. End the scene.
+12. Draw the final overlay if a native overlay callback is being used.
+13. Finalize/present, or leave the finalized frame available for capture.
 
 Controller `update` runs inside `stepSimulation(step)` before the physics step,
 which means manual loops can still do:
@@ -277,6 +279,7 @@ This boundary is covered by `g3d_test_game3d_runframes_callback_reject`.
 | `setLayer(layer)` | Set gameplay/physics layer |
 | `setCollisionMask(mask)` | Set the layer mask used by attached bodies |
 | `attachBody(bodyDef)` | Create and attach a `Physics3DBody` from a `BodyDef` |
+| `attachAnimator(animator)` | Attach an `Animator3D` or raw `AnimController3D` to the entity node |
 | `position()` / `worldPosition()` | Read local/world position |
 | `isSpawned()` / `isDestroyed()` | Inspect lifecycle state |
 
@@ -324,14 +327,60 @@ Game3D.World3D.spawn(world, enemy);
 Loaded entities are groups whose backing node is the instantiated model root.
 The raw imported child nodes remain under that root and are not separate
 Game3D child entities. Despawning the group removes the whole subtree from the
-scene. If the imported root has a skeletal animator, `entity.anim` is populated
-as an escape hatch; the higher-level `Animator3D` helpers are tracked in the
-animation phase.
+scene. If the imported root has a skeletal animation controller, `entity.anim`
+is populated with a `Game3D.Animator3D` wrapper.
 
 `LoadModelAsset` and `LoadModelTemplateAsset` use the runtime asset resolver, so
 mounted packages and `asset://` paths work the same way as lower-level
 `Model3D.LoadAsset`. Relative glTF buffers and textures resolve relative to the
 model asset.
+
+---
+
+## Animator3D
+
+`Animator3D` wraps a lower-level `Viper.Graphics3D.AnimController3D` while
+keeping the common game loop readable:
+
+```zia
+var controller = AnimController3D.New(skeleton);
+AnimController3D.AddState(controller, "idle", idleClip);
+AnimController3D.AddState(controller, "run", runClip);
+AnimController3D.AddEvent(controller, "run", 0.25, "footstep");
+AnimController3D.SetRootMotionBone(controller, rootBone);
+
+var anim = Game3D.Animator3D.New(controller);
+Game3D.Entity3D.attachAnimator(player, anim);
+SceneNode3D.set_SyncMode(Game3D.Entity3D.get_node(player),
+                         Game3D.SyncMode.get_NodeFromAnimRootMotion());
+Game3D.Animator3D.play(anim, "run");
+```
+
+| Method / property | Purpose |
+|-------------------|---------|
+| `controller` | Raw `AnimController3D` escape hatch |
+| `play(name)` | Play a named controller state |
+| `crossfade(name, seconds)` | Blend to another named state |
+| `setSpeed(name, speed)` | Change a state's playback speed |
+| `isPlaying(name)` | Check the active base-layer state |
+| `stateTime()` | Current base-layer playback time |
+| `eventCount()` / `eventName(index)` | Events captured during the latest play/update frame |
+| `update(dt)` | Manually advance an animator that is not spawned in a world |
+
+Spawned entity animators are advanced automatically by `World3D.stepSimulation`
+after camera/controller `update` and before physics. If the entity node uses
+`SyncMode.NodeFromAnimRootMotion`, the normal scene binding sync consumes the
+controller root-motion delta and moves the entity node deterministically in the
+same frame.
+
+`Entity3D.attachAnimator` accepts either a `Game3D.Animator3D` wrapper or a raw
+`AnimController3D`. Raw controllers are wrapped automatically so `entity.anim`
+always exposes the Game3D helper surface. Imported model templates with a root
+animation controller use the same wrapper path.
+
+`Animator3D.eventCount()` and `eventName(index)` are the supported
+interpreted-Zia event path. Optional callback sugar such as `onAnimEvent` is
+deferred until the VM has a callback trampoline for managed function objects.
 
 ---
 
@@ -471,7 +520,7 @@ The Game3D runtime is covered by:
 
 | Test | Coverage |
 |------|----------|
-| `test_rt_game3d` | C runtime contracts for constants, masks, input, world defaults, spawn/despawn, collision-event clearing, native callback loops, overlay hooks, final capture, synthetic controller input, orbit/follow late update, first-person character movement, material presets, prefabs, lighting, quality, environment, post-FX, and debug helpers |
+| `test_rt_game3d` | C runtime contracts for constants, masks, input, world defaults, spawn/despawn, collision-event clearing, native callback loops, overlay hooks, final capture, synthetic controller input, orbit/follow late update, first-person character movement, material presets, prefabs, lighting, quality, environment, post-FX, debug helpers, and Animator3D root motion/events |
 | `g3d_test_game3d_world_probe` | Zia construction, default subsystems, layer masks, entity spawn/find/despawn, resize/aspect, manual frame path, final capture, and destroy |
 | `g3d_test_game3d_runframes_probe` | Zia deterministic `runFramesOnly`, dt/elapsed/frame accounting, and final capture |
 | `g3d_test_game3d_runframes_callback_reject` | Interpreted Zia callback rejection diagnostic for native callback-loop APIs |
@@ -481,6 +530,7 @@ The Game3D runtime is covered by:
 | `g3d_test_game3d_assets_probe` | Zia `Assets3D` filesystem/asset loading, cached templates, and model-template instantiation |
 | `g3d_test_game3d_physics_probe` | Zia `BodyDef` static/dynamic body attachment, CCD/filter flags, gravity, and collision production |
 | `g3d_test_game3d_collision_probe` | Zia entity-aware collision wrappers for enter/stay/exit and trigger events |
+| `g3d_test_game3d_anim_probe` | Zia Animator3D play/crossfade/state-time/events, entity attachment, raw controller wrapping, and root-motion world stepping |
 | `g3d_walk_min_visual_probe` | Game3D sample final-frame baseline, crisp overlay, directional lighting, and grounded synthetic first-person movement |
 
 Run the focused set with:
@@ -501,10 +551,10 @@ ctest --test-dir build -L graphics3d --output-on-failure
 
 The core world/entity/input layer, built-in camera/character controllers,
 presets, prefabs, environment/debug helpers, `Assets3D`, `BodyDef`, and
-entity-aware collision event wrappers now live in the C runtime.
+entity-aware collision event wrappers, and `Animator3D` now live in the C runtime.
 `examples/3d/walk_min.zia` is the current small Game3D walking sample.
-Animation helpers, 3D audio playback helpers, VFX presets, starter templates,
-and showcase samples remain tracked in the 3D Next Level plan.
+3D audio playback helpers, VFX presets, starter templates, and showcase samples
+remain tracked in the 3D Next Level plan.
 
 Use the lower-level `Viper.Graphics3D` and `Viper.Sound` APIs as escape hatches
 while those higher-level Game3D helpers are being implemented.

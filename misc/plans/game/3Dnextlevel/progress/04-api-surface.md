@@ -108,6 +108,7 @@ This file tracks the public runtime-backed `Viper.Game3D` surface described in
 | API-ENT-028 | Group despawn recurses over Game3D child entities | `api-spec.md` Entity3D Notes | done | recursive child despawn | `test_rt_game3d` | Game3D docs | focused ctest passed |  |
 | API-ENT-029 | Raw imported child nodes remain part of root node subtree | `api-spec.md` Entity3D Notes | done | `Assets3D` returns group entities with imported root node subtree intact | `test_rt_game3d`, `g3d_test_game3d_assets_probe` | Game3D docs | focused ctests passed |  |
 | API-ENT-030 | Destroyed world/entity diagnostics use `Game3D.<Type>.<method>` form | `api-spec.md` Entity3D Notes | partial | trap guards use Game3D prefixes | callback rejection negative probe | Game3D docs | focused ctest passed | Destroyed-handle negative probe pending |
+| API-ENT-031 | `attachAnimator(animatorOrController)` | Phase 5 extension | done | accepts `Game3D.Animator3D` or raw `AnimController3D`, binds raw controller to node, and stores a Game3D wrapper in `entity.anim` | `test_rt_game3d`, `g3d_test_game3d_anim_probe` | Game3D docs | focused tests passed | Raw controller attach is the escape hatch |
 
 ## Physics and collisions
 
@@ -180,17 +181,17 @@ This file tracks the public runtime-backed `Viper.Game3D` surface described in
 | API-ASSETS-004 | `Assets3D.LoadModelTemplateAsset(assetPath)` | `api-spec.md` Assets | done | package-aware template cache | `test_rt_game3d`, `g3d_test_game3d_assets_probe` | Game3D docs | focused ctests passed | Records `isAsset` |
 | API-ASSETS-005 | `Assets3D.Preload(path)` | `api-spec.md` Assets | done | warms filesystem template cache | `test_rt_game3d`, `g3d_test_game3d_assets_probe` | Game3D docs | focused ctests passed |  |
 | API-ASSETS-006 | `Assets3D.ClearCache()` | `api-spec.md` Assets | done | releases cached template entries | `test_rt_game3d`, `g3d_test_game3d_assets_probe` | Game3D docs | focused ctests passed |  |
-| API-ASSETS-007 | `ModelTemplate` caches loaded models and instantiates group entities cheaply | `api-spec.md` Assets | done | runtime ModelTemplate exposes model/path/isAsset and clones root subtree on instantiate | `test_rt_game3d`, `g3d_test_game3d_assets_probe` | Game3D docs | focused ctests passed | `entity.anim` escape hatch set when root animator exists |
+| API-ASSETS-007 | `ModelTemplate` caches loaded models and instantiates group entities cheaply | `api-spec.md` Assets | done | runtime ModelTemplate exposes model/path/isAsset and clones root subtree on instantiate | `test_rt_game3d`, `g3d_test_game3d_assets_probe` | Game3D docs | focused ctests passed | `entity.anim` is populated with `Game3D.Animator3D` when root animator exists |
 
 ## Animation, audio, VFX, and debug
 
 | ID | Item | Source | Status | Impl | Tests | Docs | Proof / link | Notes |
 |---|---|---|---|---|---|---|---|---|
-| API-ANIM-001 | `Animator3D.controller` | `api-spec.md` Animation | todo |  |  |  |  | Escape hatch |
-| API-ANIM-002 | `play` / `crossfade` / `setSpeed` / `isPlaying` / `stateTime` | `api-spec.md` Animation | todo |  |  |  |  |  |
-| API-ANIM-003 | `eventCount()` / `eventName(index)` | `api-spec.md` Animation | todo |  |  |  |  | Required event API |
-| API-ANIM-004 | Optional `onAnimEvent(fn)` | `api-spec.md` Animation | todo |  |  |  |  | Requires callback approval |
-| API-ANIM-005 | `Animator3D.update(dt)` | `api-spec.md` Animation | todo |  |  |  |  | Pre-physics |
+| API-ANIM-001 | `Animator3D.controller` | `api-spec.md` Animation | done | runtime property exposes raw `AnimController3D` | `test_rt_game3d`, `g3d_test_game3d_anim_probe` | Game3D docs | focused tests passed | Escape hatch |
+| API-ANIM-002 | `play` / `crossfade` / `setSpeed` / `isPlaying` / `stateTime` | `api-spec.md` Animation | done | Game3D wrapper methods plus lower-level `AnimController3D.get_StateTime` and `IsStatePlaying` | `test_rt_game3d`, `g3d_test_game3d_anim_probe` | Game3D docs | focused tests passed |  |
+| API-ANIM-003 | `eventCount()` / `eventName(index)` | `api-spec.md` Animation | done | runtime event buffer drains controller event queue after play/update | `test_rt_game3d`, `g3d_test_game3d_anim_probe` | Game3D docs | focused tests passed | Required event API |
+| API-ANIM-004 | Optional `onAnimEvent(fn)` | `api-spec.md` Animation | deferred | not shipped under current interpreted-Zia callback policy | callback rejection policy | Game3D docs | explicit waiver | Use `eventCount` / `eventName` polling |
+| API-ANIM-005 | `Animator3D.update(dt)` | `api-spec.md` Animation | done | manual runtime update for off-world animators; `World3D.stepSimulation` auto-updates spawned entity animators pre-physics | `test_rt_game3d`, `g3d_test_game3d_anim_probe` | Game3D docs | focused tests passed | Pre-physics |
 | API-AUDIO-001 | `Audio3D.listener` | `api-spec.md` 3D audio | done | world-owned listener property | `test_rt_game3d` | Game3D docs | focused ctest passed | Playback helpers remain Phase 6 |
 | API-AUDIO-002 | `listenerFollowCamera(enabled)` | `api-spec.md` 3D audio | todo |  |  |  |  |  |
 | API-AUDIO-003 | `setListenerPose(pos,forward,up)` | `api-spec.md` 3D audio | todo |  |  |  |  |  |

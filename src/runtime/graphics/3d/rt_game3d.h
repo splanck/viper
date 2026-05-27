@@ -219,12 +219,24 @@ void *rt_game3d_entity_set_name(void *entity, rt_string name);
 void *rt_game3d_entity_set_layer(void *entity, int64_t layer);
 void *rt_game3d_entity_set_collision_mask(void *entity, void *mask);
 void *rt_game3d_entity_attach_body(void *entity, void *body_or_def);
+void *rt_game3d_entity_attach_animator(void *entity, void *animator_or_controller);
 void rt_game3d_entity_apply_impulse(void *entity, double x, double y, double z);
 void rt_game3d_entity_set_velocity(void *entity, double x, double y, double z);
 void *rt_game3d_entity_position(void *entity);
 void *rt_game3d_entity_world_position(void *entity);
 int8_t rt_game3d_entity_is_spawned(void *entity);
 int8_t rt_game3d_entity_is_destroyed(void *entity);
+
+void *rt_game3d_animator_new(void *controller);
+void *rt_game3d_animator_get_controller(void *animator);
+int8_t rt_game3d_animator_play(void *animator, rt_string name);
+int8_t rt_game3d_animator_crossfade(void *animator, rt_string name, double seconds);
+void rt_game3d_animator_set_speed(void *animator, rt_string name, double speed);
+int8_t rt_game3d_animator_is_playing(void *animator, rt_string name);
+double rt_game3d_animator_state_time(void *animator);
+int64_t rt_game3d_animator_event_count(void *animator);
+rt_string rt_game3d_animator_event_name(void *animator, int64_t index);
+void rt_game3d_animator_update(void *animator, double dt);
 
 void *rt_game3d_audio_get_listener(void *audio);
 void *rt_game3d_effects_get_postfx(void *effects);

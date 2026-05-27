@@ -14,15 +14,19 @@
 #define VIPER_ENABLE_GRAPHICS 1
 #endif
 
+#include "rt_animcontroller3d.h"
 #include "rt.hpp"
 #include "rt_canvas3d.h"
 #include "rt_game3d.h"
 #include "rt_input.h"
+#include "rt_mat4.h"
 #include "rt_model3d.h"
 #include "rt_physics3d.h"
 #include "rt_pixels.h"
 #include "rt_postfx3d.h"
+#include "rt_quat.h"
 #include "rt_scene3d.h"
+#include "rt_skeleton3d.h"
 #include "rt_string.h"
 #include "rt_vec2.h"
 #include "rt_vec3.h"
@@ -136,6 +140,41 @@ extern "C" void game3d_test_update(double dt) {
 
 extern "C" void game3d_test_overlay(void) {
     ++g_overlay_calls;
+}
+
+static void *make_game3d_test_anim(const char *name,
+                                   int64_t bone_index,
+                                   double x0,
+                                   double y0,
+                                   double z0,
+                                   double x1,
+                                   double y1,
+                                   double z1) {
+    void *anim = rt_animation3d_new(rt_const_cstr(name), 1.0);
+    void *pos0 = rt_vec3_new(x0, y0, z0);
+    void *pos1 = rt_vec3_new(x1, y1, z1);
+    void *rot = rt_quat_new(0.0, 0.0, 0.0, 1.0);
+    void *scl = rt_vec3_new(1.0, 1.0, 1.0);
+    rt_animation3d_set_looping(anim, 1);
+    rt_animation3d_add_keyframe(anim, bone_index, 0.0, pos0, rot, scl);
+    rt_animation3d_add_keyframe(anim, bone_index, 1.0, pos1, rot, scl);
+    return anim;
+}
+
+static void *make_game3d_test_controller(double walk_distance, double event_time) {
+    void *skel = rt_skeleton3d_new();
+    int64_t root = rt_skeleton3d_add_bone(skel, rt_const_cstr("root"), -1, rt_mat4_identity());
+    rt_skeleton3d_compute_inverse_bind(skel);
+
+    void *idle = make_game3d_test_anim("idle", root, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0);
+    void *walk =
+        make_game3d_test_anim("walk", root, 0.0, 0.0, 0.0, walk_distance, 0.0, 0.0);
+    void *controller = rt_anim_controller3d_new(skel);
+    rt_anim_controller3d_add_state(controller, rt_const_cstr("idle"), idle);
+    rt_anim_controller3d_add_state(controller, rt_const_cstr("walk"), walk);
+    rt_anim_controller3d_add_event(controller, rt_const_cstr("walk"), event_time, rt_const_cstr("step"));
+    rt_anim_controller3d_set_root_motion_bone(controller, root);
+    return controller;
 }
 
 static bool test_layermasks_and_constants() {
@@ -779,6 +818,67 @@ static bool test_phase4_collision_events_wrapped_with_entities() {
     PASS();
 }
 
+static bool test_phase5_animator3d_events_and_root_motion() {
+    TEST("Animator3D wraps controllers, reports events, and drives world root motion");
+
+    void *controller = make_game3d_test_controller(10.0, 0.5);
+    void *animator = rt_game3d_animator_new(controller);
+    EXPECT_TRUE(animator != nullptr, "Animator3D.New returns an object");
+    EXPECT_TRUE(rt_game3d_animator_get_controller(animator) == controller,
+                "Animator3D exposes the wrapped controller");
+    EXPECT_TRUE(rt_game3d_animator_play(animator, rt_const_cstr("walk")) != 0,
+                "Animator3D.play starts a named state");
+    EXPECT_TRUE(rt_game3d_animator_is_playing(animator, rt_const_cstr("walk")) != 0,
+                "Animator3D.isPlaying checks the active state");
+    rt_game3d_animator_set_speed(animator, rt_const_cstr("walk"), 1.0);
+    rt_game3d_animator_update(animator, 0.5);
+    EXPECT_NEAR(rt_game3d_animator_state_time(animator),
+                0.5,
+                0.0001,
+                "Animator3D.stateTime reports base layer time");
+    EXPECT_EQ_INT(rt_game3d_animator_event_count(animator), 1, "Animator3D captures events");
+    EXPECT_TRUE(std::strcmp(rt_string_cstr(rt_game3d_animator_event_name(animator, 0)), "step") == 0,
+                "Animator3D.eventName returns the captured event");
+    EXPECT_TRUE(rt_game3d_animator_crossfade(animator, rt_const_cstr("idle"), 0.1) != 0,
+                "Animator3D.crossfade switches to another state");
+    EXPECT_TRUE(rt_game3d_animator_is_playing(animator, rt_const_cstr("idle")) != 0,
+                "Animator3D.isPlaying reflects crossfades");
+
+    void *world = rt_game3d_world_new(rt_const_cstr("Game3D Animator Unit"), 80, 60);
+    void *entity = rt_game3d_entity_new();
+    void *controller2 = make_game3d_test_controller(10.0, 0.25);
+    void *animator2 = rt_game3d_animator_new(controller2);
+    rt_game3d_entity_attach_animator(entity, animator2);
+    EXPECT_TRUE(rt_game3d_entity_get_anim(entity) == animator2,
+                "Entity3D.attachAnimator stores the Game3D animator");
+    EXPECT_TRUE(rt_scene_node3d_get_animator(rt_game3d_entity_get_node(entity)) == controller2,
+                "Entity3D.attachAnimator binds the raw controller to the node");
+    rt_scene_node3d_set_sync_mode(rt_game3d_entity_get_node(entity),
+                                  rt_game3d_sync_mode_node_from_anim_root_motion());
+    rt_game3d_animator_play(animator2, rt_const_cstr("walk"));
+    rt_game3d_world_spawn(world, entity);
+    rt_game3d_world_step_simulation(world, 0.25);
+
+    void *pos = rt_game3d_entity_position(entity);
+    EXPECT_NEAR(rt_vec3_x(pos), 2.5, 0.1, "World3D advances animators before scene sync");
+    EXPECT_EQ_INT(rt_game3d_animator_event_count(animator2),
+                  1,
+                  "World3D animation update exposes frame events");
+    EXPECT_TRUE(std::strcmp(rt_string_cstr(rt_game3d_animator_event_name(animator2, 0)), "step") == 0,
+                "World3D animation update preserves event names");
+
+    void *entity2 = rt_game3d_entity_new();
+    void *controller3 = make_game3d_test_controller(4.0, 0.25);
+    rt_game3d_entity_attach_animator(entity2, controller3);
+    EXPECT_TRUE(rt_game3d_entity_get_anim(entity2) != nullptr,
+                "Entity3D.attachAnimator accepts raw AnimController3D");
+    EXPECT_TRUE(rt_game3d_animator_get_controller(rt_game3d_entity_get_anim(entity2)) == controller3,
+                "raw controller attach creates an Animator3D wrapper");
+
+    rt_game3d_world_destroy(world);
+    PASS();
+}
+
 int main() {
     set_software_backend_env();
     bool ok = true;
@@ -794,6 +894,7 @@ int main() {
     ok = test_phase4_assets3d_model_templates() && ok;
     ok = test_phase4_body_def_attach_body() && ok;
     ok = test_phase4_collision_events_wrapped_with_entities() && ok;
+    ok = test_phase5_animator3d_events_and_root_motion() && ok;
 
     std::printf("\nGame3D runtime tests: %d/%d passed\n", g_tests_passed, g_tests_total);
     return ok && g_tests_passed == g_tests_total ? 0 : 1;
