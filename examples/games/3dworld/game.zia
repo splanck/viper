@@ -285,8 +285,9 @@ class WorldGame {
     hide func sampleSkyPixel(dx: Float, dy: Float, dz: Float) -> Integer {
         var up = clampFloat((dy + 0.10) / 1.10, 0.0, 1.0);
         var haze = clampFloat(1.0 - absFloat(dy) * 2.8, 0.0, 1.0);
-        var r = lerpFloat(166.0, 96.0, up) + haze * 12.0;
-        var g = lerpFloat(205.0, 146.0, up) + haze * 9.0;
+        var sun = clampFloat((dx * 0.55 - dz * 0.35 + 1.0) / 2.0, 0.0, 1.0);
+        var r = lerpFloat(166.0, 96.0, up) + haze * (10.0 + sun * 5.0);
+        var g = lerpFloat(205.0, 146.0, up) + haze * (8.0 + sun * 3.0);
         var b = lerpFloat(236.0, 214.0, up) + haze * 4.0;
 
         if (dy < -0.18) {
@@ -558,19 +559,19 @@ class WorldGame {
         var total = beaconXs.count();
         var h = Canvas3D.get_Height(canvas);
         var ridgeText = "Ridge beacons: " + toString(beaconsLit) + " / " + toString(total);
-        var hintText = "Hike the terrain and walk into each beacon to light it.";
+        var hintText = "Find and touch ridge beacons.";
         var statusColor = config.HUD_WARN;
 
         if (beaconsLit >= total) {
-            hintText = "All beacons are lit. Press R to regenerate the hike.";
+            hintText = "All lit. Press R to hike again.";
             statusColor = config.HUD_GOOD;
         }
 
         Canvas3D.DrawRect2D(canvas, 14, 14, 376, 126, config.HUD_PANEL);
         Canvas3D.DrawRect2D(canvas, 14, 14, 376, 28, config.HUD_CARD);
         Canvas3D.DrawText2D(canvas, 24, 22, "3DWORLD OUTDOORS", config.HUD_ACCENT);
-        Canvas3D.DrawText2D(canvas, 24, 52, "Move: WASD   Look: Mouse   Orbit: Q / E", config.HUD_TEXT);
-        Canvas3D.DrawText2D(canvas, 24, 72, "Sprint: Shift   Reset: R   Quit: ESC", config.HUD_MUTED);
+        Canvas3D.DrawText2D(canvas, 24, 52, "WASD move | Mouse look | Shift sprint", config.HUD_TEXT);
+        Canvas3D.DrawText2D(canvas, 24, 72, "Q/E orbit | R reset | Esc quit", config.HUD_MUTED);
         Canvas3D.DrawText2D(canvas, 24, 96, ridgeText, statusColor);
         Canvas3D.DrawText2D(canvas, 24, 114, hintText, config.HUD_TEXT);
         Canvas3D.DrawText2D(
