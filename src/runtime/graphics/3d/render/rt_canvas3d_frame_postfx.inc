@@ -1,0 +1,48 @@
+/// @brief Push the current frame's post-FX enable flag + snapshot to the backend.
+///
+/// Called by `latch_gpu_postfx_state` after capturing a snapshot.
+/// Backends that don't implement these hooks silently no-op.
+static void canvas3d_apply_gpu_postfx_state(rt_canvas3d *c) {
+    const vgfx3d_postfx_chain_t *chain = NULL;
+
+    if (!c || !c->backend)
+        return;
+    if (c->frame_gpu_postfx_enabled)
+        chain = &c->frame_postfx_chain;
+    if (c->backend->set_gpu_postfx_enabled)
+        c->backend->set_gpu_postfx_enabled(c->backend_ctx, c->frame_gpu_postfx_enabled);
+    if (c->backend->set_gpu_postfx_snapshot)
+        c->backend->set_gpu_postfx_snapshot(c->backend_ctx, chain);
+}
+
+/// @brief Capture the current post-FX state into a per-frame snapshot.
+///
+/// Snapshotting once per frame ensures the post-FX parameters used
+/// by the present-time composite match what was active at frame start
+/// (avoids tearing if the user toggles a post-FX setting mid-frame).
+/// Skips snapshot capture for RTT canvases or non-postfx backends.
+static void canvas3d_latch_gpu_postfx_state(rt_canvas3d *c) {
+    if (!c)
+        return;
+    vgfx3d_postfx_chain_reset(&c->frame_postfx_chain);
+    c->frame_gpu_postfx_enabled = 0;
+    c->frame_postfx_state_latched = 1;
+    if (canvas3d_backend_uses_gpu_postfx(c) &&
+        vgfx3d_postfx_get_chain(c->postfx, &c->frame_postfx_chain)) {
+        c->frame_gpu_postfx_enabled = 1;
+    }
+    canvas3d_apply_gpu_postfx_state(c);
+}
+
+/// @brief True when this latched post-FX frame requires previous transforms.
+static int canvas3d_frame_needs_motion_vectors(const rt_canvas3d *c) {
+    if (!c || !c->frame_gpu_postfx_enabled || !c->frame_postfx_chain.enabled)
+        return 0;
+    for (int32_t i = 0; i < c->frame_postfx_chain.effect_count; ++i) {
+        const vgfx3d_postfx_effect_desc_t *effect = &c->frame_postfx_chain.effects[i];
+        if (effect->type == VGFX3D_POSTFX_EFFECT_MOTION_BLUR &&
+            effect->snapshot.motion_blur_enabled)
+            return 1;
+    }
+    return 0;
+}

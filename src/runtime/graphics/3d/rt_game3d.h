@@ -376,7 +376,7 @@ int8_t rt_game3d_input_mouse_button(void *input, int64_t button);
 int8_t rt_game3d_input_mouse_pressed(void *input, int64_t button);
 /// @brief Get the mouse wheel scroll delta along Y for this frame.
 double rt_game3d_input_wheel_y(void *input);
-/// @brief Get the WASD/arrow movement axis as a normalized Vec2 (x = strafe, y = forward).
+/// @brief Get the WASD/arrow/space/shift movement axis as a normalized Vec3.
 void *rt_game3d_input_move_axis(void *input);
 /// @brief Get the mouse-look axis as a Vec2 (yaw/pitch delta scaled by sensitivity).
 void *rt_game3d_input_look_axis(void *input);

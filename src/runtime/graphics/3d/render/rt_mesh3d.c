@@ -268,6 +268,8 @@ void *rt_mesh3d_new(void) {
     m->morph_targets_ref = NULL;
     m->build_failed = 0;
     m->geometry_revision = 1;
+    m->tangent_revision = 0;
+    m->tangents_ready = 0;
     rt_mesh3d_reset_bounds(m);
     if (!m->vertices || !m->indices) {
         free(m->vertices);
@@ -581,6 +583,8 @@ void *rt_mesh3d_clone(void *obj) {
     mesh_assign_ref(&dst->skeleton_ref, src->skeleton_ref);
     mesh_assign_ref(&dst->morph_targets_ref, src->morph_targets_ref);
     dst->geometry_revision = src->geometry_revision;
+    dst->tangent_revision = src->tangent_revision;
+    dst->tangents_ready = src->tangents_ready;
     dst->build_failed = 0;
     dst->aabb_min[0] = src->aabb_min[0];
     dst->aabb_min[1] = src->aabb_min[1];
@@ -1454,6 +1458,8 @@ void rt_mesh3d_calc_tangents(void *obj) {
     free(tan1);
     free(tan2);
     rt_mesh3d_touch_geometry(m);
+    m->tangents_ready = 1;
+    m->tangent_revision = m->geometry_revision;
 }
 
 //=============================================================================

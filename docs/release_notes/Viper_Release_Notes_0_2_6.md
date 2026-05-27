@@ -8,9 +8,9 @@
 
 ### What this release is about
 
-An alpha-quality hardening cycle that also delivered substantial new capability. The hardening backbone is broad: the Zia frontend reached alpha quality, raw pointers were removed from both source languages, the native linker became real enough to consume optimized C++ object input and ship ViperIDE's IntelliSense end-to-end, and a correctness/ownership pass swept memory, threads, crypto, IO, graphics, the bytecode VM, packaging, and installers. The headline new work is ViperIDE maturing from runtime stubs into a first-class code editor — build/run, completion, diagnostics, project tree, and symbols — joined by an expanded game-engine surface (plan-24 widgets, an editable `Viper.Game.Scene` document) and a streaming process / toolchain / project-index tooling layer.
+A hardening cycle pushing toward alpha quality that also delivered substantial new capability. The hardening backbone is broad: the Zia frontend closed its major stability and language gaps, raw pointers were removed from both source languages, the native linker became real enough to consume optimized C++ object input and ship ViperIDE's IntelliSense end-to-end, and a correctness/ownership pass swept memory, threads, crypto, IO, graphics, the bytecode VM, packaging, and installers. The headline new work is ViperIDE — the in-development Viper/Zia code editor — moving off runtime stubs onto real build/run, completion, diagnostics, project tree, and symbols — joined by an expanded game-engine surface (plan-24 widgets, an editable `Viper.Game.Scene` document) and a streaming process / toolchain / project-index tooling layer; a new code-first `Viper.Game3D` engine then layered a full 3D gameplay surface over the Graphics3D runtime.
 
-- **Zia frontend → alpha quality.** `defer`; structured `try`/`catch`/`finally`, multi-catch, bare rethrow; `Result[T]` with `?` propagation; weak fields, function references, constrained generics, default interface methods; declaration-order independence.
+- **Zia frontend stability.** `defer`; structured `try`/`catch`/`finally`, multi-catch, bare rethrow; `Result[T]` with `?` propagation; weak fields, function references, constrained generics, default interface methods; declaration-order independence.
 - **Pointer-safety gate.** Zia and BASIC reject raw `Ptr` types and pointer-signature runtime APIs; the typed surface is now the only surface. (Biggest user-visible change.)
 - **Memory, GC & threads ownership.** Validated retain/release wrappers, weak-ref CAS retain inside the GC lock, trap-safe finalizers, class-ID validation on every public threads / MessageBus entry, and saturated wait deadlines.
 - **Crypto, TLS & IO security.** Canonical `Viper.Crypto.*` (scrypt, AES-GCM+AAD, approved-mode module, fixed-schedule ECDSA P-256); TLS Key-Usage / Basic-Constraints / EKU enforcement; hardened temp-file, archive, and ZIP64 paths.
@@ -21,20 +21,21 @@ An alpha-quality hardening cycle that also delivered substantial new capability.
 - **Backends, bytecode VM & Windows HiDPI.** x86-64 fold-liveness and AT&T operand validation; AArch64 sub-word transfers and CFG fixes; two's-complement bytecode arithmetic; Win32 physical-pixel sizing and waitable-timer frame pacing.
 - **GUI correctness audit.** Five rounds closing handle-validation, dialog-lifetime, focus-routing, and menubar/toolbar/statusbar gaps; every public `Viper.GUI.*` entry routes through `rt_gui_widget_handle_checked`.
 - **3D runtime & graphics hardening.** A multi-backend Graphics3D correctness round (software/OpenGL/Metal/D3D11 skinning, shadows, readback), bone-topology-frozen skeletal animation, shape-accurate Physics3D queries, and saturating 2D draw / scaled-tilemap math.
+- **Code-first Game3D engine (new).** A `Viper.Game3D.*` layer over the 3D runtime: a `World3D` fixed-step update/render loop, an `Entity3D` hierarchy with cycle-safe parenting, first-person/free-fly/orbit/follow cameras and a grounded character controller, physics/collision events, `Animator3D`, spatial `Sound3D`, and `Effects3D` VFX presets.
 - **Game-engine surface (plan 24).** New `Viper.Game.UI` widgets, `AnimTimeline` + multi-event `AnimStateMachine`, `Projectile2D`, rotated-texture draws, named audio mixer groups, and a `Viper.System.Clipboard`.
-- **ViperIDE editor-first-class gate.** A streaming `Viper.System.Process`, a structured `Viper.Zia.Toolchain`, a semantic `Viper.Zia.ProjectIndex`, and an editable `Viper.Game.Scene` close the editor's first-class gate — build/run, project tree, completion, diagnostics, and symbols; a codegen and dead-strip rewrite cut the ViperIDE native x64 build from ~340s to ~35s.
+- **ViperIDE editor wiring.** A streaming `Viper.System.Process`, a structured `Viper.Zia.Toolchain`, a semantic `Viper.Zia.ProjectIndex`, and an editable `Viper.Game.Scene` back the in-development editor's build/run, project tree, completion, diagnostics, and symbols; a codegen and dead-strip rewrite cut the ViperIDE native x64 build from ~340s to ~35s.
 
 ### By the Numbers
 
 | Metric | v0.2.5 | v0.2.6 | Delta |
 |---|---|---|---|
-| Commits | — | 199 | +199 |
-| Source files | 2,996 | 3,055 | +59 |
-| Production SLOC | 552K | 620K | +68K |
-| Test SLOC | 228K | 260K | +32K |
-| Demo SLOC | 188K | 187K | −1K |
+| Commits | — | 213 | +213 |
+| Source files | 2,996 | 3,058 | +62 |
+| Production SLOC | 552K | 627K | +75K |
+| Test SLOC | 228K | 262K | +34K |
+| Demo SLOC | 188K | 189K | +1K |
 
-Counts via `scripts/count_sloc.sh` (production 619,961 / test 259,931 / demo 186,833 / source files 3,055). Demo SLOC dropped because ViperIDE moved out of the demo gallery into a standalone top-level project.
+Counts via `scripts/count_sloc.sh` (production 627,234 / test 262,309 / demo 189,256 / source files 3,058).
 
 ---
 
@@ -87,7 +88,16 @@ Counts via `scripts/count_sloc.sh` (production 619,961 / test 259,931 / demo 186
 - Backend correctness across software/OpenGL/Metal/D3D11: skinning normals route through inverse-transpose matrices (identity fallback when singular), oversized D3D11 bone palettes stay active for clamped uploads, completed shadow-map slots are tracked as a contiguous prefix with clip-`w`/depth validation, and OpenGL RTT extents / HDR-readback math are bounds-checked with D3D11 swapchain targets recreated after a failed resize.
 - Skeletal animation and morphs: `Skeleton3D` freezes bone topology once pose buffers bind so a late `AddBone` traps instead of desyncing the palette; per-component finite-masked keyframes fall back to the bind-pose TRS rather than collapsing to zero/identity; `MorphTarget3D` cloning fails closed on a short or missing delta buffer; AnimationController blend/transition times clamp to finite non-negative values.
 - Physics3D and scene queries: oriented-box SAT, shape-accurate mesh/convex raycasts and collisions, adaptive sphere/capsule sweeps for thin geometry, heightfield contacts honouring signed/non-uniform vertical scale, large-static-surface contact-point reconstruction, and a fixed quaternion vector-rotation aliasing bug; rays self-normalize, look-at/basis construction rejects degenerate or singular vectors, and the VSCN loader walks deep hierarchies iteratively with finite-or-fallback clamped transforms.
-- Canvas3D/Game3D fixes align shading-model constants, promote `SetShadingModel(2)` to PBR, add `Camera3D.ScreenToRayOrigin`, replay final overlays before GPU post-FX present, snapshot Game3D input per frame, reverse winding for mirrored mesh transforms, stream exact binary STL files, clamp synthetic mouse/delta-time extremes, and tighten backend-light/material/draw-queue validation while preserving opaque front-to-back sorting.
+- Canvas3D/Game3D fixes align shading-model constants, promote `SetShadingModel(2)` to PBR, add `Camera3D.ScreenToRayOrigin`, keep final overlays after GPU post-FX finalization, snapshot Game3D input per frame, reverse winding for mirrored mesh transforms, stream exact binary STL files, clamp synthetic mouse/delta-time extremes, and tighten backend-light/material/draw-queue validation while preserving opaque front-to-back sorting.
+- A further hardening round: Model3D node walks (count/clone/scene-ref) go iterative for deep imported hierarchies, capacity growth across Model3D/Game3D/Canvas3D is integer-overflow-safe, Physics3D collision enter/stay/exit matching moves from an O(n^2) scan to a hash table, Particles3D draws alpha and additive billboards as one batched sorted mesh, and Canvas3D motion-blur keys and deferred static-mesh draws are corrected.
+- The 3D runtime also adds a public `Canvas3D.Resize`, normalizes `Input3D.moveAxis`, lets `OrbitController` target an `Entity3D`, indexes spawned Game3D entities by body/name for faster lookups, ear-clips concave FBX n-gons, accepts glTF `MAT2`/`MAT3` accessor metadata, caches normal-map tangent revisions, and splits new helper-heavy regions into private `.inc` implementation slices for readability.
+
+### Game3D runtime (new)
+
+- A code-first `Viper.Game3D.*` engine layered over Graphics3D. `World3D` drives the scene, physics, camera, input, audio, and effects from one fixed-step update/render loop; `Entity3D` gives a transform/mesh/body hierarchy with cycle-safe, ownership-checked parenting and auto-spawned subtrees.
+- Built-in first-person, free-fly, orbit, and follow camera controllers plus a grounded `CharacterController`; per-frame `Input3D` snapshots make `runFrames` deterministic, and native update callbacks are validated as executable on all three platforms.
+- `Animator3D` (crossfade, speed, state-time, event queries) over the animation controller; enter/stay/exit collision events; spatial `Sound3D` (listener-follow, positional/attached playback, distance attenuation) and `Effects3D` presets (explosion, sparks, dust, smoke, impact decals); plus environment, model-template, and debug helpers.
+- The spatial-audio classes are renamed `Audio3D`/`AudioListener3D`/`AudioSource3D` → `Sound3D`/`SoundListener3D`/`SoundSource3D` (breaking), matching the canonical `Viper.Sound` family.
 
 ### Game runtime
 
@@ -137,7 +147,7 @@ Counts via `scripts/count_sloc.sh` (production 619,961 / test 259,931 / demo 186
 - New `Viper.Zia.ProjectIndex`: an explicit-lifetime project index with dirty-buffer import resolution, structured definition/reference results, and rename workspace-edit generation with visible-collision detection.
 - `Viper.Game.Scene` graduated to a full editable JSON scene document: non-trapping load returning structured diagnostics under enforced resource/overflow limits, typed scene/object properties, a deterministic canonical-v1 round-trip, an isolated `BuildTilemap` render copy, and atomic same-directory save.
 - A prerequisite runtime slice exposes structured primitives for project trees, automation, palettes, and debugger integration: `Workspace.FileIndex`/`Watcher`, `Assets.Resolver`, `Project.Manifest`, `Workspace.Edit`, GUI `TestHarness`/`VirtualList`/`VirtualTree`/`CommandState`/`Accessibility`, `Debug.Protocol`, and `Text.FuzzyMatch`.
-- **The editor reaches its first-class gate.** Now a standalone top-level project, ViperIDE gained an argument-vector build/run loop with streamed, cancellable output and clickable diagnostics, persisted gutter breakpoints, file-tree project operations with previewed Zia bind rewrites on rename, Quick Open, and workspace symbols. Language services — completion, diagnostics, hover, signature, outline, incoming/outgoing calls, semantic fold regions, and IntelliSense docs fed by Zia declaration comments — are content-revision-gated to stay off the keystroke path; code actions cover Organize Binds, Suppress Warning, Apply Fix-It, Create Missing Bind, Trim Trailing Whitespace, and Format Document/Selection.
+- **The editor gains real build/run and language services.** Now a standalone top-level project, ViperIDE gained an argument-vector build/run loop with streamed, cancellable output and clickable diagnostics, persisted gutter breakpoints, file-tree project operations with previewed Zia bind rewrites on rename, Quick Open, and workspace symbols. Language services — completion, diagnostics, hover, signature, outline, incoming/outgoing calls, semantic fold regions, and IntelliSense docs fed by Zia declaration comments — are content-revision-gated to stay off the keystroke path; code actions cover Organize Binds, Suppress Warning, Apply Fix-It, Create Missing Bind, Trim Trailing Whitespace, and Format Document/Selection.
 - A native large-file performance pass keeps the editor responsive: O(1) no-wrap layout, dirty-line syntax caching, lazy project-index startup with oversized-source guards, cached `.gitignore` workspace walks, capped semantic workers, and revision-keyed snapshots move completion/diagnostics/indexing/search off typing — each guarded by typing/paint, scroll, selection-drag, fold-generation, and minimap wall-clock probes (`VIPERIDE_PERF_LOG`). New `Viper.GUI.CodeEditor.Revision` (a cursor/scroll-ignoring change probe) and `Viper.GUI.TreeView.GetNodeAt(x, y)` back the hot path and context menus.
 - Cooperative project search (literal/regex, case/whole-word, include/exclude filters), a categorized command palette that marks unsupported language-service commands unavailable with a reason, and tool panels with live build/run state, severity-coloured Problems rows, and surfaced suppression/fix-it actions. The Problems/Output/Search/References/Debug tabs remain lightweight list-backed surfaces, and the wired debug protocol is still a non-executing placeholder — not real debugging yet.
 
@@ -163,15 +173,15 @@ Counts via `scripts/count_sloc.sh` (production 619,961 / test 259,931 / demo 186
 - **Collections / codegen / bytecode VM** — class-ID distinctness and retain-on-return suites; cross-block SIB and IMUL→LEA fold-liveness cases, `AsmEmitter` operand-class diagnostics, move-folding/store-forwarding equivalence, and direct-bytecode wrapping/conversion/bounds regressions.
 - **Native linker** — `parseSize`, archive ordering, `CodeSection` identity, ELF symbol-size preservation, the COFF reloc addend convention, AArch64 reloc validators, weak-external `SEARCH_NOLIBRARY` paths, PE overflow guards, and large-fanout dead-strip.
 - **Process / Zia tooling / ViperIDE primitives** — boxed-arg streaming exec; ProjectIndex definition/reference/rename; focused CTests for workspace index/watcher, asset resolution, manifest parsing, transactional edits, fuzzy match, editable scene flows, scaled tilemap hit-testing, GUI automation, headless debug protocol, and ViperIDE editor hot-path/tool-panel probes.
-- **Zia alpha hardening** — interpreted, optimized-`viper run`, and native coverage for structured catch/finally, multi-typed catches, bare rethrow, namespace globals, constrained generics, `Result[T]`, weak fields, and function references.
+- **Zia language hardening** — interpreted, optimized-`viper run`, and native coverage for structured catch/finally, multi-typed catches, bare rethrow, namespace globals, constrained generics, `Result[T]`, weak fields, and function references.
 - **Graphics / GUI / crypto / packaging** — pixel raw-vs-Color APIs, stale-handle audits, SAN matching beyond the extraction cap, ZIP manifest duplicate/uncovered-entry rejection, and the non-elevated Windows user-installer smoke.
 
 ---
 
-Demos and docs tracked the runtime work: the 3D Bowling demo was overhauled into a playable arcade lane (stable roll/aim cameras, PBR lane and ball materials) alongside chess and Crackman polish; stale Windows debug/O0 build pins were dropped once optimized x86-64 builds were restored; the flat `src/runtime/graphics` tree was split into domain subdirectories (rename-only); ViperIDE moved out of the demo gallery into its own top-level project; and `docs/viperlib/` (including new `system.md`, `zia.md`, and `game/scene.md`) plus the Graphics3D and native-linker/native-assembler design docs were refreshed.
+Demos and docs tracked the runtime work: the 3D Bowling demo was overhauled into a playable arcade lane (stable roll/aim cameras, PBR lane and ball materials) and migrated onto the new Game3D layer, joined by a code-first Game3D sample set (a sub-20-line hello scene, a copyable starter project, and a full-stack showcase) alongside chess and Crackman polish; stale Windows debug/O0 build pins were dropped once optimized x86-64 builds were restored; the flat `src/runtime/graphics` tree was split into domain subdirectories (rename-only); ViperIDE moved out of the demo gallery into its own top-level project; and `docs/viperlib/` (including new `system.md`, `zia.md`, `game/scene.md`, and `graphics/game3d.md`) plus a Doxygen pass over the Game3D and Graphics3D runtime and the native-linker/native-assembler design docs were refreshed.
 
 ### Commits
 
-See `git log v0.2.5-dev..HEAD -- .` for the full 199-commit history since v0.2.5.
+See `git log v0.2.5-dev..HEAD -- .` for the full 213-commit history since v0.2.5.
 
 <!-- END DRAFT -->

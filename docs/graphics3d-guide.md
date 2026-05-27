@@ -192,6 +192,7 @@ The rendering surface. Creates a window and manages the render loop.
 | Method | Signature | Description |
 |--------|-----------|-------------|
 | `Clear(r, g, b)` | `void(f64, f64, f64)` | Clear framebuffer and depth buffer (0.0-1.0 per channel) |
+| `Resize(w, h)` | `void(i64, i64)` | Resize the canvas and active backend output targets |
 | `Begin(camera)` | `void(obj)` | Start 3D frame — must be called before DrawMesh |
 | `Begin2D()` | `void()` | Start 2D overlay mode for the active output (closed by `End()`) |
 | `BeginOverlay()` | `void()` | Start recording a final overlay pass composited after post-FX |
@@ -385,7 +386,7 @@ For a compact, executable example of this path, see
 software-backend frame, captures with `ScreenshotFinal()`, checks the crisp final
 overlay, and compares to the committed baseline in `examples/3d/baselines/`.
 
-**Important:** `Begin`/`End` and `BeginOverlay`/`EndOverlay` must not nest. All 3D draw calls go between `Begin` and `End`; `DrawTerrain` and `DrawVegetation` are rejected during `Begin2D`. Legacy HUD overlay calls (`DrawRect2D`, `DrawText2D`, `DrawCrosshair`) may still be called between `End` and `Flip`, but final overlays should be grouped with `BeginOverlay`/`EndOverlay`. `DrawMesh` and instanced draws require finite transform matrices; invalid matrices are rejected before they reach culling or backend submission. Draw submission clamps material colors and PBR scalars before narrowing to backend floats. Deferred heap `Mesh3D` draws retain the mesh object instead of copying static geometry every draw; do not mutate a submitted heap mesh until after `Canvas3D.End()`.
+**Important:** `Begin`/`End` and `BeginOverlay`/`EndOverlay` must not nest. All 3D draw calls go between `Begin` and `End`; `DrawTerrain` and `DrawVegetation` are rejected during `Begin2D`. Legacy HUD overlay calls (`DrawRect2D`, `DrawText2D`, `DrawCrosshair`) may still be called between `End` and `Flip`, but final overlays should be grouped with `BeginOverlay`/`EndOverlay`. `DrawMesh` and instanced draws require finite transform matrices; invalid matrices are rejected before they reach culling or backend submission. Draw submission clamps material colors and PBR scalars before narrowing to backend floats. Deferred static heap `Mesh3D` draws snapshot geometry when needed so submitted geometry remains stable through `Canvas3D.End()`; skinned and morphed mesh draws still retain their live mesh object because animation data must remain available for backend submission.
 
 ## Mesh3D
 

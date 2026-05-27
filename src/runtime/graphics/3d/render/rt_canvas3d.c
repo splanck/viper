@@ -334,41 +334,7 @@ static void canvas3d_clear_pending_splat(rt_canvas3d *c) {
     }
 }
 
-/// @brief Push the current frame's post-FX enable flag + snapshot to the backend.
-///
-/// Called by `latch_gpu_postfx_state` after capturing a snapshot.
-/// Backends that don't implement these hooks silently no-op.
-static void canvas3d_apply_gpu_postfx_state(rt_canvas3d *c) {
-    const vgfx3d_postfx_chain_t *chain = NULL;
-
-    if (!c || !c->backend)
-        return;
-    if (c->frame_gpu_postfx_enabled)
-        chain = &c->frame_postfx_chain;
-    if (c->backend->set_gpu_postfx_enabled)
-        c->backend->set_gpu_postfx_enabled(c->backend_ctx, c->frame_gpu_postfx_enabled);
-    if (c->backend->set_gpu_postfx_snapshot)
-        c->backend->set_gpu_postfx_snapshot(c->backend_ctx, chain);
-}
-
-/// @brief Capture the current post-FX state into a per-frame snapshot.
-///
-/// Snapshotting once per frame ensures the post-FX parameters used
-/// by the present-time composite match what was active at frame start
-/// (avoids tearing if the user toggles a post-FX setting mid-frame).
-/// Skips snapshot capture for RTT canvases or non-postfx backends.
-static void canvas3d_latch_gpu_postfx_state(rt_canvas3d *c) {
-    if (!c)
-        return;
-    vgfx3d_postfx_chain_reset(&c->frame_postfx_chain);
-    c->frame_gpu_postfx_enabled = 0;
-    c->frame_postfx_state_latched = 1;
-    if (canvas3d_backend_uses_gpu_postfx(c) &&
-        vgfx3d_postfx_get_chain(c->postfx, &c->frame_postfx_chain)) {
-        c->frame_gpu_postfx_enabled = 1;
-    }
-    canvas3d_apply_gpu_postfx_state(c);
-}
+#include "rt_canvas3d_frame_postfx.inc"
 
 /// @brief Apply a window-size change to the canvas + active backend.
 ///
@@ -384,6 +350,14 @@ static void rt_canvas3d_apply_resize(rt_canvas3d *c, int32_t w, int32_t h) {
     c->height = h;
     if (c->backend && c->backend->resize)
         c->backend->resize(c->backend_ctx, w, h);
+}
+
+/// @brief Public resize entry point mirroring window resize events.
+void rt_canvas3d_resize(void *obj, int64_t w, int64_t h) {
+    rt_canvas3d *c = rt_canvas3d_checked_or_stack(obj);
+    if (!c || w <= 0 || h <= 0 || w > INT32_MAX || h > INT32_MAX)
+        return;
+    rt_canvas3d_apply_resize(c, (int32_t)w, (int32_t)h);
 }
 
 /// @brief Resolve the dimensions of the canvas's active render output.
@@ -666,8 +640,14 @@ static int canvas3d_mesh_has_tangents(const rt_mesh3d *mesh) {
 static void canvas3d_ensure_normal_map_tangents(rt_mesh3d *mesh, const rt_material3d *mat) {
     if (!mesh || !mat || !mat->normal_map)
         return;
-    if (!canvas3d_mesh_has_tangents(mesh))
+    if (mesh->tangents_ready && mesh->tangent_revision == mesh->geometry_revision)
+        return;
+    if (!canvas3d_mesh_has_tangents(mesh)) {
         rt_mesh3d_calc_tangents(mesh);
+    } else {
+        mesh->tangents_ready = 1;
+        mesh->tangent_revision = mesh->geometry_revision;
+    }
 }
 
 /// @brief Translate every material field into the corresponding draw-command field.
@@ -1175,6 +1155,10 @@ static int canvas3d_track_final_overlay_temp_buffer(rt_canvas3d *c, void *buffer
 static int canvas3d_track_temp_object(rt_canvas3d *c, void *obj) {
     if (!c || !obj)
         return 0;
+    for (int32_t i = 0; i < c->temp_obj_count; ++i) {
+        if (c->temp_objects[i] == obj)
+            return 1;
+    }
     if (c->temp_obj_count >= c->temp_obj_capacity) {
         if (c->temp_obj_capacity > INT32_MAX / 2)
             return 0;
@@ -1241,17 +1225,16 @@ static int canvas3d_snapshot_mesh_geometry(rt_canvas3d *c,
 }
 
 /// @brief Decide whether to snapshot a mesh's geometry into canvas-owned buffers.
-/// @details Returns 0 for skinned/morphed meshes (they recompute every frame)
-///          and for retained heap meshes. Deferred draws retain the heap mesh
-///          and validate its geometry revision at flush, avoiding a per-draw
-///          vertex/index heap copy for static meshes.
+/// @details Returns 0 for skinned/morphed meshes (they recompute every frame).
+///          Static heap meshes snapshot their vertex/index buffers so a user
+///          mutation after enqueue cannot change submitted deferred geometry.
 static int canvas3d_should_snapshot_heap_geometry(const rt_mesh3d *mesh, void *mesh_obj) {
     if (!mesh || !mesh_obj || !rt_heap_is_payload(mesh_obj))
         return 0;
     if (mesh->bone_palette || mesh->morph_deltas || mesh->morph_weights ||
         mesh->morph_shape_count > 0)
         return 0;
-    return 0;
+    return 1;
 }
 
 /// @brief Free every tracked transient buffer (called at end of frame).
@@ -3569,50 +3552,53 @@ void rt_canvas3d_queue_instanced_batch(void *canvas_obj,
     }
 
     float *queued_prev_instance_matrices = NULL;
-    queued_prev_instance_matrices =
-        (float *)malloc(matrix_float_count * sizeof(*queued_prev_instance_matrices));
-    if (!queued_prev_instance_matrices) {
-        canvas3d_release_tracked_temp_buffer(c, queued_instance_matrices);
-        rt_trap("Canvas3D.DrawMeshInstanced: previous instance matrix allocation failed");
-        return;
-    }
-    if (has_prev_instance_matrices && prev_instance_matrices) {
-        memcpy(queued_prev_instance_matrices,
-               prev_instance_matrices,
-               matrix_float_count * sizeof(float));
-        for (int32_t i = 0; i < instance_count; ++i) {
-            float ignored_prev[16];
-            int8_t ignored_has_prev = 0;
-            canvas3d_resolve_previous_model(
-                c,
-                canvas3d_instance_motion_key(mesh_obj, material_obj, instance_matrices, instance_count, i),
-                &instance_matrices[(size_t)i * 16u],
-                ignored_prev,
-                &ignored_has_prev);
+    int needs_motion_vectors = canvas3d_frame_needs_motion_vectors(c);
+    if (needs_motion_vectors) {
+        queued_prev_instance_matrices =
+            (float *)malloc(matrix_float_count * sizeof(*queued_prev_instance_matrices));
+        if (!queued_prev_instance_matrices) {
+            canvas3d_release_tracked_temp_buffer(c, queued_instance_matrices);
+            rt_trap("Canvas3D.DrawMeshInstanced: previous instance matrix allocation failed");
+            return;
         }
-    } else {
-        for (int32_t i = 0; i < instance_count; ++i) {
-            int8_t has_prev = 0;
-            float *dst_prev = &queued_prev_instance_matrices[(size_t)i * 16u];
-            const float *current = &instance_matrices[(size_t)i * 16u];
+        if (has_prev_instance_matrices && prev_instance_matrices) {
+            memcpy(queued_prev_instance_matrices,
+                   prev_instance_matrices,
+                   matrix_float_count * sizeof(float));
+        }
+        if (!canvas3d_track_temp_buffer(c, queued_prev_instance_matrices)) {
+            canvas3d_release_tracked_temp_buffer(c, queued_instance_matrices);
+            free(queued_prev_instance_matrices);
+            return;
+        }
+    }
+    for (int32_t i = 0; i < instance_count; ++i) {
+        int8_t has_prev = 0;
+        float ignored_prev[16];
+        float *dst_prev = needs_motion_vectors ? &queued_prev_instance_matrices[(size_t)i * 16u]
+                                               : ignored_prev;
+        const float *current = &instance_matrices[(size_t)i * 16u];
+        if (needs_motion_vectors && has_prev_instance_matrices && prev_instance_matrices) {
             canvas3d_resolve_previous_model(
                 c,
                 canvas3d_instance_motion_key(mesh_obj, material_obj, instance_matrices, instance_count, i),
                 current,
-                dst_prev,
+                ignored_prev,
                 &has_prev);
-            if (!has_prev)
-                memcpy(dst_prev, current, 16u * sizeof(float));
+            continue;
         }
-    }
-    if (!canvas3d_track_temp_buffer(c, queued_prev_instance_matrices)) {
-        canvas3d_release_tracked_temp_buffer(c, queued_instance_matrices);
-        free(queued_prev_instance_matrices);
-        return;
+        canvas3d_resolve_previous_model(
+            c,
+            canvas3d_instance_motion_key(mesh_obj, material_obj, instance_matrices, instance_count, i),
+            current,
+            dst_prev,
+            &has_prev);
+        if (needs_motion_vectors && !has_prev)
+            memcpy(dst_prev, current, 16u * sizeof(float));
     }
 
     base_cmd.prev_instance_matrices = queued_prev_instance_matrices;
-    base_cmd.has_prev_instance_matrices = 1;
+    base_cmd.has_prev_instance_matrices = queued_prev_instance_matrices ? 1 : 0;
     if (!canvas3d_enqueue_draw(c,
                                &base_cmd,
                                DEFERRED_DRAW_INSTANCED,
@@ -3910,7 +3896,7 @@ void rt_canvas3d_finalize_frame(void *obj) {
     if (c->in_frame)
         rt_canvas3d_end(obj);
 
-    if (canvas3d_backend_uses_gpu_postfx(c)) {
+    if (canvas3d_backend_uses_gpu_postfx(c) && c->final_overlay_count <= 0) {
         if (c->frame_gpu_postfx_enabled) {
             canvas3d_replay_final_overlay(c);
             c->backend->present_postfx(c->backend_ctx, &c->frame_postfx_chain);

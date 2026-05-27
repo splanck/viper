@@ -40,6 +40,8 @@ extern "C" {
 
 /// @brief Create a new 3D canvas window with the given title and pixel dimensions.
 void *rt_canvas3d_new(rt_string title, int64_t w, int64_t h);
+/// @brief Resize the canvas and active backend output targets.
+void rt_canvas3d_resize(void *obj, int64_t w, int64_t h);
 /// @brief Clear the back buffer to the given RGB color (each channel 0.0–1.0).
 void rt_canvas3d_clear(void *obj, double r, double g, double b);
 /// @brief Begin a 3D draw pass with the given camera (must be paired with `_end`).

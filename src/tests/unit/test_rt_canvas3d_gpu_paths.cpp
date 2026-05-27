@@ -373,6 +373,25 @@ static void reset_canvas_frame(rt_canvas3d *canvas, int64_t frame_serial) {
     canvas->frame_is_2d = 0;
 }
 
+static void enable_latched_motion_blur(rt_canvas3d *canvas) {
+    if (!canvas)
+        return;
+    canvas->frame_gpu_postfx_enabled = 1;
+    canvas->frame_postfx_state_latched = 1;
+    vgfx3d_postfx_chain_free(&canvas->frame_postfx_chain);
+    std::memset(&canvas->frame_postfx_chain, 0, sizeof(canvas->frame_postfx_chain));
+    canvas->frame_postfx_chain.effects =
+        (vgfx3d_postfx_effect_desc_t *)std::calloc(1, sizeof(vgfx3d_postfx_effect_desc_t));
+    if (!canvas->frame_postfx_chain.effects)
+        return;
+    canvas->frame_postfx_chain.enabled = 1;
+    canvas->frame_postfx_chain.effect_count = 1;
+    canvas->frame_postfx_chain.effect_capacity = 1;
+    canvas->frame_postfx_chain.effects[0].type = VGFX3D_POSTFX_EFFECT_MOTION_BLUR;
+    canvas->frame_postfx_chain.effects[0].snapshot.enabled = 1;
+    canvas->frame_postfx_chain.effects[0].snapshot.motion_blur_enabled = 1;
+}
+
 static void *make_test_mesh(void) {
     void *mesh = rt_mesh3d_new();
     rt_mesh3d_add_vertex(mesh, 0.0, 0.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0);
@@ -1053,10 +1072,15 @@ static void test_static_mesh_geometry_identity_forwarded(void) {
                 "Static mesh draw forwards a stable geometry identity for backend caches");
     EXPECT_TRUE(draws[0].cmd.geometry_revision == mesh_view->geometry_revision,
                 "Static mesh draw forwards the current geometry revision");
-    EXPECT_TRUE(draws[0].cmd.vertices == mesh_view->vertices,
-                "Static mesh draw reuses retained heap vertex data for deferred submission");
-    EXPECT_TRUE(draws[0].cmd.indices == mesh_view->indices,
-                "Static mesh draw reuses retained heap index data for deferred submission");
+    EXPECT_TRUE(draws[0].cmd.vertices != mesh_view->vertices,
+                "Static heap mesh draw snapshots vertex data for deferred submission");
+    EXPECT_TRUE(draws[0].cmd.indices != mesh_view->indices,
+                "Static heap mesh draw snapshots index data for deferred submission");
+    EXPECT_TRUE(draws[0].cmd.vertices[1].pos[0] == mesh_view->vertices[1].pos[0] &&
+                    draws[0].cmd.indices[2] == mesh_view->indices[2],
+                "Static heap mesh geometry snapshot preserves submitted contents");
+    EXPECT_TRUE(canvas.temp_buf_count == 2,
+                "Static heap mesh geometry snapshot is owned by frame temp buffers");
 
     cleanup_fake_canvas(&canvas);
 }
@@ -1219,6 +1243,7 @@ static void test_instanced_transform_history_forwarded(void) {
 
     rt_canvas3d canvas;
     init_fake_canvas(&canvas, &backend);
+    enable_latched_motion_blur(&canvas);
     reset_recorded_instancing();
 
     void *mesh = make_test_mesh();
@@ -1270,6 +1295,7 @@ static void test_instanced_transform_history_survives_count_changes(void) {
 
     rt_canvas3d canvas;
     init_fake_canvas(&canvas, &backend);
+    enable_latched_motion_blur(&canvas);
     reset_recorded_instancing();
 
     void *mesh = make_test_mesh();
@@ -1318,6 +1344,7 @@ static void test_deferred_instanced_draw_snapshots_instance_buffers(void) {
 
     rt_canvas3d canvas;
     init_fake_canvas(&canvas, &backend);
+    enable_latched_motion_blur(&canvas);
     reset_recorded_instancing();
 
     void *mesh = make_test_mesh();
@@ -1351,6 +1378,36 @@ static void test_deferred_instanced_draw_snapshots_instance_buffers(void) {
     cleanup_fake_canvas(&canvas);
 }
 
+static void test_instanced_transform_history_skips_payload_without_motion_blur(void) {
+    vgfx3d_backend_t backend = {};
+    backend.name = "opengl";
+    backend.end_frame = noop_end_frame;
+    backend.submit_draw_instanced = record_draw_instanced;
+
+    rt_canvas3d canvas;
+    init_fake_canvas(&canvas, &backend);
+    reset_recorded_instancing();
+
+    void *mesh = make_test_mesh();
+    void *material = rt_material3d_new();
+    void *batch = rt_instbatch3d_new(mesh, material);
+    void *t0 = rt_mat4_identity();
+    rt_instbatch3d_add(batch, t0);
+
+    reset_canvas_frame(&canvas, 1);
+    rt_canvas3d_draw_instanced(&canvas, batch);
+    rt_canvas3d_end(&canvas);
+
+    EXPECT_TRUE(last_instance_count == 1,
+                "Instanced draw still submits instances when motion blur is disabled");
+    EXPECT_TRUE(last_instanced_cmd.has_prev_instance_matrices == 0,
+                "Instanced draw skips previous-transform payloads without motion blur");
+    EXPECT_TRUE(last_instanced_cmd.prev_instance_matrices == nullptr,
+                "Instanced draw avoids allocating previous-transform buffers without motion blur");
+
+    cleanup_fake_canvas(&canvas);
+}
+
 static void test_instanced_material_payload_forwarded(void) {
     vgfx3d_backend_t backend = {};
     backend.name = "metal";
@@ -1359,6 +1416,7 @@ static void test_instanced_material_payload_forwarded(void) {
 
     rt_canvas3d canvas;
     init_fake_canvas(&canvas, &backend);
+    enable_latched_motion_blur(&canvas);
     reset_recorded_instancing();
 
     void *mesh = make_test_mesh();
@@ -1505,6 +1563,7 @@ static void test_instanced_runtime_culls_outside_frustum(void) {
 
     rt_canvas3d canvas;
     init_fake_canvas(&canvas, &backend);
+    enable_latched_motion_blur(&canvas);
     reset_recorded_instancing();
 
     void *mesh = make_test_mesh();
@@ -1988,7 +2047,7 @@ static void test_final_overlay_replays_after_finalize(void) {
     cleanup_fake_canvas(&canvas);
 }
 
-static void test_gpu_postfx_final_overlay_replays_before_present(void) {
+static void test_gpu_postfx_final_overlay_uses_postfx_safe_finalization(void) {
     vgfx3d_backend_t backend = {};
     backend.name = "testgpu";
     backend.begin_frame = record_begin_frame;
@@ -2012,10 +2071,11 @@ static void test_gpu_postfx_final_overlay_replays_before_present(void) {
     rt_canvas3d_finalize_frame(&canvas);
 
     EXPECT_TRUE(final_submit_draw_calls == 1,
-                "GPU postfx finalize replays final overlay before presentation");
-    EXPECT_TRUE(final_present_postfx_calls == 1, "GPU postfx finalize presents once");
-    EXPECT_TRUE(final_present_postfx_saw_submit_count == 1,
-                "GPU postfx present sees final overlay already submitted");
+                "GPU postfx finalize replays final overlay during finalization");
+    EXPECT_TRUE(final_present_postfx_calls == 0,
+                "GPU postfx final overlays bypass present_postfx so overlays stay after post-FX");
+    EXPECT_TRUE(canvas.frame_presented_by_finalize == 0,
+                "Final-overlay GPU postfx frames remain presentable by the normal Flip path");
     EXPECT_TRUE(rt_canvas3d_get_frame_finalized(&canvas) == 1,
                 "GPU postfx finalize marks the frame finalized");
     cleanup_fake_canvas(&canvas);
@@ -2331,6 +2391,7 @@ int main() {
     test_instanced_transform_history_forwarded();
     test_instanced_transform_history_survives_count_changes();
     test_deferred_instanced_draw_snapshots_instance_buffers();
+    test_instanced_transform_history_skips_payload_without_motion_blur();
     test_instanced_material_payload_forwarded();
     test_pbr_material_payload_forwarded();
     test_instanced_runtime_culls_outside_frustum();
@@ -2344,7 +2405,7 @@ int main() {
     test_disabled_lights_are_not_submitted();
     test_screenshot_prefers_backend_readback();
     test_final_overlay_replays_after_finalize();
-    test_gpu_postfx_final_overlay_replays_before_present();
+    test_gpu_postfx_final_overlay_uses_postfx_safe_finalization();
     test_screenshot_final_finalizes_before_readback();
     test_gpu_postfx_state_latches_across_overlay_pass();
     test_begin_frame_forwards_camera_forward_and_ortho_flag();

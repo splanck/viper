@@ -252,9 +252,10 @@ static bool test_input_axes() {
     EXPECT_NEAR(rt_game3d_input_wheel_y(input), 1.25, 0.0001, "wheelY is delegated");
 
     void *move = rt_game3d_input_move_axis(input);
+    const double inv_sqrt2 = 0.7071067811865475;
     EXPECT_NEAR(rt_vec3_x(move), 0.0, 0.0001, "move axis x");
-    EXPECT_NEAR(rt_vec3_y(move), 1.0, 0.0001, "move axis y");
-    EXPECT_NEAR(rt_vec3_z(move), 1.0, 0.0001, "move axis z");
+    EXPECT_NEAR(rt_vec3_y(move), inv_sqrt2, 0.0001, "move axis y is normalized");
+    EXPECT_NEAR(rt_vec3_z(move), inv_sqrt2, 0.0001, "move axis z is normalized");
 
     void *look = rt_game3d_input_look_axis(input);
     EXPECT_NEAR(rt_vec2_x(look), 0.60, 0.0001, "look axis x scales mouse delta");
@@ -359,6 +360,24 @@ static bool test_world_entity_registry_and_collision_clear() {
                 "findNode sees child scene node");
     EXPECT_TRUE(rt_game3d_world_find_entity(world, rt_const_cstr("Player")) == parent,
                 "findEntity returns registered entity");
+    rt_game3d_entity_set_name(parent, rt_const_cstr("Hero"));
+    EXPECT_TRUE(rt_game3d_world_find_entity(world, rt_const_cstr("Hero")) == parent,
+                "findEntity index updates after rename");
+    EXPECT_TRUE(rt_game3d_world_find_entity(world, rt_const_cstr("Player")) == nullptr,
+                "findEntity index drops old names after rename");
+    rt_game3d_world_on_resize(world, 96, 72);
+    EXPECT_EQ_INT(rt_canvas3d_get_width(rt_game3d_world_get_canvas(world)),
+                  96,
+                  "World3D.onResize resizes the canvas width");
+    EXPECT_EQ_INT(rt_canvas3d_get_height(rt_game3d_world_get_canvas(world)),
+                  72,
+                  "World3D.onResize resizes the canvas height");
+    EXPECT_TRUE(expect_trap_contains([&] { rt_game3d_world_add_light(world, 0, parent); },
+                                     "Light3D"),
+                "World3D.addLight rejects non-Light3D handles");
+    EXPECT_TRUE(expect_trap_contains([&] { rt_game3d_world_set_skybox(world, parent); },
+                                     "CubeMap3D"),
+                "World3D.setSkybox rejects non-CubeMap3D handles");
     EXPECT_EQ_INT(rt_scene3d_get_node_count(rt_game3d_world_get_scene(world)),
                   4,
                   "scene contains root, parent, child, and wall");
@@ -508,6 +527,10 @@ static bool test_orbit_and_follow_controllers() {
     void *entity = rt_game3d_entity_new();
     rt_game3d_entity_set_position(entity, 4.0, 0.5, -2.0);
     rt_game3d_world_spawn(world, entity);
+    rt_game3d_orbit_controller_set_target(orbit, entity);
+    EXPECT_TRUE(rt_game3d_orbit_controller_get_target(orbit) == entity,
+                "orbit target can be an Entity3D");
+    rt_game3d_orbit_controller_late_update(orbit, world, 0.0);
     void *offset = rt_vec3_new(0.0, 2.0, 5.0);
     void *follow = rt_game3d_follow_controller_new(world, entity, offset);
     rt_game3d_follow_controller_set_damping(follow, 0.0);

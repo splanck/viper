@@ -3424,6 +3424,18 @@ static int world3d_process_collision_pair(rt_world3d *w, rt_body3d *a, rt_body3d
     return 1;
 }
 
+static int world3d_pair_can_collide_cheap(const rt_body3d *a, const rt_body3d *b) {
+    if (!a || !b || a == b)
+        return 0;
+    if (a->motion_mode != PH3D_MODE_DYNAMIC && b->motion_mode != PH3D_MODE_DYNAMIC)
+        return 0;
+    if (!(a->collision_layer & b->collision_mask))
+        return 0;
+    if (!(b->collision_layer & a->collision_mask))
+        return 0;
+    return 1;
+}
+
 /// @brief Run the full broad-phase + narrow-phase collision pass for one world step.
 /// @details Clears the contact list from the previous step, then:
 ///   1. Attempts to allocate a broadphase_entries scratch array for sweep-and-prune.
@@ -3445,6 +3457,8 @@ static int world3d_detect_and_resolve_contacts(rt_world3d *w) {
     if (!world3d_reserve_broadphase_capacity(w, w->body_count)) {
         for (int32_t i = 0; i < w->body_count; i++) {
             for (int32_t j = i + 1; j < w->body_count; j++) {
+                if (!world3d_pair_can_collide_cheap(w->bodies[i], w->bodies[j]))
+                    continue;
                 if (!world3d_process_collision_pair(w, w->bodies[i], w->bodies[j]))
                     return 0;
             }
@@ -3472,6 +3486,8 @@ static int world3d_detect_and_resolve_contacts(rt_world3d *w) {
                                      entries[i].max,
                                      entries[j].min,
                                      entries[j].max))
+                continue;
+            if (!world3d_pair_can_collide_cheap(entries[i].body, entries[j].body))
                 continue;
             if (!world3d_process_collision_pair(w, entries[i].body, entries[j].body)) {
                 return 0;

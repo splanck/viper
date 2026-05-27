@@ -82,6 +82,8 @@ typedef struct {
     void *skeleton_ref;         /* attached Skeleton3D (or NULL) */
     void *morph_targets_ref;    /* attached MorphTarget3D (or NULL) */
     uint32_t geometry_revision; /* increments when CPU geometry changes */
+    uint32_t tangent_revision;  /* geometry_revision for cached tangent readiness */
+    int8_t tangents_ready;      /* true once tangent presence/generation was resolved */
 } rt_mesh3d;
 
 /// @brief Zero a mesh's cached AABB/bounding-sphere and clear the dirty flag.
@@ -110,6 +112,8 @@ static inline void rt_mesh3d_touch_geometry(rt_mesh3d *mesh) {
         mesh->geometry_revision = 1;
     else
         mesh->geometry_revision++;
+    mesh->tangents_ready = 0;
+    mesh->tangent_revision = 0;
 }
 
 /// @brief Recompute a mesh's AABB/bounding sphere if marked dirty.

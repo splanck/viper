@@ -1108,8 +1108,8 @@ static int gltf_component_size(int comp_type) {
 
 /// @brief Return the number of components for a glTF accessor `"type"` string.
 /// @details Maps the glTF type name to its component count: "SCALAR"=1, "VEC2"=2, "VEC3"=3,
-///   "VEC4"=4, "MAT4"=16. Unrecognised strings (including "MAT2"/"MAT3") return 1 as a safe
-///   fallback — callers that depend on a correct count for MAT2/MAT3 would need to extend this.
+///   "VEC4"=4, "MAT2"=4, "MAT3"=9, "MAT4"=16. Unrecognised strings return 1 as a safe
+///   fallback for optional data this loader does not consume.
 static int gltf_component_count(const char *acc_type) {
     if (!acc_type)
         return 1;
@@ -1119,6 +1119,10 @@ static int gltf_component_count(const char *acc_type) {
         return 3;
     if (strcmp(acc_type, "VEC4") == 0)
         return 4;
+    if (strcmp(acc_type, "MAT2") == 0)
+        return 4;
+    if (strcmp(acc_type, "MAT3") == 0)
+        return 9;
     if (strcmp(acc_type, "MAT4") == 0)
         return 16;
     return 1;

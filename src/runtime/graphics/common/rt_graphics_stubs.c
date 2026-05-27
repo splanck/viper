@@ -2078,6 +2078,20 @@ void rt_canvas3d_clear(void *o, double r, double g, double b) {
     (void)b;
 }
 
+/// @brief Stub for `Canvas3D.Resize` — would normally resize the canvas
+///        and its active backend output targets to the new dimensions.
+///
+/// Silent no-op stub.
+///
+/// @param o Canvas3D handle (ignored).
+/// @param w New width in pixels (ignored).
+/// @param h New height in pixels (ignored).
+void rt_canvas3d_resize(void *o, int64_t w, int64_t h) {
+    (void)o;
+    (void)w;
+    (void)h;
+}
+
 /// @brief Stub for `Canvas3D.Begin` — would normally start a 3D render
 ///        pass with the given Camera3D and prepare per-frame uniforms.
 ///

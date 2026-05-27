@@ -33,6 +33,7 @@ frame and does not run post-processing. Finalization is the step that applies
 | `BeginOverlay()` | `Void()` | Start recording a final 2D overlay pass |
 | `EndOverlay()` | `Void()` | Finish final overlay recording |
 | `ClearOverlay()` | `Void()` | Discard the current frame's recorded final overlay |
+| `Resize(w, h)` | `Void(Integer, Integer)` | Resize the canvas and active backend output targets |
 | `FinalizeFrame()` | `Void()` | Apply post-FX and final overlay once, without presenting |
 | `ScreenshotFinal()` | `Object()` | Finalize if needed, then capture finalized pixels |
 | `FrameFinalized` | `Boolean` | True once the current frame has been finalized |
@@ -1041,5 +1042,5 @@ Texture atlas for 3D rendering with named-region management.
 - `AnimController3D.PollEvent` returns events one at a time per call; poll it in a loop until an empty string is returned if multiple events fire in one update.
 - `NavMesh3D` is rebuilt by `NavMesh3D.Build`; the mesh is not dynamic. Rebuild when geometry changes, and keep baked meshes manifold at shared edges.
 - `Particles3D.Draw` should be called inside the `Canvas3D.Begin`/`End` scene pass after opaque geometry when you want particles over the main scene.
-- Deferred heap `Mesh3D` draws retain the mesh object instead of copying static geometry each draw; avoid mutating a submitted heap mesh until after `Canvas3D.End()`.
+- Deferred static heap `Mesh3D` draws snapshot geometry when needed so submitted geometry remains stable through `Canvas3D.End()`; skinned and morphed draws retain the live mesh because animation data is resolved at backend submission time.
 - `Sound3D.SyncBindings` must be called once per frame after physics/animation updates so bound sources and listeners track their nodes.

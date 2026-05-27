@@ -85,6 +85,9 @@
 #elif defined(__APPLE__)
 #include <mach/mach.h>
 #include <mach/mach_vm.h>
+#include <pthread.h>
+#else
+#include <pthread.h>
 #endif
 
 // Default tuning constants applied when callers omit a value or pass a
@@ -95,7 +98,7 @@
 #define RT_GAME3D_DEFAULT_DT (1.0 / 60.0)        ///< Fallback frame delta when timing is invalid.
 #define RT_GAME3D_MAX_DT 0.25                    ///< Per-frame delta cap (smooths post-stall spikes).
 #define RT_GAME3D_DEFAULT_MOVE_SPEED 6.0         ///< Default controller move speed (units/sec).
-#define RT_GAME3D_DEFAULT_LOOK_SENSITIVITY 0.01  ///< Default mouse-look radians per pixel.
+#define RT_GAME3D_DEFAULT_LOOK_SENSITIVITY 0.01  ///< Default mouse-look degrees per pixel.
 #define RT_GAME3D_DEFAULT_JUMP_SPEED 5.5         ///< Default jump launch speed (units/sec).
 #define RT_GAME3D_DEFAULT_GRAVITY -20.0          ///< Default character gravity (units/sec²).
 #define RT_GAME3D_DEFAULT_FOLLOW_DAMPING 12.0    ///< Default follow-camera smoothing factor.
@@ -104,6 +107,7 @@
 #define RT_GAME3D_DEFAULT_AUDIO_VOLUME 100       ///< Default master audio volume (0–100).
 #define RT_GAME3D_PI 3.14159265358979323846      ///< Pi (avoids relying on non-portable M_PI).
 #define RT_GAME3D_ANIM_EVENT_MAX 64              ///< Max animation events buffered per update.
+#define RT_GAME3D_MAX_FIXED_STEPS_PER_FRAME 8    ///< Fixed-loop spiral-of-death guard.
 
 /// @brief Internal effect-item discriminator stored in rt_game3d_effect_item.type.
 enum {
@@ -336,6 +340,14 @@ typedef struct rt_game3d_world {
     rt_game3d_entity **entities;
     int32_t entity_count;
     int32_t entity_capacity;
+    void **body_index_bodies;
+    rt_game3d_entity **body_index_entities;
+    int32_t body_index_count;
+    int32_t body_index_capacity;
+    uint64_t *name_index_hashes;
+    rt_game3d_entity **name_index_entities;
+    int32_t name_index_count;
+    int32_t name_index_capacity;
     int64_t next_entity_id;
     double dt;
     double elapsed;
@@ -355,6 +367,10 @@ typedef struct rt_game3d_world {
     int8_t destroyed;
 } rt_game3d_world;
 
+static void game3d_world_body_index_remove(rt_game3d_world *world, void *body);
+static int game3d_world_body_index_add(rt_game3d_world *world, rt_game3d_entity *entity);
+static void game3d_world_rebuild_name_index(rt_game3d_world *world);
+
 /// @brief Per-frame update callback signature: receives the frame delta in seconds.
 typedef void (*rt_game3d_update_fn)(double dt);
 /// @brief 2D overlay callback signature: invoked once per frame to draw HUD/UI.
@@ -364,6 +380,33 @@ typedef void (*rt_game3d_overlay_fn)(void);
 static rt_game3d_model_cache_entry *g_game3d_model_cache = NULL;
 static int32_t g_game3d_model_cache_count = 0;
 static int32_t g_game3d_model_cache_capacity = 0;
+
+#if defined(_WIN32)
+static INIT_ONCE g_game3d_model_cache_once = INIT_ONCE_STATIC_INIT;
+static CRITICAL_SECTION g_game3d_model_cache_lock;
+static BOOL CALLBACK game3d_model_cache_init_once(PINIT_ONCE once, PVOID parameter, PVOID *context) {
+    (void)once;
+    (void)parameter;
+    (void)context;
+    InitializeCriticalSection(&g_game3d_model_cache_lock);
+    return TRUE;
+}
+static void game3d_model_cache_lock(void) {
+    InitOnceExecuteOnce(&g_game3d_model_cache_once, game3d_model_cache_init_once, NULL, NULL);
+    EnterCriticalSection(&g_game3d_model_cache_lock);
+}
+static void game3d_model_cache_unlock(void) {
+    LeaveCriticalSection(&g_game3d_model_cache_lock);
+}
+#else
+static pthread_mutex_t g_game3d_model_cache_lock = PTHREAD_MUTEX_INITIALIZER;
+static void game3d_model_cache_lock(void) {
+    pthread_mutex_lock(&g_game3d_model_cache_lock);
+}
+static void game3d_model_cache_unlock(void) {
+    pthread_mutex_unlock(&g_game3d_model_cache_lock);
+}
+#endif
 
 /// @brief True if `callback` looks like a genuine native code pointer (not a GC
 ///   heap payload or tagged value), so it is safe to call as a frontend function.
@@ -497,6 +540,25 @@ static double game3d_clamp_dt(double dt) {
 static double game3d_nonnegative_or(double value, double fallback) {
     value = game3d_finite_or(value, fallback);
     return value < 0.0 ? fallback : value;
+}
+
+/// @brief Normalize a 3D input axis so combined directions do not move faster.
+static void game3d_normalize_axis3(double *x, double *y, double *z) {
+    double vx = game3d_finite_or(x ? *x : 0.0, 0.0);
+    double vy = game3d_finite_or(y ? *y : 0.0, 0.0);
+    double vz = game3d_finite_or(z ? *z : 0.0, 0.0);
+    double len = sqrt(vx * vx + vy * vy + vz * vz);
+    if (isfinite(len) && len > 1.0) {
+        vx /= len;
+        vy /= len;
+        vz /= len;
+    }
+    if (x)
+        *x = vx;
+    if (y)
+        *y = vy;
+    if (z)
+        *z = vz;
 }
 
 /// @brief Clamp `value` into [lo, hi]; non-finite input falls back to `lo`.
@@ -1517,6 +1579,7 @@ void *rt_game3d_input_move_axis(void *obj) {
     if (game3d_input_key_down(input, rt_keyboard_key_shift()) ||
         game3d_input_key_down(input, rt_keyboard_key_ctrl()))
         y -= 1.0;
+    game3d_normalize_axis3(&x, &y, &z);
     return rt_vec3_new(x, y, z);
 }
 
@@ -1912,6 +1975,8 @@ void *rt_game3d_entity_set_name(void *obj, rt_string name) {
         game3d_assign_ref((void **)&entity->name, name);
         if (entity->node)
             rt_scene_node3d_set_name(entity->node, name);
+        if (entity->spawned && entity->world)
+            game3d_world_rebuild_name_index((rt_game3d_world *)entity->world);
     }
     return obj;
 }
@@ -1966,8 +2031,10 @@ void *rt_game3d_entity_attach_body(void *obj, void *body_or_def) {
     }
     if (entity) {
         rt_game3d_world *world = (rt_game3d_world *)entity->world;
-        if (entity->body && entity->body != body && entity->spawned && world && world->physics)
+        if (entity->body && entity->body != body && entity->spawned && world && world->physics) {
             rt_world3d_remove(world->physics, entity->body);
+            game3d_world_body_index_remove(world, entity->body);
+        }
         if (def && def->has_layer)
             entity->layer = def->layer;
         if (def && def->has_mask)
@@ -1988,8 +2055,11 @@ void *rt_game3d_entity_attach_body(void *obj, void *body_or_def) {
                     rt_scene_node3d_set_sync_mode(entity->node, def->sync_mode);
                 rt_scene_node3d_bind_body(entity->node, body);
             }
-            if (entity->spawned && world && world->physics)
+            if (entity->spawned && world && world->physics) {
                 rt_world3d_add(world->physics, body);
+                if (!game3d_world_body_index_add(world, entity))
+                    rt_trap("Game3D.Entity3D.attachBody: body index allocation failed");
+            }
         } else if (entity->node) {
             rt_scene_node3d_clear_body_binding(entity->node);
         }
@@ -3279,16 +3349,31 @@ static rt_game3d_model_template *game3d_assets_load_template_uncached(
 ///   it on a miss; returns a retained template. Traps on load or cache-grow failure.
 static rt_game3d_model_template *game3d_assets_load_template_cached(
     rt_string path, int8_t asset_path, const char *method) {
+    rt_game3d_model_template *model_template;
+    game3d_model_cache_lock();
     rt_game3d_model_template *cached = game3d_model_cache_find(path, asset_path);
     if (cached) {
         rt_obj_retain_maybe(cached);
+        game3d_model_cache_unlock();
         return cached;
     }
-    rt_game3d_model_template *model_template =
-        game3d_assets_load_template_uncached(path, asset_path, method);
+    game3d_model_cache_unlock();
+
+    model_template = game3d_assets_load_template_uncached(path, asset_path, method);
     if (!model_template)
         return NULL;
+
+    game3d_model_cache_lock();
+    cached = game3d_model_cache_find(path, asset_path);
+    if (cached) {
+        rt_obj_retain_maybe(cached);
+        game3d_model_cache_unlock();
+        if (rt_obj_release_check0(model_template))
+            rt_obj_free(model_template);
+        return cached;
+    }
     if (!game3d_model_cache_grow(g_game3d_model_cache_count + 1)) {
+        game3d_model_cache_unlock();
         if (rt_obj_release_check0(model_template))
             rt_obj_free(model_template);
         rt_trap("Game3D.Assets3D: model cache allocation failed");
@@ -3298,6 +3383,7 @@ static rt_game3d_model_template *game3d_assets_load_template_cached(
     game3d_assign_ref((void **)&entry->path, path ? path : rt_const_cstr(""));
     entry->asset_path = asset_path ? 1 : 0;
     game3d_assign_ref(&entry->model_template, model_template);
+    game3d_model_cache_unlock();
     return model_template;
 }
 
@@ -3394,11 +3480,13 @@ void rt_game3d_assets_preload(rt_string path) {
 
 /// @brief Release every cached model template and reset the cache count. See header.
 void rt_game3d_assets_clear_cache(void) {
+    game3d_model_cache_lock();
     for (int32_t i = 0; i < g_game3d_model_cache_count; ++i) {
         game3d_release_ref((void **)&g_game3d_model_cache[i].path);
         game3d_release_ref(&g_game3d_model_cache[i].model_template);
     }
     g_game3d_model_cache_count = 0;
+    game3d_model_cache_unlock();
 }
 
 /// @brief GC finalizer for an EnvHandle: release its water, terrain, and world refs.
@@ -4119,8 +4207,9 @@ static void game3d_orbit_controller_finalize(void *obj) {
 void *rt_game3d_orbit_controller_new(void *world_obj, void *target) {
     rt_game3d_world *world =
         game3d_world_checked(world_obj, "Game3D.OrbitController.New: invalid world");
-    if (!rt_g3d_is_vec3(target))
-        rt_trap("Game3D.OrbitController.New: target must be Vec3");
+    if (!rt_g3d_is_vec3(target) &&
+        !rt_g3d_has_class(target, RT_G3D_GAME3D_ENTITY_CLASS_ID))
+        rt_trap("Game3D.OrbitController.New: target must be Vec3 or Entity3D");
     if (!world)
         return NULL;
     rt_game3d_orbit_controller *controller =
@@ -4150,12 +4239,13 @@ void *rt_game3d_orbit_controller_get_target(void *obj) {
     return controller ? controller->target : NULL;
 }
 
-/// @brief Set the orbit target; traps on a non-Vec3.
+/// @brief Set the orbit target; traps on a non-Vec3/non-Entity3D.
 void rt_game3d_orbit_controller_set_target(void *obj, void *target) {
     rt_game3d_orbit_controller *controller =
         game3d_orbit_controller_checked(obj, "Game3D.OrbitController.set_target: invalid controller");
-    if (!rt_g3d_is_vec3(target))
-        rt_trap("Game3D.OrbitController.set_target: target must be Vec3");
+    if (!rt_g3d_is_vec3(target) &&
+        !rt_g3d_has_class(target, RT_G3D_GAME3D_ENTITY_CLASS_ID))
+        rt_trap("Game3D.OrbitController.set_target: target must be Vec3 or Entity3D");
     if (controller)
         game3d_assign_ref(&controller->target, target);
 }
@@ -4235,9 +4325,19 @@ void rt_game3d_orbit_controller_late_update(void *obj, void *world_obj, double d
         game3d_orbit_controller_checked(obj, "Game3D.OrbitController.lateUpdate: invalid controller");
     rt_game3d_world *world =
         game3d_world_checked(world_obj, "Game3D.OrbitController.lateUpdate: invalid world");
-    if (controller && world && world->camera && controller->target)
-        rt_camera3d_orbit(
-            world->camera, controller->target, controller->distance, controller->yaw, controller->pitch);
+    if (controller && world && world->camera && controller->target) {
+        void *target_pos = controller->target;
+        int release_target = 0;
+        if (rt_g3d_has_class(controller->target, RT_G3D_GAME3D_ENTITY_CLASS_ID)) {
+            target_pos = rt_game3d_entity_world_position(controller->target);
+            release_target = 1;
+        }
+        if (rt_g3d_is_vec3(target_pos))
+            rt_camera3d_orbit(
+                world->camera, target_pos, controller->distance, controller->yaw, controller->pitch);
+        if (release_target)
+            game3d_release_ref(&target_pos);
+    }
 }
 
 /// @brief GC finalizer for the follow controller: release its target and offset.
@@ -4344,8 +4444,10 @@ void rt_game3d_follow_controller_late_update(void *obj, void *world_obj, double 
     dt = game3d_clamp_dt(dt);
     void *target_pos = rt_game3d_entity_world_position(controller->target_entity);
     void *current = rt_camera3d_get_position(world->camera);
-    if (!target_pos)
+    if (!target_pos) {
+        game3d_release_ref(&current);
         return;
+    }
     double target_x = rt_vec3_x(target_pos) + rt_vec3_x(controller->offset);
     double target_y = rt_vec3_y(target_pos) + rt_vec3_y(controller->offset);
     double target_z = rt_vec3_z(target_pos) + rt_vec3_z(controller->offset);
@@ -4455,15 +4557,16 @@ static int32_t game3d_world_find_entity_index(rt_game3d_world *world, rt_game3d_
     return -1;
 }
 
+#include "rt_game3d_indices.inc"
+
 /// @brief Find the spawned entity whose physics body is `body`; NULL if none. Used to
 ///   map collision events back to entities.
 static rt_game3d_entity *game3d_world_find_entity_by_body(rt_game3d_world *world, void *body) {
     if (!world || !body)
         return NULL;
-    for (int32_t i = 0; i < world->entity_count; ++i) {
-        rt_game3d_entity *entity = world->entities[i];
-        if (entity && entity->body == body)
-            return entity;
+    for (int32_t i = 0; i < world->body_index_count; ++i) {
+        if (world->body_index_bodies[i] == body)
+            return world->body_index_entities[i];
     }
     return NULL;
 }
@@ -4474,11 +4577,14 @@ static void game3d_world_registry_remove(rt_game3d_world *world, rt_game3d_entit
     int32_t index = game3d_world_find_entity_index(world, entity);
     if (index < 0)
         return;
+    if (entity && entity->body)
+        game3d_world_body_index_remove(world, entity->body);
     rt_game3d_entity *owned = world->entities[index];
     for (int32_t i = index; i < world->entity_count - 1; ++i)
         world->entities[i] = world->entities[i + 1];
     world->entities[--world->entity_count] = NULL;
     game3d_release_ref((void **)&owned);
+    game3d_world_rebuild_name_index(world);
 }
 
 /// @brief Detach an entity's node from its parent, or from the scene root if it has no
@@ -4501,8 +4607,10 @@ static void game3d_world_despawn_entity_tree(rt_game3d_world *world, rt_game3d_e
         return;
     for (int32_t i = 0; i < entity->child_count; ++i)
         game3d_world_despawn_entity_tree(world, entity->children[i], 0);
-    if (entity->body && world->physics)
+    if (entity->body && world->physics) {
         rt_world3d_remove(world->physics, entity->body);
+        game3d_world_body_index_remove(world, entity->body);
+    }
     if (detach_root)
         game3d_entity_detach_node(world, entity);
     entity->spawned = 0;
@@ -4537,6 +4645,7 @@ static void game3d_world_spawn_entity_tree(rt_game3d_world *world,
     entity->world = world;
     rt_obj_retain_maybe(entity);
     world->entities[world->entity_count++] = entity;
+    game3d_world_rebuild_name_index(world);
 
     if (attach_to_scene && world->scene && entity->node)
         rt_scene3d_add(world->scene, entity->node);
@@ -4546,6 +4655,10 @@ static void game3d_world_spawn_entity_tree(rt_game3d_world *world,
         if (entity->node)
             rt_scene_node3d_bind_body(entity->node, entity->body);
         rt_world3d_add(world->physics, entity->body);
+        if (!game3d_world_body_index_add(world, entity)) {
+            rt_trap("Game3D.World3D.spawn: body index allocation failed");
+            return;
+        }
     }
     for (int32_t i = 0; i < entity->child_count; ++i)
         game3d_world_spawn_entity_tree(world, entity->children[i], 0, next_id);
@@ -4584,8 +4697,20 @@ static void game3d_world_finalize(void *obj) {
         return;
     game3d_world_release_runtime(world, 1);
     free(world->entities);
+    free(world->body_index_bodies);
+    free(world->body_index_entities);
+    free(world->name_index_hashes);
+    free(world->name_index_entities);
     world->entities = NULL;
+    world->body_index_bodies = NULL;
+    world->body_index_entities = NULL;
+    world->name_index_hashes = NULL;
+    world->name_index_entities = NULL;
     world->entity_capacity = 0;
+    world->body_index_capacity = 0;
+    world->body_index_count = 0;
+    world->name_index_capacity = 0;
+    world->name_index_count = 0;
 }
 
 /// @brief Point the world's camera at the origin from a default over-the-shoulder pose.
@@ -4771,6 +4896,9 @@ void *rt_game3d_world_find_entity(void *obj, rt_string name) {
     const char *needle = name ? rt_string_cstr(name) : "";
     if (!world || !needle)
         return NULL;
+    rt_game3d_entity *indexed = game3d_world_name_index_find(world, needle);
+    if (indexed)
+        return indexed;
     for (int32_t i = 0; i < world->entity_count; ++i) {
         rt_game3d_entity *entity = world->entities[i];
         const char *entity_name = entity && entity->name ? rt_string_cstr(entity->name) : "";
@@ -4816,6 +4944,8 @@ void rt_game3d_world_on_resize(void *obj, int64_t width, int64_t height) {
         return;
     world->width = width;
     world->height = height;
+    if (world->canvas)
+        rt_canvas3d_resize(world->canvas, width, height);
     if (world->camera)
         rt_camera3d_sync_render_aspect(world->camera, (double)width / (double)height);
 }
@@ -4830,6 +4960,8 @@ void rt_game3d_world_set_ambient(void *obj, double r, double g, double b) {
 /// @brief Bind a light into the given canvas light slot. See header.
 void rt_game3d_world_add_light(void *obj, int64_t slot, void *light) {
     rt_game3d_world *world = game3d_world_checked(obj, "Game3D.World3D.addLight: invalid world");
+    if (light && !rt_g3d_has_class(light, RT_G3D_LIGHT3D_CLASS_ID))
+        rt_trap("Game3D.World3D.addLight: light must be Light3D or null");
     if (world && world->canvas)
         rt_canvas3d_set_light(world->canvas, slot, light);
 }
@@ -4844,6 +4976,8 @@ void rt_game3d_world_clear_lights(void *obj) {
 /// @brief Set the skybox from a cubemap, or clear it when passed NULL. See header.
 void rt_game3d_world_set_skybox(void *obj, void *cubemap) {
     rt_game3d_world *world = game3d_world_checked(obj, "Game3D.World3D.setSkybox: invalid world");
+    if (cubemap && !rt_g3d_has_class(cubemap, RT_G3D_CUBEMAP3D_CLASS_ID))
+        rt_trap("Game3D.World3D.setSkybox: cubemap must be CubeMap3D or null");
     if (world && world->canvas) {
         if (cubemap)
             rt_canvas3d_set_skybox(world->canvas, cubemap);
@@ -5323,13 +5457,22 @@ void rt_game3d_world_present(void *obj) {
 
 /// @brief Render one complete frame: begin → draw scene → draw effects → end scene →
 ///   optional overlay → present. Shared by all run-loop variants.
-static void game3d_world_render_once(rt_game3d_world *world, void *overlay) {
+static void game3d_world_draw_overlay_fn(rt_game3d_world *world, rt_game3d_overlay_fn fn) {
+    if (!world || !world->canvas)
+        return;
+    rt_canvas3d_begin_overlay(world->canvas);
+    if (fn)
+        fn();
+    rt_canvas3d_end_overlay(world->canvas);
+}
+
+static void game3d_world_render_once(rt_game3d_world *world, rt_game3d_overlay_fn overlay_fn) {
     rt_game3d_world_begin_frame(world);
     rt_game3d_world_draw_scene(world);
     rt_game3d_world_draw_effects(world);
     rt_game3d_world_end_scene(world);
-    if (overlay)
-        rt_game3d_world_draw_overlay(world, overlay);
+    if (overlay_fn)
+        game3d_world_draw_overlay_fn(world, overlay_fn);
     rt_game3d_world_present(world);
 }
 
@@ -5355,14 +5498,14 @@ void rt_game3d_world_run_with_overlay(void *obj, void *update, void *overlay) {
     rt_game3d_update_fn fn = game3d_update_callback_checked(
         update,
         "Game3D.World3D.runWithOverlay: update callback must be a native function pointer; use tick/step/manual frame APIs from interpreted Zia");
-    (void)game3d_overlay_callback_checked(
+    rt_game3d_overlay_fn overlay_fn = game3d_overlay_callback_checked(
         overlay,
         "Game3D.World3D.runWithOverlay: overlay callback must be a native function pointer; use manual overlay calls from interpreted Zia");
     while (world && rt_game3d_world_tick(world)) {
         if (fn)
             fn(world->dt);
         rt_game3d_world_step_simulation(world, world->dt);
-        game3d_world_render_once(world, overlay);
+        game3d_world_render_once(world, overlay_fn);
     }
 }
 
@@ -5380,20 +5523,26 @@ void rt_game3d_world_run_fixed_with_overlay(void *obj, double step_sec, void *up
     rt_game3d_update_fn fn = game3d_update_callback_checked(
         update,
         "Game3D.World3D.runFixedWithOverlay: update callback must be a native function pointer; use tick/step/manual frame APIs from interpreted Zia");
-    (void)game3d_overlay_callback_checked(
+    rt_game3d_overlay_fn overlay_fn = game3d_overlay_callback_checked(
         overlay,
         "Game3D.World3D.runFixedWithOverlay: overlay callback must be a native function pointer; use manual overlay calls from interpreted Zia");
     double fixed = game3d_clamp_dt(step_sec);
     double accumulator = 0.0;
     while (world && rt_game3d_world_tick(world)) {
+        int steps = 0;
         accumulator += world->dt;
-        while (accumulator >= fixed) {
+        if (accumulator > fixed * RT_GAME3D_MAX_FIXED_STEPS_PER_FRAME)
+            accumulator = fixed * RT_GAME3D_MAX_FIXED_STEPS_PER_FRAME;
+        while (accumulator >= fixed && steps < RT_GAME3D_MAX_FIXED_STEPS_PER_FRAME) {
             if (fn)
                 fn(fixed);
             rt_game3d_world_step_simulation(world, fixed);
             accumulator -= fixed;
+            steps++;
         }
-        game3d_world_render_once(world, overlay);
+        if (steps >= RT_GAME3D_MAX_FIXED_STEPS_PER_FRAME && accumulator >= fixed)
+            accumulator = 0.0;
+        game3d_world_render_once(world, overlay_fn);
     }
 }
 

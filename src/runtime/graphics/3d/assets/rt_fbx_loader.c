@@ -16,7 +16,8 @@
 //     Adler-32 trailer, then call rt_compress_inflate on raw DEFLATE.
 //   - Negative polygon indices mark end-of-polygon (bitwise NOT to decode).
 //   - Coordinate system correction applied if source is Z-up.
-//   - Fan triangulation for quads/n-gons (assumes convex polygons).
+//   - Ear-clipping triangulation for quads/n-gons, with fan fallback only for
+//     degenerate projected polygons.
 //   - Skinning palette is reduced to the top 4 (bone, weight) influences per
 //     vertex and renormalized to sum to 1.
 //
@@ -913,13 +914,15 @@ static void fbx_mesh_remap_add_vertex(fbx_mesh_remap_t *remap,
 
 /// @brief Linear-search `remaps` for the entry with the given `id`; returns NULL if not found.
 static const fbx_mesh_remap_t *fbx_find_mesh_remap(const fbx_mesh_remap_t *remaps,
-                                                    int32_t count,
-                                                    int64_t id) {
+                                                   int32_t count,
+                                                   int64_t id) {
     for (int32_t i = 0; i < count; i++)
         if (remaps[i].id == id)
             return &remaps[i];
     return NULL;
 }
+
+#include "rt_fbx_triangulation.inc"
 
 /*==========================================================================
  * Geometry extraction
@@ -931,7 +934,7 @@ static const fbx_mesh_remap_t *fbx_find_mesh_remap(const fbx_mesh_remap_t *remap
 /// (vertex indices, with the last index of each polygon negated
 /// XOR'd with bit 31 to mark polygon end), `LayerElementNormal`,
 /// `LayerElementUV`, and `LayerElementMaterial`. Triangulates n-gons
-/// using fan-triangulation. If `z_up` is set, applies an axis
+/// using ear clipping. If `z_up` is set, applies an axis
 /// swap (positions and normals) to convert to Y-up.
 /// @return A new mesh on success, NULL on missing or malformed geometry.
 static void *fbx_extract_geometry(fbx_node_t *geom_node, int z_up, fbx_mesh_remap_t *remap) {
@@ -1074,6 +1077,11 @@ static void *fbx_extract_geometry(fbx_node_t *geom_node, int z_up, fbx_mesh_rema
 
         {
             int32_t emitted_vertex = mesh_vertex_count++;
+            if (poly_count >= (int32_t)(sizeof(polygon) / sizeof(polygon[0]))) {
+                if (rt_obj_release_check0(mesh))
+                    rt_obj_free(mesh);
+                return NULL;
+            }
             rt_mesh3d_add_vertex(mesh, px, py, pz, nx, ny, nz, u, v);
             fbx_mesh_remap_add_vertex(remap, vi, emitted_vertex);
             polygon[poly_count++] = emitted_vertex;
@@ -1081,14 +1089,14 @@ static void *fbx_extract_geometry(fbx_node_t *geom_node, int z_up, fbx_mesh_rema
         polygon_vertex_idx++;
 
         if (end_of_polygon) {
-            /* Fan triangulate */
-            for (int32_t fi = 1; fi < poly_count - 1; fi++)
-                rt_mesh3d_add_triangle(mesh, polygon[0], polygon[fi], polygon[fi + 1]);
+            if (!fbx_emit_polygon_triangles(mesh, polygon, poly_count)) {
+                if (rt_obj_release_check0(mesh))
+                    rt_obj_free(mesh);
+                return NULL;
+            }
             poly_count = 0;
         }
 
-        if (poly_count >= 32)
-            poly_count = 0; /* safety: max 32-gon */
     }
 
     return mesh;

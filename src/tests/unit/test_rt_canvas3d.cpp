@@ -1926,6 +1926,25 @@ static void tracked_submit_draw_instanced(void *,
     }
 }
 
+static void enable_latched_motion_blur(rt_canvas3d *canvas) {
+    if (!canvas)
+        return;
+    canvas->frame_gpu_postfx_enabled = 1;
+    canvas->frame_postfx_state_latched = 1;
+    vgfx3d_postfx_chain_free(&canvas->frame_postfx_chain);
+    memset(&canvas->frame_postfx_chain, 0, sizeof(canvas->frame_postfx_chain));
+    canvas->frame_postfx_chain.effects =
+        (vgfx3d_postfx_effect_desc_t *)calloc(1, sizeof(vgfx3d_postfx_effect_desc_t));
+    if (!canvas->frame_postfx_chain.effects)
+        return;
+    canvas->frame_postfx_chain.enabled = 1;
+    canvas->frame_postfx_chain.effect_count = 1;
+    canvas->frame_postfx_chain.effect_capacity = 1;
+    canvas->frame_postfx_chain.effects[0].type = VGFX3D_POSTFX_EFFECT_MOTION_BLUR;
+    canvas->frame_postfx_chain.effects[0].snapshot.enabled = 1;
+    canvas->frame_postfx_chain.effects[0].snapshot.motion_blur_enabled = 1;
+}
+
 static void test_canvas_postfx_retains_owned_reference() {
     TEST("Canvas3D.SetPostFX retains owned reference");
     rt_canvas3d canvas;
@@ -3118,6 +3137,7 @@ static void test_canvas_instanced_gpu_synthesizes_previous_matrices() {
     g_last_instanced_has_prev = 0;
     g_last_instanced_prev_x = -99.0f;
     rt_canvas3d_begin(&canvas, cam);
+    enable_latched_motion_blur(&canvas);
     rt_canvas3d_queue_instanced_batch(&canvas, mesh, mat, instances, 1, NULL, 0);
     rt_canvas3d_end(&canvas);
     EXPECT_EQ(g_last_instanced_has_prev, 1);
@@ -3125,10 +3145,12 @@ static void test_canvas_instanced_gpu_synthesizes_previous_matrices() {
 
     instances[3] = 2.0f;
     rt_canvas3d_begin(&canvas, cam);
+    enable_latched_motion_blur(&canvas);
     rt_canvas3d_queue_instanced_batch(&canvas, mesh, mat, instances, 1, NULL, 0);
     rt_canvas3d_end(&canvas);
     EXPECT_EQ(g_last_instanced_has_prev, 1);
     EXPECT_NEAR(g_last_instanced_prev_x, 0.0, 0.0001);
+    vgfx3d_postfx_chain_free(&canvas.frame_postfx_chain);
     PASS();
 }
 

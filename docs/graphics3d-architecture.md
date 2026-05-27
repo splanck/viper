@@ -70,6 +70,22 @@ enable optional paths such as window readback, GPU post effects, hardware instan
 shadow maps. Those queries are derived from the active vtable hooks plus Canvas-owned software
 fallbacks, so they remain stable if backend names or platform selection change.
 
+## Source Organization
+
+The 3D runtime keeps public ABI boundaries in the existing C translation units,
+while private helper-heavy regions live in adjacent `.inc` companions:
+
+- `render/rt_canvas3d_frame_postfx.inc` owns per-frame GPU post-FX latch and
+  motion-vector gating helpers used by `rt_canvas3d.c`.
+- `rt_game3d_indices.inc` owns the World3D body/name indexes used by
+  `rt_game3d.c` to avoid repeated entity scans in collision and name lookup paths.
+- `assets/rt_fbx_triangulation.inc` owns FBX polygon projection and ear-clipping
+  helpers used by `rt_fbx_loader.c`.
+
+These files are private implementation slices, not standalone compilation
+units; they preserve static helper scope while keeping the largest runtime files
+readable.
+
 ## Runtime Input Guards
 
 Graphics3D clamps public numeric state before it enters renderer-facing structs. `Canvas3D` clamps
@@ -180,9 +196,11 @@ The OpenGL backend now follows the same high-level split, adapted to its GLX/swa
 
 Like D3D11, this keeps the no-postfx path cheap while preserving the scene depth/history inputs required by the advanced GPU postfx path.
 
-Canvas finalization owns the shared ordering contract above the backends: recorded final overlays are
-replayed into the backend overlay target before `present_postfx`, and `ScreenshotFinal()` uses the same
-post-FX-plus-overlay ordering as `Flip()`.
+Canvas finalization owns the shared ordering contract above the backends. Frames
+without final overlays can use the backend `present_postfx` path directly. Frames
+with recorded final overlays use the post-FX-safe finalization path so overlays
+are replayed after the post-FX image; `ScreenshotFinal()` and `Flip()` share the
+same post-FX-plus-overlay ordering.
 
 ### RenderTarget3D Readback Ownership
 

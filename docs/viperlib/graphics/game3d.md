@@ -180,8 +180,9 @@ setup. Water is a transparent plane prefab.
 
 `Debug3D` uses the same final overlay path as user HUDs, so its text is drawn
 after post-FX rather than being bloomed, toned, or blurred.
-On GPU post-FX backends, final overlays are replayed before `present_postfx`
-composites the frame so capture and presentation use the same ordering.
+On GPU post-FX backends, frames with final overlays use the post-FX-safe
+finalization path so capture and presentation both composite overlays after the
+post-FX image.
 
 ```zia
 Game3D.Debug3D.ShowOverlay(world, true);
@@ -265,6 +266,10 @@ The raw `Canvas3D` finalization calls map to the Game3D frame helpers this way:
 
 `World3D.endScene()`, `captureFinalFrame()`, and `present()` are the Game3D
 wrappers for that contract.
+
+`World3D.onResize(width, height)` updates the camera aspect and resizes the
+owned `Canvas3D`, including backend render targets, so window callbacks and
+manual resize paths keep the Game3D camera and Graphics3D output in sync.
 
 ---
 
@@ -546,7 +551,7 @@ frame.
 | `mouseDelta()` | Current mouse movement as `Vec2` |
 | `mouseButton(button)` / `mousePressed(button)` | Mouse button queries |
 | `wheelY()` | Vertical wheel delta |
-| `moveAxis()` | WASD/arrow movement as `Vec3` |
+| `moveAxis()` | WASD/arrow movement as a normalized `Vec3` |
 | `lookAxis()` | Mouse look as `Vec2`, scaled by `lookSensitivity` |
 | `captureMouse()` / `releaseMouse()` | Forward to the active mouse capture policy |
 
@@ -596,9 +601,10 @@ and `grounded()`. It owns a lower-level `Viper.Graphics3D.Character3D`, binds it
 to the world's physics world, moves it with swept-slide collision, and mirrors
 the character position back to its Game3D entity.
 
-`OrbitController.New(world, target)` takes a `Vec3` target. Holding the left
-mouse button and dragging changes yaw/pitch, wheel input changes distance, and
-`lateUpdate` places the camera on the orbit.
+`OrbitController.New(world, target)` takes either a `Vec3` target position or an
+`Entity3D` target. Entity targets are resolved to world position during
+`lateUpdate`. Holding the left mouse button and dragging changes yaw/pitch,
+wheel input changes distance, and `lateUpdate` places the camera on the orbit.
 
 `FollowController.New(world, entity, offset)` tracks an entity after physics.
 Set `damping` to `0.0` for a snap follow, or a positive value for exponential
