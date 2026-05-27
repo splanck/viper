@@ -35,7 +35,7 @@ This file tracks the public runtime-backed `Viper.Game3D` surface described in
 | API-WORLD-007 | `world.despawn(e)` | `api-spec.md` World3D | done | runtime method | `test_rt_game3d`, `g3d_test_game3d_world_probe` | Game3D docs | focused ctests passed |  |
 | API-WORLD-008 | `world.findNode(name)` | `api-spec.md` World3D | done | runtime method | `test_rt_game3d`, `g3d_test_game3d_world_probe` | Game3D docs | focused ctests passed | Raw node |
 | API-WORLD-009 | `world.findEntity(name)` | `api-spec.md` World3D | done | runtime method | `test_rt_game3d`, `g3d_test_game3d_world_probe` | Game3D docs | focused ctests passed | Registry only |
-| API-WORLD-010 | `world.setCameraController(c)` | `api-spec.md` World3D | partial | stores retained controller reference |  | Game3D docs | local build | Controller update/lateUpdate dispatch remains Phase 2 |
+| API-WORLD-010 | `world.setCameraController(c)` | `api-spec.md` World3D | done | stores retained built-in controller and dispatches update/lateUpdate from `stepSimulation` | `test_rt_game3d`; controller Zia probes | Game3D docs | focused tests passed | Interpreted Zia controller objects remain out of scope until callback trampoline support exists |
 | API-WORLD-011 | `world.lookAt(target)` | `api-spec.md` World3D | done | runtime method | `g3d_test_game3d_world_probe` | Game3D docs | focused ctest passed |  |
 | API-WORLD-012 | `world.onResize(width,height)` | `api-spec.md` World3D | done | runtime method | `g3d_test_game3d_world_probe` | Game3D docs | focused ctest passed | Tick also syncs aspect |
 | API-WORLD-013 | `world.setAmbient(r,g,b)` | `api-spec.md` World3D | done | runtime method | `g3d_test_game3d_world_probe` | Game3D docs | focused ctest passed |  |
@@ -148,18 +148,18 @@ This file tracks the public runtime-backed `Viper.Game3D` surface described in
 | API-IN-005 | `moveAxis()` / `lookAxis()` | `api-spec.md` Input3D | done | runtime methods | `test_rt_game3d` | Game3D docs | focused ctest passed |  |
 | API-IN-006 | `captureMouse()` / `releaseMouse()` | `api-spec.md` Input3D | done | runtime methods | `test_rt_game3d` | Game3D docs | focused ctest passed |  |
 | API-IN-007 | `Keys` and `MouseButtons` re-export stable runtime constants | `api-spec.md` Input3D | done | runtime constants | `test_rt_game3d` | Game3D docs | focused ctest passed |  |
-| API-CAM-001 | `CameraController.update(world,dt)` | `api-spec.md` Cameras | todo |  |  |  |  |  |
-| API-CAM-002 | `CameraController.lateUpdate(world,dt)` | `api-spec.md` Cameras | todo |  |  |  |  |  |
-| API-CAM-003 | `BaseCameraController` fallback if default methods unsuitable | `api-spec.md` Cameras | todo |  |  |  |  | Decision D-003/D-008 |
-| API-CAM-004 | `FirstPersonController.New(world)` | `api-spec.md` Cameras | todo |  |  |  |  | WASD + mouse, optional grounding |
-| API-CAM-005 | `FreeFlyController.New(world)` | `api-spec.md` Cameras | todo |  |  |  |  | 6-DoF |
-| API-CAM-006 | `OrbitController.New(world,target)` | `api-spec.md` Cameras | todo |  |  |  |  | Drag/wheel/pitch clamp |
-| API-CAM-007 | `FollowController.New(world,target,offset)` | `api-spec.md` Cameras | todo |  |  |  |  | Late spring follow |
-| API-CHAR-001 | `CharacterController3D` fields | `api-spec.md` CharacterController3D | todo |  |  |  |  | character/entity/speed/jump/gravity |
-| API-CHAR-002 | `CharacterController3D.New(...)` | `api-spec.md` CharacterController3D | todo |  |  |  |  |  |
-| API-CHAR-003 | `CharacterController3D.update(input,camera,dt)` | `api-spec.md` CharacterController3D | todo |  |  |  |  |  |
-| API-CHAR-004 | `CharacterController3D.teleport(x,y,z)` | `api-spec.md` CharacterController3D | todo |  |  |  |  |  |
-| API-CHAR-005 | `CharacterController3D.grounded()` | `api-spec.md` CharacterController3D | todo |  |  |  |  |  |
+| API-CAM-001 | `CameraController.update(world,dt)` | `api-spec.md` Cameras | done | Built-in controller update methods in C runtime | `test_rt_game3d`; controller Zia probes | Game3D docs | focused tests passed | Public methods exist; `World3D` dispatches only built-in Game3D controller objects |
+| API-CAM-002 | `CameraController.lateUpdate(world,dt)` | `api-spec.md` Cameras | done | Built-in controller lateUpdate methods in C runtime | `test_rt_game3d`; controller Zia probes | Game3D docs | focused tests passed | Runs after physics and sync |
+| API-CAM-003 | `BaseCameraController` fallback if default methods unsuitable | `api-spec.md` Cameras | deferred | Not shipped; built-in C controller classes are the supported runtime surface |  | Game3D docs | D-003/D-008 resolved by runtime-first approach | Add only if VM callback trampoline/custom controller support becomes real |
+| API-CAM-004 | `FirstPersonController.New(world)` | `api-spec.md` Cameras | done | `rt_game3d_first_person_controller_new` | `test_rt_game3d`; `g3d_test_game3d_character_controller_probe` | Game3D docs | focused tests passed | WASD + mouse, optional grounding |
+| API-CAM-005 | `FreeFlyController.New(world)` | `api-spec.md` Cameras | done | `rt_game3d_free_fly_controller_new` | `test_rt_game3d`; `g3d_test_game3d_camera_controllers_probe` | Game3D docs | focused tests passed | Free-fly spectator movement |
+| API-CAM-006 | `OrbitController.New(world,target)` | `api-spec.md` Cameras | done | `rt_game3d_orbit_controller_new` | `test_rt_game3d`; `g3d_test_game3d_camera_controllers_probe` | Game3D docs | focused tests passed | Drag/wheel/pitch clamp |
+| API-CAM-007 | `FollowController.New(world,target,offset)` | `api-spec.md` Cameras | done | `rt_game3d_follow_controller_new` | `test_rt_game3d`; `g3d_test_game3d_camera_controllers_probe` | Game3D docs | focused tests passed | Late entity follow |
+| API-CHAR-001 | `CharacterController3D` fields | `api-spec.md` CharacterController3D | done | `character`, `entity`, `speed`, `jumpSpeed`, `gravity` runtime properties | `test_rt_game3d`; `g3d_test_game3d_character_controller_probe` | Game3D docs | focused tests passed | Wraps raw `Character3D` |
+| API-CHAR-002 | `CharacterController3D.New(...)` | `api-spec.md` CharacterController3D | done | `rt_game3d_character_controller_new` | `test_rt_game3d`; `g3d_test_game3d_character_controller_probe` | Game3D docs | focused tests passed | Binds raw controller to world physics |
+| API-CHAR-003 | `CharacterController3D.update(input,camera,dt)` | `api-spec.md` CharacterController3D | done | camera-relative movement, gravity, jump, entity sync | `test_rt_game3d`; `g3d_test_game3d_character_controller_probe` | Game3D docs | focused tests passed | Called by first-person controller and available directly |
+| API-CHAR-004 | `CharacterController3D.teleport(x,y,z)` | `api-spec.md` CharacterController3D | done | runtime method | build + C coverage | Game3D docs | focused build passed | Direct Zia teleport probe still nice-to-have |
+| API-CHAR-005 | `CharacterController3D.grounded()` | `api-spec.md` CharacterController3D | done | runtime method over raw `Character3D.Grounded` | C/Zia movement probes | Game3D docs | focused tests passed |  |
 
 ## Presets, environment, prefabs, and assets
 

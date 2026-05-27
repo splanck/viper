@@ -186,6 +186,64 @@ int8_t rt_game3d_entity_is_destroyed(void *entity);
 void *rt_game3d_audio_get_listener(void *audio);
 void *rt_game3d_effects_get_postfx(void *effects);
 
+void *rt_game3d_character_controller_new(
+    void *world, void *entity, double radius, double height, double mass);
+void *rt_game3d_character_controller_get_character(void *controller);
+void *rt_game3d_character_controller_get_entity(void *controller);
+double rt_game3d_character_controller_get_speed(void *controller);
+void rt_game3d_character_controller_set_speed(void *controller, double speed);
+double rt_game3d_character_controller_get_jump_speed(void *controller);
+void rt_game3d_character_controller_set_jump_speed(void *controller, double jump_speed);
+double rt_game3d_character_controller_get_gravity(void *controller);
+void rt_game3d_character_controller_set_gravity(void *controller, double gravity);
+void rt_game3d_character_controller_update(void *controller, void *input, void *camera, double dt);
+void rt_game3d_character_controller_teleport(void *controller, double x, double y, double z);
+int8_t rt_game3d_character_controller_grounded(void *controller);
+
+void *rt_game3d_first_person_controller_new(void *world);
+void *rt_game3d_first_person_controller_get_character(void *controller);
+void rt_game3d_first_person_controller_set_character(void *controller, void *character_controller);
+double rt_game3d_first_person_controller_get_speed(void *controller);
+void rt_game3d_first_person_controller_set_speed(void *controller, double speed);
+double rt_game3d_first_person_controller_get_look_sensitivity(void *controller);
+void rt_game3d_first_person_controller_set_look_sensitivity(void *controller, double sensitivity);
+void rt_game3d_first_person_controller_capture_mouse(void *controller);
+void rt_game3d_first_person_controller_release_mouse(void *controller);
+void rt_game3d_first_person_controller_update(void *controller, void *world, double dt);
+void rt_game3d_first_person_controller_late_update(void *controller, void *world, double dt);
+
+void *rt_game3d_free_fly_controller_new(void *world);
+double rt_game3d_free_fly_controller_get_speed(void *controller);
+void rt_game3d_free_fly_controller_set_speed(void *controller, double speed);
+double rt_game3d_free_fly_controller_get_look_sensitivity(void *controller);
+void rt_game3d_free_fly_controller_set_look_sensitivity(void *controller, double sensitivity);
+void rt_game3d_free_fly_controller_capture_mouse(void *controller);
+void rt_game3d_free_fly_controller_release_mouse(void *controller);
+void rt_game3d_free_fly_controller_update(void *controller, void *world, double dt);
+void rt_game3d_free_fly_controller_late_update(void *controller, void *world, double dt);
+
+void *rt_game3d_orbit_controller_new(void *world, void *target);
+void *rt_game3d_orbit_controller_get_target(void *controller);
+void rt_game3d_orbit_controller_set_target(void *controller, void *target);
+double rt_game3d_orbit_controller_get_distance(void *controller);
+void rt_game3d_orbit_controller_set_distance(void *controller, double distance);
+double rt_game3d_orbit_controller_get_yaw(void *controller);
+void rt_game3d_orbit_controller_set_yaw(void *controller, double yaw);
+double rt_game3d_orbit_controller_get_pitch(void *controller);
+void rt_game3d_orbit_controller_set_pitch(void *controller, double pitch);
+void rt_game3d_orbit_controller_update(void *controller, void *world, double dt);
+void rt_game3d_orbit_controller_late_update(void *controller, void *world, double dt);
+
+void *rt_game3d_follow_controller_new(void *world, void *target_entity, void *offset);
+void *rt_game3d_follow_controller_get_target(void *controller);
+void rt_game3d_follow_controller_set_target(void *controller, void *target_entity);
+void *rt_game3d_follow_controller_get_offset(void *controller);
+void rt_game3d_follow_controller_set_offset(void *controller, void *offset);
+double rt_game3d_follow_controller_get_damping(void *controller);
+void rt_game3d_follow_controller_set_damping(void *controller, double damping);
+void rt_game3d_follow_controller_update(void *controller, void *world, double dt);
+void rt_game3d_follow_controller_late_update(void *controller, void *world, double dt);
+
 void *rt_game3d_world_new(rt_string title, int64_t width, int64_t height);
 void *rt_game3d_world_new_with_camera(
     rt_string title, int64_t width, int64_t height, double fov_deg, double near_plane, double far_plane);

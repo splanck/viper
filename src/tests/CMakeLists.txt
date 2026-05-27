@@ -1413,6 +1413,30 @@ if (EXISTS "${CANVAS3D_SYNTHETIC_INPUT_PROBE}")
             TIMEOUT 30)
 endif ()
 
+set(GAME3D_CAMERA_CONTROLLERS_PROBE "${G3D_TESTS_DIR}/test_game3d_camera_controllers_probe.zia")
+if (EXISTS "${GAME3D_CAMERA_CONTROLLERS_PROBE}")
+    add_test(NAME g3d_test_game3d_camera_controllers_probe
+            COMMAND $<TARGET_FILE:viper> run "${GAME3D_CAMERA_CONTROLLERS_PROBE}"
+            WORKING_DIRECTORY "${CMAKE_SOURCE_DIR}")
+    set_tests_properties(g3d_test_game3d_camera_controllers_probe PROPERTIES
+            PASS_REGULAR_EXPRESSION "PASS"
+            LABELS "runtime;graphics3d;zia;requires_display"
+            ENVIRONMENT "VIPER_3D_BACKEND=software"
+            TIMEOUT 30)
+endif ()
+
+set(GAME3D_CHARACTER_CONTROLLER_PROBE "${G3D_TESTS_DIR}/test_game3d_character_controller_probe.zia")
+if (EXISTS "${GAME3D_CHARACTER_CONTROLLER_PROBE}")
+    add_test(NAME g3d_test_game3d_character_controller_probe
+            COMMAND $<TARGET_FILE:viper> run "${GAME3D_CHARACTER_CONTROLLER_PROBE}"
+            WORKING_DIRECTORY "${CMAKE_SOURCE_DIR}")
+    set_tests_properties(g3d_test_game3d_character_controller_probe PROPERTIES
+            PASS_REGULAR_EXPRESSION "PASS"
+            LABELS "runtime;graphics3d;zia;requires_display"
+            ENVIRONMENT "VIPER_3D_BACKEND=software"
+            TIMEOUT 30)
+endif ()
+
 set(CANVAS3D_QUALITY_PROFILES_PROBE "${G3D_TESTS_DIR}/test_canvas3d_quality_profiles.zia")
 if (EXISTS "${CANVAS3D_QUALITY_PROFILES_PROBE}")
     add_test(NAME g3d_test_canvas3d_quality_profiles

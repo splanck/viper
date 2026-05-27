@@ -71,7 +71,7 @@ API, test, and docs items are tracked in the sibling files.
 | ID | Item | Source | Status | Impl | Tests | Docs | Proof / link | Notes |
 |---|---|---|---|---|---|---|---|---|
 | P1-001 | Implement runtime-backed `Viper.Game3D` classes/functions in C runtime tree | `roadmap.md` Phase 1 | done | `src/runtime/graphics/3d/rt_game3d.c`, `rt_game3d.h` | `test_rt_game3d`; Zia probes | `docs/viperlib/graphics/game3d.md` | focused ctests passed | Normal C runtime implementation; not a Zia library |
-| P1-002 | Add `runtime.def` entries, headers, disabled-graphics stubs, docs, completeness checks | `roadmap.md` Phase 1 | done | `runtime.def`, runtime signatures/classes, CMake, graphics stubs | focused build passed; graphics3d 42/42 | Game3D docs added | `scripts/check_runtime_completeness.sh` passed |  |
+| P1-002 | Add `runtime.def` entries, headers, disabled-graphics stubs, docs, completeness checks | `roadmap.md` Phase 1 | done | `runtime.def`, runtime signatures/classes, CMake, graphics stubs | focused build passed; graphics3d 44/44 | Game3D docs added | `scripts/check_runtime_completeness.sh` passed |  |
 | P1-003 | Add only thin Zia sample/import convenience where useful | `roadmap.md` Phase 1 | done | Zia probes consume runtime namespace directly | `g3d_test_game3d_world_probe`, `g3d_test_game3d_runframes_probe` | docs explain runtime-first policy | focused ctests passed | No authoritative Zia helper package added |
 | P1-004 | `World3D.New` creates canvas/camera/scene/physics/input/audio/effects | `roadmap.md` Phase 1 | done | `rt_game3d_world_new_with_camera` | `test_rt_game3d`, `g3d_test_game3d_world_probe` | Game3D docs | focused ctests passed |  |
 | P1-005 | `World3D.New` applies explicit default environment | `roadmap.md` Phase 1 | done | default camera, lighting, ambient, quality, frustum culling | `test_rt_game3d`, `g3d_test_game3d_world_probe` | Game3D docs | focused ctests passed | Environment presets remain Phase 3 |
@@ -84,25 +84,25 @@ API, test, and docs items are tracked in the sibling files.
 | P1-012 | Document raw escape-hatch lifetimes | `roadmap.md` Phase 1 | done |  |  | `docs/viperlib/graphics/game3d.md` | local docs update | Escape hatches still need richer examples |
 | P1-013 | `Input3D` reads named keyboard/mouse state, not `Canvas3D.Poll()` bitmasks | `roadmap.md` Phase 1 | done | `rt_game3d_input_*` over runtime keyboard/mouse APIs | `test_rt_game3d` | Game3D docs | focused ctest passed |  |
 | P1-014 | API-spec hello-world compiles and renders | `roadmap.md` Phase 1 Exit | partial | docs quick start mirrors passing world probe structure | `g3d_test_game3d_world_probe` renders/captures | Game3D docs | focused ctest passed | Dedicated snippet ctest still pending |
-| P1-015 | `world_probe.zia` covers construction, cleanup, find, resize, final-frame render, tick, step, runFrames, destroy, diagnostics | `roadmap.md` Phase 1 Exit | partial | world/runframes/callback-reject probes added | `g3d_test_game3d_world_probe`, `g3d_test_game3d_runframes_probe`, `g3d_test_game3d_runframes_callback_reject`; graphics3d 42/42 | Game3D docs | ctests passed | Tick/step and destroyed-handle diagnostics need explicit Zia probe coverage |
+| P1-015 | `world_probe.zia` covers construction, cleanup, find, resize, final-frame render, tick, step, runFrames, destroy, diagnostics | `roadmap.md` Phase 1 Exit | partial | world/runframes/callback-reject probes added | `g3d_test_game3d_world_probe`, `g3d_test_game3d_runframes_probe`, `g3d_test_game3d_runframes_callback_reject`; graphics3d 44/44 | Game3D docs | ctests passed | Tick/step and destroyed-handle diagnostics need explicit Zia probe coverage |
 | P1-016 | No common-case sample uses `Mat4.` | `roadmap.md` Phase 1 Exit | partial | Game3D docs/probes use entity transform helpers | `g3d_test_game3d_world_probe` | Game3D docs | focused ctest passed | Final starter/showcase samples still pending |
 
 ## Phase 2 - cameras and walkable movement
 
 | ID | Item | Source | Status | Impl | Tests | Docs | Proof / link | Notes |
 |---|---|---|---|---|---|---|---|---|
-| P2-001 | Implement `FirstPersonController` | `roadmap.md` Phase 2 | todo |  |  |  |  |  |
-| P2-002 | Implement `FreeFlyController` | `roadmap.md` Phase 2 | todo |  |  |  |  |  |
-| P2-003 | Implement `OrbitController` | `roadmap.md` Phase 2 | todo |  |  |  |  |  |
-| P2-004 | Implement `FollowController` | `roadmap.md` Phase 2 | todo |  |  |  |  |  |
-| P2-005 | Implement `CharacterController3D` | `roadmap.md` Phase 2 | todo |  |  |  |  |  |
-| P2-006 | Use two-phase controller contract (`update` before physics, `lateUpdate` after sync) | `roadmap.md` Phase 2 | todo |  |  |  |  |  |
-| P2-007 | Wire mouse capture/release for first-person controllers | `roadmap.md` Phase 2 | todo |  |  |  |  |  |
-| P2-008 | Synthetic-input probes deterministically change camera pose | `roadmap.md` Phase 2 Exit | todo |  |  |  |  |  |
-| P2-009 | First-person character movement is not one frame late | `roadmap.md` Phase 2 Exit | todo |  |  |  |  |  |
-| P2-010 | Follow camera tracks post-physics entity pose | `roadmap.md` Phase 2 Exit | todo |  |  |  |  |  |
+| P2-001 | Implement `FirstPersonController` | `roadmap.md` Phase 2 | done | `rt_game3d_first_person_controller_*` in C runtime | `test_rt_game3d`; `g3d_test_game3d_character_controller_probe` | Game3D docs | focused tests passed | Drives camera directly or a `CharacterController3D` |
+| P2-002 | Implement `FreeFlyController` | `roadmap.md` Phase 2 | done | `rt_game3d_free_fly_controller_*` | `test_rt_game3d`; `g3d_test_game3d_camera_controllers_probe` | Game3D docs | focused tests passed | WASD/vertical movement plus mouse look |
+| P2-003 | Implement `OrbitController` | `roadmap.md` Phase 2 | done | `rt_game3d_orbit_controller_*` | `test_rt_game3d`; `g3d_test_game3d_camera_controllers_probe` | Game3D docs | focused tests passed | Drag orbit, wheel zoom, pitch clamp |
+| P2-004 | Implement `FollowController` | `roadmap.md` Phase 2 | done | `rt_game3d_follow_controller_*` | `test_rt_game3d`; `g3d_test_game3d_camera_controllers_probe` | Game3D docs | focused tests passed | Late-update entity tracking after physics/sync |
+| P2-005 | Implement `CharacterController3D` | `roadmap.md` Phase 2 | done | `rt_game3d_character_controller_*` wrapping `Viper.Graphics3D.Character3D` | `test_rt_game3d`; `g3d_test_game3d_character_controller_probe` | Game3D docs | focused tests passed | Camera-relative movement, gravity, jump, teleport, grounded |
+| P2-006 | Use two-phase controller contract (`update` before physics, `lateUpdate` after sync) | `roadmap.md` Phase 2 | done | `World3D.stepSimulation` dispatches update before `rt_world3d_step` and lateUpdate after scene/audio sync | C and Zia controller probes | Game3D docs | focused tests passed | Manual loops can adjust controller state between `tick` and `stepSimulation` |
+| P2-007 | Wire mouse capture/release for first-person controllers | `roadmap.md` Phase 2 | done | First-person and free-fly capture/release methods and per-update capture policy | build + controller tests | Game3D docs | focused tests passed | Uses runtime mouse capture APIs |
+| P2-008 | Synthetic-input probes deterministically change camera pose | `roadmap.md` Phase 2 Exit | done | Controller dispatch consumes Canvas3D synthetic input | `g3d_test_game3d_camera_controllers_probe` | Game3D docs | direct probe passed | Free-fly camera pose changes from scripted W/mouse |
+| P2-009 | First-person character movement is not one frame late | `roadmap.md` Phase 2 Exit | done | Character update happens before physics in `stepSimulation` | `test_rt_game3d`; `g3d_test_game3d_character_controller_probe` | Game3D docs | focused tests passed | One `runFramesOnly` frame moves the player entity |
+| P2-010 | Follow camera tracks post-physics entity pose | `roadmap.md` Phase 2 Exit | done | Follow controller lateUpdate after physics/sync | `test_rt_game3d`; `g3d_test_game3d_camera_controllers_probe` | Game3D docs | focused tests passed | Target move before `stepSimulation` is observed in same frame |
 | P2-011 | `walk_min` supports walking with collision/grounding | `roadmap.md` Phase 2 Exit | todo |  |  |  |  |  |
-| P2-012 | No hand-authored camera `LookAt` loop needed in game code | `roadmap.md` Phase 2 Exit | todo |  |  |  |  |  |
+| P2-012 | No hand-authored camera `LookAt` loop needed in game code | `roadmap.md` Phase 2 Exit | done | Built-in controllers call Camera3D helpers internally | Controller probes and docs examples | Game3D docs | focused tests passed | Raw `Camera3D.LookAt` remains an escape hatch |
 
 ## Phase 3 - presets, prefabs, quality, environment, debug
 

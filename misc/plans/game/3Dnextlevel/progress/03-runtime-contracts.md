@@ -173,7 +173,7 @@ This file tracks every runtime contract item from `runtime-changes.md`.
 |---|---|---|---|---|---|
 | R-VAL-001 | `./scripts/check_runtime_completeness.sh` passes | `runtime-changes.md` Validation | done | `scripts/check_runtime_completeness.sh` |  |
 | R-VAL-002 | Builds pass on macOS, Windows, Linux | `runtime-changes.md` Validation | partial | `cmake --build build -j...` passed locally | Windows/Linux pending |
-| R-VAL-003 | `ctest --test-dir build -L graphics3d` passes | `runtime-changes.md` Validation | done | 42/42 graphics3d passed | Includes Phase 1 Game3D C/Zia probes |
+| R-VAL-003 | `ctest --test-dir build -L graphics3d` passes | `runtime-changes.md` Validation | done | 44/44 graphics3d passed | Includes Phase 1 and Phase 2 Game3D C/Zia probes |
 | R-VAL-004 | Focused C tests exist for getters/default lighting/finalization/screenshots/synthetic input/assets/lifetime | `runtime-changes.md` Validation | partial | Finalization/screenshot/capability/synthetic-input/assets/Game3D lifetime C tests added | Future API areas pending |
 | R-VAL-005 | Zia probes exist for final screenshots/overlay/default lighting/quality/package load/determinism | `runtime-changes.md` Validation | partial | `g3d_walk_min_visual_probe`; `g3d_test_canvas3d_synthetic_input`; `g3d_test_canvas3d_quality_profiles`; `g3d_test_model3d_load_asset`; Game3D probes | Rich gameplay-state replay pending |
 | R-VAL-006 | Every new public runtime function has success-path ctest or waiver | `runtime-changes.md` Validation | partial | Phase 0B/0C and Phase 1 core Game3D functions covered by focused tests | Future API areas pending; snippet coverage pending |

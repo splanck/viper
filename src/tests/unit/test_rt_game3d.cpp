@@ -327,6 +327,110 @@ static bool test_frame_loop_manual_frame_and_final_capture() {
     PASS();
 }
 
+static bool test_free_fly_controller_synthetic_input() {
+    TEST("FreeFlyController consumes synthetic input deterministically");
+    void *world = rt_game3d_world_new(rt_const_cstr("Game3D Unit FreeFly"), 64, 48);
+    void *canvas = rt_game3d_world_get_canvas(world);
+    void *camera = rt_game3d_world_get_camera(world);
+    void *controller = rt_game3d_free_fly_controller_new(world);
+    EXPECT_TRUE(controller != nullptr, "FreeFlyController.New returns an object");
+    rt_game3d_free_fly_controller_set_speed(controller, 10.0);
+    rt_game3d_free_fly_controller_set_look_sensitivity(controller, 0.10);
+    rt_game3d_world_set_camera_controller(world, controller);
+
+    void *before = rt_camera3d_get_position(camera);
+    rt_canvas3d_push_synthetic_key(canvas, rt_game3d_key_w(), 1);
+    rt_canvas3d_push_synthetic_mouse(canvas, 12.0, -4.0, 0, 0.0);
+    rt_game3d_world_run_frames_only(world, 1, 0.1);
+    void *after = rt_camera3d_get_position(camera);
+
+    EXPECT_TRUE(rt_vec3_z(after) < rt_vec3_z(before) - 0.05,
+                "W moves the free-fly camera forward before simulation");
+    EXPECT_TRUE(std::fabs(rt_vec3_x(after) - rt_vec3_x(before)) > 0.001,
+                "synthetic mouse look changes the free-fly heading");
+    EXPECT_EQ_INT(rt_game3d_world_get_frame(world), 1, "controller frame increments with runFramesOnly");
+    rt_canvas3d_clear_synthetic_input(canvas);
+    rt_game3d_world_destroy(world);
+    PASS();
+}
+
+static bool test_orbit_and_follow_controllers() {
+    TEST("OrbitController and FollowController run update/lateUpdate phases");
+    void *world = rt_game3d_world_new(rt_const_cstr("Game3D Unit Orbit Follow"), 80, 60);
+    void *canvas = rt_game3d_world_get_canvas(world);
+
+    void *target = rt_vec3_new(0.0, 1.0, 0.0);
+    void *orbit = rt_game3d_orbit_controller_new(world, target);
+    rt_game3d_world_set_camera_controller(world, orbit);
+    rt_canvas3d_push_synthetic_mouse(canvas, 20.0, -8.0, 1, 1.0);
+    rt_game3d_world_run_frames_only(world, 1, 0.1);
+    EXPECT_TRUE(rt_game3d_orbit_controller_get_yaw(orbit) > 0.0,
+                "orbit mouse drag updates yaw during update");
+    EXPECT_TRUE(rt_game3d_orbit_controller_get_distance(orbit) < 6.0,
+                "orbit wheel input updates distance during update");
+
+    void *entity = rt_game3d_entity_new();
+    rt_game3d_entity_set_position(entity, 4.0, 0.5, -2.0);
+    rt_game3d_world_spawn(world, entity);
+    void *offset = rt_vec3_new(0.0, 2.0, 5.0);
+    void *follow = rt_game3d_follow_controller_new(world, entity, offset);
+    rt_game3d_follow_controller_set_damping(follow, 0.0);
+    rt_game3d_world_set_camera_controller(world, follow);
+    rt_game3d_world_run_frames_only(world, 1, 0.1);
+    void *pos = rt_camera3d_get_position(rt_game3d_world_get_camera(world));
+    EXPECT_NEAR(rt_vec3_x(pos), 4.0, 0.0001, "follow snaps x when damping is zero");
+    EXPECT_NEAR(rt_vec3_y(pos), 2.5, 0.0001, "follow applies y offset after physics");
+    EXPECT_NEAR(rt_vec3_z(pos), 3.0, 0.0001, "follow applies z offset after physics");
+
+    rt_game3d_entity_set_position(entity, 6.0, 0.5, -3.0);
+    rt_game3d_world_step_simulation(world, 0.1);
+    pos = rt_camera3d_get_position(rt_game3d_world_get_camera(world));
+    EXPECT_NEAR(rt_vec3_x(pos), 6.0, 0.0001, "follow tracks post-physics entity x");
+    EXPECT_NEAR(rt_vec3_z(pos), 2.0, 0.0001, "follow tracks post-physics entity z");
+
+    rt_game3d_world_destroy(world);
+    PASS();
+}
+
+static bool test_first_person_character_controller_same_frame_motion() {
+    TEST("FirstPersonController drives CharacterController3D before physics");
+    void *world = rt_game3d_world_new(rt_const_cstr("Game3D Unit Character"), 80, 60);
+    void *canvas = rt_game3d_world_get_canvas(world);
+
+    void *ground = rt_game3d_entity_new();
+    void *ground_body = rt_body3d_new_aabb(10.0, 0.5, 10.0, 0.0);
+    rt_game3d_entity_attach_body(ground, ground_body);
+    rt_game3d_entity_set_position(ground, 0.0, -0.5, 0.0);
+    rt_game3d_world_spawn(world, ground);
+
+    void *player = rt_game3d_entity_new();
+    rt_game3d_entity_set_position(player, 0.0, 1.0, 4.0);
+    rt_game3d_world_spawn(world, player);
+
+    void *character = rt_game3d_character_controller_new(world, player, 0.32, 1.8, 70.0);
+    void *fps = rt_game3d_first_person_controller_new(world);
+    rt_game3d_first_person_controller_set_character(fps, character);
+    rt_game3d_first_person_controller_set_speed(fps, 5.0);
+    rt_game3d_world_set_camera_controller(world, fps);
+
+    void *before = rt_game3d_entity_position(player);
+    rt_canvas3d_push_synthetic_key(canvas, rt_game3d_key_w(), 1);
+    rt_game3d_world_run_frames_only(world, 1, 0.1);
+    void *after = rt_game3d_entity_position(player);
+    EXPECT_TRUE(rt_vec3_z(after) < rt_vec3_z(before) - 0.05,
+                "first-person W moves the character in the same run frame");
+
+    void *camera_pos = rt_camera3d_get_position(rt_game3d_world_get_camera(world));
+    EXPECT_NEAR(rt_vec3_x(camera_pos), rt_vec3_x(after), 0.0001, "camera lateUpdate follows character x");
+    EXPECT_NEAR(rt_vec3_z(camera_pos), rt_vec3_z(after), 0.0001, "camera lateUpdate follows character z");
+    EXPECT_TRUE(rt_vec3_y(camera_pos) > rt_vec3_y(after),
+                "camera lateUpdate places the eye above the character");
+
+    rt_canvas3d_clear_synthetic_input(canvas);
+    rt_game3d_world_destroy(world);
+    PASS();
+}
+
 int main() {
     set_software_backend_env();
     bool ok = true;
@@ -334,6 +438,9 @@ int main() {
     ok = test_input_axes() && ok;
     ok = test_world_entity_registry_and_collision_clear() && ok;
     ok = test_frame_loop_manual_frame_and_final_capture() && ok;
+    ok = test_free_fly_controller_synthetic_input() && ok;
+    ok = test_orbit_and_follow_controllers() && ok;
+    ok = test_first_person_character_controller_same_frame_motion() && ok;
 
     std::printf("\nGame3D runtime tests: %d/%d passed\n", g_tests_passed, g_tests_total);
     return ok && g_tests_passed == g_tests_total ? 0 : 1;
