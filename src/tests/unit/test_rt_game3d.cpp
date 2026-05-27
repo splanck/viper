@@ -16,17 +16,24 @@
 
 #include "rt_animcontroller3d.h"
 #include "rt.hpp"
+#include "rt_audio.h"
+#include "rt_audio3d.h"
 #include "rt_canvas3d.h"
+#include "rt_audiolistener3d.h"
+#include "rt_audiosource3d.h"
+#include "rt_decal3d.h"
 #include "rt_game3d.h"
 #include "rt_input.h"
 #include "rt_mat4.h"
 #include "rt_model3d.h"
+#include "rt_particles3d.h"
 #include "rt_physics3d.h"
 #include "rt_pixels.h"
 #include "rt_postfx3d.h"
 #include "rt_quat.h"
 #include "rt_scene3d.h"
 #include "rt_skeleton3d.h"
+#include "rt_synth.h"
 #include "rt_string.h"
 #include "rt_vec2.h"
 #include "rt_vec3.h"
@@ -879,6 +886,140 @@ static bool test_phase5_animator3d_events_and_root_motion() {
     PASS();
 }
 
+static bool test_phase6_audio3d_and_effects3d_helpers() {
+    TEST("Audio3D helpers and Effects3D presets integrate with World3D");
+
+    void *world = rt_game3d_world_new(rt_const_cstr("Game3D Audio VFX Unit"), 96, 72);
+    void *camera = rt_game3d_world_get_camera(world);
+    void *audio = rt_game3d_world_get_audio(world);
+    void *listener = rt_game3d_audio_get_listener(audio);
+    void *effects = rt_game3d_world_get_effects(world);
+    EXPECT_TRUE(audio != nullptr, "World3D creates Audio3D");
+    EXPECT_TRUE(listener != nullptr, "Audio3D creates a listener");
+    EXPECT_TRUE(effects != nullptr, "World3D creates EffectRegistry3D");
+    EXPECT_TRUE(rt_game3d_audio_get_listener_follows_camera(audio) != 0,
+                "Audio3D listener follows camera by default");
+
+    rt_camera3d_look_at(
+        camera, rt_vec3_new(3.0, 2.0, 6.0), rt_vec3_new(3.0, 2.0, 5.0), rt_vec3_new(0.0, 1.0, 0.0));
+    rt_game3d_world_step_simulation(world, 0.1);
+    void *listener_pos = rt_audiolistener3d_get_position(listener);
+    EXPECT_NEAR(rt_vec3_x(listener_pos), 3.0, 0.001, "listener syncs bound camera position");
+
+    rt_game3d_audio_listener_follow_camera(audio, 0);
+    rt_camera3d_look_at(
+        camera, rt_vec3_new(7.0, 2.0, 6.0), rt_vec3_new(7.0, 2.0, 5.0), rt_vec3_new(0.0, 1.0, 0.0));
+    rt_game3d_world_step_simulation(world, 0.1);
+    listener_pos = rt_audiolistener3d_get_position(listener);
+    EXPECT_NEAR(rt_vec3_x(listener_pos), 3.0, 0.001, "listenerFollowCamera(false) freezes listener pose");
+
+    void *manual_pos = rt_vec3_new(9.0, 1.0, 2.0);
+    void *manual_forward = rt_vec3_new(0.0, 0.0, -1.0);
+    void *manual_up = rt_vec3_new(0.0, 1.0, 0.0);
+    rt_game3d_audio_set_listener_pose(audio, manual_pos, manual_forward, manual_up);
+    listener_pos = rt_audiolistener3d_get_position(listener);
+    EXPECT_NEAR(rt_vec3_x(listener_pos), 9.0, 0.001, "setListenerPose writes listener position");
+    EXPECT_TRUE(rt_game3d_audio_get_listener_follows_camera(audio) == 0,
+                "setListenerPose disables camera follow");
+    rt_game3d_audio_set_attenuation(audio, 2.0, 12.0);
+    rt_game3d_audio_set_volume(audio, 70);
+    EXPECT_NEAR(rt_game3d_audio_get_ref_distance(audio), 2.0, 0.0001, "Audio3D stores ref distance");
+    EXPECT_NEAR(rt_game3d_audio_get_max_distance(audio), 12.0, 0.0001, "Audio3D stores max distance");
+    EXPECT_EQ_INT(rt_game3d_audio_get_volume(audio), 70, "Audio3D clamps/stores volume");
+
+    rt_audio3d_listener_state state;
+    double pos[3] = {0.0, 0.0, 0.0};
+    double fwd[3] = {0.0, 0.0, -1.0};
+    double src[3] = {5.0, 0.0, 0.0};
+    int64_t spatial_volume = 0;
+    int64_t spatial_pan = 0;
+    rt_audio3d_listener_state_set(&state, pos, fwd, nullptr);
+    rt_audio3d_compute_voice_params(&state, src, 10.0, 100, &spatial_volume, &spatial_pan);
+    EXPECT_EQ_INT(spatial_volume, 50, "Audio3D attenuation halves volume at half max distance");
+    EXPECT_TRUE(spatial_pan > 90, "Audio3D pans right-side sources to the right");
+
+    if (rt_audio_is_available() && rt_audio_init()) {
+        void *clip = rt_synth_tone(440, 80, RT_WAVE_SINE);
+        if (clip) {
+            void *entity = rt_game3d_entity_new();
+            rt_game3d_entity_set_position(entity, 1.0, 0.0, 0.0);
+            rt_game3d_world_spawn(world, entity);
+            void *attached = rt_game3d_audio_play_attached(audio, clip, entity);
+            EXPECT_TRUE(attached != nullptr, "playAttached returns an AudioSource3D");
+            EXPECT_NEAR(rt_audiosource3d_get_max_distance(attached),
+                        12.0,
+                        0.001,
+                        "playAttached applies Audio3D attenuation");
+            rt_game3d_entity_set_position(entity, 4.0, 0.0, 0.0);
+            rt_game3d_world_step_simulation(world, 0.1);
+            void *source_pos = rt_audiosource3d_get_position(attached);
+            EXPECT_NEAR(rt_vec3_x(source_pos), 4.0, 0.001, "attached audio follows entity node");
+
+            void *one_shot = rt_game3d_audio_play_at(audio, clip, rt_vec3_new(2.0, 0.0, 0.0));
+            EXPECT_TRUE(one_shot != nullptr, "playAt returns an AudioSource3D");
+            (void)rt_game3d_audio_play2d(audio, clip);
+            EXPECT_TRUE(rt_game3d_audio_get_source_count(audio) >= 2,
+                        "Audio3D tracks sources it creates");
+            rt_game3d_audio_clear_sources(audio);
+            EXPECT_EQ_INT(rt_game3d_audio_get_source_count(audio), 0, "clearSources drops source refs");
+        }
+    }
+
+    void *origin = rt_vec3_new(0.0, 0.0, 0.0);
+    void *up = rt_vec3_new(0.0, 1.0, 0.0);
+    void *side = rt_vec3_new(1.0, 0.1, 0.0);
+    void *explosion = rt_game3d_effects3d_explosion(world, origin);
+    void *sparks = rt_game3d_effects3d_sparks(world, origin, side);
+    void *dust = rt_game3d_effects3d_dust(world, origin);
+    void *smoke = rt_game3d_effects3d_smoke(world, origin);
+    void *decal = rt_game3d_effects3d_impact_decal(world, origin, up);
+    EXPECT_TRUE(explosion != nullptr && sparks != nullptr && dust != nullptr && smoke != nullptr,
+                "Effects3D particle presets return emitters");
+    EXPECT_TRUE(decal != nullptr, "Effects3D.ImpactDecal returns a decal");
+    EXPECT_EQ_INT(rt_game3d_effects_get_count(effects), 5, "Effects3D presets register five effects");
+    EXPECT_EQ_INT(rt_game3d_effects_get_particles_count(effects), 4, "Effects3D registers particles");
+    EXPECT_EQ_INT(rt_game3d_effects_get_decal_count(effects), 1, "Effects3D registers decals");
+    EXPECT_TRUE(rt_particles3d_get_count(explosion) > 0, "Explosion spawns an immediate burst");
+
+    rt_game3d_world_begin_frame(world);
+    rt_game3d_world_draw_scene(world);
+    rt_game3d_world_draw_effects(world);
+    rt_game3d_world_end_scene(world);
+    EXPECT_TRUE(rt_game3d_world_capture_final_frame(world) != nullptr, "drawEffects renders without failing");
+
+    rt_game3d_effects_update(effects, 3.0);
+    EXPECT_EQ_INT(rt_game3d_effects_get_count(effects), 0, "Effects3D presets auto-expire");
+
+    void *manual_particles = rt_particles3d_new(8);
+    rt_particles3d_burst(manual_particles, 4);
+    rt_game3d_effects_add_particles(effects, manual_particles, 0.1);
+    void *manual_decal = rt_decal3d_new(origin, up, 0.25, nullptr);
+    rt_decal3d_set_lifetime(manual_decal, 0.1);
+    rt_game3d_effects_add_decal(effects, manual_decal);
+    EXPECT_EQ_INT(rt_game3d_effects_get_count(effects), 2, "EffectRegistry3D accepts manual effects");
+    rt_game3d_effects_update(effects, 0.2);
+    EXPECT_EQ_INT(rt_game3d_effects_get_count(effects), 0, "EffectRegistry3D expires manual effects");
+
+    rt_game3d_world_set_gravity(world, 0.0, 0.0, 0.0);
+    void *ground = rt_game3d_entity_new();
+    rt_game3d_entity_attach_body(ground, rt_game3d_body_def_static_box(1.0, 1.0, 1.0));
+    void *ball = rt_game3d_entity_new();
+    rt_game3d_entity_attach_body(ball, rt_game3d_body_def_sphere(0.5, 1.0));
+    rt_game3d_world_spawn(world, ground);
+    rt_game3d_world_spawn(world, ball);
+    rt_game3d_world_step_simulation(world, 1.0 / 60.0);
+    void *event = rt_game3d_world_collision_event(world, rt_game3d_collision_enter(), 0);
+    EXPECT_TRUE(event != nullptr, "collision event exists for audio/VFX trigger point");
+    if (event) {
+        void *point = rt_game3d_collision_event_point(event);
+        EXPECT_TRUE(rt_game3d_effects3d_dust(world, point) != nullptr,
+                    "collision point can spawn a positional effect");
+    }
+
+    rt_game3d_world_destroy(world);
+    PASS();
+}
+
 int main() {
     set_software_backend_env();
     bool ok = true;
@@ -895,6 +1036,7 @@ int main() {
     ok = test_phase4_body_def_attach_body() && ok;
     ok = test_phase4_collision_events_wrapped_with_entities() && ok;
     ok = test_phase5_animator3d_events_and_root_motion() && ok;
+    ok = test_phase6_audio3d_and_effects3d_helpers() && ok;
 
     std::printf("\nGame3D runtime tests: %d/%d passed\n", g_tests_passed, g_tests_total);
     return ok && g_tests_passed == g_tests_total ? 0 : 1;

@@ -35,7 +35,7 @@ API, test, and docs items are tracked in the sibling files.
 | P0B-014 | Prove `ScreenshotFinal()` then `Flip()` does not double-apply finalization | `roadmap.md` Phase 0B Exit | done | finalization idempotence implemented; probe calls `ScreenshotFinal()` then `Flip()` | `test_rt_canvas3d_gpu_paths`, `g3d_walk_min_visual_probe` |  | ctests passed | Direct fake-backend `Flip` counter remains impractical because `Flip` enters `vgfx_update` |
 | P0B-015 | Build passes on macOS, Windows, Linux | `roadmap.md` Phase 0B Exit | partial | local macOS build passed |  |  | `cmake --build build -j...` | Windows/Linux pending |
 | P0B-016 | `check_runtime_completeness.sh` passes | `roadmap.md` Phase 0B Exit | done | runtime.def complete | script |  | `scripts/check_runtime_completeness.sh` |  |
-| P0B-017 | `ctest --test-dir build -L graphics3d` passes | `roadmap.md` Phase 0B Exit | done | graphics3d regression green | 49/49 ctests |  | `ctest --test-dir build -L graphics3d --output-on-failure` | Includes Phase 0A surface probe, synthetic input, quality profiles, model asset loading, Game3D Phase 1-5 probes, and `walk_min` visual probe |
+| P0B-017 | `ctest --test-dir build -L graphics3d` passes | `roadmap.md` Phase 0B Exit | done | graphics3d regression green | 51/51 ctests |  | `ctest --test-dir build -L graphics3d --output-on-failure` | Includes Phase 0A surface probe, synthetic input, quality profiles, model asset loading, Game3D Phase 1-6 probes, and `walk_min` visual probe |
 
 ## Phase 0C - deterministic test input, clock, and backend-safe quality
 
@@ -71,7 +71,7 @@ API, test, and docs items are tracked in the sibling files.
 | ID | Item | Source | Status | Impl | Tests | Docs | Proof / link | Notes |
 |---|---|---|---|---|---|---|---|---|
 | P1-001 | Implement runtime-backed `Viper.Game3D` classes/functions in C runtime tree | `roadmap.md` Phase 1 | done | `src/runtime/graphics/3d/rt_game3d.c`, `rt_game3d.h` | `test_rt_game3d`; Zia probes | `docs/viperlib/graphics/game3d.md` | focused ctests passed | Normal C runtime implementation; not a Zia library |
-| P1-002 | Add `runtime.def` entries, headers, disabled-graphics stubs, docs, completeness checks | `roadmap.md` Phase 1 | done | `runtime.def`, runtime signatures/classes, CMake, graphics stubs | focused build passed; graphics3d 49/49 | Game3D docs added | `scripts/check_runtime_completeness.sh` passed |  |
+| P1-002 | Add `runtime.def` entries, headers, disabled-graphics stubs, docs, completeness checks | `roadmap.md` Phase 1 | done | `runtime.def`, runtime signatures/classes, CMake, graphics stubs | focused build passed; graphics3d 51/51 | Game3D docs added | `scripts/check_runtime_completeness.sh` passed |  |
 | P1-003 | Add only thin Zia sample/import convenience where useful | `roadmap.md` Phase 1 | done | Zia probes consume runtime namespace directly | `g3d_test_game3d_world_probe`, `g3d_test_game3d_runframes_probe` | docs explain runtime-first policy | focused ctests passed | No authoritative Zia helper package added |
 | P1-004 | `World3D.New` creates canvas/camera/scene/physics/input/audio/effects | `roadmap.md` Phase 1 | done | `rt_game3d_world_new_with_camera` | `test_rt_game3d`, `g3d_test_game3d_world_probe` | Game3D docs | focused ctests passed |  |
 | P1-005 | `World3D.New` applies explicit default environment | `roadmap.md` Phase 1 | done | default camera, lighting, ambient, quality, frustum culling | `test_rt_game3d`, `g3d_test_game3d_world_probe` | Game3D docs | focused ctests passed | Additional environment presets completed in Phase 3 |
@@ -84,7 +84,7 @@ API, test, and docs items are tracked in the sibling files.
 | P1-012 | Document raw escape-hatch lifetimes | `roadmap.md` Phase 1 | done |  |  | `docs/viperlib/graphics/game3d.md` | local docs update | Escape hatches still need richer examples |
 | P1-013 | `Input3D` reads named keyboard/mouse state, not `Canvas3D.Poll()` bitmasks | `roadmap.md` Phase 1 | done | `rt_game3d_input_*` over runtime keyboard/mouse APIs | `test_rt_game3d` | Game3D docs | focused ctest passed |  |
 | P1-014 | API-spec hello-world compiles and renders | `roadmap.md` Phase 1 Exit | partial | docs quick start mirrors passing world probe structure | `g3d_test_game3d_world_probe` renders/captures | Game3D docs | focused ctest passed | Dedicated snippet ctest still pending |
-| P1-015 | `world_probe.zia` covers construction, cleanup, find, resize, final-frame render, tick, step, runFrames, destroy, diagnostics | `roadmap.md` Phase 1 Exit | partial | world/runframes/callback-reject probes added | `g3d_test_game3d_world_probe`, `g3d_test_game3d_runframes_probe`, `g3d_test_game3d_runframes_callback_reject`; graphics3d 49/49 | Game3D docs | ctests passed | Tick/step and destroyed-handle diagnostics need explicit Zia probe coverage |
+| P1-015 | `world_probe.zia` covers construction, cleanup, find, resize, final-frame render, tick, step, runFrames, destroy, diagnostics | `roadmap.md` Phase 1 Exit | partial | world/runframes/callback-reject probes added | `g3d_test_game3d_world_probe`, `g3d_test_game3d_runframes_probe`, `g3d_test_game3d_runframes_callback_reject`; graphics3d 51/51 | Game3D docs | ctests passed | Tick/step and destroyed-handle diagnostics need explicit Zia probe coverage |
 | P1-016 | No common-case sample uses `Mat4.` | `roadmap.md` Phase 1 Exit | partial | Game3D docs/probes and `walk_min` use entity transform helpers | `g3d_test_game3d_world_probe`; `g3d_walk_min_visual_probe` | Game3D docs; `examples/3d/README.md` | focused ctests passed | Final starter/showcase samples still pending |
 
 ## Phase 2 - cameras and walkable movement
@@ -164,17 +164,17 @@ API, test, and docs items are tracked in the sibling files.
 
 | ID | Item | Source | Status | Impl | Tests | Docs | Proof / link | Notes |
 |---|---|---|---|---|---|---|---|---|
-| P6-001 | Implement runtime-backed `Audio3D` on `world` | `roadmap.md` Phase 6 | todo |  |  |  |  |  |
-| P6-002 | Implement listener-follows-camera | `roadmap.md` Phase 6 | todo |  |  |  |  |  |
-| P6-003 | Implement audio `load`/`loadAsset`/`playAt`/`playAttached`/`play2D` | `roadmap.md` Phase 6 | todo |  |  |  |  |  |
-| P6-004 | Implement runtime-backed `EffectRegistry3D` | `roadmap.md` Phase 6 | todo |  |  |  |  |  |
-| P6-005 | Implement `Effects3D` presets: explosion/sparks/dust/smoke/impact decal | `roadmap.md` Phase 6 | todo |  |  |  |  |  |
-| P6-006 | Effects update, draw, and expire through `World3D` | `roadmap.md` Phase 6 | todo |  |  |  |  |  |
-| P6-007 | Positional sound attenuates with listener distance | `roadmap.md` Phase 6 Exit | todo |  |  |  |  |  |
-| P6-008 | Attached sound follows entity after scene/body sync | `roadmap.md` Phase 6 Exit | todo |  |  |  |  |  |
-| P6-009 | Each VFX preset spawns and auto-expires without leaking | `roadmap.md` Phase 6 Exit | todo |  |  |  |  |  |
-| P6-010 | Collision events can trigger positional sound and effect | `roadmap.md` Phase 6 Exit | todo |  |  |  |  |  |
-| P6-011 | `audio_probe.zia` and `effects_probe.zia` pass | `roadmap.md` Phase 6 Exit | todo |  |  |  |  |  |
+| P6-001 | Implement runtime-backed `Audio3D` on `world` | `roadmap.md` Phase 6 | done | `Game3D.Audio3D` owns listener, camera ref, attenuation defaults, source tracking | `test_rt_game3d`, `g3d_test_game3d_audio_probe` | Game3D docs | focused ctests passed | Normal C runtime files, not a Zia helper library |
+| P6-002 | Implement listener-follows-camera | `roadmap.md` Phase 6 | done | default world listener binds to camera; `listenerFollowCamera` toggles binding; `setListenerPose` disables follow | `test_rt_game3d`, `g3d_test_game3d_audio_probe` | Game3D docs | focused ctests passed |  |
+| P6-003 | Implement audio `load`/`loadAsset`/`playAt`/`playAttached`/`play2D` | `roadmap.md` Phase 6 | done | wrappers over `Sound.Load`, `Sound.LoadAsset`, `AudioSource3D`, and `Sound.PlayEx` | `test_rt_game3d`, `g3d_test_game3d_audio_probe`, lower audio tests | Game3D docs | focused ctests passed | `playAt` / `playAttached` return `AudioSource3D` escape hatches |
+| P6-004 | Implement runtime-backed `EffectRegistry3D` | `roadmap.md` Phase 6 | done | registry tracks retained `Particles3D`/`Decal3D` entries plus post-FX escape hatch | `test_rt_game3d`, `g3d_test_game3d_effects_probe` | Game3D docs | focused ctests passed | Adds count diagnostics |
+| P6-005 | Implement `Effects3D` presets: explosion/sparks/dust/smoke/impact decal | `roadmap.md` Phase 6 | done | C runtime presets create configured particle emitters and fading impact decals | `test_rt_game3d`, `g3d_test_game3d_effects_probe` | Game3D docs | focused ctests passed |  |
+| P6-006 | Effects update, draw, and expire through `World3D` | `roadmap.md` Phase 6 | done | `World3D.stepSimulation` updates effects; `drawEffects` draws registry before debug wires | `test_rt_game3d`, `g3d_test_game3d_effects_probe` | Game3D docs | focused ctests passed | Fixed `Decal3D` overshoot expiry bug |
+| P6-007 | Positional sound attenuates with listener distance | `roadmap.md` Phase 6 Exit | done | Game3D defaults feed `AudioSource3D`; lower `rt_audio3d_compute_voice_params` verifies falloff/pan | `test_rt_game3d`, lower `RTAudio3DTests` | Game3D docs | focused ctests passed | Playback voice assertions remain conditional on backend availability |
+| P6-008 | Attached sound follows entity after scene/body sync | `roadmap.md` Phase 6 Exit | done | `playAttached` binds source to entity node; world audio sync runs after scene/body sync | `test_rt_game3d`, `g3d_test_game3d_audio_probe` | Game3D docs | focused ctests passed |  |
+| P6-009 | Each VFX preset spawns and auto-expires without leaking | `roadmap.md` Phase 6 Exit | done | registry releases expired particle/decal refs and clears particle pools | `test_rt_game3d`, `g3d_test_game3d_effects_probe` | Game3D docs | focused ctests passed |  |
+| P6-010 | Collision events can trigger positional sound and effect | `roadmap.md` Phase 6 Exit | done | collision `point()` feeds `Effects3D.Dust`; docs show `Audio3D.playAt` from same point | `test_rt_game3d`, `g3d_test_game3d_effects_probe` | Game3D docs | focused ctests passed | Callback sugar still deferred |
+| P6-011 | `audio_probe.zia` and `effects_probe.zia` pass | `roadmap.md` Phase 6 Exit | done | `test_game3d_audio_probe.zia` and `test_game3d_effects_probe.zia` registered | `g3d_test_game3d_audio_probe`, `g3d_test_game3d_effects_probe` | Game3D docs | focused ctests passed |  |
 
 ## Phase 7 - showcase sample, docs, starter, and bowling migration
 

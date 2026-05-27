@@ -17,16 +17,21 @@
 #include "rt_game3d.h"
 
 #include "rt_animcontroller3d.h"
+#include "rt_audio.h"
 #include "rt_audio3d.h"
 #include "rt_audiolistener3d.h"
+#include "rt_audiosource3d.h"
 #include "rt_canvas3d.h"
 #include "rt_canvas3d_internal.h"
 #include "rt_collider3d.h"
+#include "rt_decal3d.h"
 #include "rt_input.h"
 #include "rt_mat4.h"
 #include "rt_model3d.h"
 #include "rt_object.h"
+#include "rt_particles3d.h"
 #include "rt_physics3d.h"
+#include "rt_pixels.h"
 #include "rt_postfx3d.h"
 #include "rt_quat.h"
 #include "rt_scene3d.h"
@@ -63,8 +68,16 @@
 #define RT_GAME3D_DEFAULT_JUMP_SPEED 5.5
 #define RT_GAME3D_DEFAULT_GRAVITY -20.0
 #define RT_GAME3D_DEFAULT_FOLLOW_DAMPING 12.0
+#define RT_GAME3D_DEFAULT_AUDIO_REF_DISTANCE 1.0
+#define RT_GAME3D_DEFAULT_AUDIO_MAX_DISTANCE 50.0
+#define RT_GAME3D_DEFAULT_AUDIO_VOLUME 100
 #define RT_GAME3D_PI 3.14159265358979323846
 #define RT_GAME3D_ANIM_EVENT_MAX 64
+
+enum {
+    RT_GAME3D_EFFECT_PARTICLES = 1,
+    RT_GAME3D_EFFECT_DECAL = 2,
+};
 
 void rt_camera3d_look_at(void *obj, void *eye_v, void *target_v, void *up_v);
 void rt_camera3d_fps_init(void *obj);
@@ -111,10 +124,28 @@ typedef struct rt_game3d_entity {
 
 typedef struct rt_game3d_audio {
     void *listener;
+    void *camera;
+    void **sources;
+    int32_t source_count;
+    int32_t source_capacity;
+    double ref_distance;
+    double max_distance;
+    int64_t volume;
+    int8_t listener_follow_camera;
 } rt_game3d_audio;
+
+typedef struct rt_game3d_effect_item {
+    int64_t type;
+    void *object;
+    double lifetime;
+    double age;
+} rt_game3d_effect_item;
 
 typedef struct rt_game3d_effects {
     void *postfx;
+    rt_game3d_effect_item *items;
+    int32_t count;
+    int32_t capacity;
 } rt_game3d_effects;
 
 typedef struct rt_game3d_env_handle {
@@ -335,6 +366,89 @@ static double game3d_clamp(double value, double lo, double hi) {
     if (value > hi)
         return hi;
     return value;
+}
+
+static int64_t game3d_clamp_i64(int64_t value, int64_t lo, int64_t hi) {
+    if (value < lo)
+        return lo;
+    if (value > hi)
+        return hi;
+    return value;
+}
+
+static int8_t game3d_read_vec3(void *vec, double *out, const char *method) {
+    if (!out)
+        return 0;
+    if (!rt_g3d_is_vec3(vec)) {
+        if (method)
+            rt_trap(method);
+        out[0] = 0.0;
+        out[1] = 0.0;
+        out[2] = 0.0;
+        return 0;
+    }
+    out[0] = game3d_finite_or(rt_vec3_x(vec), 0.0);
+    out[1] = game3d_finite_or(rt_vec3_y(vec), 0.0);
+    out[2] = game3d_finite_or(rt_vec3_z(vec), 0.0);
+    return 1;
+}
+
+static int game3d_audio_reserve_sources(rt_game3d_audio *audio, int32_t needed) {
+    if (!audio)
+        return 0;
+    if (needed <= audio->source_capacity)
+        return 1;
+    int32_t new_capacity = audio->source_capacity > 0 ? audio->source_capacity * 2 : 8;
+    while (new_capacity < needed)
+        new_capacity *= 2;
+    void **new_sources = (void **)realloc(audio->sources, (size_t)new_capacity * sizeof(void *));
+    if (!new_sources) {
+        rt_trap("Game3D.Audio3D: source list allocation failed");
+        return 0;
+    }
+    audio->sources = new_sources;
+    audio->source_capacity = new_capacity;
+    return 1;
+}
+
+static void game3d_audio_track_source(rt_game3d_audio *audio, void *source) {
+    if (!audio || !source)
+        return;
+    if (!game3d_audio_reserve_sources(audio, audio->source_count + 1))
+        return;
+    rt_obj_retain_maybe(source);
+    audio->sources[audio->source_count++] = source;
+}
+
+static int game3d_effects_reserve(rt_game3d_effects *effects, int32_t needed) {
+    if (!effects)
+        return 0;
+    if (needed <= effects->capacity)
+        return 1;
+    int32_t new_capacity = effects->capacity > 0 ? effects->capacity * 2 : 16;
+    while (new_capacity < needed)
+        new_capacity *= 2;
+    rt_game3d_effect_item *new_items =
+        (rt_game3d_effect_item *)realloc(effects->items,
+                                         (size_t)new_capacity * sizeof(rt_game3d_effect_item));
+    if (!new_items) {
+        rt_trap("Game3D.EffectRegistry3D: effect list allocation failed");
+        return 0;
+    }
+    effects->items = new_items;
+    effects->capacity = new_capacity;
+    return 1;
+}
+
+static void game3d_effect_release_item(rt_game3d_effect_item *item) {
+    if (!item)
+        return;
+    if (item->type == RT_GAME3D_EFFECT_PARTICLES && item->object)
+        rt_particles3d_clear(item->object);
+    game3d_release_ref(&item->object);
+    item->type = 0;
+    item->lifetime = 0.0;
+    item->age = 0.0;
 }
 
 static double game3d_positive_or(double value, double fallback) {
@@ -1564,8 +1678,16 @@ void *rt_game3d_entity_attach_animator(void *obj, void *animator_or_controller) 
 
 static void game3d_audio_finalize(void *obj) {
     rt_game3d_audio *audio = (rt_game3d_audio *)obj;
-    if (audio)
-        game3d_release_ref(&audio->listener);
+    if (!audio)
+        return;
+    for (int32_t i = 0; i < audio->source_count; ++i)
+        game3d_release_ref(&audio->sources[i]);
+    free(audio->sources);
+    audio->sources = NULL;
+    audio->source_count = 0;
+    audio->source_capacity = 0;
+    game3d_release_ref(&audio->camera);
+    game3d_release_ref(&audio->listener);
 }
 
 static void *game3d_audio_new(void *camera) {
@@ -1577,8 +1699,13 @@ static void *game3d_audio_new(void *camera) {
     }
     memset(audio, 0, sizeof(*audio));
     rt_obj_set_finalizer(audio, game3d_audio_finalize);
+    audio->ref_distance = RT_GAME3D_DEFAULT_AUDIO_REF_DISTANCE;
+    audio->max_distance = RT_GAME3D_DEFAULT_AUDIO_MAX_DISTANCE;
+    audio->volume = RT_GAME3D_DEFAULT_AUDIO_VOLUME;
     audio->listener = rt_audiolistener3d_new();
+    game3d_assign_ref(&audio->camera, camera);
     if (audio->listener && camera) {
+        audio->listener_follow_camera = 1;
         rt_audiolistener3d_bind_camera(audio->listener, camera);
         rt_audiolistener3d_set_is_active(audio->listener, 1);
     }
@@ -1590,10 +1717,183 @@ void *rt_game3d_audio_get_listener(void *obj) {
     return audio ? audio->listener : NULL;
 }
 
+int8_t rt_game3d_audio_get_listener_follows_camera(void *obj) {
+    rt_game3d_audio *audio =
+        game3d_audio_checked(obj, "Game3D.Audio3D.get_listenerFollowsCamera: invalid audio");
+    return audio && audio->listener_follow_camera ? 1 : 0;
+}
+
+double rt_game3d_audio_get_ref_distance(void *obj) {
+    rt_game3d_audio *audio =
+        game3d_audio_checked(obj, "Game3D.Audio3D.get_refDistance: invalid audio");
+    return audio ? audio->ref_distance : 0.0;
+}
+
+double rt_game3d_audio_get_max_distance(void *obj) {
+    rt_game3d_audio *audio =
+        game3d_audio_checked(obj, "Game3D.Audio3D.get_maxDistance: invalid audio");
+    return audio ? audio->max_distance : 0.0;
+}
+
+int64_t rt_game3d_audio_get_volume(void *obj) {
+    rt_game3d_audio *audio =
+        game3d_audio_checked(obj, "Game3D.Audio3D.get_volume: invalid audio");
+    return audio ? audio->volume : 0;
+}
+
+int64_t rt_game3d_audio_get_source_count(void *obj) {
+    rt_game3d_audio *audio =
+        game3d_audio_checked(obj, "Game3D.Audio3D.get_sourceCount: invalid audio");
+    return audio ? audio->source_count : 0;
+}
+
+void rt_game3d_audio_listener_follow_camera(void *obj, int8_t enabled) {
+    rt_game3d_audio *audio =
+        game3d_audio_checked(obj, "Game3D.Audio3D.listenerFollowCamera: invalid audio");
+    if (!audio || !audio->listener)
+        return;
+    audio->listener_follow_camera = enabled ? 1 : 0;
+    if (audio->listener_follow_camera && audio->camera)
+        rt_audiolistener3d_bind_camera(audio->listener, audio->camera);
+    else
+        rt_audiolistener3d_clear_camera_binding(audio->listener);
+    rt_audiolistener3d_set_is_active(audio->listener, 1);
+}
+
+void rt_game3d_audio_set_listener_pose(void *obj, void *position, void *forward, void *up) {
+    (void)up;
+    rt_game3d_audio *audio =
+        game3d_audio_checked(obj, "Game3D.Audio3D.setListenerPose: invalid audio");
+    if (!audio || !audio->listener)
+        return;
+    if (!rt_g3d_is_vec3(position) || !rt_g3d_is_vec3(forward)) {
+        rt_trap("Game3D.Audio3D.setListenerPose: expected Vec3 position and forward");
+        return;
+    }
+    audio->listener_follow_camera = 0;
+    rt_audiolistener3d_clear_camera_binding(audio->listener);
+    rt_audiolistener3d_set_position(audio->listener, position);
+    rt_audiolistener3d_set_forward(audio->listener, forward);
+    rt_audiolistener3d_set_is_active(audio->listener, 1);
+}
+
+void rt_game3d_audio_set_attenuation(void *obj, double ref_distance, double max_distance) {
+    rt_game3d_audio *audio =
+        game3d_audio_checked(obj, "Game3D.Audio3D.setAttenuation: invalid audio");
+    if (!audio)
+        return;
+    audio->ref_distance =
+        (isfinite(ref_distance) && ref_distance > 0.0) ? ref_distance : RT_GAME3D_DEFAULT_AUDIO_REF_DISTANCE;
+    audio->max_distance =
+        (isfinite(max_distance) && max_distance > 0.0) ? max_distance : RT_GAME3D_DEFAULT_AUDIO_MAX_DISTANCE;
+}
+
+void rt_game3d_audio_set_volume(void *obj, int64_t volume) {
+    rt_game3d_audio *audio =
+        game3d_audio_checked(obj, "Game3D.Audio3D.set_volume: invalid audio");
+    if (audio)
+        audio->volume = game3d_clamp_i64(volume, 0, 100);
+}
+
+void *rt_game3d_audio_load(void *obj, rt_string path) {
+    (void)game3d_audio_checked(obj, "Game3D.Audio3D.load: invalid audio");
+    return rt_sound_load(path);
+}
+
+void *rt_game3d_audio_load_asset(void *obj, rt_string asset_path) {
+    (void)game3d_audio_checked(obj, "Game3D.Audio3D.loadAsset: invalid audio");
+    return rt_sound_load_asset(asset_path);
+}
+
+void *rt_game3d_audio_play_at(void *obj, void *clip, void *position) {
+    rt_game3d_audio *audio =
+        game3d_audio_checked(obj, "Game3D.Audio3D.playAt: invalid audio");
+    if (!audio || !clip)
+        return NULL;
+    if (!rt_sound_is_handle(clip)) {
+        rt_trap("Game3D.Audio3D.playAt: expected Sound clip");
+        return NULL;
+    }
+    if (!rt_g3d_is_vec3(position)) {
+        rt_trap("Game3D.Audio3D.playAt: expected Vec3 position");
+        return NULL;
+    }
+    void *source = rt_audiosource3d_new(clip);
+    if (!source)
+        return NULL;
+    rt_audiosource3d_set_position(source, position);
+    rt_audiosource3d_set_max_distance(source, audio->max_distance);
+    rt_audiosource3d_set_volume(source, audio->volume);
+    (void)rt_audiosource3d_play(source);
+    game3d_audio_track_source(audio, source);
+    return source;
+}
+
+void *rt_game3d_audio_play_attached(void *obj, void *clip, void *entity_obj) {
+    rt_game3d_audio *audio =
+        game3d_audio_checked(obj, "Game3D.Audio3D.playAttached: invalid audio");
+    rt_game3d_entity *entity =
+        game3d_entity_checked(entity_obj, "Game3D.Audio3D.playAttached: invalid entity");
+    if (!audio || !entity || !clip)
+        return NULL;
+    if (!rt_sound_is_handle(clip)) {
+        rt_trap("Game3D.Audio3D.playAttached: expected Sound clip");
+        return NULL;
+    }
+    void *source = rt_audiosource3d_new(clip);
+    if (!source)
+        return NULL;
+    rt_audiosource3d_set_max_distance(source, audio->max_distance);
+    rt_audiosource3d_set_volume(source, audio->volume);
+    if (entity->node)
+        rt_audiosource3d_bind_node(source, entity->node);
+    else {
+        void *pos = rt_game3d_entity_position(entity);
+        rt_audiosource3d_set_position(source, pos);
+        game3d_release_ref(&pos);
+    }
+    (void)rt_audiosource3d_play(source);
+    game3d_audio_track_source(audio, source);
+    return source;
+}
+
+int64_t rt_game3d_audio_play2d(void *obj, void *clip) {
+    rt_game3d_audio *audio =
+        game3d_audio_checked(obj, "Game3D.Audio3D.play2D: invalid audio");
+    if (!audio || !clip)
+        return 0;
+    if (!rt_sound_is_handle(clip)) {
+        rt_trap("Game3D.Audio3D.play2D: expected Sound clip");
+        return 0;
+    }
+    int64_t voice = rt_sound_play_ex(clip, audio->volume, 0);
+    return voice > 0 ? voice : 0;
+}
+
+void rt_game3d_audio_clear_sources(void *obj) {
+    rt_game3d_audio *audio =
+        game3d_audio_checked(obj, "Game3D.Audio3D.clearSources: invalid audio");
+    if (!audio)
+        return;
+    for (int32_t i = 0; i < audio->source_count; ++i) {
+        if (audio->sources[i])
+            rt_audiosource3d_stop(audio->sources[i]);
+        game3d_release_ref(&audio->sources[i]);
+    }
+    audio->source_count = 0;
+}
+
 static void game3d_effects_finalize(void *obj) {
     rt_game3d_effects *effects = (rt_game3d_effects *)obj;
-    if (effects)
-        game3d_release_ref(&effects->postfx);
+    if (!effects)
+        return;
+    for (int32_t i = 0; i < effects->count; ++i)
+        game3d_effect_release_item(&effects->items[i]);
+    free(effects->items);
+    effects->items = NULL;
+    effects->count = 0;
+    effects->capacity = 0;
+    game3d_release_ref(&effects->postfx);
 }
 
 static void *game3d_effects_new(void *canvas, int64_t quality) {
@@ -1615,6 +1915,287 @@ void *rt_game3d_effects_get_postfx(void *obj) {
     rt_game3d_effects *effects =
         game3d_effects_checked(obj, "Game3D.EffectRegistry3D.get_PostFX: invalid effects");
     return effects ? effects->postfx : NULL;
+}
+
+int64_t rt_game3d_effects_get_count(void *obj) {
+    rt_game3d_effects *effects =
+        game3d_effects_checked(obj, "Game3D.EffectRegistry3D.get_count: invalid effects");
+    return effects ? effects->count : 0;
+}
+
+int64_t rt_game3d_effects_get_particles_count(void *obj) {
+    rt_game3d_effects *effects =
+        game3d_effects_checked(obj, "Game3D.EffectRegistry3D.get_particlesCount: invalid effects");
+    int64_t count = 0;
+    if (!effects)
+        return 0;
+    for (int32_t i = 0; i < effects->count; ++i) {
+        if (effects->items[i].type == RT_GAME3D_EFFECT_PARTICLES)
+            count++;
+    }
+    return count;
+}
+
+int64_t rt_game3d_effects_get_decal_count(void *obj) {
+    rt_game3d_effects *effects =
+        game3d_effects_checked(obj, "Game3D.EffectRegistry3D.get_decalCount: invalid effects");
+    int64_t count = 0;
+    if (!effects)
+        return 0;
+    for (int32_t i = 0; i < effects->count; ++i) {
+        if (effects->items[i].type == RT_GAME3D_EFFECT_DECAL)
+            count++;
+    }
+    return count;
+}
+
+void *rt_game3d_effects_add_particles(void *obj, void *particles, double lifetime) {
+    rt_game3d_effects *effects =
+        game3d_effects_checked(obj, "Game3D.EffectRegistry3D.addParticles: invalid effects");
+    if (!effects)
+        return NULL;
+    if (!rt_g3d_has_class(particles, RT_G3D_PARTICLES3D_CLASS_ID)) {
+        rt_trap("Game3D.EffectRegistry3D.addParticles: expected Particles3D");
+        return NULL;
+    }
+    if (!game3d_effects_reserve(effects, effects->count + 1))
+        return NULL;
+    rt_game3d_effect_item *item = &effects->items[effects->count++];
+    memset(item, 0, sizeof(*item));
+    item->type = RT_GAME3D_EFFECT_PARTICLES;
+    item->object = particles;
+    item->lifetime = (isfinite(lifetime) && lifetime > 0.0) ? lifetime : -1.0;
+    item->age = 0.0;
+    rt_obj_retain_maybe(particles);
+    return particles;
+}
+
+void *rt_game3d_effects_add_decal(void *obj, void *decal) {
+    rt_game3d_effects *effects =
+        game3d_effects_checked(obj, "Game3D.EffectRegistry3D.addDecal: invalid effects");
+    if (!effects)
+        return NULL;
+    if (!rt_g3d_has_class(decal, RT_G3D_DECAL3D_CLASS_ID)) {
+        rt_trap("Game3D.EffectRegistry3D.addDecal: expected Decal3D");
+        return NULL;
+    }
+    if (!game3d_effects_reserve(effects, effects->count + 1))
+        return NULL;
+    rt_game3d_effect_item *item = &effects->items[effects->count++];
+    memset(item, 0, sizeof(*item));
+    item->type = RT_GAME3D_EFFECT_DECAL;
+    item->object = decal;
+    item->lifetime = -1.0;
+    item->age = 0.0;
+    rt_obj_retain_maybe(decal);
+    return decal;
+}
+
+void rt_game3d_effects_update(void *obj, double dt) {
+    rt_game3d_effects *effects =
+        game3d_effects_checked(obj, "Game3D.EffectRegistry3D.update: invalid effects");
+    if (!effects || !isfinite(dt) || dt <= 0.0)
+        return;
+    int32_t i = 0;
+    while (i < effects->count) {
+        rt_game3d_effect_item *item = &effects->items[i];
+        int8_t expired = 0;
+        item->age += dt;
+        if (item->type == RT_GAME3D_EFFECT_PARTICLES) {
+            rt_particles3d_update(item->object, dt);
+            if (item->lifetime >= 0.0 && item->age >= item->lifetime)
+                expired = 1;
+        } else if (item->type == RT_GAME3D_EFFECT_DECAL) {
+            rt_decal3d_update(item->object, dt);
+            expired = rt_decal3d_is_expired(item->object);
+        } else {
+            expired = 1;
+        }
+        if (expired) {
+            game3d_effect_release_item(item);
+            if (i + 1 < effects->count)
+                effects->items[i] = effects->items[effects->count - 1];
+            effects->count--;
+            continue;
+        }
+        i++;
+    }
+}
+
+void rt_game3d_effects_draw(void *obj, void *canvas, void *camera) {
+    rt_game3d_effects *effects =
+        game3d_effects_checked(obj, "Game3D.EffectRegistry3D.draw: invalid effects");
+    if (!effects || !canvas)
+        return;
+    for (int32_t i = 0; i < effects->count; ++i) {
+        rt_game3d_effect_item *item = &effects->items[i];
+        if (item->type == RT_GAME3D_EFFECT_PARTICLES) {
+            if (camera)
+                rt_particles3d_draw(item->object, canvas, camera);
+        } else if (item->type == RT_GAME3D_EFFECT_DECAL) {
+            rt_canvas3d_draw_decal(canvas, item->object);
+        }
+    }
+}
+
+void rt_game3d_effects_clear(void *obj) {
+    rt_game3d_effects *effects =
+        game3d_effects_checked(obj, "Game3D.EffectRegistry3D.clear: invalid effects");
+    if (!effects)
+        return;
+    for (int32_t i = 0; i < effects->count; ++i)
+        game3d_effect_release_item(&effects->items[i]);
+    effects->count = 0;
+}
+
+static rt_game3d_effects *game3d_world_effects_checked(void *world_obj, const char *method) {
+    rt_game3d_world *world = game3d_world_checked(world_obj, method);
+    if (!world || !world->effects)
+        return NULL;
+    return game3d_effects_checked(world->effects, method);
+}
+
+static int8_t game3d_particles_set_position_from_vec(void *particles, void *position, const char *method) {
+    double pos[3];
+    if (!game3d_read_vec3(position, pos, method))
+        return 0;
+    rt_particles3d_set_position(particles, pos[0], pos[1], pos[2]);
+    return 1;
+}
+
+void *rt_game3d_effects3d_explosion(void *world_obj, void *position) {
+    rt_game3d_effects *effects =
+        game3d_world_effects_checked(world_obj, "Game3D.Effects3D.Explosion: invalid world");
+    if (!effects)
+        return NULL;
+    void *particles = rt_particles3d_new(160);
+    if (!particles)
+        return NULL;
+    if (!game3d_particles_set_position_from_vec(
+            particles, position, "Game3D.Effects3D.Explosion: expected Vec3 position"))
+        return NULL;
+    rt_particles3d_set_direction(particles, 0.0, 1.0, 0.0, 2.8);
+    rt_particles3d_set_speed(particles, 3.0, 9.0);
+    rt_particles3d_set_lifetime(particles, 0.25, 0.9);
+    rt_particles3d_set_size(particles, 0.32, 0.04);
+    rt_particles3d_set_gravity(particles, 0.0, -2.0, 0.0);
+    rt_particles3d_set_color(particles, 0xFFAA22, 0x442211);
+    rt_particles3d_set_alpha(particles, 1.0, 0.0);
+    rt_particles3d_set_additive(particles, 1);
+    rt_particles3d_burst(particles, 90);
+    rt_game3d_effects_add_particles(effects, particles, 1.15);
+    return particles;
+}
+
+void *rt_game3d_effects3d_sparks(void *world_obj, void *position, void *direction) {
+    rt_game3d_effects *effects =
+        game3d_world_effects_checked(world_obj, "Game3D.Effects3D.Sparks: invalid world");
+    double dir[3];
+    if (!effects)
+        return NULL;
+    if (!game3d_read_vec3(direction, dir, "Game3D.Effects3D.Sparks: expected Vec3 direction"))
+        return NULL;
+    void *particles = rt_particles3d_new(96);
+    if (!particles)
+        return NULL;
+    if (!game3d_particles_set_position_from_vec(
+            particles, position, "Game3D.Effects3D.Sparks: expected Vec3 position"))
+        return NULL;
+    rt_particles3d_set_direction(particles, dir[0], dir[1], dir[2], 0.75);
+    rt_particles3d_set_speed(particles, 5.0, 13.0);
+    rt_particles3d_set_lifetime(particles, 0.15, 0.55);
+    rt_particles3d_set_size(particles, 0.08, 0.01);
+    rt_particles3d_set_gravity(particles, 0.0, -7.0, 0.0);
+    rt_particles3d_set_color(particles, 0xFFE88A, 0xFF6A00);
+    rt_particles3d_set_alpha(particles, 1.0, 0.0);
+    rt_particles3d_set_additive(particles, 1);
+    rt_particles3d_burst(particles, 48);
+    rt_game3d_effects_add_particles(effects, particles, 0.8);
+    return particles;
+}
+
+void *rt_game3d_effects3d_dust(void *world_obj, void *position) {
+    rt_game3d_effects *effects =
+        game3d_world_effects_checked(world_obj, "Game3D.Effects3D.Dust: invalid world");
+    if (!effects)
+        return NULL;
+    void *particles = rt_particles3d_new(96);
+    if (!particles)
+        return NULL;
+    if (!game3d_particles_set_position_from_vec(
+            particles, position, "Game3D.Effects3D.Dust: expected Vec3 position"))
+        return NULL;
+    rt_particles3d_set_direction(particles, 0.0, 1.0, 0.0, 1.35);
+    rt_particles3d_set_speed(particles, 0.6, 2.5);
+    rt_particles3d_set_lifetime(particles, 0.35, 1.2);
+    rt_particles3d_set_size(particles, 0.22, 0.7);
+    rt_particles3d_set_gravity(particles, 0.0, 0.35, 0.0);
+    rt_particles3d_set_color(particles, 0xB7AA92, 0x6D6556);
+    rt_particles3d_set_alpha(particles, 0.55, 0.0);
+    rt_particles3d_burst(particles, 45);
+    rt_game3d_effects_add_particles(effects, particles, 1.4);
+    return particles;
+}
+
+void *rt_game3d_effects3d_smoke(void *world_obj, void *position) {
+    rt_game3d_effects *effects =
+        game3d_world_effects_checked(world_obj, "Game3D.Effects3D.Smoke: invalid world");
+    if (!effects)
+        return NULL;
+    void *particles = rt_particles3d_new(128);
+    if (!particles)
+        return NULL;
+    if (!game3d_particles_set_position_from_vec(
+            particles, position, "Game3D.Effects3D.Smoke: expected Vec3 position"))
+        return NULL;
+    rt_particles3d_set_direction(particles, 0.0, 1.0, 0.0, 1.1);
+    rt_particles3d_set_speed(particles, 0.4, 1.8);
+    rt_particles3d_set_lifetime(particles, 0.8, 2.0);
+    rt_particles3d_set_size(particles, 0.35, 1.25);
+    rt_particles3d_set_gravity(particles, 0.0, 0.55, 0.0);
+    rt_particles3d_set_color(particles, 0x5D6168, 0x24282E);
+    rt_particles3d_set_alpha(particles, 0.45, 0.0);
+    rt_particles3d_burst(particles, 55);
+    rt_game3d_effects_add_particles(effects, particles, 2.2);
+    return particles;
+}
+
+static void *game3d_effects_make_impact_texture(void) {
+    void *pixels = rt_pixels_new(16, 16);
+    if (!pixels)
+        return NULL;
+    for (int64_t y = 0; y < 16; ++y) {
+        for (int64_t x = 0; x < 16; ++x) {
+            double dx = (double)x - 7.5;
+            double dy = (double)y - 7.5;
+            double dist = sqrt(dx * dx + dy * dy);
+            if (dist <= 7.0) {
+                double edge = 1.0 - game3d_clamp(dist / 7.0, 0.0, 1.0);
+                int64_t alpha = (int64_t)(edge * 210.0);
+                rt_pixels_set(pixels, x, y, (0x24180FFF & 0xFFFFFF00) | game3d_clamp_i64(alpha, 0, 255));
+            }
+        }
+    }
+    return pixels;
+}
+
+void *rt_game3d_effects3d_impact_decal(void *world_obj, void *position, void *normal) {
+    rt_game3d_effects *effects =
+        game3d_world_effects_checked(world_obj, "Game3D.Effects3D.ImpactDecal: invalid world");
+    if (!effects)
+        return NULL;
+    if (!rt_g3d_is_vec3(position) || !rt_g3d_is_vec3(normal)) {
+        rt_trap("Game3D.Effects3D.ImpactDecal: expected Vec3 position and normal");
+        return NULL;
+    }
+    void *texture = game3d_effects_make_impact_texture();
+    void *decal = rt_decal3d_new(position, normal, 0.55, texture);
+    game3d_release_ref(&texture);
+    if (!decal)
+        return NULL;
+    rt_decal3d_set_lifetime(decal, 2.0);
+    rt_game3d_effects_add_decal(effects, decal);
+    return decal;
 }
 
 static void game3d_world_set_clear_color(
@@ -3635,6 +4216,8 @@ void rt_game3d_world_step_simulation(void *obj, double step_sec) {
     if (world->scene)
         rt_scene3d_sync_bindings(world->scene, dt);
     rt_audio3d_sync_bindings(dt);
+    if (world->effects)
+        rt_game3d_effects_update(world->effects, dt);
     game3d_world_late_update_controller(world, dt);
 }
 
@@ -3790,6 +4373,8 @@ void rt_game3d_world_draw_effects(void *obj) {
         return;
     if (world->debug_axes_enabled && world->debug_axis_origin)
         rt_canvas3d_draw_axis(world->canvas, world->debug_axis_origin, world->debug_axis_size);
+    if (world->effects && world->camera)
+        rt_game3d_effects_draw(world->effects, world->canvas, world->camera);
     if (world->debug_physics_enabled)
         game3d_world_debug_draw_physics(world);
 }

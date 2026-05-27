@@ -76,8 +76,8 @@ This is intentionally free of common-case `Mat4` calls. `Entity3D` owns the raw
 | `Assets3D` / `ModelTemplate` | Filesystem and package-aware model loading with cached reusable model templates |
 | `Animator3D` | Game3D wrapper over `Graphics3D.AnimController3D` for play/crossfade/state-time/events/root-motion attachment |
 | `Input3D` | Named keyboard, mouse, movement-axis, and look-axis helper over the runtime input state |
-| `Audio3D` | World-owned 3D audio handle; Phase 1 exposes the active listener |
-| `EffectRegistry3D` | World-owned effects handle; Phase 1 exposes the world post-FX chain |
+| `Audio3D` | World-owned audio helper with camera-follow listener, loading, 2D, positional, and attached-source playback |
+| `EffectRegistry3D` / `Effects3D` | World-owned post-FX plus runtime particle/decal registry and one-call VFX presets |
 | `FreeFlyController` | Spectator camera controller with WASD/arrow movement, vertical movement, mouse look, and mouse capture |
 | `FirstPersonController` | FPS camera controller that can either move the camera directly or drive a `CharacterController3D` |
 | `OrbitController` | Target-orbit camera with drag orbit, wheel zoom, distance clamp, and pitch clamp |
@@ -109,7 +109,7 @@ Constant classes are runtime-backed too: `Layers`, `BodyShape`, `SyncMode`,
 | `physics` | `Viper.Graphics3D.Physics3DWorld` |
 | `input` | `Viper.Game3D.Input3D` |
 | `audio` | `Viper.Game3D.Audio3D` with a camera-aligned listener |
-| `effects` | `Viper.Game3D.EffectRegistry3D` with a `PostFX3D` chain |
+| `effects` | `Viper.Game3D.EffectRegistry3D` with a `PostFX3D` chain and particle/decal registry |
 
 The constructor installs explicit default lighting, balanced backend-safe
 quality, frustum culling, a readable camera, a neutral clear/ambient setup, and
@@ -204,12 +204,13 @@ The managed frame helpers use this order:
 5. Advance spawned `Entity3D.anim` controllers and collect animation events.
 6. Step physics.
 7. Sync physics-owned nodes, animation root motion, and 3D audio bindings.
-8. Run the installed Game3D camera/controller `lateUpdate`.
-9. Begin the frame and draw the scene.
-10. Draw the effects registry.
-11. End the scene.
-12. Draw the final overlay if a native overlay callback is being used.
-13. Finalize/present, or leave the finalized frame available for capture.
+8. Update the effect registry and expire finished particle/decal effects.
+9. Run the installed Game3D camera/controller `lateUpdate`.
+10. Begin the frame and draw the scene.
+11. Draw the effects registry.
+12. End the scene.
+13. Draw the final overlay if a native overlay callback is being used.
+14. Finalize/present, or leave the finalized frame available for capture.
 
 Controller `update` runs inside `stepSimulation(step)` before the physics step,
 which means manual loops can still do:
@@ -233,10 +234,10 @@ Manual code can use the same pieces directly:
 | Method | Purpose |
 |--------|---------|
 | `tick()` | Poll live input and advance world timing; returns false when the window should close |
-| `stepSimulation(step)` | Step the physics world and sync scene bindings |
+| `stepSimulation(step)` | Step controllers, animation, physics, scene/audio bindings, effect expiry, and late camera/controller work |
 | `beginFrame()` | Clear and begin drawing with the world camera |
 | `drawScene()` | Draw the world scene |
-| `drawEffects()` | Draw the effect registry/post-FX contribution |
+| `drawEffects()` | Draw effect-registry particles/decals plus debug axes/physics wires |
 | `endScene()` | End the draw pass without presenting |
 | `captureFinalFrame()` | Finalize post-FX/overlay and return `Pixels` |
 | `present()` | Finalize if needed and present the frame |
@@ -384,6 +385,72 @@ deferred until the VM has a callback trampoline for managed function objects.
 
 ---
 
+## Audio3D And Effects3D
+
+`World3D.audio` owns a runtime `AudioListener3D` that follows the world camera
+by default. The listener can be detached for cutscenes, replays, or split-view
+tests:
+
+```zia
+var audio = Game3D.World3D.get_audio(world);
+Game3D.Audio3D.listenerFollowCamera(audio, false);
+Game3D.Audio3D.setListenerPose(
+    audio,
+    new Math.Vec3(0.0, 2.0, 6.0),
+    new Math.Vec3(0.0, 0.0, -1.0),
+    new Math.Vec3(0.0, 1.0, 0.0));
+```
+
+| Audio API | Purpose |
+|-----------|---------|
+| `listener` | Raw `AudioListener3D` escape hatch |
+| `listenerFollowCamera(enabled)` | Bind/unbind the listener from the world camera |
+| `setListenerPose(pos, forward, up)` | Set a manual listener pose; `up` is reserved for future orientation support |
+| `setAttenuation(refDist, maxDist)` | Store Game3D playback attenuation defaults; current low-level spatial audio uses `maxDist` linear falloff |
+| `volume` | Default source/playback volume, clamped to 0..100 |
+| `load(path)` / `loadAsset(assetPath)` | Load a `Viper.Sound.Sound` clip from filesystem or asset resolver |
+| `playAt(clip, pos)` | Create and play a positional `AudioSource3D` at a `Vec3` |
+| `playAttached(clip, entity)` | Create an `AudioSource3D` bound to the entity node, so it follows after scene/body sync |
+| `play2D(clip)` | Play a non-positional clip and return the voice id |
+| `clearSources()` | Stop and release sources created through this `Audio3D` helper |
+
+`World3D.stepSimulation` syncs audio bindings after physics and scene sync, so
+attached audio observes the same final entity transforms as follow cameras.
+
+`World3D.effects` owns the existing `PostFX3D` chain plus a particle/decal
+registry. The registry can be driven manually, but world stepping and
+`drawEffects()` handle the normal update/draw path:
+
+```zia
+var effects = Game3D.World3D.get_effects(world);
+Game3D.Effects3D.Explosion(world, hitPoint);
+Game3D.Effects3D.ImpactDecal(world, hitPoint, hitNormal);
+```
+
+| Effects API | Purpose |
+|-------------|---------|
+| `postfx` | Raw `PostFX3D` escape hatch |
+| `count` / `particlesCount` / `decalCount` | Registry diagnostics |
+| `addParticles(particles, lifetime)` | Retain a `Particles3D` emitter and auto-remove it after `lifetime` seconds |
+| `addDecal(decal)` | Retain a `Decal3D` until its own lifetime expires |
+| `update(dt)` / `draw(canvas, camera)` / `clear()` | Manual registry control |
+| `Effects3D.Explosion(world, pos)` | Additive burst with warm fire colors |
+| `Effects3D.Sparks(world, pos, dir)` | Directional additive sparks |
+| `Effects3D.Dust(world, pos)` | Short ground-impact dust puff |
+| `Effects3D.Smoke(world, pos)` | Slower rising smoke puff |
+| `Effects3D.ImpactDecal(world, pos, normal)` | Fading projected impact decal |
+
+Collision events expose `point()` and `normal()` as `Vec3`, which makes
+impact audio/VFX a direct event-buffer workflow:
+
+```zia
+var evt = Game3D.World3D.collisionEvent(world, Game3D.CollisionPhase.get_Enter(), 0);
+Game3D.Audio3D.playAt(audio, bounceClip, Game3D.Collision3DEvent.point(evt));
+Game3D.Effects3D.Dust(world, Game3D.Collision3DEvent.point(evt));
+```
+
+---
+
 ## BodyDef And Collision Events
 
 `BodyDef` describes the body that `Entity3D.attachBody` should create:
@@ -520,7 +587,7 @@ The Game3D runtime is covered by:
 
 | Test | Coverage |
 |------|----------|
-| `test_rt_game3d` | C runtime contracts for constants, masks, input, world defaults, spawn/despawn, collision-event clearing, native callback loops, overlay hooks, final capture, synthetic controller input, orbit/follow late update, first-person character movement, material presets, prefabs, lighting, quality, environment, post-FX, debug helpers, and Animator3D root motion/events |
+| `test_rt_game3d` | C runtime contracts for constants, masks, input, world defaults, spawn/despawn, collision-event clearing, native callback loops, overlay hooks, final capture, synthetic controller input, orbit/follow late update, first-person character movement, material presets, prefabs, lighting, quality, environment, post-FX, debug helpers, Animator3D root motion/events, Audio3D helpers, and Effects3D presets/expiry |
 | `g3d_test_game3d_world_probe` | Zia construction, default subsystems, layer masks, entity spawn/find/despawn, resize/aspect, manual frame path, final capture, and destroy |
 | `g3d_test_game3d_runframes_probe` | Zia deterministic `runFramesOnly`, dt/elapsed/frame accounting, and final capture |
 | `g3d_test_game3d_runframes_callback_reject` | Interpreted Zia callback rejection diagnostic for native callback-loop APIs |
@@ -531,6 +598,8 @@ The Game3D runtime is covered by:
 | `g3d_test_game3d_physics_probe` | Zia `BodyDef` static/dynamic body attachment, CCD/filter flags, gravity, and collision production |
 | `g3d_test_game3d_collision_probe` | Zia entity-aware collision wrappers for enter/stay/exit and trigger events |
 | `g3d_test_game3d_anim_probe` | Zia Animator3D play/crossfade/state-time/events, entity attachment, raw controller wrapping, and root-motion world stepping |
+| `g3d_test_game3d_audio_probe` | Zia listener follow/manual pose, attenuation defaults, positional playback, attached-source sync, 2D playback, and source cleanup |
+| `g3d_test_game3d_effects_probe` | Zia Effects3D presets, registry diagnostics, draw path, auto-expiry, manual particle/decal registration, and collision-triggered VFX |
 | `g3d_walk_min_visual_probe` | Game3D sample final-frame baseline, crisp overlay, directional lighting, and grounded synthetic first-person movement |
 
 Run the focused set with:
@@ -550,11 +619,12 @@ ctest --test-dir build -L graphics3d --output-on-failure
 ## Current Boundaries
 
 The core world/entity/input layer, built-in camera/character controllers,
-presets, prefabs, environment/debug helpers, `Assets3D`, `BodyDef`, and
-entity-aware collision event wrappers, and `Animator3D` now live in the C runtime.
+presets, prefabs, environment/debug helpers, `Assets3D`, `BodyDef`,
+entity-aware collision event wrappers, `Animator3D`, `Audio3D`, and `Effects3D`
+now live in the C runtime.
 `examples/3d/walk_min.zia` is the current small Game3D walking sample.
-3D audio playback helpers, VFX presets, starter templates, and showcase samples
-remain tracked in the 3D Next Level plan.
+Starter templates and showcase samples remain tracked in the 3D Next Level
+plan.
 
 Use the lower-level `Viper.Graphics3D` and `Viper.Sound` APIs as escape hatches
 while those higher-level Game3D helpers are being implemented.

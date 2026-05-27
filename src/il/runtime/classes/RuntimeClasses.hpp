@@ -495,6 +495,7 @@ enum class RuntimeTypeId : std::size_t {
     RTCLS_Game3DEntity3D,
     RTCLS_Game3DAudio3D,
     RTCLS_Game3DEffectRegistry3D,
+    RTCLS_Game3DEffects3D,
     RTCLS_Game3DCharacterController3D,
     RTCLS_Game3DFirstPersonController,
     RTCLS_Game3DFreeFlyController,

@@ -239,7 +239,37 @@ rt_string rt_game3d_animator_event_name(void *animator, int64_t index);
 void rt_game3d_animator_update(void *animator, double dt);
 
 void *rt_game3d_audio_get_listener(void *audio);
+int8_t rt_game3d_audio_get_listener_follows_camera(void *audio);
+double rt_game3d_audio_get_ref_distance(void *audio);
+double rt_game3d_audio_get_max_distance(void *audio);
+int64_t rt_game3d_audio_get_volume(void *audio);
+void rt_game3d_audio_set_volume(void *audio, int64_t volume);
+int64_t rt_game3d_audio_get_source_count(void *audio);
+void rt_game3d_audio_listener_follow_camera(void *audio, int8_t enabled);
+void rt_game3d_audio_set_listener_pose(void *audio, void *position, void *forward, void *up);
+void rt_game3d_audio_set_attenuation(void *audio, double ref_distance, double max_distance);
+void *rt_game3d_audio_load(void *audio, rt_string path);
+void *rt_game3d_audio_load_asset(void *audio, rt_string asset_path);
+void *rt_game3d_audio_play_at(void *audio, void *clip, void *position);
+void *rt_game3d_audio_play_attached(void *audio, void *clip, void *entity);
+int64_t rt_game3d_audio_play2d(void *audio, void *clip);
+void rt_game3d_audio_clear_sources(void *audio);
+
 void *rt_game3d_effects_get_postfx(void *effects);
+int64_t rt_game3d_effects_get_count(void *effects);
+int64_t rt_game3d_effects_get_particles_count(void *effects);
+int64_t rt_game3d_effects_get_decal_count(void *effects);
+void *rt_game3d_effects_add_particles(void *effects, void *particles, double lifetime);
+void *rt_game3d_effects_add_decal(void *effects, void *decal);
+void rt_game3d_effects_update(void *effects, double dt);
+void rt_game3d_effects_draw(void *effects, void *canvas, void *camera);
+void rt_game3d_effects_clear(void *effects);
+
+void *rt_game3d_effects3d_explosion(void *world, void *position);
+void *rt_game3d_effects3d_sparks(void *world, void *position, void *direction);
+void *rt_game3d_effects3d_dust(void *world, void *position);
+void *rt_game3d_effects3d_smoke(void *world, void *position);
+void *rt_game3d_effects3d_impact_decal(void *world, void *position, void *normal);
 
 void rt_game3d_lighting_studio(void *world);
 void rt_game3d_lighting_outdoor(void *world, void *sun_dir);

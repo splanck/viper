@@ -1,0 +1,102 @@
+module test_game3d_effects_probe;
+
+bind Viper.Game3D as Game3D;
+bind Viper.Graphics3D as G3D;
+bind Viper.Math as Math;
+bind Viper.Terminal as Terminal;
+
+func fail(message: String) {
+    Terminal.Say("FAIL: " + message);
+}
+
+func start() {
+    var world = Game3D.World3D.New("Game3D Effects Probe", 96, 72);
+    var effects = Game3D.World3D.get_effects(world);
+    if (effects == null || Game3D.EffectRegistry3D.get_postfx(effects) == null) {
+        fail("world did not create EffectRegistry3D/postfx");
+        return;
+    }
+
+    var pos = Math.Vec3.New(0.0, 0.0, 0.0);
+    var up = Math.Vec3.New(0.0, 1.0, 0.0);
+    var dir = Math.Vec3.New(1.0, 0.2, 0.0);
+    var explosion = Game3D.Effects3D.Explosion(world, pos);
+    var sparks = Game3D.Effects3D.Sparks(world, pos, dir);
+    var dust = Game3D.Effects3D.Dust(world, pos);
+    var smoke = Game3D.Effects3D.Smoke(world, pos);
+    var decal = Game3D.Effects3D.ImpactDecal(world, pos, up);
+    if (explosion == null || sparks == null || dust == null || smoke == null || decal == null) {
+        fail("an Effects3D preset returned null");
+        return;
+    }
+    if (Game3D.EffectRegistry3D.get_count(effects) != 5 ||
+        Game3D.EffectRegistry3D.get_particlesCount(effects) != 4 ||
+        Game3D.EffectRegistry3D.get_decalCount(effects) != 1) {
+        fail("Effects3D presets did not register expected entries");
+        return;
+    }
+    if (G3D.Particles3D.get_Count(explosion) <= 0) {
+        fail("Explosion did not spawn particles immediately");
+        return;
+    }
+
+    Game3D.World3D.beginFrame(world);
+    Game3D.World3D.drawScene(world);
+    Game3D.World3D.drawEffects(world);
+    Game3D.World3D.endScene(world);
+    if (Game3D.World3D.captureFinalFrame(world) == null) {
+        fail("drawEffects did not leave a capturable frame");
+        return;
+    }
+
+    Game3D.EffectRegistry3D.update(effects, 3.0);
+    if (Game3D.EffectRegistry3D.get_count(effects) != 0) {
+        fail("Effects3D presets did not auto-expire");
+        return;
+    }
+
+    var manualParticles = G3D.Particles3D.New(16);
+    G3D.Particles3D.SetPosition(manualParticles, 0.0, 0.0, 0.0);
+    G3D.Particles3D.Burst(manualParticles, 6);
+    Game3D.EffectRegistry3D.addParticles(effects, manualParticles, 0.1);
+
+    var manualDecal = G3D.Decal3D.New(pos, up, 0.25, null);
+    G3D.Decal3D.SetLifetime(manualDecal, 0.1);
+    Game3D.EffectRegistry3D.addDecal(effects, manualDecal);
+    if (Game3D.EffectRegistry3D.get_count(effects) != 2) {
+        fail("EffectRegistry3D did not accept manual particle/decal effects");
+        return;
+    }
+    Game3D.EffectRegistry3D.update(effects, 0.2);
+    if (Game3D.EffectRegistry3D.get_count(effects) != 0) {
+        fail("manual effects did not expire");
+        return;
+    }
+
+    Game3D.World3D.setGravity(world, 0.0, 0.0, 0.0);
+    var a = Game3D.Entity3D.New();
+    Game3D.Entity3D.attachBody(a, Game3D.BodyDef.StaticBox(1.0, 1.0, 1.0));
+    Game3D.World3D.spawn(world, a);
+
+    var b = Game3D.Entity3D.New();
+    var bDef = Game3D.BodyDef.Sphere(0.5, 1.0);
+    Game3D.BodyDef.withMask(bDef, Game3D.LayerMask.Of(Game3D.Layers.get_World()));
+    Game3D.Entity3D.attachBody(b, bDef);
+    Game3D.Entity3D.setPosition(b, 0.5, 0.0, 0.0);
+    Game3D.World3D.spawn(world, b);
+
+    Game3D.World3D.stepSimulation(world, 0.016);
+    var evt = Game3D.World3D.collisionEvent(world, Game3D.CollisionPhase.get_Enter(), 0);
+    if (evt == null) {
+        fail("collision event missing for VFX trigger");
+        return;
+    }
+    var hitPoint = Game3D.Collision3DEvent.point(evt);
+    if (Game3D.Effects3D.Dust(world, hitPoint) == null) {
+        fail("collision point did not spawn a VFX preset");
+        return;
+    }
+
+    Game3D.World3D.destroy(world);
+    Terminal.Say("PASS");
+}

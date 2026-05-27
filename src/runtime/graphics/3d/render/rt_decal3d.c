@@ -195,7 +195,7 @@ int8_t rt_decal3d_is_expired(void *obj) {
     rt_decal3d *d = (rt_decal3d *)rt_g3d_checked_or_null(obj, RT_G3D_DECAL3D_CLASS_ID);
     if (!d)
         return 1;
-    if (d->lifetime < 0)
+    if (d->max_lifetime < 0)
         return 0; /* permanent */
     return d->lifetime <= 0 ? 1 : 0;
 }
@@ -322,7 +322,7 @@ void rt_canvas3d_draw_decal(void *canvas, void *obj) {
     rt_decal3d *d = (rt_decal3d *)rt_g3d_checked_or_null(obj, RT_G3D_DECAL3D_CLASS_ID);
     if (!d)
         return;
-    if (d->lifetime >= 0 && d->lifetime <= 0)
+    if (d->max_lifetime >= 0 && d->lifetime <= 0)
         return; /* expired */
 
     ensure_decal_mesh(d);
