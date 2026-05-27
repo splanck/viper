@@ -14153,6 +14153,7 @@ RT_FUNC(World3DStayEventCount, rt_world3d_get_stay_event_count, "Viper.Graphics3
 RT_FUNC(World3DGetStayEvent, rt_world3d_get_stay_event, "Viper.Graphics3D.Physics3DWorld.GetStayEvent", "obj(obj,i64)")
 RT_FUNC(World3DExitEventCount, rt_world3d_get_exit_event_count, "Viper.Graphics3D.Physics3DWorld.get_ExitEventCount", "i64(obj)")
 RT_FUNC(World3DGetExitEvent, rt_world3d_get_exit_event, "Viper.Graphics3D.Physics3DWorld.GetExitEvent", "obj(obj,i64)")
+RT_FUNC(World3DClearCollisionEvents, rt_world3d_clear_collision_events, "Viper.Graphics3D.Physics3DWorld.ClearCollisionEvents", "void(obj)")
 RT_FUNC(World3DRaycast, rt_world3d_raycast, "Viper.Graphics3D.Physics3DWorld.Raycast", "obj(obj,obj,obj,f64,i64)")
 RT_FUNC(World3DRaycastAll, rt_world3d_raycast_all, "Viper.Graphics3D.Physics3DWorld.RaycastAll", "obj(obj,obj,obj,f64,i64)")
 RT_FUNC(World3DSweepSphere, rt_world3d_sweep_sphere, "Viper.Graphics3D.Physics3DWorld.SweepSphere", "obj(obj,obj,f64,obj,i64)")
@@ -14202,6 +14203,7 @@ RT_CLASS_BEGIN("Viper.Graphics3D.Physics3DWorld", Physics3DWorld, "obj", World3D
     RT_METHOD("GetEnterEvent", "obj(i64)", World3DGetEnterEvent)
     RT_METHOD("GetStayEvent", "obj(i64)", World3DGetStayEvent)
     RT_METHOD("GetExitEvent", "obj(i64)", World3DGetExitEvent)
+    RT_METHOD("ClearCollisionEvents", "void()", World3DClearCollisionEvents)
 RT_CLASS_END()
 
 RT_FUNC(PhysicsHit3DGetBody, rt_physics_hit3d_get_body, "Viper.Graphics3D.PhysicsHit3D.get_Body", "obj(obj)")

@@ -54,8 +54,6 @@
 #define WIN32_LEAN_AND_MEAN
 #endif
 #include <windows.h>
-#elif defined(__APPLE__) || defined(__linux__) || defined(__unix__)
-#include <dlfcn.h>
 #endif
 
 #define RT_GAME3D_DEFAULT_FOV_DEG 60.0
@@ -284,6 +282,8 @@ static int32_t g_game3d_model_cache_capacity = 0;
 static int game3d_callback_pointer_is_native(void *callback) {
     if (!callback)
         return 1;
+    if (rt_heap_is_payload(callback))
+        return 0;
 #if defined(_WIN32)
     MEMORY_BASIC_INFORMATION info;
     if (VirtualQuery(callback, &info, sizeof(info)) == 0)
@@ -291,10 +291,6 @@ static int game3d_callback_pointer_is_native(void *callback) {
     DWORD protect = info.Protect & 0xffu;
     return protect == PAGE_EXECUTE || protect == PAGE_EXECUTE_READ ||
            protect == PAGE_EXECUTE_READWRITE || protect == PAGE_EXECUTE_WRITECOPY;
-#elif defined(__APPLE__) || defined(__linux__) || defined(__unix__)
-    Dl_info info;
-    memset(&info, 0, sizeof(info));
-    return dladdr(callback, &info) != 0 && info.dli_fbase != NULL;
 #else
     return 1;
 #endif

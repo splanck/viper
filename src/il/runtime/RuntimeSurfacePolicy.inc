@@ -97,6 +97,7 @@ RUNTIME_SURFACE_INTERNAL_SYMBOL("rt_crypto_module_self_test")
 RUNTIME_SURFACE_INTERNAL_SYMBOL("rt_crypto_module_service_allowed")
 RUNTIME_SURFACE_INTERNAL_SYMBOL("rt_crypto_module_set_mode")
 RUNTIME_SURFACE_INTERNAL_SYMBOL("rt_crypto_module_status_cstr")
+RUNTIME_SURFACE_INTERNAL_SYMBOL("rt_asset_load_raw")
 RUNTIME_SURFACE_INTERNAL_SYMBOL("rt_heap_try_retain_live")
 
 // Managed replacements for legacy raw-pointer runtime surfaces. These entries
