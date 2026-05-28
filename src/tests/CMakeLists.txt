@@ -1073,6 +1073,32 @@ if (WIN32)
             ENVIRONMENT "VIPER_3D_BACKEND=software")
 endif ()
 
+add_test(NAME zia_smoke_game3d_showcase
+        COMMAND $<TARGET_FILE:zia> "${CMAKE_SOURCE_DIR}/examples/games/game3d-showcase/smoke_probe.zia"
+        WORKING_DIRECTORY "${CMAKE_SOURCE_DIR}/examples/games/game3d-showcase")
+set_tests_properties(zia_smoke_game3d_showcase PROPERTIES
+        PASS_REGULAR_EXPRESSION "RESULT: ok"
+        LABELS "zia;smoke;graphics3d;requires_display"
+        TIMEOUT 90)
+if (CMAKE_SYSTEM_NAME STREQUAL "Linux")
+    set_tests_properties(zia_smoke_game3d_showcase PROPERTIES
+            ENVIRONMENT "VIPER_3D_BACKEND=software")
+endif ()
+if (WIN32)
+    set_tests_properties(zia_smoke_game3d_showcase PROPERTIES
+            ENVIRONMENT "VIPER_3D_BACKEND=software")
+endif ()
+if (APPLE)
+    add_test(NAME zia_smoke_game3d_showcase_software
+            COMMAND $<TARGET_FILE:zia> "${CMAKE_SOURCE_DIR}/examples/games/game3d-showcase/smoke_probe.zia"
+            WORKING_DIRECTORY "${CMAKE_SOURCE_DIR}/examples/games/game3d-showcase")
+    set_tests_properties(zia_smoke_game3d_showcase_software PROPERTIES
+            PASS_REGULAR_EXPRESSION "RESULT: ok"
+            LABELS "zia;smoke;graphics3d;requires_display"
+            ENVIRONMENT "VIPER_3D_BACKEND=software"
+            TIMEOUT 90)
+endif ()
+
 add_test(NAME zia_smoke_3dbaseball
         COMMAND $<TARGET_FILE:zia> "${CMAKE_SOURCE_DIR}/examples/games/3dbaseball/smoke_probe.zia"
         WORKING_DIRECTORY "${CMAKE_SOURCE_DIR}/examples/games/3dbaseball")

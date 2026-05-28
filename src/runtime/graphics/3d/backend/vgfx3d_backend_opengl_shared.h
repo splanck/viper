@@ -3,6 +3,8 @@
 // Part of the Viper project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
+//===----------------------------------------------------------------------===//
+//
 // File: src/runtime/graphics/3d/backend/vgfx3d_backend_opengl_shared.h
 // Purpose: Shared declarations/constants for the OpenGL vgfx3d backend —
 //   blend-mode enums and shared state used by the OpenGL backend and its

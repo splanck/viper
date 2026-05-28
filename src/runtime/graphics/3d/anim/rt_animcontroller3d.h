@@ -6,7 +6,19 @@
 //===----------------------------------------------------------------------===//
 //
 // File: src/runtime/graphics/3d/anim/rt_animcontroller3d.h
-// Purpose: High-level 3D animation state controller built on skeletal clips.
+// Purpose: Public API for AnimController3D — a high-level skeletal animation
+//   state machine layered over AnimPlayer3D. Exposes named states with
+//   per-state speed/looping, blended transitions, time-scheduled events,
+//   root-motion extraction, and masked overlay layers.
+//
+// Key invariants:
+//   - All entry points take opaque GC-managed controller handles (void *).
+//   - Layer 0 is the base layer; higher layers are additive masked overlays.
+//   - Times are in seconds, blend weights in 0..1; bone_index -1 disables
+//     root motion.
+//
+// Links: rt_animcontroller3d.c (implementation),
+//   rt_skeleton3d.h (underlying AnimPlayer3D), docs/viperlib/graphics/animation.md
 //
 //===----------------------------------------------------------------------===//
 

@@ -21,7 +21,7 @@
 //   - Mesh3D owns vertex/index arrays; GC finalizer frees them.
 //   - Camera3D, Material3D, Light3D contain only scalar fields (no finalizer).
 //
-// Links: plans/3d/01-software-renderer.md, src/runtime/graphics/rt_graphics.h
+// Links: plans/3d/01-software-renderer.md, src/runtime/graphics/common/rt_graphics.h
 //
 //===----------------------------------------------------------------------===//
 #pragma once

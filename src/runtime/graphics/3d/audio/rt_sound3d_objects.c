@@ -25,9 +25,9 @@
 //   - Active-listener handle is a weak pointer — clearing the active listener
 //     simply removes it from the active slot without touching its refcount.
 //
-// Links: src/runtime/graphics/rt_soundlistener3d.h (SoundListener3D API),
-//        src/runtime/graphics/rt_soundsource3d.h (SoundSource3D API),
-//        src/runtime/graphics/rt_sound3d.h (low-level spatial helpers)
+// Links: src/runtime/graphics/3d/audio/rt_soundlistener3d.h (SoundListener3D API),
+//        src/runtime/graphics/3d/audio/rt_soundsource3d.h (SoundSource3D API),
+//        src/runtime/graphics/3d/audio/rt_sound3d.h (low-level spatial helpers)
 //
 //===----------------------------------------------------------------------===//
 

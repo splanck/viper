@@ -2047,7 +2047,7 @@ static void test_final_overlay_replays_after_finalize(void) {
     cleanup_fake_canvas(&canvas);
 }
 
-static void test_gpu_postfx_final_overlay_uses_postfx_safe_finalization(void) {
+static void test_gpu_postfx_final_overlay_presents_composited_frame(void) {
     vgfx3d_backend_t backend = {};
     backend.name = "testgpu";
     backend.begin_frame = record_begin_frame;
@@ -2072,10 +2072,12 @@ static void test_gpu_postfx_final_overlay_uses_postfx_safe_finalization(void) {
 
     EXPECT_TRUE(final_submit_draw_calls == 1,
                 "GPU postfx finalize replays final overlay during finalization");
-    EXPECT_TRUE(final_present_postfx_calls == 0,
-                "GPU postfx final overlays bypass present_postfx so overlays stay after post-FX");
-    EXPECT_TRUE(canvas.frame_presented_by_finalize == 0,
-                "Final-overlay GPU postfx frames remain presentable by the normal Flip path");
+    EXPECT_TRUE(final_present_postfx_calls == 1,
+                "GPU postfx final overlays still present through backend post-FX");
+    EXPECT_TRUE(final_present_postfx_saw_submit_count == 1,
+                "Backend post-FX presentation runs after final overlay replay");
+    EXPECT_TRUE(canvas.frame_presented_by_finalize == 1,
+                "Final-overlay GPU postfx frames are presented by finalization");
     EXPECT_TRUE(rt_canvas3d_get_frame_finalized(&canvas) == 1,
                 "GPU postfx finalize marks the frame finalized");
     cleanup_fake_canvas(&canvas);
@@ -2405,7 +2407,7 @@ int main() {
     test_disabled_lights_are_not_submitted();
     test_screenshot_prefers_backend_readback();
     test_final_overlay_replays_after_finalize();
-    test_gpu_postfx_final_overlay_uses_postfx_safe_finalization();
+    test_gpu_postfx_final_overlay_presents_composited_frame();
     test_screenshot_final_finalizes_before_readback();
     test_gpu_postfx_state_latches_across_overlay_pass();
     test_begin_frame_forwards_camera_forward_and_ortho_flag();

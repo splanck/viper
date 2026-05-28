@@ -1453,6 +1453,9 @@ static void raster_triangle(uint8_t *pixels,
                     float fr = b0 * v0->r + b1 * v1->r + b2 * v2->r;
                     float fg = b0 * v0->g + b1 * v1->g + b2 * v2->g;
                     float fb_c = b0 * v0->b + b1 * v1->b + b2 * v2->b;
+                    float material_r = fr;
+                    float material_g = fg;
+                    float material_b = fb_c;
                     float tex_alpha = 1.0f; /* per-texel alpha (for foliage, fences) */
                     if (tex) {
                         float u;
@@ -1529,9 +1532,9 @@ static void raster_triangle(uint8_t *pixels,
                                     blg += lg2 * w[L];
                                     blb += lb * w[L];
                                 }
-                                fr = blr;
-                                fg = blg;
-                                fb_c = blb;
+                                fr = blr * material_r;
+                                fg = blg * material_g;
+                                fb_c = blb * material_b;
                             }
                         }
                     }

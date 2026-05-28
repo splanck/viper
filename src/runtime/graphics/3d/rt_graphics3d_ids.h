@@ -20,7 +20,7 @@
 // Ownership/Lifetime:
 //   - Header-only; no allocation. Helpers never take ownership of @p obj.
 //
-// Links: src/runtime/graphics/rt_heap.h (heap header introspection),
+// Links: src/runtime/core/rt_heap.h (heap header introspection),
 //        src/runtime/graphics/3d/render/rt_canvas3d.c and sibling rt_*3d.c consumers
 //
 //===----------------------------------------------------------------------===//

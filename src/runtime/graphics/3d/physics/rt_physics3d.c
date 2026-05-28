@@ -1507,11 +1507,14 @@ typedef struct contact_pair_hash_entry {
     uintptr_t hash;
 } contact_pair_hash_entry;
 
+/// @brief Fold `value` into running hash `key` (golden-ratio mix, à la Boost hash_combine);
+///   never returns 0 so the result can serve as a non-empty-slot marker.
 static uintptr_t contact_pair_hash_mix(uintptr_t key, uintptr_t value) {
     key ^= value + (uintptr_t)0x9e3779b97f4a7c15ull + (key << 6) + (key >> 2);
     return key ? key : (uintptr_t)1u;
 }
 
+/// @brief Hash a contact's identity (both body and both collider pointers) into one key.
 static uintptr_t contact_pair_hash_value(const rt_contact3d *contact) {
     uintptr_t key = (uintptr_t)contact->body_a;
     key = contact_pair_hash_mix(key, (uintptr_t)contact->body_b);
@@ -1520,6 +1523,8 @@ static uintptr_t contact_pair_hash_value(const rt_contact3d *contact) {
     return key ? key : (uintptr_t)1u;
 }
 
+/// @brief Choose a power-of-two table capacity above 2×`count` (kept sparse to bound
+///   probe lengths); returns 0 on overflow or non-positive count.
 static int contact_pair_table_capacity(int32_t count, int32_t *out_capacity) {
     int32_t cap = 16;
     if (!out_capacity || count <= 0)
@@ -1537,6 +1542,9 @@ static int contact_pair_table_capacity(int32_t count, int32_t *out_capacity) {
     return 1;
 }
 
+/// @brief Build an open-addressing (linear-probe) hash set over `count` contacts so
+///   membership can be tested in O(1); returns the table (caller frees) and its
+///   capacity via @p out_capacity, or NULL on allocation failure.
 static contact_pair_hash_entry *contact_pair_table_build(const rt_contact3d *contacts,
                                                          int32_t count,
                                                          int32_t *out_capacity) {
@@ -1565,6 +1573,8 @@ static contact_pair_hash_entry *contact_pair_table_build(const rt_contact3d *con
     return table;
 }
 
+/// @brief True if `needle`'s contact pair is present in the linear-probe table built by
+///   contact_pair_table_build; stops at the first empty slot (open-addressing absence).
 static int contact_pair_table_contains(const contact_pair_hash_entry *table,
                                        int32_t capacity,
                                        const rt_contact3d *needle) {
@@ -3424,6 +3434,9 @@ static int world3d_process_collision_pair(rt_world3d *w, rt_body3d *a, rt_body3d
     return 1;
 }
 
+/// @brief Cheap broad-phase rejection test for a body pair before narrow-phase: rejects
+///   self-pairs, static-vs-static pairs, and pairs failing the bidirectional layer/mask
+///   filter. Returns 1 only if the pair could plausibly collide.
 static int world3d_pair_can_collide_cheap(const rt_body3d *a, const rt_body3d *b) {
     if (!a || !b || a == b)
         return 0;

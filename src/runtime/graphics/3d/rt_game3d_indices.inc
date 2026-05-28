@@ -1,3 +1,5 @@
+/// @brief Ensure the body→entity parallel arrays hold at least `need` slots,
+///   reallocating (and copying existing entries) on growth; returns 0 on OOM.
 static int game3d_world_grow_body_index(rt_game3d_world *world, int32_t need) {
     int32_t new_cap;
     if (!world)
@@ -31,6 +33,8 @@ static int game3d_world_grow_body_index(rt_game3d_world *world, int32_t need) {
     return 1;
 }
 
+/// @brief Remove the entry for physics `body` from the body→entity index, shifting
+///   later entries down to keep the parallel arrays compact. No-op if absent.
 static void game3d_world_body_index_remove(rt_game3d_world *world, void *body) {
     if (!world || !body)
         return;
@@ -48,6 +52,8 @@ static void game3d_world_body_index_remove(rt_game3d_world *world, void *body) {
     }
 }
 
+/// @brief Index `entity` under its physics body for fast body→entity lookup,
+///   replacing any prior entry for the same body; returns 0 on OOM (1 if no body).
 static int game3d_world_body_index_add(rt_game3d_world *world, rt_game3d_entity *entity) {
     if (!world || !entity || !entity->body)
         return 1;
@@ -60,6 +66,8 @@ static int game3d_world_body_index_add(rt_game3d_world *world, rt_game3d_entity 
     return 1;
 }
 
+/// @brief FNV-1a 64-bit hash of NUL-terminated `s`; never returns 0 so the value
+///   can double as a non-empty-slot marker in the open-addressing name index.
 static uint64_t game3d_hash_name(const char *s) {
     uint64_t hash = UINT64_C(1469598103934665603);
     if (!s)
@@ -71,6 +79,10 @@ static uint64_t game3d_hash_name(const char *s) {
     return hash ? hash : 1;
 }
 
+/// @brief Ensure the name hash table has a power-of-two capacity above 2×`need`
+///   (kept sparse to bound probe lengths); reallocates and resets to empty on growth.
+/// @details Caller must repopulate via game3d_world_rebuild_name_index after a grow,
+///   since growth discards existing slots (count is reset to 0). Returns 0 on OOM.
 static int game3d_world_grow_name_index(rt_game3d_world *world, int32_t need) {
     int32_t new_cap = 16;
     if (!world)
@@ -99,6 +111,9 @@ static int game3d_world_grow_name_index(rt_game3d_world *world, int32_t need) {
     return 1;
 }
 
+/// @brief Insert `entity` into the name hash table by linear probing on its name hash.
+/// @details Skips entities with no/empty name; the first entity wins a duplicate name
+///   (a later same-name entity is ignored so find returns the earliest registrant).
 static void game3d_world_name_index_insert(rt_game3d_world *world, rt_game3d_entity *entity) {
     const char *name;
     uint64_t hash;
@@ -127,6 +142,9 @@ static void game3d_world_name_index_insert(rt_game3d_world *world, rt_game3d_ent
     }
 }
 
+/// @brief Rebuild the entire name→entity hash table from the current entity registry.
+/// @details Called after any spawn/despawn/rename mutates the entity set. Clears all
+///   slots then re-inserts every entity; grows the table first when entity_count rises.
 static void game3d_world_rebuild_name_index(rt_game3d_world *world) {
     if (!world)
         return;
@@ -155,6 +173,9 @@ static void game3d_world_rebuild_name_index(rt_game3d_world *world) {
         game3d_world_name_index_insert(world, world->entities[i]);
 }
 
+/// @brief Look up an entity by name via the hash table; returns NULL if not present.
+/// @details Linear-probes from the name's hash slot, comparing full strings on a hash
+///   match; stops at the first empty slot (open-addressing absence proof).
 static rt_game3d_entity *game3d_world_name_index_find(rt_game3d_world *world, const char *name) {
     uint64_t hash;
     int32_t mask;

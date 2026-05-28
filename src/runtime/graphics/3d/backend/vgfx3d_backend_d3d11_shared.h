@@ -3,6 +3,8 @@
 // Part of the Viper project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
+//===----------------------------------------------------------------------===//
+//
 // File: src/runtime/graphics/3d/backend/vgfx3d_backend_d3d11_shared.h
 // Purpose: Shared declarations/constants for the Direct3D 11 vgfx3d backend —
 //   bone-palette limits, shared constant-buffer layouts, and helper routines

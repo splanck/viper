@@ -25,9 +25,9 @@
 //   - Per-voice max-distance entries live in a fixed-size 64-slot table that
 //     overwrites the oldest entry when full.
 //
-// Links: src/runtime/graphics/rt_sound3d.h (public API),
+// Links: src/runtime/graphics/3d/audio/rt_sound3d.h (public API),
 //        src/runtime/audio/rt_audio.h (underlying 2D playback),
-//        src/runtime/math/rt_vec3.h (Vec3 handle accessors)
+//        src/runtime/graphics/math/rt_vec3.h (Vec3 handle accessors)
 //
 //===----------------------------------------------------------------------===//
 

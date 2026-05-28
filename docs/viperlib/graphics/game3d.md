@@ -180,9 +180,9 @@ setup. Water is a transparent plane prefab.
 
 `Debug3D` uses the same final overlay path as user HUDs, so its text is drawn
 after post-FX rather than being bloomed, toned, or blurred.
-On GPU post-FX backends, frames with final overlays use the post-FX-safe
-finalization path so capture and presentation both composite overlays after the
-post-FX image.
+On GPU post-FX backends, recorded final overlays are replayed into the backend
+overlay target before `present_postfx`, so capture and presentation both
+composite crisp overlays over the post-FX scene.
 
 ```zia
 Game3D.Debug3D.ShowOverlay(world, true);

@@ -20,7 +20,7 @@ viper run examples/games/game3d-showcase/smoke_probe.zia
 
 - `World3D` frame loop, input snapshots, quality policy, lighting, post-FX, and effects
 - procedural open terrain with splat-mapped grass, dirt, and rock layers
-- generated cubemap skybox plus reflective animated water
+- generated cubemap skybox plus reflective animated water with backend-stable daylight fill
 - third-person exploration with mouse look, wheel zoom, and sprint
 - ridge beacons, emissive materials, particles, and final-overlay HUD/minimap
 - scene-graph landmarks drawn through Game3D entities plus direct terrain/water passes

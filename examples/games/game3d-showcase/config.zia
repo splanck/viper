@@ -50,7 +50,27 @@ var TERRAIN_TEXTURE_SIZE: Integer = 64;
 var SPLAT_SIZE: Integer = 128;
 
 var WATER_HEIGHT: Float = 2.2;
+var WATER_R: Float = 0.12;
+var WATER_G: Float = 0.32;
+var WATER_B: Float = 0.46;
+var WATER_A: Float = 0.34;
+var WATER_REFLECTIVITY: Float = 0.36;
 var BEACON_TRIGGER_RADIUS: Float = 2.8;
+
+var AMBIENT_R: Float = 0.34;
+var AMBIENT_G: Float = 0.38;
+var AMBIENT_B: Float = 0.42;
+var FOG_R: Float = 0.36;
+var FOG_G: Float = 0.46;
+var FOG_B: Float = 0.56;
+var FOG_NEAR: Float = 125.0;
+var FOG_FAR: Float = 340.0;
+var SHADOW_BIAS: Float = 0.006;
+
+var HUD_PANEL_X: Integer = 14;
+var HUD_PANEL_Y: Integer = 14;
+var HUD_PANEL_W: Integer = 430;
+var HUD_PANEL_H: Integer = 142;
 
 var HUD_PANEL: Integer = 0x111A26;
 var HUD_CARD: Integer = 0x26364B;

@@ -1765,6 +1765,17 @@ static void canvas3d_submit_deferred(rt_canvas3d *c, const deferred_draw_t *dd) 
         c, &dd->cmd, dd->lights, dd->light_count, dd->ambient, dd->wireframe, dd->backface_cull);
 }
 
+/// @brief Submit screen-space overlay geometry without writing depth.
+static void canvas3d_submit_screen_overlay_deferred(rt_canvas3d *c, const deferred_draw_t *dd) {
+    deferred_draw_t overlay;
+
+    if (!c || !dd)
+        return;
+    overlay = *dd;
+    overlay.cmd.alpha_mode = RT_MATERIAL3D_ALPHA_MODE_BLEND;
+    canvas3d_submit_deferred(c, &overlay);
+}
+
 /// @brief Dispatch a deferred draw to the shadow-pass path.
 ///
 /// Same dispatch shape as `submit_deferred` but routes through the
@@ -3848,7 +3859,7 @@ void rt_canvas3d_end(void *obj) {
             for (int32_t i = 0; i < queued_draw_count; i++) {
                 if (cmds[i].pass_kind != DEFERRED_PASS_SCREEN_OVERLAY)
                     continue;
-                canvas3d_submit_deferred(c, &cmds[i]);
+                canvas3d_submit_screen_overlay_deferred(c, &cmds[i]);
             }
             c->backend->end_frame(c->backend_ctx);
         }
@@ -3875,7 +3886,7 @@ static void canvas3d_replay_final_overlay(rt_canvas3d *c) {
         return;
     cmds = (deferred_draw_t *)c->final_overlay_cmds;
     for (int32_t i = 0; i < c->final_overlay_count; i++)
-        canvas3d_submit_deferred(c, &cmds[i]);
+        canvas3d_submit_screen_overlay_deferred(c, &cmds[i]);
     c->backend->end_frame(c->backend_ctx);
     c->in_frame = 0;
     c->frame_is_2d = 0;
@@ -3896,7 +3907,7 @@ void rt_canvas3d_finalize_frame(void *obj) {
     if (c->in_frame)
         rt_canvas3d_end(obj);
 
-    if (canvas3d_backend_uses_gpu_postfx(c) && c->final_overlay_count <= 0) {
+    if (canvas3d_backend_uses_gpu_postfx(c)) {
         if (c->frame_gpu_postfx_enabled) {
             canvas3d_replay_final_overlay(c);
             c->backend->present_postfx(c->backend_ctx, &c->frame_postfx_chain);

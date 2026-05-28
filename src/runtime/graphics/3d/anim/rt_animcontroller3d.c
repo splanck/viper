@@ -22,8 +22,8 @@
 //   - Skeleton and Animation references are retained on assignment, released
 //     on slot replacement and during finalize.
 //
-// Links: src/runtime/graphics/rt_animcontroller3d.h (public API),
-//        src/runtime/graphics/rt_skeleton3d.h (underlying AnimPlayer3D),
+// Links: src/runtime/graphics/3d/anim/rt_animcontroller3d.h (public API),
+//        src/runtime/graphics/3d/anim/rt_skeleton3d.h (underlying AnimPlayer3D),
 //        docs/viperlib/graphics/animation.md
 //
 //===----------------------------------------------------------------------===//

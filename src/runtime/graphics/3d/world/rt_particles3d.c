@@ -749,11 +749,15 @@ extern void rt_material3d_set_alpha_mode(void *m, int64_t mode);
 extern void rt_material3d_set_texture(void *m, void *tex);
 extern int rt_canvas3d_remove_temp_buffer(void *canvas, void *buffer);
 
+/// @brief Sort record pairing a particle's index with its squared distance to the
+///   camera, used to order transparent billboards back-to-front.
 typedef struct particle3d_sort_key {
     int32_t index;
     float dist_sq;
 } particle3d_sort_key;
 
+/// @brief qsort comparator ordering keys by descending camera distance (farthest first);
+///   ties break on index so the sort is stable and deterministic.
 static int particle3d_sort_key_desc(const void *a, const void *b) {
     const particle3d_sort_key *ka = (const particle3d_sort_key *)a;
     const particle3d_sort_key *kb = (const particle3d_sort_key *)b;

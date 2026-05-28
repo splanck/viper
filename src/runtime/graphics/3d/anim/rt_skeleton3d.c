@@ -1003,15 +1003,15 @@ static void rt_anim_player3d_finalize(void *obj) {
     p->globals_buf = NULL;
 }
 
+static void compute_bone_palette(rt_anim_player3d *p);
+static void compute_player_bind_pose(rt_anim_player3d *p);
+static int8_t anim_player_current_looping(const rt_anim_player3d *p);
+
 /// @brief Create an animation player bound to a target skeleton.
 ///
 /// The player holds the current playback time, the active and
 /// fading-out clip, and a per-bone palette buffer (3-frame ring
 /// for motion-blur previous-pose lookup).
-static void compute_bone_palette(rt_anim_player3d *p);
-static void compute_player_bind_pose(rt_anim_player3d *p);
-static int8_t anim_player_current_looping(const rt_anim_player3d *p);
-
 void *rt_anim_player3d_new(void *skeleton) {
     rt_skeleton3d *skel =
         (rt_skeleton3d *)rt_g3d_checked_or_null(skeleton, RT_G3D_SKELETON3D_CLASS_ID);

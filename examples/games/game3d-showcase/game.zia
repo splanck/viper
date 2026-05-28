@@ -61,25 +61,32 @@ class Game3DShowcase {
 
         Quality.Apply(world, QualityLevel.get_Cinematic());
         Lighting.Outdoor(world, new Vec3(-0.36, -1.0, -0.22));
+        installOutdoorFillLight();
         PostFX.Cinematic(world);
-        World3D.setAmbient(world, 0.22, 0.25, 0.30);
-        World3D.setFog(world, 0.030, 0.040, 0.055, 72.0, 250.0);
+        Canvas3D.SetShadowBias(canvas, config.SHADOW_BIAS);
+        World3D.setAmbient(world, config.AMBIENT_R, config.AMBIENT_G, config.AMBIENT_B);
+        World3D.setFog(
+            world, config.FOG_R, config.FOG_G, config.FOG_B, config.FOG_NEAR, config.FOG_FAR);
 
         cubeMesh = Mesh3D.NewBox(1.0, 1.0, 1.0);
         beaconMesh = Mesh3D.NewSphere(0.54, 22);
         playerBodyMesh = Mesh3D.NewCylinder(config.PLAYER_RADIUS, config.PLAYER_BODY_HEIGHT, 20);
         playerCoreMesh = Mesh3D.NewSphere(0.36, 18);
 
-        terrainMat = Materials.Rubber(0.29, 0.42, 0.28);
-        stoneMat = Materials.Metal(0.48, 0.50, 0.53);
+        terrainMat = Materials.Rubber(0.58, 0.74, 0.36);
+        Material3D.SetEmissiveColor(terrainMat, 0.015, 0.026, 0.008);
+        stoneMat = Materials.Metal(0.54, 0.57, 0.60);
         Material3D.set_Roughness(stoneMat, 0.72);
-        pedestalMat = Materials.Plastic(0.40, 0.37, 0.31);
-        playerMat = Materials.Plastic(0.18, 0.70, 0.42);
-        beaconOffMat = Materials.Plastic(0.28, 0.40, 0.54);
-        Material3D.SetEmissiveColor(beaconOffMat, 0.01, 0.02, 0.04);
+        Material3D.SetEmissiveColor(stoneMat, 0.010, 0.012, 0.016);
+        pedestalMat = Materials.Plastic(0.46, 0.43, 0.34);
+        Material3D.SetEmissiveColor(pedestalMat, 0.018, 0.016, 0.012);
+        playerMat = Materials.Plastic(0.22, 0.76, 0.48);
+        Material3D.SetEmissiveColor(playerMat, 0.012, 0.045, 0.026);
+        beaconOffMat = Materials.Plastic(0.38, 0.52, 0.70);
+        Material3D.SetEmissiveColor(beaconOffMat, 0.025, 0.045, 0.065);
         beaconOnMat = Materials.Emissive(0.98, 0.80, 0.22, 1.45);
         archiveMat = Materials.Metal(0.78, 0.72, 0.58);
-        waterMarkerMat = Materials.Emissive(0.20, 0.72, 1.0, 0.95);
+        waterMarkerMat = Materials.Emissive(0.20, 0.72, 1.0, 1.20);
 
         terrain = buildTerrain();
         skybox = createOutdoorSkybox();
@@ -87,10 +94,10 @@ class Game3DShowcase {
 
         water = Water3D.New(terrainWorldMaxX(), terrainWorldMaxZ());
         Water3D.SetHeight(water, config.WATER_HEIGHT);
-        Water3D.SetColor(water, 0.04, 0.16, 0.26, 0.56);
+        Water3D.SetColor(water, config.WATER_R, config.WATER_G, config.WATER_B, config.WATER_A);
         Water3D.SetResolution(water, 96);
         Water3D.SetEnvMap(water, skybox);
-        Water3D.SetReflectivity(water, 0.46);
+        Water3D.SetReflectivity(water, config.WATER_REFLECTIVITY);
         Water3D.AddWave(water, 1.0, 0.30, 2.1, 0.22, 18.0);
         Water3D.AddWave(water, -0.35, 0.82, 1.7, 0.12, 11.0);
 
@@ -315,9 +322,9 @@ class Game3DShowcase {
         for (var py: Integer = 0; py < size; py = py + 1) {
             for (var px: Integer = 0; px < size; px = px + 1) {
                 var noise = ((px * 7 + py * 11 + px * py) % 28) - 14;
-                var r = clampByte(52 + noise / 2);
-                var g = clampByte(116 + noise);
-                var b = clampByte(42 + noise / 3);
+                var r = clampByte(104 + noise / 2);
+                var g = clampByte(168 + noise);
+                var b = clampByte(70 + noise / 3);
                 tex.Set(px, py, packPixel(r, g, b, 255));
             }
         }
@@ -331,8 +338,8 @@ class Game3DShowcase {
         for (var py: Integer = 0; py < size; py = py + 1) {
             for (var px: Integer = 0; px < size; px = px + 1) {
                 var noise = ((px * 13 + py * 9 + px * py * 3) % 26) - 13;
-                var gray = clampByte(112 + noise);
-                var blue = clampByte(120 + noise / 2);
+                var gray = clampByte(142 + noise);
+                var blue = clampByte(150 + noise / 2);
                 tex.Set(px, py, packPixel(gray, gray, blue, 255));
             }
         }
@@ -346,9 +353,9 @@ class Game3DShowcase {
         for (var py: Integer = 0; py < size; py = py + 1) {
             for (var px: Integer = 0; px < size; px = px + 1) {
                 var noise = ((px * 9 + py * 5 + px * py) % 22) - 11;
-                var r = clampByte(116 + noise);
-                var g = clampByte(88 + noise / 2);
-                var b = clampByte(52 + noise / 3);
+                var r = clampByte(142 + noise);
+                var g = clampByte(108 + noise / 2);
+                var b = clampByte(66 + noise / 3);
                 tex.Set(px, py, packPixel(r, g, b, 255));
             }
         }
@@ -422,6 +429,16 @@ class Game3DShowcase {
         spawnMonolithPct("South Gate", 0.78, 0.62, 6.4, 1.55, 1.30, stoneMat);
         spawnMonolithPct("Ridge Tower", 0.38, 0.72, 4.8, 1.10, 1.00, archiveMat);
         spawnMonolithPct("Relay Stack", 0.52, 0.30, 3.6, 0.90, 0.90, waterMarkerMat);
+    }
+
+    hide func installOutdoorFillLight() {
+        var fill = Light3D.NewDirectional(new Vec3(0.58, -0.55, 0.46), 0.50, 0.62, 0.82);
+        Light3D.SetIntensity(fill, 0.30);
+        World3D.addLight(world, 1, fill);
+
+        var skyFill = Light3D.NewAmbient(0.54, 0.62, 0.72);
+        Light3D.SetIntensity(skyFill, 0.28);
+        World3D.addLight(world, 2, skyFill);
     }
 
     hide func spawnMonolithPct(
@@ -564,13 +581,20 @@ class Game3DShowcase {
             statusText = "All beacons linked.";
         }
 
-        Canvas3D.DrawRect2D(canvas, 14, 14, 420, 122, config.HUD_PANEL);
-        Canvas3D.DrawRect2D(canvas, 14, 14, 420, 3, config.HUD_ACCENT);
+        Canvas3D.DrawRect2D(
+            canvas,
+            config.HUD_PANEL_X,
+            config.HUD_PANEL_Y,
+            config.HUD_PANEL_W,
+            config.HUD_PANEL_H,
+            config.HUD_PANEL);
+        Canvas3D.DrawRect2D(
+            canvas, config.HUD_PANEL_X, config.HUD_PANEL_Y, config.HUD_PANEL_W, 3, config.HUD_ACCENT);
         Canvas3D.DrawText2D(canvas, 24, 28, "GAME3D OPEN WORLD", config.HUD_TEXT);
-        Canvas3D.DrawText2D(canvas, 24, 52, "WASD/arrows move | mouse look | wheel zoom", config.HUD_MUTED);
-        Canvas3D.DrawText2D(canvas, 24, 72, "Shift sprint | Esc quit", config.HUD_MUTED);
-        Canvas3D.DrawText2D(canvas, 24, 98, "Ridge beacons: " + toString(beaconsLit) + " / " + toString(total), statusColor);
-        Canvas3D.DrawText2D(canvas, 24, 118, statusText, config.HUD_TEXT);
+        Canvas3D.DrawText2D(canvas, 24, 52, "WASD/arrows move | Mouse look", config.HUD_MUTED);
+        Canvas3D.DrawText2D(canvas, 24, 72, "Wheel zoom | Shift sprint | Esc quit", config.HUD_MUTED);
+        Canvas3D.DrawText2D(canvas, 24, 104, "Ridge beacons: " + toString(beaconsLit) + " / " + toString(total), statusColor);
+        Canvas3D.DrawText2D(canvas, 24, 126, statusText, config.HUD_TEXT);
 
         drawMiniMap(w - 172, h - 172, 144, 144);
         Canvas3D.DrawText2D(canvas, 24, h - 26, "FPS " + toString(Canvas3D.get_Fps(canvas)), config.HUD_MUTED);

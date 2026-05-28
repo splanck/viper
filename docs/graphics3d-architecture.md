@@ -196,11 +196,15 @@ The OpenGL backend now follows the same high-level split, adapted to its GLX/swa
 
 Like D3D11, this keeps the no-postfx path cheap while preserving the scene depth/history inputs required by the advanced GPU postfx path.
 
-Canvas finalization owns the shared ordering contract above the backends. Frames
-without final overlays can use the backend `present_postfx` path directly. Frames
-with recorded final overlays use the post-FX-safe finalization path so overlays
-are replayed after the post-FX image; `ScreenshotFinal()` and `Flip()` share the
-same post-FX-plus-overlay ordering.
+Canvas finalization owns the shared ordering contract above the backends. GPU
+post-FX frames always present through the backend `present_postfx` path; recorded
+final overlays are replayed into the backend's final overlay target before that
+present step, so the backend composites the post-FX scene and crisp overlay as
+one final image. `ScreenshotFinal()` and `Flip()` share the same
+post-FX-plus-overlay ordering.
+Screen-space overlay replays submit with alpha blending/no depth writes so
+coplanar HUD primitives such as panels, accent bars, and text do not hide each
+other through the depth buffer.
 
 ### RenderTarget3D Readback Ownership
 

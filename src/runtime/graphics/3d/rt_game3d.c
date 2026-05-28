@@ -384,6 +384,7 @@ static int32_t g_game3d_model_cache_capacity = 0;
 #if defined(_WIN32)
 static INIT_ONCE g_game3d_model_cache_once = INIT_ONCE_STATIC_INIT;
 static CRITICAL_SECTION g_game3d_model_cache_lock;
+/// @brief One-time initializer (run via InitOnceExecuteOnce) for the cache critical section.
 static BOOL CALLBACK game3d_model_cache_init_once(PINIT_ONCE once, PVOID parameter, PVOID *context) {
     (void)once;
     (void)parameter;
@@ -391,18 +392,22 @@ static BOOL CALLBACK game3d_model_cache_init_once(PINIT_ONCE once, PVOID paramet
     InitializeCriticalSection(&g_game3d_model_cache_lock);
     return TRUE;
 }
+/// @brief Lazily initialize then acquire the process-wide model-cache lock.
 static void game3d_model_cache_lock(void) {
     InitOnceExecuteOnce(&g_game3d_model_cache_once, game3d_model_cache_init_once, NULL, NULL);
     EnterCriticalSection(&g_game3d_model_cache_lock);
 }
+/// @brief Release the process-wide model-cache lock.
 static void game3d_model_cache_unlock(void) {
     LeaveCriticalSection(&g_game3d_model_cache_lock);
 }
 #else
 static pthread_mutex_t g_game3d_model_cache_lock = PTHREAD_MUTEX_INITIALIZER;
+/// @brief Acquire the process-wide model-cache lock (statically initialized mutex).
 static void game3d_model_cache_lock(void) {
     pthread_mutex_lock(&g_game3d_model_cache_lock);
 }
+/// @brief Release the process-wide model-cache lock.
 static void game3d_model_cache_unlock(void) {
     pthread_mutex_unlock(&g_game3d_model_cache_lock);
 }
@@ -5455,8 +5460,8 @@ void rt_game3d_world_present(void *obj) {
         rt_canvas3d_flip(world->canvas);
 }
 
-/// @brief Render one complete frame: begin → draw scene → draw effects → end scene →
-///   optional overlay → present. Shared by all run-loop variants.
+/// @brief Run the 2D overlay pass for a frame: open the canvas overlay layer,
+///   invoke the native overlay callback `fn` (if any), then close the layer.
 static void game3d_world_draw_overlay_fn(rt_game3d_world *world, rt_game3d_overlay_fn fn) {
     if (!world || !world->canvas)
         return;
@@ -5466,6 +5471,8 @@ static void game3d_world_draw_overlay_fn(rt_game3d_world *world, rt_game3d_overl
     rt_canvas3d_end_overlay(world->canvas);
 }
 
+/// @brief Render one complete frame: begin → draw scene → draw effects → end scene →
+///   optional overlay → present. Shared by all run-loop variants.
 static void game3d_world_render_once(rt_game3d_world *world, rt_game3d_overlay_fn overlay_fn) {
     rt_game3d_world_begin_frame(world);
     rt_game3d_world_draw_scene(world);

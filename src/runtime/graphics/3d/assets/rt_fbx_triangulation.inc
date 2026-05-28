@@ -1,3 +1,5 @@
+/// @brief Project a mesh vertex to 2D by dropping one axis (0=X, 1=Y, else Z),
+///   yielding the (out_x, out_y) plane coordinates used for in-plane triangulation.
 static void fbx_project_mesh_vertex(const rt_mesh3d *mesh,
                                     int32_t vertex_index,
                                     int drop_axis,
@@ -16,10 +18,15 @@ static void fbx_project_mesh_vertex(const rt_mesh3d *mesh,
     }
 }
 
+/// @brief Twice the signed area of triangle (a,b,c) — the 2D cross product of edges
+///   ab and ac. Positive for counter-clockwise winding, negative for clockwise.
 static double fbx_tri_area2(double ax, double ay, double bx, double by, double cx, double cy) {
     return (bx - ax) * (cy - ay) - (by - ay) * (cx - ax);
 }
 
+/// @brief True if point (px,py) lies inside triangle (a,b,c), winding-agnostic.
+/// @details Tests the point against each edge; inside iff the three signed areas
+///   share one sign (an epsilon tolerance treats edge-coincident points as inside).
 static int fbx_point_in_tri_2d(double px,
                                double py,
                                double ax,
@@ -36,6 +43,11 @@ static int fbx_point_in_tri_2d(double px,
     return !(has_neg && has_pos);
 }
 
+/// @brief Triangulate an FBX polygon of `poly_count` vertices and emit the triangles
+///   into `mesh`. Returns 0 on a mesh build failure (or >32-gon), 1 otherwise.
+/// @details Fast-paths triangles; for N-gons it derives a projection plane from the
+///   Newell normal, then ear-clips in 2D (a poly_count² guard bounds the loop). On a
+///   degenerate/zero-area polygon or stalled clip it falls back to a naive triangle fan.
 static int fbx_emit_polygon_triangles(void *mesh_obj, const int32_t *polygon, int32_t poly_count) {
     rt_mesh3d *mesh = (rt_mesh3d *)mesh_obj;
     int32_t indices[32];

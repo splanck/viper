@@ -3,6 +3,8 @@
 // Part of the Viper project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
+//===----------------------------------------------------------------------===//
+//
 // File: src/runtime/graphics/3d/backend/vgfx3d_backend_utils.h
 // Purpose: Backend-agnostic helper declarations shared by the vgfx3d render
 //   backends — Pixels-to-RGBA8 decoding and other small format/utility
