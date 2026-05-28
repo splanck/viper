@@ -86,6 +86,37 @@ void test_mouse_position(void) {
     TEST_END();
 }
 
+/* T17b: Mouse Position Uses Logical Coordinates When Scaled */
+void test_mouse_position_coord_scale_is_logical(void) {
+    TEST_BEGIN("T17b: Mouse Position Coord Scale Is Logical");
+
+    vgfx_mock_set_display_scale(2.0f);
+    vgfx_window_params_t params = {
+        .width = 320, .height = 240, .title = "HiDPI", .fps = 0, .resizable = 0};
+
+    vgfx_window_t win = vgfx_create_window(&params);
+    vgfx_mock_set_display_scale(1.0f);
+    ASSERT_NOT_NULL(win);
+
+    vgfx_set_coord_scale(win, vgfx_window_get_scale(win));
+
+    vgfx_mock_inject_mouse_move(win, 300, 200);
+    vgfx_update(win);
+
+    int32_t x = 0, y = 0;
+    ASSERT_EQ(vgfx_mouse_pos(win, &x, &y), 1);
+    ASSERT_EQ(x, 150);
+    ASSERT_EQ(y, 100);
+
+    vgfx_warp_cursor(win, 160, 120);
+    ASSERT_EQ(vgfx_mouse_pos(win, &x, &y), 1);
+    ASSERT_EQ(x, 160);
+    ASSERT_EQ(y, 120);
+
+    vgfx_destroy_window(win);
+    TEST_END();
+}
+
 /* T18: Mouse Button (Mock Backend) */
 void test_mouse_button(void) {
     TEST_BEGIN("T18: Mouse Button (Mock Backend)");
@@ -563,6 +594,7 @@ int main(void) {
 
     test_keyboard_input();
     test_mouse_position();
+    test_mouse_position_coord_scale_is_logical();
     test_mouse_button();
     test_event_queue_basic();
     test_event_queue_overflow();

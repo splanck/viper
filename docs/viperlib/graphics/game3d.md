@@ -139,7 +139,7 @@ games noisy:
 | `Materials.Emissive(r, g, b, intensity)` | Emissive material for lights, pickups, and UI-like meshes |
 | `Materials.Unlit(r, g, b)` | Flat unlit material |
 | `Materials.FromAlbedoMap(pixels)` | Textured material from a `Pixels` albedo map |
-| `PostFX.Cinematic(world)` / `Crisp(world)` / `None(world)` | Backend-safe effect chains |
+| `PostFX.Cinematic(world)` / `Crisp(world)` / `None(world)` | Backend-safe effect chains; cinematic keeps vignette subtle so demos stay readable at the screen edges |
 | `Quality.Apply(world, QualityLevel.*)` | Applies quality, post-FX, frustum culling, and shadow policy safely |
 
 Prefab factories return normal spawnable `Entity3D` objects with mesh and

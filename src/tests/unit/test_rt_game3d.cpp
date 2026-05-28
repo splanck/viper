@@ -679,6 +679,19 @@ static bool test_phase3_world_presets_environment_and_debug() {
     void *fx = rt_game3d_effects_get_postfx(rt_game3d_world_get_effects(world));
     EXPECT_TRUE(fx != nullptr, "PostFX.Cinematic installs a chain");
     EXPECT_TRUE(rt_postfx3d_get_effect_count(fx) >= 4, "PostFX.Cinematic has visible effects");
+    vgfx3d_postfx_chain_t chain = {};
+    EXPECT_TRUE(vgfx3d_postfx_get_chain(fx, &chain) != 0, "PostFX.Cinematic exports a chain");
+    int found_subtle_vignette = 0;
+    for (int32_t i = 0; i < chain.effect_count; i++) {
+        if (chain.effects[i].type == VGFX3D_POSTFX_EFFECT_VIGNETTE &&
+            chain.effects[i].snapshot.vignette_radius >= 0.85f &&
+            chain.effects[i].snapshot.vignette_softness >= 0.20f) {
+            found_subtle_vignette = 1;
+        }
+    }
+    vgfx3d_postfx_chain_free(&chain);
+    EXPECT_TRUE(found_subtle_vignette != 0,
+                "PostFX.Cinematic keeps vignette subtle enough for playable demos");
     rt_game3d_postfx_crisp(world);
     fx = rt_game3d_effects_get_postfx(rt_game3d_world_get_effects(world));
     EXPECT_TRUE(fx != nullptr, "PostFX.Crisp installs a chain");

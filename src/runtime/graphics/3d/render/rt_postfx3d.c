@@ -996,7 +996,7 @@ static void postfx3d_configure_quality_profile(rt_postfx3d *fx,
             rt_postfx3d_add_tonemap(fx, 2, 1.10);
             rt_postfx3d_add_fxaa(fx);
             rt_postfx3d_add_color_grade(fx, 0.015, 1.08, 1.06);
-            rt_postfx3d_add_vignette(fx, 0.72, 0.16);
+            rt_postfx3d_add_vignette(fx, 0.88, 0.22);
             if (gpu_scene_effects) {
                 rt_postfx3d_add_ssao(fx, 0.5, 0.65, 16);
                 rt_postfx3d_add_dof(fx, 10.0, 0.08, 3.0);

@@ -4033,17 +4033,24 @@ void rt_canvas3d_flip(void *obj) {
         canvas3d_close_window(c);
 }
 
-/// @brief Translate physical pixel coordinates to logical (HiDPI-scaled) and notify the mouse
-/// subsystem.
-/// @details All public Canvas drawing uses logical pixels; vgfx mouse
-///          events arrive in physical pixels (2× larger on Retina/HiDPI).
-///          Dividing by the per-window scale factor keeps `Mouse.X/Y`
-///          consistent with the coordinate space the user draws in.
+/// @brief Notify the mouse subsystem from logical Canvas3D coordinates.
+/// @details `vgfx_mouse_pos()` already returns logical coordinates once
+///          Canvas3D enables the window coordinate scale, so live polling must
+///          pass those values through without applying the scale a second time.
+static void rt_canvas3d_update_mouse_from_logical(int32_t x, int32_t y) {
+    rt_mouse_update_pos((int64_t)x, (int64_t)y);
+}
+
+/// @brief Translate physical pixel event coordinates to logical coordinates.
+/// @details Platform mouse events carry physical backing-pixel coordinates.
+///          Dividing by the per-window scale keeps event positions aligned
+///          with Canvas3D's public logical coordinate space.
 static void rt_canvas3d_update_mouse_from_physical(vgfx_window_t gfx_win, int32_t x, int32_t y) {
     float scale = vgfx_window_get_scale(gfx_win);
     if (scale < 0.001f)
         scale = 1.0f;
-    rt_mouse_update_pos((int64_t)((double)x / (double)scale), (int64_t)((double)y / (double)scale));
+    rt_canvas3d_update_mouse_from_logical((int32_t)((double)x / (double)scale),
+                                          (int32_t)((double)y / (double)scale));
 }
 
 /// @brief Pump platform events, advance per-frame input state, and return whether the window is
@@ -4080,7 +4087,9 @@ int64_t rt_canvas3d_poll(void *obj) {
             return VGFX_EVENT_NONE;
         }
 
-        /* Read current platform mouse position */
+        /* Read current platform mouse position. vgfx_mouse_pos() returns
+         * logical coordinates because Canvas3D enables coord_scale at window
+         * creation. Raw events below still arrive in physical pixels. */
         int32_t mx, my;
         vgfx_mouse_pos(c->gfx_win, &mx, &my);
 
@@ -4090,14 +4099,11 @@ int64_t rt_canvas3d_poll(void *obj) {
             int32_t cw, ch;
             vgfx_get_size(c->gfx_win, &cw, &ch);
             int32_t cx = cw / 2, cy = ch / 2;
-            float scale = vgfx_window_get_scale(c->gfx_win);
-            if (scale < 0.001f)
-                scale = 1.0f;
-            int64_t dx = (int64_t)(((double)mx - (double)cx) / (double)scale);
-            int64_t dy = (int64_t)(((double)my - (double)cy) / (double)scale);
+            int64_t dx = (int64_t)((double)mx - (double)cx);
+            int64_t dy = (int64_t)((double)my - (double)cy);
             rt_mouse_force_delta(dx, dy);
         } else {
-            rt_canvas3d_update_mouse_from_physical(c->gfx_win, mx, my);
+            rt_canvas3d_update_mouse_from_logical(mx, my);
         }
 
         /* Process events (keyboard + mouse buttons only — mouse moves handled above) */
@@ -4145,7 +4151,7 @@ int64_t rt_canvas3d_poll(void *obj) {
 
         if (!captured) {
             vgfx_mouse_pos(c->gfx_win, &mx, &my);
-            rt_canvas3d_update_mouse_from_physical(c->gfx_win, mx, my);
+            rt_canvas3d_update_mouse_from_logical(mx, my);
         }
     }
 

@@ -3285,7 +3285,7 @@ void rt_game3d_postfx_cinematic(void *obj) {
     rt_postfx3d_add_tonemap(fx, 2, 1.10);
     rt_postfx3d_add_fxaa(fx);
     rt_postfx3d_add_color_grade(fx, 0.015, 1.08, 1.06);
-    rt_postfx3d_add_vignette(fx, 0.72, 0.16);
+    rt_postfx3d_add_vignette(fx, 0.88, 0.22);
     game3d_world_assign_postfx(world, fx);
     game3d_release_ref(&fx);
 }

@@ -1695,10 +1695,13 @@ void vgfx_platform_warp_cursor(struct vgfx_window *win, int32_t x, int32_t y) {
     CGFloat local_y_points_from_bottom =
         (content.origin.y - screen_frame.origin.y) + (content.size.height - point_y);
 
+    /* Cursor positions use the same point-space coordinate system as NSWindow
+     * geometry. Multiplying by the Retina backing scale moves the pointer
+     * toward the bottom-right on HiDPI displays even though drawing uses
+     * physical backing pixels. */
     CGPoint display_point = CGPointMake(
-        vgfx_internal_round_scaled((float)(local_x_points * display_scale)),
-        vgfx_internal_round_scaled(
-            (float)((screen_frame.size.height - local_y_points_from_bottom) * display_scale)));
+        vgfx_internal_round_scaled((float)local_x_points),
+        vgfx_internal_round_scaled((float)(screen_frame.size.height - local_y_points_from_bottom)));
 
     CGDisplayMoveCursorToPoint(display_id, display_point);
     CGAssociateMouseAndMouseCursorPosition(true);

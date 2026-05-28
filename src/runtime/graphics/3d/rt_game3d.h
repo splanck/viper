@@ -603,7 +603,7 @@ void *rt_game3d_materials_from_albedo_map(void *pixels);
 // PostFX — post-processing presets (Viper.Game3D.PostFX)
 //=========================================================================
 
-/// @brief Apply a cinematic post-FX chain (bloom, tone-map, vignette) to the world.
+/// @brief Apply a cinematic post-FX chain with bloom, tone-map, and subtle vignette.
 void rt_game3d_postfx_cinematic(void *world);
 /// @brief Apply a crisp, minimal-grading post-FX chain to the world.
 void rt_game3d_postfx_crisp(void *world);

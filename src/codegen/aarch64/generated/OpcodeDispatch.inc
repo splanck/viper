@@ -22,7 +22,8 @@
 //===----------------------------------------------------------------------===//
 
 using K = MOpcode;
-auto reg = [](const MOperand &op) {
+auto reg = [](const MOperand &op)
+{
     if (op.kind != MOperand::Kind::Reg)
         VIPER_ICE("expected register operand in AArch64 generated emitter");
     if (!op.reg.isPhys)
@@ -30,17 +31,20 @@ auto reg = [](const MOperand &op) {
                   " reached AArch64 generated emitter (register allocation bug)");
     return static_cast<PhysReg>(op.reg.idOrPhys);
 };
-auto imm = [](const MOperand &op) {
+auto imm = [](const MOperand &op)
+{
     if (op.kind != MOperand::Kind::Imm)
         VIPER_ICE("expected immediate operand in AArch64 generated emitter");
     return op.imm;
 };
 
-switch (mi.opc) {
+switch (mi.opc)
+{
     case K::MovRR:
         emitMovRR(os, reg(mi.ops[0]), reg(mi.ops[1]));
         break;
-    case K::MovRI: {
+    case K::MovRI:
+    {
         const long long v = imm(mi.ops[1]);
         if (v >= 0 && v <= 65535)
             emitMovRI(os, reg(mi.ops[0]), v);
@@ -51,7 +55,8 @@ switch (mi.opc) {
     case K::FMovRR:
         emitFMovRR(os, reg(mi.ops[0]), reg(mi.ops[1]));
         break;
-    case K::FMovRI: {
+    case K::FMovRI:
+    {
         const long long bits = imm(mi.ops[1]);
         double dv;
         static_assert(sizeof(long long) == sizeof(double), "size");
@@ -174,6 +179,5 @@ switch (mi.opc) {
         emitAddPageOff(reg(mi.ops[0]), reg(mi.ops[1]), mi.ops[2].label);
         break;
     default:
-        throw std::runtime_error(std::string("AArch64 text emitter: unknown opcode ") +
-                                 opcodeName(mi.opc));
+        throw std::runtime_error(std::string("AArch64 text emitter: unknown opcode ") + opcodeName(mi.opc));
 }

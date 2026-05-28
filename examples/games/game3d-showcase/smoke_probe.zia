@@ -130,6 +130,12 @@ func assertShowcaseFrame(img: Pixels) -> Boolean {
         return false;
     }
 
+    var upperRightLum = luminance(Pixels.Get(img, width - 28, 32));
+    if (upperRightLum < 48) {
+        Terminal.Say("FAIL: showcase postfx has excessive edge darkening");
+        return false;
+    }
+
     var overflow = 0;
     var hudRight = config.HUD_PANEL_X + config.HUD_PANEL_W;
     var oy = config.HUD_PANEL_Y + 16;
