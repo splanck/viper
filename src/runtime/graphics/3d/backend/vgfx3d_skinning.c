@@ -19,6 +19,7 @@
 #include "vgfx3d_backend_utils.h"
 
 #include <math.h>
+#include <stdlib.h>
 #include <string.h>
 
 /// @brief Apply 4-influence linear blend skinning on the CPU.
@@ -51,6 +52,19 @@ void vgfx3d_skin_vertices(const vgfx3d_vertex_t *src,
         return;
     }
 
+    /* A bone's normal matrix (inverse-transpose of its skinning matrix) depends
+     * only on the bone, not the vertex, so precompute the whole palette once
+     * rather than recomputing it per vertex per influence. Falls back to inline
+     * per-influence computation if the scratch allocation fails. */
+    float *normal_palette = NULL;
+    if ((size_t)bone_count <= SIZE_MAX / (16u * sizeof(float)))
+        normal_palette = (float *)malloc((size_t)bone_count * 16u * sizeof(float));
+    if (normal_palette) {
+        for (int32_t b = 0; b < bone_count; b++)
+            vgfx3d_compute_normal_matrix4(&palette[(size_t)b * 16u],
+                                          &normal_palette[(size_t)b * 16u]);
+    }
+
     for (uint32_t v = 0; v < vertex_count; v++) {
         float pos[3] = {0, 0, 0};
         float nrm[3] = {0, 0, 0};
@@ -65,8 +79,14 @@ void vgfx3d_skin_vertices(const vgfx3d_vertex_t *src,
                 continue;
 
             const float *m = &palette[idx * 16];
-            float nm[16];
-            vgfx3d_compute_normal_matrix4(m, nm);
+            float nm_local[16];
+            const float *nm;
+            if (normal_palette) {
+                nm = &normal_palette[(size_t)idx * 16u];
+            } else {
+                vgfx3d_compute_normal_matrix4(m, nm_local);
+                nm = nm_local;
+            }
             /* pos += w * (M * src_pos) — row-major multiply */
             for (int i = 0; i < 3; i++) {
                 pos[i] += w * (m[i * 4 + 0] * src[v].pos[0] + m[i * 4 + 1] * src[v].pos[1] +
@@ -100,6 +120,8 @@ void vgfx3d_skin_vertices(const vgfx3d_vertex_t *src,
             memcpy(dst[v].normal, nrm, sizeof(float) * 3);
         }
     }
+
+    free(normal_palette);
 }
 
 #else

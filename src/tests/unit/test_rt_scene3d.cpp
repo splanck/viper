@@ -1315,7 +1315,7 @@ static void test_lod_culling_uses_selected_mesh_bounds() {
         "Scene3D increments culled count when the selected LOD mesh is outside the frustum");
 }
 
-static void test_dynamic_deformation_skips_static_frustum_culling() {
+static void test_dynamic_deformation_uses_conservative_frustum_culling() {
     vgfx3d_backend_t backend = {};
     backend.name = "opengl";
     backend.begin_frame = scene_test_begin_frame;
@@ -1344,10 +1344,10 @@ static void test_dynamic_deformation_skips_static_frustum_culling() {
 
     rt_scene3d_draw(scene, &canvas, camera);
 
-    EXPECT_TRUE(g_scene_submit_count == 1,
-                "Scene3D draws dynamic meshes instead of culling against stale static bounds");
-    EXPECT_TRUE(rt_scene3d_get_culled_count(scene) == 0,
-                "Scene3D does not record frustum culls for dynamic-deformation meshes");
+    EXPECT_TRUE(g_scene_submit_count == 0,
+                "Scene3D culls dynamic meshes using conservative deformation bounds");
+    EXPECT_TRUE(rt_scene3d_get_culled_count(scene) == 1,
+                "Scene3D records frustum culls for dynamic-deformation meshes");
 }
 
 static void test_parent_animator_drives_child_skinned_meshes() {
@@ -1598,7 +1598,7 @@ int main() {
     test_node_aabb_refreshes_after_mesh_mutation();
     test_frustum_culled_count_initial();
     test_lod_culling_uses_selected_mesh_bounds();
-    test_dynamic_deformation_skips_static_frustum_culling();
+    test_dynamic_deformation_uses_conservative_frustum_culling();
     test_parent_animator_drives_child_skinned_meshes();
     test_scene_draw_reuses_active_frame();
     test_scene_draw_culling_uses_canvas_output_aspect();

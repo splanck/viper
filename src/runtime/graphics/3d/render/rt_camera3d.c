@@ -479,6 +479,7 @@ void *rt_camera3d_new(double fov, double aspect, double near_val, double far_val
     cam->shake_seed = 0x12345678;
     cam->is_ortho = 0;
     cam->ortho_size = 10.0;
+    cam->pick_cache_valid = 0;
     rebuild_projection(cam);
 
     return cam;
@@ -779,6 +780,60 @@ static int mat4d_invert(const double *m, double *out) {
     return 0;
 }
 
+static int camera_get_pick_inv_vp(rt_camera3d *cam, double aspect, double *out_inv_vp) {
+    double near_plane;
+    double far_plane;
+    double fov;
+    double ortho_size;
+    double projection[16];
+    double vp[16];
+    if (!cam || !out_inv_vp)
+        return 0;
+    aspect = sanitize_aspect(aspect);
+    near_plane = cam->near_plane;
+    far_plane = cam->far_plane;
+    sanitize_clip_planes(&near_plane, &far_plane);
+    fov = sanitize_fov(cam->fov);
+    ortho_size = sanitize_ortho_size(cam->ortho_size);
+    if (cam->pick_cache_valid && cam->pick_cache_is_ortho == cam->is_ortho &&
+        cam->pick_cache_aspect == aspect && cam->pick_cache_fov == fov &&
+        cam->pick_cache_near == near_plane && cam->pick_cache_far == far_plane &&
+        cam->pick_cache_ortho_size == ortho_size &&
+        memcmp(cam->pick_cache_view, cam->view, sizeof(cam->view)) == 0) {
+        memcpy(out_inv_vp, cam->pick_cache_inv_vp, sizeof(cam->pick_cache_inv_vp));
+        return 1;
+    }
+
+    if (cam->is_ortho) {
+        double half_w = ortho_size * aspect;
+        build_ortho(projection, -half_w, half_w, -ortho_size, ortho_size, near_plane, far_plane);
+    } else {
+        build_perspective(projection, fov, aspect, near_plane, far_plane);
+    }
+    for (int r = 0; r < 4; r++) {
+        for (int c = 0; c < 4; c++) {
+            vp[r * 4 + c] = projection[r * 4 + 0] * cam->view[0 * 4 + c] +
+                            projection[r * 4 + 1] * cam->view[1 * 4 + c] +
+                            projection[r * 4 + 2] * cam->view[2 * 4 + c] +
+                            projection[r * 4 + 3] * cam->view[3 * 4 + c];
+        }
+    }
+    if (mat4d_invert(vp, out_inv_vp) != 0) {
+        cam->pick_cache_valid = 0;
+        return 0;
+    }
+    memcpy(cam->pick_cache_view, cam->view, sizeof(cam->view));
+    memcpy(cam->pick_cache_inv_vp, out_inv_vp, sizeof(cam->pick_cache_inv_vp));
+    cam->pick_cache_aspect = aspect;
+    cam->pick_cache_fov = fov;
+    cam->pick_cache_near = near_plane;
+    cam->pick_cache_far = far_plane;
+    cam->pick_cache_ortho_size = ortho_size;
+    cam->pick_cache_is_ortho = cam->is_ortho;
+    cam->pick_cache_valid = 1;
+    return 1;
+}
+
 /// @brief Unproject a screen-space pixel into a world-space ray direction.
 /// @details Standard picking ray construction:
 ///          1. Convert pixel (sx,sy) to normalized device coords with the
@@ -813,24 +868,9 @@ void *rt_camera3d_screen_to_ray(void *obj, int64_t sx, int64_t sy, int64_t sw, i
     double ndc_x = (2.0 * (double)sx / (double)sw) - 1.0;
     double ndc_y = 1.0 - (2.0 * (double)sy / (double)sh); /* Y-flip */
 
-    double projection[16];
     double aspect = sanitize_aspect((double)sw / (double)sh);
-    double near_plane = cam->near_plane;
-    double far_plane = cam->far_plane;
-    sanitize_clip_planes(&near_plane, &far_plane);
-    build_perspective(projection, sanitize_fov(cam->fov), aspect, near_plane, far_plane);
-
-    /* Build VP = projection * view, then invert */
-    double vp[16];
-    for (int r = 0; r < 4; r++)
-        for (int c = 0; c < 4; c++)
-            vp[r * 4 + c] = projection[r * 4 + 0] * cam->view[0 * 4 + c] +
-                            projection[r * 4 + 1] * cam->view[1 * 4 + c] +
-                            projection[r * 4 + 2] * cam->view[2 * 4 + c] +
-                            projection[r * 4 + 3] * cam->view[3 * 4 + c];
-
     double inv_vp[16];
-    if (mat4d_invert(vp, inv_vp) != 0)
+    if (!camera_get_pick_inv_vp(cam, aspect, inv_vp))
         return rt_vec3_new(0.0, 0.0, -1.0);
 
     /* Unproject NDC point at near plane (z=-1) to world space */
@@ -885,27 +925,9 @@ void *rt_camera3d_screen_to_ray_origin(void *obj, int64_t sx, int64_t sy, int64_
 
     double ndc_x = (2.0 * (double)sx / (double)sw) - 1.0;
     double ndc_y = 1.0 - (2.0 * (double)sy / (double)sh);
-    double near_plane = cam->near_plane;
-    double far_plane = cam->far_plane;
-    sanitize_clip_planes(&near_plane, &far_plane);
     double aspect = sanitize_aspect((double)sw / (double)sh);
-    double half_h = sanitize_ortho_size(cam->ortho_size);
-    double half_w = half_h * aspect;
-    double projection[16];
-    build_ortho(projection, -half_w, half_w, -half_h, half_h, near_plane, far_plane);
-
-    double vp[16];
-    for (int r = 0; r < 4; r++) {
-        for (int c = 0; c < 4; c++) {
-            vp[r * 4 + c] = projection[r * 4 + 0] * cam->view[0 * 4 + c] +
-                            projection[r * 4 + 1] * cam->view[1 * 4 + c] +
-                            projection[r * 4 + 2] * cam->view[2 * 4 + c] +
-                            projection[r * 4 + 3] * cam->view[3 * 4 + c];
-        }
-    }
-
     double inv_vp[16];
-    if (mat4d_invert(vp, inv_vp) != 0)
+    if (!camera_get_pick_inv_vp(cam, aspect, inv_vp))
         return rt_vec3_new(eye_x, eye_y, eye_z);
 
     double p[4] = {ndc_x, ndc_y, -1.0, 1.0};

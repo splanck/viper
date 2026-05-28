@@ -3,7 +3,9 @@
 - **Severity:** Medium (performance) — largest scope, highest risk; do last
 - **Type:** Optimization (behavior-preserving, with careful invalidation)
 - **Primary files:** `vgfx3d_backend_d3d11.c`, `vgfx3d_backend_opengl.c` (Metal optional)
-- **Status:** Planned (do not code yet)
+- **Status:** DEFERRED — see `STATUS.md`. Highest-risk item (stateful cache across pass
+  boundaries) on D3D11/OpenGL, which cannot be built or rendered on the macOS dev environment.
+  Implement only after Plan 03, behind a real Windows/Linux GPU benchmark.
 
 ## Problem
 

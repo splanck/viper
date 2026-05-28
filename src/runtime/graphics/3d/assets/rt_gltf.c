@@ -521,13 +521,56 @@ static int64_t jvalue_int(void *value, int64_t def) {
     }
 }
 
-/// @brief Recursive count — returns 1 for `node` plus the sum of all descendants.
+/// @brief Iterative count — returns 1 for `node` plus the sum of all descendants.
 static int32_t gltf_count_subtree(const rt_scene_node3d *node) {
-    int32_t total = 1;
+    const rt_scene_node3d **stack = NULL;
+    int32_t count = 0;
+    int32_t capacity = 0;
+    int32_t total = 0;
     if (!node)
         return 0;
-    for (int32_t i = 0; i < node->child_count; i++)
-        total += gltf_count_subtree(node->children[i]);
+    while (count >= capacity) {
+        int32_t next_capacity = capacity == 0 ? 32 : capacity * 2;
+        const rt_scene_node3d **grown;
+        if (capacity > INT32_MAX / 2)
+            return total;
+        grown = (const rt_scene_node3d **)realloc(stack, (size_t)next_capacity * sizeof(*stack));
+        if (!grown) {
+            free(stack);
+            return total;
+        }
+        stack = grown;
+        capacity = next_capacity;
+    }
+    stack[count++] = node;
+    while (count > 0) {
+        const rt_scene_node3d *current = stack[--count];
+        if (!current)
+            continue;
+        if (total < INT32_MAX)
+            total++;
+        for (int32_t i = 0; i < current->child_count; ++i) {
+            if (count >= capacity) {
+                int32_t next_capacity = capacity == 0 ? 32 : capacity * 2;
+                const rt_scene_node3d **grown;
+                if (capacity > INT32_MAX / 2) {
+                    free(stack);
+                    return total;
+                }
+                grown =
+                    (const rt_scene_node3d **)realloc(stack,
+                                                      (size_t)next_capacity * sizeof(*stack));
+                if (!grown) {
+                    free(stack);
+                    return total;
+                }
+                stack = grown;
+                capacity = next_capacity;
+            }
+            stack[count++] = current->children[i];
+        }
+    }
+    free(stack);
     return total;
 }
 
@@ -704,25 +747,92 @@ static int gltf_validate_node_visit(void *nodes_arr,
                                     int32_t node_count,
                                     int32_t node_idx,
                                     uint8_t *state) {
-    void *node_json;
-    void *children;
+    typedef struct gltf_node_visit_item {
+        int32_t node;
+        int8_t exit;
+    } gltf_node_visit_item;
+    gltf_node_visit_item *stack = NULL;
+    int32_t stack_count = 0;
+    int32_t stack_capacity = 0;
     if (!nodes_arr || !state || node_idx < 0 || node_idx >= node_count)
         return 0;
     if (state[node_idx] == 1)
         return 0;
     if (state[node_idx] == 2)
         return 1;
-    state[node_idx] = 1;
-    node_json = rt_seq_get(nodes_arr, node_idx);
-    children = jarr(node_json, "children");
-    for (int64_t ci = 0; ci < jarr_len(children); ci++) {
-        int64_t child = jvalue_int(rt_seq_get(children, ci), -1);
-        if (child < 0 || child >= node_count)
+    stack_capacity = 32;
+    stack = (gltf_node_visit_item *)malloc((size_t)stack_capacity * sizeof(*stack));
+    if (!stack)
+        return 0;
+    stack[stack_count++] = (gltf_node_visit_item){node_idx, 0};
+    while (stack_count > 0) {
+        gltf_node_visit_item item = stack[--stack_count];
+        if (item.node < 0 || item.node >= node_count) {
+            free(stack);
             return 0;
-        if (!gltf_validate_node_visit(nodes_arr, node_count, (int32_t)child, state))
+        }
+        if (item.exit) {
+            state[item.node] = 2;
+            continue;
+        }
+        if (state[item.node] == 2)
+            continue;
+        if (state[item.node] == 1) {
+            free(stack);
             return 0;
+        }
+        state[item.node] = 1;
+        if (stack_count >= stack_capacity) {
+            int32_t next_capacity = stack_capacity * 2;
+            gltf_node_visit_item *grown;
+            if (stack_capacity > INT32_MAX / 2) {
+                free(stack);
+                return 0;
+            }
+            grown =
+                (gltf_node_visit_item *)realloc(stack, (size_t)next_capacity * sizeof(*stack));
+            if (!grown) {
+                free(stack);
+                return 0;
+            }
+            stack = grown;
+            stack_capacity = next_capacity;
+        }
+        stack[stack_count++] = (gltf_node_visit_item){item.node, 1};
+        {
+            void *node_json = rt_seq_get(nodes_arr, item.node);
+            void *children = jarr(node_json, "children");
+            int64_t child_len = jarr_len(children);
+            for (int64_t ci = child_len - 1; ci >= 0; --ci) {
+                int64_t child = jvalue_int(rt_seq_get(children, ci), -1);
+                if (child < 0 || child >= node_count || state[child] == 1) {
+                    free(stack);
+                    return 0;
+                }
+                if (state[child] == 2)
+                    continue;
+                if (stack_count >= stack_capacity) {
+                    int32_t next_capacity = stack_capacity * 2;
+                    gltf_node_visit_item *grown;
+                    if (stack_capacity > INT32_MAX / 2) {
+                        free(stack);
+                        return 0;
+                    }
+                    grown = (gltf_node_visit_item *)realloc(stack,
+                                                            (size_t)next_capacity *
+                                                                sizeof(*stack));
+                    if (!grown) {
+                        free(stack);
+                        return 0;
+                    }
+                    stack = grown;
+                    stack_capacity = next_capacity;
+                }
+                stack[stack_count++] = (gltf_node_visit_item){(int32_t)child, 0};
+            }
+        }
     }
-    state[node_idx] = 2;
+    free(stack);
     return 1;
 }
 
@@ -943,6 +1053,79 @@ static int gltf_safe_relative_uri(const char *decoded_uri) {
 static const char gltf_base64_chars[] =
     "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
 
+static int gltf_data_uri_hex_digit(char ch) {
+    if (ch >= '0' && ch <= '9')
+        return ch - '0';
+    if (ch >= 'a' && ch <= 'f')
+        return ch - 'a' + 10;
+    if (ch >= 'A' && ch <= 'F')
+        return ch - 'A' + 10;
+    return -1;
+}
+
+static int gltf_ascii_isspace(char ch) {
+    return ch == ' ' || ch == '\t' || ch == '\r' || ch == '\n' || ch == '\f' || ch == '\v';
+}
+
+static int gltf_ascii_ieq_n(const char *a, const char *b, size_t len) {
+    for (size_t i = 0; i < len; ++i) {
+        char ca = a[i];
+        char cb = b[i];
+        if (ca >= 'A' && ca <= 'Z')
+            ca = (char)(ca - 'A' + 'a');
+        if (cb >= 'A' && cb <= 'Z')
+            cb = (char)(cb - 'A' + 'a');
+        if (ca != cb)
+            return 0;
+    }
+    return 1;
+}
+
+static int gltf_data_uri_meta_has_base64(const char *meta, size_t len) {
+    size_t start = 0;
+    while (start < len) {
+        size_t end = start;
+        while (end < len && meta[end] != ';')
+            end++;
+        if (end > start && end - start == 6 && gltf_ascii_ieq_n(meta + start, "base64", 6))
+            return 1;
+        start = end + 1;
+    }
+    return 0;
+}
+
+static int gltf_percent_decode_bytes(const char *src,
+                                     size_t len,
+                                     uint8_t **out_data,
+                                     size_t *out_len) {
+    uint8_t *decoded;
+    size_t write = 0;
+    if (out_data)
+        *out_data = NULL;
+    if (out_len)
+        *out_len = 0;
+    if (!src || !out_data || !out_len)
+        return 0;
+    decoded = (uint8_t *)malloc(len > 0 ? len : 1);
+    if (!decoded)
+        return 0;
+    for (size_t read = 0; read < len; ++read) {
+        if (src[read] == '%' && read + 2 < len) {
+            int hi = gltf_data_uri_hex_digit(src[read + 1]);
+            int lo = gltf_data_uri_hex_digit(src[read + 2]);
+            if (hi >= 0 && lo >= 0) {
+                decoded[write++] = (uint8_t)((hi << 4) | lo);
+                read += 2;
+                continue;
+            }
+        }
+        decoded[write++] = (uint8_t)src[read];
+    }
+    *out_data = decoded;
+    *out_len = write;
+    return 1;
+}
+
 /// @brief Decode a single base64 character to its 0-63 value (-2 for '=', -1 for invalid).
 static int gltf_base64_digit_value(char c) {
     const char *p = strchr(gltf_base64_chars, c);
@@ -955,36 +1138,63 @@ static int gltf_base64_digit_value(char c) {
 
 /// @brief Decode a base64 string of `len` characters into raw bytes (caller `free`s).
 static uint8_t *gltf_base64_decode(const char *data, size_t len, size_t *out_len) {
+    char *compact = NULL;
+    const char *src;
+    size_t compact_len = 0;
     if (!data)
         return NULL;
+    for (size_t i = 0; i < len; ++i) {
+        if (!gltf_ascii_isspace(data[i]))
+            compact_len++;
+    }
+    if (compact_len != len) {
+        compact = (char *)malloc(compact_len > 0 ? compact_len : 1);
+        if (!compact)
+            return NULL;
+        compact_len = 0;
+        for (size_t i = 0; i < len; ++i) {
+            if (!gltf_ascii_isspace(data[i]))
+                compact[compact_len++] = data[i];
+        }
+        src = compact;
+    } else {
+        src = data;
+    }
+    len = compact_len;
     if (len == 0) {
         uint8_t *empty = (uint8_t *)malloc(1);
         if (out_len)
             *out_len = 0;
+        free(compact);
         return empty;
     }
-    if (len % 4 != 0)
+    if (len % 4 != 0) {
+        free(compact);
         return NULL;
+    }
 
     size_t olen = (len / 4) * 3;
-    if (len > 0 && data[len - 1] == '=')
+    if (len > 0 && src[len - 1] == '=')
         olen--;
-    if (len > 1 && data[len - 2] == '=')
+    if (len > 1 && src[len - 2] == '=')
         olen--;
 
     uint8_t *output = (uint8_t *)malloc(olen > 0 ? olen : 1);
-    if (!output)
+    if (!output) {
+        free(compact);
         return NULL;
+    }
 
     size_t i = 0;
     size_t j = 0;
     while (i < len) {
-        int a = gltf_base64_digit_value(data[i++]);
-        int b = gltf_base64_digit_value(data[i++]);
-        int c = gltf_base64_digit_value(data[i++]);
-        int d = gltf_base64_digit_value(data[i++]);
+        int a = gltf_base64_digit_value(src[i++]);
+        int b = gltf_base64_digit_value(src[i++]);
+        int c = gltf_base64_digit_value(src[i++]);
+        int d = gltf_base64_digit_value(src[i++]);
         if (a < 0 || b < 0 || c == -1 || d == -1) {
             free(output);
+            free(compact);
             return NULL;
         }
         if (c == -2)
@@ -1005,6 +1215,7 @@ static uint8_t *gltf_base64_decode(const char *data, size_t len, size_t *out_len
 
     if (out_len)
         *out_len = olen;
+    free(compact);
     return output;
 }
 
@@ -1018,6 +1229,8 @@ static int gltf_parse_data_uri(
     const char *uri, char *mime_buf, size_t mime_buf_cap, uint8_t **out_data, size_t *out_len) {
     const char *comma;
     const char *payload;
+    uint8_t *decoded_payload = NULL;
+    size_t decoded_payload_len = 0;
     size_t mime_len = 0;
     int is_base64 = 0;
     if (!uri || strncmp(uri, "data:", 5) != 0)
@@ -1031,13 +1244,13 @@ static int gltf_parse_data_uri(
         mime_buf[0] = '\0';
     {
         const char *meta = uri + 5;
-        const char *semi = memchr(meta, ';', (size_t)(comma - meta));
+        size_t meta_len = (size_t)(comma - meta);
+        const char *semi = memchr(meta, ';', meta_len);
         if (semi) {
             mime_len = (size_t)(semi - meta);
-            if (strstr(semi, ";base64"))
-                is_base64 = 1;
+            is_base64 = gltf_data_uri_meta_has_base64(meta, meta_len);
         } else {
-            mime_len = (size_t)(comma - meta);
+            mime_len = meta_len;
         }
         if (mime_buf && mime_buf_cap > 0 && mime_len > 0) {
             if (mime_len >= mime_buf_cap)
@@ -1047,17 +1260,16 @@ static int gltf_parse_data_uri(
         }
     }
 
+    if (!gltf_percent_decode_bytes(payload, strlen(payload), &decoded_payload, &decoded_payload_len))
+        return 0;
     if (is_base64) {
-        *out_data = gltf_base64_decode(payload, strlen(payload), out_len);
+        *out_data = gltf_base64_decode((const char *)decoded_payload, decoded_payload_len, out_len);
+        free(decoded_payload);
         return *out_data != NULL;
     }
 
-    *out_len = strlen(payload);
-    *out_data = (uint8_t *)malloc(*out_len > 0 ? *out_len : 1);
-    if (!*out_data)
-        return 0;
-    if (*out_len > 0)
-        memcpy(*out_data, payload, *out_len);
+    *out_data = decoded_payload;
+    *out_len = decoded_payload_len;
     return 1;
 }
 

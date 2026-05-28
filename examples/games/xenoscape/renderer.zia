@@ -109,6 +109,9 @@ class Renderer {
     // Pre-rendered tile bevel overlay (1 BlitAlpha vs 4 BoxAlpha per tile)
     hide Pixels bevelOverlay;
     hide SpriteBatch tileBatch;
+    hide Pixels depthOverlay;     // #13 vertical depth-shade overlay
+    hide Pixels glowSprite;       // #11 soft pre-blurred lava glow
+    hide Renderer2D bloomR;       // #11 additive bloom pass
 
     /// @brief Allocate ScreenFX, store palette, reset all
     ///        effect timers.
@@ -134,6 +137,19 @@ class Renderer {
             // Right edge shadow
             bevelOverlay.Set(TILE_SIZE - 1, by, Color.RGBA(0, 0, 0, 25));
         }
+
+        // #13 — vertical depth-shade overlay: transparent at the top fading to
+        // a faint dark at the bottom, layered on solid tiles for grounded depth.
+        depthOverlay = Pixels.New(TILE_SIZE, TILE_SIZE);
+        var depthGrad = Gradient2D.New(0x00000000, 0x00000033, 2);
+        depthGrad.FillVertical(depthOverlay);
+
+        // #11 — soft pre-blurred glow sprite + an additive renderer, reused to
+        // bloom bright FX (lava) without an offscreen pass.  Built once.
+        glowSprite = Pixels.New(96, 96);
+        glowSprite.DrawDisc(48, 48, 34, Color.RGBA(255, 255, 255, 255));
+        glowSprite = glowSprite.Blur(14);
+        bloomR = Renderer2D.New(512);
     }
 
     // Trigger screen shake (convert game frames/intensity to ScreenFX units)
@@ -183,6 +199,20 @@ class Renderer {
     ///        while true.
     expose func isFading() -> Boolean {
         return fx.IsTypeActive(4); // SCREENFX_FADE_OUT = 4
+    }
+
+    /// @brief Current ScreenFX overlay opacity (0-255).  The menu transition
+    ///        polls this to commit a screen switch once the fade-out has the
+    ///        screen near-black (ScreenFX clears a fade the moment it ends).
+    expose func overlayAlpha() -> Integer {
+        return fx.get_OverlayAlpha();
+    }
+
+    /// @brief Fade in from FULL black, matching a full-black fade-out so a
+    ///        menu transition doesn't pop.  Distinct from `fadeIn`, which
+    ///        starts from a semi-transparent veil for in-level entry.
+    expose func menuFadeIn(durationMs: Integer) {
+        fx.FadeIn(0x000000FF, durationMs);
     }
 
     // --- Screen transition effects (new ScreenFX API) ---
@@ -340,6 +370,11 @@ class Renderer {
 
         var row = startRow;
         tileBatch.Begin();
+        // #11 — additive bloom batch, flushed after the tiles so lava glows.
+        bloomR.Begin();
+        bloomR.SetBlendMode(2);                  // 2 = additive
+        bloomR.SetTint(Color.RGB(255, 140, 40)); // warm lava glow
+        bloomR.SetAlpha(110);
         while row <= endRow {
             var col = startCol;
             while col <= endCol {
@@ -352,17 +387,19 @@ class Renderer {
                     if tile == TILE_LAVA {
                         var lf = level.resolveAnimTile(TILE_LAVA) - TILE_LAVA;
                         tileBatch.DrawPixels(sprites.getLavaTile(lf), sx, sy);
+                        // #11 — soft additive glow centred on the lava tile.
+                        bloomR.DrawPixels(glowSprite, sx - 16, sy - 16);
                     } else {
                         tileBatch.DrawPixels(sprites.getTile(tile), sx, sy);
                     }
 
-                    // Edge bevel overlay: 1px light top/left, dark bottom/right.
-                    // This gives every solid tile a 3D raised-panel look at draw
-                    // time without modifying the cached sprite data.
+                    // Edge bevel overlay (1px light top/left, dark bottom/right)
+                    // plus a vertical depth shade (#13) give every solid tile a
+                    // grounded, raised-panel look without touching sprite data.
                     // Skip for non-solid decorative tiles (vines, checkpoints).
-                    // Bevel overlay: pre-rendered sprite (1 BlitAlpha vs 4 BoxAlpha)
                     if tile != TILE_VINE and tile != TILE_CHECKPOINT and tile != TILE_LAVA and tile != TILE_CLOUD {
                         tileBatch.DrawPixels(bevelOverlay, sx, sy);
+                        tileBatch.DrawPixels(depthOverlay, sx, sy);
                     }
                 }
                 col = col + 1;
@@ -370,6 +407,7 @@ class Renderer {
             row = row + 1;
         }
         tileBatch.End(canvas);
+        bloomR.End(canvas);     // #11 — additive bloom over the tiles
     }
 
     // =========================================================================

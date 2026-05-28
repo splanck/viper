@@ -66,9 +66,10 @@ compares against `examples/3d/baselines/walk_min_software.png`.
 
 Live loops call `Canvas3D.Poll()` once per frame and then read
 `Viper.Input.Keyboard`, `Viper.Input.Mouse`, gamepad, or action APIs. `Poll()`
-returns the last raw window event code, but gameplay should normally use those
-state APIs because they expose coherent `WasPressed`, `WasReleased`, held, and
-mouse-delta state.
+returns `1` while the canvas remains open and `0` when the backing window is
+closed or event pumping fails. Use `PollEvent()` when low-level integrations need
+raw window event types; gameplay should normally use the state APIs because they
+expose coherent `WasPressed`, `WasReleased`, held, and mouse-delta state.
 
 Deterministic tests can switch a canvas to scripted input and fixed time:
 
@@ -88,6 +89,9 @@ not need a test-only input path. `DeltaTime`/`DeltaTimeSec` can be zero on the
 first live frame before the first `Flip()`; with the synthetic clock selected,
 they report the configured fixed dt after `AdvanceSyntheticFrame()`, synthetic
 `Poll()`, or `Flip()`.
+
+`PollEvent()` drains the per-canvas event queue in FIFO order and returns `0`
+when no queued event remains.
 
 ### Canvas3D Quality Profiles
 
@@ -121,7 +125,7 @@ lights.
 
 | Method / Property | Signature | Description |
 |-------------------|-----------|-------------|
-| `SetLight(index, light)` | `Void(Integer, Object)` | Bind or clear a retained light slot |
+| `SetLight(index, light)` | `Void(Integer, Object)` | Bind or clear a retained `Light3D` slot; invalid indices or non-light handles trap |
 | `ClearLights()` | `Void()` | Clear every retained canvas light slot |
 | `SetDefaultLighting()` | `Void()` | Install conservative key/fill/ambient defaults |
 | `LightCount` | `Integer` | Count active enabled canvas-slot lights |
@@ -646,6 +650,7 @@ Static utilities for positioning audio in 3D space via listeners and voice IDs.
 |------------|---------|------------|-------------|
 | `Position` | Object  | Read/Write | Listener world position as `Vec3` |
 | `Forward`  | Object  | Read/Write | Listener facing direction as `Vec3` |
+| `Up`       | Object  | Read/Write | Listener up direction as `Vec3`; used to derive the spatial right vector |
 | `Velocity` | Object  | Read/Write | Listener velocity for Doppler as `Vec3` |
 | `IsActive` | Boolean | Read/Write | Activate this listener for spatialization |
 
@@ -655,6 +660,7 @@ Static utilities for positioning audio in 3D space via listeners and voice IDs.
 |--------|-----------|-------------|
 | `SetPosition(pos)` | `Void(Object)` | Set position from a `Vec3` |
 | `SetForward(dir)` | `Void(Object)` | Set facing direction from a `Vec3` |
+| `SetUp(up)` | `Void(Object)` | Set up direction from a `Vec3` |
 | `SetVelocity(vel)` | `Void(Object)` | Set Doppler velocity from a `Vec3` |
 | `BindNode(sceneNode)` | `Void(Object)` | Automatically track a `SceneNode3D` position each `Sound3D.SyncBindings` call |
 | `ClearNodeBinding()` | `Void()` | Remove the node binding |
@@ -1042,5 +1048,5 @@ Texture atlas for 3D rendering with named-region management.
 - `AnimController3D.PollEvent` returns events one at a time per call; poll it in a loop until an empty string is returned if multiple events fire in one update.
 - `NavMesh3D` is rebuilt by `NavMesh3D.Build`; the mesh is not dynamic. Rebuild when geometry changes, and keep baked meshes manifold at shared edges.
 - `Particles3D.Draw` should be called inside the `Canvas3D.Begin`/`End` scene pass after opaque geometry when you want particles over the main scene.
-- Deferred static heap `Mesh3D` draws snapshot geometry when needed so submitted geometry remains stable through `Canvas3D.End()`; skinned and morphed draws retain the live mesh because animation data is resolved at backend submission time.
+- Deferred heap `Mesh3D` draws snapshot geometry when needed so submitted geometry remains stable through `Canvas3D.End()`; public `DrawMesh` rejects raw stack mesh payloads, while internal skinned and morphed paths retain or snapshot the animation payloads needed for backend submission.
 - `Sound3D.SyncBindings` must be called once per frame after physics/animation updates so bound sources and listeners track their nodes.

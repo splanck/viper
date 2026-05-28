@@ -3,7 +3,11 @@
 - **Severity:** High (performance) — largest CPU-side draw-call win in the audit
 - **Type:** Optimization (behavior-preserving, content-gated)
 - **Primary files:** `vgfx3d_backend_d3d11.c`, `vgfx3d_backend_opengl.c`, `vgfx3d_backend_metal.m`
-- **Status:** Planned (do not code yet)
+- **Status:** DEFERRED — see `STATUS.md`. Not implemented: D3D11/OpenGL are not
+  buildable or runnable on the macOS dev environment, and the test suite forces the software
+  backend, so this correctness-sensitive cache cannot be verified here. New coherency findings
+  (D3D11 `cb_per_scene` has 3 writers incl. the shadow pass; Metal bindings don't persist
+  across encoders) are recorded in `STATUS.md`.
 
 ## Problem
 

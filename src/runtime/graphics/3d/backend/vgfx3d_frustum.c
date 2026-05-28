@@ -46,21 +46,7 @@ static void vgfx3d_frustum_make_conservative(vgfx3d_frustum_t *f) {
     for (int i = 0; i < 6; i++)
         for (int j = 0; j < 4; j++)
             f->planes[i][j] = 0.0f;
-}
-
-/// @brief True if a plane is finite and has a non-degenerate normal (length² > 1e-12),
-///   so it can be normalized and used for distance tests.
-static int vgfx3d_frustum_plane_is_valid(const float plane[4]) {
-    float len_sq;
-
-    if (!plane)
-        return 0;
-    for (int i = 0; i < 4; i++) {
-        if (!isfinite(plane[i]))
-            return 0;
-    }
-    len_sq = plane[0] * plane[0] + plane[1] * plane[1] + plane[2] * plane[2];
-    return len_sq > 1e-12f;
+    f->planes_valid = 0;
 }
 
 /// @brief True if all three components of a vec3 are finite (no NaN/Inf).
@@ -140,6 +126,7 @@ void vgfx3d_frustum_extract(vgfx3d_frustum_t *f, const float vp[16]) {
             return;
         }
     }
+    f->planes_valid = 1;
 }
 
 /*==========================================================================
@@ -161,15 +148,14 @@ void vgfx3d_frustum_extract(vgfx3d_frustum_t *f, const float vp[16]) {
 ///   callers skip recursive culling when the parent volume is fully inside.
 int vgfx3d_frustum_test_aabb(const vgfx3d_frustum_t *f, const float min[3], const float max[3]) {
     int result = 2; /* assume fully inside */
-    if (!f || !vgfx3d_vec3_is_finite(min) || !vgfx3d_vec3_is_finite(max))
+    if (!f || !f->planes_valid || !vgfx3d_vec3_is_finite(min) || !vgfx3d_vec3_is_finite(max))
         return 1;
     for (int axis = 0; axis < 3; axis++) {
         if (min[axis] > max[axis])
             return 1;
     }
+    /* Planes were validated once by vgfx3d_frustum_extract; no per-object recheck. */
     for (int i = 0; i < 6; i++) {
-        if (!vgfx3d_frustum_plane_is_valid(f->planes[i]))
-            return 1;
         /* Select p-vertex: corner most along plane normal */
         float px = f->planes[i][0] >= 0 ? max[0] : min[0];
         float py = f->planes[i][1] >= 0 ? max[1] : min[1];
@@ -204,11 +190,10 @@ int vgfx3d_frustum_test_aabb(const vgfx3d_frustum_t *f, const float min[3], cons
 /// @return 0 outside, 1 intersecting, 2 fully inside.
 int vgfx3d_frustum_test_sphere(const vgfx3d_frustum_t *f, const float center[3], float radius) {
     int result = 2; /* assume fully inside */
-    if (!f || !vgfx3d_vec3_is_finite(center) || !isfinite(radius) || radius < 0.0f)
+    if (!f || !f->planes_valid || !vgfx3d_vec3_is_finite(center) || !isfinite(radius) ||
+        radius < 0.0f)
         return 1;
     for (int i = 0; i < 6; i++) {
-        if (!vgfx3d_frustum_plane_is_valid(f->planes[i]))
-            return 1;
         float dist = f->planes[i][0] * center[0] + f->planes[i][1] * center[1] +
                      f->planes[i][2] * center[2] + f->planes[i][3];
         if (dist < -radius)

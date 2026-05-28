@@ -202,6 +202,7 @@ class Game {
     // Game state
     hide Integer score;
     hide Integer coins;
+    hide Integer enemiesKilled;  // per-level kill tally for the complete screen (#7)
     hide Integer currentLevel;
     hide Integer levelTimer;     // milliseconds elapsed in level
     hide Boolean reachedCheckpoint;
@@ -212,6 +213,10 @@ class Game {
 
     // Frame timing
     hide Integer dt;
+
+    // Menu screen-transition state (#3): deferred fade-out -> switch -> fade-in
+    hide Integer menuPending;    // pending action code, or MENU_PENDING_NONE
+    hide Integer menuTransT;     // frames since the current menu fade-out began
 
     // Death/respawn
     hide Integer deathTimer;
@@ -299,6 +304,10 @@ class Game {
 
         // Initialize expansion systems (abilities, save, lighting, etc.)
         initNewSystems();
+
+        // Menu transition controller starts idle.
+        menuPending = MENU_PENDING_NONE;
+        menuTransT = 0;
 
         // Define dash action binding (X key = 120 ASCII, LB pad button = 4)
         Action.Define("dash");
@@ -478,37 +487,78 @@ class Game {
     ///        input through `MenuSystem.updateTitle` and
     ///        switches state on its return code.
     hide func updateMenu() {
+        // Reuse the renderer's single ScreenFX instance for menu transitions
+        // (otherwise dormant in the menu).  ScreenFX is ms-based, so feed it the
+        // real frame dt; the menu's Tween-driven logo anim is per-frame.
+        renderObj.update(dt);
+
+        // A transition is mid-flight: hold input, keep drawing the darkening
+        // title under the fade, and commit the pending action once the overlay
+        // is near-opaque.  ScreenFX clears a fade the instant it completes, so
+        // we MUST switch at the midpoint (near-black), not at the end, to avoid
+        // flashing the old screen.  The frame fallback guarantees no hang.
+        if menuPending != MENU_PENDING_NONE {
+            menuTransT = menuTransT + 1;
+            menus.drawTitle(canvas);
+            renderObj.drawTransition(canvas);
+            if renderObj.overlayAlpha() >= 200 or menuTransT > 40 {
+                commitMenuTransition();
+            }
+            return;
+        }
+
         var result = menus.updateTitle();
         menus.drawTitle(canvas);
+        renderObj.drawTransition(canvas);
 
-        if result == STATE_PLAYING {
-            sfx.playMenuSelect();
-            startNewGame();
+        if menus.titleSelectionMoved() {
+            sfx.playMenuMove();
         }
-        if result == STATE_LEVELSELECT {
+
+        // A selection darkens the screen first; the switch happens later
+        // (commitMenuTransition) once the fade-out covers the screen.
+        if result != -1 {
+            menuPending = result;
+            menuTransT = 0;
             sfx.playMenuSelect();
-            sm.Switch("levelselect");
+            renderObj.fadeOut(10);
         }
-        if result == STATE_HIGHSCORES {
-            sfx.playMenuSelect();
-            sm.Switch("highscores");
-            menus.resetSelection();
-        }
-        if result == STATE_CONTROLS {
-            sfx.playMenuSelect();
-            sm.Switch("controls");
-        }
-        if result == -2 {
+    }
+
+    /// @brief Commit a deferred menu selection once the fade-out has the
+    ///        screen near-black, then fade the destination back in from black.
+    hide func commitMenuTransition() {
+        var action = menuPending;
+        menuPending = MENU_PENDING_NONE;
+
+        if action == -2 {
             canvas.Close();
             return;
         }
+        if action == STATE_PLAYING {
+            startNewGame();
+        } else {
+        if action == STATE_LEVELSELECT {
+            sm.Switch("levelselect");
+        } else {
+        if action == STATE_HIGHSCORES {
+            sm.Switch("highscores");
+            menus.resetSelection();
+        } else {
+        if action == STATE_CONTROLS {
+            sm.Switch("controls");
+        }
+        }}}
+        renderObj.menuFadeIn(450);
     }
 
     /// @brief Per-frame: level-select state.  Calls
     ///        `loadLevel` on choice.
     hide func updateLevelSelect() {
+        renderObj.update(dt);
         var result = menus.updateLevelSelect();
         menus.drawLevelSelect(canvas);
+        renderObj.drawTransition(canvas);
 
         if result == STATE_PLAYING {
             sfx.playMenuSelect();
@@ -526,10 +576,12 @@ class Game {
             sfx.playGameMusic();
         }
         if result == STATE_MENU {
-            sfx.playMenuMove();
+            sfx.playMenuBack();
             sm.Switch("menu");
             sfx.playMenuMusic();
             menus.resetSelection();
+            menus.resetTitleAnim();
+            renderObj.menuFadeIn(350);
         }
     }
 
@@ -605,6 +657,7 @@ class Game {
 
         // Update HUD
         hudObj.update(score, coins, dt);
+        hudObj.updatePopups();
 
         // Level timer (ms-based)
         levelTimer = levelTimer + dt;
@@ -777,6 +830,7 @@ class Game {
                         renderObj.shake(8, 4);
                         sfx.playEnemyDeath();
                         achSys.onEnemyKilled();
+                        enemiesKilled = enemiesKilled + 1;
                         // Trigger visible kill flash
                         killFlashX = ex;
                         killFlashY = ey;
@@ -859,9 +913,11 @@ class Game {
                         }
                         sfx.playEnemyDeath();
                         achSys.onEnemyKilled();
+                        enemiesKilled = enemiesKilled + 1;
                         // Trigger visible kill flash
                         killFlashX = bx;
                         killFlashY = by;
+                        hudObj.spawnPopup(bx, by, ENEMY_SCORE);   // floating +score (#14)
                         killFlashTimer = 15;
                     }
                 }
@@ -960,6 +1016,7 @@ class Game {
             levelCompleteTimer = 0;
             menus.resetSelection();
             sm.Switch("levelcomplete");
+            menus.startLevelComplete(score);   // arm the score count-up + burst (#8)
             sfx.playLevelComplete();
 
             var totalScore = score + timeBonus;
@@ -1090,7 +1147,8 @@ class Game {
         renderObj.renderPlaying(canvas, camera, level, player, enemies,
                                 bullets, pickups, particles, hudObj, sprites,
                                 score, coins, currentLevel);
-        menus.drawLevelComplete(canvas, score, timeBonus, currentLevel);
+        menus.drawLevelCompleteCinematic(canvas, currentLevel, levelTimer,
+                                         enemiesKilled, coins, gems, score, timeBonus);
 
         if result == STATE_PLAYING {
             sfx.playMenuSelect();
@@ -1112,7 +1170,13 @@ class Game {
     /// @brief Per-frame: end-credits / victory state input.
     hide func updateVictory() {
         var result = menus.updateVictory();
-        menus.drawVictory(canvas, score + timeBonus);
+        // Rich victory screen (#7): real total time, gems, and lore-discovery %.
+        var loreTotal = loreSystem.getTotalCount();
+        var lorePct = 0;
+        if loreTotal > 0 {
+            lorePct = loreSystem.getCollectedCount() * 100 / loreTotal;
+        }
+        menus.drawVictoryScreen(canvas, totalPlaytime / 1000, gems, lorePct);
 
         if result == STATE_MENU {
             sfx.playMenuSelect();
@@ -1128,13 +1192,17 @@ class Game {
 
     /// @brief Per-frame: high-scores state input.
     hide func updateHighScores() {
+        renderObj.update(dt);
         var result = menus.updateHighScores();
         menus.drawHighScores(canvas);
+        renderObj.drawTransition(canvas);
 
         if result == STATE_MENU {
-            sfx.playMenuSelect();
+            sfx.playMenuBack();
             sm.Switch("menu");
             menus.resetSelection();
+            menus.resetTitleAnim();
+            renderObj.menuFadeIn(350);
         }
     }
 
@@ -1144,13 +1212,17 @@ class Game {
 
     /// @brief Per-frame: controls-screen state input.
     hide func updateControls() {
+        renderObj.update(dt);
         var result = menus.updateControls();
         menus.drawControls(canvas);
+        renderObj.drawTransition(canvas);
 
         if result == STATE_MENU {
-            sfx.playMenuSelect();
+            sfx.playMenuBack();
             sm.Switch("menu");
             menus.resetSelection();
+            menus.resetTitleAnim();
+            renderObj.menuFadeIn(350);
         }
     }
 
@@ -1181,6 +1253,7 @@ class Game {
     ///        triggers the intro banner.
     hide func loadLevel(num: Integer) {
         currentLevel = num;
+        enemiesKilled = 0;        // per-level kill tally resets each level (#7)
         achSys.onLevelReached(num);
         level.loadLevel(num);
         level.enrichEnemies(num); // Add new enemy types
@@ -1472,6 +1545,9 @@ class Game {
         // Power-up timers
         hudObj.drawPowerupTimers(canvas, pal, player.speedTimer, player.rapidFireTimer,
                                  player.shieldHits > 0);
+
+        // Floating damage/score popups (#14) — world-space, over the scene.
+        hudObj.drawPopups(canvas, camX, camY);
 
         // Transition overlay (on top of everything)
         if transitions.isActive() {

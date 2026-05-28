@@ -32,7 +32,6 @@
 #include <math.h>
 #include <stdint.h>
 #include <stdio.h>
-#include <stdlib.h>
 #include <string.h>
 
 #include "rt_error.h"
@@ -117,16 +116,14 @@ static const char *format_message(rt_string message, const char *fallback, char 
     return buf;
 }
 
-/// @brief Report a division-by-zero trap and terminate the process.
-/// @details Prints a fixed diagnostic to stderr, flushes the stream to ensure
-///          embedders observe the message, and exits with status code 1.  The
-///          behaviour mirrors the VM trap hook so test suites observe consistent
-///          failure semantics across execution modes.
+/// @brief Report a division-by-zero trap through the active runtime trap hook.
+/// @details The default hook terminates the process; test and embedder hooks may
+///          return after recording the trap for diagnostics.
 void rt_trap_div0(void) {
     rt_trap_raise_kind(RT_TRAP_KIND_DIVIDE_BY_ZERO, 0, -1, "Viper runtime trap: division by zero");
 }
 
-/// @brief Report an integer-overflow trap and terminate the process.
+/// @brief Report an integer-overflow trap through the active runtime trap hook.
 /// @details Mirrors the checked-arithmetic trap path used by the VM/native
 ///          backends so backend lowering can call a no-argument helper.
 void rt_trap_ovf(void) {

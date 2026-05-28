@@ -117,6 +117,7 @@ class SoundManager {
         bank.Register("level_complete", basePath + "sounds/level_complete.wav");
         bank.Register("menu_select", basePath + "sounds/menu_select.wav");
         bank.Register("menu_move", basePath + "sounds/menu_move.wav");
+        bank.Register("menu_back", basePath + "sounds/menu_back.wav");
         bank.Register("death", basePath + "sounds/death.wav");
         bank.Register("stomp", basePath + "sounds/stomp.wav");
 
@@ -151,6 +152,10 @@ class SoundManager {
         }
         if bank.Has("menu_move") == false {
             bank.RegisterSound("menu_move", Synth.Tone(440, 50, 1));
+        }
+        // No menu_back.wav ships yet; a low descending tone reads as "back".
+        if bank.Has("menu_back") == false {
+            bank.RegisterSound("menu_back", Synth.Tone(330, 70, 1));
         }
         if bank.Has("death") == false {
             bank.RegisterSound("death", Synth.Sfx(SFX_EXPLODE));
@@ -367,6 +372,12 @@ class SoundManager {
     expose func playMenuMove() {
         if ready == false { return; }
         bank.PlayEx("menu_move", 40, 0);
+    }
+
+    /// @brief Backing out of a sub-screen.  Lower, softer than confirm.
+    expose func playMenuBack() {
+        if ready == false { return; }
+        bank.PlayEx("menu_back", 50, 0);
     }
 
     /// @brief Player death.  Falling-pitch wail.

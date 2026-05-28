@@ -101,7 +101,7 @@ typedef struct {
     const float *prev_instance_matrices; /* N * 16 floats for instanced motion blur */
     int8_t has_prev_model_matrix;        /* 1 when prev_model_matrix is valid */
     int8_t has_prev_instance_matrices;   /* 1 when prev_instance_matrices matches instance_count */
-    int32_t shading_model;  /* 0=BlinnPhong, 1=Toon, 2=reserved, 3=Unlit, 4=Fresnel, 5=Emissive */
+    int32_t shading_model;  /* 0=BlinnPhong, 1=Toon, 2=PBR, 3=Unlit, 4=Fresnel, 5=Emissive */
     float custom_params[8]; /* user-defined shader parameters */
 } vgfx3d_draw_cmd_t;
 

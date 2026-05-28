@@ -267,7 +267,7 @@ extern "C" void tracked_morph_finalizer(void *obj) {
     g_morph_release_count++;
 }
 
-static void test_mesh_clone_and_clear_manage_morph_target_lifetime() {
+static void test_mesh_clone_deep_copy_releases_original_morph_target_on_clear() {
     void *mesh = rt_mesh3d_new_box(1.0, 1.0, 1.0);
     void *mt = rt_morphtarget3d_new(24);
     void *clone;
@@ -287,13 +287,13 @@ static void test_mesh_clone_and_clear_manage_morph_target_lifetime() {
                 "Mesh3D retains attached morph targets across user-side releases");
 
     rt_mesh3d_clear(mesh);
-    EXPECT_TRUE(g_morph_release_count == 0,
-                "Clearing one mesh does not release morph targets still owned by a clone");
+    EXPECT_TRUE(g_morph_release_count == 1,
+                "Clearing the source mesh releases its original morph target after deep clone");
 
     if (rt_obj_release_check0(clone))
         rt_obj_free(clone);
     EXPECT_TRUE(g_morph_release_count == 1,
-                "Destroying the last attached mesh releases the shared morph targets");
+                "Destroying the clone does not release the source morph target a second time");
 }
 
 int main() {
@@ -312,7 +312,7 @@ int main() {
     test_add_shape_grows_beyond_32_entries();
     test_packed_payload_keeps_shapes_beyond_32();
     test_clone_copies_delta_payloads_and_weights();
-    test_mesh_clone_and_clear_manage_morph_target_lifetime();
+    test_mesh_clone_deep_copy_releases_original_morph_target_on_clear();
 
     printf("MorphTarget3D tests: %d/%d passed\n", tests_passed, tests_run);
     return tests_passed == tests_run ? 0 : 1;

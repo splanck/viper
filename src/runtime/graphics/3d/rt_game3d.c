@@ -89,8 +89,10 @@
 #include <mach/mach.h>
 #include <mach/mach_vm.h>
 #include <pthread.h>
+#include <unistd.h>
 #else
 #include <pthread.h>
+#include <unistd.h>
 #endif
 
 // Default tuning constants applied when callers omit a value or pass a
@@ -216,6 +218,8 @@ typedef struct rt_game3d_env_handle {
     void *world;
     void *terrain_entity;
     void *water_entity;
+    double terrain_size;
+    int8_t has_terrain_size;
 } rt_game3d_env_handle;
 
 /// @brief BodyDef payload: shape kind and dimensions, mass/material properties,
@@ -269,6 +273,7 @@ typedef struct rt_game3d_model_template {
 typedef struct rt_game3d_model_cache_entry {
     rt_string path;
     int8_t asset_path;
+    int8_t loading;
     void *model_template;
     uint64_t last_used;
 } rt_game3d_model_cache_entry;
@@ -328,6 +333,11 @@ typedef struct rt_game3d_follow_controller {
     double damping;
 } rt_game3d_follow_controller;
 
+typedef struct {
+    void *body;
+    rt_game3d_entity *entity;
+} rt_game3d_body_index_entry;
+
 /// @brief World3D payload: the owned canvas/camera/scene/physics/input/audio/
 ///   effects subsystems, the active camera controller, the spawned-entity list,
 ///   per-frame timing/frame counters, window size, clear color, and the set of
@@ -344,18 +354,19 @@ typedef struct rt_game3d_world {
     rt_game3d_entity **entities;
     int32_t entity_count;
     int32_t entity_capacity;
-    void **body_index_bodies;
-    rt_game3d_entity **body_index_entities;
+    rt_game3d_body_index_entry *body_index_entries;
     int32_t body_index_count;
     int32_t body_index_capacity;
     uint64_t *name_index_hashes;
     rt_game3d_entity **name_index_entities;
     int32_t name_index_count;
     int32_t name_index_capacity;
+    int8_t name_index_valid;
     int64_t next_entity_id;
     double dt;
     double elapsed;
     int64_t frame;
+    int64_t dropped_fixed_steps;
     int64_t width;
     int64_t height;
     double clear_r;
@@ -374,6 +385,8 @@ typedef struct rt_game3d_world {
 static void game3d_world_body_index_remove(rt_game3d_world *world, void *body);
 static int game3d_world_body_index_add(rt_game3d_world *world, rt_game3d_entity *entity);
 static void game3d_world_rebuild_name_index(rt_game3d_world *world);
+static void game3d_sync_body_from_entity_node(rt_game3d_entity *entity, int8_t force);
+static void game3d_audio_prune_sources(rt_game3d_audio *audio);
 
 /// @brief Per-frame update callback signature: receives the frame delta in seconds.
 typedef void (*rt_game3d_update_fn)(double dt);
@@ -390,6 +403,7 @@ static uint64_t g_game3d_model_cache_tick = 0;
 #if defined(_WIN32)
 static INIT_ONCE g_game3d_model_cache_once = INIT_ONCE_STATIC_INIT;
 static CRITICAL_SECTION g_game3d_model_cache_lock;
+static CONDITION_VARIABLE g_game3d_model_cache_cv;
 
 /// @brief One-time initializer (run via InitOnceExecuteOnce) for the cache critical section.
 static BOOL CALLBACK game3d_model_cache_init_once(PINIT_ONCE once,
@@ -399,6 +413,7 @@ static BOOL CALLBACK game3d_model_cache_init_once(PINIT_ONCE once,
     (void)parameter;
     (void)context;
     InitializeCriticalSection(&g_game3d_model_cache_lock);
+    InitializeConditionVariable(&g_game3d_model_cache_cv);
     return TRUE;
 }
 
@@ -412,8 +427,17 @@ static void game3d_model_cache_lock(void) {
 static void game3d_model_cache_unlock(void) {
     LeaveCriticalSection(&g_game3d_model_cache_lock);
 }
+
+static void game3d_model_cache_wait_locked(void) {
+    SleepConditionVariableCS(&g_game3d_model_cache_cv, &g_game3d_model_cache_lock, INFINITE);
+}
+
+static void game3d_model_cache_notify_all(void) {
+    WakeAllConditionVariable(&g_game3d_model_cache_cv);
+}
 #else
 static pthread_mutex_t g_game3d_model_cache_lock = PTHREAD_MUTEX_INITIALIZER;
+static pthread_cond_t g_game3d_model_cache_cv = PTHREAD_COND_INITIALIZER;
 
 /// @brief Acquire the process-wide model-cache lock (statically initialized mutex).
 static void game3d_model_cache_lock(void) {
@@ -424,19 +448,25 @@ static void game3d_model_cache_lock(void) {
 static void game3d_model_cache_unlock(void) {
     pthread_mutex_unlock(&g_game3d_model_cache_lock);
 }
+
+static void game3d_model_cache_wait_locked(void) {
+    pthread_cond_wait(&g_game3d_model_cache_cv, &g_game3d_model_cache_lock);
+}
+
+static void game3d_model_cache_notify_all(void) {
+    pthread_cond_broadcast(&g_game3d_model_cache_cv);
+}
 #endif
 
 /// @brief True if `callback` looks like a genuine native code pointer (not a GC
 ///   heap payload or tagged value), so it is safe to call as a frontend function.
 /// @details Frontends hand raw function pointers to the run-loop entry points. A
 ///   mis-passed managed object would otherwise be jumped into as code; this guard
-///   rejects high-bit-tagged values and GC payloads, and on Windows verifies via
-///   VirtualQuery that the page is executable. NULL is treated as "native" (no-op).
+///   rejects GC payloads and, where the platform exposes mapping metadata, verifies
+///   that the target page is executable. NULL is treated as "native" (no-op).
 static int game3d_callback_pointer_is_native(void *callback) {
     if (!callback)
         return 1;
-    if (((uintptr_t)callback & (UINTPTR_MAX - (UINTPTR_MAX >> 1))) != 0)
-        return 0;
     if (rt_heap_is_payload(callback))
         return 0;
 #if defined(_WIN32)
@@ -537,9 +567,9 @@ static int8_t game3d_valid_layer(int64_t layer) {
     return layer > 0 && (layer & (layer - 1)) == 0 ? 1 : 0;
 }
 
-/// @brief Coerce a layer-mask bitfield to non-negative; negatives become all-bits-set.
+/// @brief Coerce user mask bitfields; any negative input means "all layers".
 static int64_t game3d_sanitize_mask_bits(int64_t bits) {
-    return bits < 0 ? INT64_MAX : bits;
+    return bits < 0 ? ~(int64_t)0 : bits;
 }
 
 /// @brief Return `value` when finite, else `fallback`. Scalar boundary sanitizer.
@@ -673,6 +703,11 @@ static int game3d_audio_reserve_sources(rt_game3d_audio *audio, int32_t needed) 
 static void game3d_audio_track_source(rt_game3d_audio *audio, void *source) {
     if (!audio || !source)
         return;
+    game3d_audio_prune_sources(audio);
+    for (int32_t i = 0; i < audio->source_count; ++i) {
+        if (audio->sources[i] == source)
+            return;
+    }
     if (audio->source_count == INT32_MAX) {
         rt_trap("Game3D.Sound3D: too many sources");
         return;
@@ -681,6 +716,26 @@ static void game3d_audio_track_source(rt_game3d_audio *audio, void *source) {
         return;
     rt_obj_retain_maybe(source);
     audio->sources[audio->source_count++] = source;
+}
+
+/// @brief Drop stopped/finished sources from the audio subsystem's retained list.
+static void game3d_audio_prune_sources(rt_game3d_audio *audio) {
+    int32_t write = 0;
+    int32_t kept;
+    if (!audio)
+        return;
+    for (int32_t read = 0; read < audio->source_count; ++read) {
+        void *source = audio->sources[read];
+        if (source && rt_soundsource3d_get_is_playing(source)) {
+            audio->sources[write++] = source;
+            continue;
+        }
+        game3d_release_ref(&audio->sources[read]);
+    }
+    kept = write;
+    while (write < audio->source_count)
+        audio->sources[write++] = NULL;
+    audio->source_count = kept;
 }
 
 /// @brief Ensure the effect-item array can hold `needed` entries, doubling capacity
@@ -1186,7 +1241,7 @@ void *rt_game3d_layermask_none(void) {
 
 /// @brief Create a layer mask with all bits set. See header.
 void *rt_game3d_layermask_all(void) {
-    return game3d_layermask_new_bits(INT64_MAX);
+    return game3d_layermask_new_bits(~(int64_t)0);
 }
 
 /// @brief Create a mask holding exactly `layer`; traps if it is not a single bit.
@@ -1248,7 +1303,7 @@ static void game3d_body_def_defaults(rt_game3d_body_def *def) {
     def->friction = 0.5;
     def->restitution = 0.3;
     def->layer = RT_GAME3D_LAYER_DYNAMIC;
-    def->mask_bits = INT64_MAX;
+    def->mask_bits = ~(int64_t)0;
     def->sync_mode = RT_GAME3D_SYNC_NODE_FROM_BODY;
 }
 
@@ -1381,14 +1436,18 @@ double rt_game3d_body_def_get_mass(void *obj) {
     return def ? def->mass : 0.0;
 }
 
-/// @brief Set the body mass; a positive mass also clears the static flag.
+/// @brief Set the body mass; zero mass means static, positive mass means simulated.
 void rt_game3d_body_def_set_mass(void *obj, double mass) {
     rt_game3d_body_def *def =
         game3d_body_def_checked(obj, "Game3D.BodyDef.set_mass: invalid BodyDef");
     if (def) {
         def->mass = game3d_nonnegative_or(mass, def->mass);
-        if (def->mass > 1e-12)
+        if (def->mass <= 1e-12) {
+            def->is_static = 1;
+            def->is_kinematic = 0;
+        } else {
             def->is_static = 0;
+        }
     }
 }
 
@@ -1447,14 +1506,17 @@ int8_t rt_game3d_body_def_get_kinematic(void *obj) {
     return def ? def->is_kinematic : 0;
 }
 
-/// @brief Mark the body kinematic/simulated; going kinematic clears the static flag.
+/// @brief Mark the body kinematic/simulated; going kinematic clears static and ensures mass.
 void rt_game3d_body_def_set_kinematic(void *obj, int8_t is_kinematic) {
     rt_game3d_body_def *def =
         game3d_body_def_checked(obj, "Game3D.BodyDef.set_isKinematic: invalid BodyDef");
     if (def) {
         def->is_kinematic = is_kinematic ? 1 : 0;
-        if (def->is_kinematic)
+        if (def->is_kinematic) {
             def->is_static = 0;
+            if (def->mass <= 1e-12)
+                def->mass = 1.0;
+        }
     }
 }
 
@@ -1528,8 +1590,10 @@ void rt_game3d_body_def_set_sync_mode_prop(void *obj, int64_t sync_mode) {
 void *rt_game3d_body_def_with_layer(void *obj, int64_t layer) {
     rt_game3d_body_def *def =
         game3d_body_def_checked(obj, "Game3D.BodyDef.withLayer: invalid BodyDef");
-    if (!game3d_valid_layer(layer))
+    if (!game3d_valid_layer(layer)) {
         rt_trap("Game3D.BodyDef.withLayer: layer must be a single positive bit");
+        return obj;
+    }
     if (def) {
         def->layer = layer;
         def->has_layer = 1;
@@ -1625,13 +1689,13 @@ double rt_game3d_input_get_look_sensitivity(void *obj) {
     return input ? input->look_sensitivity : 0.0;
 }
 
-/// @brief Set the look sensitivity (non-finite values reset to the default).
+/// @brief Set the look sensitivity (negative/non-finite values reset to the default).
 void rt_game3d_input_set_look_sensitivity(void *obj, double sensitivity) {
     rt_game3d_input *input =
         game3d_input_checked(obj, "Game3D.Input3D.set_LookSensitivity: invalid input");
     if (!input)
         return;
-    input->look_sensitivity = game3d_finite_or(sensitivity, 0.01);
+    input->look_sensitivity = game3d_nonnegative_or(sensitivity, 0.01);
 }
 
 /// @brief Roll input edge state forward one frame; the shared device state is polled
@@ -1859,7 +1923,7 @@ void *rt_game3d_entity_new(void) {
         return NULL;
     }
     entity->layer = RT_GAME3D_LAYER_DYNAMIC;
-    entity->collision_mask_bits = INT64_MAX;
+    entity->collision_mask_bits = ~(int64_t)0;
     entity->name = rt_const_cstr("");
     rt_obj_retain_maybe(entity->name);
     return entity;
@@ -1878,12 +1942,23 @@ void *rt_game3d_entity_of(void *mesh, void *material) {
 /// @brief Wrap an existing SceneNode3D hierarchy as a group entity; traps if `root`
 ///   is not a SceneNode3D.
 void *rt_game3d_entity_from_node(void *root) {
-    if (!rt_g3d_has_class(root, RT_G3D_SCENENODE3D_CLASS_ID))
+    if (!rt_g3d_has_class(root, RT_G3D_SCENENODE3D_CLASS_ID)) {
         rt_trap("Game3D.Entity3D.FromNode: root must be a SceneNode3D");
-    rt_game3d_entity *entity = (rt_game3d_entity *)rt_game3d_entity_new();
-    if (!entity)
         return NULL;
+    }
+    rt_game3d_entity *entity =
+        (rt_game3d_entity *)rt_obj_new_i64(RT_G3D_GAME3D_ENTITY_CLASS_ID, (int64_t)sizeof(*entity));
+    if (!entity) {
+        rt_trap("Game3D.Entity3D.FromNode: allocation failed");
+        return NULL;
+    }
+    memset(entity, 0, sizeof(*entity));
+    rt_obj_set_finalizer(entity, game3d_entity_finalize);
     game3d_assign_ref(&entity->node, root);
+    entity->layer = RT_GAME3D_LAYER_DYNAMIC;
+    entity->collision_mask_bits = ~(int64_t)0;
+    entity->name = rt_const_cstr("");
+    rt_obj_retain_maybe(entity->name);
     entity->group = 1;
     return entity;
 }
@@ -1984,16 +2059,20 @@ void *rt_game3d_entity_set_position(void *obj, double x, double y, double z) {
     rt_game3d_entity *entity =
         game3d_entity_checked(obj, "Game3D.Entity3D.setPosition: invalid entity");
     if (entity && entity->node)
-        rt_scene_node3d_set_position(entity->node, x, y, z);
-    if (entity && entity->body)
-        rt_body3d_set_position(entity->body, x, y, z);
+        rt_scene_node3d_set_position(entity->node,
+                                     game3d_finite_or(x, 0.0),
+                                     game3d_finite_or(y, 0.0),
+                                     game3d_finite_or(z, 0.0));
+    game3d_sync_body_from_entity_node(entity, 0);
     return obj;
 }
 
 /// @brief Fluent: set local position from a Vec3; traps if `position` is not a Vec3.
 void *rt_game3d_entity_set_position_v(void *obj, void *position) {
-    if (!rt_g3d_is_vec3(position))
+    if (!rt_g3d_is_vec3(position)) {
         rt_trap("Game3D.Entity3D.setPositionV: position must be Vec3");
+        return obj;
+    }
     return rt_game3d_entity_set_position(
         obj, rt_vec3_x(position), rt_vec3_y(position), rt_vec3_z(position));
 }
@@ -2007,8 +2086,18 @@ void *rt_game3d_entity_set_scale(void *obj, double scale) {
 void *rt_game3d_entity_set_scale_xyz(void *obj, double x, double y, double z) {
     rt_game3d_entity *entity =
         game3d_entity_checked(obj, "Game3D.Entity3D.setScaleXYZ: invalid entity");
+    x = game3d_finite_or(x, 1.0);
+    y = game3d_finite_or(y, 1.0);
+    z = game3d_finite_or(z, 1.0);
+    if (fabs(x) <= 1e-12)
+        x = 1.0;
+    if (fabs(y) <= 1e-12)
+        y = 1.0;
+    if (fabs(z) <= 1e-12)
+        z = 1.0;
     if (entity && entity->node)
         rt_scene_node3d_set_scale(entity->node, x, y, z);
+    game3d_sync_body_from_entity_node(entity, 0);
     return obj;
 }
 
@@ -2019,10 +2108,14 @@ void *rt_game3d_entity_set_rotation_euler(void *obj, double x_deg, double y_deg,
         game3d_entity_checked(obj, "Game3D.Entity3D.setRotationEuler: invalid entity");
     if (entity && entity->node) {
         const double deg = 3.14159265358979323846 / 180.0;
+        x_deg = game3d_finite_or(x_deg, 0.0);
+        y_deg = game3d_finite_or(y_deg, 0.0);
+        z_deg = game3d_finite_or(z_deg, 0.0);
         void *quat = rt_quat_from_euler(x_deg * deg, y_deg * deg, z_deg * deg);
         rt_scene_node3d_set_rotation(entity->node, quat);
         game3d_release_ref(&quat);
     }
+    game3d_sync_body_from_entity_node(entity, 0);
     return obj;
 }
 
@@ -2031,8 +2124,10 @@ void *rt_game3d_entity_set_rotation_euler(void *obj, double x_deg, double y_deg,
 void *rt_game3d_entity_set_mesh(void *obj, void *mesh) {
     rt_game3d_entity *entity =
         game3d_entity_checked(obj, "Game3D.Entity3D.setMesh: invalid entity");
-    if (mesh && !rt_g3d_has_class(mesh, RT_G3D_MESH3D_CLASS_ID))
+    if (mesh && !rt_g3d_has_class(mesh, RT_G3D_MESH3D_CLASS_ID)) {
         rt_trap("Game3D.Entity3D.setMesh: mesh must be Mesh3D");
+        return obj;
+    }
     if (entity) {
         game3d_assign_ref(&entity->mesh, mesh);
         if (entity->node)
@@ -2046,8 +2141,10 @@ void *rt_game3d_entity_set_mesh(void *obj, void *mesh) {
 void *rt_game3d_entity_set_material(void *obj, void *material) {
     rt_game3d_entity *entity =
         game3d_entity_checked(obj, "Game3D.Entity3D.setMaterial: invalid entity");
-    if (material && !rt_g3d_has_class(material, RT_G3D_MATERIAL3D_CLASS_ID))
+    if (material && !rt_g3d_has_class(material, RT_G3D_MATERIAL3D_CLASS_ID)) {
         rt_trap("Game3D.Entity3D.setMaterial: material must be Material3D");
+        return obj;
+    }
     if (entity) {
         game3d_assign_ref(&entity->material, material);
         if (entity->node)
@@ -2146,8 +2243,10 @@ void *rt_game3d_entity_set_name(void *obj, rt_string name) {
 void *rt_game3d_entity_set_layer(void *obj, int64_t layer) {
     rt_game3d_entity *entity =
         game3d_entity_checked(obj, "Game3D.Entity3D.setLayer: invalid entity");
-    if (!game3d_valid_layer(layer))
+    if (!game3d_valid_layer(layer)) {
         rt_trap("Game3D.Entity3D.setLayer: layer must be a single positive bit");
+        return obj;
+    }
     if (entity) {
         entity->layer = layer;
         if (entity->body)
@@ -2194,6 +2293,8 @@ void *rt_game3d_entity_attach_body(void *obj, void *body_or_def) {
     if (entity) {
         rt_game3d_world *world = (rt_game3d_world *)entity->world;
         void *old_body = entity->body;
+        int64_t old_layer = entity->layer;
+        int64_t old_mask_bits = entity->collision_mask_bits;
         rt_obj_retain_maybe(old_body);
         if (entity->body && entity->body != body && entity->spawned && world && world->physics) {
             rt_world3d_remove(world->physics, entity->body);
@@ -2208,29 +2309,44 @@ void *rt_game3d_entity_attach_body(void *obj, void *body_or_def) {
             rt_body3d_set_collision_layer(body, entity->layer);
             rt_body3d_set_collision_mask(body, entity->collision_mask_bits);
             if (entity->node) {
-                void *pos = rt_scene_node3d_get_world_position(entity->node);
-                rt_body3d_set_position(body,
-                                       pos ? rt_vec3_x(pos) : 0.0,
-                                       pos ? rt_vec3_y(pos) : 0.0,
-                                       pos ? rt_vec3_z(pos) : 0.0);
-                game3d_release_ref(&pos);
                 if (def)
                     rt_scene_node3d_set_sync_mode(entity->node, def->sync_mode);
                 rt_scene_node3d_bind_body(entity->node, body);
+                game3d_sync_body_from_entity_node(entity, 1);
             }
             if (entity->spawned && world && world->physics) {
-                rt_world3d_add(world->physics, body);
-                if (!game3d_world_body_index_add(world, entity)) {
-                    rt_world3d_remove(world->physics, body);
+                if (!rt_world3d_try_add(world->physics, body)) {
                     if (entity->node)
                         rt_scene_node3d_clear_body_binding(entity->node);
+                    entity->layer = old_layer;
+                    entity->collision_mask_bits = old_mask_bits;
                     game3d_assign_ref(&entity->body, old_body);
                     if (old_body) {
                         rt_body3d_set_collision_layer(old_body, entity->layer);
                         rt_body3d_set_collision_mask(old_body, entity->collision_mask_bits);
                         if (entity->node)
                             rt_scene_node3d_bind_body(entity->node, old_body);
-                        rt_world3d_add(world->physics, old_body);
+                        (void)rt_world3d_try_add(world->physics, old_body);
+                        (void)game3d_world_body_index_add(world, entity);
+                    }
+                    game3d_release_ref(&old_body);
+                    game3d_release_ref(&created_body);
+                    rt_trap("Game3D.Entity3D.attachBody: physics world add failed");
+                    return obj;
+                }
+                if (!game3d_world_body_index_add(world, entity)) {
+                    rt_world3d_remove(world->physics, body);
+                    if (entity->node)
+                        rt_scene_node3d_clear_body_binding(entity->node);
+                    entity->layer = old_layer;
+                    entity->collision_mask_bits = old_mask_bits;
+                    game3d_assign_ref(&entity->body, old_body);
+                    if (old_body) {
+                        rt_body3d_set_collision_layer(old_body, entity->layer);
+                        rt_body3d_set_collision_mask(old_body, entity->collision_mask_bits);
+                        if (entity->node)
+                            rt_scene_node3d_bind_body(entity->node, old_body);
+                        (void)rt_world3d_try_add(world->physics, old_body);
                         (void)game3d_world_body_index_add(world, entity);
                     }
                     game3d_release_ref(&old_body);
@@ -2252,8 +2368,10 @@ void *rt_game3d_entity_attach_body(void *obj, void *body_or_def) {
 void rt_game3d_entity_apply_impulse(void *obj, double x, double y, double z) {
     rt_game3d_entity *entity =
         game3d_entity_checked(obj, "Game3D.Entity3D.applyImpulse: invalid entity");
-    if (!entity || !entity->body)
+    if (!entity || !entity->body) {
         rt_trap("Game3D.Entity3D.applyImpulse: entity has no body");
+        return;
+    }
     rt_body3d_apply_impulse(entity->body, x, y, z);
 }
 
@@ -2261,8 +2379,10 @@ void rt_game3d_entity_apply_impulse(void *obj, double x, double y, double z) {
 void rt_game3d_entity_set_velocity(void *obj, double x, double y, double z) {
     rt_game3d_entity *entity =
         game3d_entity_checked(obj, "Game3D.Entity3D.setVelocity: invalid entity");
-    if (!entity || !entity->body)
+    if (!entity || !entity->body) {
         rt_trap("Game3D.Entity3D.setVelocity: entity has no body");
+        return;
+    }
     rt_body3d_set_velocity(entity->body, x, y, z);
 }
 
@@ -2575,22 +2695,22 @@ void rt_game3d_audio_listener_follow_camera(void *obj, int8_t enabled) {
     rt_soundlistener3d_set_is_active(audio->listener, 1);
 }
 
-/// @brief Set the listener pose explicitly from Vec3 position/forward (the `up`
-///   argument is currently ignored); disables camera-follow. Traps on non-Vec3 args.
+/// @brief Set the listener pose explicitly from Vec3 position/forward/up;
+///   disables camera-follow. Traps on non-Vec3 args.
 void rt_game3d_audio_set_listener_pose(void *obj, void *position, void *forward, void *up) {
-    (void)up;
     rt_game3d_audio *audio =
         game3d_audio_checked(obj, "Game3D.Sound3D.setListenerPose: invalid audio");
     if (!audio || !audio->listener)
         return;
-    if (!rt_g3d_is_vec3(position) || !rt_g3d_is_vec3(forward)) {
-        rt_trap("Game3D.Sound3D.setListenerPose: expected Vec3 position and forward");
+    if (!rt_g3d_is_vec3(position) || !rt_g3d_is_vec3(forward) || !rt_g3d_is_vec3(up)) {
+        rt_trap("Game3D.Sound3D.setListenerPose: expected Vec3 position, forward, and up");
         return;
     }
     audio->listener_follow_camera = 0;
     rt_soundlistener3d_clear_camera_binding(audio->listener);
     rt_soundlistener3d_set_position(audio->listener, position);
     rt_soundlistener3d_set_forward(audio->listener, forward);
+    rt_soundlistener3d_set_up(audio->listener, up);
     rt_soundlistener3d_set_is_active(audio->listener, 1);
 }
 
@@ -2609,6 +2729,7 @@ void rt_game3d_audio_set_attenuation(void *obj, double ref_distance, double max_
                               : RT_GAME3D_DEFAULT_AUDIO_MAX_DISTANCE;
     if (audio->max_distance < audio->ref_distance)
         audio->max_distance = audio->ref_distance;
+    game3d_audio_prune_sources(audio);
     for (int32_t i = 0; i < audio->source_count; ++i) {
         rt_soundsource3d_set_ref_distance(audio->sources[i], audio->ref_distance);
         rt_soundsource3d_set_max_distance(audio->sources[i], audio->max_distance);
@@ -3158,6 +3279,7 @@ void rt_game3d_lighting_outdoor(void *obj, void *sun_dir) {
         owns_dir = 1;
     } else if (!rt_g3d_is_vec3(dir)) {
         rt_trap("Game3D.Lighting.Outdoor: sunDir must be Vec3");
+        return;
     }
 
     rt_game3d_lighting_clear(world);
@@ -3503,21 +3625,35 @@ static rt_string game3d_model_cache_key_path(rt_string path, int8_t asset_path) 
         char resolved[PATH_MAX];
         if (realpath(raw, resolved))
             return rt_string_from_bytes(resolved, strlen(resolved));
+        if (raw[0] == '/')
+            return rt_string_from_bytes(raw, strlen(raw));
+        {
+            char cwd[PATH_MAX];
+            if (getcwd(cwd, sizeof(cwd))) {
+                size_t cwd_len = strlen(cwd);
+                size_t raw_len = strlen(raw);
+                if (cwd_len + 1u + raw_len < sizeof(cwd)) {
+                    char absolute[PATH_MAX];
+                    memcpy(absolute, cwd, cwd_len);
+                    absolute[cwd_len] = '/';
+                    memcpy(absolute + cwd_len + 1u, raw, raw_len + 1u);
+                    return rt_string_from_bytes(absolute, cwd_len + 1u + raw_len);
+                }
+            }
+        }
     }
 #endif
     return rt_string_ref(path ? path : rt_const_cstr(""));
 }
 
-/// @brief Look up a cached ModelTemplate by path + asset flag; NULL if not cached.
-static rt_game3d_model_template *game3d_model_cache_find(rt_string path, int8_t asset_path) {
+/// @brief Look up a model-cache entry by path + asset flag; -1 if absent.
+static int32_t game3d_model_cache_find_index(rt_string path, int8_t asset_path) {
     for (int32_t i = 0; i < g_game3d_model_cache_count; ++i) {
         rt_game3d_model_cache_entry *entry = &g_game3d_model_cache[i];
-        if (entry->asset_path == asset_path && game3d_string_equals(entry->path, path)) {
-            entry->last_used = ++g_game3d_model_cache_tick;
-            return (rt_game3d_model_template *)entry->model_template;
-        }
+        if (entry->asset_path == asset_path && game3d_string_equals(entry->path, path))
+            return i;
     }
-    return NULL;
+    return -1;
 }
 
 /// @brief Drop one cache entry and compact the array.
@@ -3536,18 +3672,18 @@ static void game3d_model_cache_remove_at(int32_t index) {
 
 /// @brief Enforce the fixed model-cache entry cap by evicting the least-recently-used entry.
 static void game3d_model_cache_evict_if_full(void) {
-    int32_t victim = 0;
-    uint64_t oldest;
+    int32_t victim = -1;
+    uint64_t oldest = UINT64_MAX;
     if (g_game3d_model_cache_count < RT_GAME3D_MODEL_CACHE_MAX_ENTRIES)
         return;
-    oldest = g_game3d_model_cache[0].last_used;
-    for (int32_t i = 1; i < g_game3d_model_cache_count; ++i) {
-        if (g_game3d_model_cache[i].last_used < oldest) {
+    for (int32_t i = 0; i < g_game3d_model_cache_count; ++i) {
+        if (!g_game3d_model_cache[i].loading && g_game3d_model_cache[i].last_used < oldest) {
             oldest = g_game3d_model_cache[i].last_used;
             victim = i;
         }
     }
-    game3d_model_cache_remove_at(victim);
+    if (victim >= 0)
+        game3d_model_cache_remove_at(victim);
 }
 
 /// @brief Allocate a ModelTemplate retaining the path and loaded model; traps on OOM.
@@ -3591,46 +3727,79 @@ static rt_game3d_model_template *game3d_assets_load_template_cached(rt_string pa
                                                                     const char *method) {
     rt_game3d_model_template *model_template;
     rt_string cache_path = game3d_model_cache_key_path(path, asset_path);
-    game3d_model_cache_lock();
-    rt_game3d_model_template *cached = game3d_model_cache_find(cache_path, asset_path);
-    if (cached) {
-        rt_obj_retain_maybe(cached);
+    int32_t pending_index = -1;
+    for (;;) {
+        int32_t index;
+        game3d_model_cache_lock();
+        index = game3d_model_cache_find_index(cache_path, asset_path);
+        if (index >= 0) {
+            rt_game3d_model_cache_entry *entry = &g_game3d_model_cache[index];
+            if (entry->loading) {
+                game3d_model_cache_wait_locked();
+                game3d_model_cache_unlock();
+                continue;
+            }
+            if (entry->model_template) {
+                rt_obj_retain_maybe(entry->model_template);
+                entry->last_used = ++g_game3d_model_cache_tick;
+                model_template = (rt_game3d_model_template *)entry->model_template;
+                game3d_model_cache_unlock();
+                game3d_release_ref((void **)&cache_path);
+                return model_template;
+            }
+            game3d_model_cache_remove_at(index);
+        }
+        game3d_model_cache_evict_if_full();
+        if (g_game3d_model_cache_count >= RT_GAME3D_MODEL_CACHE_MAX_ENTRIES) {
+            game3d_model_cache_wait_locked();
+            game3d_model_cache_unlock();
+            continue;
+        }
+        if (!game3d_model_cache_grow(g_game3d_model_cache_count + 1)) {
+            game3d_model_cache_unlock();
+            game3d_release_ref((void **)&cache_path);
+            rt_trap("Game3D.Assets3D: model cache allocation failed");
+            return NULL;
+        }
+        pending_index = g_game3d_model_cache_count++;
+        rt_game3d_model_cache_entry *entry = &g_game3d_model_cache[pending_index];
+        memset(entry, 0, sizeof(*entry));
+        game3d_assign_ref((void **)&entry->path, cache_path ? cache_path : rt_const_cstr(""));
+        entry->asset_path = asset_path ? 1 : 0;
+        entry->loading = 1;
+        entry->last_used = ++g_game3d_model_cache_tick;
         game3d_model_cache_unlock();
-        game3d_release_ref((void **)&cache_path);
-        return cached;
+        break;
     }
-    game3d_model_cache_unlock();
 
     model_template = game3d_assets_load_template_uncached(cache_path, asset_path, method);
     if (!model_template) {
+        game3d_model_cache_lock();
+        pending_index = game3d_model_cache_find_index(cache_path, asset_path);
+        if (pending_index >= 0 && g_game3d_model_cache[pending_index].loading) {
+            game3d_model_cache_remove_at(pending_index);
+            game3d_model_cache_notify_all();
+        }
+        game3d_model_cache_unlock();
         game3d_release_ref((void **)&cache_path);
         return NULL;
     }
 
     game3d_model_cache_lock();
-    cached = game3d_model_cache_find(cache_path, asset_path);
-    if (cached) {
-        rt_obj_retain_maybe(cached);
+    pending_index = game3d_model_cache_find_index(cache_path, asset_path);
+    if (pending_index < 0) {
         game3d_model_cache_unlock();
         if (rt_obj_release_check0(model_template))
             rt_obj_free(model_template);
         game3d_release_ref((void **)&cache_path);
-        return cached;
-    }
-    game3d_model_cache_evict_if_full();
-    if (!game3d_model_cache_grow(g_game3d_model_cache_count + 1)) {
-        game3d_model_cache_unlock();
-        if (rt_obj_release_check0(model_template))
-            rt_obj_free(model_template);
-        game3d_release_ref((void **)&cache_path);
-        rt_trap("Game3D.Assets3D: model cache allocation failed");
+        rt_trap("Game3D.Assets3D: pending cache entry was lost");
         return NULL;
     }
-    rt_game3d_model_cache_entry *entry = &g_game3d_model_cache[g_game3d_model_cache_count++];
-    game3d_assign_ref((void **)&entry->path, cache_path ? cache_path : rt_const_cstr(""));
-    entry->asset_path = asset_path ? 1 : 0;
+    rt_game3d_model_cache_entry *entry = &g_game3d_model_cache[pending_index];
     game3d_assign_ref(&entry->model_template, model_template);
+    entry->loading = 0;
     entry->last_used = ++g_game3d_model_cache_tick;
+    game3d_model_cache_notify_all();
     game3d_model_cache_unlock();
     game3d_release_ref((void **)&cache_path);
     return model_template;
@@ -3729,14 +3898,36 @@ void rt_game3d_assets_preload(rt_string path) {
 
 /// @brief Release every cached model template and reset the cache count. See header.
 void rt_game3d_assets_clear_cache(void) {
-    game3d_model_cache_lock();
-    for (int32_t i = 0; i < g_game3d_model_cache_count; ++i) {
-        game3d_release_ref((void **)&g_game3d_model_cache[i].path);
-        game3d_release_ref(&g_game3d_model_cache[i].model_template);
+    rt_game3d_model_cache_entry *entries = NULL;
+    int32_t entry_count = 0;
+    for (;;) {
+        int loading = 0;
+        game3d_model_cache_lock();
+        for (int32_t i = 0; i < g_game3d_model_cache_count; ++i) {
+            if (g_game3d_model_cache[i].loading) {
+                loading = 1;
+                break;
+            }
+        }
+        if (!loading)
+            break;
+        game3d_model_cache_wait_locked();
+        game3d_model_cache_unlock();
     }
+    entries = g_game3d_model_cache;
+    entry_count = g_game3d_model_cache_count;
+    g_game3d_model_cache = NULL;
     g_game3d_model_cache_count = 0;
+    g_game3d_model_cache_capacity = 0;
     g_game3d_model_cache_tick = 0;
+    game3d_model_cache_notify_all();
     game3d_model_cache_unlock();
+
+    for (int32_t i = 0; i < entry_count; ++i) {
+        game3d_release_ref((void **)&entries[i].path);
+        game3d_release_ref(&entries[i].model_template);
+    }
+    free(entries);
 }
 
 /// @brief GC finalizer for an EnvHandle: release its water, terrain, and world refs.
@@ -3792,10 +3983,12 @@ void *rt_game3d_env_handle_with_terrain(void *obj, double size, double height) {
     if (terrain) {
         rt_game3d_entity_set_name(terrain, rt_const_cstr("Environment Terrain"));
         rt_game3d_entity_set_position(terrain, 0.0, y, 0.0);
-        void *body = rt_body3d_new_aabb(s * 0.5, 0.10, s * 0.5, 0.0);
+        void *body = rt_body3d_new_aabb(s * 0.5, 0.001, s * 0.5, 0.0);
         rt_game3d_entity_attach_body(terrain, body);
         rt_game3d_world_spawn(world, terrain);
         game3d_assign_ref(&env->terrain_entity, terrain);
+        env->terrain_size = s;
+        env->has_terrain_size = 1;
         game3d_release_ref(&body);
     }
     game3d_release_ref(&terrain);
@@ -3819,8 +4012,9 @@ void *rt_game3d_env_handle_with_water(void *obj, double level) {
     }
 
     double y = game3d_finite_or(level, 0.0);
+    double water_size = env->has_terrain_size ? env->terrain_size : 80.0;
     void *mat = rt_game3d_materials_glass(0.18, 0.42, 0.62, 0.48);
-    void *water = rt_game3d_prefab_plane(80.0, 80.0, mat);
+    void *water = rt_game3d_prefab_plane(water_size, water_size, mat);
     if (water) {
         rt_game3d_entity_set_name(water, rt_const_cstr("Environment Water"));
         rt_game3d_entity_set_position(water, 0.0, y, 0.0);
@@ -3921,8 +4115,10 @@ void rt_game3d_debug_show_overlay(void *obj, int8_t enabled) {
 ///   origin. See header.
 void rt_game3d_debug_draw_axes(void *obj, void *origin, double size) {
     rt_game3d_world *world = game3d_world_checked(obj, "Game3D.Debug3D.DrawAxes: invalid world");
-    if (!origin || !rt_g3d_is_vec3(origin))
+    if (!origin || !rt_g3d_is_vec3(origin)) {
         rt_trap("Game3D.Debug3D.DrawAxes: origin must be Vec3");
+        return;
+    }
     if (world) {
         game3d_assign_ref(&world->debug_axis_origin, origin);
         world->debug_axis_size = game3d_positive_or(size, 1.0);
@@ -3990,6 +4186,26 @@ static void game3d_set_node_world_position(void *node, double world_pos[3]) {
         game3d_release_ref(&parent_inv);
         game3d_release_ref(&parent_world);
     }
+}
+
+/// @brief Push a node's current world-space position/rotation/scale into its body.
+static void game3d_sync_body_from_entity_node(rt_game3d_entity *entity, int8_t force) {
+    if (!entity || !entity->node || !entity->body)
+        return;
+    if (!force && rt_scene_node3d_get_sync_mode(entity->node) != RT_GAME3D_SYNC_BODY_FROM_NODE)
+        return;
+    void *pos = rt_scene_node3d_get_world_position(entity->node);
+    void *rot = rt_scene_node3d_get_world_rotation(entity->node);
+    void *scale = rt_scene_node3d_get_world_scale(entity->node);
+    if (pos)
+        rt_body3d_set_position(entity->body, rt_vec3_x(pos), rt_vec3_y(pos), rt_vec3_z(pos));
+    if (rot)
+        rt_body3d_set_orientation(entity->body, rot);
+    if (scale)
+        rt_body3d_set_scale(entity->body, rt_vec3_x(scale), rt_vec3_y(scale), rt_vec3_z(scale));
+    game3d_release_ref(&scale);
+    game3d_release_ref(&rot);
+    game3d_release_ref(&pos);
 }
 
 /// @brief Copy the character's current position back onto the driven entity's node.
@@ -4123,8 +4339,10 @@ void rt_game3d_character_controller_update(void *obj, void *input_obj, void *cam
     rt_game3d_character_controller *controller = game3d_character_controller_checked(
         obj, "Game3D.CharacterController3D.update: invalid controller");
     (void)game3d_input_checked(input_obj, "Game3D.CharacterController3D.update: invalid input");
-    if (!rt_g3d_has_class(camera, RT_G3D_CAMERA3D_CLASS_ID))
+    if (!rt_g3d_has_class(camera, RT_G3D_CAMERA3D_CLASS_ID)) {
         rt_trap("Game3D.CharacterController3D.update: camera must be Camera3D");
+        return;
+    }
     if (!controller || !controller->character)
         return;
 
@@ -4251,8 +4469,10 @@ void rt_game3d_first_person_controller_set_character(void *obj, void *character_
     rt_game3d_first_person_controller *controller = game3d_first_person_controller_checked(
         obj, "Game3D.FirstPersonController.set_character: invalid controller");
     if (character_controller &&
-        !rt_g3d_has_class(character_controller, RT_G3D_GAME3D_CHARACTER_CONTROLLER_CLASS_ID))
+        !rt_g3d_has_class(character_controller, RT_G3D_GAME3D_CHARACTER_CONTROLLER_CLASS_ID)) {
         rt_trap("Game3D.FirstPersonController.set_character: value must be CharacterController3D");
+        return;
+    }
     if (controller)
         game3d_assign_ref(&controller->character_controller, character_controller);
 }
@@ -4489,8 +4709,10 @@ static void game3d_orbit_controller_finalize(void *obj) {
 void *rt_game3d_orbit_controller_new(void *world_obj, void *target) {
     rt_game3d_world *world =
         game3d_world_checked(world_obj, "Game3D.OrbitController.New: invalid world");
-    if (!rt_g3d_is_vec3(target) && !rt_g3d_has_class(target, RT_G3D_GAME3D_ENTITY_CLASS_ID))
+    if (!rt_g3d_is_vec3(target) && !rt_g3d_has_class(target, RT_G3D_GAME3D_ENTITY_CLASS_ID)) {
         rt_trap("Game3D.OrbitController.New: target must be Vec3 or Entity3D");
+        return NULL;
+    }
     if (!world)
         return NULL;
     rt_game3d_orbit_controller *controller = (rt_game3d_orbit_controller *)rt_obj_new_i64(
@@ -4523,8 +4745,10 @@ void *rt_game3d_orbit_controller_get_target(void *obj) {
 void rt_game3d_orbit_controller_set_target(void *obj, void *target) {
     rt_game3d_orbit_controller *controller = game3d_orbit_controller_checked(
         obj, "Game3D.OrbitController.set_target: invalid controller");
-    if (!rt_g3d_is_vec3(target) && !rt_g3d_has_class(target, RT_G3D_GAME3D_ENTITY_CLASS_ID))
+    if (!rt_g3d_is_vec3(target) && !rt_g3d_has_class(target, RT_G3D_GAME3D_ENTITY_CLASS_ID)) {
         rt_trap("Game3D.OrbitController.set_target: target must be Vec3 or Entity3D");
+        return;
+    }
     if (controller)
         game3d_assign_ref(&controller->target, target);
 }
@@ -4637,10 +4861,13 @@ static void game3d_follow_controller_finalize(void *obj) {
 void *rt_game3d_follow_controller_new(void *world_obj, void *target_entity, void *offset) {
     rt_game3d_world *world =
         game3d_world_checked(world_obj, "Game3D.FollowController.New: invalid world");
-    (void)game3d_entity_checked(target_entity,
-                                "Game3D.FollowController.New: target must be Entity3D");
-    if (!rt_g3d_is_vec3(offset))
+    if (!game3d_entity_checked(target_entity,
+                               "Game3D.FollowController.New: target must be Entity3D"))
+        return NULL;
+    if (!rt_g3d_is_vec3(offset)) {
         rt_trap("Game3D.FollowController.New: offset must be Vec3");
+        return NULL;
+    }
     if (!world)
         return NULL;
     rt_game3d_follow_controller *controller = (rt_game3d_follow_controller *)rt_obj_new_i64(
@@ -4669,9 +4896,10 @@ void *rt_game3d_follow_controller_get_target(void *obj) {
 void rt_game3d_follow_controller_set_target(void *obj, void *target_entity) {
     rt_game3d_follow_controller *controller = game3d_follow_controller_checked(
         obj, "Game3D.FollowController.set_target: invalid controller");
-    if (target_entity)
-        (void)game3d_entity_checked(target_entity,
-                                    "Game3D.FollowController.set_target: target must be Entity3D");
+    if (target_entity &&
+        !game3d_entity_checked(target_entity,
+                               "Game3D.FollowController.set_target: target must be Entity3D"))
+        return;
     if (controller)
         game3d_assign_ref(&controller->target_entity, target_entity);
 }
@@ -4687,8 +4915,10 @@ void *rt_game3d_follow_controller_get_offset(void *obj) {
 void rt_game3d_follow_controller_set_offset(void *obj, void *offset) {
     rt_game3d_follow_controller *controller = game3d_follow_controller_checked(
         obj, "Game3D.FollowController.set_offset: invalid controller");
-    if (!rt_g3d_is_vec3(offset))
+    if (!rt_g3d_is_vec3(offset)) {
         rt_trap("Game3D.FollowController.set_offset: offset must be Vec3");
+        return;
+    }
     if (controller)
         game3d_assign_ref(&controller->offset, offset);
 }
@@ -4775,6 +5005,7 @@ static void game3d_world_update_controller(rt_game3d_world *world, double dt) {
             break;
         default:
             rt_trap("Game3D.World3D: camera controller must be a Game3D camera controller");
+            return;
     }
 }
 
@@ -4811,6 +5042,7 @@ static void game3d_world_late_update_controller(rt_game3d_world *world, double d
             break;
         default:
             rt_trap("Game3D.World3D: camera controller must be a Game3D camera controller");
+            return;
     }
 }
 
@@ -4850,18 +5082,19 @@ static int32_t game3d_world_find_entity_index(rt_game3d_world *world, rt_game3d_
 /// @brief Find the spawned entity whose physics body is `body`; NULL if none. Used to
 ///   map collision events back to entities.
 static rt_game3d_entity *game3d_world_find_entity_by_body(rt_game3d_world *world, void *body) {
+    int found = 0;
+    int slot;
     if (!world || !body)
         return NULL;
-    for (int32_t i = 0; i < world->body_index_count; ++i) {
-        if (world->body_index_bodies[i] == body)
-            return world->body_index_entities[i];
-    }
-    return NULL;
+    slot = game3d_world_body_index_find_slot(
+        world->body_index_entries, world->body_index_capacity, body, &found);
+    return found && slot >= 0 ? world->body_index_entries[slot].entity : NULL;
 }
 
-/// @brief Remove `entity` from the registry (order-preserving shift) and release the
-///   world's reference to it.
-static void game3d_world_registry_remove(rt_game3d_world *world, rt_game3d_entity *entity) {
+/// @brief Remove `entity` from the registry without rebuilding the name index.
+/// @details Used by tree operations that rebuild once after a batch.
+static void game3d_world_registry_remove_no_rebuild(rt_game3d_world *world,
+                                                    rt_game3d_entity *entity) {
     int32_t index = game3d_world_find_entity_index(world, entity);
     if (index < 0)
         return;
@@ -4872,9 +5105,11 @@ static void game3d_world_registry_remove(rt_game3d_world *world, rt_game3d_entit
         world->entities[i] = world->entities[i + 1];
     world->entities[--world->entity_count] = NULL;
     game3d_release_ref((void **)&owned);
-    game3d_world_rebuild_name_index(world);
+    world->name_index_valid = 0;
 }
 
+/// @brief Remove `entity` from the registry (order-preserving shift) and release the
+///   world's reference to it.
 /// @brief Detach an entity's node from its parent, or from the scene root if it has no
 ///   parent.
 static void game3d_entity_detach_node(rt_game3d_world *world, rt_game3d_entity *entity) {
@@ -4887,65 +5122,157 @@ static void game3d_entity_detach_node(rt_game3d_world *world, rt_game3d_entity *
         rt_scene3d_remove(world->scene, entity->node);
 }
 
-/// @brief Recursively despawn an entity and its children: remove bodies from physics,
+typedef struct game3d_entity_tree_item {
+    rt_game3d_entity *entity;
+    int8_t root_link;
+    int8_t visited;
+} game3d_entity_tree_item;
+
+static int game3d_entity_tree_push(game3d_entity_tree_item **items,
+                                   int32_t *count,
+                                   int32_t *capacity,
+                                   rt_game3d_entity *entity,
+                                   int root_link,
+                                   int visited) {
+    game3d_entity_tree_item *grown;
+    int32_t new_capacity;
+    if (!items || !count || !capacity)
+        return 0;
+    if (*count >= *capacity) {
+        if (!game3d_compute_capacity(*capacity, *count + 1, 16, sizeof(**items), &new_capacity))
+            return 0;
+        grown = (game3d_entity_tree_item *)realloc(*items, (size_t)new_capacity * sizeof(**items));
+        if (!grown)
+            return 0;
+        *items = grown;
+        *capacity = new_capacity;
+    }
+    (*items)[*count].entity = entity;
+    (*items)[*count].root_link = root_link ? 1 : 0;
+    (*items)[*count].visited = visited ? 1 : 0;
+    (*count)++;
+    return 1;
+}
+
+/// @brief Iteratively despawn an entity and its children: remove bodies from physics,
 ///   detach the root node, clear spawned/world state, and drop registry references.
 ///   Only the root detaches its node (`detach_root`); children stay parented under it.
 static void game3d_world_despawn_entity_tree(rt_game3d_world *world,
                                              rt_game3d_entity *entity,
                                              int detach_root) {
+    game3d_entity_tree_item *stack = NULL;
+    int32_t count = 0;
+    int32_t capacity = 0;
+    int failed = 0;
     if (!world || !entity || !entity->spawned)
         return;
-    for (int32_t i = 0; i < entity->child_count; ++i)
-        game3d_world_despawn_entity_tree(world, entity->children[i], 0);
-    if (entity->body && world->physics) {
-        rt_world3d_remove(world->physics, entity->body);
-        game3d_world_body_index_remove(world, entity->body);
+    if (!game3d_entity_tree_push(&stack, &count, &capacity, entity, detach_root, 0)) {
+        rt_trap("Game3D.World3D.despawn: traversal stack allocation failed");
+        return;
     }
-    if (detach_root)
-        game3d_entity_detach_node(world, entity);
-    entity->spawned = 0;
-    entity->world = NULL;
-    game3d_world_registry_remove(world, entity);
+    while (count > 0) {
+        game3d_entity_tree_item item = stack[--count];
+        rt_game3d_entity *current = item.entity;
+        if (!current)
+            continue;
+        if (!item.visited) {
+            if (!game3d_entity_tree_push(&stack,
+                                         &count,
+                                         &capacity,
+                                         current,
+                                         item.root_link,
+                                         1)) {
+                failed = 1;
+                break;
+            }
+            for (int32_t i = current->child_count - 1; i >= 0; --i) {
+                if (!game3d_entity_tree_push(
+                        &stack, &count, &capacity, current->children[i], 0, 0)) {
+                    failed = 1;
+                    break;
+                }
+            }
+            if (failed)
+                break;
+            continue;
+        }
+        if (!current->spawned || current->world != world)
+            continue;
+        if (current->body && world->physics) {
+            rt_world3d_remove(world->physics, current->body);
+            game3d_world_body_index_remove(world, current->body);
+        }
+        if (item.root_link)
+            game3d_entity_detach_node(world, current);
+        current->spawned = 0;
+        current->world = NULL;
+        game3d_world_registry_remove_no_rebuild(world, current);
+    }
+    free(stack);
+    game3d_world_rebuild_name_index(world);
+    if (failed)
+        rt_trap("Game3D.World3D.despawn: traversal stack allocation failed");
 }
 
-/// @brief Recursively spawn an entity and its children: assign a stable id, add the root
-///   node to the scene, register and add bodies to physics, and mark the tree spawned.
-/// @details Traps if the entity is destroyed or already belongs to another world. Only
-///   the root attaches to the scene (`attach_to_scene`); children remain parented to it.
-static void game3d_world_spawn_entity_tree(rt_game3d_world *world,
-                                           rt_game3d_entity *entity,
-                                           int attach_to_scene,
-                                           int64_t *next_id) {
+/// @brief Spawn one entity in a tree walk; returns 1 when children should be visited,
+///   0 when it was already spawned in this world, and -1 on a trapped failure.
+static int game3d_world_spawn_entity_one(rt_game3d_world *world,
+                                         rt_game3d_entity *entity,
+                                         int attach_to_scene,
+                                         int64_t *next_id) {
     if (!world || !entity)
-        return;
-    if (entity->destroyed)
+        return 0;
+    if (entity->destroyed) {
         rt_trap("Game3D.World3D.spawn: entity is destroyed");
+        return -1;
+    }
     if (entity->spawned && entity->world == world)
-        return;
-    if (entity->spawned || (entity->world && entity->world != world))
+        return 0;
+    if (entity->spawned || (entity->world && entity->world != world)) {
         rt_trap("Game3D.World3D.spawn: entity already belongs to a world");
+        return -1;
+    }
     if (world->entity_count == INT32_MAX ||
         !game3d_world_grow_entities(world, world->entity_count + 1)) {
         rt_trap("Game3D.World3D.spawn: registry allocation failed");
-        return;
+        return -1;
     }
 
-    if (entity->id == 0)
+    if (entity->id == 0 && next_id)
         entity->id = (*next_id)++;
     entity->spawned = 1;
     entity->world = world;
     rt_obj_retain_maybe(entity);
     world->entities[world->entity_count++] = entity;
-    game3d_world_rebuild_name_index(world);
+    if (!game3d_world_name_index_add_entity(world, entity)) {
+        entity->spawned = 0;
+        entity->world = NULL;
+        game3d_world_registry_remove_no_rebuild(world, entity);
+        game3d_world_rebuild_name_index(world);
+        return -1;
+    }
 
     if (attach_to_scene && world->scene && entity->node)
         rt_scene3d_add(world->scene, entity->node);
     if (entity->body && world->physics) {
         rt_body3d_set_collision_layer(entity->body, entity->layer);
         rt_body3d_set_collision_mask(entity->body, entity->collision_mask_bits);
-        if (entity->node)
+        if (entity->node) {
             rt_scene_node3d_bind_body(entity->node, entity->body);
-        rt_world3d_add(world->physics, entity->body);
+            game3d_sync_body_from_entity_node(entity, 1);
+        }
+        if (!rt_world3d_try_add(world->physics, entity->body)) {
+            if (entity->node)
+                rt_scene_node3d_clear_body_binding(entity->node);
+            if (attach_to_scene && world->scene && entity->node)
+                rt_scene3d_remove(world->scene, entity->node);
+            entity->spawned = 0;
+            entity->world = NULL;
+            game3d_world_registry_remove_no_rebuild(world, entity);
+            game3d_world_rebuild_name_index(world);
+            rt_trap("Game3D.World3D.spawn: physics world add failed");
+            return -1;
+        }
         if (!game3d_world_body_index_add(world, entity)) {
             rt_world3d_remove(world->physics, entity->body);
             if (entity->node)
@@ -4954,13 +5281,53 @@ static void game3d_world_spawn_entity_tree(rt_game3d_world *world,
                 rt_scene3d_remove(world->scene, entity->node);
             entity->spawned = 0;
             entity->world = NULL;
-            game3d_world_registry_remove(world, entity);
+            game3d_world_registry_remove_no_rebuild(world, entity);
+            game3d_world_rebuild_name_index(world);
             rt_trap("Game3D.World3D.spawn: body index allocation failed");
-            return;
+            return -1;
         }
     }
-    for (int32_t i = 0; i < entity->child_count; ++i)
-        game3d_world_spawn_entity_tree(world, entity->children[i], 0, next_id);
+    return 1;
+}
+
+/// @brief Iteratively spawn an entity and its children: assign a stable id, add the root
+///   node to the scene, register and add bodies to physics, and mark the tree spawned.
+/// @details Traps if the entity is destroyed or already belongs to another world. Only
+///   the root attaches to the scene (`attach_to_scene`); children remain parented to it.
+static void game3d_world_spawn_entity_tree(rt_game3d_world *world,
+                                           rt_game3d_entity *entity,
+                                           int attach_to_scene,
+                                           int64_t *next_id) {
+    game3d_entity_tree_item *stack = NULL;
+    int32_t count = 0;
+    int32_t capacity = 0;
+    if (!world || !entity)
+        return;
+    if (!game3d_entity_tree_push(&stack, &count, &capacity, entity, attach_to_scene, 0)) {
+        rt_trap("Game3D.World3D.spawn: traversal stack allocation failed");
+        return;
+    }
+    while (count > 0) {
+        game3d_entity_tree_item item = stack[--count];
+        int spawned = game3d_world_spawn_entity_one(world, item.entity, item.root_link, next_id);
+        if (spawned < 0) {
+            free(stack);
+            game3d_world_despawn_entity_tree(world, entity, attach_to_scene);
+            return;
+        }
+        if (spawned == 0)
+            continue;
+        for (int32_t i = item.entity->child_count - 1; i >= 0; --i) {
+            if (!game3d_entity_tree_push(
+                    &stack, &count, &capacity, item.entity->children[i], 0, 0)) {
+                free(stack);
+                game3d_world_despawn_entity_tree(world, entity, attach_to_scene);
+                rt_trap("Game3D.World3D.spawn: traversal stack allocation failed");
+                return;
+            }
+        }
+    }
+    free(stack);
 }
 
 /// @brief Despawn and release every entity (optionally marking them destroyed), then
@@ -4996,13 +5363,11 @@ static void game3d_world_finalize(void *obj) {
         return;
     game3d_world_release_runtime(world, 1);
     free(world->entities);
-    free(world->body_index_bodies);
-    free(world->body_index_entities);
+    free(world->body_index_entries);
     free(world->name_index_hashes);
     free(world->name_index_entities);
     world->entities = NULL;
-    world->body_index_bodies = NULL;
-    world->body_index_entities = NULL;
+    world->body_index_entries = NULL;
     world->name_index_hashes = NULL;
     world->name_index_entities = NULL;
     world->entity_capacity = 0;
@@ -5010,6 +5375,7 @@ static void game3d_world_finalize(void *obj) {
     world->body_index_count = 0;
     world->name_index_capacity = 0;
     world->name_index_count = 0;
+    world->name_index_valid = 0;
 }
 
 /// @brief Point the world's camera at the origin from a default over-the-shoulder pose.
@@ -5044,6 +5410,8 @@ void *rt_game3d_world_new_with_camera(rt_string title,
                                       double far_plane) {
     if (width <= 0 || height <= 0)
         rt_trap("Game3D.World3D.New: dimensions must be positive");
+    if (width <= 0 || height <= 0)
+        return NULL;
     rt_game3d_world *world =
         (rt_game3d_world *)rt_obj_new_i64(RT_G3D_GAME3D_WORLD_CLASS_ID, (int64_t)sizeof(*world));
     if (!world) {
@@ -5163,6 +5531,13 @@ int64_t rt_game3d_world_get_frame(void *obj) {
     return world ? world->frame : 0;
 }
 
+/// @brief Get how many fixed simulation steps were discarded by the spiral guard.
+int64_t rt_game3d_world_get_dropped_fixed_steps(void *obj) {
+    rt_game3d_world *world =
+        game3d_world_checked(obj, "Game3D.World3D.get_DroppedFixedSteps: invalid world");
+    return world ? world->dropped_fixed_steps : 0;
+}
+
 /// @brief Spawn an entity (and its child tree) into the world; returns the entity. See header.
 void *rt_game3d_world_spawn(void *world_obj, void *entity_obj) {
     rt_game3d_world *world = game3d_world_checked(world_obj, "Game3D.World3D.spawn: invalid world");
@@ -5186,8 +5561,10 @@ void rt_game3d_world_despawn(void *world_obj, void *entity_obj) {
         game3d_entity_checked(entity_obj, "Game3D.World3D.despawn: entity must be Entity3D");
     if (!world || !entity)
         return;
-    if (!entity->spawned || entity->world != world)
+    if (!entity->spawned || entity->world != world) {
         rt_trap("Game3D.World3D.despawn: entity is not spawned in this world");
+        return;
+    }
     game3d_world_despawn_entity_tree(world, entity, 1);
 }
 
@@ -5197,7 +5574,7 @@ void *rt_game3d_world_find_node(void *obj, rt_string name) {
     return world && world->scene ? rt_scene3d_find(world->scene, name) : NULL;
 }
 
-/// @brief Find a spawned entity by name (linear scan; NULL if absent). See header.
+/// @brief Find a spawned entity by name using the world's name index; NULL if absent.
 void *rt_game3d_world_find_entity(void *obj, rt_string name) {
     rt_game3d_world *world = game3d_world_checked(obj, "Game3D.World3D.findEntity: invalid world");
     const char *needle = name ? rt_string_cstr(name) : "";
@@ -5206,6 +5583,8 @@ void *rt_game3d_world_find_entity(void *obj, rt_string name) {
     rt_game3d_entity *indexed = game3d_world_name_index_find(world, needle);
     if (indexed)
         return indexed;
+    if (world->name_index_valid)
+        return NULL;
     for (int32_t i = 0; i < world->entity_count; ++i) {
         rt_game3d_entity *entity = world->entities[i];
         const char *entity_name = entity && entity->name ? rt_string_cstr(entity->name) : "";
@@ -5220,9 +5599,11 @@ void *rt_game3d_world_find_entity(void *obj, rt_string name) {
 void rt_game3d_world_set_camera_controller(void *obj, void *controller) {
     rt_game3d_world *world =
         game3d_world_checked(obj, "Game3D.World3D.setCameraController: invalid world");
-    if (!game3d_camera_controller_is_valid(controller))
+    if (!game3d_camera_controller_is_valid(controller)) {
         rt_trap("Game3D.World3D.setCameraController: controller must be a built-in Game3D camera "
                 "controller");
+        return;
+    }
     if (world)
         game3d_assign_ref(&world->camera_controller, controller);
 }
@@ -5231,8 +5612,10 @@ void rt_game3d_world_set_camera_controller(void *obj, void *controller) {
 ///   target. See header.
 void rt_game3d_world_look_at(void *obj, void *target) {
     rt_game3d_world *world = game3d_world_checked(obj, "Game3D.World3D.lookAt: invalid world");
-    if (!rt_g3d_is_vec3(target))
+    if (!rt_g3d_is_vec3(target)) {
         rt_trap("Game3D.World3D.lookAt: target must be Vec3");
+        return;
+    }
     if (world && world->camera) {
         void *eye = rt_camera3d_get_position(world->camera);
         void *up = rt_vec3_new(0.0, 1.0, 0.0);
@@ -5246,8 +5629,10 @@ void rt_game3d_world_look_at(void *obj, void *target) {
 ///   non-positive dimensions. See header.
 void rt_game3d_world_on_resize(void *obj, int64_t width, int64_t height) {
     rt_game3d_world *world = game3d_world_checked(obj, "Game3D.World3D.onResize: invalid world");
-    if (width <= 0 || height <= 0)
+    if (width <= 0 || height <= 0) {
         rt_trap("Game3D.World3D.onResize: dimensions must be positive");
+        return;
+    }
     if (!world)
         return;
     world->width = width;
@@ -5268,8 +5653,10 @@ void rt_game3d_world_set_ambient(void *obj, double r, double g, double b) {
 /// @brief Bind a light into the given canvas light slot. See header.
 void rt_game3d_world_add_light(void *obj, int64_t slot, void *light) {
     rt_game3d_world *world = game3d_world_checked(obj, "Game3D.World3D.addLight: invalid world");
-    if (light && !rt_g3d_has_class(light, RT_G3D_LIGHT3D_CLASS_ID))
+    if (light && !rt_g3d_has_class(light, RT_G3D_LIGHT3D_CLASS_ID)) {
         rt_trap("Game3D.World3D.addLight: light must be Light3D or null");
+        return;
+    }
     if (world && world->canvas)
         rt_canvas3d_set_light(world->canvas, slot, light);
 }
@@ -5284,8 +5671,10 @@ void rt_game3d_world_clear_lights(void *obj) {
 /// @brief Set the skybox from a cubemap, or clear it when passed NULL. See header.
 void rt_game3d_world_set_skybox(void *obj, void *cubemap) {
     rt_game3d_world *world = game3d_world_checked(obj, "Game3D.World3D.setSkybox: invalid world");
-    if (cubemap && !rt_g3d_has_class(cubemap, RT_G3D_CUBEMAP3D_CLASS_ID))
+    if (cubemap && !rt_g3d_has_class(cubemap, RT_G3D_CUBEMAP3D_CLASS_ID)) {
         rt_trap("Game3D.World3D.setSkybox: cubemap must be CubeMap3D or null");
+        return;
+    }
     if (world && world->canvas) {
         if (cubemap)
             rt_canvas3d_set_skybox(world->canvas, cubemap);
@@ -5306,15 +5695,20 @@ void rt_game3d_world_set_fog(
 ///   post-FX stack. See header.
 void rt_game3d_world_set_quality(void *obj, int64_t quality) {
     rt_game3d_world *world = game3d_world_checked(obj, "Game3D.World3D.setQuality: invalid world");
+    void *new_postfx;
     if (!world || !world->canvas)
         return;
     rt_canvas3d_set_quality(world->canvas, quality);
     rt_game3d_effects *effects = (rt_game3d_effects *)world->effects;
     if (effects) {
-        game3d_release_ref(&effects->postfx);
-        effects->postfx = rt_postfx3d_new_quality(world->canvas, quality);
-        if (effects->postfx)
+        new_postfx = rt_postfx3d_new_quality(world->canvas, quality);
+        if (new_postfx) {
+            game3d_assign_ref(&effects->postfx, new_postfx);
             rt_canvas3d_set_post_fx(world->canvas, effects->postfx);
+            game3d_release_ref(&new_postfx);
+        } else if (effects->postfx) {
+            rt_canvas3d_set_post_fx(world->canvas, effects->postfx);
+        }
     }
 }
 
@@ -5526,7 +5920,13 @@ int8_t rt_game3d_world_tick(void *obj) {
     rt_game3d_world *world = game3d_world_checked(obj, "Game3D.World3D.tick: invalid world");
     if (!world || !world->canvas)
         return 0;
-    rt_canvas3d_poll(world->canvas);
+    if (!rt_canvas3d_poll(world->canvas)) {
+        world->width = rt_canvas3d_get_width(world->canvas);
+        world->height = rt_canvas3d_get_height(world->canvas);
+        return 0;
+    }
+    world->width = rt_canvas3d_get_width(world->canvas);
+    world->height = rt_canvas3d_get_height(world->canvas);
     rt_game3d_input_update(world->input);
     world->dt = game3d_clamp_dt(rt_canvas3d_get_delta_time_sec(world->canvas));
     world->elapsed += world->dt;
@@ -5536,27 +5936,39 @@ int8_t rt_game3d_world_tick(void *obj) {
     return rt_canvas3d_should_close(world->canvas) ? 0 : 1;
 }
 
-/// @brief Advance one simulation step by `step_sec`: camera-controller update, animator
-///   update, physics step, scene/audio binding sync, effect update, then the camera
-///   late-update. See header.
-void rt_game3d_world_step_simulation(void *obj, double step_sec) {
-    rt_game3d_world *world =
-        game3d_world_checked(obj, "Game3D.World3D.stepSimulation: invalid world");
+static void game3d_world_step_simulation_impl(rt_game3d_world *world,
+                                              double step_sec,
+                                              int8_t advance_time_counters) {
     if (!world)
         return;
     if (!isfinite(step_sec) || step_sec <= 0.0)
         return;
     double dt = game3d_clamp_dt(step_sec);
+    world->dt = dt;
+    if (advance_time_counters) {
+        world->elapsed += dt;
+        world->frame += 1;
+    }
     game3d_world_update_controller(world, dt);
     game3d_world_update_animations(world, dt);
     if (world->physics)
         rt_world3d_step(world->physics, dt);
     if (world->scene)
         rt_scene3d_sync_bindings(world->scene, dt);
-    rt_sound3d_sync_bindings(dt);
+    if (world->audio)
+        game3d_audio_prune_sources((rt_game3d_audio *)world->audio);
     if (world->effects)
         rt_game3d_effects_update(world->effects, dt);
     game3d_world_late_update_controller(world, dt);
+}
+
+/// @brief Advance one simulation step by `step_sec`: camera-controller update, animator
+///   update, physics step, scene/audio binding sync, effect update, then the camera
+///   late-update. See header.
+void rt_game3d_world_step_simulation(void *obj, double step_sec) {
+    rt_game3d_world *world =
+        game3d_world_checked(obj, "Game3D.World3D.stepSimulation: invalid world");
+    game3d_world_step_simulation_impl(world, step_sec, 1);
 }
 
 /// @brief Draw a yellow wireframe AABB around each spawned entity's collider for the
@@ -5576,27 +5988,9 @@ static void game3d_world_debug_draw_physics(rt_game3d_world *world) {
         double position[3] = {0.0, 0.0, 0.0};
         double rotation[4] = {0.0, 0.0, 0.0, 1.0};
         double scale[3] = {1.0, 1.0, 1.0};
-        void *pos = rt_body3d_get_position(entity->body);
-        void *quat = rt_body3d_get_orientation(entity->body);
-        if (pos) {
-            position[0] = rt_vec3_x(pos);
-            position[1] = rt_vec3_y(pos);
-            position[2] = rt_vec3_z(pos);
-        }
-        if (quat) {
-            rotation[0] = rt_quat_x(quat);
-            rotation[1] = rt_quat_y(quat);
-            rotation[2] = rt_quat_z(quat);
-            rotation[3] = rt_quat_w(quat);
-        }
+        rt_body3d_get_pose_raw(entity->body, position, rotation, scale);
         rt_collider3d_compute_world_aabb_raw(collider, position, rotation, scale, mn_raw, mx_raw);
-        void *mn = rt_vec3_new(mn_raw[0], mn_raw[1], mn_raw[2]);
-        void *mx = rt_vec3_new(mx_raw[0], mx_raw[1], mx_raw[2]);
-        rt_canvas3d_draw_aabb_wire(world->canvas, mn, mx, 0xFFCC33);
-        game3d_release_ref(&mx);
-        game3d_release_ref(&mn);
-        game3d_release_ref(&quat);
-        game3d_release_ref(&pos);
+        rt_canvas3d_draw_aabb_wire_raw(world->canvas, mn_raw, mx_raw, 0xFFCC33);
     }
 }
 
@@ -5808,7 +6202,7 @@ void rt_game3d_world_run(void *obj, void *update) {
     while (world && rt_game3d_world_tick(world)) {
         if (fn)
             fn(world->dt);
-        rt_game3d_world_step_simulation(world, world->dt);
+        game3d_world_step_simulation_impl(world, world->dt, 0);
         game3d_world_render_once(world, NULL);
     }
 }
@@ -5829,7 +6223,7 @@ void rt_game3d_world_run_with_overlay(void *obj, void *update, void *overlay) {
     while (world && rt_game3d_world_tick(world)) {
         if (fn)
             fn(world->dt);
-        rt_game3d_world_step_simulation(world, world->dt);
+        game3d_world_step_simulation_impl(world, world->dt, 0);
         game3d_world_render_once(world, overlay_fn);
     }
 }
@@ -5861,17 +6255,23 @@ void rt_game3d_world_run_fixed_with_overlay(void *obj,
     while (world && rt_game3d_world_tick(world)) {
         int steps = 0;
         accumulator += world->dt;
-        if (accumulator > fixed * RT_GAME3D_MAX_FIXED_STEPS_PER_FRAME)
+        if (accumulator > fixed * RT_GAME3D_MAX_FIXED_STEPS_PER_FRAME) {
+            double dropped_time = accumulator - fixed * RT_GAME3D_MAX_FIXED_STEPS_PER_FRAME;
+            if (dropped_time >= fixed)
+                world->dropped_fixed_steps += (int64_t)floor(dropped_time / fixed);
             accumulator = fixed * RT_GAME3D_MAX_FIXED_STEPS_PER_FRAME;
+        }
         while (accumulator >= fixed && steps < RT_GAME3D_MAX_FIXED_STEPS_PER_FRAME) {
             if (fn)
                 fn(fixed);
-            rt_game3d_world_step_simulation(world, fixed);
+            game3d_world_step_simulation_impl(world, fixed, 0);
             accumulator -= fixed;
             steps++;
         }
-        if (steps >= RT_GAME3D_MAX_FIXED_STEPS_PER_FRAME && accumulator >= fixed)
+        if (steps >= RT_GAME3D_MAX_FIXED_STEPS_PER_FRAME && accumulator >= fixed) {
+            world->dropped_fixed_steps += (int64_t)floor(accumulator / fixed);
             accumulator = 0.0;
+        }
         game3d_world_render_once(world, overlay_fn);
     }
 }
@@ -5896,21 +6296,28 @@ void rt_game3d_world_run_frames(void *obj, int64_t frame_count, double step_sec,
         previous_input_source = canvas->input_source;
         previous_clock_source = canvas->clock_source;
         previous_synthetic_dt_us = canvas->synthetic_dt_us;
-        rt_canvas3d_set_input_source(world->canvas, 1);
-        rt_canvas3d_set_clock_source(world->canvas, 1);
-        rt_canvas3d_set_synthetic_delta_time_sec(world->canvas, fixed);
     }
     for (int64_t i = 0; i < frame_count; ++i) {
-        if (world->canvas)
+        if (canvas) {
+            rt_canvas3d_set_input_source(world->canvas, 1);
+            rt_canvas3d_set_clock_source(world->canvas, 1);
+            rt_canvas3d_set_synthetic_delta_time_sec(world->canvas, fixed);
             rt_canvas3d_advance_synthetic_frame(world->canvas);
+        }
         rt_game3d_input_update(world->input);
         world->dt = fixed;
         world->elapsed += fixed;
         world->frame += 1;
         if (fn)
             fn(fixed);
-        rt_game3d_world_step_simulation(world, fixed);
+        game3d_world_step_simulation_impl(world, fixed, 0);
         game3d_world_render_once(world, NULL);
+        if (canvas) {
+            rt_canvas3d_set_input_source(world->canvas, previous_input_source);
+            rt_canvas3d_set_synthetic_delta_time_sec(world->canvas,
+                                                     (double)previous_synthetic_dt_us / 1000000.0);
+            rt_canvas3d_set_clock_source(world->canvas, previous_clock_source);
+        }
     }
     if (canvas) {
         rt_canvas3d_set_input_source(world->canvas, previous_input_source);

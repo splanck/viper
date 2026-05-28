@@ -113,11 +113,16 @@ Constant classes are runtime-backed too: `Layers`, `BodyShape`, `SyncMode`,
 | `input` | `Viper.Game3D.Input3D` |
 | `audio` | `Viper.Game3D.Sound3D` with a camera-aligned listener |
 | `effects` | `Viper.Game3D.EffectRegistry3D` with a `PostFX3D` chain and particle/decal registry |
+| `droppedFixedSteps` | Integer counter for fixed-step updates discarded by the spiral-of-death guard |
 
 The constructor installs explicit default lighting, balanced backend-safe
 quality, frustum culling, a readable camera, a neutral clear/ambient setup, and
 the default audio listener. These are normal runtime choices, not hidden Zia
 setup code.
+
+`World3D.runFixed` caps the number of simulation steps processed by one rendered
+frame. If a long frame would require more work than the cap, the dropped step
+count is exposed through `World3D.droppedFixedSteps` for telemetry and tuning.
 
 `World3D.NewWithCamera(title, width, height, fov, near, far)` uses the same
 defaults with custom camera projection values.
@@ -172,7 +177,9 @@ Game3D.EnvHandle.withFog(env, 20.0, 160.0);
 
 Terrain is represented as a spawnable ground entity with a static body in this
 phase, so character/physics samples get a useful floor without manual collider
-setup. Water is a transparent plane prefab.
+setup. Water is a transparent plane prefab; `withWater()` uses the most recent
+terrain size when terrain has been configured, otherwise it falls back to the
+default water size.
 
 ---
 
@@ -239,8 +246,8 @@ Manual code can use the same pieces directly:
 
 | Method | Purpose |
 |--------|---------|
-| `tick()` | Poll live input and advance world timing; returns false when the window should close |
-| `stepSimulation(step)` | Step controllers, animation, physics, scene/audio bindings, effect expiry, and late camera/controller work |
+| `tick()` | Poll live input, sync canvas resize state, and advance world timing; returns false when the window should close |
+| `stepSimulation(step)` | Store `world.dt`, advance `frame`/`elapsed` when called directly, then step controllers, animation, physics, scene/audio bindings, effect expiry, and late camera/controller work |
 | `beginFrame()` | Clear and begin drawing with the world camera |
 | `drawScene()` | Draw the world scene |
 | `drawEffects()` | Draw effect-registry particles/decals plus debug axes/physics wires |
@@ -251,9 +258,11 @@ Manual code can use the same pieces directly:
 For deterministic interpreted-Zia tests, use `runFramesOnly(frameCount, stepSec)`
 or call the manual methods explicitly. `runFramesOnly` uses the synthetic clock
 path and leaves the final frame capturable. `runFrames` / `runFramesOnly`
-temporarily switch the backing canvas to synthetic input and fixed-clock timing,
-then restore the previous canvas input source, clock source, and synthetic
-delta when the run completes.
+temporarily switch the backing canvas to synthetic input and fixed-clock timing
+for callback, simulation, and render work, then restore the previous canvas
+input source, clock source, and synthetic delta after each normally completed
+frame and at the end of the run. The built-in run loops avoid double-counting
+time because `tick()` / `runFrames()` own frame and elapsed-time accounting.
 
 The raw `Canvas3D` finalization calls map to the Game3D frame helpers this way:
 
@@ -270,6 +279,9 @@ wrappers for that contract.
 `World3D.onResize(width, height)` updates the camera aspect and resizes the
 owned `Canvas3D`, including backend render targets, so window callbacks and
 manual resize paths keep the Game3D camera and Graphics3D output in sync.
+`World3D.tick()` also observes native canvas size changes after polling so
+platform window resizes update `world.Width`, `world.Height`, and the camera
+aspect even when the app does not call `onResize()` directly.
 
 ---
 
@@ -292,7 +304,9 @@ This boundary is covered by `g3d_test_game3d_runframes_callback_reject`.
 ## Entities, Layers, And Masks
 
 `Entity3D.Of(mesh, material)` creates a spawnable entity with a raw
-`SceneNode3D`. Transform helpers update that node directly:
+`SceneNode3D`. Transform helpers sanitize non-finite numbers before touching the
+node and update an attached body only when the node sync mode is
+`SyncMode.BodyFromNode`:
 
 | Method | Purpose |
 |--------|---------|
@@ -324,7 +338,11 @@ validated as single-bit masks. Physics query masks follow the same bit semantics
 
 `attachBody` also accepts a raw `Viper.Graphics3D.Physics3DBody` as an escape
 hatch. The common path should use `BodyDef`, because it applies filters, node
-binding, sync mode, and world registration consistently.
+binding, sync mode, and world registration consistently. The default
+`BodyDef` sync mode is `NodeFromBody`: spawn seeds the body from the node once,
+then simulation owns the body and writes the resulting pose back to the node.
+Use `BodyFromNode` for scripted/authoritative transforms that should push into
+physics on every transform setter.
 
 ---
 
@@ -350,7 +368,7 @@ Game3D.World3D.spawn(world, enemy);
 | `LoadModelTemplate(path)` | Load or reuse a cached filesystem `ModelTemplate` |
 | `LoadModelTemplateAsset(assetPath)` | Load or reuse a cached package-aware `ModelTemplate` |
 | `Preload(path)` | Warm the filesystem template cache |
-| `ClearCache()` | Release cached template entries |
+| `ClearCache()` | Release cached template entries and backing storage after in-flight loads finish |
 | `ModelTemplate.instantiate()` | Clone the template root subtree into a group `Entity3D` |
 
 Loaded entities are groups whose backing node is the instantiated model root.
@@ -363,6 +381,12 @@ is populated with a `Game3D.Animator3D` wrapper.
 mounted packages and `asset://` paths work the same way as lower-level
 `Model3D.LoadAsset`. Relative glTF buffers and textures resolve relative to the
 model asset.
+
+Filesystem template cache keys are canonicalized to absolute paths when
+possible, and concurrent requests for the same key share the in-flight load
+instead of importing the same model more than once. Waiting threads sleep on the
+cache condition variable rather than polling while another thread finishes an
+import.
 
 ---
 

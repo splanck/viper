@@ -20,6 +20,7 @@ func start() {
     Game3D.Entity3D.setName(b, "B");
     var bDef = Game3D.BodyDef.Box(1.0, 1.0, 1.0, 1.0);
     Game3D.BodyDef.withMask(bDef, Game3D.LayerMask.Of(Game3D.Layers.get_World()));
+    Game3D.BodyDef.withSync(bDef, Game3D.SyncMode.get_BodyFromNode());
     Game3D.Entity3D.attachBody(b, bDef);
     Game3D.Entity3D.setPosition(b, 0.5, 0.0, 0.0);
     Game3D.World3D.spawn(world, b);

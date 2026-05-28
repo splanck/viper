@@ -83,6 +83,8 @@ void *rt_scene_node3d_get_scale(void *node);
 void *rt_scene_node3d_get_world_matrix(void *node);
 /// @brief Get the node's world-space position as a Vec3.
 void *rt_scene_node3d_get_world_position(void *node);
+/// @brief Get the node's world-space orientation as a Quaternion.
+void *rt_scene_node3d_get_world_rotation(void *node);
 /// @brief Get the node's world-space scale magnitudes as a Vec3.
 void *rt_scene_node3d_get_world_scale(void *node);
 /// @brief Attach @p child as a child of @p node (detaches from any prior parent).

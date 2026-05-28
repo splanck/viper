@@ -202,6 +202,23 @@ static void test_body_position() {
     EXPECT_NEAR(rt_vec3_z(pos), 7.0, 0.01, "Position Z = 7");
 }
 
+static void test_body_scale_affects_queries() {
+    void *world = rt_world3d_new(0, 0, 0);
+    void *body = rt_body3d_new_aabb(1.0, 1.0, 1.0, 0.0);
+    rt_body3d_set_scale(body, 3.0, 1.0, 1.0);
+    rt_world3d_add(world, body);
+    void *scale = rt_body3d_get_scale(body);
+    EXPECT_NEAR(rt_vec3_x(scale), 3.0, 0.001, "Body scale X round-trips");
+    EXPECT_NEAR(rt_vec3_y(scale), 1.0, 0.001, "Body scale Y round-trips");
+    EXPECT_NEAR(rt_vec3_z(scale), 1.0, 0.001, "Body scale Z round-trips");
+
+    void *center = rt_vec3_new(2.5, 0.0, 0.0);
+    void *hits = rt_world3d_overlap_sphere(world, center, 0.1, -1);
+    EXPECT_TRUE(hits != nullptr, "scaled body overlap returns a hit list");
+    EXPECT_TRUE(rt_physics_hit_list3d_get_count(hits) == 1,
+                "scaled body AABB participates in broadphase queries");
+}
+
 static void test_body_velocity() {
     void *b = rt_body3d_new_aabb(1.0, 1.0, 1.0, 1.0);
     rt_body3d_set_velocity(b, 1.0, 2.0, 3.0);
@@ -217,6 +234,11 @@ static void test_body_collision_layer_mask() {
     rt_body3d_set_collision_mask(b, 6);
     EXPECT_TRUE(rt_body3d_get_collision_layer(b) == 4, "Collision layer = 4");
     EXPECT_TRUE(rt_body3d_get_collision_mask(b) == 6, "Collision mask = 6");
+    EXPECT_TRUE(expect_trap_contains([&] { rt_body3d_set_collision_layer(b, 0); }, "positive"),
+                "Collision layer 0 traps");
+    EXPECT_TRUE(expect_trap_contains([&] { rt_body3d_set_collision_layer(b, -1); }, "positive"),
+                "Collision layer negative traps");
+    EXPECT_TRUE(rt_body3d_get_collision_layer(b) == 4, "Invalid collision layer leaves value");
 }
 
 static void test_body_material_coefficients_are_sanitized() {
@@ -268,11 +290,9 @@ static void test_body_sanitizes_nonfinite_motion_state() {
                 1.0,
                 0.001,
                 "Body invalid quaternion resets to identity");
-    rt_body3d_set_orientation(b, b);
-    EXPECT_NEAR(rt_quat_w(rt_body3d_get_orientation(b)),
-                1.0,
-                0.001,
-                "Body.SetOrientation rejects non-Quat handles");
+    EXPECT_TRUE(expect_trap_contains([&] { rt_body3d_set_orientation(b, b); }, "Quat"),
+                "Body.SetOrientation traps on non-Quat handles");
+    EXPECT_NEAR(rt_quat_w(rt_body3d_get_orientation(b)), 1.0, 0.001, "Non-Quat leaves orientation");
 
     rt_body3d_set_linear_damping(b, INFINITY);
     rt_body3d_set_angular_damping(b, NAN);
@@ -280,6 +300,35 @@ static void test_body_sanitizes_nonfinite_motion_state() {
         rt_body3d_get_linear_damping(b), 0.0, 0.001, "Body non-finite linear damping clamps");
     EXPECT_NEAR(
         rt_body3d_get_angular_damping(b), 0.0, 0.001, "Body non-finite angular damping clamps");
+}
+
+static void test_body_extreme_motion_state_saturates() {
+    const double state_max = 1000000000000.0;
+    void *world = rt_world3d_new(0, 0, 0);
+    void *body = rt_body3d_new_sphere(1.0, 1.0);
+    rt_body3d_set_position(body, 1.0e300, -1.0e300, 0.0);
+    void *pos = rt_body3d_get_position(body);
+    EXPECT_TRUE(std::isfinite(rt_vec3_x(pos)) && fabs(rt_vec3_x(pos)) <= state_max,
+                "Extreme position X saturates to finite state bound");
+    EXPECT_TRUE(std::isfinite(rt_vec3_y(pos)) && fabs(rt_vec3_y(pos)) <= state_max,
+                "Extreme position Y saturates to finite state bound");
+
+    rt_body3d_set_velocity(body, 1.0e300, 0.0, 0.0);
+    rt_body3d_apply_impulse(body, 1.0e300, -1.0e300, 0.0);
+    rt_body3d_apply_force(body, 1.0e300, 1.0e300, 0.0);
+    rt_world3d_add(world, body);
+    rt_world3d_step(world, 0.1);
+
+    void *vel = rt_body3d_get_velocity(body);
+    pos = rt_body3d_get_position(body);
+    EXPECT_TRUE(std::isfinite(rt_vec3_x(vel)) && fabs(rt_vec3_x(vel)) <= state_max,
+                "Extreme velocity X remains finite after impulse/force integration");
+    EXPECT_TRUE(std::isfinite(rt_vec3_y(vel)) && fabs(rt_vec3_y(vel)) <= state_max,
+                "Extreme velocity Y remains finite after impulse/force integration");
+    EXPECT_TRUE(std::isfinite(rt_vec3_x(pos)) && fabs(rt_vec3_x(pos)) <= state_max,
+                "Integrated position X remains finite after extreme motion");
+    EXPECT_TRUE(std::isfinite(rt_vec3_y(pos)) && fabs(rt_vec3_y(pos)) <= state_max,
+                "Integrated position Y remains finite after extreme motion");
 }
 
 static void test_body_trigger() {
@@ -377,6 +426,34 @@ static void test_ccd_prevents_fast_sphere_tunneling() {
         void *pos = rt_body3d_get_position(sphere);
         EXPECT_TRUE(rt_vec3_x(pos) < 5.6, "CCD body does not tunnel through thin wall");
     }
+
+    void *diag_world = rt_world3d_new(0, 0, 0);
+    void *fast = rt_body3d_new_sphere(0.5, 1.0);
+    rt_body3d_set_velocity(fast, 1000.0, 0.0, 0.0);
+    rt_body3d_set_use_ccd(fast, 1);
+    rt_world3d_add(diag_world, fast);
+    rt_world3d_step(diag_world, 0.1);
+    EXPECT_TRUE(rt_world3d_get_last_ccd_requested_substeps(diag_world) >
+                    rt_world3d_get_last_ccd_substeps(diag_world),
+                "CCD diagnostics retain unclamped substep demand");
+    EXPECT_TRUE(rt_world3d_get_last_ccd_substeps(diag_world) == 64,
+                "CCD diagnostics report capped substeps");
+    EXPECT_TRUE(rt_world3d_get_ccd_substep_clamped_count(diag_world) == 1,
+                "CCD diagnostics count clamp events");
+
+    void *huge_world = rt_world3d_new(0, 0, 0);
+    void *huge = rt_body3d_new_sphere(0.5, 1.0);
+    rt_body3d_set_velocity(huge, 1.0e300, 0.0, 0.0);
+    rt_body3d_set_use_ccd(huge, 1);
+    rt_world3d_add(huge_world, huge);
+    rt_world3d_step(huge_world, 0.1);
+    EXPECT_TRUE(rt_world3d_get_last_ccd_requested_substeps(huge_world) >=
+                    rt_world3d_get_last_ccd_substeps(huge_world),
+                "CCD diagnostics stay ordered for saturated extreme speeds");
+    EXPECT_TRUE(rt_world3d_get_last_ccd_substeps(huge_world) == 64,
+                "CCD substeps remain capped for saturated extreme speeds");
+    EXPECT_TRUE(rt_world3d_get_ccd_substep_clamped_count(huge_world) == 1,
+                "CCD clamp diagnostics count saturated extreme speeds");
 }
 
 /*==========================================================================
@@ -392,8 +469,11 @@ static void test_world_create() {
 static void test_world_add_remove() {
     void *w = rt_world3d_new(0, -9.81, 0);
     void *b = rt_body3d_new_aabb(1.0, 1.0, 1.0, 1.0);
-    rt_world3d_add(w, b);
+    EXPECT_TRUE(rt_world3d_try_add(w, b) != 0, "TryAdd returns true for a valid body");
     EXPECT_TRUE(rt_world3d_body_count(w) == 1, "Body count = 1 after add");
+    EXPECT_TRUE(rt_world3d_try_add(w, b) != 0, "TryAdd returns true for an existing body");
+    EXPECT_TRUE(rt_world3d_body_count(w) == 1, "TryAdd keeps duplicate body count stable");
+    EXPECT_TRUE(rt_world3d_try_add(w, w) == 0, "TryAdd returns false for invalid body handles");
     rt_world3d_remove(w, b);
     EXPECT_TRUE(rt_world3d_body_count(w) == 0, "Body count = 0 after remove");
 }
@@ -1012,6 +1092,26 @@ static void test_world_raycast_all_sorted() {
     }
 }
 
+static void test_world_overlap_hit_list_reports_truncation() {
+    void *world = rt_world3d_new(0, 0, 0);
+    void *center = rt_vec3_new(0.0, 0.0, 0.0);
+    for (int i = 0; i < 260; i++) {
+        void *body = rt_body3d_new_sphere(0.1, 0.0);
+        double x = ((double)(i % 26) - 13.0) * 0.25;
+        double z = (double)(i / 26) * 0.25;
+        rt_body3d_set_position(body, x, 0.0, z);
+        EXPECT_TRUE(rt_world3d_try_add(world, body) != 0, "TryAdd succeeds while filling overlap set");
+    }
+
+    void *hits = rt_world3d_overlap_sphere(world, center, 100.0, 1);
+    EXPECT_TRUE(hits != nullptr, "OverlapSphere returns a hit list");
+    EXPECT_TRUE(rt_physics_hit_list3d_get_count(hits) == 256, "OverlapSphere stores bounded hits");
+    EXPECT_TRUE(rt_physics_hit_list3d_get_total_count(hits) == 260,
+                "OverlapSphere reports total matching hits");
+    EXPECT_TRUE(rt_physics_hit_list3d_get_truncated(hits) != 0,
+                "OverlapSphere marks truncated hit lists");
+}
+
 static void test_world_sweep_sphere_reports_started_penetrating() {
     void *world = rt_world3d_new(0, 0, 0);
     void *wall = rt_body3d_new_aabb(1.0, 1.0, 1.0, 0.0);
@@ -1451,11 +1551,13 @@ int main() {
 
     /* Property accessors */
     test_body_position();
+    test_body_scale_affects_queries();
     test_body_orientation_roundtrip();
     test_body_velocity();
     test_body_collision_layer_mask();
     test_body_material_coefficients_are_sanitized();
     test_body_sanitizes_nonfinite_motion_state();
+    test_body_extreme_motion_state_saturates();
     test_body_trigger();
     test_body_torque_updates_angular_velocity_and_orientation();
     test_body_angular_damping();
@@ -1521,6 +1623,7 @@ int main() {
     test_collision_event_bodies();
     test_world_raycast_returns_nearest_hit();
     test_world_raycast_all_sorted();
+    test_world_overlap_hit_list_reports_truncation();
     test_world_sweep_sphere_reports_started_penetrating();
     test_world_overlap_queries_honor_mask();
     test_world_overlap_queries_reject_nonfinite_inputs();

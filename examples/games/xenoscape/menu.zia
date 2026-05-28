@@ -67,6 +67,8 @@ bind Viper.Text.Fmt;
 bind Viper.IO;
 bind Viper.Game;
 bind Viper.Game.UI;
+bind Viper.Math;            // PerlinNoise for the parallax nebula (#1)
+bind Viper.Core;           // Convert.NumToInt for noise->int
 bind "./config";
 bind "./palette";
 bind "./sprites";
@@ -92,6 +94,19 @@ class MenuSystem {
     hide Palette pal;
     hide Integer titleTimer;     // for title animation
     hide Integer bgScroll;       // background scroll
+    hide Tween titleTween;       // cinematic logo reveal (#2)
+    hide Camera menuCam;         // drives the parallax backdrop (#1)
+    hide Pixels nebulaLayer;     // retained so the GC keeps each layer alive
+    hide Pixels starLayer;
+    hide Pixels ridgeLayer;
+    hide Pixels foreLayer;
+    hide Integer backdropReady;  // 0 until layers are lazily built (needs canvas)
+    hide SmoothValue highlightY; // eased title selection highlight (#5)
+    hide Integer titleMoved;     // 1 when the title selection changed this frame (#6)
+    hide Tween lcScoreTween;     // level-complete score count-up (#8)
+    hide ParticleEmitter lcBurst;// celebratory rank burst (#8)
+    hide Integer lcStarted;      // one-shot guard for the count-up
+    hide Integer lcBurstFired;   // one-shot guard for the burst
     expose Integer selectedLevel; // chosen level from level select (1-4)
     hide List[Integer] highScores;
     hide List[String] highNames;
@@ -153,6 +168,20 @@ class MenuSystem {
 
         titleTimer = 0;
         bgScroll = 0;
+        titleTween = Tween.New();
+        titleTween.StartI64(0, 100, 54, EASE_OUT_EXPO);
+        backdropReady = 0;       // parallax layers built on first drawTitle
+        highlightY = SmoothValue.New(260.0, 0.6);
+        titleMoved = 0;
+        lcScoreTween = Tween.New();
+        lcBurst = ParticleEmitter.New(80);
+        lcBurst.Color = pal.coinGold;
+        lcBurst.SetSize(2.0, 5.0);
+        lcBurst.SetLifetime(28, 56);
+        lcBurst.SetVelocity(60.0, 200.0, 0.0, 360.0);  // radial pop, any-angle
+        lcBurst.SetGravity(0.0, 120.0);
+        lcStarted = 0;
+        lcBurstFired = 0;
         save = SaveData.New("xenoscape");
 
         // Default high scores
@@ -183,11 +212,19 @@ class MenuSystem {
     expose func updateTitle() -> Integer {
         titleTimer = titleTimer + 1;
         bgScroll = bgScroll + 1;
+        titleTween.Update();
 
+        var before = titleList.get_Selected();
         var chosen = titleList.HandleInput(Action.Pressed(ACT_UP),
                                            Action.Pressed(ACT_DOWN),
                                            Action.Pressed(ACT_CONFIRM));
         syncTitleSelection();
+        var after = titleList.get_Selected();
+        if before == after { titleMoved = 0; } else { titleMoved = 1; }
+
+        // Glide the selection highlight toward the focused option (#5).
+        highlightY.Target = (260 + after * 44) + 0.0;
+        highlightY.Update();
 
         // Selection
         if chosen >= 0 {
@@ -271,48 +308,42 @@ class MenuSystem {
     /// @brief Title screen — animated logo + main menu list +
     ///        scrolling starfield.
     expose func drawTitle(canvas: Canvas) {
-        // Gradient background (night sky)
-        canvas.GradientV(0, 0, SCREEN_W, SCREEN_H, pal.skyTop, pal.menuBg);
-        drawStarfield(canvas);
+        // Cinematic parallax backdrop (#1): four depth-stacked layers
+        // (nebula / stars / ridge / rocks) tiled and scrolled by a slowly
+        // drifting menu Camera — replaces the old flat gradient + starfield +
+        // ground/cloud loops.  Built once on first draw (Canvas now exists).
+        if backdropReady == 0 { buildMenuBackdrop(); }
+        menuCam.Move(1, 0);                 // slow ambient drift
+        menuCam.DrawParallax(canvas);
 
-        // Scrolling ground silhouette at bottom
-        var groundScroll = bgScroll * 2;
-        var gi = 0;
-        while gi < 30 {
-            var gx = (gi * 53) - (groundScroll % 1600);
-            if gx < 0 - 60 { gx = gx + 1600; }
-            var gh = 20 + (gi * 31) % 30;
-            canvas.Box(gx, SCREEN_H - gh, 60, gh, 0x0A0A1A);
-            gi = gi + 1;
+        // Cinematic logo reveal (#2): one eased master progress (0..100)
+        // drives a staggered fade+rise — XENO leads, SCAPE follows, the
+        // subtitle lands last.  Colours lerp up from the background via the
+        // palette's integer-percent `mix` helper (there is no alpha-text API,
+        // so "fade-in" = blend toward the final colour).
+        var p = titleTween.ValueI64;
+        var pXeno = revealStage(p, 0, 70);
+        var pScape = revealStage(p, 30, 100);
+        var pSub = revealStage(p, 70, 100);
+
+        var baseY = 80;
+        var yXeno = baseY + (40 * (100 - pXeno)) / 100;
+        var yScape = baseY + (40 * (100 - pScape)) / 100;
+
+        // Additive-style bloom behind the logo (#4): layered DiscAlpha haloes
+        // whose strength tracks the reveal, then breathes subtly afterwards.
+        var breathe = 6 + (titleTimer % 48) / 6;
+        var glow = (pXeno * (6 + breathe)) / 100;
+        canvas.DiscAlpha(520, baseY + 24, 150, pal.titleOrange, glow);
+        canvas.DiscAlpha(520, baseY + 24, 90, pal.titleYellow, glow + 4);
+
+        canvas.TextScaled(280, yXeno, "XENO", 6, pal.mix(pal.menuBg, pal.titleOrange, pXeno));
+        canvas.TextScaled(600, yScape, "SCAPE", 6, pal.mix(pal.menuBg, pal.titleYellow, pScape));
+
+        if pSub > 0 {
+            canvas.TextCenteredScaled(baseY + 56, "The Descent",
+                                      pal.mix(pal.menuBg, pal.hudGray, pSub), 3);
         }
-        canvas.Box(0, SCREEN_H - 15, SCREEN_W, 15, 0x080816);
-
-        // Scrolling clouds
-        var ci = 0;
-        while ci < 5 {
-            var cx = ((ci * 283 + 47) % (SCREEN_W + 200)) - (bgScroll % (SCREEN_W + 200));
-            if cx < 0 - 120 { cx = cx + SCREEN_W + 200; }
-            var cy = 180 + (ci * 67) % 100;
-            canvas.BoxAlpha(cx, cy, 80 + ci * 12, 10, 0xFFFFFF, 15 + ci * 3);
-            ci = ci + 1;
-        }
-
-        // Title text with bounce
-        var bounce = titleTimer % 60;
-        var titleY = 80;
-        if bounce < 30 {
-            titleY = titleY - bounce / 5;
-        } else {
-            titleY = titleY - (60 - bounce) / 5;
-        }
-
-        // Title glow behind text
-        canvas.DiscAlpha(520, titleY + 20, 120, pal.titleOrange, 15);
-
-        canvas.TextScaled(280, titleY, "XENO", 6, pal.titleOrange);
-        canvas.TextScaled(600, titleY, "SCAPE", 6, pal.titleYellow);
-
-        canvas.TextCenteredScaled(titleY + 56, "The Descent", pal.hudGray, 3);
 
         // Animated running player silhouette at bottom
         var runX = (bgScroll * 3) % (SCREEN_W + 80) - 40;
@@ -329,12 +360,16 @@ class MenuSystem {
             canvas.Box(runX + 6, runY + 26, 6, 8, pal.playerBoots);
         }
 
+        // Gliding selection highlight (#5): a single eased box that slides
+        // between options via SmoothValue, replacing the instant per-option box.
+        canvas.BoxAlpha(500, highlightY.ValueI64 - 4, 280, 32, pal.menuHighlight, 150);
+
         var menuY = 260;
-        drawMenuOption(canvas, "PLAY", MENU_PLAY, menuY, titleBG);
-        drawMenuOption(canvas, "LEVEL SELECT", MENU_LEVELSELECT, menuY + 44, titleBG);
-        drawMenuOption(canvas, "HIGH SCORES", MENU_HIGHSCORES, menuY + 88, titleBG);
-        drawMenuOption(canvas, "CONTROLS", MENU_CONTROLS, menuY + 132, titleBG);
-        drawMenuOption(canvas, "QUIT", MENU_QUIT, menuY + 176, titleBG);
+        drawTitleOption(canvas, "PLAY", MENU_PLAY, menuY, titleBG);
+        drawTitleOption(canvas, "LEVEL SELECT", MENU_LEVELSELECT, menuY + 44, titleBG);
+        drawTitleOption(canvas, "HIGH SCORES", MENU_HIGHSCORES, menuY + 88, titleBG);
+        drawTitleOption(canvas, "CONTROLS", MENU_CONTROLS, menuY + 132, titleBG);
+        drawTitleOption(canvas, "QUIT", MENU_QUIT, menuY + 176, titleBG);
 
         // Version + attribution
         canvas.TextCenteredScaled(SCREEN_H - 30, "Made with Viper + Zia", pal.hudGray, 2);
@@ -356,6 +391,21 @@ class MenuSystem {
         canvas.TextScaled(x, y, label, 3, col);
     }
 
+    /// @brief Title-menu entry: text + selected arrow only.  The selection
+    ///        box is drawn separately as one gliding highlight (#5), so this
+    ///        omits the per-option box that `drawMenuOption` still draws for
+    ///        the pause / game-over menus.
+    hide func drawTitleOption(canvas: Canvas, label: String, index: Integer,
+                              y: Integer, bg: ButtonGroup) {
+        var x = 520;
+        var col = pal.menuText;
+        if bg.IsSelected(index) {
+            col = pal.white;
+            canvas.TextScaled(x - 30, y, ">", 3, pal.titleOrange);
+        }
+        canvas.TextScaled(x, y, label, 3, col);
+    }
+
     /// @brief Animated star backdrop used by the title screen.
     hide func drawStarfield(canvas: Canvas) {
         var i = 0;
@@ -367,6 +417,97 @@ class MenuSystem {
             canvas.Box(sx, sy, 2, 2, col);
             i = i + 1;
         }
+    }
+
+    /// @brief Map a master 0..100 progress into a sub-stage's own
+    ///        0..100, clamped — used to stagger the logo reveal so
+    ///        XENO leads, SCAPE follows, and the subtitle lands last.
+    hide func revealStage(p: Integer, lo: Integer, hi: Integer) -> Integer {
+        if p <= lo { return 0; }
+        if p >= hi { return 100; }
+        return (p - lo) * 100 / (hi - lo);
+    }
+
+    /// @brief Restart the cinematic logo reveal — call when the
+    ///        title screen is (re-)entered so it replays.
+    expose func resetTitleAnim() {
+        titleTween.StartI64(0, 100, 54, EASE_OUT_EXPO);
+    }
+
+    /// @brief Did the title selection change this frame?  Game polls this to
+    ///        play the menu-move SFX without re-reading (consuming) input.
+    expose func titleSelectionMoved() -> Boolean {
+        return titleMoved == 1;
+    }
+
+    /// @brief Build the four parallax layers for the menu backdrop (#1):
+    ///        nebula / stars / ridge / rocks, registered on a menu Camera.
+    ///        Lazy (first drawTitle) so a Canvas exists and the per-layer
+    ///        Pixels are built once, never per frame (see plan perf budget).
+    ///        Each layer Pixels is also kept in a field so the GC roots it.
+    hide func buildMenuBackdrop() {
+        menuCam = Camera.New(SCREEN_W, SCREEN_H);
+
+        // Layer 1 — deep-space nebula (slowest).  Built small via Perlin
+        // octave noise, blurred, then scaled up: a few thousand samples
+        // instead of a per-pixel full-screen loop.  Opaque base layer.
+        var nw = 192;
+        var nh = 108;
+        var neb = Pixels.New(nw, nh);
+        neb.Fill(pal.cavernTop);
+        var pn = PerlinNoise.New(20260528);
+        var ny = 0;
+        while ny < nh {
+            var nx = 0;
+            while nx < nw {
+                var fx = (nx + 0.0) * 4.0 / (nw + 0.0);
+                var fy = (ny + 0.0) * 4.0 / (nh + 0.0);
+                var noiseF = pn.Octave2D(fx, fy, 4, 0.5);
+                var amt = Convert.NumToInt((noiseF + 1.0) * 45.0);
+                if amt > 8 {
+                    neb.Set(nx, ny, pal.mix(pal.cavernTop, pal.crystalPurple, amt));
+                }
+                nx = nx + 1;
+            }
+            ny = ny + 1;
+        }
+        nebulaLayer = neb.Blur(3).Scale(SCREEN_W, SCREEN_H);
+        menuCam.AddParallax(nebulaLayer, 10, 5);
+
+        // Layer 2 — starfield: transparent buffer, varied-alpha white pixels.
+        // Raw 0xRRGGBBAA (alpha in the low byte) so each star twinkles dimly.
+        starLayer = Pixels.New(SCREEN_W, SCREEN_H);
+        var si = 0;
+        while si < 160 {
+            var sx = (si * 137 + 17) % SCREEN_W;
+            var sy = (si * 89 + 31) % SCREEN_H;
+            var a = 70 + (si * 53) % 170;
+            starLayer.Set(sx, sy, 0xFFFFFF00 + a);
+            si = si + 1;
+        }
+        menuCam.AddParallax(starLayer, 22, 12);
+
+        // Layer 3 — distant ridge silhouette along the bottom.
+        ridgeLayer = Pixels.New(SCREEN_W, SCREEN_H);
+        var rx = 0;
+        while rx < SCREEN_W {
+            var rh = 70 + ((rx * 13) % 70) + ((rx / 64) % 30);
+            ridgeLayer.DrawBox(rx, SCREEN_H - rh, 18, rh, pal.bridgeBot);
+            rx = rx + 18;
+        }
+        menuCam.AddParallax(ridgeLayer, 45, 0);
+
+        // Layer 4 — nearest rock humps (fastest drift).
+        foreLayer = Pixels.New(SCREEN_W, SCREEN_H);
+        var fx2 = 0;
+        while fx2 < SCREEN_W {
+            var fh = 60 + ((fx2 * 17) % 34);
+            foreLayer.DrawDisc(fx2, SCREEN_H + 8, fh, pal.viewportBg);
+            fx2 = fx2 + 100;
+        }
+        menuCam.AddParallax(foreLayer, 80, 0);
+
+        backdropReady = 1;
     }
 
     // =========================================================================
@@ -488,6 +629,37 @@ class MenuSystem {
         if revealFrames > 120 {
             canvas.TextCenteredScaled(430, "Press ENTER to continue", pal.hudGray, 2);
         }
+    }
+
+    /// @brief Begin the level-complete cinematic (#8): count the score up and
+    ///        re-arm the celebratory burst.  Called once on entering the state.
+    expose func startLevelComplete(finalScore: Integer) {
+        lcScoreTween.StartI64(0, finalScore, 50, EASE_OUT_QUAD);
+        lcStarted = 1;
+        lcBurstFired = 0;
+    }
+
+    /// @brief Cinematic level-complete (#7 + #8): renders the rich enhanced
+    ///        panel fed a Tweened score count-up, then fires a one-shot
+    ///        ParticleEmitter burst when the tally lands on the rank.
+    expose func drawLevelCompleteCinematic(canvas: Canvas, levelNum: Integer,
+                                         timeMs: Integer, enemiesKilled: Integer,
+                                         coinsCollected: Integer, gemsFound: Integer,
+                                         finalScore: Integer, timeBonus: Integer) {
+        if lcStarted == 0 { startLevelComplete(finalScore); }
+        lcScoreTween.Update();
+        var shownScore = lcScoreTween.ValueI64;
+
+        drawEnhancedLevelComplete(canvas, pal, levelNum, timeMs, enemiesKilled,
+                                  coinsCollected, gemsFound, shownScore, timeBonus);
+
+        if lcScoreTween.IsComplete and lcBurstFired == 0 {
+            lcBurst.SetPosition((SCREEN_W / 2) + 0.0, 480.0);
+            lcBurst.Burst(48);
+            lcBurstFired = 1;
+        }
+        lcBurst.Update();
+        lcBurst.Draw(canvas);
     }
 
     // =========================================================================

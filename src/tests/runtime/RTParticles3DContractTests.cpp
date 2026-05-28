@@ -382,6 +382,7 @@ static rt_camera3d make_test_camera() {
 
 static void test_draw_batches_additive_and_alpha_particles() {
     void *ps = rt_particles3d_new(8);
+    rt_canvas3d canvas = {};
     rt_camera3d cam = make_test_camera();
     assert(ps != nullptr);
 
@@ -395,7 +396,7 @@ static void test_draw_batches_additive_and_alpha_particles() {
 
     rt_particles3d_set_additive(ps, 1);
     reset_draw_records();
-    rt_particles3d_draw(ps, reinterpret_cast<void *>(1), &cam);
+    rt_particles3d_draw(ps, &canvas, &cam);
     assert(g_draw_mesh_calls == 1);
     assert(g_draw_mesh_matrix_keyed_calls == 0);
     assert(g_last_mesh_vertex_count == 12);
@@ -407,7 +408,7 @@ static void test_draw_batches_additive_and_alpha_particles() {
 
     rt_particles3d_set_additive(ps, 0);
     reset_draw_records();
-    rt_particles3d_draw(ps, reinterpret_cast<void *>(1), &cam);
+    rt_particles3d_draw(ps, &canvas, &cam);
     assert(g_draw_mesh_calls == 1);
     assert(g_draw_mesh_matrix_keyed_calls == 0);
     assert(g_last_mesh_vertex_count == 12);

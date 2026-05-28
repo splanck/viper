@@ -865,6 +865,8 @@ double rt_game3d_world_get_dt(void *world);
 double rt_game3d_world_get_elapsed(void *world);
 /// @brief Get the current frame counter.
 int64_t rt_game3d_world_get_frame(void *world);
+/// @brief Count fixed-timestep updates discarded by the spiral-of-death guard.
+int64_t rt_game3d_world_get_dropped_fixed_steps(void *world);
 /// @brief Spawn an entity into the world (adds it to scene + physics); returns the entity.
 void *rt_game3d_world_spawn(void *world, void *entity);
 /// @brief Despawn an entity, removing it from scene and physics.

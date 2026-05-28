@@ -27,7 +27,8 @@
 /// @brief Six frustum planes in Ax+By+Cz+D=0 form (normalized).
 /// Order: 0=left, 1=right, 2=bottom, 3=top, 4=near, 5=far.
 typedef struct {
-    float planes[6][4]; /* [A, B, C, D] per plane */
+    float planes[6][4];  /* [A, B, C, D] per plane */
+    int8_t planes_valid; /* 1 once extract normalizes all six planes; 0 = conservative */
 } vgfx3d_frustum_t;
 
 /// @brief Extract frustum planes from a row-major View*Projection matrix.

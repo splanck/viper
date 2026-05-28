@@ -11,13 +11,13 @@
 //   existing 2D audio API for actual sample playback.
 //
 // Key invariants:
-//   - Listener position/forward stored as static globals (single listener).
+//   - Listener position/orientation stored as static globals (single listener).
 //   - The active SoundListener3D wins; if none is bound the fallback listener
 //     (modifiable via rt_sound3d_set_listener) is used.
 //   - Attenuation: linear falloff from 0 to max_distance.
 //   - Pan: dot product of source direction with listener's right vector.
-//   - Right vector is derived as the XZ-plane rotation of forward by -90°,
-//     so listener pitch doesn't bleed into stereo balance.
+//   - Right vector is derived from forward and up, so caller-provided roll is
+//     reflected in stereo balance.
 //
 // Ownership/Lifetime:
 //   - Listener-state structs are caller-owned; this file keeps process-global
@@ -50,6 +50,7 @@ static rt_sound3d_listener_state s_fallback_listener = {
     {0.0, 0.0, 0.0},
     {0.0, 0.0, -1.0},
     {1.0, 0.0, 0.0},
+    {0.0, 1.0, 0.0},
     {0.0, 0.0, 0.0},
     1,
 };
@@ -57,6 +58,7 @@ static rt_sound3d_listener_state s_active_listener = {
     {0.0, 0.0, 0.0},
     {0.0, 0.0, -1.0},
     {1.0, 0.0, 0.0},
+    {0.0, 1.0, 0.0},
     {0.0, 0.0, 0.0},
     0,
 };
@@ -129,56 +131,92 @@ static void sound3d_vec_from_obj(void *vec, double *out_xyz) {
     out_xyz[2] = finite_or(rt_vec3_z(vec), 0.0);
 }
 
-/// @brief Normalise the listener forward vector and derive the matching right vector.
-/// @details Falls back to forward = `(0, 0, -1)` when the input is degenerate
-///          (zero or NULL). The right vector is computed as the XZ-plane
-///          rotation of forward by -90° (`right = (-forward.z, 0, forward.x)`),
-///          so even an upward-tilted forward yields a horizontal right
-///          vector — appropriate for stereo panning where pitch shouldn't
-///          affect left/right balance. A second degenerate fallback covers
-///          the case where forward is nearly straight up/down (`right`
-///          collapses to zero in XZ); right snaps to `+X` then.
-static void sound3d_set_forward_and_right(rt_sound3d_listener_state *state, const double *forward) {
-    double fx;
-    double fy;
-    double fz;
-    double flen;
-    double rx;
-    double rz;
-    double rlen;
+static void sound3d_cross3(const double *a, const double *b, double *out) {
+    out[0] = a[1] * b[2] - a[2] * b[1];
+    out[1] = a[2] * b[0] - a[0] * b[2];
+    out[2] = a[0] * b[1] - a[1] * b[0];
+}
+
+static int sound3d_normalize3(double *v) {
+    double len;
+    if (!v)
+        return 0;
+    v[0] = finite_or(v[0], 0.0);
+    v[1] = finite_or(v[1], 0.0);
+    v[2] = finite_or(v[2], 0.0);
+    len = sqrt(v[0] * v[0] + v[1] * v[1] + v[2] * v[2]);
+    if (!isfinite(len) || len <= 1e-8)
+        return 0;
+    v[0] /= len;
+    v[1] /= len;
+    v[2] /= len;
+    return 1;
+}
+
+/// @brief Normalise the listener basis from forward/up.
+/// @details Falls back to forward = `(0, 0, -1)` and up = `(0, 1, 0)` when
+///   inputs are missing or degenerate, then orthonormalizes the basis. Right
+///   is `forward x up`, so a caller-provided roll affects stereo panning.
+static void sound3d_set_basis(rt_sound3d_listener_state *state,
+                              const double *forward,
+                              const double *up) {
+    double fwd[3];
+    double upv[3];
+    double right[3];
     if (!state)
         return;
 
-    fx = forward ? finite_or(forward[0], 0.0) : 0.0;
-    fy = forward ? finite_or(forward[1], 0.0) : 0.0;
-    fz = forward ? finite_or(forward[2], -1.0) : -1.0;
-    flen = sqrt(fx * fx + fy * fy + fz * fz);
-    if (!isfinite(flen) || flen <= 1e-8) {
-        fx = 0.0;
-        fy = 0.0;
-        fz = -1.0;
-        flen = 1.0;
+    fwd[0] = forward ? finite_or(forward[0], 0.0) : 0.0;
+    fwd[1] = forward ? finite_or(forward[1], 0.0) : 0.0;
+    fwd[2] = forward ? finite_or(forward[2], -1.0) : -1.0;
+    if (!sound3d_normalize3(fwd)) {
+        fwd[0] = 0.0;
+        fwd[1] = 0.0;
+        fwd[2] = -1.0;
     }
 
-    state->forward[0] = fx / flen;
-    state->forward[1] = fy / flen;
-    state->forward[2] = fz / flen;
-
-    rx = -state->forward[2];
-    rz = state->forward[0];
-    rlen = sqrt(rx * rx + rz * rz);
-    if (!isfinite(rlen) || rlen <= 1e-8) {
-        rx = 1.0;
-        rz = 0.0;
-        rlen = 1.0;
+    upv[0] = up ? finite_or(up[0], 0.0) : 0.0;
+    upv[1] = up ? finite_or(up[1], 1.0) : 1.0;
+    upv[2] = up ? finite_or(up[2], 0.0) : 0.0;
+    if (!sound3d_normalize3(upv)) {
+        upv[0] = 0.0;
+        upv[1] = 1.0;
+        upv[2] = 0.0;
     }
-    state->right[0] = rx / rlen;
-    state->right[1] = 0.0;
-    state->right[2] = rz / rlen;
+
+    sound3d_cross3(fwd, upv, right);
+    if (!sound3d_normalize3(right)) {
+        upv[0] = fabs(fwd[1]) < 0.95 ? 0.0 : 1.0;
+        upv[1] = fabs(fwd[1]) < 0.95 ? 1.0 : 0.0;
+        upv[2] = 0.0;
+        sound3d_cross3(fwd, upv, right);
+        if (!sound3d_normalize3(right)) {
+            right[0] = 1.0;
+            right[1] = 0.0;
+            right[2] = 0.0;
+        }
+    }
+
+    sound3d_cross3(right, fwd, upv);
+    if (!sound3d_normalize3(upv)) {
+        upv[0] = 0.0;
+        upv[1] = 1.0;
+        upv[2] = 0.0;
+    }
+
+    state->forward[0] = fwd[0];
+    state->forward[1] = fwd[1];
+    state->forward[2] = fwd[2];
+    state->right[0] = right[0];
+    state->right[1] = right[1];
+    state->right[2] = right[2];
+    state->up[0] = upv[0];
+    state->up[1] = upv[1];
+    state->up[2] = upv[2];
 }
 
 /// @brief Reset a listener-state struct to the canonical identity orientation.
-/// Origin position, zero velocity, forward = -Z, right = +X. Marks the state as valid.
+/// Origin position, zero velocity, forward = -Z, right = +X, up = +Y. Marks the state as valid.
 void rt_sound3d_listener_state_identity(rt_sound3d_listener_state *state) {
     if (!state)
         return;
@@ -188,22 +226,31 @@ void rt_sound3d_listener_state_identity(rt_sound3d_listener_state *state) {
     state->velocity[0] = 0.0;
     state->velocity[1] = 0.0;
     state->velocity[2] = 0.0;
-    sound3d_set_forward_and_right(state, NULL);
+    sound3d_set_basis(state, NULL, NULL);
     state->valid = 1;
 }
 
 /// @brief Populate a listener-state struct from explicit position/forward/velocity arrays.
-/// Forward is normalized; the right vector is derived (perpendicular in the XZ plane).
+/// Forward is normalized; up defaults to +Y and the full basis is orthonormalized.
 /// Pass NULL for any component to default it to zero (or -Z forward).
 void rt_sound3d_listener_state_set(rt_sound3d_listener_state *state,
                                    const double *position,
                                    const double *forward,
                                    const double *velocity) {
+    rt_sound3d_listener_state_set_pose(state, position, forward, NULL, velocity);
+}
+
+/// @brief Populate a listener-state struct from explicit position/forward/up/velocity arrays.
+void rt_sound3d_listener_state_set_pose(rt_sound3d_listener_state *state,
+                                        const double *position,
+                                        const double *forward,
+                                        const double *up,
+                                        const double *velocity) {
     if (!state)
         return;
     sound3d_copy3(state->position, position);
     sound3d_copy3(state->velocity, velocity);
-    sound3d_set_forward_and_right(state, forward);
+    sound3d_set_basis(state, forward, up);
     state->valid = 1;
 }
 

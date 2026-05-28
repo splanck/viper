@@ -3,7 +3,8 @@
 - **Severity:** Low (performance) — largely **subsumed by Plan 03**
 - **Type:** Optimization (behavior-preserving)
 - **Primary file:** `src/runtime/graphics/3d/backend/vgfx3d_backend_opengl.c`
-- **Status:** Planned (do not code yet)
+- **Status:** DEFERRED — see `STATUS.md`. Subsumed by Plan 03; OpenGL is not buildable on the
+  macOS dev environment.
 
 ## Problem
 

@@ -86,6 +86,11 @@ typedef struct {
     int8_t tangents_ready;      /* true once tangent presence/generation was resolved */
     uint8_t geometry_batch_depth;
     int8_t geometry_batch_dirty;
+    void *physics_bvh_nodes;          /* rt_physics_mesh_bvh_node[], owned by mesh */
+    uint32_t *physics_bvh_tri_indices; /* triangle indices into indices[] / 3 */
+    uint32_t physics_bvh_revision;
+    int32_t physics_bvh_node_count;
+    int32_t physics_bvh_tri_count;
 } rt_mesh3d;
 
 /// @brief Zero a mesh's cached AABB/bounding-sphere and clear the dirty flag.
@@ -194,6 +199,15 @@ typedef struct {
     uint32_t shake_seed;
     int8_t is_ortho;   /* 1 = orthographic projection */
     double ortho_size; /* half-extent of ortho view */
+    int8_t pick_cache_valid;
+    int8_t pick_cache_is_ortho;
+    double pick_cache_aspect;
+    double pick_cache_fov;
+    double pick_cache_near;
+    double pick_cache_far;
+    double pick_cache_ortho_size;
+    double pick_cache_view[16];
+    double pick_cache_inv_vp[16];
 } rt_camera3d;
 
 /// @brief Update a camera's cached projection for the given viewport aspect.
@@ -203,6 +217,9 @@ void rt_camera3d_sync_render_aspect(void *cam, double aspect);
 void rt_camera3d_get_render_projection(void *cam, double aspect_override, float *out_projection);
 /// @brief Internal: advance camera shake by @p dt seconds and refresh the shaken view.
 void rt_camera3d_update_shake_for_frame(void *cam, double dt);
+
+/// @brief Internal Mesh3D tangent generator for already-validated mesh storage.
+void rt_mesh3d_calc_tangents_impl(rt_mesh3d *mesh);
 
 //=============================================================================
 // Material3D
@@ -254,7 +271,7 @@ typedef struct {
     int32_t texture_slot_filter[RT_MATERIAL3D_TEXTURE_SLOT_COUNT];
     int32_t texture_slot_uv_set[RT_MATERIAL3D_TEXTURE_SLOT_COUNT];
     double texture_slot_uv_transform[RT_MATERIAL3D_TEXTURE_SLOT_COUNT][6];
-    int32_t shading_model;   /* 0=BlinnPhong, 1=Toon, 2=reserved, 3=Unlit, 4=Fresnel, 5=Emissive */
+    int32_t shading_model;   /* 0=BlinnPhong, 1=Toon, 2=PBR, 3=Unlit, 4=Fresnel, 5=Emissive */
     double custom_params[8]; /* user-defined parameters per shading model */
 } rt_material3d;
 
@@ -290,6 +307,16 @@ typedef struct {
 
 #define VGFX3D_MAX_LIGHTS 16
 #define VGFX3D_MAX_SHADOW_LIGHTS 2
+#define RT_CANVAS3D_EVENT_QUEUE_CAPACITY 128
+
+typedef struct {
+    void *source;
+    uint32_t geometry_revision;
+    uint32_t vertex_count;
+    uint32_t index_count;
+    vgfx3d_vertex_t *vertices;
+    uint32_t *indices;
+} rt_canvas3d_mesh_snapshot_entry;
 
 /* Forward declaration — defined in vgfx3d_backend.h */
 typedef struct vgfx3d_backend vgfx3d_backend_t;
@@ -513,6 +540,7 @@ typedef struct {
     /* Lighting */
     rt_light3d *lights[VGFX3D_MAX_LIGHTS];
     rt_light3d *scene_lights[VGFX3D_MAX_LIGHTS];
+    rt_light3d scene_light_storage[VGFX3D_MAX_LIGHTS];
     int32_t scene_light_count; /* transient, not retained: populated by Scene3D.Draw */
     float ambient[3];
 
@@ -541,6 +569,9 @@ typedef struct {
     void **temp_buffers;
     int32_t temp_buf_count;
     int32_t temp_buf_capacity;
+    rt_canvas3d_mesh_snapshot_entry *mesh_snapshots;
+    int32_t mesh_snapshot_count;
+    int32_t mesh_snapshot_capacity;
 
     /* Temporary runtime objects retained until end of frame */
     void **temp_objects;
@@ -598,6 +629,10 @@ typedef struct {
     int8_t synthetic_mouse_has_buttons;
     uint8_t synthetic_mouse_button_state[VIPER_MOUSE_BUTTON_MAX];
     int8_t should_close;
+    int64_t last_event_type;
+    int64_t event_type_queue[RT_CANVAS3D_EVENT_QUEUE_CAPACITY];
+    int32_t event_type_head;
+    int32_t event_type_count;
 
     /* Previous-frame transform history for motion blur */
     void *motion_history;

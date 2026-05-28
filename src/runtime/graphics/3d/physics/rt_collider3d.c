@@ -1005,6 +1005,23 @@ int8_t rt_collider3d_sample_heightfield_raw(
     return 1;
 }
 
+int8_t rt_collider3d_get_heightfield_info_raw(
+    void *collider, int32_t *width_out, int32_t *depth_out, double *scale_out) {
+    rt_collider3d *shape = collider3d_checked(collider);
+    if (!shape || shape->type != RT_COLLIDER3D_TYPE_HEIGHTFIELD || !shape->heightfield_heights)
+        return 0;
+    if (width_out)
+        *width_out = shape->heightfield_width;
+    if (depth_out)
+        *depth_out = shape->heightfield_depth;
+    if (scale_out) {
+        scale_out[0] = shape->heightfield_scale[0];
+        scale_out[1] = shape->heightfield_scale[1];
+        scale_out[2] = shape->heightfield_scale[2];
+    }
+    return 1;
+}
+
 #else
 typedef int rt_collider3d_disabled_tu_guard;
 #endif /* VIPER_ENABLE_GRAPHICS */

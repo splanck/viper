@@ -177,6 +177,7 @@ static void test_reference_distance_and_doppler_math() {
     rt_sound3d_listener_state listener;
     double listener_pos[3] = {0.0, 0.0, 0.0};
     double forward[3] = {0.0, 0.0, -1.0};
+    double tilted_up[3] = {1.0, 0.0, 0.0};
     double near_src[3] = {2.0, 0.0, 0.0};
     double mid_src[3] = {6.0, 0.0, 0.0};
     double fast_src[3] = {10.0, 0.0, 0.0};
@@ -200,12 +201,34 @@ static void test_reference_distance_and_doppler_math() {
         &listener, fast_src, fast_vel, 1.0, 50.0, 100, &volume, &pan, &doppler);
     EXPECT_TRUE(doppler > 1.0, "Sound3D Doppler factor rises for approaching sources");
 
+    rt_sound3d_listener_state_set_pose(&listener, listener_pos, forward, tilted_up, nullptr);
+    EXPECT_NEAR(listener.up[0], 1.0, 0.001, "Sound3D listener pose preserves explicit up X");
+    EXPECT_NEAR(listener.right[1], -1.0, 0.001, "Sound3D listener pose derives right from up");
+
     void *source = rt_soundsource3d_new(nullptr);
     rt_sound3d_set_active_listener_state(&listener);
     rt_soundsource3d_set_position(source, rt_vec3_new(10.0, 0.0, 0.0));
     rt_soundsource3d_set_velocity(source, rt_vec3_new(-100.0, 0.0, 0.0));
     EXPECT_TRUE(rt_soundsource3d_get_doppler_factor(source) > 1.0,
                 "SoundSource3D exposes computed Doppler factor");
+}
+
+static void test_listener_up_vector_round_trips_to_active_state() {
+    void *listener = rt_soundlistener3d_new();
+    void *up;
+    rt_sound3d_listener_state state;
+
+    rt_soundlistener3d_set_forward(listener, rt_vec3_new(0.0, 0.0, -1.0));
+    rt_soundlistener3d_set_up(listener, rt_vec3_new(1.0, 0.0, 0.0));
+    up = rt_soundlistener3d_get_up(listener);
+    EXPECT_NEAR(rt_vec3_x(up), 1.0, 0.001, "SoundListener3D.Up X round-trips");
+    EXPECT_NEAR(rt_vec3_y(up), 0.0, 0.001, "SoundListener3D.Up Y round-trips");
+    EXPECT_NEAR(rt_vec3_z(up), 0.0, 0.001, "SoundListener3D.Up Z round-trips");
+
+    rt_soundlistener3d_set_is_active(listener, 1);
+    rt_sound3d_get_effective_listener_state(&state);
+    EXPECT_NEAR(state.up[0], 1.0, 0.001, "active listener state carries Up X");
+    EXPECT_NEAR(state.right[1], -1.0, 0.001, "active listener state derives right from Up");
 }
 
 static void test_source_play_stop_when_audio_is_available() {
@@ -248,6 +271,7 @@ int main() {
     test_source_follows_bound_node_in_world_space();
     test_invalid_audio_handles_are_ignored();
     test_reference_distance_and_doppler_math();
+    test_listener_up_vector_round_trips_to_active_state();
     test_source_play_stop_when_audio_is_available();
 
     std::printf("Sound3D object tests: %d/%d passed\n", tests_passed, tests_run);

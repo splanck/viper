@@ -36,6 +36,9 @@ and joint integration.
 | `StayEventCount` | Integer | Read | Number of collision pairs that remained touching this step |
 | `ExitEventCount` | Integer | Read | Number of collision pairs that stopped touching this step |
 | `JointCount`     | Integer | Read   | Number of active joints |
+| `LastCCDRequestedSubsteps` | Integer | Read | Unclamped CCD substep demand from the most recent `Step()` |
+| `LastCCDSubsteps` | Integer | Read | Actual CCD substeps used after applying the runtime cap |
+| `CCDSubstepClampedCount` | Integer | Read | Number of steps whose CCD demand exceeded the cap |
 
 ### Methods
 
@@ -43,6 +46,7 @@ and joint integration.
 |---------------------------|-----------------------|-------------|
 | `Step(dt)`                | `Void(Double)`        | Advance simulation by `dt` seconds |
 | `Add(body)`               | `Void(Object)`        | Add a `Physics3DBody` to the world |
+| `TryAdd(body)`            | `Boolean(Object)`     | Add a body and report allocation/validation failure without changing the world |
 | `Remove(body)`            | `Void(Object)`        | Remove a body from the world |
 | `SetGravity(x, y, z)`     | `Void(Double, Double, Double)` | Change the gravity vector |
 | `AddJoint(joint, type)`   | `Void(Object, Integer)` | Add a joint (`0 = DistanceJoint3D`, `1 = SpringJoint3D`) |
@@ -69,10 +73,13 @@ and joint integration.
 - Query `mask` uses the same layer bits as `Physics3DBody.CollisionLayer`. A mask of `0` matches no layers; use `-1` or an all-layers mask when you want any layer.
 - Static bodies are immovable. Kinematic bodies move from explicit velocity but do not
   receive gravity or force integration.
-- World storage for bodies, contacts, contact events, and joints grows on demand from production-sized initial capacities. Query result lists remain bounded for predictable allocation behavior.
+- `Add(body)` keeps the historical void API. `TryAdd(body)` returns `false` for invalid handles or allocation failure, returns `true` for already-present bodies, and leaves the body count stable on duplicates.
+- World storage for bodies, contacts, contact events, and joints grows on demand from production-sized initial capacities. Query result lists store a bounded nearest/result prefix for predictable allocation behavior, while `PhysicsHitList3D.TotalCount` and `Truncated` expose whether more matches existed.
 - Collision detection uses a sweep-and-prune broadphase before shape-specific narrow-phase tests. Box colliders honor body and compound-child orientation.
-- `Raycast` and `RaycastAll` test collider geometry, not only broadphase bounds: boxes, spheres, capsules, compound leaves, mesh/convex triangles, and heightfields report nearest shape hits.
-- Sphere and capsule sweeps use adaptive sampling, so small-radius sweeps and long capsules can hit thin geometry without a fixed world-unit step floor.
+- World queries reuse the broadphase and honor each body's collision scale before running shape tests.
+- `Raycast` and `RaycastAll` test collider geometry, not only broadphase bounds: boxes, spheres, capsules, compound leaves, mesh/convex triangles, and heightfields report nearest shape hits. Mesh raycasts build and reuse a per-mesh BVH, and heightfield raycasts adapt their step to the heightfield cell spacing.
+- Sphere sweeps use analytic tests against primitive spheres and boxes before falling back to adaptive sampling. Capsule sweeps use adaptive sampling, so small-radius sweeps and long capsules can hit thin geometry without a fixed world-unit step floor.
+- `LastCCDRequestedSubsteps`, `LastCCDSubsteps`, and `CCDSubstepClampedCount` are diagnostics for fast-body tuning; clamping is expected when very high velocity would require more substeps than the engine's safety cap.
 
 ---
 
@@ -108,6 +115,8 @@ List of `PhysicsHit3D` results returned by `RaycastAll`, `OverlapSphere`, and `O
 | Property | Type | Access | Description |
 |----------|------|--------|-------------|
 | `Count` | Integer | Read | Number of hits in the list |
+| `TotalCount` | Integer | Read | Total matching hits before the bounded result prefix was applied |
+| `Truncated` | Boolean | Read | True when more matches existed than are stored in the list |
 
 ### Methods
 
@@ -230,6 +239,7 @@ sleeping, and optional CCD.
 |----------|------|--------|-------------|
 | `Collider` | Object | Read/Write | Active `Collider3D` attached to the body |
 | `Position` | Object (`Vec3`) | Read | World position |
+| `Scale` | Object (`Vec3`) | Read | Collision scale applied to the attached collider |
 | `Orientation` | Object (`Quat`) | Read | World orientation quaternion |
 | `Velocity` | Object (`Vec3`) | Read | Linear velocity |
 | `AngularVelocity` | Object (`Vec3`) | Read | Angular velocity in radians per second |
@@ -255,6 +265,7 @@ sleeping, and optional CCD.
 |--------|-----------|-------------|
 | `SetCollider(collider)` | `Void(Object)` | Attach or replace the active collider |
 | `SetPosition(x, y, z)` | `Void(Double, Double, Double)` | Teleport body position |
+| `SetScale(x, y, z)` | `Void(Double, Double, Double)` | Set per-body collider scale |
 | `SetOrientation(quat)` | `Void(Object)` | Set body orientation from a `Viper.Math.Quat` |
 | `SetVelocity(vx, vy, vz)` | `Void(Double, Double, Double)` | Set linear velocity |
 | `SetAngularVelocity(wx, wy, wz)` | `Void(Double, Double, Double)` | Set angular velocity |
@@ -270,11 +281,19 @@ sleeping, and optional CCD.
 - `NewAABB()`, `NewSphere()`, and `NewCapsule()` are now convenience factories that create a body,
   create the matching collider, and attach it internally.
 - Use `New(mass)` plus `SetCollider()` when you want reusable, mesh, compound, or heightfield shapes.
-- `Orientation` uses the runtime quaternion type `Viper.Math.Quat`.
+- `Scale` is a physics scale, not a renderer transform; Game3D keeps it synchronized from `Entity3D` scale when a body is attached to an entity.
+- `Orientation` uses the runtime quaternion type `Viper.Math.Quat`; `SetOrientation`
+  traps when passed any other object type.
+- `CollisionLayer` must be a positive bitmask. Use `CollisionMask = 0` when you
+  need a body to collide with no layers.
 - `Sleep()` and `Wake()` only affect dynamic bodies. Static and kinematic bodies do not enter
   the sleeping state.
 - `Kinematic = true` makes the body move from explicit `Velocity` / `AngularVelocity` only.
 - `UseCCD` uses additional substeps to reduce tunneling for fast-moving bodies.
+- Position, velocity, angular velocity, force, torque, and integrated state are
+  sanitized to finite values and saturated to the runtime state bounds, so
+  extreme impulses or forces cannot create `NaN`/`Inf` body state. CCD keeps
+  diagnostics for requested-vs-applied substeps when that demand is clamped.
 - Rotational state is fully integrated for all body types. Non-trigger contacts apply impulses at
   the contact point, so off-center hits can generate angular velocity.
 - AABB primitives remain axis-aligned boxes. Capsule collision honors body orientation; use compound

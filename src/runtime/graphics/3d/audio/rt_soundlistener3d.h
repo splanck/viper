@@ -33,6 +33,11 @@ void *rt_soundlistener3d_get_forward(void *listener);
 /// @brief Set the listener's forward direction.
 void rt_soundlistener3d_set_forward(void *listener, void *forward);
 
+/// @brief Get the listener's up direction as a Vec3.
+void *rt_soundlistener3d_get_up(void *listener);
+/// @brief Set the listener's up direction.
+void rt_soundlistener3d_set_up(void *listener, void *up);
+
 /// @brief Get the listener's velocity (used for Doppler shift).
 void *rt_soundlistener3d_get_velocity(void *listener);
 /// @brief Set the listener's velocity.

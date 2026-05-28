@@ -2057,17 +2057,23 @@ static void draw_node(rt_scene_node3d *node,
                 (effective_animator != NULL || draw_mesh_impl->morph_targets_ref != NULL ||
                  draw_mesh_impl->morph_deltas != NULL || draw_mesh_impl->morph_weights != NULL ||
                  draw_mesh_impl->morph_shape_count > 0);
-            if (!has_dynamic_deformation) {
-                float cull_min[3] = {draw_min[0], draw_min[1], draw_min[2]};
-                float cull_max[3] = {draw_max[0], draw_max[1], draw_max[2]};
-                float world_min[3], world_max[3];
-                vgfx3d_transform_aabb(
-                    cull_min, cull_max, current->world_matrix, world_min, world_max);
-                if (vgfx3d_frustum_test_aabb(frustum, world_min, world_max) == 0) {
-                    draw_self = 0;
-                    if (culled)
-                        (*culled)++;
-                }
+            float cull_min[3] = {draw_min[0], draw_min[1], draw_min[2]};
+            float cull_max[3] = {draw_max[0], draw_max[1], draw_max[2]};
+            float world_min[3], world_max[3];
+            if (has_dynamic_deformation) {
+                float pad = draw_radius > 0.0f ? draw_radius * 0.5f : 0.0f;
+                cull_min[0] -= pad;
+                cull_min[1] -= pad;
+                cull_min[2] -= pad;
+                cull_max[0] += pad;
+                cull_max[1] += pad;
+                cull_max[2] += pad;
+            }
+            vgfx3d_transform_aabb(cull_min, cull_max, current->world_matrix, world_min, world_max);
+            if (vgfx3d_frustum_test_aabb(frustum, world_min, world_max) == 0) {
+                draw_self = 0;
+                if (culled)
+                    (*culled)++;
             }
         }
 
@@ -2310,6 +2316,14 @@ void *rt_scene_node3d_get_world_position(void *obj) {
     double z = 0.0;
     scene_node_get_world_position(n, &x, &y, &z);
     return rt_vec3_new(x, y, z);
+}
+
+/// @brief Read the world-space orientation as a Quat.
+void *rt_scene_node3d_get_world_rotation(void *obj) {
+    rt_scene_node3d *n = scene_node3d_checked(obj);
+    double q[4];
+    scene_node_get_world_rotation(n, q);
+    return rt_quat_new(q[0], q[1], q[2], q[3]);
 }
 
 /// @brief Read world-space scale magnitudes from the composed matrix basis vectors.
@@ -2864,7 +2878,6 @@ void rt_scene3d_draw(void *obj, void *canvas3d, void *camera) {
     rt_canvas3d *canvas = rt_canvas3d_checked_or_stack(canvas3d);
     rt_camera3d *cam = rt_camera3d_checked_or_stack(camera);
     int8_t started_frame = 0;
-    rt_light3d scene_light_storage[VGFX3D_MAX_LIGHTS];
     rt_light3d *scene_light_ptrs[VGFX3D_MAX_LIGHTS];
     rt_light3d *prev_scene_lights[VGFX3D_MAX_LIGHTS];
     int32_t scene_light_count = 0;
@@ -2895,7 +2908,8 @@ void rt_scene3d_draw(void *obj, void *canvas3d, void *camera) {
     prev_scene_light_count = canvas->scene_light_count;
     memcpy(prev_scene_lights, canvas->scene_lights, sizeof(prev_scene_lights));
     memset(scene_light_ptrs, 0, sizeof(scene_light_ptrs));
-    scene_collect_node_lights(s->root, scene_light_storage, scene_light_ptrs, &scene_light_count);
+    scene_collect_node_lights(
+        s->root, canvas->scene_light_storage, scene_light_ptrs, &scene_light_count);
     canvas->scene_light_count = scene_light_count;
     memset(canvas->scene_lights, 0, sizeof(canvas->scene_lights));
     memcpy(canvas->scene_lights,

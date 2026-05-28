@@ -582,6 +582,98 @@ static void test_transform_aabb_orders_inverted_extents(void) {
     EXPECT_NEAR(out_max[2], 35.0f, 1e-6f, "AABB transform refits max Z after ordering");
 }
 
+static void test_skinning_multibone_reuses_normal_palette(void) {
+    vgfx3d_vertex_t src[3];
+    vgfx3d_vertex_t dst[3];
+    float palette[32]; /* two bones */
+
+    memset(src, 0, sizeof(src));
+    set_identity4x4(&palette[0]);
+    palette[0] = 2.0f;   /* bone 0: scale x by 2 */
+    palette[10] = 0.5f;  /* bone 0: scale z by 0.5 */
+    set_identity4x4(&palette[16]); /* bone 1: identity (normals pass through) */
+
+    for (int v = 0; v < 3; v++) {
+        src[v].normal[0] = 0.70710677f;
+        src[v].normal[2] = 0.70710677f;
+        src[v].bone_weights[0] = 1.0f;
+    }
+    /* Vertices 0 and 2 share bone 0 (exercises reuse of the precomputed normal
+     * palette); vertex 1 uses the distinct identity bone 1. */
+    src[0].bone_indices[0] = 0;
+    src[1].bone_indices[0] = 1;
+    src[2].bone_indices[0] = 0;
+
+    memset(dst, 0, sizeof(dst));
+    vgfx3d_skin_vertices(src, dst, 3, palette, 2);
+
+    /* Bone 0's inverse-transpose of diag(2,1,0.5) is diag(0.5,1,2); applied to
+     * (0.707,0,0.707) and renormalized gives (0.2425, 0, 0.9701). */
+    EXPECT_NEAR(dst[0].normal[0],
+                0.24253564f,
+                1e-5f,
+                "Multi-bone skinning matches the single-bone normal reference (vertex 0)");
+    EXPECT_NEAR(dst[2].normal[0],
+                0.24253564f,
+                1e-5f,
+                "Precomputed bone normal palette is reused across vertices (vertex 2)");
+    EXPECT_NEAR(dst[2].normal[2],
+                0.97014254f,
+                1e-5f,
+                "Reused bone normal palette preserves the Z component (vertex 2)");
+    EXPECT_NEAR(dst[1].normal[0],
+                0.70710677f,
+                1e-5f,
+                "A distinct identity bone leaves vertex 1's normal unchanged");
+}
+
+static void test_frustum_valid_classifies_volumes(void) {
+    vgfx3d_frustum_t f;
+    float vp[16];
+    float in_min[3] = {-0.5f, -0.5f, -0.5f};
+    float in_max[3] = {0.5f, 0.5f, 0.5f};
+    float out_min[3] = {5.0f, 5.0f, 5.0f};
+    float out_max[3] = {6.0f, 6.0f, 6.0f};
+    float cross_min[3] = {0.5f, 0.5f, 0.5f};
+    float cross_max[3] = {1.5f, 1.5f, 1.5f};
+    float center_in[3] = {0.0f, 0.0f, 0.0f};
+    float center_out[3] = {5.0f, 0.0f, 0.0f};
+
+    /* An identity view-projection yields the canonical NDC cube [-1,1]^3. */
+    set_identity4x4(vp);
+    vgfx3d_frustum_extract(&f, vp);
+    EXPECT_TRUE(f.planes_valid == 1, "A valid VP extraction marks the frustum planes valid");
+    EXPECT_TRUE(vgfx3d_frustum_test_aabb(&f, in_min, in_max) == 2,
+                "Frustum classifies an enclosed AABB as fully inside");
+    EXPECT_TRUE(vgfx3d_frustum_test_aabb(&f, out_min, out_max) == 0,
+                "Frustum classifies a distant AABB as outside");
+    EXPECT_TRUE(vgfx3d_frustum_test_aabb(&f, cross_min, cross_max) == 1,
+                "Frustum classifies a straddling AABB as intersecting");
+    EXPECT_TRUE(vgfx3d_frustum_test_sphere(&f, center_in, 0.25f) == 2,
+                "Frustum classifies an enclosed sphere as fully inside");
+    EXPECT_TRUE(vgfx3d_frustum_test_sphere(&f, center_out, 0.25f) == 0,
+                "Frustum classifies a distant sphere as outside");
+}
+
+static void test_compute_normal_matrix_small_scale(void) {
+    float model[16];
+    float nm[16];
+
+    /* A uniform 0.002 scale has a 3x3 determinant of 8e-9 — below the former
+     * 1e-8 singular threshold, which wrongly fell back to identity. The shared
+     * 1e-12 threshold must instead produce the real normal matrix (diag 500). */
+    set_identity4x4(model);
+    model[0] = 0.002f;
+    model[5] = 0.002f;
+    model[10] = 0.002f;
+    vgfx3d_compute_normal_matrix4(model, nm);
+
+    EXPECT_TRUE(nm[0] > 100.0f,
+                "Small uniform scale yields a real normal matrix, not the identity fallback");
+    EXPECT_NEAR(nm[0], 500.0f, 1.0f, "Normal matrix inverts a small uniform scale (X)");
+    EXPECT_NEAR(nm[5], 500.0f, 1.0f, "Normal matrix inverts a small uniform scale (Y)");
+}
+
 int main(void) {
     test_unpack_pixels_rgba_success();
     test_unpack_pixels_rgba_rejects_invalid();
@@ -599,6 +691,9 @@ int main(void) {
     test_skinning_uses_inverse_transpose_normals();
     test_frustum_and_mesh_aabb_reject_invalid_inputs_conservatively();
     test_transform_aabb_orders_inverted_extents();
+    test_skinning_multibone_reuses_normal_palette();
+    test_frustum_valid_classifies_volumes();
+    test_compute_normal_matrix_small_scale();
 
     printf("vgfx3d_backend_utils tests: %d/%d passed\n", tests_passed, tests_run);
     return tests_passed == tests_run ? 0 : 1;

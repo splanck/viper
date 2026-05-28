@@ -150,6 +150,9 @@ class LightingSystem {
     expose func init() {}
     hide Palette pal;
     hide Lighting2D lit;
+    hide Integer flickerT;        // frame counter driving the light flicker (#10)
+    hide Integer playerLightBase; // base player-light radius (flickered each frame)
+    hide Integer playerLightCol;  // base player-light colour
 
     /// @brief Finish construction.  Allocates the Lighting2D
     ///        runtime instance and installs default values.
@@ -162,7 +165,10 @@ class LightingSystem {
         lit = Lighting2D.New(MAX_DYN_LIGHTS);
         lit.Darkness = 0;                     // start fully-lit
         lit.TintColor = Color.RGB(0, 0, 10);  // near-black
-        lit.SetPlayerLight(180, Color.RGB(60, 70, 80));
+        flickerT = 0;
+        playerLightBase = 180;
+        playerLightCol = Color.RGB(60, 70, 80);
+        lit.SetPlayerLight(playerLightBase, playerLightCol);
     }
 
     /// @brief Set darkness level (0..255).  `level.zia` calls
@@ -193,7 +199,18 @@ class LightingSystem {
     /// @brief Per-frame tick — advance light lifetimes, purge
     ///        dead ones.  Called from `game.update()` once a
     ///        frame, before draw.
+    /// @brief Cheap per-frame radius flicker: ~92%..107% of `base`, offset by
+    ///        `seed` so neighbouring tile lights don't pulse in lockstep (#10).
+    hide func flicker(base: Integer, seed: Integer) -> Integer {
+        var w = (flickerT * 9 + seed * 7) % 16;   // 0..15
+        return base * (92 + w) / 100;
+    }
+
     expose func update() {
+        // Living lights (#10): a subtle radius flutter on the player's lamp
+        // reads as a torch / helmet-light flicker in dark biomes.
+        flickerT = flickerT + 1;
+        lit.SetPlayerLight(flicker(playerLightBase, 0), playerLightCol);
         lit.Update();
     }
 
@@ -223,7 +240,7 @@ class LightingSystem {
         if lit.Darkness <= 0 { return; }
         var cx = screenX + TILE_SIZE / 2;
         var cy = screenY + TILE_SIZE / 2;
-        lit.AddTileLight(cx, cy, radius, color);
+        lit.AddTileLight(cx, cy, flicker(radius, screenX), color);
     }
 
     /// @brief Bright, short, warm: the visual language of "boom".

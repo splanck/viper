@@ -583,7 +583,7 @@ static void compute_lighting(pipe_vert_t *v,
             b += cmd->emissive_color[2] * emissive_scale * (strength - 1.0f);
             break;
         }
-        default: /* 0=BlinnPhong (already computed), 2=reserved, 3=Unlit (handled above) */
+        default: /* 0=BlinnPhong (already computed), 2=PBR, 3=Unlit (handled above) */
             break;
     }
 
@@ -1026,6 +1026,7 @@ static void sw_apply_environment_reflection(const vgfx3d_draw_cmd_t *cmd,
                                             const screen_vert_t *v1,
                                             const screen_vert_t *v2,
                                             const sw_context_t *ctx,
+                                            const float *precomputed_world_normal,
                                             float *inout_r,
                                             float *inout_g,
                                             float *inout_b);
@@ -1151,6 +1152,7 @@ static void sw_apply_environment_reflection(const vgfx3d_draw_cmd_t *cmd,
                                             const screen_vert_t *v1,
                                             const screen_vert_t *v2,
                                             const sw_context_t *ctx,
+                                            const float *precomputed_world_normal,
                                             float *inout_r,
                                             float *inout_g,
                                             float *inout_b) {
@@ -1187,7 +1189,10 @@ static void sw_apply_environment_reflection(const vgfx3d_draw_cmd_t *cmd,
     sw_interpolate_uv_for_slot(
         cmd, RT_MATERIAL3D_TEXTURE_SLOT_METALLIC_ROUGHNESS, b0, b1, b2, v0, v1, v2, &mr_u, &mr_v);
 
-    if (normal_map) {
+    /* When the main shading path already produced this fragment's perturbed
+     * world normal, reuse it (below) and skip the redundant per-pixel normal-map
+     * sample + TBN rebuild here. */
+    if (!precomputed_world_normal && normal_map) {
         float ptx = b0 * v0->tx + b1 * v1->tx + b2 * v2->tx;
         float pty = b0 * v0->ty + b1 * v1->ty + b2 * v2->ty;
         float ptz = b0 * v0->tz + b1 * v1->tz + b2 * v2->tz;
@@ -1238,6 +1243,11 @@ static void sw_apply_environment_reflection(const vgfx3d_draw_cmd_t *cmd,
             pnz = ptz * map_x + bbz * map_y + pnz * map_z;
             normalize3f(&pnx, &pny, &pnz);
         }
+    }
+    if (precomputed_world_normal) {
+        pnx = precomputed_world_normal[0];
+        pny = precomputed_world_normal[1];
+        pnz = precomputed_world_normal[2];
     }
 
     sw_compute_view_vector(ctx, wx, wy, wz, &vdx, &vdy, &vdz);
@@ -1424,6 +1434,14 @@ static void raster_triangle(uint8_t *pixels,
     float row_w1 = e20_dx * (py0 - v2->sy) - e20_dy * (px0 - v2->sx);
     float row_w2 = e01_dx * (py0 - v0->sy) - e01_dy * (px0 - v0->sx);
 
+    /* Terrain-splat views are constant across the whole triangle; resolve them
+     * once here instead of re-opening the five Pixels views for every pixel. */
+    sw_pixels_view splat_view;
+    sw_pixels_view layer_views[4];
+    int have_splat = (cmd && cmd->has_splat && cmd->splat_map)
+                         ? sw_setup_complete_splat(cmd, &splat_view, layer_views)
+                         : 0;
+
     for (int y = min_y; y <= max_y; y++) {
         float w0 = row_w0, w1 = row_w1, w2 = row_w2;
         for (int x = min_x; x <= max_x; x++) {
@@ -1485,17 +1503,17 @@ static void raster_triangle(uint8_t *pixels,
                             tex_alpha = ta;
                         }
                     }
-                    /* Terrain splat: replace diffuse with per-pixel layer blend */
-                    if (cmd && cmd->has_splat && cmd->splat_map) {
+                    /* Terrain splat: replace diffuse with per-pixel layer blend.
+                     * Views were resolved once per triangle (splat_view /
+                     * layer_views) above. */
+                    if (have_splat) {
                         float iw = b0 * v0->inv_w + b1 * v1->inv_w + b2 * v2->inv_w;
                         if (fabsf(iw) > 1e-7f) {
                             float sp_u =
                                 (b0 * v0->u_over_w + b1 * v1->u_over_w + b2 * v2->u_over_w) / iw;
                             float sp_v =
                                 (b0 * v0->v_over_w + b1 * v1->v_over_w + b2 * v2->v_over_w) / iw;
-                            sw_pixels_view splat_view;
-                            sw_pixels_view layer_views[4];
-                            if (sw_setup_complete_splat(cmd, &splat_view, layer_views)) {
+                            {
                                 float sr, sg, sb, sa;
                                 sample_texture(&splat_view, sp_u, sp_v, &sr, &sg, &sb, &sa);
                                 float w[4] = {sr, sg, sb, sa};
@@ -1561,6 +1579,10 @@ static void raster_triangle(uint8_t *pixels,
 
                     /* Per-pixel lighting for PBR or normal-mapped legacy materials. */
                     float pixel_ndv = 1.0f;
+                    /* Captured perturbed world normal; reused by the env-reflection
+                     * pass below to avoid recomputing the TBN a second time. */
+                    float refl_world_normal[3] = {0.0f, 0.0f, 0.0f};
+                    int refl_world_normal_valid = 0;
                     if (cmd && !cmd->unlit &&
                         (cmd->workflow == RT_MATERIAL3D_WORKFLOW_PBR || normal_map)) {
                         float pp_iw = b0 * v0->inv_w + b1 * v1->inv_w + b2 * v2->inv_w;
@@ -1585,47 +1607,51 @@ static void raster_triangle(uint8_t *pixels,
                                                        v2,
                                                        &normal_u,
                                                        &normal_v);
-                            sw_interpolate_uv_for_slot(cmd,
-                                                       RT_MATERIAL3D_TEXTURE_SLOT_SPECULAR,
-                                                       b0,
-                                                       b1,
-                                                       b2,
-                                                       v0,
-                                                       v1,
-                                                       v2,
-                                                       &specular_u,
-                                                       &specular_v);
-                            sw_interpolate_uv_for_slot(cmd,
-                                                       RT_MATERIAL3D_TEXTURE_SLOT_EMISSIVE,
-                                                       b0,
-                                                       b1,
-                                                       b2,
-                                                       v0,
-                                                       v1,
-                                                       v2,
-                                                       &emissive_u,
-                                                       &emissive_v);
-                            sw_interpolate_uv_for_slot(
-                                cmd,
-                                RT_MATERIAL3D_TEXTURE_SLOT_METALLIC_ROUGHNESS,
-                                b0,
-                                b1,
-                                b2,
-                                v0,
-                                v1,
-                                v2,
-                                &mr_u,
-                                &mr_v);
-                            sw_interpolate_uv_for_slot(cmd,
-                                                       RT_MATERIAL3D_TEXTURE_SLOT_AO,
-                                                       b0,
-                                                       b1,
-                                                       b2,
-                                                       v0,
-                                                       v1,
-                                                       v2,
-                                                       &ao_u,
-                                                       &ao_v);
+                            if (specular_map)
+                                sw_interpolate_uv_for_slot(cmd,
+                                                           RT_MATERIAL3D_TEXTURE_SLOT_SPECULAR,
+                                                           b0,
+                                                           b1,
+                                                           b2,
+                                                           v0,
+                                                           v1,
+                                                           v2,
+                                                           &specular_u,
+                                                           &specular_v);
+                            if (emissive_tex)
+                                sw_interpolate_uv_for_slot(cmd,
+                                                           RT_MATERIAL3D_TEXTURE_SLOT_EMISSIVE,
+                                                           b0,
+                                                           b1,
+                                                           b2,
+                                                           v0,
+                                                           v1,
+                                                           v2,
+                                                           &emissive_u,
+                                                           &emissive_v);
+                            if (metallic_roughness_map)
+                                sw_interpolate_uv_for_slot(
+                                    cmd,
+                                    RT_MATERIAL3D_TEXTURE_SLOT_METALLIC_ROUGHNESS,
+                                    b0,
+                                    b1,
+                                    b2,
+                                    v0,
+                                    v1,
+                                    v2,
+                                    &mr_u,
+                                    &mr_v);
+                            if (ao_map)
+                                sw_interpolate_uv_for_slot(cmd,
+                                                           RT_MATERIAL3D_TEXTURE_SLOT_AO,
+                                                           b0,
+                                                           b1,
+                                                           b2,
+                                                           v0,
+                                                           v1,
+                                                           v2,
+                                                           &ao_u,
+                                                           &ao_v);
 
                             /* Interpolate world normal */
                             float pnx = b0 * v0->nx + b1 * v1->nx + b2 * v2->nx;
@@ -1689,6 +1715,13 @@ static void raster_triangle(uint8_t *pixels,
                                 }
                             }
                             /* else: degenerate tangent → use unperturbed normal */
+
+                            /* Capture the final shading normal so the env-reflection
+                             * pass can reuse it instead of recomputing the TBN. */
+                            refl_world_normal[0] = pnx;
+                            refl_world_normal[1] = pny;
+                            refl_world_normal[2] = pnz;
+                            refl_world_normal_valid = 1;
 
                             /* Per-pixel Blinn-Phong with perturbed normal */
                             float wx = b0 * v0->wx + b1 * v1->wx + b2 * v2->wx;
@@ -2032,6 +2065,8 @@ static void raster_triangle(uint8_t *pixels,
                                                         v1,
                                                         v2,
                                                         fog_ctx,
+                                                        refl_world_normal_valid ? refl_world_normal
+                                                                                : NULL,
                                                         &fr,
                                                         &fg,
                                                         &fb_c);
@@ -2624,8 +2659,8 @@ static void sw_clear(void *ctx_ptr, vgfx_window_t win, float r, float g, float b
                 px[2] = cb;
                 px[3] = 0xFF;
             }
-        int32_t total = rt->width * rt->height;
-        for (int32_t i = 0; i < total; i++)
+        size_t total = (size_t)rt->width * (size_t)rt->height;
+        for (size_t i = 0; i < total; i++)
             rt->depth_buf[i] = FLT_MAX;
         rt->hdr_color_valid = 0;
     } else {
@@ -2642,8 +2677,8 @@ static void sw_clear(void *ctx_ptr, vgfx_window_t win, float r, float g, float b
                     px[3] = 0xFF;
                 }
         }
-        int32_t total = ctx->width * ctx->height;
-        for (int32_t i = 0; i < total; i++)
+        size_t total = (size_t)ctx->width * (size_t)ctx->height;
+        for (size_t i = 0; i < total; i++)
             ctx->zbuf[i] = FLT_MAX;
     }
 }
@@ -2675,13 +2710,13 @@ static void sw_begin_frame(void *ctx_ptr, const vgfx3d_camera_params_t *cam) {
         if (ctx->render_target) {
             vgfx3d_rendertarget_t *rt = ctx->render_target;
             if (vgfx3d_rendertarget_ensure_depth(rt)) {
-                int32_t total = rt->width * rt->height;
-                for (int32_t i = 0; i < total; i++)
+                size_t total = (size_t)rt->width * (size_t)rt->height;
+                for (size_t i = 0; i < total; i++)
                     rt->depth_buf[i] = FLT_MAX;
             }
         } else {
-            int32_t total = ctx->width * ctx->height;
-            for (int32_t i = 0; i < total; i++)
+            size_t total = (size_t)ctx->width * (size_t)ctx->height;
+            for (size_t i = 0; i < total; i++)
                 ctx->zbuf[i] = FLT_MAX;
         }
     }

@@ -27,6 +27,8 @@
 #include "rt.hpp"
 #include "rt_canvas3d.h"
 #include "rt_internal.h"
+#include "rt_morphtarget3d.h"
+#include "rt_pixels.h"
 #include "rt_platform.h"
 #include "rt_sprite3d.h"
 #include "rt_string.h"
@@ -135,6 +137,27 @@ extern "C" void rt_postfx3d_apply_to_canvas(void *canvas);
 static bool finite_vec3(void *v) {
     return v && std::isfinite(rt_vec3_x(v)) && std::isfinite(rt_vec3_y(v)) &&
            std::isfinite(rt_vec3_z(v));
+}
+
+static void free_canvas3d_test_draw_state(rt_canvas3d *canvas) {
+    if (!canvas)
+        return;
+    for (int32_t i = 0; i < canvas->temp_buf_count; i++)
+        free(canvas->temp_buffers[i]);
+    for (int32_t i = 0; i < canvas->temp_obj_count; i++) {
+        if (canvas->temp_objects[i] && rt_obj_release_check0(canvas->temp_objects[i]))
+            rt_obj_free(canvas->temp_objects[i]);
+    }
+    free(canvas->temp_buffers);
+    free(canvas->temp_objects);
+    free(canvas->draw_cmds);
+    canvas->temp_buffers = nullptr;
+    canvas->temp_objects = nullptr;
+    canvas->draw_cmds = nullptr;
+    canvas->temp_buf_count = canvas->temp_buf_capacity = 0;
+    canvas->temp_obj_count = canvas->temp_obj_capacity = 0;
+    canvas->draw_count = canvas->draw_capacity = 0;
+    canvas->mesh_snapshot_count = 0;
 }
 
 static bool finite_camera_state(rt_camera3d *cam) {
@@ -391,6 +414,36 @@ static void test_mesh_clone() {
     EXPECT_EQ(rt_mesh3d_get_vertex_count(c), 24);
     EXPECT_EQ(rt_mesh3d_get_triangle_count(c), 12);
     EXPECT_EQ(((rt_mesh3d *)c)->bone_count, 0);
+    PASS();
+}
+
+static void test_mesh_clone_deep_copies_morph_targets() {
+    TEST("Mesh3D.Clone deep-copies morph targets");
+    rt_mesh3d *mesh = (rt_mesh3d *)rt_mesh3d_new();
+    rt_mesh3d_add_vertex(mesh, 0, 0, 0, 0, 1, 0, 0, 0);
+    void *morph = rt_morphtarget3d_new(1);
+    int64_t shape = rt_morphtarget3d_add_shape(morph, rt_const_cstr("shape"));
+    rt_morphtarget3d_set_weight(morph, shape, 0.25);
+    rt_morphtarget3d_set_delta(morph, shape, 0, 1.0, 2.0, 3.0);
+    rt_mesh3d_set_morph_targets(mesh, morph);
+
+    rt_mesh3d *clone = (rt_mesh3d *)rt_mesh3d_clone(mesh);
+    assert(clone != NULL);
+    EXPECT_TRUE(clone->morph_targets_ref != nullptr, "clone keeps morph targets");
+    EXPECT_TRUE(clone->morph_targets_ref != morph, "clone does not share morph target payload");
+    EXPECT_NEAR(rt_morphtarget3d_get_weight(clone->morph_targets_ref, shape),
+                0.25,
+                0.001);
+
+    rt_morphtarget3d_set_weight(morph, shape, 0.75);
+    rt_morphtarget3d_set_delta(morph, shape, 0, 9.0, 9.0, 9.0);
+    EXPECT_NEAR(rt_morphtarget3d_get_weight(clone->morph_targets_ref, shape),
+                0.25,
+                0.001);
+    const float *clone_deltas = rt_morphtarget3d_get_packed_deltas(clone->morph_targets_ref);
+    EXPECT_NEAR(clone_deltas[0], 1.0, 0.001);
+    EXPECT_NEAR(clone_deltas[1], 2.0, 0.001);
+    EXPECT_NEAR(clone_deltas[2], 3.0, 0.001);
     PASS();
 }
 
@@ -843,6 +896,35 @@ static void test_material_new_textured() {
     void *px = rt_pixels_new(4, 4);
     void *m = rt_material3d_new_textured(px);
     assert(m);
+    PASS();
+}
+
+static void test_material_texture_setters_reject_invalid_handles() {
+    TEST("Material3D texture setters reject non-Pixels handles");
+    void *mat = rt_material3d_new();
+    void *pixels = rt_pixels_new(1, 1);
+    void *fake = rt_material3d_new();
+    assert(mat != NULL && pixels != NULL && fake != NULL);
+
+    EXPECT_TRUE(expect_trap_contains([&] { rt_material3d_new_textured(fake); }, "Pixels"),
+                "NewTextured rejects non-Pixels handles");
+    rt_material3d_set_texture(mat, pixels);
+    EXPECT_TRUE(expect_trap_contains([&] { rt_material3d_set_texture(mat, fake); }, "Pixels"),
+                "SetTexture rejects non-Pixels handles");
+    EXPECT_TRUE(
+        expect_trap_contains([&] { rt_material3d_set_normal_map(mat, fake); }, "Pixels"),
+        "SetNormalMap rejects non-Pixels handles");
+    EXPECT_TRUE(expect_trap_contains(
+                    [&] { rt_material3d_set_metallic_roughness_map(mat, fake); }, "Pixels"),
+                "SetMetallicRoughnessMap rejects non-Pixels handles");
+    EXPECT_TRUE(expect_trap_contains([&] { rt_material3d_set_ao_map(mat, fake); }, "Pixels"),
+                "SetAOMap rejects non-Pixels handles");
+    EXPECT_TRUE(
+        expect_trap_contains([&] { rt_material3d_set_specular_map(mat, fake); }, "Pixels"),
+        "SetSpecularMap rejects non-Pixels handles");
+    EXPECT_TRUE(
+        expect_trap_contains([&] { rt_material3d_set_emissive_map(mat, fake); }, "Pixels"),
+        "SetEmissiveMap rejects non-Pixels handles");
     PASS();
 }
 
@@ -2132,6 +2214,32 @@ static void test_canvas_light_supports_last_slot() {
     PASS();
 }
 
+static void test_canvas_light_rejects_invalid_inputs() {
+    TEST("Canvas3D.SetLight rejects invalid index and handle");
+    rt_canvas3d canvas;
+    memset(&canvas, 0, sizeof(canvas));
+    void *light = rt_light3d_new_ambient(0.2, 0.2, 0.2);
+    void *fake = rt_material3d_new();
+    assert(light != NULL && fake != NULL);
+
+    EXPECT_TRUE(expect_trap_contains([&] { rt_canvas3d_set_light(&canvas, -1, light); },
+                                    "index out of range"),
+                "SetLight rejects negative slots");
+    EXPECT_TRUE(expect_trap_contains([&] {
+                    rt_canvas3d_set_light(&canvas, VGFX3D_MAX_LIGHTS, light);
+                },
+                                    "index out of range"),
+                "SetLight rejects slots past the light table");
+
+    rt_canvas3d_set_light(&canvas, 0, light);
+    EXPECT_TRUE(expect_trap_contains([&] { rt_canvas3d_set_light(&canvas, 0, fake); },
+                                    "Light3D"),
+                "SetLight rejects non-Light3D handles");
+    EXPECT_TRUE(canvas.lights[0] == light, "rejected light handle leaves slot unchanged");
+    rt_canvas3d_set_light(&canvas, 0, NULL);
+    PASS();
+}
+
 static void test_canvas_default_lighting_and_clear_lights() {
     TEST("Canvas3D.SetDefaultLighting and ClearLights");
     rt_canvas3d canvas;
@@ -2549,6 +2657,22 @@ static void test_canvas_delta_time_preserves_first_zero() {
     PASS();
 }
 
+static void test_canvas_poll_event_queue_drains_in_order() {
+    TEST("Canvas3D.PollEvent drains queued event types in order");
+    rt_canvas3d canvas;
+    memset(&canvas, 0, sizeof(canvas));
+    canvas.event_type_queue[0] = VGFX_EVENT_KEY_DOWN;
+    canvas.event_type_queue[1] = VGFX_EVENT_RESIZE;
+    canvas.event_type_queue[2] = VGFX_EVENT_CLOSE;
+    canvas.event_type_count = 3;
+
+    EXPECT_EQ(rt_canvas3d_poll_event(&canvas), VGFX_EVENT_KEY_DOWN);
+    EXPECT_EQ(rt_canvas3d_poll_event(&canvas), VGFX_EVENT_RESIZE);
+    EXPECT_EQ(rt_canvas3d_poll_event(&canvas), VGFX_EVENT_CLOSE);
+    EXPECT_EQ(rt_canvas3d_poll_event(&canvas), VGFX_EVENT_NONE);
+    PASS();
+}
+
 static void test_canvas_delta_time_cap_and_disable() {
     TEST("Canvas3D.GetDeltaTime clamps to max and SetDTMax can disable the cap");
     rt_canvas3d canvas;
@@ -2870,7 +2994,7 @@ static void test_mesh_tangent_fallback_is_orthogonal_to_normal() {
 }
 
 static void test_canvas_draw_auto_generates_missing_normal_map_tangents() {
-    TEST("Canvas3D.DrawMesh auto-generates tangents for normal maps");
+    TEST("Canvas3D.DrawMesh generates normal-map tangents on queued copies");
     vgfx3d_backend_t backend = {};
     rt_canvas3d canvas;
     rt_mesh3d *mesh = (rt_mesh3d *)rt_mesh3d_new_plane(2.0, 2.0);
@@ -2889,10 +3013,69 @@ static void test_canvas_draw_auto_generates_missing_normal_map_tangents() {
 
     EXPECT_NEAR(mesh->vertices[0].tangent[0], 0.0, 0.001);
     rt_canvas3d_draw_mesh_matrix(&canvas, mesh, model, mat);
-    EXPECT_TRUE(std::fabs(mesh->vertices[0].tangent[0]) + std::fabs(mesh->vertices[0].tangent[1]) +
-                        std::fabs(mesh->vertices[0].tangent[2]) >
-                    0.5,
-                "Normal-mapped draws have a usable tangent basis");
+    EXPECT_NEAR(mesh->vertices[0].tangent[0], 0.0, 0.001);
+    EXPECT_TRUE(canvas.temp_buf_count >= 2, "normal-mapped draw snapshots geometry");
+    {
+        vgfx3d_vertex_t *queued_vertices = (vgfx3d_vertex_t *)canvas.temp_buffers[0];
+        EXPECT_TRUE(queued_vertices != nullptr, "normal-mapped draw has queued vertices");
+        EXPECT_TRUE(std::fabs(queued_vertices[0].tangent[0]) +
+                            std::fabs(queued_vertices[0].tangent[1]) +
+                            std::fabs(queued_vertices[0].tangent[2]) >
+                        0.5,
+                    "queued normal-mapped draw has a usable tangent basis");
+    }
+    free_canvas3d_test_draw_state(&canvas);
+    PASS();
+}
+
+static void test_canvas_draw_snapshots_heap_mesh_geometry() {
+    TEST("Canvas3D.DrawMesh snapshots heap mesh geometry for deferred draws");
+    vgfx3d_backend_t backend = {};
+    rt_canvas3d canvas;
+    rt_mesh3d *mesh = (rt_mesh3d *)rt_mesh3d_new_plane(2.0, 2.0);
+    void *mat = rt_material3d_new();
+    double model[16] = {0.0};
+    assert(mesh != NULL && mat != NULL);
+
+    backend.name = "test";
+    memset(&canvas, 0, sizeof(canvas));
+    canvas.backend = &backend;
+    canvas.gfx_win = (vgfx_window_t)1;
+    canvas.in_frame = 1;
+    model[0] = model[5] = model[10] = model[15] = 1.0;
+
+    float original_x = mesh->vertices[0].pos[0];
+    rt_canvas3d_draw_mesh_matrix(&canvas, mesh, model, mat);
+    EXPECT_TRUE(canvas.temp_buf_count >= 2, "heap mesh draw records vertex/index snapshots");
+    vgfx3d_vertex_t *queued_vertices = (vgfx3d_vertex_t *)canvas.temp_buffers[0];
+    EXPECT_TRUE(queued_vertices != nullptr, "heap mesh draw has queued vertices");
+    mesh->vertices[0].pos[0] = 99.0f;
+    EXPECT_NEAR(queued_vertices[0].pos[0], original_x, 0.001);
+
+    free_canvas3d_test_draw_state(&canvas);
+    PASS();
+}
+
+static void test_canvas_draw_rejects_public_raw_mesh_handles() {
+    TEST("Canvas3D.DrawMesh rejects public raw mesh handles");
+    vgfx3d_backend_t backend = {};
+    rt_canvas3d canvas;
+    rt_mesh3d raw_mesh;
+    void *mat = rt_material3d_new();
+    void *transform = rt_mat4_identity();
+    assert(mat != NULL && transform != NULL);
+
+    memset(&canvas, 0, sizeof(canvas));
+    memset(&raw_mesh, 0, sizeof(raw_mesh));
+    backend.name = "test";
+    canvas.backend = &backend;
+    canvas.gfx_win = (vgfx_window_t)1;
+    canvas.in_frame = 1;
+    raw_mesh.vertex_count = 3;
+    raw_mesh.index_count = 3;
+
+    rt_canvas3d_draw_mesh(&canvas, &raw_mesh, transform, mat);
+    EXPECT_EQ(canvas.draw_count, 0);
     PASS();
 }
 
@@ -3435,6 +3618,7 @@ int main() {
     test_mesh_cylinder();
     test_mesh_generators_reject_invalid_dimensions();
     test_mesh_clone();
+    test_mesh_clone_deep_copies_morph_targets();
     test_mesh_transform_uses_inverse_transpose_normals();
     test_mesh_transform_updates_tangent_basis();
     test_mesh_transform_flips_tangent_handedness_for_mirrors();
@@ -3489,6 +3673,7 @@ int main() {
     test_material_new();
     test_material_new_color();
     test_material_new_textured();
+    test_material_texture_setters_reject_invalid_handles();
     test_material_inspection_getters();
     test_material_set_color();
     test_material_sanitizes_numeric_inputs();
@@ -3565,8 +3750,10 @@ int main() {
     test_canvas_render_target_rejects_mid_frame_changes();
     test_canvas_light_retains_owned_reference();
     test_canvas_light_supports_last_slot();
+    test_canvas_light_rejects_invalid_inputs();
     test_canvas_default_lighting_and_clear_lights();
     test_canvas_delta_time_preserves_first_zero();
+    test_canvas_poll_event_queue_drains_in_order();
     test_canvas_delta_time_cap_and_disable();
     test_canvas_delta_time_sec_clamps_huge_dtmax_without_overflow();
     test_canvas_synthetic_mouse_accumulation_clamps();
@@ -3590,6 +3777,8 @@ int main() {
     test_mesh_tangents_for_normal_map();
     test_mesh_tangent_fallback_is_orthogonal_to_normal();
     test_canvas_draw_auto_generates_missing_normal_map_tangents();
+    test_canvas_draw_snapshots_heap_mesh_geometry();
+    test_canvas_draw_rejects_public_raw_mesh_handles();
     test_mesh_normals_recalc();
     test_mesh_recalc_normals_assigns_fallback_for_unreferenced_vertices();
     test_terrain_splat_layer_count();

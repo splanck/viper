@@ -13,17 +13,16 @@
 // Key invariants:
 //   - Dead particles are swapped to end (unstable removal, O(1) per kill).
 //   - Billboard quads use camera right/up vectors from the view matrix.
-//   - Each Draw builds one temporary vertex+index buffer for all live particles.
+//   - Each Draw fills a reusable per-frame vertex+index slot for all live particles.
 //   - Additive mode submits one batched draw; alpha mode submits one keyed quad
 //     draw per particle so scene sorting remains correct.
 //   - xorshift32 PRNG for deterministic randomization (no stdlib rand).
-//   - Material is built once and reused across frames per GFX-052.
+//   - Draw materials are slotted per frame so queued commands are not mutated by later draws.
 //
 // Ownership/Lifetime:
 //   - Particles3D is GC-managed; finalizer frees the particle pool and drops
 //     refs on texture and cached material.
-//   - Per-frame vertex/index buffers are parked on the canvas's temp-buffer
-//     queue and freed at end-of-frame.
+//   - Overflow draw slots fall back to canvas-owned temp buffers freed at end-of-frame.
 //
 // Links: rt_particles3d.h, plans/3d/17-particle-system.md
 //
@@ -48,6 +47,7 @@
 #endif
 #define PARTICLES3D_WORLD_ABS_MAX 1000000000000.0
 #define PARTICLES3D_PARAM_MAX 1000000.0
+#define PARTICLES3D_DRAW_SLOT_COUNT 4
 
 extern void *rt_obj_new_i64(int64_t class_id, int64_t byte_size);
 extern void rt_obj_set_finalizer(void *obj, void (*fn)(void *));
@@ -95,6 +95,13 @@ typedef struct {
     double emitter_size[3];
     uint32_t prng_state;   /* per-instance PRNG seed */
     void *cached_material; /* reused across frames (GFX-052) */
+    vgfx3d_vertex_t *draw_vertices[PARTICLES3D_DRAW_SLOT_COUNT];
+    uint32_t *draw_indices[PARTICLES3D_DRAW_SLOT_COUNT];
+    uint32_t draw_vertex_capacity[PARTICLES3D_DRAW_SLOT_COUNT];
+    uint32_t draw_index_capacity[PARTICLES3D_DRAW_SLOT_COUNT];
+    void *draw_materials[PARTICLES3D_DRAW_SLOT_COUNT];
+    int64_t draw_frame_serial;
+    int32_t draw_slots_used;
 } rt_particles3d;
 
 /// @brief Validate @p obj as a Particles3D handle and return its typed pointer (NULL on mismatch).
@@ -297,6 +304,15 @@ static void rt_particles3d_finalize(void *obj) {
     rt_particles3d *ps = (rt_particles3d *)obj;
     free(ps->particles);
     ps->particles = NULL;
+    for (int i = 0; i < PARTICLES3D_DRAW_SLOT_COUNT; ++i) {
+        free(ps->draw_vertices[i]);
+        ps->draw_vertices[i] = NULL;
+        free(ps->draw_indices[i]);
+        ps->draw_indices[i] = NULL;
+        if (ps->draw_materials[i] && rt_obj_release_check0(ps->draw_materials[i]))
+            rt_obj_free(ps->draw_materials[i]);
+        ps->draw_materials[i] = NULL;
+    }
     if (ps->texture && rt_obj_release_check0(ps->texture))
         rt_obj_free(ps->texture);
     ps->texture = NULL;
@@ -771,6 +787,92 @@ static int particle3d_sort_key_desc(const void *a, const void *b) {
     return ka->index - kb->index;
 }
 
+static int particles3d_ensure_material(void **slot) {
+    if (!slot)
+        return 0;
+    if (!*slot) {
+        *slot = rt_material3d_new();
+        if (!*slot)
+            return 0;
+        rt_material3d_set_color(*slot, 1.0, 1.0, 1.0);
+        rt_material3d_set_unlit(*slot, 1);
+    }
+    return 1;
+}
+
+static int particles3d_acquire_draw_storage(rt_particles3d *ps,
+                                            rt_canvas3d *canvas,
+                                            uint32_t vert_count,
+                                            uint32_t idx_count,
+                                            vgfx3d_vertex_t **out_vertices,
+                                            uint32_t **out_indices,
+                                            void **out_material,
+                                            int *out_canvas_owned) {
+    int32_t slot;
+    int64_t frame_serial;
+    if (!ps || !canvas || !out_vertices || !out_indices || !out_material || !out_canvas_owned)
+        return 0;
+    *out_vertices = NULL;
+    *out_indices = NULL;
+    *out_material = NULL;
+    *out_canvas_owned = 0;
+    frame_serial = canvas->frame_serial;
+    if (ps->draw_frame_serial != frame_serial) {
+        ps->draw_frame_serial = frame_serial;
+        ps->draw_slots_used = 0;
+    }
+    if (ps->draw_slots_used >= 0 && ps->draw_slots_used < PARTICLES3D_DRAW_SLOT_COUNT) {
+        slot = ps->draw_slots_used++;
+        if (vert_count > ps->draw_vertex_capacity[slot]) {
+            vgfx3d_vertex_t *grown;
+            if ((size_t)vert_count > SIZE_MAX / sizeof(*grown))
+                return 0;
+            grown = (vgfx3d_vertex_t *)realloc(ps->draw_vertices[slot],
+                                               (size_t)vert_count * sizeof(*grown));
+            if (!grown)
+                return 0;
+            ps->draw_vertices[slot] = grown;
+            ps->draw_vertex_capacity[slot] = vert_count;
+        }
+        if (idx_count > ps->draw_index_capacity[slot]) {
+            uint32_t *grown;
+            if ((size_t)idx_count > SIZE_MAX / sizeof(*grown))
+                return 0;
+            grown =
+                (uint32_t *)realloc(ps->draw_indices[slot], (size_t)idx_count * sizeof(*grown));
+            if (!grown)
+                return 0;
+            ps->draw_indices[slot] = grown;
+            ps->draw_index_capacity[slot] = idx_count;
+        }
+        if (!particles3d_ensure_material(&ps->draw_materials[slot]))
+            return 0;
+        memset(ps->draw_vertices[slot], 0, (size_t)vert_count * sizeof(*ps->draw_vertices[slot]));
+        *out_vertices = ps->draw_vertices[slot];
+        *out_indices = ps->draw_indices[slot];
+        *out_material = ps->draw_materials[slot];
+        return 1;
+    }
+
+    *out_vertices = (vgfx3d_vertex_t *)calloc((size_t)vert_count, sizeof(**out_vertices));
+    *out_indices = (uint32_t *)malloc((size_t)idx_count * sizeof(**out_indices));
+    *out_material = rt_material3d_new();
+    if (!*out_vertices || !*out_indices || !*out_material) {
+        free(*out_vertices);
+        free(*out_indices);
+        if (*out_material && rt_obj_release_check0(*out_material))
+            rt_obj_free(*out_material);
+        *out_vertices = NULL;
+        *out_indices = NULL;
+        *out_material = NULL;
+        return 0;
+    }
+    rt_material3d_set_color(*out_material, 1.0, 1.0, 1.0);
+    rt_material3d_set_unlit(*out_material, 1);
+    *out_canvas_owned = 1;
+    return 1;
+}
+
 /// @brief Render every live particle as a camera-facing billboard quad. Extracts right/up from
 /// the camera view matrix to build the quads. Sorts back-to-front for alpha blending; skips the
 /// sort when in additive mode (order-independent). Both additive and alpha modes stay batched;
@@ -827,11 +929,12 @@ void rt_particles3d_draw(void *o, void *canvas3d, void *camera) {
     }
     uint32_t vert_count = (uint32_t)ps->count * 4;
     uint32_t idx_count = (uint32_t)ps->count * 6;
-    vgfx3d_vertex_t *verts = (vgfx3d_vertex_t *)calloc(vert_count, sizeof(vgfx3d_vertex_t));
-    uint32_t *indices = (uint32_t *)malloc(idx_count * sizeof(uint32_t));
-    if (!verts || !indices) {
-        free(verts);
-        free(indices);
+    vgfx3d_vertex_t *verts = NULL;
+    uint32_t *indices = NULL;
+    void *mat = NULL;
+    int canvas_owned_storage = 0;
+    if (!particles3d_acquire_draw_storage(
+            ps, canvas, vert_count, idx_count, &verts, &indices, &mat, &canvas_owned_storage)) {
         free(sort_keys);
         return;
     }
@@ -887,32 +990,29 @@ void rt_particles3d_draw(void *o, void *canvas3d, void *camera) {
     tmp_mesh.indices = indices;
     tmp_mesh.index_count = idx_count;
 
-    if (!ps->cached_material) {
-        ps->cached_material = rt_material3d_new();
-        rt_material3d_set_color(ps->cached_material, 1.0, 1.0, 1.0);
-        rt_material3d_set_unlit(ps->cached_material, 1);
-    }
-    void *mat = ps->cached_material;
     rt_material3d_set_texture(mat, ps->texture);
     ((rt_material3d *)mat)->additive_blend = 0;
 
-    /* Register buffers for end-of-frame cleanup. */
-    int verts_tracked = rt_canvas3d_add_temp_buffer(canvas3d, verts);
-    int indices_tracked = rt_canvas3d_add_temp_buffer(canvas3d, indices);
-    if (!verts_tracked || !indices_tracked) {
-        if (verts_tracked) {
-            rt_canvas3d_remove_temp_buffer(canvas3d, verts);
-            free(verts);
+    if (canvas_owned_storage) {
+        int verts_tracked = rt_canvas3d_add_temp_buffer(canvas3d, verts);
+        int indices_tracked = rt_canvas3d_add_temp_buffer(canvas3d, indices);
+        if (!verts_tracked || !indices_tracked) {
+            if (verts_tracked) {
+                rt_canvas3d_remove_temp_buffer(canvas3d, verts);
+                free(verts);
+            }
+            if (indices_tracked) {
+                rt_canvas3d_remove_temp_buffer(canvas3d, indices);
+                free(indices);
+            }
+            if (!verts_tracked)
+                free(verts);
+            if (!indices_tracked)
+                free(indices);
+            if (mat && rt_obj_release_check0(mat))
+                rt_obj_free(mat);
+            return;
         }
-        if (indices_tracked) {
-            rt_canvas3d_remove_temp_buffer(canvas3d, indices);
-            free(indices);
-        }
-        if (!verts_tracked)
-            free(verts);
-        if (!indices_tracked)
-            free(indices);
-        return;
     }
 
     static const double identity[16] = {
@@ -937,6 +1037,8 @@ void rt_particles3d_draw(void *o, void *canvas3d, void *camera) {
     rt_material3d_set_alpha_mode(mat, RT_MATERIAL3D_ALPHA_MODE_BLEND);
     ((rt_material3d *)mat)->additive_blend = ps->additive_blend ? 1 : 0;
     rt_canvas3d_draw_mesh_matrix(canvas3d, &tmp_mesh, identity, mat);
+    if (canvas_owned_storage && mat && rt_obj_release_check0(mat))
+        rt_obj_free(mat);
 }
 
 #else

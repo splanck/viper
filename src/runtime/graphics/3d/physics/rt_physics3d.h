@@ -39,10 +39,18 @@ void *rt_world3d_new(double gx, double gy, double gz);
 void rt_world3d_step(void *world, double dt);
 /// @brief Add a Body3D to the world, growing storage as needed.
 void rt_world3d_add(void *world, void *body);
+/// @brief Add a Body3D to the world and return whether it is present afterward.
+int8_t rt_world3d_try_add(void *world, void *body);
 /// @brief Remove a Body3D from the world (silently ignores unknown bodies).
 void rt_world3d_remove(void *world, void *body);
 /// @brief Total number of bodies currently in the world.
 int64_t rt_world3d_body_count(void *world);
+/// @brief Unclamped CCD substep demand from the most recent Step.
+int64_t rt_world3d_get_last_ccd_requested_substeps(void *world);
+/// @brief Actual CCD substeps used by the most recent Step.
+int64_t rt_world3d_get_last_ccd_substeps(void *world);
+/// @brief Number of Step calls whose CCD substep demand exceeded the cap.
+int64_t rt_world3d_get_ccd_substep_clamped_count(void *world);
 /// @brief Replace the world gravity vector at runtime.
 void rt_world3d_set_gravity(void *world, double gx, double gy, double gz);
 
@@ -122,6 +130,10 @@ int8_t rt_physics_hit3d_get_is_trigger(void *hit);
 /* PhysicsHitList3D */
 /// @brief Number of hits in the list.
 int64_t rt_physics_hit_list3d_get_count(void *list);
+/// @brief Number of hits matched before the bounded result list was truncated.
+int64_t rt_physics_hit_list3d_get_total_count(void *list);
+/// @brief True when Count is smaller than TotalCount.
+int8_t rt_physics_hit_list3d_get_truncated(void *list);
 /// @brief Get the @p index-th PhysicsHit3D in the list (NULL if out of range).
 void *rt_physics_hit_list3d_get(void *list, int64_t index);
 
@@ -176,10 +188,16 @@ void *rt_body3d_get_collider(void *body);
 void rt_body3d_set_position(void *body, double x, double y, double z);
 /// @brief Get the body's world-space position as a Vec3.
 void *rt_body3d_get_position(void *body);
+/// @brief Set collider scale applied during physics queries and collision tests.
+void rt_body3d_set_scale(void *body, double x, double y, double z);
+/// @brief Get the body's collider scale as a Vec3.
+void *rt_body3d_get_scale(void *body);
 /// @brief Set the body's orientation from a Quaternion (overwrites accumulated rotation).
 void rt_body3d_set_orientation(void *body, void *quat);
 /// @brief Get the body's current orientation as a Quaternion.
 void *rt_body3d_get_orientation(void *body);
+/// @brief Copy raw position, orientation, and scale arrays without allocating wrapper objects.
+void rt_body3d_get_pose_raw(void *body, double *position_out, double *rotation_out, double *scale_out);
 /// @brief Set the linear velocity in m/s.
 void rt_body3d_set_velocity(void *body, double vx, double vy, double vz);
 /// @brief Get the linear velocity as a Vec3.

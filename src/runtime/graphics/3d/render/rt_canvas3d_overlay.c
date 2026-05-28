@@ -185,7 +185,7 @@ static void canvas3d_release_local(void *obj) {
 
 /// @brief Draw a 3D world-space line between two Vec3 endpoints in `color`. Useful for debug
 /// visualizers, motion trails, gizmos. Color is 0xRRGGBBAA. Auto-projects to screen space.
-void rt_canvas3d_draw_line3d(void *obj, void *from, void *to, int64_t color) {
+void rt_canvas3d_draw_line3d_raw(void *obj, const double *from, const double *to, int64_t color) {
     int8_t started_temp_frame = 0;
 
     rt_canvas3d *c = rt_canvas3d_checked_or_stack(obj);
@@ -197,8 +197,8 @@ void rt_canvas3d_draw_line3d(void *obj, void *from, void *to, int64_t color) {
         return;
 
     {
-        float p0[3] = {(float)rt_vec3_x(from), (float)rt_vec3_y(from), (float)rt_vec3_z(from)};
-        float p1[3] = {(float)rt_vec3_x(to), (float)rt_vec3_y(to), (float)rt_vec3_z(to)};
+        float p0[3] = {(float)from[0], (float)from[1], (float)from[2]};
+        float p1[3] = {(float)to[0], (float)to[1], (float)to[2]};
         float sx0;
         float sy0;
         float sx1;
@@ -225,6 +225,20 @@ void rt_canvas3d_draw_line3d(void *obj, void *from, void *to, int64_t color) {
     }
     if (started_temp_frame)
         rt_canvas3d_end(c);
+}
+
+void rt_canvas3d_draw_line3d(void *obj, void *from, void *to, int64_t color) {
+    double p0[3];
+    double p1[3];
+    if (!from || !to)
+        return;
+    p0[0] = rt_vec3_x(from);
+    p0[1] = rt_vec3_y(from);
+    p0[2] = rt_vec3_z(from);
+    p1[0] = rt_vec3_x(to);
+    p1[1] = rt_vec3_y(to);
+    p1[2] = rt_vec3_z(to);
+    rt_canvas3d_draw_line3d_raw(obj, p0, p1, color);
 }
 
 /// @brief Draw a 3D world-space point at `pos` (Vec3) as a `size`-pixel filled square in `color`.
@@ -529,17 +543,16 @@ void *rt_canvas3d_screenshot(void *obj) {
     return pixels;
 }
 
-/// @brief Draw an axis-aligned bounding box (12 lines) between `min_v` and `max_v` Vec3s.
-/// Useful for collision/culling debug visualization.
-void rt_canvas3d_draw_aabb_wire(void *obj, void *min_v, void *max_v, int64_t color) {
+void rt_canvas3d_draw_aabb_wire_raw(void *obj, const double *min_v, const double *max_v, int64_t color) {
     if (!obj || !min_v || !max_v)
         return;
-    double mn[3] = {rt_vec3_x(min_v), rt_vec3_y(min_v), rt_vec3_z(min_v)};
-    double mx[3] = {rt_vec3_x(max_v), rt_vec3_y(max_v), rt_vec3_z(max_v)};
-    void *corners[8];
+    double mn[3] = {min_v[0], min_v[1], min_v[2]};
+    double mx[3] = {max_v[0], max_v[1], max_v[2]};
+    double corners[8][3];
     for (int i = 0; i < 8; i++) {
-        corners[i] =
-            rt_vec3_new((i & 1) ? mx[0] : mn[0], (i & 2) ? mx[1] : mn[1], (i & 4) ? mx[2] : mn[2]);
+        corners[i][0] = (i & 1) ? mx[0] : mn[0];
+        corners[i][1] = (i & 2) ? mx[1] : mn[1];
+        corners[i][2] = (i & 4) ? mx[2] : mn[2];
     }
 
     static const int edges[12][2] = {{0, 1},
@@ -555,9 +568,23 @@ void rt_canvas3d_draw_aabb_wire(void *obj, void *min_v, void *max_v, int64_t col
                                      {2, 6},
                                      {3, 7}};
     for (int e = 0; e < 12; e++)
-        rt_canvas3d_draw_line3d(obj, corners[edges[e][0]], corners[edges[e][1]], color);
-    for (int i = 0; i < 8; i++)
-        canvas3d_release_local(corners[i]);
+        rt_canvas3d_draw_line3d_raw(obj, corners[edges[e][0]], corners[edges[e][1]], color);
+}
+
+/// @brief Draw an axis-aligned bounding box (12 lines) between `min_v` and `max_v` Vec3s.
+/// Useful for collision/culling debug visualization.
+void rt_canvas3d_draw_aabb_wire(void *obj, void *min_v, void *max_v, int64_t color) {
+    double mn[3];
+    double mx[3];
+    if (!min_v || !max_v)
+        return;
+    mn[0] = rt_vec3_x(min_v);
+    mn[1] = rt_vec3_y(min_v);
+    mn[2] = rt_vec3_z(min_v);
+    mx[0] = rt_vec3_x(max_v);
+    mx[1] = rt_vec3_y(max_v);
+    mx[2] = rt_vec3_z(max_v);
+    rt_canvas3d_draw_aabb_wire_raw(obj, mn, mx, color);
 }
 
 /// @brief Draw three orthogonal great circles approximating a sphere (XY, XZ, YZ planes) at

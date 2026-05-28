@@ -34,6 +34,7 @@
 #include "rt_morphtarget3d.h"
 #include "rt_object.h"
 #include "rt_pixels.h"
+#include "rt_platform.h"
 #include "rt_string.h"
 #include "rt_time.h"
 #include "rt_trap.h"
@@ -54,6 +55,10 @@
 #define CANVAS3D_SYNTHETIC_DT_DEFAULT_US 16667LL
 #define CANVAS3D_SYNTHETIC_DT_MAX_US 10000000LL
 #define CANVAS3D_SYNTHETIC_MOUSE_ABS_MAX 1000000.0
+
+static void *g_canvas3d_synthetic_owner = NULL;
+static void canvas3d_release_synthetic_input(rt_canvas3d *c);
+static void canvas3d_release_synthetic_state(rt_canvas3d *c);
 
 /// @brief Sanitize an input-source mode (0 live, 1 synthetic, 2 live+synthetic); out of
 ///   range falls back to 0 (live).
@@ -117,12 +122,34 @@ static void canvas3d_apply_synthetic_clock(rt_canvas3d *c) {
     c->delta_time_ms = c->synthetic_dt_us > 0 ? c->synthetic_dt_us / 1000 : 0;
 }
 
+static void canvas3d_release_global_owner_ref(rt_canvas3d *c) {
+    if (c && rt_heap_is_payload(c) && rt_obj_release_check0(c))
+        rt_obj_free(c);
+}
+
+static void canvas3d_set_synthetic_owner(rt_canvas3d *c) {
+    rt_canvas3d *previous;
+    if (c && rt_heap_is_payload(c))
+        rt_obj_retain_maybe(c);
+    previous = (rt_canvas3d *)__atomic_exchange_n(
+        &g_canvas3d_synthetic_owner, c, __ATOMIC_ACQ_REL);
+    if (previous == c) {
+        canvas3d_release_global_owner_ref(c);
+        return;
+    }
+    if (previous) {
+        canvas3d_release_synthetic_state(previous);
+        canvas3d_release_global_owner_ref(previous);
+    }
+}
+
 /// @brief Replay queued synthetic input into the live input runtime for one frame:
 ///   apply pending key transitions, the accumulated mouse delta, button state changes,
 ///   and wheel scroll, then clear the queues.
 static void canvas3d_apply_synthetic_input(rt_canvas3d *c) {
     if (!c)
         return;
+    canvas3d_set_synthetic_owner(c);
 
     for (int32_t i = 0; i < c->synthetic_key_count; i++) {
         int64_t key = c->synthetic_key_keys[i];
@@ -167,7 +194,7 @@ static void canvas3d_apply_synthetic_input(rt_canvas3d *c) {
 
 /// @brief Release every key/button the synthetic source is currently holding (called
 ///   when synthetic input is cleared/disabled) so no key stays stuck down.
-static void canvas3d_release_synthetic_input(rt_canvas3d *c) {
+static void canvas3d_release_synthetic_state(rt_canvas3d *c) {
     if (!c)
         return;
     for (int i = 1; i < VIPER_KEY_MAX; i++) {
@@ -188,6 +215,21 @@ static void canvas3d_release_synthetic_input(rt_canvas3d *c) {
     c->synthetic_mouse_wheel_y = 0.0;
     c->synthetic_mouse_buttons = 0;
     c->synthetic_mouse_has_buttons = 0;
+}
+
+static void canvas3d_release_synthetic_input(rt_canvas3d *c) {
+    void *expected;
+    if (!c)
+        return;
+    canvas3d_release_synthetic_state(c);
+    expected = c;
+    if (__atomic_compare_exchange_n(&g_canvas3d_synthetic_owner,
+                                    &expected,
+                                    NULL,
+                                    0,
+                                    __ATOMIC_ACQ_REL,
+                                    __ATOMIC_ACQUIRE))
+        canvas3d_release_global_owner_ref(c);
 }
 
 /// @brief True when the active backend can apply GPU post-FX during present.
@@ -395,6 +437,19 @@ static void rt_canvas3d_apply_resize(
         c->backend->resize(c->backend_ctx, physical_w, physical_h);
 }
 
+static void canvas3d_record_event_type(rt_canvas3d *c, int64_t type) {
+    if (!c || type == VGFX_EVENT_NONE)
+        return;
+    c->last_event_type = type;
+    if (c->event_type_count >= RT_CANVAS3D_EVENT_QUEUE_CAPACITY) {
+        c->event_type_head = (c->event_type_head + 1) % RT_CANVAS3D_EVENT_QUEUE_CAPACITY;
+        c->event_type_count--;
+    }
+    int32_t tail = (c->event_type_head + c->event_type_count) % RT_CANVAS3D_EVENT_QUEUE_CAPACITY;
+    c->event_type_queue[tail] = type;
+    c->event_type_count++;
+}
+
 /// @brief Public resize entry point mirroring window resize events.
 void rt_canvas3d_resize(void *obj, int64_t w, int64_t h) {
     rt_canvas3d *c = rt_canvas3d_checked_or_stack(obj);
@@ -537,8 +592,8 @@ typedef struct {
 ///
 /// Geometric growth (cap doubles, starting at 32). Used by the
 /// transparency-sort path to buffer commands until end-of-frame.
-/// Returns 0 on allocation failure (caller falls back to immediate
-/// dispatch in that case).
+/// Returns 0 on allocation failure; draw callers trap rather than bypassing
+/// the queue because immediate submission breaks transparency ordering.
 static int ensure_deferred_capacity(void **buf, int32_t *capacity, int32_t needed) {
     if (!buf || !capacity || needed <= 0)
         return 0;
@@ -673,40 +728,62 @@ static int8_t canvas3d_material_backface_cull(const rt_canvas3d *c, const rt_mat
     return (int8_t)(c->backface_cull && !(mat && mat->double_sided));
 }
 
-/// @brief Return 1 if any vertex in the mesh has a non-zero tangent vector.
-/// @details A "yes" on the first found tangent is sufficient — we only need to know
-///   whether the mesh was authored with tangent data or if they're still all zero from
-///   `rt_mesh3d_add_vertex` (which leaves tangents at 0 and handedness at 1). Early
-///   return on first hit keeps this O(1) for typical normal-mapped meshes.
-static int canvas3d_mesh_has_tangents(const rt_mesh3d *mesh) {
+/// @brief Return 1 only when every vertex in the mesh has a finite non-zero tangent.
+/// @details A partially-authored tangent stream is not safe for normal maps: accepting a
+///   single non-zero tangent would leave the rest of the mesh with a broken basis. In
+///   that case draw submission generates tangents on a queued geometry snapshot.
+static int canvas3d_mesh_has_complete_tangents(const rt_mesh3d *mesh) {
     if (!mesh || !mesh->vertices)
+        return 0;
+    if (mesh->vertex_count == 0)
         return 0;
     for (uint32_t i = 0; i < mesh->vertex_count; i++) {
         const float *t = mesh->vertices[i].tangent;
         float len2 = t[0] * t[0] + t[1] * t[1] + t[2] * t[2];
-        if (len2 > 1e-8f)
-            return 1;
+        if (!isfinite(len2) || len2 <= 1e-8f || !isfinite(t[3]))
+            return 0;
     }
-    return 0;
+    return 1;
 }
 
-/// @brief Auto-generate per-vertex tangents when a mesh is about to be rendered with a normal map.
-/// @details Normal mapping requires a tangent frame per vertex to rotate tangent-space
-///   normals into world/view space. Rather than forcing every caller to pre-compute
-///   tangents, the canvas lazily calls `rt_mesh3d_calc_tangents` here if the material
-///   references a normal map and the mesh hasn't supplied them yet. No-op when already
-///   present — the `has_tangents` probe is cheap.
-static void canvas3d_ensure_normal_map_tangents(rt_mesh3d *mesh, const rt_material3d *mat) {
+/// @brief Return 1 when a normal-mapped draw needs generated tangents.
+/// @details Draw submission must not mutate the caller's mesh. If authored tangents
+///   are already present, mark the source mesh cache state. If tangents must be
+///   generated, callers snapshot the geometry and generate them on that copy.
+static int canvas3d_prepare_normal_map_tangent_state(rt_mesh3d *mesh, const rt_material3d *mat) {
     if (!mesh || !mat || !mat->normal_map)
-        return;
+        return 0;
     if (mesh->tangents_ready && mesh->tangent_revision == mesh->geometry_revision)
-        return;
-    if (!canvas3d_mesh_has_tangents(mesh)) {
-        rt_mesh3d_calc_tangents(mesh);
-    } else {
+        return 0;
+    if (canvas3d_mesh_has_complete_tangents(mesh)) {
         mesh->tangents_ready = 1;
         mesh->tangent_revision = mesh->geometry_revision;
+        return 0;
     }
+    return 1;
+}
+
+/// @brief Generate tangents for a snapshot copy without touching the source mesh.
+static int canvas3d_generate_snapshot_tangents(const rt_mesh3d *source,
+                                               vgfx3d_vertex_t *vertices,
+                                               uint32_t *indices) {
+    rt_mesh3d temp;
+    if (!source || !vertices || !indices || source->vertex_count == 0 || source->index_count == 0)
+        return 0;
+    memset(&temp, 0, sizeof(temp));
+    temp.vertices = vertices;
+    temp.vertex_count = source->vertex_count;
+    temp.vertex_capacity = source->vertex_count;
+    temp.indices = indices;
+    temp.index_count = source->index_count;
+    temp.index_capacity = source->index_count;
+    temp.geometry_revision = source->geometry_revision ? source->geometry_revision : 1u;
+    temp.bounds_dirty = source->bounds_dirty;
+    memcpy(temp.aabb_min, source->aabb_min, sizeof(temp.aabb_min));
+    memcpy(temp.aabb_max, source->aabb_max, sizeof(temp.aabb_max));
+    temp.bsphere_radius = source->bsphere_radius;
+    rt_mesh3d_calc_tangents_impl(&temp);
+    return temp.tangents_ready ? 1 : 0;
 }
 
 /// @brief Translate every material field into the corresponding draw-command field.
@@ -1197,6 +1274,27 @@ static int canvas3d_track_final_overlay_temp_buffer(rt_canvas3d *c, void *buffer
     return 1;
 }
 
+static int canvas3d_untrack_final_overlay_temp_buffer(rt_canvas3d *c, void *buffer) {
+    if (!c || !buffer)
+        return 0;
+    for (int32_t i = 0; i < c->final_overlay_temp_buf_count; ++i) {
+        if (c->final_overlay_temp_buffers[i] == buffer) {
+            for (int32_t j = i; j < c->final_overlay_temp_buf_count - 1; ++j)
+                c->final_overlay_temp_buffers[j] = c->final_overlay_temp_buffers[j + 1];
+            c->final_overlay_temp_buffers[--c->final_overlay_temp_buf_count] = NULL;
+            return 1;
+        }
+    }
+    return 0;
+}
+
+static void canvas3d_release_tracked_final_overlay_temp_buffer(rt_canvas3d *c, void *buffer) {
+    if (!buffer)
+        return;
+    if (canvas3d_untrack_final_overlay_temp_buffer(c, buffer))
+        free(buffer);
+}
+
 /// @brief Track a GC-managed object for end-of-frame release.
 ///
 /// Retains `obj` immediately so it survives at least until the
@@ -1262,9 +1360,7 @@ static int canvas3d_snapshot_mesh_geometry(rt_canvas3d *c,
         return 0;
     }
     if (!canvas3d_track_temp_buffer(c, indices)) {
-        if (c->temp_buf_count > 0 && c->temp_buffers[c->temp_buf_count - 1] == vertices)
-            c->temp_buf_count--;
-        free(vertices);
+        canvas3d_release_tracked_temp_buffer(c, vertices);
         free(indices);
         return 0;
     }
@@ -1273,17 +1369,79 @@ static int canvas3d_snapshot_mesh_geometry(rt_canvas3d *c,
     return 1;
 }
 
-/// @brief Decide whether to snapshot a mesh's geometry into canvas-owned buffers.
-/// @details Returns 0 for skinned/morphed meshes (they recompute every frame).
-///          Static heap meshes snapshot their vertex/index buffers so a user
-///          mutation after enqueue cannot change submitted deferred geometry.
-static int canvas3d_should_snapshot_heap_geometry(const rt_mesh3d *mesh, void *mesh_obj) {
-    if (!mesh || !mesh_obj || !rt_heap_is_payload(mesh_obj))
+static int canvas3d_reserve_mesh_snapshot_cache(rt_canvas3d *c, int32_t needed) {
+    if (!c)
         return 0;
-    if (mesh->bone_palette || mesh->morph_deltas || mesh->morph_weights ||
-        mesh->morph_shape_count > 0)
+    if (needed <= c->mesh_snapshot_capacity)
+        return 1;
+    if (c->mesh_snapshot_capacity > INT32_MAX / 2)
         return 0;
+    int32_t new_cap = c->mesh_snapshot_capacity == 0 ? 8 : c->mesh_snapshot_capacity * 2;
+    while (new_cap < needed) {
+        if (new_cap > INT32_MAX / 2)
+            return 0;
+        new_cap *= 2;
+    }
+    if ((size_t)new_cap > SIZE_MAX / sizeof(*c->mesh_snapshots))
+        return 0;
+    rt_canvas3d_mesh_snapshot_entry *entries =
+        (rt_canvas3d_mesh_snapshot_entry *)realloc(c->mesh_snapshots,
+                                                   (size_t)new_cap * sizeof(*entries));
+    if (!entries)
+        return 0;
+    c->mesh_snapshots = entries;
+    c->mesh_snapshot_capacity = new_cap;
     return 1;
+}
+
+static int canvas3d_snapshot_mesh_geometry_cached(rt_canvas3d *c,
+                                                  const rt_mesh3d *mesh,
+                                                  void *mesh_obj,
+                                                  vgfx3d_vertex_t **out_vertices,
+                                                  uint32_t **out_indices) {
+    int can_cache = mesh_obj && rt_heap_is_payload(mesh_obj);
+    if (can_cache) {
+        for (int32_t i = 0; i < c->mesh_snapshot_count; ++i) {
+            rt_canvas3d_mesh_snapshot_entry *entry = &c->mesh_snapshots[i];
+            if (entry->source == mesh_obj && entry->geometry_revision == mesh->geometry_revision &&
+                entry->vertex_count == mesh->vertex_count && entry->index_count == mesh->index_count) {
+                *out_vertices = entry->vertices;
+                *out_indices = entry->indices;
+                return 1;
+            }
+        }
+    }
+    if (!canvas3d_snapshot_mesh_geometry(c, mesh, out_vertices, out_indices))
+        return 0;
+    if (can_cache) {
+        if (!canvas3d_reserve_mesh_snapshot_cache(c, c->mesh_snapshot_count + 1))
+            return 1;
+        rt_canvas3d_mesh_snapshot_entry *entry = &c->mesh_snapshots[c->mesh_snapshot_count++];
+        entry->source = mesh_obj;
+        entry->geometry_revision = mesh->geometry_revision;
+        entry->vertex_count = mesh->vertex_count;
+        entry->index_count = mesh->index_count;
+        entry->vertices = *out_vertices;
+        entry->indices = *out_indices;
+    }
+    return 1;
+}
+
+/// @brief Decide whether to snapshot a mesh's geometry into canvas-owned buffers.
+/// @details Heap meshes snapshot their vertex/index buffers so a user mutation after
+///          enqueue cannot change submitted deferred geometry. Draw-time deformation
+///          payloads stay on the original mesh so GPU skinning/morph paths can bind
+///          their palettes and weights without allocating CPU geometry snapshots.
+static int canvas3d_should_snapshot_geometry(const rt_mesh3d *mesh, void *mesh_obj) {
+    if (!mesh || !mesh_obj)
+        return 0;
+    if (mesh->bone_palette || mesh->prev_bone_palette || mesh->morph_deltas ||
+        mesh->morph_normal_deltas || mesh->morph_weights || mesh->prev_morph_weights) {
+        return 0;
+    }
+    if (rt_heap_is_payload(mesh_obj))
+        return 1;
+    return 0;
 }
 
 /// @brief Free every tracked transient buffer (called at end of frame).
@@ -1293,6 +1451,7 @@ static void canvas3d_clear_temp_buffers(rt_canvas3d *c) {
     for (int32_t i = 0; i < c->temp_buf_count; i++)
         free(c->temp_buffers[i]);
     c->temp_buf_count = 0;
+    c->mesh_snapshot_count = 0;
 }
 
 /// @brief Discard recorded final-overlay commands and owned geometry buffers.
@@ -1931,13 +2090,27 @@ static int canvas3d_deferred_intersects_frustum(const deferred_draw_t *dd,
 ///      tight orthographic bounds.
 ///   5. Build the orthographic projection from those bounds.
 /// Returns 0 if there are no opaque draws (nothing to shadow).
-static int canvas3d_build_shadow_light_vp(const deferred_draw_t *cmds,
-                                          int32_t count,
+static int canvas3d_build_shadow_world_bounds(const deferred_draw_t *cmds,
+                                              int32_t count,
+                                              float *world_min,
+                                              float *world_max) {
+    int8_t has_bounds = 0;
+    if (!cmds || count <= 0 || !world_min || !world_max)
+        return 0;
+    world_min[0] = world_min[1] = world_min[2] = 0.0f;
+    world_max[0] = world_max[1] = world_max[2] = 0.0f;
+    for (int32_t i = 0; i < count; i++) {
+        if (cmds[i].pass_kind != DEFERRED_PASS_MAIN || canvas3d_cmd_requires_blend(&cmds[i].cmd))
+            continue;
+        canvas3d_accumulate_deferred_world_bounds(&cmds[i], world_min, world_max, &has_bounds);
+    }
+    return has_bounds ? 1 : 0;
+}
+
+static int canvas3d_build_shadow_light_vp(const float *world_min,
+                                          const float *world_max,
                                           const vgfx3d_light_params_t *dir_light,
                                           float *out_light_vp) {
-    float world_min[3] = {0.0f, 0.0f, 0.0f};
-    float world_max[3] = {0.0f, 0.0f, 0.0f};
-    int8_t has_bounds = 0;
     float center[3];
     float ldir[3];
     float eye[3];
@@ -1949,15 +2122,7 @@ static int canvas3d_build_shadow_light_vp(const deferred_draw_t *cmds,
     float ls_min[3] = {FLT_MAX, FLT_MAX, FLT_MAX};
     float ls_max[3] = {-FLT_MAX, -FLT_MAX, -FLT_MAX};
 
-    if (!cmds || count <= 0 || !dir_light || !out_light_vp)
-        return 0;
-
-    for (int32_t i = 0; i < count; i++) {
-        if (cmds[i].pass_kind != DEFERRED_PASS_MAIN || canvas3d_cmd_requires_blend(&cmds[i].cmd))
-            continue;
-        canvas3d_accumulate_deferred_world_bounds(&cmds[i], world_min, world_max, &has_bounds);
-    }
-    if (!has_bounds)
+    if (!world_min || !world_max || !dir_light || !out_light_vp)
         return 0;
 
     center[0] = 0.5f * (world_min[0] + world_max[0]);
@@ -2449,6 +2614,7 @@ static void canvas3d_blit_skybox_cpu_cache(
 /// double-free if the GC sweeps the canvas twice during shutdown.
 static void rt_canvas3d_finalize(void *obj) {
     rt_canvas3d *c = (rt_canvas3d *)obj;
+    canvas3d_release_synthetic_input(c);
     if (c->backend && c->backend_ctx && c->render_target && c->backend->set_render_target)
         c->backend->set_render_target(c->backend_ctx, NULL);
     /* Destroy the backend context */
@@ -2478,6 +2644,9 @@ static void rt_canvas3d_finalize(void *obj) {
     free(c->temp_buffers);
     c->temp_buffers = NULL;
     c->temp_buf_count = c->temp_buf_capacity = 0;
+    free(c->mesh_snapshots);
+    c->mesh_snapshots = NULL;
+    c->mesh_snapshot_count = c->mesh_snapshot_capacity = 0;
     canvas3d_clear_temp_objects(c);
     free(c->temp_objects);
     c->temp_objects = NULL;
@@ -2625,6 +2794,8 @@ void *rt_canvas3d_new(rt_string title, int64_t w, int64_t h) {
     c->postfx = NULL;
     c->temp_buffers = NULL;
     c->temp_buf_count = c->temp_buf_capacity = 0;
+    c->mesh_snapshots = NULL;
+    c->mesh_snapshot_count = c->mesh_snapshot_capacity = 0;
     c->temp_objects = NULL;
     c->temp_obj_count = c->temp_obj_capacity = 0;
     c->fog_enabled = 0;
@@ -2773,7 +2944,11 @@ static int canvas3d_queue_screen_geometry(rt_canvas3d *c,
             free(block);
             return 0;
         }
-        return canvas3d_enqueue_final_overlay_draw(c, &cmd, NULL, NULL);
+        if (!canvas3d_enqueue_final_overlay_draw(c, &cmd, NULL, NULL)) {
+            canvas3d_release_tracked_final_overlay_temp_buffer(c, block);
+            return 0;
+        }
+        return 1;
     }
 
     if (!canvas3d_track_temp_buffer(c, block)) {
@@ -2781,18 +2956,22 @@ static int canvas3d_queue_screen_geometry(rt_canvas3d *c,
         return 0;
     }
 
-    return canvas3d_enqueue_draw(c,
-                                 &cmd,
-                                 DEFERRED_DRAW_MESH,
-                                 canvas3d_screen_pass_kind(c),
-                                 NULL,
-                                 0,
-                                 0,
-                                 0,
-                                 0,
-                                 0.0f,
-                                 NULL,
-                                 NULL);
+    if (!canvas3d_enqueue_draw(c,
+                               &cmd,
+                               DEFERRED_DRAW_MESH,
+                               canvas3d_screen_pass_kind(c),
+                               NULL,
+                               0,
+                               0,
+                               0,
+                               0,
+                               0.0f,
+                               NULL,
+                               NULL)) {
+        canvas3d_release_tracked_temp_buffer(c, block);
+        return 0;
+    }
+    return 1;
 }
 
 /// @brief Convenience wrapper: queue a screen-space rectangle as two triangles.
@@ -3340,7 +3519,7 @@ void rt_canvas3d_draw_mesh_matrix_keyed(void *obj,
 
     if (mesh->vertex_count == 0 || mesh->index_count == 0)
         return;
-    canvas3d_ensure_normal_map_tangents(mesh, mat);
+    int needs_generated_tangents = canvas3d_prepare_normal_map_tangent_state(mesh, mat);
     rt_mesh3d_refresh_bounds(mesh);
 
     if (rt_heap_is_payload(mesh_obj) && !canvas3d_track_temp_object(c, mesh_obj))
@@ -3357,16 +3536,22 @@ void rt_canvas3d_draw_mesh_matrix_keyed(void *obj,
 
     vgfx3d_vertex_t *queued_vertices = mesh->vertices;
     uint32_t *queued_indices = mesh->indices;
-    if (canvas3d_should_snapshot_heap_geometry(mesh, mesh_obj) &&
-        !canvas3d_snapshot_mesh_geometry(c, mesh, &queued_vertices, &queued_indices))
+    if (needs_generated_tangents) {
+        if (!canvas3d_snapshot_mesh_geometry(c, mesh, &queued_vertices, &queued_indices))
+            return;
+        if (!canvas3d_generate_snapshot_tangents(mesh, queued_vertices, queued_indices))
+            return;
+    } else if (canvas3d_should_snapshot_geometry(mesh, mesh_obj) &&
+               !canvas3d_snapshot_mesh_geometry_cached(c, mesh, mesh_obj, &queued_vertices, &queued_indices)) {
         return;
+    }
 
     /* Build draw command */
     dd->cmd.vertices = queued_vertices;
     dd->cmd.vertex_count = mesh->vertex_count;
     dd->cmd.indices = queued_indices;
     dd->cmd.index_count = mesh->index_count;
-    dd->cmd.geometry_key = rt_heap_is_payload(mesh_obj) ? mesh_obj : NULL;
+    dd->cmd.geometry_key = (rt_heap_is_payload(mesh_obj) && !needs_generated_tangents) ? mesh_obj : NULL;
     dd->cmd.geometry_revision = dd->cmd.geometry_key ? mesh->geometry_revision : 0;
     memcpy(dd->cmd.model_matrix, validated_model_matrix, sizeof(dd->cmd.model_matrix));
     canvas3d_resolve_previous_model(c,
@@ -3422,7 +3607,7 @@ void rt_canvas3d_draw_mesh_matrix_keyed(void *obj,
     if (ensure_deferred_capacity(&c->draw_cmds, &c->draw_capacity, c->draw_count + 1))
         ((deferred_draw_t *)c->draw_cmds)[c->draw_count++] = queued;
     else
-        canvas3d_submit_deferred(c, &queued);
+        rt_trap("Canvas3D.DrawMesh: deferred draw queue allocation failed");
 }
 
 /// @brief Convenience: queue a mesh draw without an explicit sort key (uses default).
@@ -3443,6 +3628,8 @@ void rt_canvas3d_draw_mesh(void *obj, void *mesh_obj, void *transform_obj, void 
     mat4_impl *transform = canvas3d_mat4_checked(transform_obj);
     uintptr_t motion_key;
     if (!transform)
+        return;
+    if (mesh_obj && !rt_g3d_has_class(mesh_obj, RT_G3D_MESH3D_CLASS_ID))
         return;
     motion_key = canvas3d_mesh_transform_motion_key(mesh_obj, material_obj, transform_obj);
     rt_canvas3d_draw_mesh_matrix_keyed(
@@ -3485,15 +3672,13 @@ void rt_canvas3d_queue_instanced_batch(void *canvas_obj,
         return;
     }
 
-    canvas3d_ensure_normal_map_tangents(mesh, mat);
+    int needs_generated_tangents = canvas3d_prepare_normal_map_tangent_state(mesh, mat);
     rt_mesh3d_refresh_bounds(mesh);
     memset(&base_cmd, 0, sizeof(base_cmd));
     base_cmd.vertices = mesh->vertices;
     base_cmd.vertex_count = mesh->vertex_count;
     base_cmd.indices = mesh->indices;
     base_cmd.index_count = mesh->index_count;
-    base_cmd.geometry_key = rt_heap_is_payload(mesh_obj) ? mesh_obj : NULL;
-    base_cmd.geometry_revision = base_cmd.geometry_key ? mesh->geometry_revision : 0;
     base_cmd.model_matrix[0] = base_cmd.model_matrix[5] = base_cmd.model_matrix[10] =
         base_cmd.model_matrix[15] = 1.0f;
     canvas3d_fill_material_cmd(mat, &base_cmd);
@@ -3529,11 +3714,20 @@ void rt_canvas3d_queue_instanced_batch(void *canvas_obj,
 
     vgfx3d_vertex_t *queued_vertices = mesh->vertices;
     uint32_t *queued_indices = mesh->indices;
-    if (canvas3d_should_snapshot_heap_geometry(mesh, mesh_obj) &&
-        !canvas3d_snapshot_mesh_geometry(c, mesh, &queued_vertices, &queued_indices))
+    if (needs_generated_tangents) {
+        if (!canvas3d_snapshot_mesh_geometry(c, mesh, &queued_vertices, &queued_indices))
+            return;
+        if (!canvas3d_generate_snapshot_tangents(mesh, queued_vertices, queued_indices))
+            return;
+    } else if (canvas3d_should_snapshot_geometry(mesh, mesh_obj) &&
+               !canvas3d_snapshot_mesh_geometry_cached(c, mesh, mesh_obj, &queued_vertices, &queued_indices)) {
         return;
+    }
     base_cmd.vertices = queued_vertices;
     base_cmd.indices = queued_indices;
+    base_cmd.geometry_key =
+        (rt_heap_is_payload(mesh_obj) && !needs_generated_tangents) ? mesh_obj : NULL;
+    base_cmd.geometry_revision = base_cmd.geometry_key ? mesh->geometry_revision : 0;
 
     if (use_fallback_instances) {
         for (int32_t i = 0; i < instance_count; i++) {
@@ -3774,8 +3968,12 @@ void rt_canvas3d_end(void *obj) {
             c->backend->shadow_end && canvas3d_ensure_shadow_targets(c, c->shadow_resolution)) {
             int32_t selected_shadow_count = canvas3d_select_shadow_directional_lights_from_draws(
                 cmds, c->draw_count, shadow_lights, VGFX3D_MAX_SHADOW_LIGHTS);
+            float shadow_world_min[3];
+            float shadow_world_max[3];
+            int has_shadow_bounds =
+                canvas3d_build_shadow_world_bounds(cmds, c->draw_count, shadow_world_min, shadow_world_max);
 
-            for (int32_t slot = 0; slot < selected_shadow_count; slot++) {
+            for (int32_t slot = 0; has_shadow_bounds && slot < selected_shadow_count; slot++) {
                 vgfx3d_rendertarget_t *shadow_rt;
                 vgfx3d_light_params_t selected_light = shadow_lights[slot];
                 float light_vp[16];
@@ -3783,7 +3981,8 @@ void rt_canvas3d_end(void *obj) {
                 shadow_rt = c->shadow_rts[c->shadow_count];
                 if (!shadow_rt || !shadow_rt->depth_buf)
                     continue;
-                if (!canvas3d_build_shadow_light_vp(cmds, c->draw_count, &selected_light, light_vp))
+                if (!canvas3d_build_shadow_light_vp(
+                        shadow_world_min, shadow_world_max, &selected_light, light_vp))
                     continue;
 
                 memcpy(c->shadow_light_vps[c->shadow_count], light_vp, sizeof(light_vp));
@@ -4031,7 +4230,7 @@ static void rt_canvas3d_update_mouse_from_logical(int32_t x, int32_t y) {
 ///          with Canvas3D's public logical coordinate space.
 static void rt_canvas3d_update_mouse_from_physical(vgfx_window_t gfx_win, int32_t x, int32_t y) {
     float scale = vgfx_window_get_scale(gfx_win);
-    if (scale < 0.001f)
+    if (!isfinite(scale) || scale < 0.001f)
         scale = 1.0f;
     rt_canvas3d_update_mouse_from_logical((int32_t)((double)x / (double)scale),
                                           (int32_t)((double)y / (double)scale));
@@ -4054,8 +4253,8 @@ int64_t rt_canvas3d_poll(void *obj) {
 
     int8_t use_live = c->input_source != 1;
     int8_t use_synthetic = c->input_source != 0;
-    int64_t last_event_type = VGFX_EVENT_NONE;
     int8_t captured = use_live ? rt_mouse_is_captured() : 0;
+    c->last_event_type = VGFX_EVENT_NONE;
 
     /* Begin frame (resets per-frame state for keyboard/mouse/pad) */
     rt_keyboard_begin_frame();
@@ -4068,7 +4267,7 @@ int64_t rt_canvas3d_poll(void *obj) {
         if (!vgfx_pump_events(c->gfx_win)) {
             canvas3d_close_window(c);
             rt_action_update();
-            return VGFX_EVENT_NONE;
+            return 0;
         }
 
         /* Read current platform mouse position. vgfx_mouse_pos() returns
@@ -4093,7 +4292,7 @@ int64_t rt_canvas3d_poll(void *obj) {
         /* Process events (keyboard + mouse buttons only — mouse moves handled above) */
         vgfx_event_t evt;
         while (vgfx_poll_event(c->gfx_win, &evt)) {
-            last_event_type = (int64_t)evt.type;
+            canvas3d_record_event_type(c, (int64_t)evt.type);
             if (evt.type == VGFX_EVENT_KEY_DOWN)
                 rt_keyboard_on_vgfx_key_down((int64_t)evt.data.key.key);
             else if (evt.type == VGFX_EVENT_KEY_UP)
@@ -4130,7 +4329,7 @@ int64_t rt_canvas3d_poll(void *obj) {
 
         if (!c->gfx_win) {
             rt_action_update();
-            return last_event_type;
+            return 0;
         }
 
         if (!captured) {
@@ -4156,7 +4355,17 @@ int64_t rt_canvas3d_poll(void *obj) {
         vgfx_warp_cursor(c->gfx_win, cw / 2, ch / 2);
     }
 
-    return last_event_type;
+    return c->should_close ? 0 : 1;
+}
+
+int64_t rt_canvas3d_poll_event(void *obj) {
+    rt_canvas3d *c = rt_canvas3d_checked_or_stack(obj);
+    if (!c || c->event_type_count <= 0)
+        return VGFX_EVENT_NONE;
+    int64_t type = c->event_type_queue[c->event_type_head];
+    c->event_type_head = (c->event_type_head + 1) % RT_CANVAS3D_EVENT_QUEUE_CAPACITY;
+    c->event_type_count--;
+    return type;
 }
 
 /// @brief Check if the canvas window received a close request.
@@ -4290,6 +4499,12 @@ void rt_canvas3d_set_input_source(void *obj, int64_t mode) {
     int32_t next = canvas3d_input_source_from_mode(mode);
     if (next == 0 && c->input_source != 0)
         canvas3d_release_synthetic_input(c);
+    else if (next != 0) {
+        rt_canvas3d *owner = (rt_canvas3d *)__atomic_load_n(&g_canvas3d_synthetic_owner,
+                                                            __ATOMIC_ACQUIRE);
+        if (owner && owner != c)
+            canvas3d_set_synthetic_owner(c);
+    }
     c->input_source = next;
 }
 
@@ -4364,10 +4579,16 @@ void rt_canvas3d_advance_synthetic_frame(void *obj) {
 /// @details Slot index must be in [0, VGFX3D_MAX_LIGHTS). Pass NULL to clear a slot.
 void rt_canvas3d_set_light(void *obj, int64_t index, void *light) {
     rt_canvas3d *c = rt_canvas3d_checked_or_stack(obj);
-    if (!c || index < 0 || index >= VGFX3D_MAX_LIGHTS)
+    if (!c)
         return;
-    if (light && !rt_g3d_has_class(light, RT_G3D_LIGHT3D_CLASS_ID))
+    if (index < 0 || index >= VGFX3D_MAX_LIGHTS) {
+        rt_trap("Canvas3D.SetLight: index out of range");
         return;
+    }
+    if (light && !rt_g3d_has_class(light, RT_G3D_LIGHT3D_CLASS_ID)) {
+        rt_trap("Canvas3D.SetLight: light must be Light3D");
+        return;
+    }
     canvas3d_assign_owned_ref((void **)&c->lights[index], light);
 }
 

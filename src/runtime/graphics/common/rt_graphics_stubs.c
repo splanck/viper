@@ -2143,12 +2143,17 @@ void rt_canvas3d_flip(void *o) {
 /// @brief Stub for `Canvas3D.Poll` — would normally pump the OS event
 ///        queue and update input state for this frame.
 ///
-/// Silent stub returning `0` (no events pending).
+/// Silent stub returning `0` (closed/unavailable).
 ///
 /// @param o Canvas3D handle (ignored).
 ///
 /// @return `0`.
 int64_t rt_canvas3d_poll(void *o) {
+    (void)o;
+    return 0;
+}
+
+int64_t rt_canvas3d_poll_event(void *o) {
     (void)o;
     return 0;
 }
@@ -2352,6 +2357,13 @@ void rt_canvas3d_set_ambient(void *o, double r, double g, double b) {
 /// @param t Vec3 end point handle (ignored).
 /// @param c Packed 0xAARRGGBB color (ignored).
 void rt_canvas3d_draw_line3d(void *o, void *f, void *t, int64_t c) {
+    (void)o;
+    (void)f;
+    (void)t;
+    (void)c;
+}
+
+void rt_canvas3d_draw_line3d_raw(void *o, const double *f, const double *t, int64_t c) {
     (void)o;
     (void)f;
     (void)t;
@@ -3758,6 +3770,11 @@ void *rt_scene_node3d_get_world_matrix(void *n) {
 }
 
 void *rt_scene_node3d_get_world_position(void *n) {
+    (void)n;
+    return NULL;
+}
+
+void *rt_scene_node3d_get_world_rotation(void *n) {
     (void)n;
     return NULL;
 }
@@ -6096,6 +6113,13 @@ void rt_canvas3d_draw_aabb_wire(void *c, void *mn, void *mx, int64_t cl) {
     (void)cl;
 }
 
+void rt_canvas3d_draw_aabb_wire_raw(void *c, const double *mn, const double *mx, int64_t cl) {
+    (void)c;
+    (void)mn;
+    (void)mx;
+    (void)cl;
+}
+
 /// @brief Stub for `Canvas3D.DrawSphereWire` — would normally draw a
 ///        wireframe sphere (3 great-circle rings) at world position `ctr`
 ///        with radius `r`.
@@ -6237,6 +6261,75 @@ void rt_canvas3d_set_shadow_bias(void *c, double b) {
 void rt_sound3d_set_listener(void *p, void *f) {
     (void)p;
     (void)f;
+}
+
+void rt_sound3d_listener_state_identity(rt_sound3d_listener_state *state) {
+    if (!state)
+        return;
+    state->position[0] = 0.0;
+    state->position[1] = 0.0;
+    state->position[2] = 0.0;
+    state->forward[0] = 0.0;
+    state->forward[1] = 0.0;
+    state->forward[2] = -1.0;
+    state->right[0] = 1.0;
+    state->right[1] = 0.0;
+    state->right[2] = 0.0;
+    state->up[0] = 0.0;
+    state->up[1] = 1.0;
+    state->up[2] = 0.0;
+    state->velocity[0] = 0.0;
+    state->velocity[1] = 0.0;
+    state->velocity[2] = 0.0;
+    state->valid = 1;
+}
+
+void rt_sound3d_listener_state_set(rt_sound3d_listener_state *state,
+                                   const double *position,
+                                   const double *forward,
+                                   const double *velocity) {
+    rt_sound3d_listener_state_set_pose(state, position, forward, NULL, velocity);
+}
+
+void rt_sound3d_listener_state_set_pose(rt_sound3d_listener_state *state,
+                                        const double *position,
+                                        const double *forward,
+                                        const double *up,
+                                        const double *velocity) {
+    if (!state)
+        return;
+    rt_sound3d_listener_state_identity(state);
+    if (position) {
+        state->position[0] = position[0];
+        state->position[1] = position[1];
+        state->position[2] = position[2];
+    }
+    if (forward) {
+        state->forward[0] = forward[0];
+        state->forward[1] = forward[1];
+        state->forward[2] = forward[2];
+    }
+    if (up) {
+        state->up[0] = up[0];
+        state->up[1] = up[1];
+        state->up[2] = up[2];
+    }
+    if (velocity) {
+        state->velocity[0] = velocity[0];
+        state->velocity[1] = velocity[1];
+        state->velocity[2] = velocity[2];
+    }
+}
+
+void rt_sound3d_get_effective_listener_state(rt_sound3d_listener_state *out_state) {
+    rt_sound3d_listener_state_identity(out_state);
+}
+
+void rt_sound3d_set_active_listener_state(const rt_sound3d_listener_state *state) {
+    (void)state;
+}
+
+void rt_sound3d_clear_active_listener_state(void) {
 }
 
 void rt_sound3d_compute_voice_params_ex(const rt_sound3d_listener_state *listener,
@@ -6413,6 +6506,16 @@ void *rt_soundlistener3d_get_forward(void *l) {
 void rt_soundlistener3d_set_forward(void *l, void *f) {
     (void)l;
     (void)f;
+}
+
+void *rt_soundlistener3d_get_up(void *l) {
+    (void)l;
+    return NULL;
+}
+
+void rt_soundlistener3d_set_up(void *l, void *u) {
+    (void)l;
+    (void)u;
 }
 
 /// @brief Stub for `SoundListener3D.Velocity` — get the listener's
@@ -6791,6 +6894,12 @@ void rt_world3d_add(void *w, void *b) {
     (void)b;
 }
 
+int8_t rt_world3d_try_add(void *w, void *b) {
+    (void)w;
+    (void)b;
+    return 0;
+}
+
 /// @brief Remove an entry from the world3d.
 void rt_world3d_remove(void *w, void *b) {
     (void)w;
@@ -6799,6 +6908,24 @@ void rt_world3d_remove(void *w, void *b) {
 
 /// @brief Return the count of elements in the world3d.
 int64_t rt_world3d_body_count(void *w) {
+    (void)w;
+    return 0;
+}
+
+/// @brief Stub for `Physics3DWorld.LastCCDRequestedSubsteps`.
+int64_t rt_world3d_get_last_ccd_requested_substeps(void *w) {
+    (void)w;
+    return 0;
+}
+
+/// @brief Stub for `Physics3DWorld.LastCCDSubsteps`.
+int64_t rt_world3d_get_last_ccd_substeps(void *w) {
+    (void)w;
+    return 0;
+}
+
+/// @brief Stub for `Physics3DWorld.CCDSubstepClampedCount`.
+int64_t rt_world3d_get_ccd_substep_clamped_count(void *w) {
     (void)w;
     return 0;
 }
@@ -7300,6 +7427,16 @@ int8_t rt_physics_hit3d_get_is_trigger(void *h) {
 ///
 /// @return `0`.
 int64_t rt_physics_hit_list3d_get_count(void *list) {
+    (void)list;
+    return 0;
+}
+
+int64_t rt_physics_hit_list3d_get_total_count(void *list) {
+    (void)list;
+    return 0;
+}
+
+int8_t rt_physics_hit_list3d_get_truncated(void *list) {
     (void)list;
     return 0;
 }
@@ -8167,6 +8304,18 @@ void *rt_body3d_get_position(void *o) {
     return NULL;
 }
 
+void rt_body3d_set_scale(void *o, double x, double y, double z) {
+    (void)o;
+    (void)x;
+    (void)y;
+    (void)z;
+}
+
+void *rt_body3d_get_scale(void *o) {
+    (void)o;
+    return NULL;
+}
+
 /// @brief Stub for `Body3D.SetOrientation` — set the body's rotation
 ///        from a Quaternion handle. As with `SetPosition`, this is
 ///        teleportation and wakes the body.
@@ -8191,6 +8340,26 @@ void rt_body3d_set_orientation(void *o, void *q) {
 void *rt_body3d_get_orientation(void *o) {
     (void)o;
     return NULL;
+}
+
+void rt_body3d_get_pose_raw(void *o, double *position_out, double *rotation_out, double *scale_out) {
+    (void)o;
+    if (position_out) {
+        position_out[0] = 0.0;
+        position_out[1] = 0.0;
+        position_out[2] = 0.0;
+    }
+    if (rotation_out) {
+        rotation_out[0] = 0.0;
+        rotation_out[1] = 0.0;
+        rotation_out[2] = 0.0;
+        rotation_out[3] = 1.0;
+    }
+    if (scale_out) {
+        scale_out[0] = 1.0;
+        scale_out[1] = 1.0;
+        scale_out[2] = 1.0;
+    }
 }
 
 /// @brief Stub for `Body3D.SetVelocity` — set the body's linear velocity

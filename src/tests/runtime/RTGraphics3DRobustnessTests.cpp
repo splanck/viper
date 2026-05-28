@@ -48,10 +48,12 @@ extern "C" {
 }
 
 #include <cassert>
+#include <csetjmp>
 #include <clocale>
 #include <cmath>
 #include <cstdint>
 #include <cstdio>
+#include <cstdlib>
 #include <cstring>
 #include <fstream>
 #include <limits>
@@ -85,6 +87,34 @@ void rt_material3d_set_import_texture_slot(void *obj,
 double rt_terrain3d_get_height_at(void *obj, double wx, double wz);
 int8_t rt_navmesh3d_is_walkable(void *obj, void *point);
 void rt_navmesh3d_set_max_slope(void *obj, double degrees);
+}
+
+namespace {
+
+static std::jmp_buf g_trap_jmp;
+static const char *g_last_trap = nullptr;
+static bool g_expect_trap = false;
+
+template <typename Fn> bool expect_trap_contains(Fn &&fn, const char *needle) {
+    g_last_trap = nullptr;
+    g_expect_trap = true;
+    if (setjmp(g_trap_jmp) == 0) {
+        fn();
+        g_expect_trap = false;
+        return false;
+    }
+    g_expect_trap = false;
+    return g_last_trap && (!needle || std::strstr(g_last_trap, needle) != nullptr);
+}
+
+} // namespace
+
+extern "C" void vm_trap(const char *msg) {
+    g_last_trap = msg;
+    if (g_expect_trap)
+        std::longjmp(g_trap_jmp, 1);
+    std::fprintf(stderr, "unexpected runtime trap: %s\n", msg ? msg : "(null)");
+    std::abort();
 }
 
 namespace {
@@ -315,14 +345,14 @@ static void test_material_rejects_non_pixels_texture_handles() {
     void *fake = rt_obj_new_i64(0, 8);
     void *undersized_pixels = rt_obj_new_i64(RT_PIXELS_CLASS_ID, 8);
     void *pixels = rt_pixels_new(1, 1);
-    void *mat_obj = rt_material3d_new_textured(fake);
+    assert(expect_trap_contains([&] { rt_material3d_new_textured(fake); }, "Pixels"));
+    void *mat_obj = rt_material3d_new_textured(pixels);
     auto *mat = static_cast<MaterialView *>(mat_obj);
-    assert(mat->texture == nullptr);
-
-    rt_material3d_set_texture(mat_obj, pixels);
     assert(mat->texture == pixels);
-    rt_material3d_set_texture(mat_obj, fake);
-    rt_material3d_set_texture(mat_obj, undersized_pixels);
+
+    assert(expect_trap_contains([&] { rt_material3d_set_texture(mat_obj, fake); }, "Pixels"));
+    assert(expect_trap_contains([&] { rt_material3d_set_texture(mat_obj, undersized_pixels); },
+                                "Pixels"));
     assert(mat->texture == pixels);
 }
 

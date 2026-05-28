@@ -706,12 +706,13 @@ void rt_mesh3d_set_morph_targets(void *mesh, void *morph_targets) {
 
 /// @brief Submit a mesh draw with morph-target blend applied on GPU or CPU.
 /// @details Picks the evaluation path by asking the backend
-///   (`vgfx3d_backend_prefers_gpu_morph`). GPU path: shallow-stores the
-///   existing morph fields on the mesh, points them at the packed payload
-///   for this draw, invokes the normal `draw_mesh_matrix_keyed`, then
-///   restores — this pattern avoids mutating the persistent mesh state
-///   across a draw boundary and sidesteps adding a second draw overload
-///   for each backend. CPU path: allocates a scratch vertex buffer,
+///   (`vgfx3d_backend_prefers_gpu_morph`). GPU path: builds a shallow stack
+///   copy of the mesh with its morph fields pointed at the packed payload for
+///   this draw and submits that copy via the normal `draw_mesh_matrix_keyed`,
+///   avoiding any mutation of the persistent mesh state. Because the copy
+///   aliases the original mesh's vertex/index buffers, the original mesh (and
+///   the morph target) are retained as frame temp objects so they outlive the
+///   deferred draw. CPU path: allocates a scratch vertex buffer,
 ///   accumulates weighted position plus optional normal/tangent deltas per
 ///   vertex, re-normalizes affected directions when any shape contributed them,
 ///   and tracks the buffer for end-of-frame cleanup. Small weights
@@ -749,6 +750,12 @@ static void morphtarget_draw_mesh_matrix(void *canvas,
         if (mt->shape_count > 0 && !packed_deltas)
             return;
         if (!rt_canvas3d_add_temp_object(canvas, mt))
+            return;
+        /* The stack mesh copy below aliases the original mesh's vertex/index
+         * buffers, so the original mesh object must outlive the deferred draw.
+         * Passing the copy to the keyed draw skips that path's payload
+         * retention, so retain the original mesh explicitly here. */
+        if (rt_heap_is_payload(mesh) && !rt_canvas3d_add_temp_object(canvas, mesh))
             return;
 
         tmp = *m;

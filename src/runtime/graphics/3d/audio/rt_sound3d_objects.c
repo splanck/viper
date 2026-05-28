@@ -300,63 +300,72 @@ static void sound3d_get_node_world_position(void *node, double *out_position) {
     sound3d_release_local(world_matrix);
 }
 
-/// @brief Resolve a SceneNode3D's world-space forward direction.
-/// @details Computes forward as the world-transformed `(0, 0, -1)` minus the
+/// @brief Resolve a SceneNode3D's world-space direction.
+/// @details Computes direction as the world-transformed local vector minus the
 ///          world-transformed origin — the difference cancels the
 ///          translation component, leaving only the rotated direction.
 ///          Result is normalised; degenerate transforms fall back to the
-///          identity forward `(0, 0, -1)`. Two `rt_vec3_new` allocations
+///          supplied fallback. Two `rt_vec3_new` allocations
 ///          per call are accepted overhead since this is per-tick, not
 ///          per-frame-per-pixel.
-static void sound3d_get_node_world_forward(void *node, double *out_forward) {
+static void sound3d_get_node_world_direction(void *node,
+                                             const double *local_direction,
+                                             const double *fallback,
+                                             double *out_direction) {
     void *world_matrix;
     void *origin_vec;
-    void *ahead_vec;
+    void *direction_vec;
     void *origin;
-    void *ahead;
+    void *direction;
     double origin_xyz[3];
-    double ahead_xyz[3];
+    double direction_xyz[3];
     double len;
-    if (!out_forward)
+    if (!out_direction)
         return;
     if (!node) {
-        out_forward[0] = 0.0;
-        out_forward[1] = 0.0;
-        out_forward[2] = -1.0;
+        sound3d_copy3(out_direction, fallback);
         return;
     }
     world_matrix = rt_scene_node3d_get_world_matrix(node);
     if (!world_matrix) {
-        out_forward[0] = 0.0;
-        out_forward[1] = 0.0;
-        out_forward[2] = -1.0;
+        sound3d_copy3(out_direction, fallback);
         return;
     }
     origin_vec = rt_vec3_new(0.0, 0.0, 0.0);
-    ahead_vec = rt_vec3_new(0.0, 0.0, -1.0);
+    direction_vec = rt_vec3_new(local_direction[0], local_direction[1], local_direction[2]);
     origin = rt_mat4_transform_point(world_matrix, origin_vec);
-    ahead = rt_mat4_transform_point(world_matrix, ahead_vec);
+    direction = rt_mat4_transform_point(world_matrix, direction_vec);
     sound3d_vec_from_obj(origin, origin_xyz);
-    sound3d_vec_from_obj(ahead, ahead_xyz);
+    sound3d_vec_from_obj(direction, direction_xyz);
     sound3d_release_local(origin_vec);
-    sound3d_release_local(ahead_vec);
+    sound3d_release_local(direction_vec);
     sound3d_release_local(origin);
-    sound3d_release_local(ahead);
+    sound3d_release_local(direction);
     sound3d_release_local(world_matrix);
-    out_forward[0] = ahead_xyz[0] - origin_xyz[0];
-    out_forward[1] = ahead_xyz[1] - origin_xyz[1];
-    out_forward[2] = ahead_xyz[2] - origin_xyz[2];
-    len = sqrt(out_forward[0] * out_forward[0] + out_forward[1] * out_forward[1] +
-               out_forward[2] * out_forward[2]);
+    out_direction[0] = direction_xyz[0] - origin_xyz[0];
+    out_direction[1] = direction_xyz[1] - origin_xyz[1];
+    out_direction[2] = direction_xyz[2] - origin_xyz[2];
+    len = sqrt(out_direction[0] * out_direction[0] + out_direction[1] * out_direction[1] +
+               out_direction[2] * out_direction[2]);
     if (len <= 1e-8) {
-        out_forward[0] = 0.0;
-        out_forward[1] = 0.0;
-        out_forward[2] = -1.0;
+        sound3d_copy3(out_direction, fallback);
         return;
     }
-    out_forward[0] /= len;
-    out_forward[1] /= len;
-    out_forward[2] /= len;
+    out_direction[0] /= len;
+    out_direction[1] /= len;
+    out_direction[2] /= len;
+}
+
+static void sound3d_get_node_world_forward(void *node, double *out_forward) {
+    static const double local_forward[3] = {0.0, 0.0, -1.0};
+    static const double fallback_forward[3] = {0.0, 0.0, -1.0};
+    sound3d_get_node_world_direction(node, local_forward, fallback_forward, out_forward);
+}
+
+static void sound3d_get_node_world_up(void *node, double *out_up) {
+    static const double local_up[3] = {0.0, 1.0, 0.0};
+    static const double fallback_up[3] = {0.0, 1.0, 0.0};
+    sound3d_get_node_world_direction(node, local_up, fallback_up, out_up);
 }
 
 /// @brief Copy a listener's pose into the audio core's active-listener slot.
@@ -383,6 +392,7 @@ static void sound3d_listener_push_active_state(rt_soundlistener3d *listener) {
 static void sound3d_listener_sync_binding(rt_soundlistener3d *listener, double dt) {
     double position[3];
     double forward[3];
+    double up[3];
     if (!listener)
         return;
 
@@ -391,6 +401,7 @@ static void sound3d_listener_sync_binding(rt_soundlistener3d *listener, double d
         void *camera_forward = rt_camera3d_get_forward(listener->bound_camera);
         sound3d_vec_from_obj(camera_position, position);
         sound3d_vec_from_obj(camera_forward, forward);
+        sound3d_copy3(up, listener->state.up);
         sound3d_release_local(camera_position);
         sound3d_release_local(camera_forward);
         sound3d_update_velocity(listener->state.velocity,
@@ -398,8 +409,8 @@ static void sound3d_listener_sync_binding(rt_soundlistener3d *listener, double d
                                 &listener->has_last_sync_position,
                                 position,
                                 dt);
-        rt_sound3d_listener_state_set(
-            &listener->state, position, forward, listener->state.velocity);
+        rt_sound3d_listener_state_set_pose(
+            &listener->state, position, forward, up, listener->state.velocity);
         sound3d_listener_push_active_state(listener);
         return;
     }
@@ -407,13 +418,14 @@ static void sound3d_listener_sync_binding(rt_soundlistener3d *listener, double d
     if (listener->bound_node) {
         sound3d_get_node_world_position(listener->bound_node, position);
         sound3d_get_node_world_forward(listener->bound_node, forward);
+        sound3d_get_node_world_up(listener->bound_node, up);
         sound3d_update_velocity(listener->state.velocity,
                                 listener->last_sync_position,
                                 &listener->has_last_sync_position,
                                 position,
                                 dt);
-        rt_sound3d_listener_state_set(
-            &listener->state, position, forward, listener->state.velocity);
+        rt_sound3d_listener_state_set_pose(
+            &listener->state, position, forward, up, listener->state.velocity);
         sound3d_listener_push_active_state(listener);
     }
 }
@@ -644,8 +656,35 @@ void rt_soundlistener3d_set_forward(void *obj, void *forward) {
         return;
     if (!sound3d_vec_from_obj(forward, fwd))
         return;
-    rt_sound3d_listener_state_set(
-        &listener->state, listener->state.position, fwd, listener->state.velocity);
+    rt_sound3d_listener_state_set_pose(
+        &listener->state, listener->state.position, fwd, listener->state.up, listener->state.velocity);
+    sound3d_listener_push_active_state(listener);
+}
+
+/// @brief Read the listener's world-space up vector. Re-syncs binding first
+/// so the result tracks attached nodes.
+void *rt_soundlistener3d_get_up(void *obj) {
+    rt_soundlistener3d *listener = sound3d_listener_checked(obj);
+    if (!listener)
+        return NULL;
+    sound3d_listener_sync_binding(listener, 0.0);
+    return rt_vec3_new(listener->state.up[0], listener->state.up[1], listener->state.up[2]);
+}
+
+/// @brief Set the listener's up vector explicitly. The basis is orthonormalized
+/// against the current forward vector inside the audio core.
+void rt_soundlistener3d_set_up(void *obj, void *up) {
+    rt_soundlistener3d *listener = sound3d_listener_checked(obj);
+    double upv[3];
+    if (!listener)
+        return;
+    if (!sound3d_vec_from_obj(up, upv))
+        return;
+    rt_sound3d_listener_state_set_pose(&listener->state,
+                                       listener->state.position,
+                                       listener->state.forward,
+                                       upv,
+                                       listener->state.velocity);
     sound3d_listener_push_active_state(listener);
 }
 

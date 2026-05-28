@@ -50,6 +50,7 @@ typedef struct {
     void *vptr;
     double position[3];
     double orientation[4];
+    double scale[3];
     double velocity[3];
     double angular_velocity[3];
     double force[3];

@@ -29,6 +29,13 @@
 #include <stdlib.h>
 #include <string.h>
 
+/* Determinant magnitude below which a 3x3/4x4 matrix is treated as singular.
+ * Shared by the normal-matrix derivation and the 4x4 inverse so both agree on
+ * the bound; the value matches the inverse's long-standing threshold and stays
+ * permissive enough not to drop the rotation of legitimately small-scaled
+ * (sub-0.01) objects, whose normal matrix is renormalized after derivation. */
+static const float kVgfx3dSingularDetEps = 1e-12f;
+
 typedef struct {
     int64_t w;
     int64_t h;
@@ -391,7 +398,7 @@ void vgfx3d_compute_normal_matrix4(const float *model_matrix, float *out_matrix)
 
     float det = a * c00 + b * c01 + c * c02;
     float inv_det = 0.0f;
-    if (isfinite(det) && fabsf(det) > 1e-8f)
+    if (isfinite(det) && fabsf(det) > kVgfx3dSingularDetEps)
         inv_det = 1.0f / det;
 
     memset(out_matrix, 0, sizeof(float) * 16);
@@ -473,7 +480,7 @@ int vgfx3d_invert_matrix4(const float *matrix, float *out_matrix) {
               matrix[8] * matrix[1] * matrix[6] - matrix[8] * matrix[2] * matrix[5];
 
     det = matrix[0] * inv[0] + matrix[1] * inv[4] + matrix[2] * inv[8] + matrix[3] * inv[12];
-    if (!isfinite(det) || fabsf(det) < 1e-12f)
+    if (!isfinite(det) || fabsf(det) < kVgfx3dSingularDetEps)
         return -1;
 
     det = 1.0f / det;

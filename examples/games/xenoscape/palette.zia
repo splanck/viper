@@ -388,4 +388,41 @@ class Palette {
         uiText = Color.RGB(221, 221, 221);
         uiDim = Color.RGB(102, 102, 136);
     }
+
+    // =========================================================================
+    // DERIVED-COLOUR HELPERS  (the #12 foundation)
+    // -------------------------------------------------------------------------
+    // The runtime `Color` math is INTEGER-PERCENTAGE based: the blend/amount
+    // argument is an i64 in 0..100, NOT a 0.0-1.0 float.  These thin wrappers
+    // give draw code one named, documented way to derive a colour from a
+    // palette swatch instead of hand-coding a fresh `Color.RGB(...)` triple.
+    // =========================================================================
+
+    /// @brief Linear blend between two packed colours.  `pct` is an
+    ///        integer 0..100 (0 = a, 100 = b).
+    expose func mix(a: Integer, b: Integer, pct: Integer) -> Integer {
+        return Color.Lerp(a, b, pct);
+    }
+
+    /// @brief Brighten a colour toward white by `pct` percent (0..100).
+    expose func brighten(c: Integer, pct: Integer) -> Integer {
+        return Color.Brighten(c, pct);
+    }
+
+    /// @brief Darken a colour toward black by `pct` percent (0..100).
+    expose func darken(c: Integer, pct: Integer) -> Integer {
+        return Color.Darken(c, pct);
+    }
+
+    /// @brief Selected/hovered UI tint — one brighten amount shared by
+    ///        every menu and HUD highlight so selection reads consistently.
+    expose func highlight(c: Integer) -> Integer {
+        return Color.Brighten(c, 35);
+    }
+
+    /// @brief Inactive/disabled UI tint — one darken amount shared across
+    ///        the UI so dimmed widgets read consistently.
+    expose func dim(c: Integer) -> Integer {
+        return Color.Darken(c, 40);
+    }
 }

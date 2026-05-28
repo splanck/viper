@@ -202,7 +202,8 @@ The rendering surface. Creates a window and manages the render loop.
 | `FinalizeFrame()` | `void()` | Apply post-FX and replay the final overlay once, without presenting |
 | `ScreenshotFinal()` | `obj()` | Finalize if needed, then capture the final frame as `Pixels` |
 | `Flip()` | `void()` | Finalize if needed, present frame to screen, compute DeltaTime |
-| `Poll()` | `i64()` | Process window events and update `Keyboard`/`Mouse`/actions; returns the last raw window event code |
+| `Poll()` | `i64()` | Process window events and update `Keyboard`/`Mouse`/actions; returns `1` while open, `0` when closed/unavailable |
+| `PollEvent()` | `i64()` | Dequeue the next raw canvas event type, or `0` when none are pending |
 | `BackendSupports(capability)` | `i1(str)` | Test a named backend capability such as `shadows`, `skybox`, `render_target`, `window_readback`, `hardware_instancing`, `postfx`, `gpu_postfx`, `postfx-overlay`, `final-screenshot`, or `gpu-postfx-overlay` |
 
 ### Drawing Methods
@@ -224,7 +225,7 @@ The rendering surface. Creates a window and manages the render loop.
 
 | Method | Signature | Description |
 |--------|-----------|-------------|
-| `SetLight(index, light)` | `void(i64, obj)` | Bind or clear a retained Light3D slot (0-15) |
+| `SetLight(index, light)` | `void(i64, obj)` | Bind or clear a retained Light3D slot (0-15); invalid indices or non-Light3D handles trap |
 | `ClearLights()` | `void()` | Clear every retained canvas light slot |
 | `SetDefaultLighting()` | `void()` | Install a conservative directional key/fill plus readable ambient |
 | `LightCount` | `i64` property | Count active enabled canvas-slot lights |
@@ -259,8 +260,10 @@ The rendering surface. Creates a window and manages the render loop.
 
 `Poll()` is the live-loop input boundary. It updates `Viper.Input.Keyboard`,
 `Viper.Input.Mouse`, gamepad state, and action mappings; most gameplay code
-should read those APIs instead of branching on the raw event code returned by
-`Poll()`. The raw return is useful for diagnostics or low-level integrations.
+should read those APIs instead of branching on raw event codes. `Poll()` now
+returns only the open/closed status for the canvas. Low-level integrations can
+call `PollEvent()` until it returns `0` to drain the queued event types collected
+during the last poll.
 
 For deterministic tests, select synthetic input and clock before the scripted
 frames:
@@ -386,7 +389,7 @@ For a compact, executable example of this path, see
 software-backend frame, captures with `ScreenshotFinal()`, checks the crisp final
 overlay, and compares to the committed baseline in `examples/3d/baselines/`.
 
-**Important:** `Begin`/`End` and `BeginOverlay`/`EndOverlay` must not nest. All 3D draw calls go between `Begin` and `End`; `DrawTerrain` and `DrawVegetation` are rejected during `Begin2D`. Legacy HUD overlay calls (`DrawRect2D`, `DrawText2D`, `DrawCrosshair`) may still be called between `End` and `Flip`, but final overlays should be grouped with `BeginOverlay`/`EndOverlay`. `DrawMesh` and instanced draws require finite transform matrices; invalid matrices are rejected before they reach culling or backend submission. Draw submission clamps material colors and PBR scalars before narrowing to backend floats. Deferred static heap `Mesh3D` draws snapshot geometry when needed so submitted geometry remains stable through `Canvas3D.End()`; skinned and morphed mesh draws still retain their live mesh object because animation data must remain available for backend submission.
+**Important:** `Begin`/`End` and `BeginOverlay`/`EndOverlay` must not nest. All 3D draw calls go between `Begin` and `End`; `DrawTerrain` and `DrawVegetation` are rejected during `Begin2D`. Legacy HUD overlay calls (`DrawRect2D`, `DrawText2D`, `DrawCrosshair`) may still be called between `End` and `Flip`, but final overlays should be grouped with `BeginOverlay`/`EndOverlay`. Public `DrawMesh` requires a valid heap `Mesh3D` handle and finite transform matrix; invalid matrices are rejected before they reach culling or backend submission. Draw submission clamps material colors and PBR scalars before narrowing to backend floats. Deferred heap `Mesh3D` draws snapshot geometry when needed so submitted geometry remains stable through `Canvas3D.End()`; internal skinned and morphed draws retain or snapshot the animation payloads needed for backend submission.
 
 ## Mesh3D
 
@@ -421,7 +424,7 @@ overlay, and compares to the committed baseline in `examples/3d/baselines/`.
 | `Clear()` | `void()` | Reset vertex/index counts to zero (reuse backing arrays) |
 | `RecalcNormals()` | `void()` | Auto-compute vertex normals from face geometry |
 | `CalcTangents()` | `void()` | Compute tangent vectors (required for normal mapping) |
-| `Clone()` | `obj()` | Deep copy of mesh data |
+| `Clone()` | `obj()` | Deep copy of mesh data, including attached morph targets |
 | `Transform(mat4)` | `void(obj)` | Transform all vertices in-place by Mat4 |
 
 ### Skeletal and Morph Extensions
@@ -434,7 +437,7 @@ These are available both as class methods and through their fully qualified stat
 | `Mesh3D.SetBoneWeights(mesh, vtx, b0, w0, b1, w1, b2, w2, b3, w3)` | `void(obj, i64, i64, f64, i64, f64, i64, f64, i64, f64)` | Set bone indices + weights for a vertex (4 bones max) |
 | `Mesh3D.SetMorphTargets(mesh, morphTarget)` | `void(obj, obj)` | Bind a MorphTarget3D to the mesh |
 
-`SetBoneWeights` drops invalid bone indices and non-positive or non-finite weights, normalizes the remaining positive weights, updates the mesh's skinned bone count, and invalidates cached geometry so renderer-side buffers refresh.
+`SetBoneWeights` drops invalid bone indices and non-positive or non-finite weights, normalizes the remaining positive weights, updates the mesh's skinned bone count, and invalidates cached geometry so renderer-side buffers refresh. `Clone()` also clones attached `MorphTarget3D` payloads so editing morph weights or deltas on the source mesh cannot mutate the clone.
 
 ### Zia Example
 
@@ -617,7 +620,7 @@ Surface appearance for meshes, models, decals, and other 3D drawables.
 - Calling `SetMetallic`, `SetRoughness`, `SetAO`, `SetMetallicRoughnessMap`, or `SetAOMap` on a legacy material promotes it into the PBR workflow.
 - `Clone()` and `MakeInstance()` both return independent material objects. They eagerly copy scalar state and share the currently referenced texture/cubemap objects by pointer. After cloning, either material can replace its maps independently.
 - Color and scalar setters sanitize input at the runtime boundary: colors and PBR factors are clamped to valid ranges, non-finite custom parameters become `0`, and non-finite shadow/fog/material values fall back to deterministic safe defaults. The draw path repeats finite/clamp validation before backend command submission.
-- Texture map setters accept `Pixels` handles only, and `SetEnvMap` accepts `CubeMap3D` handles only. Invalid handle types are ignored instead of being retained into material state.
+- `NewTextured` and texture map setters accept `Pixels` handles only and trap on invalid handle types before changing material state. `SetEnvMap` accepts `CubeMap3D` handles only; invalid cubemap handles are ignored rather than retained.
 - `AlphaMode` changes how texture alpha is interpreted for PBR materials:
   - `0`: opaque. Texture/material alpha does not enable blending, and surviving fragments write depth as opaque.
   - `1`: masked. Fragments below the cutoff are discarded; surviving fragments render as opaque coverage. Masked materials also cast alpha-tested shadows on the software, Metal, OpenGL, and D3D11 backends.
@@ -733,7 +736,7 @@ func start() {
 }
 ```
 
-`Canvas3D.SetLight()` retains the assigned light until you replace that slot or clear it with `null`.
+`Canvas3D.SetLight()` retains the assigned light until you replace that slot or clear it with `null`, and traps before mutation for invalid slot indices or non-`Light3D` objects.
 Spot-light inner and outer cone angles are sanitized to remain finite and strictly separated before
 their cosines are sent to the software and GPU backends, avoiding undefined falloff at equal cones.
 
@@ -910,6 +913,7 @@ Individual node in a Scene3D tree with transform, mesh, material, and child hier
 | `Scale` | Vec3 | read | Local scale |
 | `WorldMatrix` | Mat4 | read | Computed world transform (lazy) |
 | `WorldPosition` | Vec3 | read | World-space position without manual matrix decomposition |
+| `WorldRotation` | Quat | read | World-space rotation without manual matrix decomposition |
 | `WorldScale` | Vec3 | read | World-space scale magnitudes without manual matrix decomposition |
 | `ChildCount` | Integer | read | Number of child nodes |
 | `Parent` | SceneNode3D | read | Parent node (null if root) |
@@ -1758,6 +1762,7 @@ An `SoundListener3D` owns the active listener transform used for attenuation and
 |----------|------|--------|-------------|
 | `Position` | `Vec3` | read/write | Listener world position |
 | `Forward` | `Vec3` | read/write | Listener facing direction |
+| `Up` | `Vec3` | read/write | Listener up direction used to derive the right vector |
 | `Velocity` | `Vec3` | read/write | Listener velocity |
 | `IsActive` | `Boolean` | read/write | Whether this listener is driving `Sound3D` |
 
@@ -1766,6 +1771,7 @@ An `SoundListener3D` owns the active listener transform used for attenuation and
 | `New()` | `obj()` | Create a listener object |
 | `SetPosition(position)` | `void(obj)` | Set world position from a `Vec3` |
 | `SetForward(forward)` | `void(obj)` | Set facing direction from a `Vec3` |
+| `SetUp(up)` | `void(obj)` | Set up direction from a `Vec3` |
 | `SetVelocity(velocity)` | `void(obj)` | Set velocity explicitly |
 | `BindNode(node)` | `void(obj)` | Follow a `SceneNode3D` world transform |
 | `ClearNodeBinding()` | `void()` | Stop following a node |
@@ -1914,6 +1920,9 @@ World storage for bodies, contacts, contact events, and joints grows on demand f
 | `StayEventCount` | Integer | read | Number of collision pairs still touching this step |
 | `ExitEventCount` | Integer | read | Number of collision pairs that stopped touching this step |
 | `JointCount` | Integer | read | Number of active joints |
+| `LastCCDRequestedSubsteps` | Integer | read | Unclamped CCD substeps requested by the last step |
+| `LastCCDSubsteps` | Integer | read | CCD substeps actually used after capping |
+| `CCDSubstepClampedCount` | Integer | read | Number of steps that exceeded the CCD cap |
 
 | Method | Signature | Description |
 |--------|-----------|-------------|
@@ -1941,6 +1950,8 @@ World storage for bodies, contacts, contact events, and joints grows on demand f
 Notes:
 - Query `mask` uses the same layer bit semantics as body collision layers. `0` matches no layers; use `-1`/all bits for "match any layer".
 - Queries include trigger bodies and mark them through `PhysicsHit3D.IsTrigger`.
+- Overlap, raycast, and sweep queries reuse the broadphase and include body collision scale before shape tests.
+- CCD diagnostics are tuning counters; a non-zero clamp count means fast bodies requested more substeps than the runtime cap allows.
 - `Raycast` and `RaycastAll` are true shape queries for boxes, spheres, capsules, compound leaves, mesh/convex triangles, and heightfields. Use `SweepSphere` or `SweepCapsule` for volume casts.
 - `GetContactSeparation()` returns negative values while penetrating and positive values when separated.
 
@@ -2049,6 +2060,7 @@ Notes:
 |----------|------|--------|-------------|
 | `Collider` | Object | read/write | Active `Collider3D` shape for the body |
 | `Position` | Vec3 | read | World position (set via `SetPosition`) |
+| `Scale` | Vec3 | read | Collision scale applied to the collider |
 | `Orientation` | Quat | read | World orientation (set via `SetOrientation`) |
 | `Velocity` | Vec3 | read | Linear velocity (set via `SetVelocity`) |
 | `AngularVelocity` | Vec3 | read | Angular velocity in radians/sec (set via `SetAngularVelocity`) |
@@ -2072,6 +2084,7 @@ Notes:
 |--------|-----------|-------------|
 | `SetCollider(collider)` | `void(obj)` | Attach or replace the active `Collider3D` |
 | `SetPosition(x, y, z)` | `void(f64, f64, f64)` | Teleport body |
+| `SetScale(x, y, z)` | `void(f64, f64, f64)` | Set per-body collider scale |
 | `SetOrientation(quat)` | `void(obj)` | Set body orientation from a Quat |
 | `SetVelocity(vx, vy, vz)` | `void(f64, f64, f64)` | Set linear velocity |
 | `SetAngularVelocity(wx, wy, wz)` | `void(f64, f64, f64)` | Set angular velocity |

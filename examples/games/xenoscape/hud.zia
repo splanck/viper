@@ -103,6 +103,12 @@ class HUD {
     hide Integer pulseTimer;
     hide Integer displayCoins;
 
+    // --- Floating damage/score popups (#14) — fixed pool, no per-hit alloc ---
+    hide List[Integer] popX;
+    hide List[Integer] popY;
+    hide List[Integer] popAmt;
+    hide List[Integer] popTimer;
+
     /// @brief Construct every widget with its initial layout
     ///        + colour from the palette.  Score smoother
     ///        starts at 0; boss bar tween is dormant until a
@@ -113,6 +119,20 @@ class HUD {
         displayScore = SmoothValue.New(0.0, 0.75);
         displayCoins = 0;
         pulseTimer = 0;
+
+        // Pre-allocate a fixed pool of damage/score popup slots (#14).
+        popX = [];
+        popY = [];
+        popAmt = [];
+        popTimer = [];
+        var pi = 0;
+        while pi < 16 {
+            popX.add(0);
+            popY.add(0);
+            popAmt.add(0);
+            popTimer.add(0);
+            pi = pi + 1;
+        }
 
         // HUD background panel — full width, semi-transparent
         hudPanel = Panel.New(0, 0, SCREEN_W, 48, pal.panelBg, 190);
@@ -379,6 +399,45 @@ class HUD {
             canvas.TextScaled(sx, sy, text, Color.RGB(255, 220, 50), 2);
         } else {
             canvas.Text(sx, sy, text, Color.RGB(255, 255, 255));
+        }
+    }
+
+    /// @brief Spawn a floating popup at world (wx,wy) into a free pool slot.
+    ///        Silently drops if the pool is full (16 concurrent popups).
+    expose func spawnPopup(wx: Integer, wy: Integer, amount: Integer) {
+        var i = 0;
+        while i < popTimer.length() {
+            if popTimer.get(i) <= 0 {
+                popX.set(i, wx);
+                popY.set(i, wy);
+                popAmt.set(i, amount);
+                popTimer.set(i, 20);
+                return;
+            }
+            i = i + 1;
+        }
+    }
+
+    /// @brief Tick every active popup's lifetime down one frame (#14).
+    expose func updatePopups() {
+        var i = 0;
+        while i < popTimer.length() {
+            if popTimer.get(i) > 0 {
+                popTimer.set(i, popTimer.get(i) - 1);
+            }
+            i = i + 1;
+        }
+    }
+
+    /// @brief Draw every active popup, camera-relative, via drawDamageNumber.
+    expose func drawPopups(canvas: Canvas, camX: Integer, camY: Integer) {
+        var i = 0;
+        while i < popTimer.length() {
+            if popTimer.get(i) > 0 {
+                drawDamageNumber(canvas, popX.get(i), popY.get(i), camX, camY,
+                                 popAmt.get(i), popTimer.get(i));
+            }
+            i = i + 1;
         }
     }
 

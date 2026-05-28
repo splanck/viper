@@ -15,6 +15,7 @@
 
 #include <climits>
 #include <cmath>
+#include <csetjmp>
 #include <cstdio>
 #include <cstdlib>
 #include <cstring>
@@ -31,6 +32,17 @@ extern void rt_obj_free(void *obj);
 
 static int tests_run = 0;
 static int tests_passed = 0;
+static std::jmp_buf g_trap_jmp;
+static const char *g_last_trap = nullptr;
+static bool g_expect_trap = false;
+
+extern "C" void vm_trap(const char *msg) {
+    g_last_trap = msg;
+    if (g_expect_trap)
+        std::longjmp(g_trap_jmp, 1);
+    std::fprintf(stderr, "unexpected runtime trap: %s\n", msg ? msg : "(null)");
+    std::abort();
+}
 
 #define EXPECT_TRUE(cond, msg)                                                                     \
     do {                                                                                           \
@@ -41,6 +53,18 @@ static int tests_passed = 0;
             tests_passed++;                                                                        \
         }                                                                                          \
     } while (0)
+
+template <typename Fn> static bool expect_trap_contains(Fn &&fn, const char *needle) {
+    g_last_trap = nullptr;
+    g_expect_trap = true;
+    if (setjmp(g_trap_jmp) == 0) {
+        fn();
+        g_expect_trap = false;
+        return false;
+    }
+    g_expect_trap = false;
+    return g_last_trap && (!needle || std::strstr(g_last_trap, needle) != nullptr);
+}
 
 typedef struct {
     int kind;
@@ -1147,7 +1171,7 @@ static void test_deferred_draw_retains_mesh_and_material_until_end(void) {
     cleanup_fake_canvas(&canvas);
 }
 
-static void test_mesh_draw_submits_immediately_when_deferred_queue_cannot_grow(void) {
+static void test_mesh_draw_traps_when_deferred_queue_cannot_grow(void) {
     vgfx3d_backend_t backend = {};
     backend.name = "opengl";
     backend.submit_draw = record_draw_with_lights;
@@ -1161,13 +1185,14 @@ static void test_mesh_draw_submits_immediately_when_deferred_queue_cannot_grow(v
     void *transform = rt_mat4_identity();
 
     canvas.draw_count = INT_MAX;
-    rt_canvas3d_draw_mesh(&canvas, mesh, transform, material);
-
-    EXPECT_TRUE(draw_submit_calls == 1,
-                "Mesh draws submit immediately instead of disappearing when the deferred queue "
-                "cannot grow");
+    EXPECT_TRUE(expect_trap_contains(
+                    [&] { rt_canvas3d_draw_mesh(&canvas, mesh, transform, material); },
+                    "deferred draw queue allocation failed"),
+                "Mesh draw traps when the deferred queue cannot grow");
+    EXPECT_TRUE(draw_submit_calls == 0,
+                "Mesh draw does not bypass the sorted deferred queue after allocation failure");
     EXPECT_TRUE(canvas.draw_cmds == nullptr,
-                "Immediate fallback does not allocate a partial deferred queue");
+                "Failed deferred enqueue does not allocate a partial deferred queue");
 
     cleanup_fake_canvas(&canvas);
 }
@@ -2344,9 +2369,10 @@ static void test_synthetic_input_and_clock_advance_through_public_canvas_api(voi
     rt_canvas3d_push_synthetic_key(&canvas, VIPER_KEY_W, 1);
     rt_canvas3d_push_synthetic_mouse(&canvas, 7.0, -3.0, 1LL << VIPER_MOUSE_BUTTON_LEFT, 1.5);
 
-    int64_t event_type = rt_canvas3d_poll(&canvas);
+    int64_t poll_open = rt_canvas3d_poll(&canvas);
 
-    EXPECT_TRUE(event_type == 0, "Synthetic-only Canvas3D.Poll does not require platform events");
+    EXPECT_TRUE(poll_open == 1,
+                "Synthetic-only Canvas3D.Poll stays open without platform events");
     EXPECT_TRUE(rt_keyboard_was_pressed(VIPER_KEY_W) == 1,
                 "Canvas3D synthetic key down records a pressed edge");
     EXPECT_TRUE(rt_keyboard_is_down(VIPER_KEY_W) == 1,
@@ -2471,7 +2497,7 @@ int main() {
     test_backend_skybox_hook_used();
     test_static_mesh_geometry_identity_forwarded();
     test_deferred_draw_retains_mesh_and_material_until_end();
-    test_mesh_draw_submits_immediately_when_deferred_queue_cannot_grow();
+    test_mesh_draw_traps_when_deferred_queue_cannot_grow();
     test_rect2d_queues_overlay_pass();
     test_transform_history_forwarded_for_motion_blur();
     test_morph_weight_history_forwarded();

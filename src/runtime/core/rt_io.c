@@ -145,7 +145,7 @@ void rt_abort(const char *msg) {
 ///          default delegates to @ref rt_abort so that traps terminate the
 ///          process with the provided diagnostic message.
 /// @param msg Optional message describing the trap condition.
-/// @return This function does not return.
+/// @return The default implementation does not return; overrides may return.
 #if RT_PLATFORM_WINDOWS
 // On Windows, define vm_trap with alternatename fallback.
 // Tests can define their own vm_trap to override this.
@@ -173,7 +173,7 @@ RT_WEAK void vm_trap(const char *msg) {
 ///          recovery point via longjmp instead of terminating the process.
 ///          Otherwise forwards the message to @ref vm_trap.
 /// @param msg Null-terminated string describing the trap condition.
-/// @return This function does not return.
+/// @return Returns only when the active trap hook returns.
 #if defined(_MSC_VER)
 #include <intrin.h>
 #endif

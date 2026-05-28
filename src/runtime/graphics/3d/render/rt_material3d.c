@@ -120,11 +120,13 @@ static int material_cubemap_handle_valid(void *cubemap) {
     return cubemap && rt_g3d_has_class(cubemap, RT_G3D_CUBEMAP3D_CLASS_ID);
 }
 
-/// @brief Assign @p pixels into a slot if the handle is valid; silently no-op otherwise.
-static void material_assign_pixels_ref(void **slot, void *pixels) {
-    if (pixels && !material_pixels_handle_valid(pixels))
-        return;
+static int material_assign_pixels_ref_checked(void **slot, void *pixels, const char *method) {
+    if (pixels && !material_pixels_handle_valid(pixels)) {
+        rt_trap(method ? method : "Material3D: texture must be Pixels");
+        return 0;
+    }
     material_assign_ref(slot, pixels);
+    return 1;
 }
 
 /// @brief Internal hook used by rt_cubemap3d to assign an env-map cubemap on a material.
@@ -374,7 +376,8 @@ void *rt_material3d_new_textured(void *pixels) {
     rt_material3d *mat = (rt_material3d *)rt_material3d_new();
     if (!mat)
         return NULL;
-    material_assign_pixels_ref(&mat->texture, pixels);
+    (void)material_assign_pixels_ref_checked(
+        &mat->texture, pixels, "Material3D.SetTexture: texture must be Pixels");
     return mat;
 }
 
@@ -427,7 +430,8 @@ void rt_material3d_set_texture(void *obj, void *pixels) {
     rt_material3d *mat = material_checked(obj);
     if (!mat)
         return;
-    material_assign_pixels_ref(&mat->texture, pixels);
+    (void)material_assign_pixels_ref_checked(
+        &mat->texture, pixels, "Material3D.SetTexture: texture must be Pixels");
 }
 
 /// @brief Coerce an incoming texture-wrap mode to a known-valid enum value.
@@ -687,7 +691,8 @@ void rt_material3d_set_normal_map(void *obj, void *pixels) {
     rt_material3d *mat = material_checked(obj);
     if (!mat)
         return;
-    material_assign_pixels_ref(&mat->normal_map, pixels);
+    (void)material_assign_pixels_ref_checked(
+        &mat->normal_map, pixels, "Material3D.SetNormalMap: texture must be Pixels");
 }
 
 /// @brief Assign a glTF-style metallic-roughness texture (B = metallic, G = roughness, R/A
@@ -697,7 +702,9 @@ void rt_material3d_set_metallic_roughness_map(void *obj, void *pixels) {
     if (!mat)
         return;
     material_promote_to_pbr(mat);
-    material_assign_pixels_ref(&mat->metallic_roughness_map, pixels);
+    (void)material_assign_pixels_ref_checked(&mat->metallic_roughness_map,
+                                             pixels,
+                                             "Material3D.SetMetallicRoughnessMap: texture must be Pixels");
 }
 
 /// @brief Assign an ambient-occlusion texture (R channel). Multiplied into indirect lighting.
@@ -707,7 +714,8 @@ void rt_material3d_set_ao_map(void *obj, void *pixels) {
     if (!mat)
         return;
     material_promote_to_pbr(mat);
-    material_assign_pixels_ref(&mat->ao_map, pixels);
+    (void)material_assign_pixels_ref_checked(
+        &mat->ao_map, pixels, "Material3D.SetAOMap: texture must be Pixels");
 }
 
 /// @brief Assign a specular map texture to control per-pixel highlight intensity.
@@ -715,7 +723,8 @@ void rt_material3d_set_specular_map(void *obj, void *pixels) {
     rt_material3d *mat = material_checked(obj);
     if (!mat)
         return;
-    material_assign_pixels_ref(&mat->specular_map, pixels);
+    (void)material_assign_pixels_ref_checked(
+        &mat->specular_map, pixels, "Material3D.SetSpecularMap: texture must be Pixels");
 }
 
 /// @brief Assign an emissive map texture for self-illuminated surface regions.
@@ -723,7 +732,8 @@ void rt_material3d_set_emissive_map(void *obj, void *pixels) {
     rt_material3d *mat = material_checked(obj);
     if (!mat)
         return;
-    material_assign_pixels_ref(&mat->emissive_map, pixels);
+    (void)material_assign_pixels_ref_checked(
+        &mat->emissive_map, pixels, "Material3D.SetEmissiveMap: texture must be Pixels");
 }
 
 /// @brief Set the emissive (self-illumination) color, independent of scene lights.

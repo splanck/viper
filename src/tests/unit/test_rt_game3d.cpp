@@ -59,6 +59,10 @@ static int g_tests_total = 0;
 static int g_update_calls = 0;
 static int g_overlay_calls = 0;
 static double g_update_dt_sum = 0.0;
+static rt_canvas3d *g_observed_canvas = nullptr;
+static int32_t g_observed_input_source = -1;
+static int32_t g_observed_clock_source = -1;
+static int64_t g_observed_synthetic_dt_us = -1;
 } // namespace
 
 extern "C" void vm_trap(const char *msg) {
@@ -149,6 +153,19 @@ extern "C" void game3d_test_update(double dt) {
     g_update_dt_sum += dt;
 }
 
+extern "C" void game3d_test_observing_update(double dt) {
+    game3d_test_update(dt);
+    if (g_observed_canvas) {
+        g_observed_input_source = g_observed_canvas->input_source;
+        g_observed_clock_source = g_observed_canvas->clock_source;
+        g_observed_synthetic_dt_us = g_observed_canvas->synthetic_dt_us;
+    }
+}
+
+extern "C" void game3d_test_trapping_update(double) {
+    vm_trap("runFrames callback trap");
+}
+
 extern "C" void game3d_test_overlay(void) {
     ++g_overlay_calls;
 }
@@ -216,9 +233,9 @@ static bool test_layermasks_and_constants() {
                 "LayerMask excludes missing layer");
 
     void *all = rt_game3d_layermask_all();
-    EXPECT_EQ_INT(rt_game3d_layermask_get_bits(all), INT64_MAX, "LayerMask.All uses all safe bits");
+    EXPECT_EQ_INT(rt_game3d_layermask_get_bits(all), -1, "LayerMask.All uses every bit");
     rt_game3d_layermask_set_bits(all, -1);
-    EXPECT_EQ_INT(rt_game3d_layermask_get_bits(all), INT64_MAX, "negative mask bits clamp to all");
+    EXPECT_EQ_INT(rt_game3d_layermask_get_bits(all), -1, "negative mask bits clamp to all");
 
     EXPECT_TRUE(expect_trap_contains([&] { rt_game3d_layermask_of(3); }, "single positive bit"),
                 "LayerMask.Of rejects multi-bit layers");
@@ -261,6 +278,11 @@ static bool test_input_axes() {
     void *look = rt_game3d_input_look_axis(input);
     EXPECT_NEAR(rt_vec2_x(look), 0.60, 0.0001, "look axis x scales mouse delta");
     EXPECT_NEAR(rt_vec2_y(look), -0.20, 0.0001, "look axis y scales mouse delta");
+    rt_game3d_input_set_look_sensitivity(input, -2.0);
+    EXPECT_NEAR(rt_game3d_input_get_look_sensitivity(input),
+                0.01,
+                0.0001,
+                "negative look sensitivity falls back to default");
 
     rt_keyboard_begin_frame();
     rt_mouse_begin_frame();
@@ -454,15 +476,33 @@ static bool test_frame_loop_manual_frame_and_final_capture() {
 
     g_update_calls = 0;
     g_update_dt_sum = 0.0;
-    rt_game3d_world_run_frames(world, 3, 0.02, (void *)&game3d_test_update);
+    g_observed_canvas = canvas_state;
+    g_observed_input_source = -1;
+    g_observed_clock_source = -1;
+    g_observed_synthetic_dt_us = -1;
+    rt_game3d_world_run_frames(world, 3, 0.02, (void *)&game3d_test_observing_update);
     EXPECT_EQ_INT(g_update_calls, 3, "runFrames invokes the update callback once per frame");
     EXPECT_NEAR(g_update_dt_sum, 0.06, 0.0001, "runFrames passes fixed dt to callback");
+    EXPECT_EQ_INT(g_observed_input_source, 1, "runFrames callback observes synthetic input");
+    EXPECT_EQ_INT(g_observed_clock_source, 1, "runFrames callback observes synthetic clock");
+    EXPECT_EQ_INT(g_observed_synthetic_dt_us, 20000, "runFrames callback observes fixed dt");
     EXPECT_EQ_INT(rt_game3d_world_get_frame(world), 3, "runFrames increments frame count");
     EXPECT_NEAR(rt_game3d_world_get_dt(world), 0.02, 0.0001, "runFrames stores dt");
     EXPECT_NEAR(rt_game3d_world_get_elapsed(world), 0.06, 0.0001, "runFrames stores elapsed time");
     EXPECT_EQ_INT(canvas_state->input_source, 2, "runFrames restores input source");
     EXPECT_EQ_INT(canvas_state->clock_source, 0, "runFrames restores clock source");
     EXPECT_EQ_INT(canvas_state->synthetic_dt_us, 123000, "runFrames restores synthetic delta");
+
+    EXPECT_TRUE(expect_trap_contains(
+                    [&] {
+                        rt_game3d_world_run_frames(
+                            world, 1, 0.02, (void *)&game3d_test_trapping_update);
+                    },
+                    "runFrames callback trap"),
+                "runFrames propagates callback traps");
+    rt_canvas3d_set_input_source(canvas_state, 2);
+    rt_canvas3d_set_clock_source(canvas_state, 0);
+    rt_canvas3d_set_synthetic_delta_time_sec(canvas_state, 0.123);
 
     g_overlay_calls = 0;
     rt_game3d_world_begin_frame(world);
@@ -495,10 +535,21 @@ static bool test_step_simulation_ignores_nonpositive_dt() {
     rt_game3d_world_step_simulation(world, NAN);
     void *pos = rt_game3d_entity_position(entity);
     EXPECT_NEAR(rt_vec3_y(pos), 10.0, 0.0001, "nonpositive dt leaves entity position unchanged");
+    EXPECT_EQ_INT(rt_game3d_world_get_frame(world), 0, "nonpositive dt leaves frame unchanged");
+    EXPECT_NEAR(rt_game3d_world_get_elapsed(world),
+                0.0,
+                0.0001,
+                "nonpositive dt leaves elapsed time unchanged");
 
     rt_game3d_world_step_simulation(world, 0.1);
     pos = rt_game3d_entity_position(entity);
     EXPECT_TRUE(rt_vec3_y(pos) < 10.0, "positive dt advances physics");
+    EXPECT_NEAR(rt_game3d_world_get_dt(world), 0.1, 0.0001, "positive step stores world dt");
+    EXPECT_EQ_INT(rt_game3d_world_get_frame(world), 1, "direct stepSimulation increments frame");
+    EXPECT_NEAR(rt_game3d_world_get_elapsed(world),
+                0.1,
+                0.0001,
+                "direct stepSimulation increments elapsed time");
 
     rt_game3d_world_destroy(world);
     PASS();
@@ -757,6 +808,28 @@ static bool test_phase3_world_presets_environment_and_debug() {
     rt_game3d_env_handle_with_fog(env, 5.0, 50.0);
     EXPECT_TRUE(rt_scene3d_get_node_count(rt_game3d_world_get_scene(world)) > nodes_before + 1,
                 "EnvHandle.withWater spawns water");
+    {
+        void *water = rt_game3d_world_find_entity(world, rt_const_cstr("Environment Water"));
+        rt_mesh3d *water_mesh = (rt_mesh3d *)rt_game3d_entity_get_mesh(water);
+        EXPECT_TRUE(water_mesh != nullptr && water_mesh->vertex_count > 0,
+                    "Environment water owns a mesh");
+        float min_x = water_mesh->vertices[0].pos[0];
+        float max_x = water_mesh->vertices[0].pos[0];
+        float min_z = water_mesh->vertices[0].pos[2];
+        float max_z = water_mesh->vertices[0].pos[2];
+        for (uint32_t i = 1; i < water_mesh->vertex_count; ++i) {
+            if (water_mesh->vertices[i].pos[0] < min_x)
+                min_x = water_mesh->vertices[i].pos[0];
+            if (water_mesh->vertices[i].pos[0] > max_x)
+                max_x = water_mesh->vertices[i].pos[0];
+            if (water_mesh->vertices[i].pos[2] < min_z)
+                min_z = water_mesh->vertices[i].pos[2];
+            if (water_mesh->vertices[i].pos[2] > max_z)
+                max_z = water_mesh->vertices[i].pos[2];
+        }
+        EXPECT_NEAR(max_x - min_x, 48.0, 0.001, "water width follows terrain size");
+        EXPECT_NEAR(max_z - min_z, 48.0, 0.001, "water depth follows terrain size");
+    }
     EXPECT_TRUE(rt_game3d_environment_sunset(world) != nullptr,
                 "Environment.Sunset returns EnvHandle");
     EXPECT_TRUE(rt_game3d_environment_overcast(world) != nullptr,
@@ -862,11 +935,61 @@ static bool test_phase4_body_def_attach_body() {
     EXPECT_EQ_INT(rt_scene_node3d_get_sync_mode(rt_game3d_entity_get_node(entity)),
                   rt_game3d_sync_mode_body_from_node(),
                   "BodyDef sync mode applies to scene node");
+    void *body_pos = rt_body3d_get_position(body);
+    EXPECT_NEAR(rt_vec3_x(body_pos), 1.0, 0.0001, "attachBody syncs initial node X");
+    EXPECT_NEAR(rt_vec3_y(body_pos), 2.0, 0.0001, "attachBody syncs initial node Y");
+    EXPECT_NEAR(rt_vec3_z(body_pos), 3.0, 0.0001, "attachBody syncs initial node Z");
+    rt_game3d_entity_set_position(entity, 4.0, 5.0, 6.0);
+    body_pos = rt_body3d_get_position(body);
+    EXPECT_NEAR(rt_vec3_x(body_pos), 4.0, 0.0001, "setPosition syncs body X");
+    EXPECT_NEAR(rt_vec3_y(body_pos), 5.0, 0.0001, "setPosition syncs body Y");
+    EXPECT_NEAR(rt_vec3_z(body_pos), 6.0, 0.0001, "setPosition syncs body Z");
+    rt_game3d_entity_set_rotation_euler(entity, 0.0, 90.0, 0.0);
+    {
+        void *body_rot = rt_body3d_get_orientation(body);
+        EXPECT_TRUE(std::fabs(rt_quat_x(body_rot)) + std::fabs(rt_quat_y(body_rot)) +
+                            std::fabs(rt_quat_z(body_rot)) >
+                        0.5,
+                    "setRotationEuler syncs body orientation");
+    }
+    rt_game3d_entity_set_scale_xyz(entity, 2.0, 3.0, 4.0);
+    void *body_scale = rt_body3d_get_scale(body);
+    EXPECT_NEAR(rt_vec3_x(body_scale), 2.0, 0.0001, "setScale syncs body scale X");
+    EXPECT_NEAR(rt_vec3_y(body_scale), 3.0, 0.0001, "setScale syncs body scale Y");
+    EXPECT_NEAR(rt_vec3_z(body_scale), 4.0, 0.0001, "setScale syncs body scale Z");
 
     rt_game3d_world_spawn(world, entity);
     EXPECT_EQ_INT(rt_world3d_body_count(rt_game3d_world_get_physics(world)),
                   1,
                   "spawning BodyDef-attached entity registers the body");
+
+    void *zero_def = rt_game3d_body_def_box(1.0, 1.0, 1.0, 1.0);
+    rt_game3d_body_def_set_mass(zero_def, 0.0);
+    EXPECT_TRUE(rt_game3d_body_def_get_static(zero_def) != 0,
+                "BodyDef zero mass switches to static mode");
+    EXPECT_TRUE(rt_game3d_body_def_get_kinematic(zero_def) == 0,
+                "BodyDef zero mass clears kinematic mode");
+    void *zero_entity = rt_game3d_entity_new();
+    rt_game3d_entity_attach_body(zero_entity, zero_def);
+    EXPECT_TRUE(rt_body3d_is_static(rt_game3d_entity_get_body(zero_entity)) != 0,
+                "zero-mass BodyDef creates a static body");
+
+    void *kinematic_def = rt_game3d_body_def_sphere(0.5, 0.0);
+    rt_game3d_body_def_set_kinematic(kinematic_def, 1);
+    EXPECT_TRUE(rt_game3d_body_def_get_kinematic(kinematic_def) != 0,
+                "BodyDef kinematic flag is retained");
+    EXPECT_TRUE(rt_game3d_body_def_get_static(kinematic_def) == 0,
+                "BodyDef kinematic clears static mode");
+    EXPECT_NEAR(rt_game3d_body_def_get_mass(kinematic_def),
+                1.0,
+                0.0001,
+                "BodyDef kinematic gets a positive mass");
+    void *kinematic_entity = rt_game3d_entity_new();
+    rt_game3d_entity_attach_body(kinematic_entity, kinematic_def);
+    EXPECT_TRUE(rt_body3d_is_kinematic(rt_game3d_entity_get_body(kinematic_entity)) != 0,
+                "kinematic BodyDef creates a kinematic body");
+    EXPECT_TRUE(rt_body3d_is_static(rt_game3d_entity_get_body(kinematic_entity)) == 0,
+                "kinematic BodyDef body is not static");
 
     void *trigger = rt_game3d_entity_new();
     void *trigger_def = rt_game3d_body_def_static_box(1.0, 1.0, 1.0);
@@ -894,6 +1017,63 @@ static bool test_phase4_body_def_attach_body() {
     PASS();
 }
 
+static bool test_entity_transform_sanitizes_and_respects_sync_mode() {
+    TEST("Entity3D transform setters sanitize values and respect physics sync mode");
+    void *world = rt_game3d_world_new(rt_const_cstr("Game3D Transform Sync Unit"), 80, 60);
+    void *entity = rt_game3d_entity_new();
+    rt_game3d_entity_set_position(entity, 1.0, 2.0, 3.0);
+    rt_game3d_entity_attach_body(entity, rt_game3d_body_def_sphere(0.5, 1.0));
+    void *body = rt_game3d_entity_get_body(entity);
+    void *node = rt_game3d_entity_get_node(entity);
+    EXPECT_TRUE(body != nullptr, "BodyDef attach creates a body");
+    EXPECT_EQ_INT(rt_scene_node3d_get_sync_mode(node),
+                  rt_game3d_sync_mode_node_from_body(),
+                  "BodyDef default sync mode is node-from-body");
+
+    rt_game3d_world_spawn(world, entity);
+    void *body_pos = rt_body3d_get_position(body);
+    EXPECT_NEAR(rt_vec3_x(body_pos), 1.0, 0.0001, "spawn force-syncs initial body X");
+    EXPECT_NEAR(rt_vec3_y(body_pos), 2.0, 0.0001, "spawn force-syncs initial body Y");
+    EXPECT_NEAR(rt_vec3_z(body_pos), 3.0, 0.0001, "spawn force-syncs initial body Z");
+
+    rt_game3d_entity_set_position(entity, NAN, 4.0, INFINITY);
+    void *node_pos = rt_scene_node3d_get_position(node);
+    EXPECT_NEAR(rt_vec3_x(node_pos), 0.0, 0.0001, "non-finite position X falls back to zero");
+    EXPECT_NEAR(rt_vec3_y(node_pos), 4.0, 0.0001, "finite position Y is retained");
+    EXPECT_NEAR(rt_vec3_z(node_pos), 0.0, 0.0001, "non-finite position Z falls back to zero");
+    body_pos = rt_body3d_get_position(body);
+    EXPECT_NEAR(rt_vec3_x(body_pos), 1.0, 0.0001, "node-from-body mode does not push X");
+    EXPECT_NEAR(rt_vec3_y(body_pos), 2.0, 0.0001, "node-from-body mode does not push Y");
+    EXPECT_NEAR(rt_vec3_z(body_pos), 3.0, 0.0001, "node-from-body mode does not push Z");
+
+    rt_game3d_entity_set_scale_xyz(entity, 0.0, NAN, INFINITY);
+    void *node_scale = rt_scene_node3d_get_scale(node);
+    EXPECT_NEAR(rt_vec3_x(node_scale), 1.0, 0.0001, "zero scale X falls back to one");
+    EXPECT_NEAR(rt_vec3_y(node_scale), 1.0, 0.0001, "non-finite scale Y falls back to one");
+    EXPECT_NEAR(rt_vec3_z(node_scale), 1.0, 0.0001, "non-finite scale Z falls back to one");
+
+    rt_game3d_entity_set_rotation_euler(entity, NAN, 90.0, INFINITY);
+    void *node_rot = rt_scene_node3d_get_rotation(node);
+    EXPECT_TRUE(std::isfinite(rt_quat_x(node_rot)) && std::isfinite(rt_quat_y(node_rot)) &&
+                    std::isfinite(rt_quat_z(node_rot)) && std::isfinite(rt_quat_w(node_rot)),
+                "non-finite rotation components produce a finite quaternion");
+    void *body_rot = rt_body3d_get_orientation(body);
+    EXPECT_NEAR(rt_quat_x(body_rot), 0.0, 0.0001, "node-from-body mode does not push rotation X");
+    EXPECT_NEAR(rt_quat_y(body_rot), 0.0, 0.0001, "node-from-body mode does not push rotation Y");
+    EXPECT_NEAR(rt_quat_z(body_rot), 0.0, 0.0001, "node-from-body mode does not push rotation Z");
+    EXPECT_NEAR(rt_quat_w(body_rot), 1.0, 0.0001, "node-from-body mode does not push rotation W");
+
+    rt_scene_node3d_set_sync_mode(node, rt_game3d_sync_mode_body_from_node());
+    rt_game3d_entity_set_position(entity, 7.0, 8.0, 9.0);
+    body_pos = rt_body3d_get_position(body);
+    EXPECT_NEAR(rt_vec3_x(body_pos), 7.0, 0.0001, "body-from-node mode pushes X");
+    EXPECT_NEAR(rt_vec3_y(body_pos), 8.0, 0.0001, "body-from-node mode pushes Y");
+    EXPECT_NEAR(rt_vec3_z(body_pos), 9.0, 0.0001, "body-from-node mode pushes Z");
+
+    rt_game3d_world_destroy(world);
+    PASS();
+}
+
 static int event_mentions(void *event, void *a, void *b) {
     return (rt_game3d_collision_event_get_a(event) == a &&
             rt_game3d_collision_event_get_b(event) == b) ||
@@ -915,6 +1095,7 @@ static bool test_phase4_collision_events_wrapped_with_entities() {
     rt_game3d_entity_set_name(ball, rt_const_cstr("Ball"));
     void *ball_def = rt_game3d_body_def_sphere(0.5, 1.0);
     rt_game3d_body_def_with_mask(ball_def, rt_game3d_layermask_of(rt_game3d_layers_world()));
+    rt_game3d_body_def_with_sync(ball_def, rt_game3d_sync_mode_body_from_node());
     rt_game3d_entity_attach_body(ball, ball_def);
     rt_game3d_entity_set_position(ball, 0.0, 0.45, 0.0);
 
@@ -1209,6 +1390,7 @@ int main() {
     ok = test_phase3_world_presets_environment_and_debug() && ok;
     ok = test_phase4_assets3d_model_templates() && ok;
     ok = test_phase4_body_def_attach_body() && ok;
+    ok = test_entity_transform_sanitizes_and_respects_sync_mode() && ok;
     ok = test_phase4_collision_events_wrapped_with_entities() && ok;
     ok = test_phase5_animator3d_events_and_root_motion() && ok;
     ok = test_phase6_sound3d_and_effects3d_helpers() && ok;

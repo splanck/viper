@@ -21,22 +21,29 @@ extern "C" {
 #endif
 
 /// @brief Snapshot of a listener's spatial pose for voice-parameter math: world
-///   position, orthonormal forward/right basis, velocity (Doppler), and a `valid` flag.
+///   position, orthonormal forward/right/up basis, velocity (Doppler), and a `valid` flag.
 typedef struct rt_sound3d_listener_state {
     double position[3];
     double forward[3];
     double right[3];
+    double up[3];
     double velocity[3];
     int8_t valid;
 } rt_sound3d_listener_state;
 
-/// @brief Reset @p state to the canonical identity (origin, -Z forward, +X right, no velocity).
+/// @brief Reset @p state to the canonical identity (origin, -Z forward, +X right, +Y up).
 void rt_sound3d_listener_state_identity(rt_sound3d_listener_state *state);
 /// @brief Populate @p state from explicit position/forward/velocity arrays (any may be NULL).
 void rt_sound3d_listener_state_set(rt_sound3d_listener_state *state,
                                    const double *position,
                                    const double *forward,
                                    const double *velocity);
+/// @brief Populate @p state from explicit position/orientation/velocity arrays.
+void rt_sound3d_listener_state_set_pose(rt_sound3d_listener_state *state,
+                                        const double *position,
+                                        const double *forward,
+                                        const double *up,
+                                        const double *velocity);
 /// @brief Read the listener-state currently driving spatial audio (active or fallback).
 void rt_sound3d_get_effective_listener_state(rt_sound3d_listener_state *out_state);
 /// @brief Promote a listener-state snapshot to the active spatial-audio listener.

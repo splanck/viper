@@ -60,8 +60,10 @@ void rt_canvas3d_end(void *obj);
 /// @brief Present the back buffer to the window (vsync-controlled by backend).
 void rt_canvas3d_flip(void *obj);
 /// @brief Pump events and update per-frame input state.
-/// @return Event type code of the last event processed, or 0 if no events.
+/// @return 1 while the canvas remains open, 0 after a close request or invalid handle.
 int64_t rt_canvas3d_poll(void *obj);
+/// @brief Dequeue one event type captured by the most recent Poll call, or 0 if none.
+int64_t rt_canvas3d_poll_event(void *obj);
 /// @brief True when the user has requested window close (clicked X or Alt-F4).
 int8_t rt_canvas3d_should_close(void *obj);
 /// @brief Toggle wireframe rendering for subsequent mesh draws.
@@ -117,6 +119,7 @@ int64_t rt_canvas3d_get_light_count(void *obj);
 void rt_canvas3d_set_ambient(void *obj, double r, double g, double b);
 /// @brief Draw a debug 3D line between two Vec3 points.
 void rt_canvas3d_draw_line3d(void *obj, void *from, void *to, int64_t color);
+void rt_canvas3d_draw_line3d_raw(void *obj, const double *from, const double *to, int64_t color);
 /// @brief Draw a debug 3D point (square) at the given position with pixel size.
 void rt_canvas3d_draw_point3d(void *obj, void *pos, int64_t color, int64_t size);
 /// @brief Get the active backend name ("d3d11", "metal", "opengl", or "software").
@@ -412,6 +415,7 @@ void rt_canvas3d_draw_text2d(void *canvas, int64_t x, int64_t y, rt_string text,
 /* Debug gizmos */
 /// @brief Draw an axis-aligned bounding box outline between min and max corners.
 void rt_canvas3d_draw_aabb_wire(void *canvas, void *min_v, void *max_v, int64_t color);
+void rt_canvas3d_draw_aabb_wire_raw(void *canvas, const double *min_v, const double *max_v, int64_t color);
 /// @brief Draw a wireframe sphere as great circles (3 orthogonal rings).
 void rt_canvas3d_draw_sphere_wire(void *canvas, void *center, double radius, int64_t color);
 /// @brief Draw a ray with optional arrowhead, capped at @p length world units.
