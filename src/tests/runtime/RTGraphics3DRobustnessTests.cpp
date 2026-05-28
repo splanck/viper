@@ -48,6 +48,7 @@ extern "C" {
 }
 
 #include <cassert>
+#include <clocale>
 #include <cmath>
 #include <cstdint>
 #include <cstdio>
@@ -432,6 +433,35 @@ static void test_obj_loader_handles_long_lines() {
     assert(mesh != nullptr);
     assert(rt_mesh3d_get_triangle_count(mesh) == 1);
     std::remove(path.c_str());
+}
+
+static void test_obj_loader_uses_dot_decimal_independent_of_locale() {
+    const char *saved_locale = std::setlocale(LC_NUMERIC, nullptr);
+    std::string restore_locale = saved_locale ? saved_locale : "C";
+    const char *changed_locale = std::setlocale(LC_NUMERIC, "fr_FR.UTF-8");
+    if (!changed_locale)
+        changed_locale = std::setlocale(LC_NUMERIC, "de_DE.UTF-8");
+
+    const std::string path = "/tmp/viper_rt_graphics3d_locale_decimal.obj";
+    {
+        std::ofstream out(path);
+        out << "v 1.25 0.5 1e-1\n";
+        out << "v 2.25 0.5 1e-1\n";
+        out << "v 1.25 1.5 1e-1\n";
+        out << "f 1 2 3\n";
+    }
+
+    rt_string path_string = rt_string_from_bytes(path.c_str(), static_cast<int64_t>(path.size()));
+    auto *mesh = static_cast<rt_mesh3d *>(rt_mesh3d_from_obj(path_string));
+    assert(mesh != nullptr);
+    assert(mesh->vertex_count == 3);
+    assert(std::fabs(mesh->vertices[0].pos[0] - 1.25f) < 1e-6f);
+    assert(std::fabs(mesh->vertices[0].pos[1] - 0.5f) < 1e-6f);
+    assert(std::fabs(mesh->vertices[0].pos[2] - 0.1f) < 1e-6f);
+
+    std::remove(path.c_str());
+    if (changed_locale)
+        std::setlocale(LC_NUMERIC, restore_locale.c_str());
 }
 
 static void test_scene_particles_water_and_render_targets_reject_wrong_handles() {
@@ -1039,12 +1069,12 @@ static void test_physics_joints_deduplicate_and_raycast_is_true_ray() {
     rt_world3d_add(ray_world, near_miss);
     void *origin = rt_vec3_new(0.0, 0.0, 0.0);
     void *dir = rt_vec3_new(0.0, 0.0, 1.0);
-    assert(rt_world3d_raycast(ray_world, origin, dir, 10.0, 0) == nullptr);
+    assert(rt_world3d_raycast(ray_world, origin, dir, 10.0, -1) == nullptr);
 
     void *hit_body = rt_body3d_new_sphere(0.5, 1.0);
     rt_body3d_set_position(hit_body, 0.0, 0.0, 5.0);
     rt_world3d_add(ray_world, hit_body);
-    void *hit = rt_world3d_raycast(ray_world, origin, dir, 10.0, 0);
+    void *hit = rt_world3d_raycast(ray_world, origin, dir, 10.0, -1);
     assert(hit != nullptr);
     assert(rt_physics_hit3d_get_body(hit) == hit_body);
     assert(std::fabs(rt_physics_hit3d_get_distance(hit) - 4.5) < 1e-6);
@@ -1135,9 +1165,9 @@ static void test_physics_raycast_uses_mesh_triangles_not_mesh_aabb() {
     rt_world3d_add(world, body);
 
     void *dir = rt_vec3_new(0.0, 0.0, 1.0);
-    assert(rt_world3d_raycast(world, rt_vec3_new(9.0, 9.0, 0.0), dir, 10.0, 0) == nullptr);
+    assert(rt_world3d_raycast(world, rt_vec3_new(9.0, 9.0, 0.0), dir, 10.0, -1) == nullptr);
 
-    void *hit = rt_world3d_raycast(world, rt_vec3_new(1.0, 1.0, 0.0), dir, 10.0, 0);
+    void *hit = rt_world3d_raycast(world, rt_vec3_new(1.0, 1.0, 0.0), dir, 10.0, -1);
     assert(hit != nullptr);
     assert(rt_physics_hit3d_get_body(hit) == body);
     assert(std::fabs(rt_physics_hit3d_get_distance(hit) - 5.0) < 1e-6);
@@ -1169,7 +1199,7 @@ static void test_physics_sweeps_handle_thin_geometry_and_long_capsules() {
     rt_body3d_set_position(thin_wall, 1.007, 0.0, 0.0);
     rt_world3d_add(sphere_world, thin_wall);
     void *sphere_hit = rt_world3d_sweep_sphere(
-        sphere_world, rt_vec3_new(0.0, 0.0, 0.0), 0.002, rt_vec3_new(2.0, 0.0, 0.0), 0);
+        sphere_world, rt_vec3_new(0.0, 0.0, 0.0), 0.002, rt_vec3_new(2.0, 0.0, 0.0), -1);
     assert(sphere_hit != nullptr);
 
     void *capsule_world = rt_world3d_new(0.0, 0.0, 0.0);
@@ -1181,7 +1211,7 @@ static void test_physics_sweeps_handle_thin_geometry_and_long_capsules() {
                                                  rt_vec3_new(0.0, 10.0, 0.0),
                                                  0.05,
                                                  rt_vec3_new(2.0, 0.0, 0.0),
-                                                 0);
+                                                 -1);
     assert(capsule_hit != nullptr);
 }
 
@@ -1270,6 +1300,7 @@ int main() {
     test_generated_sphere_has_no_degenerate_triangles();
     test_generated_plane_faces_positive_y();
     test_obj_loader_handles_long_lines();
+    test_obj_loader_uses_dot_decimal_independent_of_locale();
     test_scene_particles_water_and_render_targets_reject_wrong_handles();
     test_cubemap_sampling_sanitizes_inputs();
     test_physics_checked_handles_and_trigger_removal_exit();

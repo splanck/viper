@@ -415,6 +415,7 @@ overlay, and compares to the committed baseline in `examples/3d/baselines/`.
 
 | Method | Signature | Description |
 |--------|-----------|-------------|
+| `Reserve(vertexCount, triangleCount)` | `void(i64, i64)` | Pre-size backing arrays for bulk mesh construction |
 | `AddVertex(x, y, z, nx, ny, nz, u, v)` | `void(f64 x8)` | Add vertex with position, normal, and UV |
 | `AddTriangle(i0, i1, i2)` | `void(i64, i64, i64)` | Add triangle from vertex indices (CCW winding) |
 | `Clear()` | `void()` | Reset vertex/index counts to zero (reuse backing arrays) |
@@ -468,11 +469,11 @@ func start() {
 
 All mesh generators and the OBJ loader produce **counter-clockwise (CCW)** winding for front faces. When constructing meshes programmatically, vertices must be ordered CCW when viewed from the front.
 
-**Mesh validation:** Procedural generators reject non-finite and non-positive dimensions. `NewPlane` emits +Y-facing triangles, matching its vertex normals and backface-culling expectations. Sphere and cylinder segment counts are clamped to production-safe maxima to avoid accidental unbounded allocation. `AddVertex` traps on non-finite or out-of-float-range vertex data. `AddTriangle` traps on negative, out-of-range, duplicate-index, collinear, or otherwise degenerate triangles and marks the mesh build failed until `Clear()` resets it. `RecalcNormals` and `CalcTangents` skip degenerate or overflowing face contributions instead of narrowing invalid double intermediates into renderer floats.
+**Mesh validation:** Procedural generators reject non-finite and non-positive dimensions. `NewBox` takes full extents, while collider boxes use half-extents. `NewPlane` emits +Y-facing triangles, matching its vertex normals and backface-culling expectations. Sphere and cylinder segment counts are clamped to production-safe maxima to avoid accidental unbounded allocation. `Reserve()` can be called before many `AddVertex`/`AddTriangle` calls to avoid repeated reallocations; it changes capacity only, not counts or geometry revision. `AddVertex` traps on non-finite or out-of-float-range vertex data. `AddTriangle` traps on negative, out-of-range, duplicate-index, collinear, or otherwise degenerate triangles and marks the mesh build failed until `Clear()` resets it. `RecalcNormals` accumulates in double precision before normalizing back to renderer floats. `CalcTangents` skips degenerate or overflowing face contributions instead of narrowing invalid double intermediates into renderer floats.
 
 **Tangents:** `CalcTangents()` uses position/UV derivatives with Gram-Schmidt orthogonalization and `tangent.w` handedness for mirrored UVs. Degenerate UV islands get a normalized fallback tangent orthogonal to the vertex normal so normal maps never receive a tangent parallel to the normal.
 
-**OBJ loader:** Supports v/vn/vt tuples, negative indices, inline face comments, and arbitrary n-gons through fan triangulation. The loader deduplicates identical `(position, uv, normal)` tuples so indexed assets do not balloon into one vertex per face corner. Invalid face indices trap and abort the load instead of emitting corrupt geometry. `.mtl`, `usemtl`, `g`, and `o` directives are parsed and flattened but do not create per-material submeshes.
+**OBJ loader:** Supports v/vn/vt tuples, negative indices, inline face comments, locale-independent decimal parsing, and arbitrary n-gons through ear-clipping triangulation. The loader deduplicates identical `(position, uv, normal)` tuples so indexed assets do not balloon into one vertex per face corner. Invalid face indices trap and abort the load instead of emitting corrupt geometry. `.mtl`, `usemtl`, `g`, and `o` directives are parsed and flattened but do not create per-material submeshes.
 
 **STL loader:** Auto-detects binary vs ASCII format, streams exact binary STL payloads without buffering the full file, and computes normals for valid triangles.
 
@@ -1938,9 +1939,9 @@ World storage for bodies, contacts, contact events, and joints grows on demand f
 | `GetExitEvent(index)` | `obj(i64)` | Get `CollisionEvent3D` from the exit bucket |
 
 Notes:
-- Query `mask` uses the same layer bit semantics as body collision layers. `0` means "match any layer".
+- Query `mask` uses the same layer bit semantics as body collision layers. `0` matches no layers; use `-1`/all bits for "match any layer".
 - Queries include trigger bodies and mark them through `PhysicsHit3D.IsTrigger`.
-- `Raycast` and `RaycastAll` are true ray queries for sphere, capsule, and box colliders; complex collider types fall back to their world AABB. Use `SweepSphere` or `SweepCapsule` for volume casts.
+- `Raycast` and `RaycastAll` are true shape queries for boxes, spheres, capsules, compound leaves, mesh/convex triangles, and heightfields. Use `SweepSphere` or `SweepCapsule` for volume casts.
 - `GetContactSeparation()` returns negative values while penetrating and positive values when separated.
 
 ### PhysicsHit3D

@@ -319,7 +319,8 @@ it would detach the child from its world scene.
 
 Use `LayerMask.None()`, `LayerMask.All()`, `LayerMask.Of(layer)`,
 `include(layer)`, and `includes(layer)` for readable filters. Layer values are
-validated as single-bit masks.
+validated as single-bit masks. Physics query masks follow the same bit semantics:
+`LayerMask.None()` matches no layers, while `LayerMask.All()` matches any layer.
 
 `attachBody` also accepts a raw `Viper.Graphics3D.Physics3DBody` as an escape
 hatch. The common path should use `BodyDef`, because it applies filters, node

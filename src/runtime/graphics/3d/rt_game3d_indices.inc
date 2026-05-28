@@ -110,6 +110,22 @@ static int game3d_world_grow_name_index(rt_game3d_world *world, int32_t need) {
     return 1;
 }
 
+/// @brief Clear all name-index slots without changing capacity.
+static void game3d_world_clear_name_index(rt_game3d_world *world) {
+    if (!world)
+        return;
+    if (world->name_index_capacity > 0 && world->name_index_hashes &&
+        world->name_index_entities) {
+        memset(world->name_index_hashes,
+               0,
+               (size_t)world->name_index_capacity * sizeof(*world->name_index_hashes));
+        memset(world->name_index_entities,
+               0,
+               (size_t)world->name_index_capacity * sizeof(*world->name_index_entities));
+    }
+    world->name_index_count = 0;
+}
+
 /// @brief Insert `entity` into the name hash table by linear probing on its name hash.
 /// @details Skips entities with no/empty name; the first entity wins a duplicate name
 ///   (a later same-name entity is ignored so find returns the earliest registrant).
@@ -148,26 +164,15 @@ static void game3d_world_rebuild_name_index(rt_game3d_world *world) {
     if (!world)
         return;
     if (world->entity_count <= 0) {
-        if (world->name_index_capacity > 0) {
-            memset(world->name_index_hashes,
-                   0,
-                   (size_t)world->name_index_capacity * sizeof(*world->name_index_hashes));
-            memset(world->name_index_entities,
-                   0,
-                   (size_t)world->name_index_capacity * sizeof(*world->name_index_entities));
-        }
-        world->name_index_count = 0;
+        game3d_world_clear_name_index(world);
         return;
     }
-    if (!game3d_world_grow_name_index(world, world->entity_count))
+    if (!game3d_world_grow_name_index(world, world->entity_count)) {
+        game3d_world_clear_name_index(world);
+        rt_trap("Game3D.World3D: name index allocation failed");
         return;
-    memset(world->name_index_hashes,
-           0,
-           (size_t)world->name_index_capacity * sizeof(*world->name_index_hashes));
-    memset(world->name_index_entities,
-           0,
-           (size_t)world->name_index_capacity * sizeof(*world->name_index_entities));
-    world->name_index_count = 0;
+    }
+    game3d_world_clear_name_index(world);
     for (int32_t i = 0; i < world->entity_count; ++i)
         game3d_world_name_index_insert(world, world->entities[i]);
 }

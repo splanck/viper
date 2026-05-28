@@ -481,6 +481,29 @@ static bool test_frame_loop_manual_frame_and_final_capture() {
     PASS();
 }
 
+static bool test_step_simulation_ignores_nonpositive_dt() {
+    TEST("World3D.stepSimulation ignores zero, negative, and non-finite dt");
+    void *world = rt_game3d_world_new(rt_const_cstr("Game3D Step DT Unit"), 64, 48);
+    void *entity = rt_game3d_entity_new();
+    rt_game3d_world_set_gravity(world, 0.0, -10.0, 0.0);
+    rt_game3d_entity_set_position(entity, 0.0, 10.0, 0.0);
+    rt_game3d_entity_attach_body(entity, rt_game3d_body_def_sphere(0.5, 1.0));
+    rt_game3d_world_spawn(world, entity);
+
+    rt_game3d_world_step_simulation(world, 0.0);
+    rt_game3d_world_step_simulation(world, -1.0);
+    rt_game3d_world_step_simulation(world, NAN);
+    void *pos = rt_game3d_entity_position(entity);
+    EXPECT_NEAR(rt_vec3_y(pos), 10.0, 0.0001, "nonpositive dt leaves entity position unchanged");
+
+    rt_game3d_world_step_simulation(world, 0.1);
+    pos = rt_game3d_entity_position(entity);
+    EXPECT_TRUE(rt_vec3_y(pos) < 10.0, "positive dt advances physics");
+
+    rt_game3d_world_destroy(world);
+    PASS();
+}
+
 static bool test_free_fly_controller_synthetic_input() {
     TEST("FreeFlyController consumes synthetic input deterministically");
     void *world = rt_game3d_world_new(rt_const_cstr("Game3D Unit FreeFly"), 64, 48);
@@ -505,6 +528,28 @@ static bool test_free_fly_controller_synthetic_input() {
     EXPECT_EQ_INT(
         rt_game3d_world_get_frame(world), 1, "controller frame increments with runFramesOnly");
     rt_canvas3d_clear_synthetic_input(canvas);
+    rt_game3d_world_destroy(world);
+    PASS();
+}
+
+static bool test_character_controller_syncs_world_position_under_parent() {
+    TEST("CharacterController3D writes world position through parent transforms");
+    void *world = rt_game3d_world_new(rt_const_cstr("Game3D Character Parent Unit"), 80, 60);
+    void *parent = rt_game3d_entity_new();
+    void *child = rt_game3d_entity_new();
+    rt_game3d_entity_set_position(parent, 10.0, 0.0, 0.0);
+    rt_game3d_entity_set_scale(parent, 2.0);
+    rt_game3d_entity_set_position(child, 1.0, 0.0, 0.0);
+    rt_game3d_entity_add_child(parent, child);
+    rt_game3d_world_spawn(world, parent);
+
+    void *controller = rt_game3d_character_controller_new(world, child, 0.3, 1.8, 70.0);
+    rt_game3d_character_controller_teleport(controller, 14.0, 0.0, 0.0);
+    void *world_pos = rt_scene_node3d_get_world_position(rt_game3d_entity_get_node(child));
+    void *local_pos = rt_game3d_entity_position(child);
+    EXPECT_NEAR(rt_vec3_x(world_pos), 14.0, 0.0001, "child world position follows character");
+    EXPECT_NEAR(rt_vec3_x(local_pos), 2.0, 0.0001, "child local position compensates parent scale");
+
     rt_game3d_world_destroy(world);
     PASS();
 }
@@ -1155,7 +1200,9 @@ int main() {
     ok = test_world_entity_registry_and_collision_clear() && ok;
     ok = test_entity_child_graph_reparents_and_rejects_cycles() && ok;
     ok = test_frame_loop_manual_frame_and_final_capture() && ok;
+    ok = test_step_simulation_ignores_nonpositive_dt() && ok;
     ok = test_free_fly_controller_synthetic_input() && ok;
+    ok = test_character_controller_syncs_world_position_under_parent() && ok;
     ok = test_orbit_and_follow_controllers() && ok;
     ok = test_first_person_character_controller_same_frame_motion() && ok;
     ok = test_phase3_material_presets_and_prefabs() && ok;

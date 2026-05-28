@@ -77,6 +77,9 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#ifndef PATH_MAX
+#define PATH_MAX 4096
+#endif
 #if defined(_WIN32)
 #ifndef WIN32_LEAN_AND_MEAN
 #define WIN32_LEAN_AND_MEAN
@@ -267,6 +270,7 @@ typedef struct rt_game3d_model_cache_entry {
     rt_string path;
     int8_t asset_path;
     void *model_template;
+    uint64_t last_used;
 } rt_game3d_model_cache_entry;
 
 /// @brief CharacterController3D payload: owning world, driven entity, underlying
@@ -380,6 +384,8 @@ typedef void (*rt_game3d_overlay_fn)(void);
 static rt_game3d_model_cache_entry *g_game3d_model_cache = NULL;
 static int32_t g_game3d_model_cache_count = 0;
 static int32_t g_game3d_model_cache_capacity = 0;
+static uint64_t g_game3d_model_cache_tick = 0;
+#define RT_GAME3D_MODEL_CACHE_MAX_ENTRIES 64
 
 #if defined(_WIN32)
 static INIT_ONCE g_game3d_model_cache_once = INIT_ONCE_STATIC_INIT;
@@ -485,8 +491,10 @@ static int game3d_callback_pointer_is_native(void *callback) {
 static rt_game3d_update_fn game3d_update_callback_checked(void *callback, const char *method) {
     if (!callback)
         return NULL;
-    if (!game3d_callback_pointer_is_native(callback))
+    if (!game3d_callback_pointer_is_native(callback)) {
         rt_trap(method);
+        return NULL;
+    }
     return (rt_game3d_update_fn)callback;
 }
 
@@ -495,8 +503,10 @@ static rt_game3d_update_fn game3d_update_callback_checked(void *callback, const 
 static rt_game3d_overlay_fn game3d_overlay_callback_checked(void *callback, const char *method) {
     if (!callback)
         return NULL;
-    if (!game3d_callback_pointer_is_native(callback))
+    if (!game3d_callback_pointer_is_native(callback)) {
         rt_trap(method);
+        return NULL;
+    }
     return (rt_game3d_overlay_fn)callback;
 }
 
@@ -2183,6 +2193,8 @@ void *rt_game3d_entity_attach_body(void *obj, void *body_or_def) {
     }
     if (entity) {
         rt_game3d_world *world = (rt_game3d_world *)entity->world;
+        void *old_body = entity->body;
+        rt_obj_retain_maybe(old_body);
         if (entity->body && entity->body != body && entity->spawned && world && world->physics) {
             rt_world3d_remove(world->physics, entity->body);
             game3d_world_body_index_remove(world, entity->body);
@@ -2208,12 +2220,29 @@ void *rt_game3d_entity_attach_body(void *obj, void *body_or_def) {
             }
             if (entity->spawned && world && world->physics) {
                 rt_world3d_add(world->physics, body);
-                if (!game3d_world_body_index_add(world, entity))
+                if (!game3d_world_body_index_add(world, entity)) {
+                    rt_world3d_remove(world->physics, body);
+                    if (entity->node)
+                        rt_scene_node3d_clear_body_binding(entity->node);
+                    game3d_assign_ref(&entity->body, old_body);
+                    if (old_body) {
+                        rt_body3d_set_collision_layer(old_body, entity->layer);
+                        rt_body3d_set_collision_mask(old_body, entity->collision_mask_bits);
+                        if (entity->node)
+                            rt_scene_node3d_bind_body(entity->node, old_body);
+                        rt_world3d_add(world->physics, old_body);
+                        (void)game3d_world_body_index_add(world, entity);
+                    }
+                    game3d_release_ref(&old_body);
+                    game3d_release_ref(&created_body);
                     rt_trap("Game3D.Entity3D.attachBody: body index allocation failed");
+                    return obj;
+                }
             }
         } else if (entity->node) {
             rt_scene_node3d_clear_body_binding(entity->node);
         }
+        game3d_release_ref(&old_body);
     }
     game3d_release_ref(&created_body);
     return obj;
@@ -3455,14 +3484,70 @@ static int game3d_string_equals(rt_string a, rt_string b) {
     return as && bs && strcmp(as, bs) == 0;
 }
 
+/// @brief Build the stable cache key for a model path.
+static rt_string game3d_model_cache_key_path(rt_string path, int8_t asset_path) {
+    const char *raw = path ? rt_string_cstr(path) : "";
+    if (!raw)
+        raw = "";
+    if (asset_path)
+        return rt_string_ref(path ? path : rt_const_cstr(""));
+#if defined(_WIN32)
+    {
+        char resolved[MAX_PATH];
+        DWORD len = GetFullPathNameA(raw, (DWORD)sizeof(resolved), resolved, NULL);
+        if (len > 0 && len < sizeof(resolved))
+            return rt_string_from_bytes(resolved, (size_t)len);
+    }
+#else
+    {
+        char resolved[PATH_MAX];
+        if (realpath(raw, resolved))
+            return rt_string_from_bytes(resolved, strlen(resolved));
+    }
+#endif
+    return rt_string_ref(path ? path : rt_const_cstr(""));
+}
+
 /// @brief Look up a cached ModelTemplate by path + asset flag; NULL if not cached.
 static rt_game3d_model_template *game3d_model_cache_find(rt_string path, int8_t asset_path) {
     for (int32_t i = 0; i < g_game3d_model_cache_count; ++i) {
         rt_game3d_model_cache_entry *entry = &g_game3d_model_cache[i];
-        if (entry->asset_path == asset_path && game3d_string_equals(entry->path, path))
+        if (entry->asset_path == asset_path && game3d_string_equals(entry->path, path)) {
+            entry->last_used = ++g_game3d_model_cache_tick;
             return (rt_game3d_model_template *)entry->model_template;
+        }
     }
     return NULL;
+}
+
+/// @brief Drop one cache entry and compact the array.
+static void game3d_model_cache_remove_at(int32_t index) {
+    if (index < 0 || index >= g_game3d_model_cache_count)
+        return;
+    game3d_release_ref((void **)&g_game3d_model_cache[index].path);
+    game3d_release_ref(&g_game3d_model_cache[index].model_template);
+    for (int32_t i = index; i < g_game3d_model_cache_count - 1; ++i)
+        g_game3d_model_cache[i] = g_game3d_model_cache[i + 1];
+    g_game3d_model_cache_count--;
+    memset(&g_game3d_model_cache[g_game3d_model_cache_count],
+           0,
+           sizeof(g_game3d_model_cache[0]));
+}
+
+/// @brief Enforce the fixed model-cache entry cap by evicting the least-recently-used entry.
+static void game3d_model_cache_evict_if_full(void) {
+    int32_t victim = 0;
+    uint64_t oldest;
+    if (g_game3d_model_cache_count < RT_GAME3D_MODEL_CACHE_MAX_ENTRIES)
+        return;
+    oldest = g_game3d_model_cache[0].last_used;
+    for (int32_t i = 1; i < g_game3d_model_cache_count; ++i) {
+        if (g_game3d_model_cache[i].last_used < oldest) {
+            oldest = g_game3d_model_cache[i].last_used;
+            victim = i;
+        }
+    }
+    game3d_model_cache_remove_at(victim);
 }
 
 /// @brief Allocate a ModelTemplate retaining the path and loaded model; traps on OOM.
@@ -3505,40 +3590,49 @@ static rt_game3d_model_template *game3d_assets_load_template_cached(rt_string pa
                                                                     int8_t asset_path,
                                                                     const char *method) {
     rt_game3d_model_template *model_template;
+    rt_string cache_path = game3d_model_cache_key_path(path, asset_path);
     game3d_model_cache_lock();
-    rt_game3d_model_template *cached = game3d_model_cache_find(path, asset_path);
+    rt_game3d_model_template *cached = game3d_model_cache_find(cache_path, asset_path);
     if (cached) {
         rt_obj_retain_maybe(cached);
         game3d_model_cache_unlock();
+        game3d_release_ref((void **)&cache_path);
         return cached;
     }
     game3d_model_cache_unlock();
 
-    model_template = game3d_assets_load_template_uncached(path, asset_path, method);
-    if (!model_template)
+    model_template = game3d_assets_load_template_uncached(cache_path, asset_path, method);
+    if (!model_template) {
+        game3d_release_ref((void **)&cache_path);
         return NULL;
+    }
 
     game3d_model_cache_lock();
-    cached = game3d_model_cache_find(path, asset_path);
+    cached = game3d_model_cache_find(cache_path, asset_path);
     if (cached) {
         rt_obj_retain_maybe(cached);
         game3d_model_cache_unlock();
         if (rt_obj_release_check0(model_template))
             rt_obj_free(model_template);
+        game3d_release_ref((void **)&cache_path);
         return cached;
     }
+    game3d_model_cache_evict_if_full();
     if (!game3d_model_cache_grow(g_game3d_model_cache_count + 1)) {
         game3d_model_cache_unlock();
         if (rt_obj_release_check0(model_template))
             rt_obj_free(model_template);
+        game3d_release_ref((void **)&cache_path);
         rt_trap("Game3D.Assets3D: model cache allocation failed");
         return NULL;
     }
     rt_game3d_model_cache_entry *entry = &g_game3d_model_cache[g_game3d_model_cache_count++];
-    game3d_assign_ref((void **)&entry->path, path ? path : rt_const_cstr(""));
+    game3d_assign_ref((void **)&entry->path, cache_path ? cache_path : rt_const_cstr(""));
     entry->asset_path = asset_path ? 1 : 0;
     game3d_assign_ref(&entry->model_template, model_template);
+    entry->last_used = ++g_game3d_model_cache_tick;
     game3d_model_cache_unlock();
+    game3d_release_ref((void **)&cache_path);
     return model_template;
 }
 
@@ -3641,6 +3735,7 @@ void rt_game3d_assets_clear_cache(void) {
         game3d_release_ref(&g_game3d_model_cache[i].model_template);
     }
     g_game3d_model_cache_count = 0;
+    g_game3d_model_cache_tick = 0;
     game3d_model_cache_unlock();
 }
 
@@ -3867,6 +3962,36 @@ static void game3d_character_controller_finalize(void *obj) {
     game3d_release_ref(&controller->character);
 }
 
+/// @brief Write a world-space position into a node, converting through its
+///        parent's inverse world matrix so parent transforms are preserved.
+static void game3d_set_node_world_position(void *node, double world_pos[3]) {
+    void *parent;
+    if (!node || !world_pos)
+        return;
+    parent = rt_scene_node3d_get_parent(node);
+    if (!parent) {
+        rt_scene_node3d_set_position(node, world_pos[0], world_pos[1], world_pos[2]);
+        return;
+    }
+    {
+        void *parent_world = rt_scene_node3d_get_world_matrix(parent);
+        void *parent_inv = parent_world ? rt_mat4_inverse(parent_world) : NULL;
+        void *world_vec = rt_vec3_new(world_pos[0], world_pos[1], world_pos[2]);
+        void *local =
+            (parent_inv && world_vec) ? rt_mat4_transform_point(parent_inv, world_vec) : NULL;
+        if (local) {
+            rt_scene_node3d_set_position(
+                node, rt_vec3_x(local), rt_vec3_y(local), rt_vec3_z(local));
+        } else {
+            rt_scene_node3d_set_position(node, world_pos[0], world_pos[1], world_pos[2]);
+        }
+        game3d_release_ref(&local);
+        game3d_release_ref(&world_vec);
+        game3d_release_ref(&parent_inv);
+        game3d_release_ref(&parent_world);
+    }
+}
+
 /// @brief Copy the character's current position back onto the driven entity's node.
 static void game3d_character_controller_sync_entity(rt_game3d_character_controller *controller) {
     if (!controller || !controller->entity || !controller->character)
@@ -3874,7 +3999,8 @@ static void game3d_character_controller_sync_entity(rt_game3d_character_controll
     rt_game3d_entity *entity = (rt_game3d_entity *)controller->entity;
     void *pos = rt_character3d_get_position(controller->character);
     if (entity->node && pos) {
-        rt_scene_node3d_set_position(entity->node, rt_vec3_x(pos), rt_vec3_y(pos), rt_vec3_z(pos));
+        double world_pos[3] = {rt_vec3_x(pos), rt_vec3_y(pos), rt_vec3_z(pos)};
+        game3d_set_node_world_position(entity->node, world_pos);
     }
     game3d_release_ref(&pos);
 }
@@ -4821,6 +4947,14 @@ static void game3d_world_spawn_entity_tree(rt_game3d_world *world,
             rt_scene_node3d_bind_body(entity->node, entity->body);
         rt_world3d_add(world->physics, entity->body);
         if (!game3d_world_body_index_add(world, entity)) {
+            rt_world3d_remove(world->physics, entity->body);
+            if (entity->node)
+                rt_scene_node3d_clear_body_binding(entity->node);
+            if (attach_to_scene && world->scene && entity->node)
+                rt_scene3d_remove(world->scene, entity->node);
+            entity->spawned = 0;
+            entity->world = NULL;
+            game3d_world_registry_remove(world, entity);
             rt_trap("Game3D.World3D.spawn: body index allocation failed");
             return;
         }
@@ -5408,9 +5542,11 @@ int8_t rt_game3d_world_tick(void *obj) {
 void rt_game3d_world_step_simulation(void *obj, double step_sec) {
     rt_game3d_world *world =
         game3d_world_checked(obj, "Game3D.World3D.stepSimulation: invalid world");
-    double dt = game3d_clamp_dt(step_sec);
     if (!world)
         return;
+    if (!isfinite(step_sec) || step_sec <= 0.0)
+        return;
+    double dt = game3d_clamp_dt(step_sec);
     game3d_world_update_controller(world, dt);
     game3d_world_update_animations(world, dt);
     if (world->physics)
@@ -5437,16 +5573,29 @@ static void game3d_world_debug_draw_physics(rt_game3d_world *world) {
             continue;
         double mn_raw[3] = {0.0, 0.0, 0.0};
         double mx_raw[3] = {0.0, 0.0, 0.0};
-        rt_collider3d_get_local_bounds_raw(collider, mn_raw, mx_raw);
+        double position[3] = {0.0, 0.0, 0.0};
+        double rotation[4] = {0.0, 0.0, 0.0, 1.0};
+        double scale[3] = {1.0, 1.0, 1.0};
         void *pos = rt_body3d_get_position(entity->body);
-        double px = pos ? rt_vec3_x(pos) : 0.0;
-        double py = pos ? rt_vec3_y(pos) : 0.0;
-        double pz = pos ? rt_vec3_z(pos) : 0.0;
-        void *mn = rt_vec3_new(px + mn_raw[0], py + mn_raw[1], pz + mn_raw[2]);
-        void *mx = rt_vec3_new(px + mx_raw[0], py + mx_raw[1], pz + mx_raw[2]);
+        void *quat = rt_body3d_get_orientation(entity->body);
+        if (pos) {
+            position[0] = rt_vec3_x(pos);
+            position[1] = rt_vec3_y(pos);
+            position[2] = rt_vec3_z(pos);
+        }
+        if (quat) {
+            rotation[0] = rt_quat_x(quat);
+            rotation[1] = rt_quat_y(quat);
+            rotation[2] = rt_quat_z(quat);
+            rotation[3] = rt_quat_w(quat);
+        }
+        rt_collider3d_compute_world_aabb_raw(collider, position, rotation, scale, mn_raw, mx_raw);
+        void *mn = rt_vec3_new(mn_raw[0], mn_raw[1], mn_raw[2]);
+        void *mx = rt_vec3_new(mx_raw[0], mx_raw[1], mx_raw[2]);
         rt_canvas3d_draw_aabb_wire(world->canvas, mn, mx, 0xFFCC33);
         game3d_release_ref(&mx);
         game3d_release_ref(&mn);
+        game3d_release_ref(&quat);
         game3d_release_ref(&pos);
     }
 }

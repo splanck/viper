@@ -903,6 +903,27 @@ static void test_heightfield_collider_supports_ground_contact() {
                 "heightfield collider: contact detected");
 }
 
+static void test_heightfield_box_samples_bottom_edges() {
+    void *world = rt_world3d_new(0, 0, 0);
+    void *pixels = rt_pixels_new(3, 3);
+    for (int64_t z = 0; z < 3; ++z) {
+        for (int64_t x = 0; x < 3; ++x)
+            rt_pixels_set(pixels, x, z, encode_height16(0));
+    }
+    rt_pixels_set(pixels, 2, 1, encode_height16(65535));
+
+    void *heightfield = rt_collider3d_new_heightfield(pixels, 1.0, 1.0, 1.0);
+    void *terrain_body = rt_body3d_new(0.0);
+    void *box = rt_body3d_new_aabb(1.0, 0.25, 1.0, 1.0);
+    rt_body3d_set_collider(terrain_body, heightfield);
+    rt_body3d_set_position(box, 0.0, 0.5, 0.0);
+    rt_world3d_add(world, terrain_body);
+    rt_world3d_add(world, box);
+    rt_world3d_step(world, 0.016);
+    EXPECT_TRUE(rt_world3d_get_collision_count(world) > 0,
+                "heightfield box contact detects edge ridge");
+}
+
 /*==========================================================================
  * Collision event queue tests
  *=========================================================================*/
@@ -1078,6 +1099,95 @@ static void test_collision_events_enter_stay_exit() {
     rt_world3d_step(world, 1.0 / 60.0);
     EXPECT_TRUE(rt_world3d_get_exit_event_count(world) == 1,
                 "collision events: exit when separated");
+}
+
+static void test_query_mask_zero_matches_no_layers() {
+    void *world = rt_world3d_new(0, 0, 0);
+    void *body = rt_body3d_new_sphere(0.5, 0.0);
+    void *origin = rt_vec3_new(-2.0, 0.0, 0.0);
+    void *dir = rt_vec3_new(1.0, 0.0, 0.0);
+    void *center = rt_vec3_new(0.0, 0.0, 0.0);
+    void *delta = rt_vec3_new(2.0, 0.0, 0.0);
+    void *minv = rt_vec3_new(-1.0, -1.0, -1.0);
+    void *maxv = rt_vec3_new(1.0, 1.0, 1.0);
+    rt_body3d_set_position(body, 0.0, 0.0, 0.0);
+    rt_world3d_add(world, body);
+
+    EXPECT_TRUE(rt_world3d_raycast(world, origin, dir, 10.0, 0) == nullptr,
+                "LayerMask.None raycast returns no hit");
+    EXPECT_TRUE(rt_world3d_raycast_all(world, origin, dir, 10.0, 0) == nullptr,
+                "LayerMask.None raycast all returns no list");
+    EXPECT_TRUE(rt_world3d_overlap_sphere(world, center, 1.0, 0) == nullptr,
+                "LayerMask.None overlap sphere returns no list");
+    EXPECT_TRUE(rt_world3d_overlap_aabb(world, minv, maxv, 0) == nullptr,
+                "LayerMask.None overlap aabb returns no list");
+    EXPECT_TRUE(rt_world3d_sweep_sphere(world, origin, 0.25, delta, 0) == nullptr,
+                "LayerMask.None sphere sweep returns no hit");
+}
+
+static void test_kinematic_static_trigger_contacts_are_reported() {
+    void *world = rt_world3d_new(0, 0, 0);
+    void *trigger = rt_body3d_new_aabb(1.0, 1.0, 1.0, 0.0);
+    void *body = rt_body3d_new_aabb(1.0, 1.0, 1.0, 1.0);
+    rt_body3d_set_trigger(trigger, 1);
+    rt_body3d_set_kinematic(body, 1);
+    rt_body3d_set_position(trigger, 0.0, 0.0, 0.0);
+    rt_body3d_set_position(body, 0.5, 0.0, 0.0);
+    rt_world3d_add(world, trigger);
+    rt_world3d_add(world, body);
+
+    rt_world3d_step(world, 1.0 / 60.0);
+    EXPECT_TRUE(rt_world3d_get_collision_count(world) == 1,
+                "kinematic-static trigger contact is reported");
+    EXPECT_TRUE(rt_world3d_get_enter_event_count(world) == 1,
+                "kinematic-static trigger contact emits enter");
+}
+
+static void test_contact_identity_survives_broadphase_order_flip() {
+    void *world = rt_world3d_new(0, 0, 0);
+    void *a = rt_body3d_new_aabb(1.0, 1.0, 1.0, 1.0);
+    void *b = rt_body3d_new_aabb(1.0, 1.0, 1.0, 1.0);
+    rt_body3d_set_trigger(a, 1);
+    rt_body3d_set_trigger(b, 1);
+    rt_body3d_set_kinematic(a, 1);
+    rt_body3d_set_kinematic(b, 1);
+    rt_body3d_set_position(a, 0.0, 0.0, 0.0);
+    rt_body3d_set_position(b, 0.5, 0.0, 0.0);
+    rt_world3d_add(world, a);
+    rt_world3d_add(world, b);
+
+    rt_world3d_step(world, 1.0 / 60.0);
+    EXPECT_TRUE(rt_world3d_get_enter_event_count(world) == 1,
+                "order flip setup enters on first frame");
+
+    rt_body3d_set_position(a, 1.0, 0.0, 0.0);
+    rt_body3d_set_position(b, 0.5, 0.0, 0.0);
+    rt_world3d_step(world, 1.0 / 60.0);
+    EXPECT_TRUE(rt_world3d_get_enter_event_count(world) == 0,
+                "order-independent contact identity prevents false re-enter");
+    EXPECT_TRUE(rt_world3d_get_stay_event_count(world) == 1,
+                "order-independent contact identity emits stay after sort reversal");
+    EXPECT_TRUE(rt_world3d_get_exit_event_count(world) == 0,
+                "order-independent contact identity prevents false exit");
+}
+
+static void test_ccd_substep_contact_generates_frame_event() {
+    void *world = rt_world3d_new(0, 0, 0);
+    void *trigger = rt_body3d_new_aabb(0.05, 1.0, 1.0, 0.0);
+    void *sphere = rt_body3d_new_sphere(0.1, 1.0);
+    rt_body3d_set_trigger(trigger, 1);
+    rt_body3d_set_position(trigger, 0.0, 0.0, 0.0);
+    rt_body3d_set_position(sphere, -2.0, 0.0, 0.0);
+    rt_body3d_set_velocity(sphere, 40.0, 0.0, 0.0);
+    rt_body3d_set_use_ccd(sphere, 1);
+    rt_world3d_add(world, trigger);
+    rt_world3d_add(world, sphere);
+
+    rt_world3d_step(world, 0.1);
+    EXPECT_TRUE(rt_world3d_get_collision_count(world) == 1,
+                "CCD substep-only contact is retained for the frame");
+    EXPECT_TRUE(rt_world3d_get_enter_event_count(world) == 1,
+                "CCD substep-only contact emits enter");
 }
 
 static void test_collision_event_surface_and_trigger_flag() {
@@ -1404,6 +1514,7 @@ int main() {
     test_compound_collider_child_transform_affects_contact();
     test_compound_collider_rejects_transitive_cycle();
     test_heightfield_collider_supports_ground_contact();
+    test_heightfield_box_samples_bottom_edges();
 
     /* Collision event queue */
     test_collision_event_count();
@@ -1414,6 +1525,10 @@ int main() {
     test_world_overlap_queries_honor_mask();
     test_world_overlap_queries_reject_nonfinite_inputs();
     test_collision_events_enter_stay_exit();
+    test_query_mask_zero_matches_no_layers();
+    test_kinematic_static_trigger_contacts_are_reported();
+    test_contact_identity_survives_broadphase_order_flip();
+    test_ccd_substep_contact_generates_frame_event();
     test_collision_event_surface_and_trigger_flag();
 
     /* Joint tests */

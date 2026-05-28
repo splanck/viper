@@ -46,7 +46,6 @@ extern void rt_obj_set_finalizer(void *obj, void (*fn)(void *));
 #include "rt_trap.h"
 extern const char *rt_string_cstr(rt_string s);
 
-#include <errno.h>
 #include <limits.h>
 #define MESH_INIT_VERTS 64
 #define MESH_INIT_IDXS 128
@@ -57,6 +56,68 @@ extern const char *rt_string_cstr(rt_string s);
 /// @brief Validate @p obj as a Mesh3D handle and return its typed pointer (NULL on mismatch).
 static rt_mesh3d *mesh3d_checked(void *obj) {
     return (rt_mesh3d *)rt_g3d_checked_or_null(obj, RT_G3D_MESH3D_CLASS_ID);
+}
+
+/// @brief Parse an OBJ/STL ASCII float with '.' decimal semantics, independent of locale.
+static int mesh_parse_ascii_double_span(const char *p,
+                                        const char *limit,
+                                        const char **out_end,
+                                        double *out) {
+    const char *s = p;
+    double value = 0.0;
+    int sign = 1;
+    int digits = 0;
+    int frac_digits = 0;
+    int exp_sign = 1;
+    int exp_value = 0;
+    int exp_digits = 0;
+    double result;
+    if (!s || !out_end || !out)
+        return 0;
+    if ((!limit || s < limit) && (*s == '+' || *s == '-')) {
+        if (*s == '-')
+            sign = -1;
+        s++;
+    }
+    while ((!limit || s < limit) && *s >= '0' && *s <= '9') {
+        value = value * 10.0 + (double)(*s - '0');
+        digits++;
+        s++;
+    }
+    if ((!limit || s < limit) && *s == '.') {
+        s++;
+        while ((!limit || s < limit) && *s >= '0' && *s <= '9') {
+            value = value * 10.0 + (double)(*s - '0');
+            digits++;
+            frac_digits++;
+            s++;
+        }
+    }
+    if (digits == 0)
+        return 0;
+    if ((!limit || s < limit) && (*s == 'e' || *s == 'E')) {
+        const char *exp_start = s;
+        s++;
+        if ((!limit || s < limit) && (*s == '+' || *s == '-')) {
+            if (*s == '-')
+                exp_sign = -1;
+            s++;
+        }
+        while ((!limit || s < limit) && *s >= '0' && *s <= '9') {
+            if (exp_value < 10000)
+                exp_value = exp_value * 10 + (*s - '0');
+            exp_digits++;
+            s++;
+        }
+        if (exp_digits == 0)
+            s = exp_start;
+    }
+    result = (double)sign * value * pow(10.0, (double)(exp_sign * exp_value - frac_digits));
+    if (!isfinite(result))
+        return 0;
+    *out_end = s;
+    *out = result;
+    return 1;
 }
 
 /// @brief Return 1 if any vertex carries a non-zero bone weight, else 0.
@@ -170,6 +231,50 @@ static void mesh_mark_build_failed(rt_mesh3d *mesh) {
         mesh->build_failed = 1;
 }
 
+/// @brief Ensure vertex and index buffers can hold at least the requested capacities.
+static int mesh3d_reserve_storage(rt_mesh3d *m,
+                                  uint32_t vertex_capacity,
+                                  uint32_t index_capacity,
+                                  const char *label) {
+    char msg[160];
+    if (!m)
+        return 0;
+    if (vertex_capacity > m->vertex_capacity) {
+        vgfx3d_vertex_t *nv;
+        if ((size_t)vertex_capacity > SIZE_MAX / sizeof(vgfx3d_vertex_t)) {
+            snprintf(msg, sizeof(msg), "%s: vertex allocation overflow", label);
+            rt_trap(msg);
+            return 0;
+        }
+        nv = (vgfx3d_vertex_t *)realloc(
+            m->vertices, (size_t)vertex_capacity * sizeof(vgfx3d_vertex_t));
+        if (!nv) {
+            snprintf(msg, sizeof(msg), "%s: memory allocation failed", label);
+            rt_trap(msg);
+            return 0;
+        }
+        m->vertices = nv;
+        m->vertex_capacity = vertex_capacity;
+    }
+    if (index_capacity > m->index_capacity) {
+        uint32_t *ni;
+        if ((size_t)index_capacity > SIZE_MAX / sizeof(uint32_t)) {
+            snprintf(msg, sizeof(msg), "%s: index allocation overflow", label);
+            rt_trap(msg);
+            return 0;
+        }
+        ni = (uint32_t *)realloc(m->indices, (size_t)index_capacity * sizeof(uint32_t));
+        if (!ni) {
+            snprintf(msg, sizeof(msg), "%s: memory allocation failed", label);
+            rt_trap(msg);
+            return 0;
+        }
+        m->indices = ni;
+        m->index_capacity = index_capacity;
+    }
+    return 1;
+}
+
 /// @brief Build a stable tangent orthogonal to `normal` when UVs are degenerate.
 static void mesh_default_tangent_from_normal(const float *normal, float *tangent) {
     float n[3] = {0.0f, 0.0f, 1.0f};
@@ -273,6 +378,8 @@ void *rt_mesh3d_new(void) {
     m->geometry_revision = 1;
     m->tangent_revision = 0;
     m->tangents_ready = 0;
+    m->geometry_batch_depth = 0;
+    m->geometry_batch_dirty = 0;
     rt_mesh3d_reset_bounds(m);
     if (!m->vertices || !m->indices) {
         free(m->vertices);
@@ -308,6 +415,29 @@ void rt_mesh3d_clear(void *obj) {
     mesh_release_ref(&m->morph_targets_ref);
     rt_mesh3d_touch_geometry(m);
     rt_mesh3d_reset_bounds(m);
+}
+
+/// @brief Reserve backing storage for at least vertex_count vertices and triangle_count triangles.
+void rt_mesh3d_reserve(void *obj, int64_t vertex_count, int64_t triangle_count) {
+    rt_mesh3d *m = mesh3d_checked(obj);
+    uint32_t vertex_capacity;
+    uint32_t index_capacity;
+    if (!m)
+        return;
+    if (m->build_failed)
+        return;
+    if (vertex_count < 0 || triangle_count < 0) {
+        rt_trap("Mesh3D.Reserve: capacities must be non-negative");
+        return;
+    }
+    if ((uint64_t)vertex_count > UINT32_MAX ||
+        (uint64_t)triangle_count > (UINT32_MAX / 3u)) {
+        rt_trap("Mesh3D.Reserve: capacity overflow");
+        return;
+    }
+    vertex_capacity = (uint32_t)vertex_count;
+    index_capacity = (uint32_t)((uint64_t)triangle_count * 3u);
+    (void)mesh3d_reserve_storage(m, vertex_capacity, index_capacity, "Mesh3D.Reserve");
 }
 
 /// @brief Add a vertex with position, normal, and UV texture coordinates.
@@ -467,6 +597,15 @@ void rt_mesh3d_recalc_normals(void *obj) {
     rt_mesh3d *m = mesh3d_checked(obj);
     if (!m)
         return;
+    if ((size_t)m->vertex_count > SIZE_MAX / (3u * sizeof(double))) {
+        rt_trap("Mesh3D.RecalcNormals: normal accumulator allocation overflow");
+        return;
+    }
+    double *accum = (double *)calloc((size_t)m->vertex_count * 3u, sizeof(double));
+    if (m->vertex_count > 0 && !accum) {
+        rt_trap("Mesh3D.RecalcNormals: memory allocation failed");
+        return;
+    }
 
     /* Zero all normals */
     for (uint32_t i = 0; i < m->vertex_count; i++) {
@@ -498,34 +637,36 @@ void rt_mesh3d_recalc_normals(void *obj) {
         double len_sq = nx * nx + ny * ny + nz * nz;
         if (!isfinite(len_sq) || len_sq <= 1e-20)
             continue;
-        if (!mesh_value_fits_float(nx) || !mesh_value_fits_float(ny) || !mesh_value_fits_float(nz))
-            continue;
-
-        m->vertices[i0].normal[0] += (float)nx;
-        m->vertices[i0].normal[1] += (float)ny;
-        m->vertices[i0].normal[2] += (float)nz;
-        m->vertices[i1].normal[0] += (float)nx;
-        m->vertices[i1].normal[1] += (float)ny;
-        m->vertices[i1].normal[2] += (float)nz;
-        m->vertices[i2].normal[0] += (float)nx;
-        m->vertices[i2].normal[1] += (float)ny;
-        m->vertices[i2].normal[2] += (float)nz;
+        accum[(size_t)i0 * 3u + 0] += nx;
+        accum[(size_t)i0 * 3u + 1] += ny;
+        accum[(size_t)i0 * 3u + 2] += nz;
+        accum[(size_t)i1 * 3u + 0] += nx;
+        accum[(size_t)i1 * 3u + 1] += ny;
+        accum[(size_t)i1 * 3u + 2] += nz;
+        accum[(size_t)i2 * 3u + 0] += nx;
+        accum[(size_t)i2 * 3u + 1] += ny;
+        accum[(size_t)i2 * 3u + 2] += nz;
     }
 
     /* Normalize */
     for (uint32_t i = 0; i < m->vertex_count; i++) {
         float *n = m->vertices[i].normal;
-        float len = sqrtf(n[0] * n[0] + n[1] * n[1] + n[2] * n[2]);
-        if (isfinite(len) && len > 1e-8f) {
-            n[0] /= len;
-            n[1] /= len;
-            n[2] /= len;
+        double nx = accum[(size_t)i * 3u + 0];
+        double ny = accum[(size_t)i * 3u + 1];
+        double nz = accum[(size_t)i * 3u + 2];
+        double len = sqrt(nx * nx + ny * ny + nz * nz);
+        if (isfinite(len) && len > 1e-12 && mesh_value_fits_float(nx / len) &&
+            mesh_value_fits_float(ny / len) && mesh_value_fits_float(nz / len)) {
+            n[0] = (float)(nx / len);
+            n[1] = (float)(ny / len);
+            n[2] = (float)(nz / len);
         } else {
             n[0] = 0.0f;
             n[1] = 1.0f;
             n[2] = 0.0f;
         }
     }
+    free(accum);
     rt_mesh3d_touch_geometry(m);
 }
 
@@ -740,7 +881,7 @@ void rt_mesh3d_transform(void *obj, void *mat4_obj) {
 }
 
 /* Procedural generators — NewBox, NewSphere, NewPlane, NewCylinder */
-/// @brief Generate a box mesh centered at the origin with the given half-extents.
+/// @brief Generate a box mesh centered at the origin with full size (sx, sy, sz).
 void *rt_mesh3d_new_box(double sx, double sy, double sz) {
     if (!mesh_validate_positive_finite(sx, "Mesh3D.NewBox: sx") ||
         !mesh_validate_positive_finite(sy, "Mesh3D.NewBox: sy") ||
@@ -749,10 +890,15 @@ void *rt_mesh3d_new_box(double sx, double sy, double sz) {
     void *m = rt_mesh3d_new();
     if (!m)
         return NULL;
+    if (!mesh3d_reserve_storage((rt_mesh3d *)m, 24u, 36u, "Mesh3D.NewBox")) {
+        mesh_mark_build_failed((rt_mesh3d *)m);
+        return mesh_return_null_if_build_failed(m);
+    }
 
     float hx = (float)(sx * 0.5), hy = (float)(sy * 0.5), hz = (float)(sz * 0.5);
 
     /* 6 faces, 4 verts each = 24 verts, 12 triangles (CCW winding) */
+    rt_mesh3d_begin_geometry_batch((rt_mesh3d *)m);
     /* Front face (+Z) */
     rt_mesh3d_add_vertex(m, -hx, -hy, hz, 0, 0, 1, 0, 1);
     rt_mesh3d_add_vertex(m, hx, -hy, hz, 0, 0, 1, 1, 1);
@@ -800,6 +946,7 @@ void *rt_mesh3d_new_box(double sx, double sy, double sz) {
     rt_mesh3d_add_vertex(m, -hx, -hy, hz, 0, -1, 0, 0, 0);
     rt_mesh3d_add_triangle(m, 20, 21, 22);
     rt_mesh3d_add_triangle(m, 20, 22, 23);
+    rt_mesh3d_end_geometry_batch((rt_mesh3d *)m);
 
     return mesh_return_null_if_build_failed(m);
 }
@@ -825,9 +972,17 @@ void *rt_mesh3d_new_sphere(double radius, int64_t segments) {
     int64_t first_ring = 1;
     int64_t ring_stride = slices + 1;
     int64_t bottom_index;
+    uint32_t vertex_capacity = (uint32_t)(2 + (rings - 1) * ring_stride);
+    uint32_t index_capacity = (uint32_t)(slices * 3 + (rings - 2) * slices * 6 + slices * 3);
+    if (!mesh3d_reserve_storage(
+            (rt_mesh3d *)m, vertex_capacity, index_capacity, "Mesh3D.NewSphere")) {
+        mesh_mark_build_failed((rt_mesh3d *)m);
+        return mesh_return_null_if_build_failed(m);
+    }
 
     /* Generate a single pole vertex at each end, and seam-duplicated body rings.
      * This keeps UV seams intact without emitting zero-area cap triangles. */
+    rt_mesh3d_begin_geometry_batch((rt_mesh3d *)m);
     rt_mesh3d_add_vertex(m, 0.0, r, 0.0, 0.0, 1.0, 0.0, 0.5, 0.0);
     for (int64_t ring = 1; ring < rings; ring++) {
         float phi = (float)M_PI * (float)ring / (float)rings;
@@ -868,6 +1023,7 @@ void *rt_mesh3d_new_sphere(double radius, int64_t segments) {
             rt_mesh3d_add_triangle(m, a, a + 1, bottom_index);
         }
     }
+    rt_mesh3d_end_geometry_batch((rt_mesh3d *)m);
 
     return mesh_return_null_if_build_failed(m);
 }
@@ -880,9 +1036,14 @@ void *rt_mesh3d_new_plane(double sx, double sz) {
     void *m = rt_mesh3d_new();
     if (!m)
         return NULL;
+    if (!mesh3d_reserve_storage((rt_mesh3d *)m, 4u, 6u, "Mesh3D.NewPlane")) {
+        mesh_mark_build_failed((rt_mesh3d *)m);
+        return mesh_return_null_if_build_failed(m);
+    }
 
     float hx = (float)(sx * 0.5), hz = (float)(sz * 0.5);
 
+    rt_mesh3d_begin_geometry_batch((rt_mesh3d *)m);
     rt_mesh3d_add_vertex(m, -hx, 0, -hz, 0, 1, 0, 0, 0);
     rt_mesh3d_add_vertex(m, hx, 0, -hz, 0, 1, 0, 1, 0);
     rt_mesh3d_add_vertex(m, hx, 0, hz, 0, 1, 0, 1, 1);
@@ -891,6 +1052,7 @@ void *rt_mesh3d_new_plane(double sx, double sz) {
     /* CCW when viewed from +Y so normals, lighting, and backface culling agree. */
     rt_mesh3d_add_triangle(m, 0, 2, 1);
     rt_mesh3d_add_triangle(m, 0, 3, 2);
+    rt_mesh3d_end_geometry_batch((rt_mesh3d *)m);
 
     return mesh_return_null_if_build_failed(m);
 }
@@ -912,8 +1074,16 @@ void *rt_mesh3d_new_cylinder(double radius, double height, int64_t segments) {
 
     float r = (float)radius;
     float hy = (float)(height * 0.5);
+    if (!mesh3d_reserve_storage((rt_mesh3d *)m,
+                                (uint32_t)(4 * segments + 4),
+                                (uint32_t)(12 * segments),
+                                "Mesh3D.NewCylinder")) {
+        mesh_mark_build_failed((rt_mesh3d *)m);
+        return mesh_return_null_if_build_failed(m);
+    }
 
     /* Side vertices */
+    rt_mesh3d_begin_geometry_batch((rt_mesh3d *)m);
     for (int64_t i = 0; i <= segments; i++) {
         float theta = 2.0f * (float)M_PI * (float)i / (float)segments;
         float ct = cosf(theta), st = sinf(theta);
@@ -955,6 +1125,7 @@ void *rt_mesh3d_new_cylinder(double radius, double height, int64_t segments) {
         int64_t next = (i + 1) % segments;
         rt_mesh3d_add_triangle(m, bc, bc + 1 + i, bc + 1 + next);
     }
+    rt_mesh3d_end_geometry_batch((rt_mesh3d *)m);
 
     return mesh_return_null_if_build_failed(m);
 }
@@ -1041,18 +1212,14 @@ static int obj_parse_face_vert(const char **p, int64_t *vi, int64_t *ti, int64_t
     return 1;
 }
 
-/// @brief Parse a double-precision float from `*p` via `strtod`, advancing `*p` past it.
+/// @brief Parse a locale-independent ASCII double from `*p`, advancing `*p` past it.
 static int obj_parse_double(const char **p, double *out) {
+    const char *end;
     while (**p == ' ' || **p == '\t')
         (*p)++;
-    const char *start = *p;
-    char *end;
-    errno = 0;
-    double val = strtod(*p, &end);
-    if (end == start || errno == ERANGE || !isfinite(val))
+    if (!mesh_parse_ascii_double_span(*p, NULL, &end, out))
         return 0;
     *p = end;
-    *out = val;
     return 1;
 }
 
@@ -1307,6 +1474,157 @@ static int obj_get_or_add_mesh_vertex(void *mesh,
     return 1;
 }
 
+static double obj_projected_area2(const rt_mesh3d *mesh,
+                                  const uint32_t *indices,
+                                  int count,
+                                  int ax0,
+                                  int ax1) {
+    double area = 0.0;
+    for (int i = 0; i < count; ++i) {
+        const float *a = mesh->vertices[indices[i]].pos;
+        const float *b = mesh->vertices[indices[(i + 1) % count]].pos;
+        area += (double)a[ax0] * (double)b[ax1] - (double)b[ax0] * (double)a[ax1];
+    }
+    return area;
+}
+
+static void obj_choose_projection_axes(const rt_mesh3d *mesh,
+                                       const uint32_t *indices,
+                                       int count,
+                                       int *ax0,
+                                       int *ax1) {
+    double normal[3] = {0.0, 0.0, 0.0};
+    for (int i = 0; i < count; ++i) {
+        const float *a = mesh->vertices[indices[i]].pos;
+        const float *b = mesh->vertices[indices[(i + 1) % count]].pos;
+        normal[0] += ((double)a[1] - (double)b[1]) * ((double)a[2] + (double)b[2]);
+        normal[1] += ((double)a[2] - (double)b[2]) * ((double)a[0] + (double)b[0]);
+        normal[2] += ((double)a[0] - (double)b[0]) * ((double)a[1] + (double)b[1]);
+    }
+    if (fabs(normal[0]) >= fabs(normal[1]) && fabs(normal[0]) >= fabs(normal[2])) {
+        *ax0 = 1;
+        *ax1 = 2;
+    } else if (fabs(normal[1]) >= fabs(normal[2])) {
+        *ax0 = 0;
+        *ax1 = 2;
+    } else {
+        *ax0 = 0;
+        *ax1 = 1;
+    }
+}
+
+static double obj_orient2(const rt_mesh3d *mesh,
+                          uint32_t ia,
+                          uint32_t ib,
+                          uint32_t ic,
+                          int ax0,
+                          int ax1) {
+    const float *a = mesh->vertices[ia].pos;
+    const float *b = mesh->vertices[ib].pos;
+    const float *c = mesh->vertices[ic].pos;
+    double ab0 = (double)b[ax0] - (double)a[ax0];
+    double ab1 = (double)b[ax1] - (double)a[ax1];
+    double ac0 = (double)c[ax0] - (double)a[ax0];
+    double ac1 = (double)c[ax1] - (double)a[ax1];
+    return ab0 * ac1 - ab1 * ac0;
+}
+
+static int obj_point_in_triangle2(const rt_mesh3d *mesh,
+                                  uint32_t p,
+                                  uint32_t a,
+                                  uint32_t b,
+                                  uint32_t c,
+                                  int ax0,
+                                  int ax1,
+                                  double winding) {
+    double o0 = obj_orient2(mesh, a, b, p, ax0, ax1) * winding;
+    double o1 = obj_orient2(mesh, b, c, p, ax0, ax1) * winding;
+    double o2 = obj_orient2(mesh, c, a, p, ax0, ax1) * winding;
+    const double eps = 1e-12;
+    return o0 > eps && o1 > eps && o2 > eps;
+}
+
+static int obj_triangulate_face(void *mesh_obj, const uint32_t *mesh_indices, int face_count) {
+    rt_mesh3d *mesh = (rt_mesh3d *)mesh_obj;
+    int ax0 = 0;
+    int ax1 = 1;
+    double area;
+    double winding;
+    int *order;
+    int remaining;
+    int guard;
+    if (!mesh || !mesh_indices || face_count < 3)
+        return 0;
+    if (face_count == 3) {
+        if (mesh_indices_form_triangle(mesh, mesh_indices[0], mesh_indices[1], mesh_indices[2]))
+            rt_mesh3d_add_triangle(mesh_obj, mesh_indices[0], mesh_indices[1], mesh_indices[2]);
+        return !mesh->build_failed;
+    }
+    obj_choose_projection_axes(mesh, mesh_indices, face_count, &ax0, &ax1);
+    area = obj_projected_area2(mesh, mesh_indices, face_count, ax0, ax1);
+    if (!isfinite(area) || fabs(area) <= 1e-12)
+        return 0;
+    winding = area > 0.0 ? 1.0 : -1.0;
+    order = (int *)malloc((size_t)face_count * sizeof(int));
+    if (!order)
+        return 0;
+    for (int i = 0; i < face_count; ++i)
+        order[i] = i;
+    remaining = face_count;
+    guard = face_count * face_count;
+    while (remaining > 3 && guard-- > 0) {
+        int clipped = 0;
+        for (int oi = 0; oi < remaining; ++oi) {
+            int prev_i = order[(oi + remaining - 1) % remaining];
+            int curr_i = order[oi];
+            int next_i = order[(oi + 1) % remaining];
+            uint32_t ia = mesh_indices[prev_i];
+            uint32_t ib = mesh_indices[curr_i];
+            uint32_t ic = mesh_indices[next_i];
+            int contains = 0;
+            if (obj_orient2(mesh, ia, ib, ic, ax0, ax1) * winding <= 1e-12)
+                continue;
+            if (!mesh_indices_form_triangle(mesh, ia, ib, ic))
+                continue;
+            for (int oj = 0; oj < remaining; ++oj) {
+                int test_i = order[oj];
+                if (test_i == prev_i || test_i == curr_i || test_i == next_i)
+                    continue;
+                if (obj_point_in_triangle2(
+                        mesh, mesh_indices[test_i], ia, ib, ic, ax0, ax1, winding)) {
+                    contains = 1;
+                    break;
+                }
+            }
+            if (contains)
+                continue;
+            rt_mesh3d_add_triangle(mesh_obj, ia, ib, ic);
+            if (mesh->build_failed) {
+                free(order);
+                return 0;
+            }
+            for (int move = oi; move < remaining - 1; ++move)
+                order[move] = order[move + 1];
+            remaining--;
+            clipped = 1;
+            break;
+        }
+        if (!clipped) {
+            free(order);
+            return 0;
+        }
+    }
+    if (remaining == 3) {
+        uint32_t ia = mesh_indices[order[0]];
+        uint32_t ib = mesh_indices[order[1]];
+        uint32_t ic = mesh_indices[order[2]];
+        if (mesh_indices_form_triangle(mesh, ia, ib, ic))
+            rt_mesh3d_add_triangle(mesh_obj, ia, ib, ic);
+    }
+    free(order);
+    return !mesh->build_failed;
+}
+
 /// @brief Calculate per-vertex tangent vectors for normal mapping (Lengyel's method).
 /// @details Tangent space is the local coordinate system at each vertex where the
 ///          U texture axis aligns with the tangent and V aligns with the bitangent.
@@ -1547,6 +1865,7 @@ void *rt_mesh3d_from_obj(rt_string path) {
             rt_obj_free(mesh);
         return NULL;
     }
+    rt_mesh3d_begin_geometry_batch((rt_mesh3d *)mesh);
 
     char *line = NULL;
     size_t line_cap = 0;
@@ -1757,21 +2076,10 @@ void *rt_mesh3d_from_obj(rt_string path) {
                     missing_normals = 1;
             }
 
-            /* Fan triangulation: (0,1,2), (0,2,3), (0,3,4), ... */
+            /* Ear-clip triangulation preserves concave n-gons. */
             if (!parse_failed) {
-                for (int fi = 1; fi < face_count - 1; fi++) {
-                    if (!mesh_indices_form_triangle((const rt_mesh3d *)mesh,
-                                                    mesh_indices[0],
-                                                    mesh_indices[fi],
-                                                    mesh_indices[fi + 1]))
-                        continue;
-                    rt_mesh3d_add_triangle(
-                        mesh, mesh_indices[0], mesh_indices[fi], mesh_indices[fi + 1]);
-                    if (((rt_mesh3d *)mesh)->build_failed) {
-                        parse_failed = 1;
-                        break;
-                    }
-                }
+                if (!obj_triangulate_face(mesh, mesh_indices, face_count))
+                    parse_failed = 1;
             }
             if (face_vi != face_vi_stack)
                 free(face_vi);
@@ -1812,6 +2120,8 @@ void *rt_mesh3d_from_obj(rt_string path) {
         rt_trap("Mesh3D.FromOBJ: invalid or unsupported geometry");
         return NULL;
     }
+
+    rt_mesh3d_end_geometry_batch((rt_mesh3d *)mesh);
 
     /* If normals are missing globally or on any face, compute a complete normal set. */
     if ((cnt_n == 0 || missing_normals) && ((rt_mesh3d *)mesh)->vertex_count > 0)
@@ -1925,6 +2235,14 @@ static void *stl_load_binary(const uint8_t *data, size_t len) {
     void *mesh = rt_mesh3d_new();
     if (!mesh)
         return NULL;
+    if (!mesh3d_reserve_storage((rt_mesh3d *)mesh,
+                                tri_count * 3u,
+                                tri_count * 3u,
+                                "Mesh3D.FromSTL")) {
+        mesh_mark_build_failed((rt_mesh3d *)mesh);
+        return mesh_return_null_if_build_failed(mesh);
+    }
+    rt_mesh3d_begin_geometry_batch((rt_mesh3d *)mesh);
 
     for (uint32_t i = 0; i < tri_count; i++) {
         const uint8_t *tri = data + 84 + (size_t)i * 50;
@@ -1961,6 +2279,7 @@ static void *stl_load_binary(const uint8_t *data, size_t len) {
             rt_obj_free(mesh);
         return NULL;
     }
+    rt_mesh3d_end_geometry_batch((rt_mesh3d *)mesh);
     rt_mesh3d_recalc_normals(mesh);
     return mesh;
 }
@@ -1974,6 +2293,14 @@ static void *stl_load_binary_stream(FILE *f, uint32_t tri_count) {
     void *mesh = rt_mesh3d_new();
     if (!mesh)
         return NULL;
+    if (!mesh3d_reserve_storage((rt_mesh3d *)mesh,
+                                tri_count * 3u,
+                                tri_count * 3u,
+                                "Mesh3D.FromSTL")) {
+        mesh_mark_build_failed((rt_mesh3d *)mesh);
+        return mesh_return_null_if_build_failed(mesh);
+    }
+    rt_mesh3d_begin_geometry_batch((rt_mesh3d *)mesh);
 
     uint8_t tri[50];
     for (uint32_t i = 0; i < tri_count; i++) {
@@ -2014,23 +2341,21 @@ static void *stl_load_binary_stream(FILE *f, uint32_t tri_count) {
             rt_obj_free(mesh);
         return NULL;
     }
+    rt_mesh3d_end_geometry_batch((rt_mesh3d *)mesh);
     rt_mesh3d_recalc_normals(mesh);
     return mesh;
 }
 
 /// @brief Parse a double from an ASCII STL stream, advancing the cursor past it.
 static int stl_parse_double(const char **pp, const char *end, double *out) {
+    const char *parse_end = NULL;
     while (*pp < end && (**pp == ' ' || **pp == '\t'))
         (*pp)++;
     if (*pp >= end)
         return 0;
-    errno = 0;
-    char *parse_end = NULL;
-    double val = strtod(*pp, &parse_end);
-    if (!parse_end || parse_end == *pp || parse_end > end || errno == ERANGE || !isfinite(val))
+    if (!mesh_parse_ascii_double_span(*pp, end, &parse_end, out))
         return 0;
     *pp = parse_end;
-    *out = val;
     return 1;
 }
 
@@ -2148,6 +2473,7 @@ static void *stl_load_ascii(const uint8_t *data, size_t len) {
     int state = STL_ASCII_OUTSIDE_FACET;
     int parse_failed = 0;
     int emitted_triangles = 0;
+    rt_mesh3d_begin_geometry_batch((rt_mesh3d *)mesh);
 
     while (p < end) {
         const char *line = p;
@@ -2225,6 +2551,7 @@ static void *stl_load_ascii(const uint8_t *data, size_t len) {
     }
 
     free(text);
+    rt_mesh3d_end_geometry_batch((rt_mesh3d *)mesh);
     rt_mesh3d_recalc_normals(mesh);
     return mesh;
 }

@@ -221,7 +221,7 @@ static void test_two_way_kinematic_switches_direction() {
         rt_vec3_x(node_pos), -4.0, 0.001, "TwoWayKinematic pulls dynamic body pose back into node");
 }
 
-static void test_node_from_body_compensates_for_scaled_parent() {
+static void test_node_from_body_preserves_local_scale_under_scaled_parent() {
     void *scene = rt_scene3d_new();
     void *parent = rt_scene_node3d_new();
     void *child = rt_scene_node3d_new();
@@ -231,6 +231,7 @@ static void test_node_from_body_compensates_for_scaled_parent() {
     void *local_rot;
 
     rt_scene_node3d_set_scale(parent, 2.0, 3.0, 4.0);
+    rt_scene_node3d_set_scale(child, 0.5, 0.75, 1.25);
     rt_scene_node3d_add_child(parent, child);
     rt_scene3d_add(scene, parent);
 
@@ -251,9 +252,9 @@ static void test_node_from_body_compensates_for_scaled_parent() {
         rt_vec3_y(local_pos), 3.0, 0.001, "Scaled parent sync divides world Y by parent scale");
     EXPECT_NEAR(
         rt_vec3_z(local_pos), 4.0, 0.001, "Scaled parent sync divides world Z by parent scale");
-    EXPECT_NEAR(rt_vec3_x(local_scale), 0.5, 0.001, "Scaled parent sync compensates X scale");
-    EXPECT_NEAR(rt_vec3_y(local_scale), 1.0 / 3.0, 0.001, "Scaled parent sync compensates Y scale");
-    EXPECT_NEAR(rt_vec3_z(local_scale), 0.25, 0.001, "Scaled parent sync compensates Z scale");
+    EXPECT_NEAR(rt_vec3_x(local_scale), 0.5, 0.001, "Body sync preserves local X scale");
+    EXPECT_NEAR(rt_vec3_y(local_scale), 0.75, 0.001, "Body sync preserves local Y scale");
+    EXPECT_NEAR(rt_vec3_z(local_scale), 1.25, 0.001, "Body sync preserves local Z scale");
     EXPECT_NEAR(rt_quat_w(local_rot),
                 1.0,
                 0.001,
@@ -500,7 +501,7 @@ int main() {
     test_node_from_body_resolves_child_local_space();
     test_body_from_node_uses_world_space();
     test_two_way_kinematic_switches_direction();
-    test_node_from_body_compensates_for_scaled_parent();
+    test_node_from_body_preserves_local_scale_under_scaled_parent();
     test_animator_root_motion_mode_consumes_delta_once();
     test_animator_root_motion_applies_rotation_delta();
     test_scene_draw_uses_bound_animator_palette();

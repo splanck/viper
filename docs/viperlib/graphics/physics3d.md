@@ -66,7 +66,7 @@ and joint integration.
 
 - `Step()` is explicit; the world does not simulate itself automatically.
 - Contact queries reflect the latest completed step.
-- Query `mask` uses the same layer bits as `Physics3DBody.CollisionLayer`. A mask of `0` matches any layer.
+- Query `mask` uses the same layer bits as `Physics3DBody.CollisionLayer`. A mask of `0` matches no layers; use `-1` or an all-layers mask when you want any layer.
 - Static bodies are immovable. Kinematic bodies move from explicit velocity but do not
   receive gravity or force integration.
 - World storage for bodies, contacts, contact events, and joints grows on demand from production-sized initial capacities. Query result lists remain bounded for predictable allocation behavior.

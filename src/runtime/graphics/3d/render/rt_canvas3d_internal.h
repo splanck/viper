@@ -84,6 +84,8 @@ typedef struct {
     uint32_t geometry_revision; /* increments when CPU geometry changes */
     uint32_t tangent_revision;  /* geometry_revision for cached tangent readiness */
     int8_t tangents_ready;      /* true once tangent presence/generation was resolved */
+    uint8_t geometry_batch_depth;
+    int8_t geometry_batch_dirty;
 } rt_mesh3d;
 
 /// @brief Zero a mesh's cached AABB/bounding-sphere and clear the dirty flag.
@@ -102,9 +104,7 @@ static inline void rt_mesh3d_mark_bounds_dirty(rt_mesh3d *mesh) {
         mesh->bounds_dirty = 1;
 }
 
-/// @brief Mark geometry changed: dirties bounds and bumps geometry_revision
-///        (wrapping past UINT32_MAX to 1) so GPU buffers know to re-upload.
-static inline void rt_mesh3d_touch_geometry(rt_mesh3d *mesh) {
+static inline void rt_mesh3d_touch_geometry_now(rt_mesh3d *mesh) {
     if (!mesh)
         return;
     mesh->bounds_dirty = 1;
@@ -114,6 +114,34 @@ static inline void rt_mesh3d_touch_geometry(rt_mesh3d *mesh) {
         mesh->geometry_revision++;
     mesh->tangents_ready = 0;
     mesh->tangent_revision = 0;
+}
+
+/// @brief Mark geometry changed: dirties bounds and bumps geometry_revision
+///        (wrapping past UINT32_MAX to 1) so GPU buffers know to re-upload.
+static inline void rt_mesh3d_touch_geometry(rt_mesh3d *mesh) {
+    if (!mesh)
+        return;
+    if (mesh->geometry_batch_depth > 0) {
+        mesh->geometry_batch_dirty = 1;
+        return;
+    }
+    rt_mesh3d_touch_geometry_now(mesh);
+}
+
+static inline void rt_mesh3d_begin_geometry_batch(rt_mesh3d *mesh) {
+    if (!mesh || mesh->geometry_batch_depth == UINT8_MAX)
+        return;
+    mesh->geometry_batch_depth++;
+}
+
+static inline void rt_mesh3d_end_geometry_batch(rt_mesh3d *mesh) {
+    if (!mesh || mesh->geometry_batch_depth == 0)
+        return;
+    mesh->geometry_batch_depth--;
+    if (mesh->geometry_batch_depth == 0 && mesh->geometry_batch_dirty) {
+        mesh->geometry_batch_dirty = 0;
+        rt_mesh3d_touch_geometry_now(mesh);
+    }
 }
 
 /// @brief Recompute a mesh's AABB/bounding sphere if marked dirty.

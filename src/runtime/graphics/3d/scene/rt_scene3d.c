@@ -629,6 +629,60 @@ static void quat_normalize_local(double *q) {
     q[3] *= inv_len;
 }
 
+/// @brief Quaternion conjugate for unit-rotation inverse.
+static void quat_conjugate_local(const double *q, double *out) {
+    if (!out)
+        return;
+    if (!q) {
+        quat_identity(out);
+        return;
+    }
+    out[0] = -q[0];
+    out[1] = -q[1];
+    out[2] = -q[2];
+    out[3] = q[3];
+}
+
+/// @brief Quaternion product `out = a * b`.
+static void quat_mul_local(const double *a, const double *b, double *out) {
+    double ax;
+    double ay;
+    double az;
+    double aw;
+    double bx;
+    double by;
+    double bz;
+    double bw;
+    if (!out)
+        return;
+    if (!a || !b) {
+        quat_identity(out);
+        return;
+    }
+    ax = a[0];
+    ay = a[1];
+    az = a[2];
+    aw = a[3];
+    bx = b[0];
+    by = b[1];
+    bz = b[2];
+    bw = b[3];
+    out[0] = aw * bx + ax * bw + ay * bz - az * by;
+    out[1] = aw * by - ax * bz + ay * bw + az * bx;
+    out[2] = aw * bz + ax * by - ay * bx + az * bw;
+    out[3] = aw * bw - ax * bx - ay * by - az * bz;
+    quat_normalize_local(out);
+}
+
+/// @brief Transform a point by a row-major 4x4 matrix with translation in column 3.
+static void mat4d_transform_point(const double *m, const double *point, double *out) {
+    if (!m || !point || !out)
+        return;
+    out[0] = m[0] * point[0] + m[1] * point[1] + m[2] * point[2] + m[3];
+    out[1] = m[4] * point[0] + m[5] * point[1] + m[6] * point[2] + m[7];
+    out[2] = m[8] * point[0] + m[9] * point[1] + m[10] * point[2] + m[11];
+}
+
 /// @brief Extract a unit quaternion from the rotation part of a row-major matrix.
 ///
 /// Picks the largest of four possible diagonal terms and uses
@@ -772,83 +826,6 @@ static void quat_from_world_matrix(const double *m, double *out) {
                           basis[7],
                           basis[8],
                           out);
-}
-
-/// @brief Decompose a row-major TRS matrix into translation, rotation, and scale.
-static void decompose_trs_matrix(const double *m, double *pos, double *quat, double *scale) {
-    double rx;
-    double ry;
-    double rz;
-    double ux;
-    double uy;
-    double uz;
-    double fx;
-    double fy;
-    double fz;
-    double sx;
-    double sy;
-    double sz;
-    double det;
-    if (!m)
-        return;
-    if (pos) {
-        pos[0] = m[3];
-        pos[1] = m[7];
-        pos[2] = m[11];
-    }
-    rx = m[0];
-    ry = m[4];
-    rz = m[8];
-    ux = m[1];
-    uy = m[5];
-    uz = m[9];
-    fx = m[2];
-    fy = m[6];
-    fz = m[10];
-    sx = sqrt(rx * rx + ry * ry + rz * rz);
-    sy = sqrt(ux * ux + uy * uy + uz * uz);
-    sz = sqrt(fx * fx + fy * fy + fz * fz);
-    {
-        double sx_norm = sx > 1e-12 ? sx : 1.0;
-        double sy_norm = sy > 1e-12 ? sy : 1.0;
-        double sz_norm = sz > 1e-12 ? sz : 1.0;
-        rx /= sx_norm;
-        ry /= sx_norm;
-        rz /= sx_norm;
-        ux /= sy_norm;
-        uy /= sy_norm;
-        uz /= sy_norm;
-        fx /= sz_norm;
-        fy /= sz_norm;
-        fz /= sz_norm;
-    }
-
-    det = rx * (uy * fz - uz * fy) - ux * (ry * fz - rz * fy) + fx * (ry * uz - rz * uy);
-    if (det < 0.0) {
-        if (sx >= sy && sx >= sz) {
-            sx = -sx;
-            rx = -rx;
-            ry = -ry;
-            rz = -rz;
-        } else if (sy >= sz) {
-            sy = -sy;
-            ux = -ux;
-            uy = -uy;
-            uz = -uz;
-        } else {
-            sz = -sz;
-            fx = -fx;
-            fy = -fy;
-            fz = -fz;
-        }
-    }
-    if (scale) {
-        scale[0] = scene3d_scale_or_unit(sx);
-        scale[1] = scene3d_scale_or_unit(sy);
-        scale[2] = scene3d_scale_or_unit(sz);
-    }
-    if (quat)
-        quat_from_matrix_rows(rx, ux, fx, ry, uy, fy, rz, uz, fz, quat);
 }
 
 /// @brief Push @p node onto an iterative-traversal node stack, growing it geometrically.
@@ -1120,24 +1097,55 @@ static void node_anim_sample_channel(const rt_node_anim_channel3d *channel,
     }
 }
 
-/// @brief Propagate morph-target weights from a WEIGHTS channel through a node subtree.
-/// @details glTF WEIGHTS path targets a specific node but the weights are conceptually
-///   inherited by all mesh nodes in the subtree that share the same morph target set.
-///   This recursive walk sets weights on every mesh that has a morph-targets object,
-///   clamping the applied count to `min(shape_count, weight_count)` so a channel with
-///   fewer weights than shapes leaves the excess shapes at their current weights rather
-///   than clearing them, and a channel with more weights than shapes does not overrun
-///   the morph target array.
+/// @brief Propagate morph-target weights from a WEIGHTS channel through a matching subtree.
+/// @details glTF WEIGHTS targets one node's morph set. Imported multi-primitive nodes may
+///   represent that set on child mesh nodes, so this walk first picks the target subtree's
+///   first morph-target object and then applies weights only to meshes sharing that exact
+///   object. Unrelated morphed descendants are left untouched.
 /// @param node         Root of the subtree to drive.
 /// @param weights      Array of weight values from the sampled WEIGHTS channel.
 /// @param weight_count Number of values in @p weights.
+static void *node_anim_find_first_morph_targets(rt_scene_node3d *node) {
+    rt_scene_node3d **stack = NULL;
+    size_t count = 0;
+    size_t capacity = 0;
+    void *result = NULL;
+    if (!node)
+        return NULL;
+    if (!scene_node_stack_push(&stack, &count, &capacity, node)) {
+        rt_trap("NodeAnimation3D: traversal stack allocation failed");
+        return NULL;
+    }
+    while (count > 0) {
+        rt_scene_node3d *current = stack[--count];
+        rt_mesh3d *mesh = (rt_mesh3d *)current->mesh;
+        if (mesh && mesh->morph_targets_ref) {
+            result = mesh->morph_targets_ref;
+            break;
+        }
+        for (int32_t i = current->child_count - 1; i >= 0; i--) {
+            if (!scene_node_stack_push(&stack, &count, &capacity, current->children[i])) {
+                rt_trap("NodeAnimation3D: traversal stack allocation failed");
+                free(stack);
+                return NULL;
+            }
+        }
+    }
+    free(stack);
+    return result;
+}
+
 static void node_anim_apply_weights_recursive(rt_scene_node3d *node,
                                               const float *weights,
                                               int32_t weight_count) {
     rt_scene_node3d **stack = NULL;
     size_t count = 0;
     size_t capacity = 0;
+    void *target_morphs;
     if (!node || !weights || weight_count <= 0)
+        return;
+    target_morphs = node_anim_find_first_morph_targets(node);
+    if (!target_morphs)
         return;
     if (!scene_node_stack_push(&stack, &count, &capacity, node)) {
         rt_trap("NodeAnimation3D: traversal stack allocation failed");
@@ -1146,7 +1154,7 @@ static void node_anim_apply_weights_recursive(rt_scene_node3d *node,
     while (count > 0) {
         rt_scene_node3d *current = stack[--count];
         rt_mesh3d *mesh = (rt_mesh3d *)current->mesh;
-        if (mesh && mesh->morph_targets_ref) {
+        if (mesh && mesh->morph_targets_ref == target_morphs) {
             int64_t shape_count = rt_morphtarget3d_get_shape_count(mesh->morph_targets_ref);
             int32_t limit = (int32_t)((shape_count < weight_count) ? shape_count : weight_count);
             for (int32_t i = 0; i < limit; i++)
@@ -1161,6 +1169,36 @@ static void node_anim_apply_weights_recursive(rt_scene_node3d *node,
         }
     }
     free(stack);
+}
+
+static int scene_node_is_descendant_of(rt_scene_node3d *root, rt_scene_node3d *node) {
+    while (node) {
+        if (node == root)
+            return 1;
+        node = node->parent;
+    }
+    return 0;
+}
+
+static rt_scene_node3d *node_anim_resolve_target(rt_scene_node3d *root,
+                                                 rt_node_anim_channel3d *channel) {
+    const char *target_name;
+    const char *cached_name;
+    if (!root || !channel || !channel->target_name)
+        return NULL;
+    target_name = rt_string_cstr(channel->target_name);
+    if (!target_name)
+        return NULL;
+    if (channel->cached_root == root && channel->cached_target &&
+        scene_node_is_descendant_of(root, channel->cached_target)) {
+        cached_name = channel->cached_target->name ? rt_string_cstr(channel->cached_target->name)
+                                                   : "";
+        if (cached_name && strcmp(cached_name, target_name) == 0)
+            return channel->cached_target;
+    }
+    channel->cached_target = find_by_name(root, target_name);
+    channel->cached_root = channel->cached_target ? root : NULL;
+    return channel->cached_target;
 }
 
 /// @brief Resolve a channel's target node by name, sample the channel, and write the
@@ -1179,9 +1217,8 @@ static void node_anim_apply_weights_recursive(rt_scene_node3d *node,
 /// @param channel Channel to sample; must have a valid target_name.
 /// @param time    Playback time in seconds.
 static void node_anim_apply_channel(rt_scene_node3d *root,
-                                    const rt_node_anim_channel3d *channel,
+                                    rt_node_anim_channel3d *channel,
                                     double time) {
-    const char *target_name;
     rt_scene_node3d *target;
     float stack_values[16];
     float *values = stack_values;
@@ -1198,8 +1235,7 @@ static void node_anim_apply_channel(rt_scene_node3d *root,
     } else {
         memset(values, 0, sizeof(stack_values));
     }
-    target_name = rt_string_cstr(channel->target_name);
-    target = target_name ? find_by_name(root, target_name) : NULL;
+    target = node_anim_resolve_target(root, channel);
     if (!target) {
         if (values != stack_values)
             free(values);
@@ -1376,8 +1412,6 @@ static void scene_node_set_world_transform(rt_scene_node3d *node,
                                            const double *world_pos,
                                            const double *world_quat) {
     double world_rot[4];
-    double desired_world[16];
-    double local_matrix[16];
     double inv_parent[16];
     if (!node || !world_pos || !world_quat)
         return;
@@ -1404,14 +1438,19 @@ static void scene_node_set_world_transform(rt_scene_node3d *node,
         double safe_world_pos[3] = {scene3d_clamp_abs_or(world_pos[0], 0.0),
                                     scene3d_clamp_abs_or(world_pos[1], 0.0),
                                     scene3d_clamp_abs_or(world_pos[2], 0.0)};
-        build_trs_matrix(safe_world_pos, world_rot, node->scale_xyz, desired_world);
+        if (mat4d_invert(node->parent->world_matrix, inv_parent) == 0) {
+            mat4d_transform_point(inv_parent, safe_world_pos, node->position);
+        } else {
+            memcpy(node->position, safe_world_pos, sizeof(node->position));
+        }
     }
-    if (mat4d_invert(node->parent->world_matrix, inv_parent) == 0) {
-        mat4d_mul(inv_parent, desired_world, local_matrix);
-    } else {
-        memcpy(local_matrix, desired_world, sizeof(local_matrix));
+    {
+        double parent_world_rot[4];
+        double inv_parent_rot[4];
+        scene_node_get_world_rotation(node->parent, parent_world_rot);
+        quat_conjugate_local(parent_world_rot, inv_parent_rot);
+        quat_mul_local(inv_parent_rot, world_rot, node->rotation);
     }
-    decompose_trs_matrix(local_matrix, node->position, node->rotation, node->scale_xyz);
     node->position[0] = scene3d_clamp_abs_or(node->position[0], 0.0);
     node->position[1] = scene3d_clamp_abs_or(node->position[1], 0.0);
     node->position[2] = scene3d_clamp_abs_or(node->position[2], 0.0);
@@ -2953,8 +2992,10 @@ void rt_scene_node3d_add_lod(void *obj, double distance, void *mesh) {
             return;
         }
         void *tmp = realloc(node->lod_levels, (size_t)new_cap * sizeof(node->lod_levels[0]));
-        if (!tmp)
+        if (!tmp) {
+            rt_trap("SceneNode3D.AddLOD: LOD allocation failed");
             return;
+        }
         node->lod_levels = tmp;
         node->lod_capacity = new_cap;
     }

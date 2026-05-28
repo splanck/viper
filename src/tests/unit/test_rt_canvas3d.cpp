@@ -200,6 +200,33 @@ static void test_mesh_add_vertex_triangle() {
     PASS();
 }
 
+static void test_mesh_reserve_presizes_without_dirtying_geometry() {
+    TEST("Mesh3D.Reserve presizes without dirtying geometry");
+    rt_mesh3d *m = (rt_mesh3d *)rt_mesh3d_new();
+    uint32_t revision = m->geometry_revision;
+    rt_mesh3d_reserve(m, 1000, 500);
+    EXPECT_TRUE(m->vertex_capacity >= 1000, "vertex reserve capacity");
+    EXPECT_TRUE(m->index_capacity >= 1500, "index reserve capacity");
+    EXPECT_EQ(rt_mesh3d_get_vertex_count(m), 0);
+    EXPECT_EQ(rt_mesh3d_get_triangle_count(m), 0);
+    EXPECT_EQ(m->geometry_revision, revision);
+    EXPECT_TRUE(expect_trap_contains([&] { rt_mesh3d_reserve(m, -1, 0); },
+                                     "capacities must be non-negative"),
+                "negative reserve traps");
+    PASS();
+}
+
+static void test_mesh_generators_batch_geometry_revision_updates() {
+    TEST("Mesh3D generators batch geometry revision updates");
+    rt_mesh3d *box = (rt_mesh3d *)rt_mesh3d_new_box(1.0, 1.0, 1.0);
+    assert(box);
+    EXPECT_EQ(rt_mesh3d_get_vertex_count(box), 24);
+    EXPECT_EQ(rt_mesh3d_get_triangle_count(box), 12);
+    EXPECT_EQ(box->geometry_revision, 2u);
+    EXPECT_EQ(box->tangents_ready, 0);
+    PASS();
+}
+
 static void test_mesh_reject_invalid_triangle_indices() {
     TEST("Mesh3D.AddTriangle rejects invalid indices");
     void *m = rt_mesh3d_new();
@@ -422,6 +449,20 @@ static void test_mesh_recalc_normals() {
     PASS();
 }
 
+static void test_mesh_recalc_normals_uses_double_accumulation() {
+    TEST("Mesh3D.RecalcNormals handles large finite triangles");
+    rt_mesh3d *m = (rt_mesh3d *)rt_mesh3d_new();
+    rt_mesh3d_add_vertex(m, 0, 0, 0, 0, 0, 0, 0, 0);
+    rt_mesh3d_add_vertex(m, 1.0e20, 0, 0, 0, 0, 0, 0, 0);
+    rt_mesh3d_add_vertex(m, 0, 1.0e20, 0, 0, 0, 0, 0, 0);
+    rt_mesh3d_add_triangle(m, 0, 1, 2);
+    rt_mesh3d_recalc_normals(m);
+    EXPECT_NEAR(m->vertices[0].normal[0], 0.0, 0.001);
+    EXPECT_NEAR(m->vertices[0].normal[1], 0.0, 0.001);
+    EXPECT_NEAR(m->vertices[0].normal[2], 1.0, 0.001);
+    PASS();
+}
+
 static void test_mesh_obj_loader() {
     TEST("Mesh3D.FromOBJ — loads test cube");
     /* Try multiple paths since ctest working directory may differ.
@@ -507,6 +548,37 @@ static void test_mesh_obj_loader_deduplicates_vertices_and_handles_ngons() {
     assert(mesh);
     EXPECT_EQ(rt_mesh3d_get_vertex_count(mesh), 5);
     EXPECT_EQ(rt_mesh3d_get_triangle_count(mesh), 4);
+    PASS();
+}
+
+static void test_mesh_obj_loader_ear_clips_concave_ngons() {
+    TEST("Mesh3D.FromOBJ — ear-clips concave n-gons");
+    const char *path = "/tmp/viper_obj_concave_ngon_test.obj";
+    FILE *f = fopen(path, "w");
+    assert(f);
+    fputs("v 0 0 0\n"
+          "v 2 0 0\n"
+          "v 2 2 0\n"
+          "v 1.4 0.6 0\n"
+          "v 0 2 0\n"
+          "vn 0 0 1\n"
+          "f 1//1 2//1 3//1 4//1 5//1\n",
+          f);
+    fclose(f);
+
+    rt_string obj_path = rt_string_from_bytes(path, (int64_t)strlen(path));
+    rt_mesh3d *mesh = (rt_mesh3d *)rt_mesh3d_from_obj(obj_path);
+    assert(mesh);
+    EXPECT_EQ(rt_mesh3d_get_vertex_count(mesh), 5);
+    EXPECT_EQ(rt_mesh3d_get_triangle_count(mesh), 3);
+    for (uint32_t tri = 0; tri < mesh->index_count; tri += 3) {
+        uint32_t a = mesh->indices[tri + 0];
+        uint32_t b = mesh->indices[tri + 1];
+        uint32_t c = mesh->indices[tri + 2];
+        bool is_bad_fan_ear = (a == 0 || b == 0 || c == 0) && (a == 1 || b == 1 || c == 1) &&
+                              (a == 2 || b == 2 || c == 2);
+        EXPECT_TRUE(!is_bad_fan_ear, "concave polygon should not emit the invalid fan ear");
+    }
     PASS();
 }
 
@@ -3353,6 +3425,8 @@ int main() {
     /* Mesh3D — basic */
     test_mesh_empty();
     test_mesh_add_vertex_triangle();
+    test_mesh_reserve_presizes_without_dirtying_geometry();
+    test_mesh_generators_batch_geometry_revision_updates();
     test_mesh_reject_invalid_triangle_indices();
     test_mesh_calc_tangents_tracks_mirrored_uv_handedness();
     test_mesh_box();
@@ -3365,9 +3439,11 @@ int main() {
     test_mesh_transform_updates_tangent_basis();
     test_mesh_transform_flips_tangent_handedness_for_mirrors();
     test_mesh_recalc_normals();
+    test_mesh_recalc_normals_uses_double_accumulation();
     test_mesh_obj_loader();
     test_mesh_obj_loader_flattens_material_groups();
     test_mesh_obj_loader_deduplicates_vertices_and_handles_ngons();
+    test_mesh_obj_loader_ear_clips_concave_ngons();
     test_mesh_obj_loader_rejects_invalid_indices();
     test_mesh_obj_loader_rejects_invalid_numeric_tokens();
     test_mesh_obj_loader_rejects_empty_geometry();

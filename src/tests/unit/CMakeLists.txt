@@ -827,6 +827,7 @@ function(viper_add_runtime_tests)
     viper_add_test(test_rt_physics3d ${VIPER_TESTS_DIR}/unit/test_rt_physics3d.cpp)
     target_link_libraries(test_rt_physics3d PRIVATE ${VIPER_RUNTIME_TEST_LIBS})
     viper_add_ctest(test_rt_physics3d test_rt_physics3d)
+    viper_add_test_labels(test_rt_physics3d graphics3d unit)
 
     viper_add_test(test_rt_transform_path ${VIPER_TESTS_DIR}/unit/test_rt_transform_path.cpp)
     target_link_libraries(test_rt_transform_path PRIVATE ${VIPER_RUNTIME_TEST_LIBS})
@@ -1303,9 +1304,10 @@ function(viper_add_runtime_tests)
             RT_G3D_ALLOW_STACK_FIXTURES=1)
 
     viper_add_test(test_rt_graphics3d_robustness
-            ${VIPER_TESTS_DIR}/runtime/RTGraphics3DRobustnessTests.cpp)
+        ${VIPER_TESTS_DIR}/runtime/RTGraphics3DRobustnessTests.cpp)
     target_link_libraries(test_rt_graphics3d_robustness PRIVATE ${VIPER_RUNTIME_TEST_LIBS})
     viper_add_ctest(test_rt_graphics3d_robustness test_rt_graphics3d_robustness)
+    viper_add_test_labels(test_rt_graphics3d_robustness graphics3d runtime)
 
     viper_add_test(test_rt_file_exhaustion ${VIPER_TESTS_DIR}/runtime/RTFileExhaustionTests.cpp)
     target_link_libraries(test_rt_file_exhaustion PRIVATE ${VIPER_RUNTIME_TEST_LIBS})

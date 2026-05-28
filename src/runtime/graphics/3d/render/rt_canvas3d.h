@@ -201,6 +201,8 @@ void rt_canvas3d_reset_render_target(void *canvas);
 void *rt_mesh3d_new(void);
 /// @brief Reset vertex and index counts to 0 without freeing the backing arrays.
 void rt_mesh3d_clear(void *obj);
+/// @brief Reserve backing storage for at least vertex_count vertices and triangle_count triangles.
+void rt_mesh3d_reserve(void *obj, int64_t vertex_count, int64_t triangle_count);
 /// @brief Build a unit-cube-style box mesh of size (sx, sy, sz) with normals and UVs.
 void *rt_mesh3d_new_box(double sx, double sy, double sz);
 /// @brief Build a UV-sphere mesh with the given radius and longitude segment count.
@@ -217,7 +219,7 @@ void *rt_mesh3d_from_stl(rt_string path);
 int64_t rt_mesh3d_get_vertex_count(void *obj);
 /// @brief Number of triangles currently in the mesh (== indices / 3).
 int64_t rt_mesh3d_get_triangle_count(void *obj);
-/// @brief Append a vertex with position, normal, and UV. Returns the new vertex index.
+/// @brief Append a vertex with position, normal, and UV.
 void rt_mesh3d_add_vertex(
     void *obj, double x, double y, double z, double nx, double ny, double nz, double u, double v);
 /// @brief Append a triangle by referencing three previously-added vertex indices (CCW = front).

@@ -139,6 +139,9 @@ typedef struct {
     rt_contact3d *contacts;
     int32_t contact_count;
     int32_t contact_capacity;
+    rt_contact3d *frame_contacts;
+    int32_t frame_contact_count;
+    int32_t frame_contact_capacity;
     rt_contact3d *previous_contacts;
     int32_t previous_contact_count;
     int32_t previous_contact_capacity;
@@ -268,6 +271,15 @@ static int world3d_reserve_contact_array(rt_contact3d **array, int32_t *capacity
 /// @brief Grow w->contacts to hold at least @p needed entries.
 static int world3d_reserve_contacts(rt_world3d *w, int32_t needed) {
     return world3d_reserve_contact_array(&w->contacts, &w->contact_capacity, needed);
+}
+
+/// @brief Grow w->frame_contacts to hold at least @p needed entries.
+/// @details Frame contacts aggregate unique pairs across all CCD substeps so
+///          very brief substep contacts still participate in the frame's
+///          enter/stay/exit event diff.
+static int world3d_reserve_frame_contacts(rt_world3d *w, int32_t needed) {
+    return world3d_reserve_contact_array(
+        &w->frame_contacts, &w->frame_contact_capacity, needed);
 }
 
 /// @brief Grow w->previous_contacts to hold at least @p needed entries.
@@ -857,10 +869,16 @@ static void transform_point_to_local(const rt_collider_pose *pose,
     quat_rotate_vec3(inv_rotation, translated, local_point);
     if (fabs(pose->scale[0]) > 1e-12)
         local_point[0] /= pose->scale[0];
+    else
+        local_point[0] = 0.0;
     if (fabs(pose->scale[1]) > 1e-12)
         local_point[1] /= pose->scale[1];
+    else
+        local_point[1] = 0.0;
     if (fabs(pose->scale[2]) > 1e-12)
         local_point[2] /= pose->scale[2];
+    else
+        local_point[2] = 0.0;
 }
 
 /// @brief Absolute scale factor sanitized for division: non-finite or near-zero → 1.0.
@@ -1443,15 +1461,14 @@ static void closest_point_capsule_axis_to_aabb(const rt_body3d *cap,
 ///
 /// Bidirectional layer/mask filtering applies for body-vs-body collision
 /// (`bodies_can_collide`); queries are unidirectional, so we just check
-/// the body's layer against the query's mask. A zero mask is treated as
-/// "match anything" for ergonomics.
+/// the body's layer against the query's mask. A zero mask matches nothing,
+/// which keeps `LayerMask.None()` consistent across high-level queries.
 static int query_mask_matches_body(const rt_body3d *body, int64_t mask) {
-    int64_t effective_mask = mask;
     if (!body)
         return 0;
-    if (effective_mask == 0)
-        effective_mask = -1;
-    return (body->collision_layer & effective_mask) != 0;
+    if (mask == 0)
+        return 0;
+    return (body->collision_layer & mask) != 0;
 }
 
 /// @brief Raw AABB-vs-AABB overlap test (no shape interpretation).
@@ -1502,8 +1519,10 @@ static void contact_snapshot_copy(rt_contact3d *dst, const rt_contact3d *src) {
 static int contact_pair_equals(const rt_contact3d *a, const rt_contact3d *b) {
     if (!a || !b)
         return 0;
-    return a->body_a == b->body_a && a->body_b == b->body_b && a->collider_a == b->collider_a &&
-           a->collider_b == b->collider_b;
+    return (a->body_a == b->body_a && a->body_b == b->body_b &&
+            a->collider_a == b->collider_a && a->collider_b == b->collider_b) ||
+           (a->body_a == b->body_b && a->body_b == b->body_a &&
+            a->collider_a == b->collider_b && a->collider_b == b->collider_a);
 }
 
 typedef struct contact_pair_hash_entry {
@@ -1520,11 +1539,59 @@ static uintptr_t contact_pair_hash_mix(uintptr_t key, uintptr_t value) {
 
 /// @brief Hash a contact's identity (both body and both collider pointers) into one key.
 static uintptr_t contact_pair_hash_value(const rt_contact3d *contact) {
-    uintptr_t key = (uintptr_t)contact->body_a;
-    key = contact_pair_hash_mix(key, (uintptr_t)contact->body_b);
-    key = contact_pair_hash_mix(key, (uintptr_t)contact->collider_a);
-    key = contact_pair_hash_mix(key, (uintptr_t)contact->collider_b);
+    uintptr_t body_a = (uintptr_t)contact->body_a;
+    uintptr_t body_b = (uintptr_t)contact->body_b;
+    uintptr_t collider_a = (uintptr_t)contact->collider_a;
+    uintptr_t collider_b = (uintptr_t)contact->collider_b;
+    uintptr_t key;
+    if (body_b < body_a || (body_b == body_a && collider_b < collider_a)) {
+        uintptr_t tmp = body_a;
+        body_a = body_b;
+        body_b = tmp;
+        tmp = collider_a;
+        collider_a = collider_b;
+        collider_b = tmp;
+    }
+    key = body_a;
+    key = contact_pair_hash_mix(key, body_b);
+    key = contact_pair_hash_mix(key, collider_a);
+    key = contact_pair_hash_mix(key, collider_b);
     return key ? key : (uintptr_t)1u;
+}
+
+/// @brief Append a contact to the per-frame aggregate, replacing an existing
+///        same-pair record so the latest substep's geometry is exposed.
+static int world3d_append_frame_contact_unique(rt_world3d *w, const rt_contact3d *contact) {
+    int32_t next_count;
+    if (!w || !contact)
+        return 1;
+    for (int32_t i = 0; i < w->frame_contact_count; ++i) {
+        if (contact_pair_equals(&w->frame_contacts[i], contact)) {
+            contact_snapshot_copy(&w->frame_contacts[i], contact);
+            return 1;
+        }
+    }
+    if (!world3d_checked_increment(w->frame_contact_count, &next_count) ||
+        !world3d_reserve_frame_contacts(w, next_count)) {
+        rt_trap("Physics3D.World.Step: frame-contact allocation failed");
+        return 0;
+    }
+    contact_snapshot_copy(&w->frame_contacts[w->frame_contact_count++], contact);
+    return 1;
+}
+
+/// @brief Publish the frame-wide contact aggregate as the public contact list.
+static int world3d_publish_frame_contacts(rt_world3d *w) {
+    if (!w)
+        return 0;
+    if (!world3d_reserve_contacts(w, w->frame_contact_count)) {
+        rt_trap("Physics3D.World.Step: contact allocation failed");
+        return 0;
+    }
+    w->contact_count = w->frame_contact_count;
+    for (int32_t i = 0; i < w->frame_contact_count; ++i)
+        contact_snapshot_copy(&w->contacts[i], &w->frame_contacts[i]);
+    return 1;
 }
 
 /// @brief Choose a power-of-two table capacity above 2×`count` (kept sparse to bound
@@ -1628,11 +1695,11 @@ static void collider_support_point(void *collider,
     switch (type) {
         case RT_COLLIDER3D_TYPE_SPHERE: {
             double radius = rt_collider3d_get_radius_raw(collider);
-            double max_scale = pose->scale[0];
-            if (pose->scale[1] > max_scale)
-                max_scale = pose->scale[1];
-            if (pose->scale[2] > max_scale)
-                max_scale = pose->scale[2];
+            double max_scale = fabs(pose->scale[0]);
+            if (fabs(pose->scale[1]) > max_scale)
+                max_scale = fabs(pose->scale[1]);
+            if (fabs(pose->scale[2]) > max_scale)
+                max_scale = fabs(pose->scale[2]);
             out_point[0] = pose->position[0] + dir[0] * radius * max_scale;
             out_point[1] = pose->position[1] + dir[1] * radius * max_scale;
             out_point[2] = pose->position[2] + dir[2] * radius * max_scale;
@@ -2807,32 +2874,36 @@ static int test_heightfield_capsule(void *heightfield,
     return 1;
 }
 
-/// @brief Box-vs-heightfield narrow phase via 5-sample bottom probe.
+/// @brief Box-vs-heightfield narrow phase via 3x3 bottom probe.
 ///
-/// Samples the heightfield at the oriented box's four local bottom corners
-/// and its bottom center; the deepest penetration wins. Approximate but
-/// cheap; matches the resolution of the heightfield grid in practice.
+/// Samples the heightfield at the oriented box's bottom corners, edge midpoints,
+/// and center; the deepest penetration wins. The edge samples catch narrow ridges
+/// that can pass between the old corner+center probe pattern.
 static int test_heightfield_box(void *heightfield,
                                 const rt_collider_pose *field_pose,
                                 const rt_body3d *box,
                                 double *normal,
                                 double *depth) {
     rt_collider_pose box_pose;
-    double samples[5][3];
+    double samples[9][3];
     double best_depth = 0.0;
     double best_normal[3] = {0.0, 1.0, 0.0};
-    double local_samples[5][3];
+    double local_samples[9][3];
+    int sample_count = 0;
     if (!box)
         return 0;
     body_pose_from_proxy(box, &box_pose);
-    vec3_set(local_samples[0], -box->half_extents[0], -box->half_extents[1], -box->half_extents[2]);
-    vec3_set(local_samples[1], -box->half_extents[0], -box->half_extents[1], box->half_extents[2]);
-    vec3_set(local_samples[2], box->half_extents[0], -box->half_extents[1], -box->half_extents[2]);
-    vec3_set(local_samples[3], box->half_extents[0], -box->half_extents[1], box->half_extents[2]);
-    vec3_set(local_samples[4], 0.0, -box->half_extents[1], 0.0);
-    for (int i = 0; i < 5; i++)
+    for (int ix = -1; ix <= 1; ++ix) {
+        for (int iz = -1; iz <= 1; ++iz) {
+            vec3_set(local_samples[sample_count++],
+                     (double)ix * box->half_extents[0],
+                     -box->half_extents[1],
+                     (double)iz * box->half_extents[2]);
+        }
+    }
+    for (int i = 0; i < sample_count; i++)
         transform_point_from_pose(&box_pose, local_samples[i], samples[i]);
-    for (int i = 0; i < 5; ++i) {
+    for (int i = 0; i < sample_count; ++i) {
         double local_point[3];
         double surface_height = 0.0;
         double local_normal[3] = {0.0, 1.0, 0.0};
@@ -3353,7 +3424,7 @@ static int ph3d_bounds_overlap(const double *a_min,
 }
 
 /// @brief Run narrow-phase collision detection and impulse response for one body pair.
-/// @details Skips pairs that are both non-dynamic or that fail the bidirectional
+/// @details Skips static-static pairs or pairs that fail the bidirectional
 ///   layer/mask filter.  On a detected overlap, appends a new rt_contact3d to the
 ///   world's contact array (reallocating if needed), then either calls resolve_collision
 ///   for non-trigger pairs (applying impulse + Baumgarte correction) or just records
@@ -3373,7 +3444,7 @@ static int world3d_process_collision_pair(rt_world3d *w, rt_body3d *a, rt_body3d
 
     if (!w || !a || !b || a == b)
         return 1;
-    if (a->motion_mode != PH3D_MODE_DYNAMIC && b->motion_mode != PH3D_MODE_DYNAMIC)
+    if (a->motion_mode == PH3D_MODE_STATIC && b->motion_mode == PH3D_MODE_STATIC)
         return 1;
     if (!(a->collision_layer & b->collision_mask))
         return 1;
@@ -3432,7 +3503,7 @@ static int world3d_process_collision_pair(rt_world3d *w, rt_body3d *a, rt_body3d
 static int world3d_pair_can_collide_cheap(const rt_body3d *a, const rt_body3d *b) {
     if (!a || !b || a == b)
         return 0;
-    if (a->motion_mode != PH3D_MODE_DYNAMIC && b->motion_mode != PH3D_MODE_DYNAMIC)
+    if (a->motion_mode == PH3D_MODE_STATIC && b->motion_mode == PH3D_MODE_STATIC)
         return 0;
     if (!(a->collision_layer & b->collision_mask))
         return 0;
@@ -3804,9 +3875,16 @@ static void world3d_finalizer(void *obj) {
         w->joints[i] = NULL;
     }
     w->body_count = 0;
+    w->contact_count = 0;
+    w->frame_contact_count = 0;
+    w->previous_contact_count = 0;
+    w->enter_event_count = 0;
+    w->stay_event_count = 0;
+    w->exit_event_count = 0;
     w->joint_count = 0;
     free(w->bodies);
     free(w->contacts);
+    free(w->frame_contacts);
     free(w->previous_contacts);
     free(w->enter_events);
     free(w->stay_events);
@@ -3816,6 +3894,7 @@ static void world3d_finalizer(void *obj) {
     free(w->broadphase_entries);
     w->bodies = NULL;
     w->contacts = NULL;
+    w->frame_contacts = NULL;
     w->previous_contacts = NULL;
     w->enter_events = NULL;
     w->stay_events = NULL;
@@ -3825,6 +3904,7 @@ static void world3d_finalizer(void *obj) {
     w->broadphase_entries = NULL;
     w->body_capacity = 0;
     w->contact_capacity = 0;
+    w->frame_contact_capacity = 0;
     w->previous_contact_capacity = 0;
     w->enter_event_capacity = 0;
     w->stay_event_capacity = 0;
@@ -3853,6 +3933,7 @@ void *rt_world3d_new(double gx, double gy, double gz) {
     ph3d_vec3_set_finite(w->gravity, gx, gy, gz);
     w->body_count = 0;
     w->contact_count = 0;
+    w->frame_contact_count = 0;
     w->previous_contact_count = 0;
     w->enter_event_count = 0;
     w->stay_event_count = 0;
@@ -3860,6 +3941,7 @@ void *rt_world3d_new(double gx, double gy, double gz) {
     w->joint_count = 0;
     w->body_capacity = 0;
     w->contact_capacity = 0;
+    w->frame_contact_capacity = 0;
     w->previous_contact_capacity = 0;
     w->enter_event_capacity = 0;
     w->stay_event_capacity = 0;
@@ -3868,6 +3950,7 @@ void *rt_world3d_new(double gx, double gy, double gz) {
     w->broadphase_capacity = 0;
     w->bodies = NULL;
     w->contacts = NULL;
+    w->frame_contacts = NULL;
     w->previous_contacts = NULL;
     w->enter_events = NULL;
     w->stay_events = NULL;
@@ -3877,6 +3960,7 @@ void *rt_world3d_new(double gx, double gy, double gz) {
     w->broadphase_entries = NULL;
     if (!world3d_reserve_body_capacity(w, PH3D_INITIAL_BODIES) ||
         !world3d_reserve_contacts(w, PH3D_INITIAL_CONTACTS) ||
+        !world3d_reserve_frame_contacts(w, PH3D_INITIAL_CONTACTS) ||
         !world3d_reserve_previous_contacts(w, PH3D_INITIAL_CONTACTS) ||
         !world3d_reserve_enter_events(w, PH3D_INITIAL_CONTACTS) ||
         !world3d_reserve_stay_events(w, PH3D_INITIAL_CONTACTS) ||
@@ -3945,9 +4029,9 @@ static int world3d_compute_substeps(const rt_world3d *w, double dt) {
 ///      non-trigger pairs (with a 6-iteration joint solver per substep).
 ///   3. **Grounded flag** is set when a contact normal points sufficiently
 ///      upward (Y > 0.7 ≈ 45° slope), used by character controllers.
-/// After the substeps, the contact list is diffed against the previous
-/// frame to fire enter/stay/exit events, and per-step forces/torques
-/// are zeroed for the next frame.
+/// After the substeps, a unique frame-wide contact set is diffed against
+/// the previous frame to fire enter/stay/exit events, and per-step
+/// forces/torques are zeroed for the next frame.
 ///
 /// @param obj `World3D` handle.
 /// @param dt  Step duration (seconds). No-op for `dt <= 0`.
@@ -3957,6 +4041,7 @@ void rt_world3d_step(void *obj, double dt) {
         return;
     int substeps = world3d_compute_substeps(w, dt);
     double sub_dt = dt / (double)substeps;
+    w->frame_contact_count = 0;
 
     for (int substep = 0; substep < substeps; substep++) {
         /* Phase 1: Integration */
@@ -4016,9 +4101,13 @@ void rt_world3d_step(void *obj, double dt) {
             quat_integrate(b->orientation, b->angular_velocity, sub_dt);
         }
 
-        /* Phase 2: Collision detection + response (last substep contacts kept) */
+        /* Phase 2: Collision detection + response */
         if (!world3d_detect_and_resolve_contacts(w))
             return;
+        for (int32_t i = 0; i < w->contact_count; ++i) {
+            if (!world3d_append_frame_contact_unique(w, &w->contacts[i]))
+                return;
+        }
 
         for (int32_t iter = 0; iter < 6; iter++) {
             for (int32_t j = 0; j < w->joint_count; j++) {
@@ -4028,6 +4117,8 @@ void rt_world3d_step(void *obj, double dt) {
         }
     }
 
+    if (!world3d_publish_frame_contacts(w))
+        return;
     world3d_build_event_buffers(w);
 
     for (int32_t i = 0; i < w->body_count; i++) {

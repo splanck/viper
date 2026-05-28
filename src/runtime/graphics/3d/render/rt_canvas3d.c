@@ -1698,9 +1698,9 @@ static void canvas3d_fill_deferred_draw(rt_canvas3d *c,
 
 /// @brief Append a draw to the deferred-draw queue (transparency / sort path).
 ///
-/// The queue is dispatched at end-of-frame in sorted order. If the queue cannot
-/// grow, main-pass draws are submitted immediately so memory pressure degrades
-/// ordering quality instead of dropping visible geometry.
+/// The queue is dispatched at end-of-frame in sorted order. Allocation failure
+/// traps instead of submitting immediately, because bypassing the queue breaks
+/// transparent ordering and can render a visibly incorrect frame.
 static int canvas3d_enqueue_draw(rt_canvas3d *c,
                                  const vgfx3d_draw_cmd_t *cmd,
                                  deferred_draw_kind_t kind,
@@ -1718,24 +1718,8 @@ static int canvas3d_enqueue_draw(rt_canvas3d *c,
     if (!c || !cmd)
         return 0;
     if (!ensure_deferred_capacity(&c->draw_cmds, &c->draw_capacity, c->draw_count + 1)) {
-        if (pass_kind == DEFERRED_PASS_MAIN) {
-            deferred_draw_t fallback;
-            canvas3d_fill_deferred_draw(c,
-                                        &fallback,
-                                        cmd,
-                                        kind,
-                                        pass_kind,
-                                        instance_matrices,
-                                        instance_count,
-                                        include_lights,
-                                        wireframe,
-                                        backface_cull,
-                                        sort_key,
-                                        local_bounds_min,
-                                        local_bounds_max);
-            canvas3d_submit_deferred(c, &fallback);
-            return 1;
-        }
+        (void)pass_kind;
+        rt_trap("Canvas3D: deferred draw queue allocation failed");
         return 0;
     }
 

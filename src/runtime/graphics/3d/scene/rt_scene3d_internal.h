@@ -40,6 +40,8 @@ typedef struct {
     float *values;
     float *in_tangents;
     float *out_tangents;
+    struct rt_scene_node3d *cached_root;
+    struct rt_scene_node3d *cached_target;
 } rt_node_anim_channel3d;
 
 /// @brief A node-animation clip: a named, fixed-duration set of channels plus a loop flag.

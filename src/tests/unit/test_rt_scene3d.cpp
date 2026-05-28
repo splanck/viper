@@ -1024,6 +1024,63 @@ static void test_node_animator_handles_large_morph_weight_channels() {
                 "Node animation applies morph weights beyond the old fixed scratch limit");
 }
 
+static void test_node_animator_weights_only_matching_morph_set() {
+    void *scene = rt_scene3d_new();
+    void *target = rt_scene_node3d_new();
+    void *child_a = rt_scene_node3d_new();
+    void *child_b = rt_scene_node3d_new();
+    void *mesh_a = rt_mesh3d_new();
+    void *mesh_b = rt_mesh3d_new();
+    void *morph_a = rt_morphtarget3d_new(3);
+    void *morph_b = rt_morphtarget3d_new(3);
+    double times[2] = {0.0, 1.0};
+    float values[2] = {0.0f, 1.0f};
+    void *anim;
+    void *animator;
+    void *clips[1];
+
+    for (void *mesh : {mesh_a, mesh_b}) {
+        rt_mesh3d_add_vertex(mesh, 0.0, 0.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0);
+        rt_mesh3d_add_vertex(mesh, 1.0, 0.0, 0.0, 0.0, 0.0, 1.0, 1.0, 0.0);
+        rt_mesh3d_add_vertex(mesh, 0.0, 1.0, 0.0, 0.0, 0.0, 1.0, 0.0, 1.0);
+        rt_mesh3d_add_triangle(mesh, 0, 1, 2);
+    }
+    rt_morphtarget3d_add_shape(morph_a, rt_const_cstr("a"));
+    rt_morphtarget3d_add_shape(morph_b, rt_const_cstr("b"));
+    rt_mesh3d_set_morph_targets(mesh_a, morph_a);
+    rt_mesh3d_set_morph_targets(mesh_b, morph_b);
+    rt_scene_node3d_set_name(target, rt_const_cstr("target"));
+    rt_scene_node3d_set_mesh(child_a, mesh_a);
+    rt_scene_node3d_set_mesh(child_b, mesh_b);
+    rt_scene_node3d_add_child(target, child_a);
+    rt_scene_node3d_add_child(target, child_b);
+    rt_scene3d_add(scene, target);
+
+    anim = rt_node_animation3d_new(rt_const_cstr("weights"), 1.0);
+    EXPECT_TRUE(rt_node_animation3d_add_channel(anim,
+                                                rt_const_cstr("target"),
+                                                RT_NODE_ANIM_PATH_WEIGHTS,
+                                                RT_NODE_ANIM_INTERP_LINEAR,
+                                                2,
+                                                1,
+                                                times,
+                                                values) >= 0,
+                "Node animation accepts subtree morph weight channel");
+    clips[0] = anim;
+    animator = rt_node_animator3d_new_from_clips(clips, 1);
+    rt_scene_node3d_bind_node_animator(rt_scene3d_get_root(scene), animator);
+    rt_scene3d_sync_bindings(scene, 0.5);
+
+    EXPECT_NEAR(rt_morphtarget3d_get_weight(morph_a, 0),
+                0.5,
+                0.001,
+                "Node animation applies weights to the first matching morph set");
+    EXPECT_NEAR(rt_morphtarget3d_get_weight(morph_b, 0),
+                0.0,
+                0.001,
+                "Node animation leaves unrelated descendant morph sets unchanged");
+}
+
 static void test_node_animator_samples_cubic_translation_channels() {
     void *scene = rt_scene3d_new();
     void *node = rt_scene_node3d_new();
@@ -1549,6 +1606,7 @@ int main() {
     test_scene_save_serializes_visibility_and_lod_metadata();
     test_scene_roundtrip_loads_shared_assets();
     test_node_animator_handles_large_morph_weight_channels();
+    test_node_animator_weights_only_matching_morph_set();
     test_node_animator_samples_cubic_translation_channels();
     test_node_animator_slerps_linear_rotation_channels();
     test_node_animation_rejects_invalid_channel_data();
