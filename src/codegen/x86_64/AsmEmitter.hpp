@@ -198,8 +198,7 @@ class AsmEmitter {
     /// \brief Format a symbolic label operand.
     /// \param label Label operand containing symbol name.
     /// \return Label string for use in jumps/calls.
-    [[nodiscard]] static std::string formatLabel(const OpLabel &label,
-                                                 objfile::ObjFormat format);
+    [[nodiscard]] static std::string formatLabel(const OpLabel &label, objfile::ObjFormat format);
 
     /// \brief Format a RIP-relative label operand.
     /// \param label RIP-relative label operand.

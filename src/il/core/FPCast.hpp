@@ -84,8 +84,7 @@ inline CheckedFPCastResult checkedFpToUiRte(double operand, int bits) {
     if (!std::isfinite(rounded) || rounded >= unsignedUpperExclusiveForBits(bits))
         return {CheckedFPCastFailure::Overflow, 0};
 
-    return {CheckedFPCastFailure::None,
-            static_cast<int64_t>(static_cast<uint64_t>(rounded))};
+    return {CheckedFPCastFailure::None, static_cast<int64_t>(static_cast<uint64_t>(rounded))};
 }
 
 } // namespace il::core

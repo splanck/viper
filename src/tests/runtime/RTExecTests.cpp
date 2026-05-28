@@ -10,9 +10,9 @@
 //
 //===----------------------------------------------------------------------===//
 
+#include "rt_box.h"
 #include "rt_exec.h"
 #include "rt_internal.h"
-#include "rt_box.h"
 #include "rt_process.h"
 #include "rt_seq.h"
 #include "rt_string.h"
@@ -60,8 +60,8 @@ static void *start_shell_process(const char *script) {
 static void *start_shell_process_with_env(const char *script, const char *cwd, void *env) {
     const char *shells[] = {"/bin/sh", "/usr/bin/sh", nullptr};
     for (int i = 0; shells[i] != nullptr; i++) {
-        void *handle =
-            rt_process_start_with_env(make_string(shells[i]), make_shell_args(script), make_string(cwd), env);
+        void *handle = rt_process_start_with_env(
+            make_string(shells[i]), make_shell_args(script), make_string(cwd), env);
         if (handle)
             return handle;
     }
@@ -296,9 +296,8 @@ static void test_last_exit_code_initial() {
 }
 
 static void test_process_streams_stdout_stderr() {
-    void *handle = start_shell_process(
-        "printf 'out1\\n'; printf 'err1\\n' >&2; sleep 1; "
-        "printf 'out2\\n'; printf 'err2\\n' >&2; exit 7");
+    void *handle = start_shell_process("printf 'out1\\n'; printf 'err1\\n' >&2; sleep 1; "
+                                       "printf 'out2\\n'; printf 'err2\\n' >&2; exit 7");
     assert(handle != nullptr);
     assert(rt_process_is_valid(handle) == 1);
 
@@ -339,7 +338,8 @@ static void test_process_cwd_and_env() {
     void *env = rt_seq_new();
     rt_seq_push(env, make_string("VIPER_PROCESS_TEST=env-ok"));
 
-    void *handle = start_shell_process_with_env("pwd; printf '%s\\n' \"$VIPER_PROCESS_TEST\"", "/tmp", env);
+    void *handle =
+        start_shell_process_with_env("pwd; printf '%s\\n' \"$VIPER_PROCESS_TEST\"", "/tmp", env);
     assert(handle != nullptr);
 
     int64_t code = rt_process_wait(handle);

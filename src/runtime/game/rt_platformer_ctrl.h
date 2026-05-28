@@ -52,8 +52,8 @@ void rt_platformer_ctrl_set_jump_force(rt_platformer_ctrl ctrl,
 void rt_platformer_ctrl_set_max_speed(rt_platformer_ctrl ctrl, int64_t normal, int64_t sprint);
 /// @brief Set gravity (per-tick velocity delta) and terminal-velocity cap.
 void rt_platformer_ctrl_set_gravity(rt_platformer_ctrl ctrl, int64_t gravity, int64_t max_fall);
-/// @brief Apply reduced gravity near the apex of a jump (smoother feel) — threshold in centipixels/s
-/// of |vy|, gravity_mult_pct in percent (50 = half gravity at apex).
+/// @brief Apply reduced gravity near the apex of a jump (smoother feel) — threshold in
+/// centipixels/s of |vy|, gravity_mult_pct in percent (50 = half gravity at apex).
 void rt_platformer_ctrl_set_apex_bonus(rt_platformer_ctrl ctrl,
                                        int64_t threshold,
                                        int64_t gravity_mult_pct);

@@ -247,8 +247,7 @@ std::vector<SignatureRecord> runtimeDefSignatures() {
     for (std::sregex_iterator it(text.begin(), text.end(), funcRe), end; it != end; ++it)
         signatures.push_back(SignatureRecord{(*it)[1].str(), (*it)[2].str()});
 
-    const std::regex methodRe(
-        R"RTMETHOD(RT_METHOD\(\s*"([^"]+)"\s*,\s*"([^"]+)")RTMETHOD");
+    const std::regex methodRe(R"RTMETHOD(RT_METHOD\(\s*"([^"]+)"\s*,\s*"([^"]+)")RTMETHOD");
     for (std::sregex_iterator it(text.begin(), text.end(), methodRe), end; it != end; ++it)
         signatures.push_back(SignatureRecord{(*it)[1].str(), (*it)[2].str()});
 
@@ -314,7 +313,8 @@ std::unordered_set<std::string> runtimeHeaderFunctionSymbols() {
     return symbols;
 }
 
-std::unordered_map<std::string, std::unordered_set<std::string>> runtimeHeaderFunctionSymbolsByHeader() {
+std::unordered_map<std::string, std::unordered_set<std::string>>
+runtimeHeaderFunctionSymbolsByHeader() {
     std::unordered_map<std::string, std::unordered_set<std::string>> symbolsByHeader;
     const std::regex re(R"(\b(rt_[A-Za-z0-9_]+)\s*\()");
     const fs::path root = repoRoot() / "src/runtime";
@@ -368,9 +368,10 @@ TEST(RuntimeSurfaceAudit, BroadInternalHeadersDoNotExposeRuntimeDefSymbols) {
     const auto defSymbols = runtimeDefSymbols();
 
     const std::unordered_map<std::string, std::unordered_set<std::string>> allowedPublicTokens = {
-            // `rt_gui_internal.h` contains inline helpers that call public string APIs; the broad-header
-            // policy remains correct because the header does not declare these functions.
-            {"src/runtime/graphics/gui/rt_gui_internal.h", {"rt_str_len", "rt_string_cstr"}},
+        // `rt_gui_internal.h` contains inline helpers that call public string APIs; the
+        // broad-header
+        // policy remains correct because the header does not declare these functions.
+        {"src/runtime/graphics/gui/rt_gui_internal.h", {"rt_str_len", "rt_string_cstr"}},
     };
 
     for (const auto &header : internalHeaders()) {

@@ -46,21 +46,12 @@ void rt_game_scene_move_layer(void *scene, int64_t from, int64_t to);
 void rt_game_scene_remove_layer(void *scene, int64_t layer);
 int64_t rt_game_scene_get_tile(void *scene, int64_t layer, int64_t x, int64_t y);
 void rt_game_scene_set_tile(void *scene, int64_t layer, int64_t x, int64_t y, int64_t tile);
-void rt_game_scene_fill_tiles(void *scene,
-                              int64_t layer,
-                              int64_t x,
-                              int64_t y,
-                              int64_t w,
-                              int64_t h,
-                              int64_t tile);
+void rt_game_scene_fill_tiles(
+    void *scene, int64_t layer, int64_t x, int64_t y, int64_t w, int64_t h, int64_t tile);
 void rt_game_scene_set_layer_asset(void *scene, int64_t layer, rt_string asset_path);
 rt_string rt_game_scene_layer_asset(void *scene, int64_t layer);
 
-int64_t rt_game_scene_add_object(void *scene,
-                                 rt_string type,
-                                 rt_string id,
-                                 int64_t x,
-                                 int64_t y);
+int64_t rt_game_scene_add_object(void *scene, rt_string type, rt_string id, int64_t x, int64_t y);
 int64_t rt_game_scene_object_count(void *scene);
 void rt_game_scene_remove_object(void *scene, int64_t index);
 rt_string rt_game_scene_object_type(void *scene, int64_t index);
@@ -68,10 +59,7 @@ rt_string rt_game_scene_object_id(void *scene, int64_t index);
 int64_t rt_game_scene_object_x(void *scene, int64_t index);
 int64_t rt_game_scene_object_y(void *scene, int64_t index);
 void rt_game_scene_set_object_position(void *scene, int64_t index, int64_t x, int64_t y);
-void rt_game_scene_set_object_property(void *scene,
-                                       int64_t index,
-                                       rt_string key,
-                                       rt_string value);
+void rt_game_scene_set_object_property(void *scene, int64_t index, rt_string key, rt_string value);
 rt_string rt_game_scene_get_object_property(void *scene, int64_t index, rt_string key);
 void rt_game_scene_delete_object_property(void *scene, int64_t index, rt_string key);
 int64_t rt_game_scene_object_get_int(void *scene, int64_t index, rt_string key, int64_t def);

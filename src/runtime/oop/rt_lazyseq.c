@@ -248,9 +248,9 @@ rt_lazyseq rt_lazyseq_repeat(void *value, int64_t count) {
     return seq;
 }
 
-/// @brief Construct an iterative LazySeq: yields `seed`, `fn(seed)`, `fn(fn(seed))`, ... infinitely.
-/// Useful for sequences defined by recurrence (Fibonacci, geometric series, walk states).
-/// Combine with `rt_lazyseq_take(n)` to get a finite prefix.
+/// @brief Construct an iterative LazySeq: yields `seed`, `fn(seed)`, `fn(fn(seed))`, ...
+/// infinitely. Useful for sequences defined by recurrence (Fibonacci, geometric series, walk
+/// states). Combine with `rt_lazyseq_take(n)` to get a finite prefix.
 rt_lazyseq rt_lazyseq_iterate(void *seed, void *(*fn)(void *)) {
     if (!fn)
         return NULL;

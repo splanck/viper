@@ -33,13 +33,13 @@
 
 #ifdef VIPER_ENABLE_GRAPHICS
 
-#include "rt_sound3d.h"
-#include "rt_soundlistener3d.h"
-#include "rt_soundsource3d.h"
 #include "rt_canvas3d.h"
 #include "rt_graphics3d_ids.h"
 #include "rt_mat4.h"
 #include "rt_scene3d.h"
+#include "rt_sound3d.h"
+#include "rt_soundlistener3d.h"
+#include "rt_soundsource3d.h"
 
 #include <math.h>
 #include <stdint.h>
@@ -98,14 +98,12 @@ static rt_soundlistener3d *s_active_listener_obj = NULL;
 
 /// @brief Checked cast of an opaque handle to SoundListener3D; NULL on class mismatch.
 static rt_soundlistener3d *sound3d_listener_checked(void *obj) {
-    return (rt_soundlistener3d *)rt_g3d_checked_or_null(
-        obj, RT_G3D_SOUNDLISTENER3D_CLASS_ID);
+    return (rt_soundlistener3d *)rt_g3d_checked_or_null(obj, RT_G3D_SOUNDLISTENER3D_CLASS_ID);
 }
 
 /// @brief Checked cast of an opaque handle to SoundSource3D; NULL on class mismatch.
 static rt_soundsource3d *sound3d_source_checked(void *obj) {
-    return (rt_soundsource3d *)rt_g3d_checked_or_null(
-        obj, RT_G3D_SOUNDSOURCE3D_CLASS_ID);
+    return (rt_soundsource3d *)rt_g3d_checked_or_null(obj, RT_G3D_SOUNDSOURCE3D_CLASS_ID);
 }
 
 /// @brief Drop a GC-managed reference stored in `**slot` and null the slot.
@@ -400,7 +398,8 @@ static void sound3d_listener_sync_binding(rt_soundlistener3d *listener, double d
                                 &listener->has_last_sync_position,
                                 position,
                                 dt);
-        rt_sound3d_listener_state_set(&listener->state, position, forward, listener->state.velocity);
+        rt_sound3d_listener_state_set(
+            &listener->state, position, forward, listener->state.velocity);
         sound3d_listener_push_active_state(listener);
         return;
     }
@@ -413,7 +412,8 @@ static void sound3d_listener_sync_binding(rt_soundlistener3d *listener, double d
                                 &listener->has_last_sync_position,
                                 position,
                                 dt);
-        rt_sound3d_listener_state_set(&listener->state, position, forward, listener->state.velocity);
+        rt_sound3d_listener_state_set(
+            &listener->state, position, forward, listener->state.velocity);
         sound3d_listener_push_active_state(listener);
     }
 }
@@ -507,8 +507,11 @@ static void sound3d_source_sync_binding(rt_soundsource3d *source, double dt) {
     if (!source || !source->bound_node)
         return;
     sound3d_get_node_world_position(source->bound_node, position);
-    sound3d_update_velocity(
-        source->velocity, source->last_sync_position, &source->has_last_sync_position, position, dt);
+    sound3d_update_velocity(source->velocity,
+                            source->last_sync_position,
+                            &source->has_last_sync_position,
+                            position,
+                            dt);
     sound3d_copy3(source->position, position);
     sound3d_source_apply_spatial(source);
 }
@@ -575,8 +578,8 @@ void rt_sound3d_sync_bindings(double dt) {
 /// (origin, forward = -Z, zero velocity). The first listener constructed becomes the active
 /// one automatically; subsequent ones must be activated with `_set_is_active`.
 void *rt_soundlistener3d_new(void) {
-    rt_soundlistener3d *listener =
-        (rt_soundlistener3d *)rt_obj_new_i64(RT_G3D_SOUNDLISTENER3D_CLASS_ID, (int64_t)sizeof(rt_soundlistener3d));
+    rt_soundlistener3d *listener = (rt_soundlistener3d *)rt_obj_new_i64(
+        RT_G3D_SOUNDLISTENER3D_CLASS_ID, (int64_t)sizeof(rt_soundlistener3d));
     if (!listener)
         return NULL;
     memset(listener, 0, sizeof(*listener));
@@ -755,8 +758,8 @@ void rt_soundlistener3d_clear_camera_binding(void *obj) {
 /// origin. Spatial volume/pan are computed per-frame from the active listener once playback
 /// starts via `_play`.
 void *rt_soundsource3d_new(void *sound) {
-    rt_soundsource3d *source =
-        (rt_soundsource3d *)rt_obj_new_i64(RT_G3D_SOUNDSOURCE3D_CLASS_ID, (int64_t)sizeof(rt_soundsource3d));
+    rt_soundsource3d *source = (rt_soundsource3d *)rt_obj_new_i64(
+        RT_G3D_SOUNDSOURCE3D_CLASS_ID, (int64_t)sizeof(rt_soundsource3d));
     if (!source)
         return NULL;
     memset(source, 0, sizeof(*source));
@@ -944,8 +947,9 @@ int64_t rt_soundsource3d_play(void *obj) {
 
     if (source->voice_id > 0)
         rt_voice_stop(source->voice_id);
-    source->voice_id = source->looping ? rt_sound_play_loop(source->sound, spatial_volume, spatial_pan)
-                                       : rt_sound_play_ex(source->sound, spatial_volume, spatial_pan);
+    source->voice_id = source->looping
+                           ? rt_sound_play_loop(source->sound, spatial_volume, spatial_pan)
+                           : rt_sound_play_ex(source->sound, spatial_volume, spatial_pan);
     if (source->voice_id <= 0)
         source->voice_id = 0;
     else

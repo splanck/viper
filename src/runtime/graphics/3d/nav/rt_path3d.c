@@ -20,8 +20,8 @@
 
 #ifdef VIPER_ENABLE_GRAPHICS
 
-#include "rt_graphics3d_ids.h"
 #include "rt_path3d.h"
+#include "rt_graphics3d_ids.h"
 
 #include <math.h>
 #include <stdint.h>

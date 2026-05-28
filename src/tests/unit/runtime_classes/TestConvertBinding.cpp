@@ -78,9 +78,8 @@ TEST(RuntimeClassConvertBinding, CatalogContainsConvert) {
     const auto &cat = il::runtime::runtimeClassCatalog();
 
     auto requireConvertClass = [&](const char *qname) {
-        auto it = std::find_if(cat.begin(), cat.end(), [&](const auto &c) {
-            return std::string(c.qname) == qname;
-        });
+        auto it = std::find_if(
+            cat.begin(), cat.end(), [&](const auto &c) { return std::string(c.qname) == qname; });
         ASSERT_NE(it, cat.end());
         (void)qname;
 
@@ -164,9 +163,8 @@ TEST(RuntimeClassParseBinding, CatalogContainsParseAliases) {
     const auto &cat = il::runtime::runtimeClassCatalog();
 
     auto requireParseClass = [&](const char *qname) {
-        auto it = std::find_if(cat.begin(), cat.end(), [&](const auto &c) {
-            return std::string(c.qname) == qname;
-        });
+        auto it = std::find_if(
+            cat.begin(), cat.end(), [&](const auto &c) { return std::string(c.qname) == qname; });
         ASSERT_NE(it, cat.end());
         (void)qname;
 

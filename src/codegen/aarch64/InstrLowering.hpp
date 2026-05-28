@@ -45,18 +45,18 @@ namespace viper::codegen::aarch64 {
 /// @param outVReg [out] The vreg ID assigned to this value
 /// @param outCls [out] The register class of the vreg
 /// @returns true if successful, false if the value couldn't be materialized
-bool materializeValueToVReg(const il::core::Value &v,
-                            const il::core::BasicBlock &bb,
-                            const TargetInfo &ti,
-                            FrameBuilder &fb,
-                            MBasicBlock &out,
-                            std::unordered_map<unsigned, uint16_t> &tempVReg,
-                            std::unordered_map<unsigned, RegClass> &tempRegClass,
-                            uint16_t &nextVRegId,
-                            uint16_t &outVReg,
-                            RegClass &outCls,
-                            const std::unordered_map<std::string, std::size_t>
-                                *stringLiteralByteLengths = nullptr);
+bool materializeValueToVReg(
+    const il::core::Value &v,
+    const il::core::BasicBlock &bb,
+    const TargetInfo &ti,
+    FrameBuilder &fb,
+    MBasicBlock &out,
+    std::unordered_map<unsigned, uint16_t> &tempVReg,
+    std::unordered_map<unsigned, RegClass> &tempRegClass,
+    uint16_t &nextVRegId,
+    uint16_t &outVReg,
+    RegClass &outCls,
+    const std::unordered_map<std::string, std::size_t> *stringLiteralByteLengths = nullptr);
 
 /// @brief Convenience wrapper that materialises an IL value using a LoweringContext.
 /// @param v       The IL value to materialise.
@@ -95,11 +95,11 @@ inline bool materializeValueToVReg(const il::core::Value &v,
 ///                                  (passed as the second argument to the runtime).
 /// @param out                       Output MIR basic block receiving the sequence.
 /// @param nextVRegId                Counter for fresh vreg id allocation (incremented).
-void emitConstStrGlobalToX0(const std::string &sym,
-                            const std::unordered_map<std::string, std::size_t>
-                                *stringLiteralByteLengths,
-                            MBasicBlock &out,
-                            uint16_t &nextVRegId);
+void emitConstStrGlobalToX0(
+    const std::string &sym,
+    const std::unordered_map<std::string, std::size_t> *stringLiteralByteLengths,
+    MBasicBlock &out,
+    uint16_t &nextVRegId);
 
 /// @brief Materialize an IL string global into a runtime string handle in a fresh vreg.
 /// @details Same lowering as @ref emitConstStrGlobalToX0 but leaves the runtime
@@ -132,17 +132,17 @@ uint16_t emitConstStrGlobalToVReg(
 /// @param tempRegClass Map from temp ID to register class (GPR/FPR)
 /// @param nextVRegId Counter for vreg ID allocation
 /// @returns true if successful
-bool lowerCallWithArgs(const il::core::Instr &callI,
-                       const il::core::BasicBlock &bb,
-                       const TargetInfo &ti,
-                       FrameBuilder &fb,
-                       MBasicBlock &out,
-                       LoweredCall &seq,
-                       std::unordered_map<unsigned, uint16_t> &tempVReg,
-                       std::unordered_map<unsigned, RegClass> &tempRegClass,
-                       uint16_t &nextVRegId,
-                       const std::unordered_map<std::string, std::size_t>
-                           *knownVarArgNamedArgCounts = nullptr);
+bool lowerCallWithArgs(
+    const il::core::Instr &callI,
+    const il::core::BasicBlock &bb,
+    const TargetInfo &ti,
+    FrameBuilder &fb,
+    MBasicBlock &out,
+    LoweredCall &seq,
+    std::unordered_map<unsigned, uint16_t> &tempVReg,
+    std::unordered_map<unsigned, RegClass> &tempRegClass,
+    uint16_t &nextVRegId,
+    const std::unordered_map<std::string, std::size_t> *knownVarArgNamedArgCounts = nullptr);
 
 //===----------------------------------------------------------------------===//
 // Integer Arithmetic

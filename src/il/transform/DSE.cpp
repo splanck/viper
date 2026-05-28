@@ -318,9 +318,7 @@ std::optional<unsigned> getAllocaId(const Value &ptr,
 }
 
 /// Check if an alloca escapes, including through GEP-derived pointer values.
-bool allocaEscapes(const Function &F,
-                   unsigned allocaId,
-                   const RootMap &roots) {
+bool allocaEscapes(const Function &F, unsigned allocaId, const RootMap &roots) {
     auto containsAlloca = [&](const Value &value) {
         if (value.kind != Value::Kind::Temp)
             return false;

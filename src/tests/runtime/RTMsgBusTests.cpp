@@ -5,9 +5,9 @@
 //
 //===----------------------------------------------------------------------===//
 
-#include "rt_internal.h"
 #include "rt_gc.h"
 #include "rt_heap.h"
+#include "rt_internal.h"
 #include "rt_msgbus.h"
 #include "rt_object.h"
 #include "rt_seq.h"

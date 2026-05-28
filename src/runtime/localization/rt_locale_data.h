@@ -93,20 +93,24 @@ typedef struct rt_plural_rule_range {
 /// @brief Plural rule AST node.
 typedef struct rt_plural_rule_node {
     rt_plural_rule_kind_t kind;
+
     union {
         struct {
             struct rt_plural_rule_node *l;
             struct rt_plural_rule_node *r;
         } bin;
+
         struct {
             struct rt_plural_rule_node *expr;
-            rt_plural_rule_range_t     *ranges;
-            size_t                      range_count;
+            rt_plural_rule_range_t *ranges;
+            size_t range_count;
         } range;
+
         struct {
             rt_plural_var_t var;
-            int32_t mod;    ///< 0 means no `mod` operator
+            int32_t mod; ///< 0 means no `mod` operator
         } var;
+
         int64_t int_val;
     } u;
 } rt_plural_rule_node_t;
@@ -116,32 +120,32 @@ typedef struct rt_plural_rule_node {
 ///          evaluates truthy wins. A catch-all RT_PRN_TRUE terminator is
 ///          required for every chain.
 typedef struct rt_plural_rule_entry {
-    rt_plural_category_t     category;
-    rt_plural_rule_node_t   *head;    ///< NULL is illegal
+    rt_plural_category_t category;
+    rt_plural_rule_node_t *head; ///< NULL is illegal
 } rt_plural_rule_entry_t;
 
 /// @brief Locale's numeric formatting conventions.
 typedef struct rt_locdata_numbers {
-    const char *decimal_sep;  ///< e.g. "." (en-US) or "," (fr-FR)
-    const char *group_sep;    ///< e.g. "," (en-US) or U+00A0 (fr-FR)
-    int32_t     group_size;   ///< rightmost group size, typically 3
-    int32_t     secondary_group_size; ///< repeated group size to the left; 0 => group_size
+    const char *decimal_sep;      ///< e.g. "." (en-US) or "," (fr-FR)
+    const char *group_sep;        ///< e.g. "," (en-US) or U+00A0 (fr-FR)
+    int32_t group_size;           ///< rightmost group size, typically 3
+    int32_t secondary_group_size; ///< repeated group size to the left; 0 => group_size
     const char *minus;
     const char *plus;
     const char *percent;
     const char *infinity;
     const char *nan;
     const char *exponent;
-    const char *digits;       ///< 10-codepoint digit set; ASCII 0-9 for Latin locales
+    const char *digits; ///< 10-codepoint digit set; ASCII 0-9 for Latin locales
 } rt_locdata_numbers_t;
 
 /// @brief Locale's currency defaults.
 typedef struct rt_locdata_currency {
-    const char *default_code;      ///< ISO-4217 three-letter code (e.g. "USD")
-    const char *symbol;            ///< currency symbol (e.g. "$", "€")
-    const char *pattern_positive;  ///< layout template with {n} (number) and {s} (symbol)
+    const char *default_code;     ///< ISO-4217 three-letter code (e.g. "USD")
+    const char *symbol;           ///< currency symbol (e.g. "$", "€")
+    const char *pattern_positive; ///< layout template with {n} (number) and {s} (symbol)
     const char *pattern_negative;
-    int32_t     fraction_digits;
+    int32_t fraction_digits;
 } rt_locdata_currency_t;
 
 /// @brief CLDR-style date / time pattern bundle for a locale.
@@ -160,7 +164,7 @@ typedef struct rt_locdata_dates_patterns {
 typedef struct rt_locdata_dates {
     const char *const *months_wide; ///< pointer to 12-entry array
     const char *const *months_abbr;
-    const char *const *days_wide;   ///< pointer to 7-entry array (index 0 = Sunday)
+    const char *const *days_wide; ///< pointer to 7-entry array (index 0 = Sunday)
     const char *const *days_abbr;
     const char *am;
     const char *pm;
@@ -196,10 +200,10 @@ typedef struct rt_locdata_reltime {
 /// @brief List-joining templates for one style (and/or/unit).
 /// @details Each template is a two-placeholder {0} and {1} string.
 typedef struct rt_locdata_list_style {
-    const char *pair;    ///< exactly 2 items
-    const char *start;   ///< first item + rest
-    const char *middle;  ///< middle combinations in 3+ lists
-    const char *end;     ///< last item
+    const char *pair;   ///< exactly 2 items
+    const char *start;  ///< first item + rest
+    const char *middle; ///< middle combinations in 3+ lists
+    const char *end;    ///< last item
 } rt_locdata_list_style_t;
 
 /// @brief Locale's list-formatting templates across styles.
@@ -214,35 +218,38 @@ typedef struct rt_locdata_list {
 ///          collation weight overrides are applied inside rt_collator_table.c
 ///          via locale-specific patch tables keyed by `tag`.
 typedef struct rt_locdata_collation {
-    int32_t     strength;    ///< 1-3 valid; 4 warned and clamped to 3
-    const int32_t *reorder;  ///< optional array of codepoints; may be NULL
-    size_t      reorder_len;
+    int32_t strength;       ///< 1-3 valid; 4 warned and clamped to 3
+    const int32_t *reorder; ///< optional array of codepoints; may be NULL
+    size_t reorder_len;
 } rt_locdata_collation_t;
 
 /// @brief Top-level locale-data record referenced by Locale handles.
 typedef struct rt_locale_data {
-    const char *tag;                 ///< canonical BCP-47 identifier
+    const char *tag; ///< canonical BCP-47 identifier
+
     struct {
-        const char *language;        ///< display name in native language
+        const char *language; ///< display name in native language
         const char *region;
-        const char *display;         ///< combined display name
+        const char *display; ///< combined display name
     } names;
-    char         text_direction[4];  ///< "ltr" or "rtl"
-    int32_t      first_day_of_week;  ///< 0=Sun..6=Sat
-    char         measurement[8];     ///< "metric" / "us" / "uk"
 
-    rt_locdata_numbers_t    numbers;
-    rt_locdata_currency_t   currency;
-    rt_locdata_dates_t      dates;
-    rt_locdata_reltime_t    reltime;
+    char text_direction[4];    ///< "ltr" or "rtl"
+    int32_t first_day_of_week; ///< 0=Sun..6=Sat
+    char measurement[8];       ///< "metric" / "us" / "uk"
 
-    const rt_plural_rule_entry_t *plural_cardinal;  ///< NULL-terminator-free; `cardinal_count` is authoritative
-    size_t                         cardinal_count;
+    rt_locdata_numbers_t numbers;
+    rt_locdata_currency_t currency;
+    rt_locdata_dates_t dates;
+    rt_locdata_reltime_t reltime;
+
+    const rt_plural_rule_entry_t
+        *plural_cardinal; ///< NULL-terminator-free; `cardinal_count` is authoritative
+    size_t cardinal_count;
     const rt_plural_rule_entry_t *plural_ordinal;
-    size_t                         ordinal_count;
+    size_t ordinal_count;
 
-    rt_locdata_list_t       list_format;
-    rt_locdata_collation_t  collation;
+    rt_locdata_list_t list_format;
+    rt_locdata_collation_t collation;
 
     /// @brief Opaque arena pointer for JSON-loaded records; NULL for baked.
     /// @details When non-NULL, LocaleManager.Unload frees this pointer via

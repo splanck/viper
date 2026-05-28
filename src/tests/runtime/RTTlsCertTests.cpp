@@ -27,9 +27,9 @@
 #include "rt_tls_internal.h"
 
 #include <cassert>
+#include <chrono>
 #include <cstdio>
 #include <cstring>
-#include <chrono>
 #include <filesystem>
 #include <fstream>
 #include <string>
@@ -340,7 +340,8 @@ static void build_tls_cert_msg(const uint8_t *der, size_t der_len, uint8_t *out,
     *out_len = pos;
 }
 
-static std::vector<uint8_t> build_tls_cert_msg_multi(const std::vector<std::vector<uint8_t>> &certs) {
+static std::vector<uint8_t> build_tls_cert_msg_multi(
+    const std::vector<std::vector<uint8_t>> &certs) {
     std::vector<uint8_t> entries;
     for (const std::vector<uint8_t> &cert : certs) {
         size_t cert_len = cert.size();
@@ -644,13 +645,12 @@ static void test_hostname_rejects_cn_when_san_has_no_dns(void) {
     memcpy(cert, TEST_CERT_WITH_SAN, sizeof(cert));
     int replaced = 0;
     for (size_t i = 0; i + 2 < sizeof(cert); i++) {
-        if (cert[i] == 0x82 &&
-            ((cert[i + 1] == 0x0b && i + 13 < sizeof(cert) &&
-              memcmp(cert + i + 2, "example.com", 11) == 0) ||
-             (cert[i + 1] == 0x0d && i + 15 < sizeof(cert) &&
-              memcmp(cert + i + 2, "*.example.com", 13) == 0) ||
-             (cert[i + 1] == 0x0f && i + 17 < sizeof(cert) &&
-              memcmp(cert + i + 2, "www.example.com", 15) == 0))) {
+        if (cert[i] == 0x82 && ((cert[i + 1] == 0x0b && i + 13 < sizeof(cert) &&
+                                 memcmp(cert + i + 2, "example.com", 11) == 0) ||
+                                (cert[i + 1] == 0x0d && i + 15 < sizeof(cert) &&
+                                 memcmp(cert + i + 2, "*.example.com", 13) == 0) ||
+                                (cert[i + 1] == 0x0f && i + 17 < sizeof(cert) &&
+                                 memcmp(cert + i + 2, "www.example.com", 15) == 0))) {
             cert[i] = 0x86; // uniformResourceIdentifier GeneralName, not dNSName
             replaced++;
         }
@@ -767,7 +767,8 @@ static void test_chain_verification_rejects_too_many_intermediates(void) {
 
     int verify_rc = tls_verify_chain(&session);
     assert(verify_rc == RT_TLS_ERROR_HANDSHAKE);
-    assert(session.error && strcmp(session.error, "TLS: certificate chain has too many intermediates") == 0);
+    assert(session.error &&
+           strcmp(session.error, "TLS: certificate chain has too many intermediates") == 0);
     free(session.server_cert_list);
     printf("  PASS: test_chain_verification_rejects_too_many_intermediates\n");
 }

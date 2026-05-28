@@ -878,7 +878,8 @@ int8_t rt_action_bind_scroll_y(rt_string action, double sensitivity) {
 // Gamepad-binding API — analogous to mouse/keyboard but with a
 // `pad_index` parameter (use -1 for "any connected controller").
 
-/// @brief `Action.BindPadButton(action, padIndex, button)` — bind a gamepad button to a button action.
+/// @brief `Action.BindPadButton(action, padIndex, button)` — bind a gamepad button to a button
+/// action.
 int8_t rt_action_bind_pad_button(rt_string action, int64_t pad_index, int64_t button) {
     RT_ASSERT_MAIN_THREAD();
     Action *a = find_action_str(action);
@@ -925,7 +926,8 @@ int8_t rt_action_unbind_pad_axis(rt_string action, int64_t pad_index, int64_t ax
     return remove_binding(a, BIND_PAD_AXIS, axis, pad_index);
 }
 
-/// @brief `Action.BindPadButtonAxis(action, padIndex, button, value)` — bind pad button as axis contribution.
+/// @brief `Action.BindPadButtonAxis(action, padIndex, button, value)` — bind pad button as axis
+/// contribution.
 ///
 /// Like `BindKeyAxis` but for gamepad buttons — useful for D-pad
 /// directions on an axis (D-pad-Left → -1.0, D-pad-Right → +1.0).
@@ -1486,7 +1488,8 @@ static void load_preset_menu_navigation(void) {
 //   Pad:    D-pad, A, X, Start + left stick
 //=========================================================================
 
-/// @brief Preset: 2D platformer controls — `move_left/right`, `jump`, `shoot`, `pause` + `move_x` axis.
+/// @brief Preset: 2D platformer controls — `move_left/right`, `jump`, `shoot`, `pause` + `move_x`
+/// axis.
 static void load_preset_platformer(void) {
     define_action_cstr("move_left", 0);
     define_action_cstr("move_right", 0);

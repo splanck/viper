@@ -34,8 +34,8 @@
 
 #include <algorithm>
 #include <cassert>
-#include <initializer_list>
 #include <climits>
+#include <initializer_list>
 #include <stdexcept>
 
 namespace viper::codegen::aarch64::ra {
@@ -45,8 +45,8 @@ namespace {
 /// @brief Return true if @p pr is one of the reserved emergency scratch registers
 ///        (kScratchGPR/GPR2/GPR3 or kScratchFPR/FPR2) that must not be released to the pool.
 bool isReservedScratch(PhysReg pr) {
-    return pr == kScratchGPR || pr == kScratchGPR2 || pr == kScratchGPR3 ||
-           pr == kScratchFPR || pr == kScratchFPR2;
+    return pr == kScratchGPR || pr == kScratchGPR2 || pr == kScratchGPR3 || pr == kScratchFPR ||
+           pr == kScratchFPR2;
 }
 
 /// @brief Return true if @p pr already appears in the @p scratch list (already acquired).

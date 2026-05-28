@@ -21,8 +21,8 @@
 //
 //===----------------------------------------------------------------------===//
 
-#include "codegen/common/objfile/CodeSection.hpp"
 #include "codegen/common/linker/ObjFileReader.hpp"
+#include "codegen/common/objfile/CodeSection.hpp"
 #include "codegen/common/objfile/MachOWriter.hpp"
 #include "codegen/common/objfile/ObjectFileWriter.hpp"
 
@@ -560,10 +560,8 @@ static void testA64LargeSectionOffsetUsesSyntheticAnchor() {
     constexpr size_t kLargeOffset = 0x800000;
     rodata.emitZeros(kLargeOffset + 4);
 
-    text.addSectionOffsetRelocation(RelocKind::A64AdrpPage21,
-                                    rodata,
-                                    SymbolSection::Rodata,
-                                    kLargeOffset);
+    text.addSectionOffsetRelocation(
+        RelocKind::A64AdrpPage21, rodata, SymbolSection::Rodata, kLargeOffset);
     text.emit32LE(0x90000000); // ADRP X0, #0
 
     const std::string path = "/tmp/viper_test_macho_a64_large_section_offset.o";
@@ -917,8 +915,7 @@ static void testRel32AddendRangeFails() {
     text.emit8(0xE8);
     const size_t dispOff = text.currentOffset();
     text.emit32LE(0);
-    text.addRelocationAt(
-        dispOff, RelocKind::Branch32, symIdx, static_cast<int64_t>(INT32_MAX) + 1);
+    text.addRelocationAt(dispOff, RelocKind::Branch32, symIdx, static_cast<int64_t>(INT32_MAX) + 1);
 
     std::ostringstream errStream;
     MachOWriter writer(ObjArch::X86_64);
@@ -1050,8 +1047,7 @@ static void testA64LargeSectionOffsetRelocationUsesAnchor() {
     constexpr size_t kLargeOffset = 0x800000;
     rodata.emitZeros(kLargeOffset + 4);
 
-    text.addSectionOffsetRelocation(
-        RelocKind::A64AdrpPage21, SymbolSection::Rodata, kLargeOffset);
+    text.addSectionOffsetRelocation(RelocKind::A64AdrpPage21, SymbolSection::Rodata, kLargeOffset);
     text.emit32LE(0x90000000); // adrp placeholder
     text.addSectionOffsetRelocation(
         RelocKind::A64AddPageOff12, SymbolSection::Rodata, kLargeOffset);
@@ -1100,14 +1096,14 @@ static void testAmbiguousCrossSectionRelocationFails() {
 
 static void testMalformedSymtabFails() {
     std::vector<uint8_t> data(40, 0);
-    writeLE32(data, 0, 0xFEEDFACF);  // MH_MAGIC_64
-    writeLE32(data, 4, 0x01000007);  // CPU_TYPE_X86_64
-    writeLE32(data, 8, 3);           // CPU_SUBTYPE_X86_64_ALL
-    writeLE32(data, 12, 1);          // MH_OBJECT
-    writeLE32(data, 16, 1);          // one load command
-    writeLE32(data, 20, 8);          // sizeofcmds: only load_command header
-    writeLE32(data, 32, 0x02);       // LC_SYMTAB
-    writeLE32(data, 36, 8);          // malformed: smaller than symtab_command
+    writeLE32(data, 0, 0xFEEDFACF); // MH_MAGIC_64
+    writeLE32(data, 4, 0x01000007); // CPU_TYPE_X86_64
+    writeLE32(data, 8, 3);          // CPU_SUBTYPE_X86_64_ALL
+    writeLE32(data, 12, 1);         // MH_OBJECT
+    writeLE32(data, 16, 1);         // one load command
+    writeLE32(data, 20, 8);         // sizeofcmds: only load_command header
+    writeLE32(data, 32, 0x02);      // LC_SYMTAB
+    writeLE32(data, 36, 8);         // malformed: smaller than symtab_command
 
     ObjFile obj;
     std::ostringstream errStream;

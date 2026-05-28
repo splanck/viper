@@ -24,15 +24,15 @@
 
 #include "rt_gltf.h"
 #include "rt_asset.h"
-#include "rt_scene3d_internal.h"
 #include "rt_canvas3d.h"
 #include "rt_canvas3d_internal.h"
 #include "rt_mat4.h"
 #include "rt_morphtarget3d.h"
 #include "rt_pixels.h"
 #include "rt_quat.h"
-#include "rt_skeleton3d_internal.h"
+#include "rt_scene3d_internal.h"
 #include "rt_skeleton3d.h"
+#include "rt_skeleton3d_internal.h"
 #include "rt_string.h"
 #include "rt_vec3.h"
 
@@ -213,7 +213,8 @@ static void gltf_set_node_name(rt_scene_node3d *node, const char *name) {
 ///   is absent or empty, a fallback string `"node_N"` is written into @p buffer and returned.
 ///   The buffer fallback avoids returning NULL to callers that always want a printable label,
 ///   at the cost of a stack-allocated temporary that must remain live as long as the returned
-///   pointer is used. Returns NULL only when both the JSON name is absent and no buffer is provided.
+///   pointer is used. Returns NULL only when both the JSON name is absent and no buffer is
+///   provided.
 /// @param nodes_arr   JSON array of glTF node objects.
 /// @param node_index  Zero-based index into @p nodes_arr.
 /// @param buffer      Caller-supplied scratch buffer for the synthetic name; may be NULL.
@@ -268,8 +269,7 @@ static void gltf_matrix_to_trs(const double *m, double *pos, double *quat, doubl
     if (scale[2] <= 1e-12)
         scale[2] = 1.0;
 
-    det = m[0] * (m[5] * m[10] - m[6] * m[9]) -
-          m[1] * (m[4] * m[10] - m[6] * m[8]) +
+    det = m[0] * (m[5] * m[10] - m[6] * m[9]) - m[1] * (m[4] * m[10] - m[6] * m[8]) +
           m[2] * (m[4] * m[9] - m[5] * m[8]);
     if (det < 0.0) {
         flip_axis = 0;
@@ -336,7 +336,8 @@ static void gltf_matrix_column_major_to_row_major(const double *src, double *dst
     }
 }
 
-/// @brief Compose a row-major 4×4 transform matrix from separate translation, quaternion, and scale.
+/// @brief Compose a row-major 4×4 transform matrix from separate translation, quaternion, and
+/// scale.
 /// @details Expands the unit quaternion `(x,y,z,w)` into the 3×3 rotation submatrix using the
 ///   standard double-angle identities (`xx = x*(2x)`, etc.), then multiplies each column by the
 ///   corresponding scale component and appends the translation in the rightmost column. The
@@ -543,8 +544,7 @@ static int gltf_required_extension_supported(const char *name) {
         return 0;
     return strcmp(name, "KHR_texture_transform") == 0 ||
            strcmp(name, "KHR_materials_emissive_strength") == 0 ||
-           strcmp(name, "KHR_materials_unlit") == 0 ||
-           strcmp(name, "KHR_lights_punctual") == 0;
+           strcmp(name, "KHR_materials_unlit") == 0 || strcmp(name, "KHR_lights_punctual") == 0;
 }
 
 /// @brief Enforce the glTF `extensionsRequired` contract.
@@ -571,7 +571,8 @@ static int gltf_validate_required_extensions(void *root) {
 
 /// @brief Zero-initialise a `gltf_texture_info_t` to identity-transform defaults.
 /// @details Sets texcoord=0, has_transform=0, offset=(0,0), scale=(1,1), rotation=0.0 so callers
-///   can always call `gltf_read_texture_info` after this without guarding on partial initialisation.
+///   can always call `gltf_read_texture_info` after this without guarding on partial
+///   initialisation.
 static void gltf_texture_info_init(gltf_texture_info_t *info) {
     if (!info)
         return;
@@ -591,7 +592,8 @@ static void gltf_texture_info_init(gltf_texture_info_t *info) {
 ///   matching the KHR_texture_transform spec. When no transform block is present the struct
 ///   retains identity defaults from `gltf_texture_info_init`. Null @p texture_info leaves @p out
 ///   at defaults so callers need not guard against missing fields.
-/// @param texture_info  Parsed glTF `textureInfo` JSON object (may be NULL for default texture slot).
+/// @param texture_info  Parsed glTF `textureInfo` JSON object (may be NULL for default texture
+/// slot).
 /// @param out           Output struct; always initialised to defaults before filling.
 static void gltf_read_texture_info(void *texture_info, gltf_texture_info_t *out) {
     void *extensions;
@@ -687,16 +689,21 @@ static void gltf_read_sampler_info(void *sampler_json, gltf_sampler_info_t *out)
 }
 
 /// @brief DFS helper for cycle detection in the glTF node graph.
-/// @details Uses a three-colour state array: 0 = unvisited, 1 = in-progress (grey), 2 = done (black).
+/// @details Uses a three-colour state array: 0 = unvisited, 1 = in-progress (grey), 2 = done
+/// (black).
 ///   Returning 0 from a grey node means a back-edge (cycle) was found. Children that are out of
 ///   range or already grey are also treated as invalid. Called by `gltf_validate_node_graph`
-///   once per node. The @p state array must be zero-initialised by the caller before the first call.
+///   once per node. The @p state array must be zero-initialised by the caller before the first
+///   call.
 /// @param nodes_arr   JSON array of glTF node objects.
 /// @param node_count  Total number of nodes (bounds the valid index range).
 /// @param node_idx    Node to visit.
 /// @param state       Per-node colour byte array of length @p node_count.
 /// @return 1 if the subtree is DAG-valid, 0 if a cycle or out-of-bounds child is found.
-static int gltf_validate_node_visit(void *nodes_arr, int32_t node_count, int32_t node_idx, uint8_t *state) {
+static int gltf_validate_node_visit(void *nodes_arr,
+                                    int32_t node_count,
+                                    int32_t node_idx,
+                                    uint8_t *state) {
     void *node_json;
     void *children;
     if (!nodes_arr || !state || node_idx < 0 || node_idx >= node_count)
@@ -723,9 +730,9 @@ static int gltf_validate_node_visit(void *nodes_arr, int32_t node_count, int32_t
 /// @details A valid glTF scene node graph must be a directed acyclic forest: each node has at most
 ///   one parent, there are no back-edges (cycles), and all child indices are in `[0, node_count)`.
 ///   This function builds a parent array (each entry is -1 for roots or the parent's index), then
-///   runs a DFS over every node to detect cycles via `gltf_validate_node_graph`. Returns 0 and frees
-///   intermediates if any of these invariants are violated. When @p out_parent is non-NULL and
-///   validation succeeds the parent array is returned (caller must `free` it); otherwise it is
+///   runs a DFS over every node to detect cycles via `gltf_validate_node_graph`. Returns 0 and
+///   frees intermediates if any of these invariants are violated. When @p out_parent is non-NULL
+///   and validation succeeds the parent array is returned (caller must `free` it); otherwise it is
 ///   freed internally. A null or empty nodes array is treated as a trivially valid empty forest.
 /// @param nodes_arr   JSON array of glTF node objects.
 /// @param node_count  Number of nodes; must match `jarr_len(nodes_arr)`.
@@ -852,8 +859,7 @@ typedef struct {
 ///   from unaligned access on strict-alignment platforms. Used for parsing the 12-byte
 ///   GLB (binary glTF) header and chunk-header magic/length fields.
 static uint32_t gltf_read_u32_le(const uint8_t *p) {
-    return (uint32_t)p[0] | ((uint32_t)p[1] << 8) | ((uint32_t)p[2] << 16) |
-           ((uint32_t)p[3] << 24);
+    return (uint32_t)p[0] | ((uint32_t)p[1] << 8) | ((uint32_t)p[2] << 16) | ((uint32_t)p[3] << 24);
 }
 
 /// @brief Overflow-safe size_t addition: sets *out = a+b and returns 1, or returns 0 on overflow.
@@ -867,7 +873,8 @@ static int gltf_checked_add_size(size_t a, size_t b, size_t *out) {
     return 1;
 }
 
-/// @brief Overflow-safe size_t multiplication: sets *out = a*b and returns 1, or returns 0 on overflow.
+/// @brief Overflow-safe size_t multiplication: sets *out = a*b and returns 1, or returns 0 on
+/// overflow.
 /// @details Uses the `b > SIZE_MAX / a` guard (avoiding the multiply itself when `a != 0`) to
 ///   detect the overflow before it happens. Used alongside `gltf_checked_add_size` to
 ///   safely compute `stride * count` and `comp_size * comp_count` bounds checks.
@@ -1219,8 +1226,7 @@ static int gltf_get_accessor_view(void *root,
         void *sparse = jget(acc, "sparse");
         int64_t sparse_count_raw = sparse ? jint(sparse, "count", 0) : 0;
         int32_t sparse_count =
-            (sparse_count_raw > 0 && sparse_count_raw <= INT32_MAX) ? (int32_t)sparse_count_raw
-                                                                    : 0;
+            (sparse_count_raw > 0 && sparse_count_raw <= INT32_MAX) ? (int32_t)sparse_count_raw : 0;
         if (sparse && sparse_count > 0) {
             void *indices = jget(sparse, "indices");
             void *values = jget(sparse, "values");
@@ -1249,15 +1255,13 @@ static int gltf_get_accessor_view(void *root,
                 return 0;
             if (indices_offset > index_len || values_offset > value_len)
                 return 0;
-            if (!gltf_checked_mul_size((size_t)sparse_count,
-                                       (size_t)index_comp_size,
-                                       &index_bytes) ||
+            if (!gltf_checked_mul_size(
+                    (size_t)sparse_count, (size_t)index_comp_size, &index_bytes) ||
                 !gltf_checked_add_size(indices_offset, index_bytes, &index_end) ||
                 index_end > index_len)
                 return 0;
-            if (!gltf_checked_mul_size((size_t)sparse_count,
-                                       (size_t)comp_size * (size_t)comp_count,
-                                       &value_bytes) ||
+            if (!gltf_checked_mul_size(
+                    (size_t)sparse_count, (size_t)comp_size * (size_t)comp_count, &value_bytes) ||
                 !gltf_checked_add_size(values_offset, value_bytes, &value_end) ||
                 value_end > value_len)
                 return 0;
@@ -1398,10 +1402,9 @@ static int32_t gltf_accessor_sparse_value_index(const gltf_accessor_view_t *view
     hi = view->sparse_count - 1;
     while (lo <= hi) {
         int32_t i = lo + (hi - lo) / 2;
-        uint32_t sparse_index =
-            gltf_decode_component_u32(view->sparse_indices +
-                                          (size_t)i * (size_t)view->sparse_index_stride,
-                                      view->sparse_index_comp_type);
+        uint32_t sparse_index = gltf_decode_component_u32(
+            view->sparse_indices + (size_t)i * (size_t)view->sparse_index_stride,
+            view->sparse_index_comp_type);
         if (sparse_index == (uint32_t)element_idx)
             return i;
         if (sparse_index < (uint32_t)element_idx)
@@ -1441,9 +1444,8 @@ static void gltf_accessor_read_f32(const gltf_accessor_view_t *view,
     if (view->data) {
         const uint8_t *base = view->data + (size_t)element_idx * (size_t)view->stride;
         for (int32_t i = 0; i < limit; i++)
-            out[i] = gltf_decode_component_f32(base + (size_t)i * (size_t)comp_size,
-                                               view->comp_type,
-                                               view->normalized);
+            out[i] = gltf_decode_component_f32(
+                base + (size_t)i * (size_t)comp_size, view->comp_type, view->normalized);
     }
     {
         int32_t sparse_slot = gltf_accessor_sparse_value_index(view, element_idx);
@@ -1451,9 +1453,8 @@ static void gltf_accessor_read_f32(const gltf_accessor_view_t *view,
             const uint8_t *sparse =
                 view->sparse_values + (size_t)sparse_slot * (size_t)view->sparse_value_stride;
             for (int32_t i = 0; i < limit; i++)
-                out[i] = gltf_decode_component_f32(sparse + (size_t)i * (size_t)comp_size,
-                                                   view->comp_type,
-                                                   view->normalized);
+                out[i] = gltf_decode_component_f32(
+                    sparse + (size_t)i * (size_t)comp_size, view->comp_type, view->normalized);
         }
     }
 }
@@ -1623,7 +1624,8 @@ static int gltf_emit_triangle(
     return !((rt_mesh3d *)mesh)->build_failed;
 }
 
-/// @brief Read a triangle index from an optional index accessor, or use the element position directly.
+/// @brief Read a triangle index from an optional index accessor, or use the element position
+/// directly.
 /// @details When @p view is NULL the primitive has no index buffer, so the element index itself
 ///   is used as the vertex index (sequential triangles). This mirrors how GL_TRIANGLES works
 ///   with `glDrawArrays` vs `glDrawElements`.
@@ -1866,7 +1868,8 @@ static const char *gltf_target_name(void *mesh_json,
     return cstr && cstr[0] != '\0' ? cstr : fallback;
 }
 
-/// @brief Read all morph targets from a glTF primitive's `targets` array into a MorphTarget3D object.
+/// @brief Read all morph targets from a glTF primitive's `targets` array into a MorphTarget3D
+/// object.
 /// @details Creates a `rt_morphtarget3d` with @p vertex_count slots, iterates each target
 ///          entry, reads POSITION / NORMAL / TANGENT accessor deltas, and registers them as
 ///          named shapes. Initial weights come from the mesh-level `weights` array when present.
@@ -1942,8 +1945,7 @@ static void gltf_import_primitive_morph_targets(void *root,
             for (int32_t vi = 0; vi < limit; vi++) {
                 float delta[3] = {0.0f, 0.0f, 0.0f};
                 gltf_accessor_read_f32(&tangent_view, vi, delta, 3);
-                rt_morphtarget3d_set_tangent_delta(
-                    morph, shape, vi, delta[0], delta[1], delta[2]);
+                rt_morphtarget3d_set_tangent_delta(morph, shape, vi, delta[0], delta[1], delta[2]);
             }
         }
     }
@@ -1972,7 +1974,8 @@ static void gltf_apply_node_morph_weights(void *mesh_obj, void *weights_arr) {
             mesh->morph_targets_ref, i, jvalue_num(rt_seq_get(weights_arr, i), 0.0));
 }
 
-/// @brief Combine a glTF document's directory with a relative URI to get an absolute filesystem path.
+/// @brief Combine a glTF document's directory with a relative URI to get an absolute filesystem
+/// path.
 ///
 /// External buffers and textures in glTF are referenced via paths
 /// relative to the .gltf file itself; this prepends the document's
@@ -2423,10 +2426,10 @@ static void gltf_parse_skins(rt_gltf_asset *asset,
             skins[si].joint_to_bone[ji] = -1;
         }
         for (int32_t ji = 0; ji < joint_count; ji++) {
-            int32_t parent_node = skins[si].joint_nodes[ji] >= 0 &&
-                                          skins[si].joint_nodes[ji] < node_count
-                                      ? node_parents[skins[si].joint_nodes[ji]]
-                                      : -1;
+            int32_t parent_node =
+                skins[si].joint_nodes[ji] >= 0 && skins[si].joint_nodes[ji] < node_count
+                    ? node_parents[skins[si].joint_nodes[ji]]
+                    : -1;
             if (gltf_skin_find_joint(&skins[si], parent_node) < 0)
                 gltf_add_skin_joint_recursive(&skins[si], nodes_arr, ji, -1);
         }
@@ -2614,10 +2617,7 @@ static double gltf_curve_time(const gltf_accessor_view_t *view, int32_t index) {
 ///        mirrors typical DCC exporter precision). The buffer doubles on growth
 ///        starting at 16 entries so amortized cost is O(N log N) total.
 /// @return 1 on success, 0 on allocation failure (caller must free `*times` later).
-static int gltf_anim_insert_time(double **times,
-                                 int32_t *count,
-                                 int32_t *capacity,
-                                 double value) {
+static int gltf_anim_insert_time(double **times, int32_t *count, int32_t *capacity, double value) {
     int32_t pos = 0;
     while (pos < *count && (*times)[pos] < value - 1e-6)
         pos++;
@@ -2651,7 +2651,8 @@ static int32_t gltf_curve_output_index(const gltf_anim_curve_t *curve, int32_t k
 
 /// @brief Read @p components floats from the curve's output accessor at an already-computed index.
 /// @details Thin wrapper around `gltf_accessor_read_f32` that accepts a pre-multiplied index
-///          (CUBICSPLINE callers pass `key * 3 + 1` for the value sample; linear callers pass `key`).
+///          (CUBICSPLINE callers pass `key * 3 + 1` for the value sample; linear callers pass
+///          `key`).
 static void gltf_curve_read_output_value(const gltf_anim_curve_t *curve,
                                          int32_t output_index,
                                          float *out,
@@ -2696,8 +2697,7 @@ static float gltf_accessor_read_flat_f32(const gltf_accessor_view_t *view, int32
 ///          Non-quaternion paths (translation/scale with components ≠ 4) are left unchanged.
 static void gltf_normalize_sample_if_quat(float *out, int32_t components) {
     if (components == 4) {
-        float len =
-            sqrtf(out[0] * out[0] + out[1] * out[1] + out[2] * out[2] + out[3] * out[3]);
+        float len = sqrtf(out[0] * out[0] + out[1] * out[1] + out[2] * out[2] + out[3] * out[3]);
         if (len > 1e-6f) {
             for (int c = 0; c < 4; c++)
                 out[c] /= len;
@@ -2812,8 +2812,8 @@ static void gltf_sample_curve(const gltf_anim_curve_t *curve,
                 gltf_curve_read_output_value(curve, i * 3, in_tangent1, components);
                 gltf_curve_read_value(curve, i, b, components);
                 for (int c = 0; c < components; c++) {
-                    out[c] = (float)(h00 * a[c] + h10 * dt * out_tangent0[c] +
-                                     h01 * b[c] + h11 * dt * in_tangent1[c]);
+                    out[c] = (float)(h00 * a[c] + h10 * dt * out_tangent0[c] + h01 * b[c] +
+                                     h11 * dt * in_tangent1[c]);
                 }
                 gltf_normalize_sample_if_quat(out, components);
                 return;
@@ -2926,16 +2926,10 @@ static void gltf_parse_animations(rt_gltf_asset *asset,
                     curves[ci].path = 2;
                 else
                     continue;
-                if (!gltf_get_accessor_view(root,
-                                            jint(sampler, "input", -1),
-                                            buffers,
-                                            buf_count,
-                                            &curves[ci].input) ||
-                    !gltf_get_accessor_view(root,
-                                            jint(sampler, "output", -1),
-                                            buffers,
-                                            buf_count,
-                                            &curves[ci].output))
+                if (!gltf_get_accessor_view(
+                        root, jint(sampler, "input", -1), buffers, buf_count, &curves[ci].input) ||
+                    !gltf_get_accessor_view(
+                        root, jint(sampler, "output", -1), buffers, buf_count, &curves[ci].output))
                     continue;
                 curves[ci].valid = 1;
                 curves[ci].node_idx = (int32_t)node_idx;
@@ -2979,7 +2973,9 @@ static void gltf_parse_animations(rt_gltf_asset *asset,
                     else if (curves[ci].path == 2)
                         curve_s = &curves[ci];
                     for (int32_t ti = 0; ti < curves[ci].input.count; ti++)
-                        gltf_anim_insert_time(&times, &time_count, &time_capacity,
+                        gltf_anim_insert_time(&times,
+                                              &time_count,
+                                              &time_capacity,
                                               gltf_curve_time(&curves[ci].input, ti));
                 }
                 if (time_count <= 0 || node_idx < 0) {
@@ -3144,8 +3140,10 @@ static void gltf_parse_node_animations(rt_gltf_asset *asset,
             sampler = rt_seq_get(samplers, sampler_idx);
             interpolation = jstr(sampler, "interpolation");
             cubic = interpolation && strcmp(interpolation, "CUBICSPLINE") == 0;
-            if (!gltf_get_accessor_view(root, jint(sampler, "input", -1), buffers, buf_count, &input) ||
-                !gltf_get_accessor_view(root, jint(sampler, "output", -1), buffers, buf_count, &output) ||
+            if (!gltf_get_accessor_view(
+                    root, jint(sampler, "input", -1), buffers, buf_count, &input) ||
+                !gltf_get_accessor_view(
+                    root, jint(sampler, "output", -1), buffers, buf_count, &output) ||
                 input.count <= 0)
                 continue;
             width = gltf_node_anim_width_for_path(path, &input, &output, cubic);
@@ -3188,7 +3186,8 @@ static void gltf_parse_node_animations(rt_gltf_asset *asset,
                         }
                     }
                 } else {
-                    float tmp[4] = {0.0f, 0.0f, 0.0f, path == RT_NODE_ANIM_PATH_ROTATION ? 1.0f : 0.0f};
+                    float tmp[4] = {
+                        0.0f, 0.0f, 0.0f, path == RT_NODE_ANIM_PATH_ROTATION ? 1.0f : 0.0f};
                     gltf_accessor_read_f32(&output, source_key, tmp, width);
                     if (path == RT_NODE_ANIM_PATH_ROTATION)
                         gltf_normalize_sample_if_quat(tmp, 4);
@@ -3212,28 +3211,28 @@ static void gltf_parse_node_animations(rt_gltf_asset *asset,
             if (target_name) {
                 int64_t channel_index;
                 if (cubic) {
-                    channel_index = rt_node_animation3d_add_cubic_channel(node_anim,
-                                                                          rt_const_cstr(target_name),
-                                                                          path,
-                                                                          input.count,
-                                                                          width,
-                                                                          times,
-                                                                          values,
-                                                                          in_tangents,
-                                                                          out_tangents);
-                } else {
                     channel_index =
-                        rt_node_animation3d_add_channel(node_anim,
-                                                        rt_const_cstr(target_name),
-                                                        path,
-                                                        (interpolation &&
-                                                         strcmp(interpolation, "STEP") == 0)
-                                                            ? RT_NODE_ANIM_INTERP_STEP
-                                                            : RT_NODE_ANIM_INTERP_LINEAR,
-                                                        input.count,
-                                                        width,
-                                                        times,
-                                                        values);
+                        rt_node_animation3d_add_cubic_channel(node_anim,
+                                                              rt_const_cstr(target_name),
+                                                              path,
+                                                              input.count,
+                                                              width,
+                                                              times,
+                                                              values,
+                                                              in_tangents,
+                                                              out_tangents);
+                } else {
+                    channel_index = rt_node_animation3d_add_channel(
+                        node_anim,
+                        rt_const_cstr(target_name),
+                        path,
+                        (interpolation && strcmp(interpolation, "STEP") == 0)
+                            ? RT_NODE_ANIM_INTERP_STEP
+                            : RT_NODE_ANIM_INTERP_LINEAR,
+                        input.count,
+                        width,
+                        times,
+                        values);
                 }
                 if (channel_index >= 0)
                     emitted_any = 1;
@@ -3499,7 +3498,8 @@ static void *rt_gltf_load_impl(rt_string path, int load_assets) {
     }
 
     // Create asset
-    rt_gltf_asset *asset = (rt_gltf_asset *)rt_obj_new_i64(RT_G3D_GLTF_ASSET_CLASS_ID, (int64_t)sizeof(rt_gltf_asset));
+    rt_gltf_asset *asset =
+        (rt_gltf_asset *)rt_obj_new_i64(RT_G3D_GLTF_ASSET_CLASS_ID, (int64_t)sizeof(rt_gltf_asset));
     if (!asset) {
         for (int i = 0; i < buf_count; i++) {
             if (buffers[i].data != bin_chunk)
@@ -3660,8 +3660,9 @@ static void *rt_gltf_load_impl(rt_string path, int load_assets) {
                         tex_idx,
                         mat,
                         RT_MATERIAL3D_TEXTURE_SLOT_BASE_COLOR,
-                        material_infos ? &material_infos[i].slots[RT_MATERIAL3D_TEXTURE_SLOT_BASE_COLOR]
-                                       : NULL);
+                        material_infos
+                            ? &material_infos[i].slots[RT_MATERIAL3D_TEXTURE_SLOT_BASE_COLOR]
+                            : NULL);
                 }
                 {
                     void *mr_tex = jget(pbr, "metallicRoughnessTexture");
@@ -3669,8 +3670,8 @@ static void *rt_gltf_load_impl(rt_string path, int load_assets) {
                     if (mr_tex && material_infos) {
                         gltf_read_texture_info(
                             mr_tex,
-                            &material_infos[i].slots
-                                 [RT_MATERIAL3D_TEXTURE_SLOT_METALLIC_ROUGHNESS]);
+                            &material_infos[i]
+                                 .slots[RT_MATERIAL3D_TEXTURE_SLOT_METALLIC_ROUGHNESS]);
                     }
                     if (tex_idx >= 0 && tex_idx < texture_count && texture_images &&
                         texture_images[tex_idx])
@@ -3681,8 +3682,8 @@ static void *rt_gltf_load_impl(rt_string path, int load_assets) {
                         tex_idx,
                         mat,
                         RT_MATERIAL3D_TEXTURE_SLOT_METALLIC_ROUGHNESS,
-                        material_infos ? &material_infos[i].slots
-                                             [RT_MATERIAL3D_TEXTURE_SLOT_METALLIC_ROUGHNESS]
+                        material_infos ? &material_infos[i]
+                                              .slots[RT_MATERIAL3D_TEXTURE_SLOT_METALLIC_ROUGHNESS]
                                        : NULL);
                 }
             }
@@ -3721,17 +3722,15 @@ static void *rt_gltf_load_impl(rt_string path, int load_assets) {
                     int64_t tex_idx = jint(spec_tex, "index", -1);
                     ((rt_material3d *)mat)->specular[0] =
                         jnum(specular, "specularFactor", ((rt_material3d *)mat)->specular[0]);
-                    ((rt_material3d *)mat)->specular[1] =
-                        ((rt_material3d *)mat)->specular[0];
-                    ((rt_material3d *)mat)->specular[2] =
-                        ((rt_material3d *)mat)->specular[0];
+                    ((rt_material3d *)mat)->specular[1] = ((rt_material3d *)mat)->specular[0];
+                    ((rt_material3d *)mat)->specular[2] = ((rt_material3d *)mat)->specular[0];
                     if (spec_color && jarr_len(spec_color) >= 3) {
-                        ((rt_material3d *)mat)->specular[0] =
-                            jvalue_num(rt_seq_get(spec_color, 0), ((rt_material3d *)mat)->specular[0]);
-                        ((rt_material3d *)mat)->specular[1] =
-                            jvalue_num(rt_seq_get(spec_color, 1), ((rt_material3d *)mat)->specular[1]);
-                        ((rt_material3d *)mat)->specular[2] =
-                            jvalue_num(rt_seq_get(spec_color, 2), ((rt_material3d *)mat)->specular[2]);
+                        ((rt_material3d *)mat)->specular[0] = jvalue_num(
+                            rt_seq_get(spec_color, 0), ((rt_material3d *)mat)->specular[0]);
+                        ((rt_material3d *)mat)->specular[1] = jvalue_num(
+                            rt_seq_get(spec_color, 1), ((rt_material3d *)mat)->specular[1]);
+                        ((rt_material3d *)mat)->specular[2] = jvalue_num(
+                            rt_seq_get(spec_color, 2), ((rt_material3d *)mat)->specular[2]);
                     }
                     if (spec_tex && material_infos) {
                         gltf_read_texture_info(
@@ -3747,8 +3746,9 @@ static void *rt_gltf_load_impl(rt_string path, int load_assets) {
                         tex_idx,
                         mat,
                         RT_MATERIAL3D_TEXTURE_SLOT_SPECULAR,
-                        material_infos ? &material_infos[i].slots[RT_MATERIAL3D_TEXTURE_SLOT_SPECULAR]
-                                       : NULL);
+                        material_infos
+                            ? &material_infos[i].slots[RT_MATERIAL3D_TEXTURE_SLOT_SPECULAR]
+                            : NULL);
                 }
                 if (clearcoat) {
                     double clearcoat_factor = jnum(clearcoat, "clearcoatFactor", 0.0);
@@ -3769,9 +3769,8 @@ static void *rt_gltf_load_impl(rt_string path, int load_assets) {
                 void *normal_tex = jget(mat_json, "normalTexture");
                 int64_t tex_idx = jint(normal_tex, "index", -1);
                 if (normal_tex && material_infos) {
-                    gltf_read_texture_info(normal_tex,
-                                           &material_infos[i]
-                                                .slots[RT_MATERIAL3D_TEXTURE_SLOT_NORMAL]);
+                    gltf_read_texture_info(
+                        normal_tex, &material_infos[i].slots[RT_MATERIAL3D_TEXTURE_SLOT_NORMAL]);
                 }
                 if (tex_idx >= 0 && tex_idx < texture_count && texture_images &&
                     texture_images[tex_idx])
@@ -3803,7 +3802,8 @@ static void *rt_gltf_load_impl(rt_string path, int load_assets) {
                     tex_idx,
                     mat,
                     RT_MATERIAL3D_TEXTURE_SLOT_AO,
-                    material_infos ? &material_infos[i].slots[RT_MATERIAL3D_TEXTURE_SLOT_AO] : NULL);
+                    material_infos ? &material_infos[i].slots[RT_MATERIAL3D_TEXTURE_SLOT_AO]
+                                   : NULL);
                 if (occlusion_tex)
                     rt_material3d_set_ao(mat, jnum(occlusion_tex, "strength", 1.0));
             }
@@ -3925,21 +3925,24 @@ static void *rt_gltf_load_impl(rt_string path, int load_assets) {
                     gltf_accessor_view_t joints1_view;
                     gltf_accessor_view_t weights1_view;
                     gltf_accessor_view_t idx_view;
-                    int has_normals = gltf_get_accessor_view(root, norm_acc, buffers, buf_count, &norm_view);
-                    int has_uv0 = gltf_get_accessor_view(root, uv0_acc, buffers, buf_count, &uv0_view);
-                    int has_uv1 = gltf_get_accessor_view(root, uv1_acc, buffers, buf_count, &uv1_view);
+                    int has_normals =
+                        gltf_get_accessor_view(root, norm_acc, buffers, buf_count, &norm_view);
+                    int has_uv0 =
+                        gltf_get_accessor_view(root, uv0_acc, buffers, buf_count, &uv0_view);
+                    int has_uv1 =
+                        gltf_get_accessor_view(root, uv1_acc, buffers, buf_count, &uv1_view);
                     int has_colors =
                         gltf_get_accessor_view(root, color_acc, buffers, buf_count, &color_view);
-                    int has_tangents =
-                        gltf_get_accessor_view(root, tangent_acc, buffers, buf_count, &tangent_view);
+                    int has_tangents = gltf_get_accessor_view(
+                        root, tangent_acc, buffers, buf_count, &tangent_view);
                     int has_joints =
                         gltf_get_accessor_view(root, joints_acc, buffers, buf_count, &joints_view);
-                    int has_weights =
-                        gltf_get_accessor_view(root, weights_acc, buffers, buf_count, &weights_view);
-                    int has_joints1 =
-                        gltf_get_accessor_view(root, joints1_acc, buffers, buf_count, &joints1_view);
-                    int has_weights1 =
-                        gltf_get_accessor_view(root, weights1_acc, buffers, buf_count, &weights1_view);
+                    int has_weights = gltf_get_accessor_view(
+                        root, weights_acc, buffers, buf_count, &weights_view);
+                    int has_joints1 = gltf_get_accessor_view(
+                        root, joints1_acc, buffers, buf_count, &joints1_view);
+                    int has_weights1 = gltf_get_accessor_view(
+                        root, weights1_acc, buffers, buf_count, &weights1_view);
                     int has_indices =
                         gltf_get_accessor_view(root, idx_acc, buffers, buf_count, &idx_view);
 

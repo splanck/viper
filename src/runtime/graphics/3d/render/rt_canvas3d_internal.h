@@ -21,11 +21,11 @@
 
 #ifdef VIPER_ENABLE_GRAPHICS
 
-#include "rt_heap.h"
 #include "rt_graphics3d_ids.h"
+#include "rt_heap.h"
 #include "rt_input.h"
-#include "vgfx.h"
 #include "rt_postfx3d.h"
+#include "vgfx.h"
 #include "vgfx3d_frustum.h"
 #include <float.h>
 #include <math.h>
@@ -78,7 +78,7 @@ typedef struct {
     float aabb_max[3];
     float bsphere_radius;
     int8_t bounds_dirty;
-    int8_t build_failed;       /* set when a construction/load append fails */
+    int8_t build_failed;        /* set when a construction/load append fails */
     void *skeleton_ref;         /* attached Skeleton3D (or NULL) */
     void *morph_targets_ref;    /* attached MorphTarget3D (or NULL) */
     uint32_t geometry_revision; /* increments when CPU geometry changes */
@@ -167,6 +167,7 @@ typedef struct {
     int8_t is_ortho;   /* 1 = orthographic projection */
     double ortho_size; /* half-extent of ortho view */
 } rt_camera3d;
+
 /// @brief Update a camera's cached projection for the given viewport aspect.
 void rt_camera3d_sync_render_aspect(void *cam, double aspect);
 /// @brief Compute a camera's 4x4 projection matrix into @p out_projection,
@@ -195,27 +196,27 @@ typedef struct {
     double diffuse[4]; /* RGBA diffuse color */
     double specular[3];
     double shininess;
-    int32_t workflow; /* 0=legacy/Blinn-Phong surface, 1=PBR metallic-roughness */
-    void *texture;       /* Pixels (diffuse, slot 0) or NULL */
-    void *normal_map;    /* Pixels (normal map, slot 1) or NULL */
-    void *specular_map;  /* Pixels (specular map, slot 2) or NULL */
-    void *emissive_map;  /* Pixels (emissive map, slot 3) or NULL */
+    int32_t workflow;             /* 0=legacy/Blinn-Phong surface, 1=PBR metallic-roughness */
+    void *texture;                /* Pixels (diffuse, slot 0) or NULL */
+    void *normal_map;             /* Pixels (normal map, slot 1) or NULL */
+    void *specular_map;           /* Pixels (specular map, slot 2) or NULL */
+    void *emissive_map;           /* Pixels (emissive map, slot 3) or NULL */
     void *metallic_roughness_map; /* Pixels (glTF metallic/roughness map) or NULL */
-    void *ao_map;               /* Pixels (ambient occlusion map) or NULL */
-    double emissive[3];  /* emissive color multiplier */
-    double metallic;     /* [0,1] dielectric->metal */
-    double roughness;    /* [0,1] smooth->rough */
-    double ao;           /* [0,1] ambient occlusion multiplier */
-    double emissive_intensity; /* scalar multiplier applied after emissive color/map */
-    double normal_scale; /* scales tangent-space XY perturbation */
-    double alpha;        /* opacity [0.0=invisible, 1.0=opaque], default 1.0 */
-    double alpha_cutoff; /* alpha-mask cutoff, default 0.5 */
-    void *env_map;       /* CubeMap3D for environment reflections (or NULL) */
-    double reflectivity; /* [0.0=no reflection, 1.0=mirror], default 0.0 */
+    void *ao_map;                 /* Pixels (ambient occlusion map) or NULL */
+    double emissive[3];           /* emissive color multiplier */
+    double metallic;              /* [0,1] dielectric->metal */
+    double roughness;             /* [0,1] smooth->rough */
+    double ao;                    /* [0,1] ambient occlusion multiplier */
+    double emissive_intensity;    /* scalar multiplier applied after emissive color/map */
+    double normal_scale;          /* scales tangent-space XY perturbation */
+    double alpha;                 /* opacity [0.0=invisible, 1.0=opaque], default 1.0 */
+    double alpha_cutoff;          /* alpha-mask cutoff, default 0.5 */
+    void *env_map;                /* CubeMap3D for environment reflections (or NULL) */
+    double reflectivity;          /* [0.0=no reflection, 1.0=mirror], default 0.0 */
     int8_t unlit;
     int8_t double_sided;
-    int8_t additive_blend; /* internal-only: route through additive blend state when true */
-    int32_t alpha_mode; /* 0=opaque, 1=mask, 2=blend */
+    int8_t additive_blend;  /* internal-only: route through additive blend state when true */
+    int32_t alpha_mode;     /* 0=opaque, 1=mask, 2=blend */
     int8_t alpha_mode_auto; /* true when SetAlpha auto-promoted OPAQUE -> BLEND */
     int32_t texture_wrap_s; /* RT_MATERIAL3D_TEXTURE_WRAP_* for imported material textures */
     int32_t texture_wrap_t;
@@ -273,8 +274,8 @@ typedef struct vgfx3d_backend vgfx3d_backend_t;
 ///   used as a stable GPU-upload key across allocator reuse.
 typedef struct {
     void *vptr;
-    void *faces[6];    /* Pixels objects: +X, -X, +Y, -Y, +Z, -Z */
-    int64_t face_size; /* width = height per face (must be square) */
+    void *faces[6];          /* Pixels objects: +X, -X, +Y, -Y, +Z, -Z */
+    int64_t face_size;       /* width = height per face (must be square) */
     uint64_t cache_identity; /* stable cache key generation across allocator reuse */
 } rt_cubemap3d;
 
@@ -295,9 +296,9 @@ typedef enum {
 ///   dimensions/stride/format, dirty flags, and a backend color-sync callback that
 ///   refreshes the CPU mirror from a GPU surface on readback.
 struct vgfx3d_rendertarget {
-    uint8_t *color_buf; /* RGBA pixels (software path) */
+    uint8_t *color_buf;   /* RGBA pixels (software path) */
     float *hdr_color_buf; /* linear RGBA32F CPU mirror for HDR GPU readback */
-    float *depth_buf;   /* float depth buffer */
+    float *depth_buf;     /* float depth buffer */
     int32_t width;
     int32_t height;
     int32_t stride; /* width * 4 */
@@ -440,19 +441,21 @@ typedef struct {
 ///   runs, and motion-blur transform history.
 typedef struct {
     void *vptr;
-    vgfx_window_t gfx_win; /* underlying vgfx window (owns framebuffer) */
-    int32_t width;
-    int32_t height;
+    vgfx_window_t gfx_win;      /* underlying vgfx window (owns framebuffer) */
+    int32_t width;              /* public/logical coordinate width */
+    int32_t height;             /* public/logical coordinate height */
+    int32_t framebuffer_width;  /* physical backing-pixel width */
+    int32_t framebuffer_height; /* physical backing-pixel height */
 
     /* Backend dispatch */
     const vgfx3d_backend_t *backend; /* vtable (software, metal, d3d11, opengl) */
     void *backend_ctx;               /* opaque backend state */
 
     /* Frame state */
-    int8_t in_frame;         /* 1 = between Begin/End */
-    int8_t frame_is_2d;      /* 1 = active frame uses orthographic 2D projection */
-    float cached_vp[16];     /* VP matrix cached in begin_frame for debug drawing */
-    float cached_cam_pos[3]; /* camera position cached for sort key computation */
+    int8_t in_frame;             /* 1 = between Begin/End */
+    int8_t frame_is_2d;          /* 1 = active frame uses orthographic 2D projection */
+    float cached_vp[16];         /* VP matrix cached in begin_frame for debug drawing */
+    float cached_cam_pos[3];     /* camera position cached for sort key computation */
     float cached_cam_forward[3]; /* forward vector cached for skybox + ortho shading */
     int8_t cached_cam_is_ortho;
     float last_scene_vp[16]; /* most recent 3D VP matrix (preserved across 2D passes) */
@@ -486,7 +489,7 @@ typedef struct {
     float ambient[3];
 
     /* Skybox */
-    rt_cubemap3d *skybox; /* CubeMap3D for background (or NULL) */
+    rt_cubemap3d *skybox;      /* CubeMap3D for background (or NULL) */
     uint8_t *skybox_cpu_cache; /* tightly packed RGBA8 fallback skybox */
     int32_t skybox_cpu_cache_w;
     int32_t skybox_cpu_cache_h;
@@ -617,7 +620,8 @@ void rt_canvas3d_draw_mesh_matrix(void *obj,
                                   void *mesh_obj,
                                   const double *model_matrix,
                                   void *material_obj);
-/// @brief Internal: submit a mesh draw with motion-key + previous bone/morph data for TAA + motion blur.
+/// @brief Internal: submit a mesh draw with motion-key + previous bone/morph data for TAA + motion
+/// blur.
 void rt_canvas3d_draw_mesh_matrix_keyed(void *obj,
                                         void *mesh_obj,
                                         const double *model_matrix,
@@ -637,13 +641,8 @@ void rt_canvas3d_draw_mesh_matrix_morphed(void *canvas,
 /// @brief Internal: retain a GC-managed object until the current frame is fully submitted.
 int rt_canvas3d_add_temp_object(void *obj, void *value);
 /// @brief Internal: sample a cubemap direction into linear RGB components.
-void rt_cubemap_sample(const rt_cubemap3d *cm,
-                       float dx,
-                       float dy,
-                       float dz,
-                       float *out_r,
-                       float *out_g,
-                       float *out_b);
+void rt_cubemap_sample(
+    const rt_cubemap3d *cm, float dx, float dy, float dz, float *out_r, float *out_g, float *out_b);
 /// @brief Internal: sample a cubemap reflection with a roughness-dependent blur kernel.
 void rt_cubemap_sample_roughness(const rt_cubemap3d *cm,
                                  float dx,
@@ -667,7 +666,8 @@ void rt_canvas3d_queue_instanced_batch(void *canvas_obj,
                                        int8_t has_prev_instance_matrices);
 /// @brief Internal: get the monotonic per-frame counter (used to seed motion-blur history).
 int64_t rt_canvas3d_get_frame_serial(void *obj);
-/// @brief Internal: begin a HUD/overlay sub-pass; @p preserve_existing_color skips the initial clear.
+/// @brief Internal: begin a HUD/overlay sub-pass; @p preserve_existing_color skips the initial
+/// clear.
 int canvas3d_begin_overlay_frame(rt_canvas3d *c, int8_t preserve_existing_color);
 /// @brief Internal: borrow the most recently used scene VP matrix for billboard alignment.
 const float *canvas3d_active_scene_vp(const rt_canvas3d *c);

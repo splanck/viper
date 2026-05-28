@@ -12,11 +12,11 @@
 //===----------------------------------------------------------------------===//
 
 #include "rt_audio.h"
+#include "rt_canvas3d.h"
+#include "rt_scene3d.h"
 #include "rt_sound3d.h"
 #include "rt_soundlistener3d.h"
 #include "rt_soundsource3d.h"
-#include "rt_canvas3d.h"
-#include "rt_scene3d.h"
 
 #include <cmath>
 #include <cstdio>
@@ -45,11 +45,8 @@ static int tests_run = 0;
     do {                                                                                           \
         tests_run++;                                                                               \
         if (std::fabs((double)(a) - (double)(b)) > (eps))                                          \
-            std::fprintf(stderr,                                                                   \
-                         "FAIL: %s (got %f, expected %f)\n",                                       \
-                         msg,                                                                      \
-                         (double)(a),                                                              \
-                         (double)(b));                                                             \
+            std::fprintf(                                                                          \
+                stderr, "FAIL: %s (got %f, expected %f)\n", msg, (double)(a), (double)(b));        \
         else                                                                                       \
             tests_passed++;                                                                        \
     } while (0)
@@ -80,7 +77,8 @@ static void test_listener_follows_bound_camera() {
         camera, rt_vec3_new(3.0, 2.0, 6.0), rt_vec3_new(3.0, 2.0, 5.0), rt_vec3_new(0.0, 1.0, 0.0));
     rt_sound3d_sync_bindings(0.5);
     vel = rt_soundlistener3d_get_velocity(listener);
-    EXPECT_NEAR(rt_vec3_x(vel), 4.0, 0.05, "SoundListener3D computes velocity from bound camera motion");
+    EXPECT_NEAR(
+        rt_vec3_x(vel), 4.0, 0.05, "SoundListener3D computes velocity from bound camera motion");
     EXPECT_NEAR(rt_vec3_z(vel), 0.0, 0.05, "SoundListener3D velocity stays flat on unchanged Z");
 }
 
@@ -108,8 +106,10 @@ static void test_source_follows_bound_node_in_world_space() {
     rt_scene3d_sync_bindings(scene, 0.5);
     pos = rt_soundsource3d_get_position(source);
     vel = rt_soundsource3d_get_velocity(source);
-    EXPECT_NEAR(rt_vec3_x(pos), 3.0, 0.001, "SoundSource3D updates cached world X after parent motion");
-    EXPECT_NEAR(rt_vec3_z(pos), 8.0, 0.001, "SoundSource3D updates cached world Z after parent motion");
+    EXPECT_NEAR(
+        rt_vec3_x(pos), 3.0, 0.001, "SoundSource3D updates cached world X after parent motion");
+    EXPECT_NEAR(
+        rt_vec3_z(pos), 8.0, 0.001, "SoundSource3D updates cached world Z after parent motion");
     EXPECT_NEAR(rt_vec3_x(vel), 4.0, 0.05, "SoundSource3D computes bound-node X velocity");
     EXPECT_NEAR(rt_vec3_z(vel), 2.0, 0.05, "SoundSource3D computes bound-node Z velocity");
 }
@@ -134,7 +134,10 @@ static void test_invalid_audio_handles_are_ignored() {
     rt_scene_node3d_set_position(node, 7.0, 0.0, 0.0);
     rt_sound3d_sync_bindings(0.25);
     pos = rt_soundsource3d_get_position(source);
-    EXPECT_NEAR(rt_vec3_x(pos), 7.0, 0.001, "SoundSource3D rejects bad node bind without clearing old bind");
+    EXPECT_NEAR(rt_vec3_x(pos),
+                7.0,
+                0.001,
+                "SoundSource3D rejects bad node bind without clearing old bind");
 
     rt_camera3d_look_at(
         camera, rt_vec3_new(1.0, 0.0, 4.0), rt_vec3_new(1.0, 0.0, 3.0), rt_vec3_new(0.0, 1.0, 0.0));
@@ -145,20 +148,28 @@ static void test_invalid_audio_handles_are_ignored() {
         camera, rt_vec3_new(3.0, 0.0, 4.0), rt_vec3_new(3.0, 0.0, 3.0), rt_vec3_new(0.0, 1.0, 0.0));
     rt_sound3d_sync_bindings(0.25);
     pos = rt_soundlistener3d_get_position(listener);
-    EXPECT_NEAR(rt_vec3_x(pos), 3.0, 0.001,
+    EXPECT_NEAR(rt_vec3_x(pos),
+                3.0,
+                0.001,
                 "SoundListener3D rejects bad camera bind without clearing old bind");
 
     rt_soundlistener3d_set_position(source, rt_vec3_new(9.0, 0.0, 0.0));
     EXPECT_TRUE(rt_soundlistener3d_get_is_active(source) == 0,
                 "SoundListener3D accessors reject source handles");
     rt_soundsource3d_set_max_distance(source, INFINITY);
-    EXPECT_NEAR(rt_soundsource3d_get_max_distance(source), 0.0, 0.001,
+    EXPECT_NEAR(rt_soundsource3d_get_max_distance(source),
+                0.0,
+                0.001,
                 "SoundSource3D rejects infinite max distance");
     rt_soundsource3d_set_ref_distance(source, 12.0);
     rt_soundsource3d_set_max_distance(source, 4.0);
-    EXPECT_NEAR(rt_soundsource3d_get_ref_distance(source), 12.0, 0.001,
+    EXPECT_NEAR(rt_soundsource3d_get_ref_distance(source),
+                12.0,
+                0.001,
                 "SoundSource3D stores reference distance");
-    EXPECT_NEAR(rt_soundsource3d_get_max_distance(source), 12.0, 0.001,
+    EXPECT_NEAR(rt_soundsource3d_get_max_distance(source),
+                12.0,
+                0.001,
                 "SoundSource3D raises max distance to reference distance");
 }
 
@@ -229,8 +240,7 @@ static void test_source_play_stop_when_audio_is_available() {
     rt_soundsource3d_stop(source);
     EXPECT_TRUE(rt_soundsource3d_get_is_playing(source) == 0,
                 "SoundSource3D.Stop clears active playback state");
-    EXPECT_TRUE(rt_soundsource3d_get_voice_id(source) == 0,
-                "SoundSource3D.Stop clears VoiceId");
+    EXPECT_TRUE(rt_soundsource3d_get_voice_id(source) == 0, "SoundSource3D.Stop clears VoiceId");
 }
 
 int main() {

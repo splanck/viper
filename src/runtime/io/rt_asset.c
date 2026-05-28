@@ -32,14 +32,15 @@
 #include "rt_vpa_reader.h"
 
 #include <errno.h>
-#include <stdio.h>
 #include <stdint.h>
+#include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 
 #ifdef _WIN32
 #include <wchar.h>
 #include <windows.h>
+
 static char *asset_wide_to_utf8_dup(const wchar_t *wide) {
     if (!wide)
         return NULL;
@@ -157,8 +158,8 @@ static struct {
     vpa_archive_t *embedded;                  ///< Embedded .rodata VPA blob, or NULL.
     vpa_archive_t *packs[RT_ASSET_MAX_PACKS]; ///< Mounted pack file archives (LIFO).
     char *pack_paths[RT_ASSET_MAX_PACKS];     ///< Canonical paths for each mounted pack.
-    int pack_count;   ///< Number of currently mounted packs.
-    int initialized;  ///< Non-zero after the first call to rt_asset_init.
+    int pack_count;                           ///< Number of currently mounted packs.
+    int initialized;                          ///< Non-zero after the first call to rt_asset_init.
 } g_asset_mgr;
 
 #ifdef _WIN32
@@ -494,8 +495,7 @@ static void discover_packs(const char *dir) {
     WIN32_FIND_DATAW fd;
     HANDLE hFind = FindFirstFileW(pattern, &fd);
     free(pattern);
-    if (hFind == INVALID_HANDLE_VALUE)
-    {
+    if (hFind == INVALID_HANDLE_VALUE) {
         free(wdir);
         return;
     }

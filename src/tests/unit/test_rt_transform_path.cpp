@@ -46,7 +46,8 @@ extern void *rt_mat4_new(double m0,
                          double m13,
                          double m14,
                          double m15);
-extern void *rt_mat4_ortho(double left, double right, double bottom, double top, double near, double far);
+extern void *rt_mat4_ortho(
+    double left, double right, double bottom, double top, double near, double far);
 extern double rt_mat4_get(void *m, int64_t r, int64_t c);
 extern void *rt_mat4_transform_point(void *m, void *v);
 extern void *rt_mat4_inverse(void *m);
@@ -186,22 +187,8 @@ static void test_mat4_ortho_translation_layout() {
 }
 
 static void test_mat4_inverse_translation_layout() {
-    void *translate = rt_mat4_new(1.0,
-                                  0.0,
-                                  0.0,
-                                  2.0,
-                                  0.0,
-                                  1.0,
-                                  0.0,
-                                  -3.0,
-                                  0.0,
-                                  0.0,
-                                  1.0,
-                                  5.0,
-                                  0.0,
-                                  0.0,
-                                  0.0,
-                                  1.0);
+    void *translate = rt_mat4_new(
+        1.0, 0.0, 0.0, 2.0, 0.0, 1.0, 0.0, -3.0, 0.0, 0.0, 1.0, 5.0, 0.0, 0.0, 0.0, 1.0);
     void *inverse = rt_mat4_inverse(translate);
     void *local = rt_mat4_transform_point(inverse, rt_vec3_new(7.0, 8.0, 9.0));
     EXPECT_NEAR(rt_vec3_x(local), 5.0, 0.01, "Mat4.Inverse subtracts row-major translation X");

@@ -165,17 +165,15 @@ TEST(ZiaProjectIndex, TwoFileDefinitionUsesDirtyImportSource) {
     const fs::path libPath = fx.path("lib.zia");
     const fs::path mainPath = fx.path("main.zia");
 
-    const std::string libSource =
-        "module Lib;\n"
-        "expose func greet() -> Integer {\n"
-        "    return 7;\n"
-        "}\n";
-    const std::string mainSource =
-        "module Main;\n"
-        "bind \"lib.zia\";\n"
-        "func start() -> Integer {\n"
-        "    return greet();\n"
-        "}\n";
+    const std::string libSource = "module Lib;\n"
+                                  "expose func greet() -> Integer {\n"
+                                  "    return 7;\n"
+                                  "}\n";
+    const std::string mainSource = "module Main;\n"
+                                   "bind \"lib.zia\";\n"
+                                   "func start() -> Integer {\n"
+                                   "    return greet();\n"
+                                   "}\n";
 
     fx.update(libPath, libSource);
     fx.update(mainPath, mainSource);
@@ -192,17 +190,16 @@ TEST(ZiaProjectIndex, TwoFileDefinitionUsesDirtyImportSource) {
 TEST(ZiaProjectIndex, ReferencesRespectShadowedLocalsAndIgnoreTrivia) {
     IndexFixture fx("shadowed_references");
     const fs::path mainPath = fx.path("main.zia");
-    const std::string source =
-        "module Main;\n"
-        "func start() {\n"
-        "    var value = 1;\n"
-        "    var outerUse = value;\n"
-        "    var text = \"value\"; // value in trivia\n"
-        "}\n"
-        "func other() {\n"
-        "    var value = 2;\n"
-        "    var innerUse = value;\n"
-        "}\n";
+    const std::string source = "module Main;\n"
+                               "func start() {\n"
+                               "    var value = 1;\n"
+                               "    var outerUse = value;\n"
+                               "    var text = \"value\"; // value in trivia\n"
+                               "}\n"
+                               "func other() {\n"
+                               "    var value = 2;\n"
+                               "    var innerUse = value;\n"
+                               "}\n";
 
     fx.update(mainPath, source);
 
@@ -230,13 +227,12 @@ TEST(ZiaProjectIndex, ReferencesRespectShadowedLocalsAndIgnoreTrivia) {
 TEST(ZiaProjectIndex, RenameReportsVisibleCollision) {
     IndexFixture fx("rename_collision");
     const fs::path mainPath = fx.path("main.zia");
-    const std::string source =
-        "module Main;\n"
-        "func start() {\n"
-        "    var target = 1;\n"
-        "    var taken = 2;\n"
-        "    var useTarget = target;\n"
-        "}\n";
+    const std::string source = "module Main;\n"
+                               "func start() {\n"
+                               "    var target = 1;\n"
+                               "    var taken = 2;\n"
+                               "    var useTarget = target;\n"
+                               "}\n";
 
     fx.update(mainPath, source);
 
@@ -250,18 +246,16 @@ TEST(ZiaProjectIndex, RenameReportsVisibleCollision) {
 TEST(ZiaProjectIndex, DirtyBufferUpdateReplacesIndexedSource) {
     IndexFixture fx("dirty_update");
     const fs::path mainPath = fx.path("main.zia");
-    const std::string firstSource =
-        "module Main;\n"
-        "func start() {\n"
-        "    var oldName = 1;\n"
-        "    var useName = oldName;\n"
-        "}\n";
-    const std::string dirtySource =
-        "module Main;\n"
-        "func start() {\n"
-        "    var newName = 1;\n"
-        "    var useName = newName;\n"
-        "}\n";
+    const std::string firstSource = "module Main;\n"
+                                    "func start() {\n"
+                                    "    var oldName = 1;\n"
+                                    "    var useName = oldName;\n"
+                                    "}\n";
+    const std::string dirtySource = "module Main;\n"
+                                    "func start() {\n"
+                                    "    var newName = 1;\n"
+                                    "    var useName = newName;\n"
+                                    "}\n";
 
     fx.update(mainPath, firstSource);
     fx.update(mainPath, dirtySource);

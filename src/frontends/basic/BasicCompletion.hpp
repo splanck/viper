@@ -144,7 +144,7 @@ class BasicCompletionEngine {
         std::unique_ptr<BasicAnalysisResult> result; ///< Cached parse+sema result (may be null)
     };
 
-    Cache cache_;                                    ///< Last analysis result, reused across keystrokes
+    Cache cache_; ///< Last analysis result, reused across keystrokes
     std::unique_ptr<il::support::SourceManager> sm_; ///< Source manager backing cached analyses
 };
 

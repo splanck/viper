@@ -125,7 +125,8 @@ void rt_animstate_set_event_frame(void *asm_, int64_t frame);
 /// @brief Check and clear the event flag. Returns 1 if event fired since last check.
 int8_t rt_animstate_event_fired(void *asm_);
 
-/// @brief Add a frame-keyed event to a state. Returns 1 on success, 0 if the state is missing or full.
+/// @brief Add a frame-keyed event to a state. Returns 1 on success, 0 if the state is missing or
+/// full.
 int8_t rt_animstate_add_event(void *asm_, int64_t state_id, int64_t frame, int64_t event_id);
 
 /// @brief Remove all frame-keyed events from a state.

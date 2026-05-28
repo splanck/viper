@@ -40,7 +40,8 @@ extern "C" {
 /// @param password_len Password length in bytes.
 /// @param salt         Salt bytes.
 /// @param salt_len     Salt length in bytes.
-/// @param iterations   Number of PBKDF2 iterations (must be positive; public wrappers enforce policy).
+/// @param iterations   Number of PBKDF2 iterations (must be positive; public wrappers enforce
+/// policy).
 /// @param out          Output buffer for the derived key.
 /// @param out_len      Desired key length in bytes (max RT_PBKDF2_MAX_KEY_LEN).
 void rt_keyderive_pbkdf2_sha256_raw(const uint8_t *password,

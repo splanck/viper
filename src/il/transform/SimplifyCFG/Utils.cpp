@@ -183,8 +183,7 @@ bool isTempUsedOutsideBlock(const il::core::Function &function,
 /// @param function Function containing @p block.
 /// @param block Block whose parameters are inspected.
 /// @return True when any parameter id is referenced outside @p block.
-bool blockParamsUsedOutside(const il::core::Function &function,
-                            const il::core::BasicBlock &block) {
+bool blockParamsUsedOutside(const il::core::Function &function, const il::core::BasicBlock &block) {
     std::unordered_set<unsigned> paramIds;
     paramIds.reserve(block.params.size());
     for (const auto &param : block.params)

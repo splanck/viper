@@ -9,52 +9,53 @@
 
 static NSString *ViperShellQuote(NSString *value) {
     NSMutableString *escaped = [value mutableCopy];
-    [escaped replaceOccurrencesOfString:@"'"
-                             withString:@"'\\''"
+    [escaped replaceOccurrencesOfString:@ "'"
+                             withString:@ "'\\''"
                                 options:0
                                   range:NSMakeRange(0, [escaped length])];
-    NSString *quoted = [NSString stringWithFormat:@"'%@'", escaped];
+    NSString *quoted = [NSString stringWithFormat:@ "'%@'", escaped];
     [escaped release];
     return quoted;
 }
 
 static NSString *AppleScriptQuote(NSString *value) {
     NSMutableString *escaped = [value mutableCopy];
-    [escaped replaceOccurrencesOfString:@"\\"
-                             withString:@"\\\\"
+    [escaped replaceOccurrencesOfString:@ "\\"
+                             withString:@ "\\\\"
                                 options:0
                                   range:NSMakeRange(0, [escaped length])];
-    [escaped replaceOccurrencesOfString:@"\""
-                             withString:@"\\\""
+    [escaped replaceOccurrencesOfString:@ "\""
+                             withString:@ "\\\""
                                 options:0
                                   range:NSMakeRange(0, [escaped length])];
-    NSString *quoted = [NSString stringWithFormat:@"\"%@\"", escaped];
+    NSString *quoted = [NSString stringWithFormat:@ "\"%@\"", escaped];
     [escaped release];
     return quoted;
 }
 
 static NSString *ViperModeForPath(NSString *path) {
     NSString *ext = [[path pathExtension] lowercaseString];
-    if ([ext isEqualToString:@"il"])
-        return @"-run";
-    return @"run";
+    if ([ext isEqualToString:@ "il"])
+        return @ "-run";
+    return @ "run";
 }
 
 static void LaunchViperInTerminal(NSString *path) {
     NSString *directory = [path stringByDeletingLastPathComponent];
     NSString *mode = ViperModeForPath(path);
-    NSString *command = [NSString stringWithFormat:
-        @"cd %@ && /usr/local/bin/viper %@ %@; status=$?; printf '\\n[viper exited %%d]\\n' \"$status\"",
-        ViperShellQuote(directory),
-        mode,
-        ViperShellQuote(path)];
-    NSString *script = [NSString stringWithFormat:
-        @"tell application \"Terminal\"\nactivate\ndo script %@\nend tell",
-        AppleScriptQuote(command)];
+    NSString *command = [NSString
+        stringWithFormat:
+            @ "cd %@ && /usr/local/bin/viper %@ %@; status=$?; printf '\\n[viper exited %%d]\\n' \"$status\"",
+            ViperShellQuote(directory),
+            mode,
+            ViperShellQuote(path)];
+    NSString *script = [NSString
+        stringWithFormat:@ "tell application \"Terminal\"\nactivate\ndo script %@\nend tell",
+                         AppleScriptQuote(command)];
 
     NSTask *task = [[[NSTask alloc] init] autorelease];
-    [task setLaunchPath:@"/usr/bin/osascript"];
-    [task setArguments:@[@"-e", script]];
+    [task setLaunchPath:@ "/usr/bin/osascript"];
+    [task setArguments:@[ @ "-e", script ]];
     NSError *error = nil;
     [task launchAndReturnError:&error];
 }

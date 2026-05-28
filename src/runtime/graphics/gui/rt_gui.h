@@ -871,11 +871,7 @@ void rt_outputpane_append(void *pane, rt_string text);
 void rt_outputpane_append_line(void *pane, rt_string text);
 
 /// @brief Append a single explicitly styled segment.
-void rt_outputpane_append_styled(void *pane,
-                                 rt_string text,
-                                 int64_t fg,
-                                 int64_t bg,
-                                 int64_t bold);
+void rt_outputpane_append_styled(void *pane, rt_string text, int64_t fg, int64_t bg, int64_t bold);
 
 /// @brief Clear all retained output.
 void rt_outputpane_clear(void *pane);
@@ -1890,11 +1886,8 @@ void rt_codeeditor_refresh_highlights(void *editor);
 /// @param col Zero-based source column.
 /// @param text Hint text.
 /// @param color ARGB text color.
-void rt_codeeditor_add_inlay_hint(void *editor,
-                                  int64_t line,
-                                  int64_t col,
-                                  rt_string text,
-                                  int64_t color);
+void rt_codeeditor_add_inlay_hint(
+    void *editor, int64_t line, int64_t col, rt_string text, int64_t color);
 
 /// @brief Clear all inlay hints.
 /// @param editor CodeEditor handle.
@@ -3007,36 +3000,49 @@ rt_string rt_codeeditor_get_line(void *editor, int64_t line_index);
 rt_string rt_zia_complete(rt_string source, int64_t line, int64_t col);
 
 /// @brief Run Zia code completion with a source path for relative bind resolution.
-rt_string rt_zia_complete_for_file(rt_string source, rt_string file_path, int64_t line, int64_t col);
+rt_string rt_zia_complete_for_file(rt_string source,
+                                   rt_string file_path,
+                                   int64_t line,
+                                   int64_t col);
 
 /// @brief Run Zia code completion and return structured completion maps.
 void *rt_zia_completion_items(rt_string source, int64_t line, int64_t col);
 
 /// @brief Run path-aware Zia completion and return structured completion maps.
-void *rt_zia_completion_items_for_file(
-    rt_string source, rt_string file_path, int64_t line, int64_t col);
+void *rt_zia_completion_items_for_file(rt_string source,
+                                       rt_string file_path,
+                                       int64_t line,
+                                       int64_t col);
 
 /// @brief Start path-aware completion on a background worker.
-void *rt_zia_completion_begin_items_for_file(
-    rt_string source, rt_string file_path, int64_t line, int64_t col);
+void *rt_zia_completion_begin_items_for_file(rt_string source,
+                                             rt_string file_path,
+                                             int64_t line,
+                                             int64_t col);
 
 /// @brief Return call signature help for the invocation active at the source position.
 rt_string rt_zia_signature_help(rt_string source, int64_t line, int64_t col);
 
 /// @brief Return call signature help with a source path for relative bind resolution.
-rt_string rt_zia_signature_help_for_file(
-    rt_string source, rt_string file_path, int64_t line, int64_t col);
+rt_string rt_zia_signature_help_for_file(rt_string source,
+                                         rt_string file_path,
+                                         int64_t line,
+                                         int64_t col);
 
 /// @brief Return structured signature help for the invocation active at the source position.
 void *rt_zia_signature_info(rt_string source, int64_t line, int64_t col);
 
 /// @brief Return structured signature help with a source path for relative bind resolution.
-void *rt_zia_signature_info_for_file(
-    rt_string source, rt_string file_path, int64_t line, int64_t col);
+void *rt_zia_signature_info_for_file(rt_string source,
+                                     rt_string file_path,
+                                     int64_t line,
+                                     int64_t col);
 
 /// @brief Start path-aware structured signature help on a background worker.
-void *rt_zia_completion_begin_signature_info_for_file(
-    rt_string source, rt_string file_path, int64_t line, int64_t col);
+void *rt_zia_completion_begin_signature_info_for_file(rt_string source,
+                                                      rt_string file_path,
+                                                      int64_t line,
+                                                      int64_t col);
 
 /// @brief Run semantic analysis and return serialized diagnostics for editor tooling.
 rt_string rt_zia_check(rt_string source);
@@ -3106,8 +3112,10 @@ void *rt_zia_hover_info(rt_string source, int64_t line, int64_t col);
 void *rt_zia_hover_info_for_file(rt_string source, rt_string file_path, int64_t line, int64_t col);
 
 /// @brief Start path-aware structured hover info on a background worker.
-void *rt_zia_completion_begin_hover_info_for_file(
-    rt_string source, rt_string file_path, int64_t line, int64_t col);
+void *rt_zia_completion_begin_hover_info_for_file(rt_string source,
+                                                  rt_string file_path,
+                                                  int64_t line,
+                                                  int64_t col);
 
 /// @brief Return serialized document symbols for the supplied source.
 rt_string rt_zia_symbols(rt_string source);

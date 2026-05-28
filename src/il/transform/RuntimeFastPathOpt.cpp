@@ -18,9 +18,9 @@
 #include "il/core/Instr.hpp"
 #include "il/core/Opcode.hpp"
 
+#include <memory>
 #include <string_view>
 #include <unordered_set>
-#include <memory>
 
 using namespace il::core;
 
@@ -93,9 +93,8 @@ PreservedAnalyses RuntimeFastPathOpt::run(Function &function, AnalysisManager & 
 }
 
 void registerRuntimeFastPathOptPass(PassRegistry &registry) {
-    registry.registerFunctionPass("runtime-fastpath",
-                                  []() { return std::make_unique<RuntimeFastPathOpt>(); },
-                                  true);
+    registry.registerFunctionPass(
+        "runtime-fastpath", []() { return std::make_unique<RuntimeFastPathOpt>(); }, true);
 }
 
 } // namespace il::transform

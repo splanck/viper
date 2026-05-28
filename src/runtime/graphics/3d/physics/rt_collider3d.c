@@ -128,7 +128,8 @@ static double collider3d_extent_or_unit(double value) {
     return value > 1e-12 ? value : 1.0;
 }
 
-/// @brief Return the absolute value of a finite scale, clamped to 1.0 for near-zero or non-finite values.
+/// @brief Return the absolute value of a finite scale, clamped to 1.0 for near-zero or non-finite
+/// values.
 static double collider3d_scale_or_unit(double value) {
     if (!isfinite(value))
         return 1.0;
@@ -136,7 +137,8 @@ static double collider3d_scale_or_unit(double value) {
     return value > 1e-12 ? value : 1.0;
 }
 
-/// @brief Return `value` if finite, otherwise return `fallback`; used to sanitize transform fields read from Zia objects.
+/// @brief Return `value` if finite, otherwise return `fallback`; used to sanitize transform fields
+/// read from Zia objects.
 static double collider3d_transform_component_or(double value, double fallback) {
     return isfinite(value) ? value : fallback;
 }
@@ -152,7 +154,8 @@ static void quat_identity(double *q) {
     q[3] = 1.0;
 }
 
-/// @brief Normalize a quaternion in-place; replaces with identity if length is near-zero or non-finite.
+/// @brief Normalize a quaternion in-place; replaces with identity if length is near-zero or
+/// non-finite.
 static void quat_normalize_local(double *q) {
     if (!q)
         return;
@@ -228,9 +231,8 @@ static void transform_point_raw(const double *position,
                                 const double *scale,
                                 const double *local_point,
                                 double *out) {
-    double scaled[3] = {local_point[0] * scale[0],
-                        local_point[1] * scale[1],
-                        local_point[2] * scale[2]};
+    double scaled[3] = {
+        local_point[0] * scale[0], local_point[1] * scale[1], local_point[2] * scale[2]};
     double rotated[3];
     quat_rotate_vec3(rotation, scaled, rotated);
     out[0] = position[0] + rotated[0];
@@ -313,7 +315,8 @@ static void collider3d_finalizer(void *obj) {
 ///          AABB; each shape's constructor fills them in via
 ///          `recompute_bounds`.
 static rt_collider3d *collider3d_alloc(int32_t type) {
-    rt_collider3d *collider = (rt_collider3d *)rt_obj_new_i64(RT_G3D_COLLIDER3D_CLASS_ID, (int64_t)sizeof(rt_collider3d));
+    rt_collider3d *collider =
+        (rt_collider3d *)rt_obj_new_i64(RT_G3D_COLLIDER3D_CLASS_ID, (int64_t)sizeof(rt_collider3d));
     if (!collider) {
         rt_trap("Collider3D.New: allocation failed");
         return NULL;
@@ -355,7 +358,8 @@ static void collider3d_set_from_transform(rt_collider3d_child *dst, void *transf
     }
 }
 
-/// @brief Recursively check whether `needle` appears anywhere in the compound collider tree rooted at `root`.
+/// @brief Recursively check whether `needle` appears anywhere in the compound collider tree rooted
+/// at `root`.
 static int collider3d_contains_child(rt_collider3d *root, rt_collider3d *needle) {
     if (!root || !needle || root->type != RT_COLLIDER3D_TYPE_COMPOUND)
         return 0;
@@ -388,97 +392,99 @@ static void collider3d_recompute_bounds(rt_collider3d *collider) {
         return;
 
     switch (collider->type) {
-    case RT_COLLIDER3D_TYPE_BOX:
-        collider->bounds_min[0] = -collider->half_extents[0];
-        collider->bounds_min[1] = -collider->half_extents[1];
-        collider->bounds_min[2] = -collider->half_extents[2];
-        collider->bounds_max[0] = collider->half_extents[0];
-        collider->bounds_max[1] = collider->half_extents[1];
-        collider->bounds_max[2] = collider->half_extents[2];
-        break;
-    case RT_COLLIDER3D_TYPE_SPHERE:
-        collider->bounds_min[0] = collider->bounds_min[1] = collider->bounds_min[2] =
-            -collider->radius;
-        collider->bounds_max[0] = collider->bounds_max[1] = collider->bounds_max[2] =
-            collider->radius;
-        break;
-    case RT_COLLIDER3D_TYPE_CAPSULE:
-        collider->bounds_min[0] = -collider->radius;
-        collider->bounds_min[1] = -collider->height * 0.5;
-        collider->bounds_min[2] = -collider->radius;
-        collider->bounds_max[0] = collider->radius;
-        collider->bounds_max[1] = collider->height * 0.5;
-        collider->bounds_max[2] = collider->radius;
-        break;
-    case RT_COLLIDER3D_TYPE_CONVEX_HULL:
-    case RT_COLLIDER3D_TYPE_MESH:
-        if (collider->mesh) {
-            rt_mesh3d_refresh_bounds(collider->mesh);
-            collider->bounds_min[0] = collider->mesh->aabb_min[0];
-            collider->bounds_min[1] = collider->mesh->aabb_min[1];
-            collider->bounds_min[2] = collider->mesh->aabb_min[2];
-            collider->bounds_max[0] = collider->mesh->aabb_max[0];
-            collider->bounds_max[1] = collider->mesh->aabb_max[1];
-            collider->bounds_max[2] = collider->mesh->aabb_max[2];
-        } else {
-            vec3_set(collider->bounds_min, 0.0, 0.0, 0.0);
-            vec3_set(collider->bounds_max, 0.0, 0.0, 0.0);
+        case RT_COLLIDER3D_TYPE_BOX:
+            collider->bounds_min[0] = -collider->half_extents[0];
+            collider->bounds_min[1] = -collider->half_extents[1];
+            collider->bounds_min[2] = -collider->half_extents[2];
+            collider->bounds_max[0] = collider->half_extents[0];
+            collider->bounds_max[1] = collider->half_extents[1];
+            collider->bounds_max[2] = collider->half_extents[2];
+            break;
+        case RT_COLLIDER3D_TYPE_SPHERE:
+            collider->bounds_min[0] = collider->bounds_min[1] = collider->bounds_min[2] =
+                -collider->radius;
+            collider->bounds_max[0] = collider->bounds_max[1] = collider->bounds_max[2] =
+                collider->radius;
+            break;
+        case RT_COLLIDER3D_TYPE_CAPSULE:
+            collider->bounds_min[0] = -collider->radius;
+            collider->bounds_min[1] = -collider->height * 0.5;
+            collider->bounds_min[2] = -collider->radius;
+            collider->bounds_max[0] = collider->radius;
+            collider->bounds_max[1] = collider->height * 0.5;
+            collider->bounds_max[2] = collider->radius;
+            break;
+        case RT_COLLIDER3D_TYPE_CONVEX_HULL:
+        case RT_COLLIDER3D_TYPE_MESH:
+            if (collider->mesh) {
+                rt_mesh3d_refresh_bounds(collider->mesh);
+                collider->bounds_min[0] = collider->mesh->aabb_min[0];
+                collider->bounds_min[1] = collider->mesh->aabb_min[1];
+                collider->bounds_min[2] = collider->mesh->aabb_min[2];
+                collider->bounds_max[0] = collider->mesh->aabb_max[0];
+                collider->bounds_max[1] = collider->mesh->aabb_max[1];
+                collider->bounds_max[2] = collider->mesh->aabb_max[2];
+            } else {
+                vec3_set(collider->bounds_min, 0.0, 0.0, 0.0);
+                vec3_set(collider->bounds_max, 0.0, 0.0, 0.0);
+            }
+            break;
+        case RT_COLLIDER3D_TYPE_HEIGHTFIELD: {
+            double half_width = 0.0;
+            double half_depth = 0.0;
+            if (collider->heightfield_width > 1)
+                half_width =
+                    ((double)(collider->heightfield_width - 1) * collider->heightfield_scale[0]) *
+                    0.5;
+            if (collider->heightfield_depth > 1)
+                half_depth =
+                    ((double)(collider->heightfield_depth - 1) * collider->heightfield_scale[2]) *
+                    0.5;
+            collider->bounds_min[0] = -half_width;
+            collider->bounds_min[1] = collider->heightfield_min * collider->heightfield_scale[1];
+            collider->bounds_min[2] = -half_depth;
+            collider->bounds_max[0] = half_width;
+            collider->bounds_max[1] = collider->heightfield_max * collider->heightfield_scale[1];
+            collider->bounds_max[2] = half_depth;
+            break;
         }
-        break;
-    case RT_COLLIDER3D_TYPE_HEIGHTFIELD: {
-        double half_width = 0.0;
-        double half_depth = 0.0;
-        if (collider->heightfield_width > 1)
-            half_width = ((double)(collider->heightfield_width - 1) * collider->heightfield_scale[0]) *
-                         0.5;
-        if (collider->heightfield_depth > 1)
-            half_depth = ((double)(collider->heightfield_depth - 1) * collider->heightfield_scale[2]) *
-                         0.5;
-        collider->bounds_min[0] = -half_width;
-        collider->bounds_min[1] = collider->heightfield_min * collider->heightfield_scale[1];
-        collider->bounds_min[2] = -half_depth;
-        collider->bounds_max[0] = half_width;
-        collider->bounds_max[1] = collider->heightfield_max * collider->heightfield_scale[1];
-        collider->bounds_max[2] = half_depth;
-        break;
-    }
-    case RT_COLLIDER3D_TYPE_COMPOUND:
-        if (collider->child_count == 0) {
+        case RT_COLLIDER3D_TYPE_COMPOUND:
+            if (collider->child_count == 0) {
+                vec3_set(collider->bounds_min, 0.0, 0.0, 0.0);
+                vec3_set(collider->bounds_max, 0.0, 0.0, 0.0);
+                break;
+            }
+            collider->bounds_min[0] = collider->bounds_min[1] = collider->bounds_min[2] = DBL_MAX;
+            collider->bounds_max[0] = collider->bounds_max[1] = collider->bounds_max[2] = -DBL_MAX;
+            for (int32_t i = 0; i < collider->child_count; ++i) {
+                double child_min[3];
+                double child_max[3];
+                if (!collider->children[i])
+                    continue;
+                rt_collider3d_get_local_bounds_raw(collider->children[i], child_min, child_max);
+                transform_bounds_raw(child_min,
+                                     child_max,
+                                     collider->child_transforms[i].position,
+                                     collider->child_transforms[i].rotation,
+                                     collider->child_transforms[i].scale,
+                                     child_min,
+                                     child_max);
+                for (int axis = 0; axis < 3; ++axis) {
+                    if (child_min[axis] < collider->bounds_min[axis])
+                        collider->bounds_min[axis] = child_min[axis];
+                    if (child_max[axis] > collider->bounds_max[axis])
+                        collider->bounds_max[axis] = child_max[axis];
+                }
+            }
+            if (collider->bounds_min[0] == DBL_MAX) {
+                vec3_set(collider->bounds_min, 0.0, 0.0, 0.0);
+                vec3_set(collider->bounds_max, 0.0, 0.0, 0.0);
+            }
+            break;
+        default:
             vec3_set(collider->bounds_min, 0.0, 0.0, 0.0);
             vec3_set(collider->bounds_max, 0.0, 0.0, 0.0);
             break;
-        }
-        collider->bounds_min[0] = collider->bounds_min[1] = collider->bounds_min[2] = DBL_MAX;
-        collider->bounds_max[0] = collider->bounds_max[1] = collider->bounds_max[2] = -DBL_MAX;
-        for (int32_t i = 0; i < collider->child_count; ++i) {
-            double child_min[3];
-            double child_max[3];
-            if (!collider->children[i])
-                continue;
-            rt_collider3d_get_local_bounds_raw(collider->children[i], child_min, child_max);
-            transform_bounds_raw(child_min,
-                                 child_max,
-                                 collider->child_transforms[i].position,
-                                 collider->child_transforms[i].rotation,
-                                 collider->child_transforms[i].scale,
-                                 child_min,
-                                 child_max);
-            for (int axis = 0; axis < 3; ++axis) {
-                if (child_min[axis] < collider->bounds_min[axis])
-                    collider->bounds_min[axis] = child_min[axis];
-                if (child_max[axis] > collider->bounds_max[axis])
-                    collider->bounds_max[axis] = child_max[axis];
-            }
-        }
-        if (collider->bounds_min[0] == DBL_MAX) {
-            vec3_set(collider->bounds_min, 0.0, 0.0, 0.0);
-            vec3_set(collider->bounds_max, 0.0, 0.0, 0.0);
-        }
-        break;
-    default:
-        vec3_set(collider->bounds_min, 0.0, 0.0, 0.0);
-        vec3_set(collider->bounds_max, 0.0, 0.0, 0.0);
-        break;
     }
 }
 
@@ -562,8 +568,10 @@ void *rt_collider3d_new_mesh(void *mesh) {
 /// precision (R = high byte, G = low byte) into [0, 1] then scaled by `scale_y`. `scale_x` and
 /// `scale_z` are the per-cell spacing in world units. Static-only. Traps on invalid heightmap
 /// (< 2×2 or null buffer).
-void *rt_collider3d_new_heightfield(
-    void *heightmap, double scale_x, double scale_y, double scale_z) {
+void *rt_collider3d_new_heightfield(void *heightmap,
+                                    double scale_x,
+                                    double scale_y,
+                                    double scale_z) {
     const uint32_t *raw;
     int64_t width;
     int64_t height;
@@ -596,8 +604,7 @@ void *rt_collider3d_new_heightfield(
     collider->heightfield_scale[0] = collider3d_scale_or_unit(scale_x);
     collider->heightfield_scale[1] = collider3d_scale_or_unit(scale_y);
     collider->heightfield_scale[2] = collider3d_scale_or_unit(scale_z);
-    collider->heightfield_heights =
-        (float *)calloc((size_t)(width * height), sizeof(float));
+    collider->heightfield_heights = (float *)calloc((size_t)(width * height), sizeof(float));
     if (!collider->heightfield_heights) {
         if (rt_obj_release_check0(collider))
             rt_obj_free(collider);
@@ -639,7 +646,8 @@ void *rt_collider3d_new_compound(void) {
 
 /// @brief Append a child collider to a compound, transformed by `local_transform` (a Transform3D).
 /// Children are retained for the compound's lifetime. Recomputes the compound's AABB to enclose
-/// the new child. Traps if the parent isn't compound, child is null, or self-reference is attempted.
+/// the new child. Traps if the parent isn't compound, child is null, or self-reference is
+/// attempted.
 void rt_collider3d_add_child(void *compound_obj, void *child_obj, void *local_transform) {
     rt_collider3d *compound = collider3d_checked(compound_obj);
     rt_collider3d *child = collider3d_checked(child_obj);
@@ -689,7 +697,8 @@ void rt_collider3d_add_child(void *compound_obj, void *child_obj, void *local_tr
             return;
         }
         if (compound->child_count > 0) {
-            memcpy(new_children, compound->children, (size_t)compound->child_count * sizeof(void *));
+            memcpy(
+                new_children, compound->children, (size_t)compound->child_count * sizeof(void *));
             memcpy(new_transforms,
                    compound->child_transforms,
                    (size_t)compound->child_count * sizeof(rt_collider3d_child));
@@ -702,7 +711,8 @@ void rt_collider3d_add_child(void *compound_obj, void *child_obj, void *local_tr
     }
     rt_obj_retain_maybe(child_obj);
     compound->children[compound->child_count] = child;
-    collider3d_set_from_transform(&compound->child_transforms[compound->child_count], local_transform);
+    collider3d_set_from_transform(&compound->child_transforms[compound->child_count],
+                                  local_transform);
     compound->child_count++;
     collider3d_recompute_bounds(compound);
 }
@@ -853,11 +863,8 @@ void *rt_collider3d_get_child_raw(void *collider, int64_t index) {
 
 /// @brief Internal: copy the i-th compound child's local TRS into the output buffers
 /// (position_out[3], rotation_out[4] quaternion, scale_out[3]). Outputs default to identity.
-void rt_collider3d_get_child_transform_raw(void *compound,
-                                           int64_t index,
-                                           double *position_out,
-                                           double *rotation_out,
-                                           double *scale_out) {
+void rt_collider3d_get_child_transform_raw(
+    void *compound, int64_t index, double *position_out, double *rotation_out, double *scale_out) {
     rt_collider3d *shape = collider3d_checked(compound);
     if (position_out)
         vec3_set(position_out, 0.0, 0.0, 0.0);
@@ -884,8 +891,9 @@ void rt_collider3d_get_child_transform_raw(void *compound,
 ///   sampler that wraps this helper never produces a discontinuity at the
 ///   heightfield boundary — it just extends the rim height outward. Null
 ///   colliders or uninitialized heightfields return 0.0 as a safe fallback.
-static double collider3d_heightfield_height_at(
-    const rt_collider3d *collider, int32_t x, int32_t z) {
+static double collider3d_heightfield_height_at(const rt_collider3d *collider,
+                                               int32_t x,
+                                               int32_t z) {
     if (!collider || !collider->heightfield_heights || collider->heightfield_width <= 0 ||
         collider->heightfield_depth <= 0)
         return 0.0;
@@ -904,11 +912,8 @@ static double collider3d_heightfield_height_at(
 /// the world-Y height (scaled) and surface normal (central difference) to the out-pointers.
 /// Returns 1 if the sample was inside the field, 0 otherwise (out-pointers default to safe
 /// fallback values: y=0, normal=(0,1,0)).
-int8_t rt_collider3d_sample_heightfield_raw(void *collider,
-                                            double local_x,
-                                            double local_z,
-                                            double *height_out,
-                                            double *normal_out) {
+int8_t rt_collider3d_sample_heightfield_raw(
+    void *collider, double local_x, double local_z, double *height_out, double *normal_out) {
     rt_collider3d *shape = collider3d_checked(collider);
     double half_width;
     double half_depth;
@@ -948,8 +953,7 @@ int8_t rt_collider3d_sample_heightfield_raw(void *collider,
 
     grid_x = (local_x + half_width) / shape->heightfield_scale[0];
     grid_z = (local_z + half_depth) / shape->heightfield_scale[2];
-    if (grid_x < 0.0 || grid_z < 0.0 ||
-        grid_x > (double)(shape->heightfield_width - 1) ||
+    if (grid_x < 0.0 || grid_z < 0.0 || grid_x > (double)(shape->heightfield_width - 1) ||
         grid_z > (double)(shape->heightfield_depth - 1))
         return 0;
 

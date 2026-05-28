@@ -4,8 +4,8 @@
 
 #include "vgfx3d_backend_opengl_shared.h"
 
-#include <math.h>
 #include <limits.h>
+#include <math.h>
 #include <stdio.h>
 #include <string.h>
 
@@ -52,31 +52,49 @@ static void test_frame_history_preserves_scene_state_across_overlay_passes(void)
     }
 
     vgfx3d_opengl_update_frame_history(&history, scene_vp0, inv0, cam0, 0);
-    EXPECT_TRUE(history.scene_history_valid == 1, "Main-pass history becomes valid after the first scene");
-    EXPECT_NEAR(history.scene_prev_vp[0], scene_vp0[0], 1e-6f,
+    EXPECT_TRUE(history.scene_history_valid == 1,
+                "Main-pass history becomes valid after the first scene");
+    EXPECT_NEAR(history.scene_prev_vp[0],
+                scene_vp0[0],
+                1e-6f,
                 "First scene seeds prevViewProjection from the current scene");
-    EXPECT_NEAR(history.draw_prev_vp[0], scene_vp0[0], 1e-6f,
+    EXPECT_NEAR(history.draw_prev_vp[0],
+                scene_vp0[0],
+                1e-6f,
                 "First scene uses the current VP as draw-time history");
 
     vgfx3d_opengl_update_frame_history(&history, scene_vp1, inv1, cam1, 0);
-    EXPECT_NEAR(history.scene_prev_vp[0], scene_vp0[0], 1e-6f,
+    EXPECT_NEAR(history.scene_prev_vp[0],
+                scene_vp0[0],
+                1e-6f,
                 "Second scene preserves the previous scene VP");
-    EXPECT_NEAR(history.scene_vp[0], scene_vp1[0], 1e-6f, "Second scene updates the current scene VP");
-    EXPECT_NEAR(history.draw_prev_vp[0], scene_vp0[0], 1e-6f,
+    EXPECT_NEAR(
+        history.scene_vp[0], scene_vp1[0], 1e-6f, "Second scene updates the current scene VP");
+    EXPECT_NEAR(history.draw_prev_vp[0],
+                scene_vp0[0],
+                1e-6f,
                 "Second scene draws against the prior scene VP");
-    EXPECT_NEAR(history.scene_inv_vp[0], inv1[0], 1e-6f,
-                "Second scene updates the scene inverse VP");
-    EXPECT_NEAR(history.scene_cam_pos[0], cam1[0], 1e-6f,
-                "Second scene updates the scene camera position");
+    EXPECT_NEAR(
+        history.scene_inv_vp[0], inv1[0], 1e-6f, "Second scene updates the scene inverse VP");
+    EXPECT_NEAR(
+        history.scene_cam_pos[0], cam1[0], 1e-6f, "Second scene updates the scene camera position");
 
     vgfx3d_opengl_update_frame_history(&history, overlay_vp, overlay_inv, cam0, 1);
-    EXPECT_NEAR(history.scene_vp[0], scene_vp1[0], 1e-6f,
+    EXPECT_NEAR(history.scene_vp[0],
+                scene_vp1[0],
+                1e-6f,
                 "Overlay passes preserve the main-scene VP for later postfx");
-    EXPECT_NEAR(history.scene_prev_vp[0], scene_vp0[0], 1e-6f,
+    EXPECT_NEAR(history.scene_prev_vp[0],
+                scene_vp0[0],
+                1e-6f,
                 "Overlay passes preserve the previous main-scene VP");
-    EXPECT_NEAR(history.scene_inv_vp[0], inv1[0], 1e-6f,
+    EXPECT_NEAR(history.scene_inv_vp[0],
+                inv1[0],
+                1e-6f,
                 "Overlay passes preserve the main-scene inverse VP");
-    EXPECT_NEAR(history.draw_prev_vp[0], overlay_vp[0], 1e-6f,
+    EXPECT_NEAR(history.draw_prev_vp[0],
+                overlay_vp[0],
+                1e-6f,
                 "Overlay passes use their own VP for draw-time history");
 }
 
@@ -104,19 +122,16 @@ static void test_target_blend_motion_and_readback_helpers(void) {
     cmd.alpha_mode = RT_MATERIAL3D_ALPHA_MODE_BLEND;
     EXPECT_TRUE(vgfx3d_opengl_choose_blend_mode(&cmd) == VGFX3D_OPENGL_BLEND_ALPHA,
                 "Blend materials use alpha blending");
-    EXPECT_TRUE(vgfx3d_opengl_choose_motion_attachment_mode(
-                    VGFX3D_OPENGL_TARGET_SCENE, &cmd) ==
+    EXPECT_TRUE(vgfx3d_opengl_choose_motion_attachment_mode(VGFX3D_OPENGL_TARGET_SCENE, &cmd) ==
                     VGFX3D_OPENGL_MOTION_ATTACHMENTS_COLOR_ONLY,
                 "Alpha-blended scene draws disable the motion attachment");
     cmd.alpha_mode = RT_MATERIAL3D_ALPHA_MODE_MASK;
     EXPECT_TRUE(vgfx3d_opengl_choose_blend_mode(&cmd) == VGFX3D_OPENGL_BLEND_OPAQUE,
                 "Mask materials keep opaque render-target writes");
-    EXPECT_TRUE(vgfx3d_opengl_choose_motion_attachment_mode(
-                    VGFX3D_OPENGL_TARGET_SCENE, &cmd) ==
+    EXPECT_TRUE(vgfx3d_opengl_choose_motion_attachment_mode(VGFX3D_OPENGL_TARGET_SCENE, &cmd) ==
                     VGFX3D_OPENGL_MOTION_ATTACHMENTS_COLOR_AND_MOTION,
                 "Opaque scene draws keep the motion attachment enabled");
-    EXPECT_TRUE(vgfx3d_opengl_choose_motion_attachment_mode(
-                    VGFX3D_OPENGL_TARGET_SWAPCHAIN, &cmd) ==
+    EXPECT_TRUE(vgfx3d_opengl_choose_motion_attachment_mode(VGFX3D_OPENGL_TARGET_SWAPCHAIN, &cmd) ==
                     VGFX3D_OPENGL_MOTION_ATTACHMENTS_COLOR_ONLY,
                 "Swapchain draws never target a scene-motion attachment");
 
@@ -137,8 +152,7 @@ static void test_target_blend_motion_and_readback_helpers(void) {
 
     EXPECT_TRUE(vgfx3d_opengl_choose_readback_kind(0) == VGFX3D_OPENGL_READBACK_BACKBUFFER,
                 "Direct rendering reads back the backbuffer");
-    EXPECT_TRUE(vgfx3d_opengl_choose_readback_kind(1) ==
-                    VGFX3D_OPENGL_READBACK_POSTFX_COMPOSITE,
+    EXPECT_TRUE(vgfx3d_opengl_choose_readback_kind(1) == VGFX3D_OPENGL_READBACK_POSTFX_COMPOSITE,
                 "GPU postfx readback uses the composited postfx path");
     EXPECT_TRUE(vgfx3d_opengl_sanitize_shadow_index(1, 2) == 1,
                 "Shadow index helper preserves completed shadow slots");
@@ -155,28 +169,24 @@ static void test_capacity_and_cache_helpers(void) {
     size_t bytes = 0;
     size_t capacity = 0;
 
-    EXPECT_TRUE(vgfx3d_opengl_compute_mip_count(1, 1) == 1,
-                "1x1 textures use a single mip level");
+    EXPECT_TRUE(vgfx3d_opengl_compute_mip_count(1, 1) == 1, "1x1 textures use a single mip level");
     EXPECT_TRUE(vgfx3d_opengl_compute_mip_count(4, 2) == 3,
                 "Mip-count helper follows the full downsample chain");
     EXPECT_TRUE(vgfx3d_opengl_next_capacity(0, 65, 64) == 128,
                 "Capacity helper grows beyond the old fixed cache size");
     EXPECT_TRUE(vgfx3d_opengl_next_capacity(16, 8, 16) == 16,
                 "Capacity helper keeps existing storage when it is already large enough");
-    EXPECT_TRUE(vgfx3d_opengl_compute_buffer_capacity(0, 65, 64, &capacity) == 1 &&
-                    capacity == 128,
+    EXPECT_TRUE(vgfx3d_opengl_compute_buffer_capacity(0, 65, 64, &capacity) == 1 && capacity == 128,
                 "Size_t capacity helper grows without narrowing through int32_t");
-    EXPECT_TRUE(vgfx3d_opengl_compute_buffer_capacity(SIZE_MAX / 2 + 1, SIZE_MAX, 64,
-                                                      &capacity) == 1 &&
+    EXPECT_TRUE(vgfx3d_opengl_compute_buffer_capacity(SIZE_MAX / 2 + 1, SIZE_MAX, 64, &capacity) ==
+                        1 &&
                     capacity == SIZE_MAX,
                 "Size_t capacity helper reaches exact oversized needs without doubling overflow");
-    EXPECT_TRUE(vgfx3d_opengl_validate_rgba8_destination(3, 2, 12, &bytes) == 1 &&
-                    bytes == 24,
+    EXPECT_TRUE(vgfx3d_opengl_validate_rgba8_destination(3, 2, 12, &bytes) == 1 && bytes == 24,
                 "RGBA8 destination validation accepts a tight destination");
     EXPECT_TRUE(vgfx3d_opengl_validate_rgba8_destination(3, 2, 8, &bytes) == 0,
                 "RGBA8 destination validation rejects short strides");
-    EXPECT_TRUE(vgfx3d_opengl_clamp_morph_shape_count(1024u, 64) ==
-                    VGFX3D_OPENGL_MAX_MORPH_SHAPES,
+    EXPECT_TRUE(vgfx3d_opengl_clamp_morph_shape_count(1024u, 64) == VGFX3D_OPENGL_MAX_MORPH_SHAPES,
                 "Morph count helper clamps to the shader-visible shape limit");
     EXPECT_TRUE(vgfx3d_opengl_clamp_morph_shape_count((uint32_t)INT_MAX, 1) == 0,
                 "Morph count helper rejects vertex counts that would overflow int indexing");
@@ -207,8 +217,7 @@ static void test_capacity_and_cache_helpers(void) {
                 "Morph cache entries reject stale revisions");
     cmd.morph_revision = 4;
     cmd.morph_normal_deltas = (const float *)&tests_run;
-    EXPECT_TRUE(vgfx3d_opengl_should_reuse_morph_cache(
-                    cmd.morph_key, 4, 3, 128, 0, &cmd) == 0,
+    EXPECT_TRUE(vgfx3d_opengl_should_reuse_morph_cache(cmd.morph_key, 4, 3, 128, 0, &cmd) == 0,
                 "Morph cache entries include normal-delta presence in the cache key");
     cmd.morph_normal_deltas = (const float *)&tests_run;
     cmd.morph_shape_count = VGFX3D_OPENGL_MAX_MORPH_SHAPES + 4;

@@ -119,7 +119,8 @@ constexpr std::array<BasicDiagInfo, 22> kDiagTable = {
       "User code may not declare symbols under the reserved root 'Viper'."}}};
 }
 
-/// @brief Look up the catalog record for a diagnostic enumerator (positional index into kDiagTable).
+/// @brief Look up the catalog record for a diagnostic enumerator (positional index into
+/// kDiagTable).
 const BasicDiagInfo &getInfo(BasicDiag diag) {
     const auto index = static_cast<std::size_t>(diag);
     return kDiagTable.at(index);

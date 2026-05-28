@@ -136,7 +136,8 @@ static void *resolve_path(void *root, const char *path) {
 
 // --- Helper: wildcard query ---
 
-/// @brief Walk a wildcard `*` step: collect every child of `current`, then continue with `remaining`.
+/// @brief Walk a wildcard `*` step: collect every child of `current`, then continue with
+/// `remaining`.
 /// @details Two cases:
 ///          1. **Sequence** (`rt_seq_len > 0`) → for each element,
 ///             either push it into results (if no remaining path) or

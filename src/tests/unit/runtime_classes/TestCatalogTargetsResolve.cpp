@@ -75,8 +75,7 @@ Type::Kind mapTokenToKind(const std::string &tok) {
     if (lower == "str" || lower == "string")
         return Type::Kind::Str;
     if (lower == "obj" || lower == "ptr" || lower.rfind("obj<", 0) == 0 ||
-        lower.rfind("seq<", 0) == 0 || lower.rfind("list<", 0) == 0 ||
-        lower.rfind("map<", 0) == 0)
+        lower.rfind("seq<", 0) == 0 || lower.rfind("list<", 0) == 0 || lower.rfind("map<", 0) == 0)
         return Type::Kind::Ptr;
     if (lower == "void")
         return Type::Kind::Void;
@@ -119,8 +118,8 @@ TEST(RuntimeClassCatalogTargets, AllTargetsResolveAndMatchArity) {
                     const size_t gotParams = d->signature.paramTypes.size();
                     if (gotParams != 0 && gotParams != 1) {
                         std::ostringstream os;
-                        os << "getter arity mismatch for '" << p.getter << "': got "
-                           << gotParams << ", want 0 for static or 1 for instance";
+                        os << "getter arity mismatch for '" << p.getter << "': got " << gotParams
+                           << ", want 0 for static or 1 for instance";
                         errors.push_back(os.str());
                     }
                     if (!kindCompatible(d->signature.retType.kind, propKind)) {
@@ -141,8 +140,8 @@ TEST(RuntimeClassCatalogTargets, AllTargetsResolveAndMatchArity) {
                     const size_t gotParams = d->signature.paramTypes.size();
                     if (gotParams != 1 && gotParams != 2) {
                         std::ostringstream os;
-                        os << "setter arity mismatch for '" << p.setter << "': got "
-                           << gotParams << ", want 1 for static or 2 for instance";
+                        os << "setter arity mismatch for '" << p.setter << "': got " << gotParams
+                           << ", want 1 for static or 2 for instance";
                         errors.push_back(os.str());
                     } else {
                         const Type::Kind got = d->signature.paramTypes[gotParams - 1].kind;
@@ -175,9 +174,9 @@ TEST(RuntimeClassCatalogTargets, AllTargetsResolveAndMatchArity) {
             const size_t gotParams = d->signature.paramTypes.size();
             if (gotParams != expectedInstanceParams && gotParams != expectedStaticParams) {
                 std::ostringstream os;
-                os << "method arity mismatch for '" << m.target << "': got "
-                   << gotParams << ", want " << expectedInstanceParams
-                   << " for instance or " << expectedStaticParams << " for static/factory";
+                os << "method arity mismatch for '" << m.target << "': got " << gotParams
+                   << ", want " << expectedInstanceParams << " for instance or "
+                   << expectedStaticParams << " for static/factory";
                 errors.push_back(os.str());
             } else {
                 const bool hasReceiver = gotParams == expectedInstanceParams;
@@ -236,8 +235,8 @@ TEST(RuntimeClassCatalogTargets, TypedReturnMetadataMatchesRawTarget) {
                 methodSig.elementTypeName != rawSig->elementTypeName ||
                 methodSig.objectTypeName != rawSig->objectTypeName) {
                 std::ostringstream os;
-                os << "typed return mismatch for '" << method.target << "' in " << cls.qname
-                   << "." << method.name;
+                os << "typed return mismatch for '" << method.target << "' in " << cls.qname << "."
+                   << method.name;
                 errors.push_back(os.str());
             }
         }

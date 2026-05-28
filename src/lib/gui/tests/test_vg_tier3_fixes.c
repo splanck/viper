@@ -619,8 +619,7 @@ TEST(dialog_show_centered_uses_nested_screen_bounds) {
     vg_dialog_show_centered(dialog, target);
 
     float expected_x = middle->x + target->x + target->width * 0.5f - dialog->base.width * 0.5f;
-    float expected_y =
-        middle->y + target->y + target->height * 0.5f - dialog->base.height * 0.5f;
+    float expected_y = middle->y + target->y + target->height * 0.5f - dialog->base.height * 0.5f;
     ASSERT_TRUE(dialog->base.x > expected_x - 0.1f && dialog->base.x < expected_x + 0.1f);
     ASSERT_TRUE(dialog->base.y > expected_y - 0.1f && dialog->base.y < expected_y + 0.1f);
 

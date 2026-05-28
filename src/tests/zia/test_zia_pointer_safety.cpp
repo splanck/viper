@@ -161,7 +161,8 @@ func start() {
 )");
 
     EXPECT_TRUE(!variableResult.succeeded());
-    EXPECT_TRUE(hasDiagnostic(variableResult, "Function reference operator '&' requires a function name"));
+    EXPECT_TRUE(
+        hasDiagnostic(variableResult, "Function reference operator '&' requires a function name"));
 
     auto expressionResult = compileSource(R"(
 module Test;
@@ -175,7 +176,8 @@ func start() {
 )");
 
     EXPECT_TRUE(!expressionResult.succeeded());
-    EXPECT_TRUE(hasDiagnostic(expressionResult, "Function reference operator '&' requires a function name"));
+    EXPECT_TRUE(hasDiagnostic(expressionResult,
+                              "Function reference operator '&' requires a function name"));
 }
 
 TEST(ZiaPointerSafety, SafePointerAlternativesCompile) {

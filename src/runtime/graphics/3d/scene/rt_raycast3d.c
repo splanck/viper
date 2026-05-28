@@ -56,7 +56,8 @@ static double clampd(double v, double lo, double hi) {
     return v;
 }
 
-/// @brief Return non-zero if all three components of the raw double[3] vector are finite (not NaN/inf).
+/// @brief Return non-zero if all three components of the raw double[3] vector are finite (not
+/// NaN/inf).
 static int vec3_is_finite_raw(const double *v) {
     return v && isfinite(v[0]) && isfinite(v[1]) && isfinite(v[2]);
 }
@@ -139,9 +140,7 @@ static void segment3d_closest_point_raw(const double *a,
         closest[2] = a[2];
         return;
     }
-    double t =
-        ((point[0] - a[0]) * dx + (point[1] - a[1]) * dy + (point[2] - a[2]) * dz) /
-        len_sq;
+    double t = ((point[0] - a[0]) * dx + (point[1] - a[1]) * dy + (point[2] - a[2]) * dz) / len_sq;
     t = clampd(t, 0.0, 1.0);
     closest[0] = a[0] + t * dx;
     closest[1] = a[1] + t * dy;
@@ -475,8 +474,7 @@ double rt_ray3d_intersect_aabb(void *origin, void *dir, void *aabb_min, void *aa
 /// @return Distance t to nearest hit, or -1.0 on miss.
 double rt_ray3d_intersect_sphere(void *origin, void *dir, void *center, double radius) {
     double o[3], d[3], cpt[3];
-    if (!vec3_read_finite(origin, o) || !vec3_read_finite(dir, d) ||
-        !vec3_read_finite(center, cpt))
+    if (!vec3_read_finite(origin, o) || !vec3_read_finite(dir, d) || !vec3_read_finite(center, cpt))
         return -1.0;
     if (!vec3_normalize_raw(d))
         return -1.0;
@@ -706,7 +704,8 @@ void *rt_ray3d_intersect_mesh(void *origin, void *dir, void *mesh_obj, void *tra
             return NULL;
 
         {
-            rt_rayhit3d *hit = (rt_rayhit3d *)rt_obj_new_i64(RT_G3D_RAYHIT3D_CLASS_ID, (int64_t)sizeof(rt_rayhit3d));
+            rt_rayhit3d *hit = (rt_rayhit3d *)rt_obj_new_i64(RT_G3D_RAYHIT3D_CLASS_ID,
+                                                             (int64_t)sizeof(rt_rayhit3d));
             double best_normal[3];
             if (!hit)
                 return NULL;
@@ -795,8 +794,8 @@ int8_t rt_aabb3d_overlaps(void *min_a, void *max_a, void *min_b, void *max_b) {
         return 0;
     aabb3d_canonicalize_raw(amin, amax);
     aabb3d_canonicalize_raw(bmin, bmax);
-    return (amin[0] <= bmax[0] && amax[0] >= bmin[0] && amin[1] <= bmax[1] &&
-            amax[1] >= bmin[1] && amin[2] <= bmax[2] && amax[2] >= bmin[2])
+    return (amin[0] <= bmax[0] && amax[0] >= bmin[0] && amin[1] <= bmax[1] && amax[1] >= bmin[1] &&
+            amin[2] <= bmax[2] && amax[2] >= bmin[2])
                ? 1
                : 0;
 }
@@ -813,8 +812,8 @@ void *rt_aabb3d_penetration(void *min_a, void *max_a, void *min_b, void *max_b) 
     aabb3d_canonicalize_raw(bmin, bmax);
 
     /* No overlap → zero penetration */
-    if (amin[0] > bmax[0] || amax[0] < bmin[0] || amin[1] > bmax[1] ||
-        amax[1] < bmin[1] || amin[2] > bmax[2] || amax[2] < bmin[2])
+    if (amin[0] > bmax[0] || amax[0] < bmin[0] || amin[1] > bmax[1] || amax[1] < bmin[1] ||
+        amin[2] > bmax[2] || amax[2] < bmin[2])
         return rt_vec3_new(0, 0, 0);
 
     /* Compute overlap on each axis */
@@ -996,8 +995,7 @@ int8_t rt_aabb3d_sphere_overlaps(void *aabb_min, void *aabb_max, void *center, d
 void *rt_segment3d_closest_point(void *seg_a, void *seg_b, void *point) {
     double a[3], b[3], p[3];
     double closest[3];
-    if (!vec3_read_finite(seg_a, a) || !vec3_read_finite(seg_b, b) ||
-        !vec3_read_finite(point, p))
+    if (!vec3_read_finite(seg_a, a) || !vec3_read_finite(seg_b, b) || !vec3_read_finite(point, p))
         return rt_vec3_new(0, 0, 0);
     segment3d_closest_point_raw(a, b, p, closest);
     return rt_vec3_new(closest[0], closest[1], closest[2]);

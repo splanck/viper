@@ -33,7 +33,7 @@ endif ()
 
 execute_process(
         COMMAND "${VIPER_EXE}" build "${_implicit_dir}" -o "${TEST_WORK_DIR}/implicit.il"
-                --time-compile --quiet-warnings
+        --time-compile --quiet-warnings
         RESULT_VARIABLE _build_result
         OUTPUT_VARIABLE _build_out
         ERROR_VARIABLE _build_err)
@@ -49,7 +49,7 @@ endif ()
 
 execute_process(
         COMMAND "${VIPER_EXE}" build "${_implicit_dir}" -o "${TEST_WORK_DIR}/implicit_stats.il"
-                --pass-stats --quiet-warnings
+        --pass-stats --quiet-warnings
         RESULT_VARIABLE _stats_result
         OUTPUT_VARIABLE _stats_out
         ERROR_VARIABLE _stats_err)

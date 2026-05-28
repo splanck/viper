@@ -37,8 +37,7 @@ struct BoundsFact {
 };
 
 [[nodiscard]] bool isNumericArrayLen(std::string_view callee) {
-    return callee == "rt_arr_i32_len" || callee == "rt_arr_i64_len" ||
-           callee == "rt_arr_f64_len";
+    return callee == "rt_arr_i32_len" || callee == "rt_arr_i64_len" || callee == "rt_arr_f64_len";
 }
 
 [[nodiscard]] std::string_view fastArrayHelper(std::string_view callee) {
@@ -183,7 +182,9 @@ struct BoundsFact {
     return BoundsFact{upperArray, upperIndex};
 }
 
-[[nodiscard]] bool hasFact(const std::vector<BoundsFact> &facts, const Value &array, const Value &index) {
+[[nodiscard]] bool hasFact(const std::vector<BoundsFact> &facts,
+                           const Value &array,
+                           const Value &index) {
     for (const auto &fact : facts)
         if (valueEquals(fact.array, array) && valueEquals(fact.index, index))
             return true;
@@ -281,9 +282,8 @@ PreservedAnalyses ArrayFastPathOpt::run(Function &function, AnalysisManager & /*
 }
 
 void registerArrayFastPathOptPass(PassRegistry &registry) {
-    registry.registerFunctionPass("array-fastpath",
-                                  []() { return std::make_unique<ArrayFastPathOpt>(); },
-                                  true);
+    registry.registerFunctionPass(
+        "array-fastpath", []() { return std::make_unique<ArrayFastPathOpt>(); }, true);
 }
 
 } // namespace il::transform

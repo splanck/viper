@@ -275,8 +275,8 @@ void Lowerer::lowerTryStmt(TryStmt *stmt) {
         blockMgr_.currentBlock()->terminated = true;
     };
 
-    auto bindCatchPayload =
-        [&](const TryStmt::CatchClause &catchClause, size_t paramBlockIdx) -> CatchErrorBinding {
+    auto bindCatchPayload = [&](const TryStmt::CatchClause &catchClause,
+                                size_t paramBlockIdx) -> CatchErrorBinding {
         const auto &bp = currentFunc_->blocks[paramBlockIdx].params;
         if (bp.empty())
             return {};
@@ -354,8 +354,7 @@ void Lowerer::lowerTryStmt(TryStmt *stmt) {
             Value tokVal = Value::temp(bp[1].id);
 
             const auto &catchClause = stmt->catches[i];
-            const bool catchAll =
-                catchClause.typeName.empty() || catchClause.typeName == "Error";
+            const bool catchAll = catchClause.typeName.empty() || catchClause.typeName == "Error";
             if (catchAll) {
                 emitBrWithArgs(catchBodyBlocks[i], {errVal, tokVal});
                 continue;
@@ -365,23 +364,18 @@ void Lowerer::lowerTryStmt(TryStmt *stmt) {
             Value errKindI32 = emitUnary(Opcode::ErrGetKind, Type(Type::Kind::I32), errVal);
             Value errKind = widenIntegralToI64(errKindI32, Type(Type::Kind::I32));
             Value expectedVal = Value::constInt(static_cast<int64_t>(expectedKind));
-            Value match =
-                emitBinary(Opcode::ICmpEq, Type(Type::Kind::I1), errKind, expectedVal);
+            Value match = emitBinary(Opcode::ICmpEq, Type(Type::Kind::I1), errKind, expectedVal);
             size_t missBlock =
                 (i + 1 < stmt->catches.size()) ? catchCheckBlocks[i + 1] : rethrowIdx;
-            emitCBrWithArgs(match,
-                            catchBodyBlocks[i],
-                            {errVal, tokVal},
-                            missBlock,
-                            {errVal, tokVal});
+            emitCBrWithArgs(
+                match, catchBodyBlocks[i], {errVal, tokVal}, missBlock, {errVal, tokVal});
         }
 
         // --- Rethrow block: run finally for mismatches, then re-raise the original error. ---
         setBlock(rethrowIdx);
         emitEhEntry();
         const auto &rethrowBp = currentFunc_->blocks[rethrowIdx].params;
-        CatchErrorBinding captured =
-            captureErrorFields(Value::temp(rethrowBp[0].id), "rethrow");
+        CatchErrorBinding captured = captureErrorFields(Value::temp(rethrowBp[0].id), "rethrow");
 
         if (hasFinally && stmt->finallyBody && !isTerminated())
             lowerStmt(stmt->finallyBody.get());
@@ -431,8 +425,7 @@ void Lowerer::lowerTryStmt(TryStmt *stmt) {
         setBlock(handlerIdx);
         emitEhEntry();
         const auto &bp = currentFunc_->blocks[handlerIdx].params;
-        CatchErrorBinding captured =
-            captureErrorFields(Value::temp(bp[0].id), "finally_rethrow");
+        CatchErrorBinding captured = captureErrorFields(Value::temp(bp[0].id), "finally_rethrow");
         if (hasFinally && stmt->finallyBody && !isTerminated())
             lowerStmt(stmt->finallyBody.get());
         if (!isTerminated())

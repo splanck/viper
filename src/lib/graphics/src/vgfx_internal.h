@@ -658,8 +658,7 @@ static inline void vgfx_internal_init_resize_event(vgfx_event_t *event,
     event->time_ms = time_ms;
     event->data.resize.width = framebuffer_width;
     event->data.resize.height = framebuffer_height;
-    event->data.resize.logical_width =
-        vgfx_internal_scale_down_i32(framebuffer_width, coord_scale);
+    event->data.resize.logical_width = vgfx_internal_scale_down_i32(framebuffer_width, coord_scale);
     event->data.resize.logical_height =
         vgfx_internal_scale_down_i32(framebuffer_height, coord_scale);
 }

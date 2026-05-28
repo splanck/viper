@@ -33,9 +33,9 @@
 
 #ifdef VIPER_ENABLE_GRAPHICS
 
+#include "rt_physics3d.h"
 #include "rt_canvas3d_internal.h"
 #include "rt_collider3d.h"
-#include "rt_physics3d.h"
 #include "rt_graphics3d_ids.h"
 #include "rt_joints3d.h"
 #include "rt_raycast3d.h"
@@ -249,9 +249,7 @@ static int world3d_reserve_body_capacity(rt_world3d *w, int32_t needed) {
 ///          four thin wrappers below exist only to pick the right `(array, capacity)`
 ///          field pair; keeping one body avoids the five-copy-paste bug-multiplication
 ///          this code used to have.
-static int world3d_reserve_contact_array(rt_contact3d **array,
-                                         int32_t *capacity,
-                                         int32_t needed) {
+static int world3d_reserve_contact_array(rt_contact3d **array, int32_t *capacity, int32_t needed) {
     if (!array || !capacity || needed <= *capacity)
         return 1;
     int32_t new_capacity = ph3d_next_capacity(*capacity, needed, PH3D_INITIAL_CONTACTS);
@@ -455,12 +453,14 @@ static rt_physics_hit3d_obj *physics_hit3d_checked(void *obj) {
 
 /// @brief Validate @p obj as a PhysicsHitList3D handle (NULL on mismatch).
 static rt_physics_hit_list3d_obj *physics_hit_list3d_checked(void *obj) {
-    return (rt_physics_hit_list3d_obj *)rt_g3d_checked_or_null(obj, RT_G3D_PHYSICSHITLIST3D_CLASS_ID);
+    return (rt_physics_hit_list3d_obj *)rt_g3d_checked_or_null(obj,
+                                                               RT_G3D_PHYSICSHITLIST3D_CLASS_ID);
 }
 
 /// @brief Validate @p obj as a CollisionEvent3D handle (NULL on mismatch).
 static rt_collision_event3d_obj *collision_event3d_checked(void *obj) {
-    return (rt_collision_event3d_obj *)rt_g3d_checked_or_null(obj, RT_G3D_COLLISIONEVENT3D_CLASS_ID);
+    return (rt_collision_event3d_obj *)rt_g3d_checked_or_null(obj,
+                                                              RT_G3D_COLLISIONEVENT3D_CLASS_ID);
 }
 
 /// @brief Validate @p obj as a ContactPoint3D handle (NULL on mismatch).
@@ -955,34 +955,37 @@ static void body3d_update_shape_cache_from_collider(rt_body3d *body) {
 
     type = rt_collider3d_get_type(body->collider);
     switch (type) {
-    case RT_COLLIDER3D_TYPE_BOX:
-        body->shape = PH3D_SHAPE_AABB;
-        rt_collider3d_get_box_half_extents_raw(body->collider, body->half_extents);
-        break;
-    case RT_COLLIDER3D_TYPE_SPHERE:
-        body->shape = PH3D_SHAPE_SPHERE;
-        body->radius = rt_collider3d_get_radius_raw(body->collider);
-        vec3_set(body->half_extents, body->radius, body->radius, body->radius);
-        break;
-    case RT_COLLIDER3D_TYPE_CAPSULE:
-        body->shape = PH3D_SHAPE_CAPSULE;
-        body->radius = rt_collider3d_get_radius_raw(body->collider);
-        body->height = rt_collider3d_get_height_raw(body->collider);
-        vec3_set(body->half_extents, body->radius, fmax(body->height * 0.5, body->radius), body->radius);
-        break;
-    default:
-        rt_collider3d_get_local_bounds_raw(body->collider, local_min, local_max);
-        body->shape = PH3D_SHAPE_AABB;
-        body->half_extents[0] = fabs(local_max[0] - local_min[0]) * 0.5;
-        body->half_extents[1] = fabs(local_max[1] - local_min[1]) * 0.5;
-        body->half_extents[2] = fabs(local_max[2] - local_min[2]) * 0.5;
-        body->radius = body->half_extents[0];
-        if (body->half_extents[1] > body->radius)
-            body->radius = body->half_extents[1];
-        if (body->half_extents[2] > body->radius)
-            body->radius = body->half_extents[2];
-        body->height = body->half_extents[1] * 2.0;
-        break;
+        case RT_COLLIDER3D_TYPE_BOX:
+            body->shape = PH3D_SHAPE_AABB;
+            rt_collider3d_get_box_half_extents_raw(body->collider, body->half_extents);
+            break;
+        case RT_COLLIDER3D_TYPE_SPHERE:
+            body->shape = PH3D_SHAPE_SPHERE;
+            body->radius = rt_collider3d_get_radius_raw(body->collider);
+            vec3_set(body->half_extents, body->radius, body->radius, body->radius);
+            break;
+        case RT_COLLIDER3D_TYPE_CAPSULE:
+            body->shape = PH3D_SHAPE_CAPSULE;
+            body->radius = rt_collider3d_get_radius_raw(body->collider);
+            body->height = rt_collider3d_get_height_raw(body->collider);
+            vec3_set(body->half_extents,
+                     body->radius,
+                     fmax(body->height * 0.5, body->radius),
+                     body->radius);
+            break;
+        default:
+            rt_collider3d_get_local_bounds_raw(body->collider, local_min, local_max);
+            body->shape = PH3D_SHAPE_AABB;
+            body->half_extents[0] = fabs(local_max[0] - local_min[0]) * 0.5;
+            body->half_extents[1] = fabs(local_max[1] - local_min[1]) * 0.5;
+            body->half_extents[2] = fabs(local_max[2] - local_min[2]) * 0.5;
+            body->radius = body->half_extents[0];
+            if (body->half_extents[1] > body->radius)
+                body->radius = body->half_extents[1];
+            if (body->half_extents[2] > body->radius)
+                body->radius = body->half_extents[2];
+            body->height = body->half_extents[1] * 2.0;
+            break;
     }
 }
 
@@ -1339,24 +1342,22 @@ static double point_aabb_distance_sq(const double *point, const double *mn, cons
 /// @param mn          AABB minimum corner (world space, double[3]).
 /// @param mx          AABB maximum corner (world space, double[3]).
 /// @param closest_axis  Output: best-candidate point on the segment (world space, double[3]).
-static void closest_point_segment_to_aabb(const double *a,
-                                          const double *c,
-                                          const double *mn,
-                                          const double *mx,
-                                          double *closest_axis) {
+static void closest_point_segment_to_aabb(
+    const double *a, const double *c, const double *mn, const double *mx, double *closest_axis) {
     double d[3];
     double best_t = 0.0;
     double best_dist = 1e300;
     vec3_sub(c, a, d);
 
-    #define PH3D_EVAL_SEG_AABB_T(t_expr) do { \
-        double eval_t = clampd((t_expr), 0.0, 1.0); \
-        double p_eval[3] = {a[0] + d[0] * eval_t, a[1] + d[1] * eval_t, a[2] + d[2] * eval_t}; \
-        double dist_eval = point_aabb_distance_sq(p_eval, mn, mx); \
-        if (dist_eval < best_dist) { \
-            best_dist = dist_eval; \
-            best_t = eval_t; \
-        } \
+#define PH3D_EVAL_SEG_AABB_T(t_expr)                                                               \
+    do {                                                                                           \
+        double eval_t = clampd((t_expr), 0.0, 1.0);                                                \
+        double p_eval[3] = {a[0] + d[0] * eval_t, a[1] + d[1] * eval_t, a[2] + d[2] * eval_t};     \
+        double dist_eval = point_aabb_distance_sq(p_eval, mn, mx);                                 \
+        if (dist_eval < best_dist) {                                                               \
+            best_dist = dist_eval;                                                                 \
+            best_t = eval_t;                                                                       \
+        }                                                                                          \
     } while (0)
 
     PH3D_EVAL_SEG_AABB_T(0.0);
@@ -1395,7 +1396,7 @@ static void closest_point_segment_to_aabb(const double *a,
         PH3D_EVAL_SEG_AABB_T((lo + hi) * 0.5);
     }
 
-    #undef PH3D_EVAL_SEG_AABB_T
+#undef PH3D_EVAL_SEG_AABB_T
 
     closest_axis[0] = a[0] + d[0] * best_t;
     closest_axis[1] = a[1] + d[1] * best_t;
@@ -1458,7 +1459,10 @@ static int query_mask_matches_body(const rt_body3d *body, int64_t mask) {
 /// SAT on the axis-aligned axes. Returns true if neither axis fully
 /// separates the two boxes. This is the broad-phase primitive — the
 /// narrow-phase shape tests run only on pairs that pass this check.
-static int aabb_overlap_raw(const double *amn, const double *amx, const double *bmn, const double *bmx) {
+static int aabb_overlap_raw(const double *amn,
+                            const double *amx,
+                            const double *bmn,
+                            const double *bmx) {
     return !(amn[0] > bmx[0] || amx[0] < bmn[0] || amn[1] > bmx[1] || amx[1] < bmn[1] ||
              amn[2] > bmx[2] || amx[2] < bmn[2]);
 }
@@ -1498,8 +1502,8 @@ static void contact_snapshot_copy(rt_contact3d *dst, const rt_contact3d *src) {
 static int contact_pair_equals(const rt_contact3d *a, const rt_contact3d *b) {
     if (!a || !b)
         return 0;
-    return a->body_a == b->body_a && a->body_b == b->body_b &&
-           a->collider_a == b->collider_a && a->collider_b == b->collider_b;
+    return a->body_a == b->body_a && a->body_b == b->body_b && a->collider_a == b->collider_a &&
+           a->collider_b == b->collider_b;
 }
 
 typedef struct contact_pair_hash_entry {
@@ -1622,69 +1626,68 @@ static void collider_support_point(void *collider,
     type = rt_collider3d_get_type(collider);
 
     switch (type) {
-    case RT_COLLIDER3D_TYPE_SPHERE: {
-        double radius = rt_collider3d_get_radius_raw(collider);
-        double max_scale = pose->scale[0];
-        if (pose->scale[1] > max_scale)
-            max_scale = pose->scale[1];
-        if (pose->scale[2] > max_scale)
-            max_scale = pose->scale[2];
-        out_point[0] = pose->position[0] + dir[0] * radius * max_scale;
-        out_point[1] = pose->position[1] + dir[1] * radius * max_scale;
-        out_point[2] = pose->position[2] + dir[2] * radius * max_scale;
-        return;
-    }
-    case RT_COLLIDER3D_TYPE_CAPSULE: {
-        double radius = rt_collider3d_get_radius_raw(collider);
-        double half_axis = fmax(rt_collider3d_get_height_raw(collider) * 0.5 - radius, 0.0);
-        double sx = fabs(pose->scale[0]);
-        double sy = fabs(pose->scale[1]);
-        double sz = fabs(pose->scale[2]);
-        double max_radial_scale = sx > sz ? sx : sz;
-        double axis_dir[3];
-        double local_y[3] = {0.0, 1.0, 0.0};
-        quat_rotate_vec3(pose->rotation, local_y, axis_dir);
-        if (vec3_normalize_in_place(axis_dir) <= 1e-12)
-            vec3_set(axis_dir, 0.0, 1.0, 0.0);
-        double side = vec3_dot(dir, axis_dir) >= 0.0 ? 1.0 : -1.0;
-        out_point[0] =
-            pose->position[0] + axis_dir[0] * half_axis * sy * side +
-            dir[0] * radius * max_radial_scale;
-        out_point[1] =
-            pose->position[1] + axis_dir[1] * half_axis * sy * side +
-            dir[1] * radius * max_radial_scale;
-        out_point[2] =
-            pose->position[2] + axis_dir[2] * half_axis * sy * side +
-            dir[2] * radius * max_radial_scale;
-        return;
-    }
-    case RT_COLLIDER3D_TYPE_COMPOUND: {
-        int64_t child_count = rt_collider3d_get_child_count_raw(collider);
-        double best_dot = -1e300;
-        for (int64_t i = 0; i < child_count; ++i) {
-            void *child = rt_collider3d_get_child_raw(collider, i);
-            double child_pos[3], child_rot[4], child_scale[3];
-            rt_collider_pose child_pose;
-            double candidate[3];
-            rt_collider3d_get_child_transform_raw(collider, i, child_pos, child_rot, child_scale);
-            collider_pose_compose(pose, child_pos, child_rot, child_scale, &child_pose);
-            collider_support_point(child, &child_pose, dir, candidate);
-            {
-                double d = vec3_dot(candidate, dir);
-                if (d > best_dot) {
-                    best_dot = d;
-                    vec3_copy(out_point, candidate);
+        case RT_COLLIDER3D_TYPE_SPHERE: {
+            double radius = rt_collider3d_get_radius_raw(collider);
+            double max_scale = pose->scale[0];
+            if (pose->scale[1] > max_scale)
+                max_scale = pose->scale[1];
+            if (pose->scale[2] > max_scale)
+                max_scale = pose->scale[2];
+            out_point[0] = pose->position[0] + dir[0] * radius * max_scale;
+            out_point[1] = pose->position[1] + dir[1] * radius * max_scale;
+            out_point[2] = pose->position[2] + dir[2] * radius * max_scale;
+            return;
+        }
+        case RT_COLLIDER3D_TYPE_CAPSULE: {
+            double radius = rt_collider3d_get_radius_raw(collider);
+            double half_axis = fmax(rt_collider3d_get_height_raw(collider) * 0.5 - radius, 0.0);
+            double sx = fabs(pose->scale[0]);
+            double sy = fabs(pose->scale[1]);
+            double sz = fabs(pose->scale[2]);
+            double max_radial_scale = sx > sz ? sx : sz;
+            double axis_dir[3];
+            double local_y[3] = {0.0, 1.0, 0.0};
+            quat_rotate_vec3(pose->rotation, local_y, axis_dir);
+            if (vec3_normalize_in_place(axis_dir) <= 1e-12)
+                vec3_set(axis_dir, 0.0, 1.0, 0.0);
+            double side = vec3_dot(dir, axis_dir) >= 0.0 ? 1.0 : -1.0;
+            out_point[0] = pose->position[0] + axis_dir[0] * half_axis * sy * side +
+                           dir[0] * radius * max_radial_scale;
+            out_point[1] = pose->position[1] + axis_dir[1] * half_axis * sy * side +
+                           dir[1] * radius * max_radial_scale;
+            out_point[2] = pose->position[2] + axis_dir[2] * half_axis * sy * side +
+                           dir[2] * radius * max_radial_scale;
+            return;
+        }
+        case RT_COLLIDER3D_TYPE_COMPOUND: {
+            int64_t child_count = rt_collider3d_get_child_count_raw(collider);
+            double best_dot = -1e300;
+            for (int64_t i = 0; i < child_count; ++i) {
+                void *child = rt_collider3d_get_child_raw(collider, i);
+                double child_pos[3], child_rot[4], child_scale[3];
+                rt_collider_pose child_pose;
+                double candidate[3];
+                rt_collider3d_get_child_transform_raw(
+                    collider, i, child_pos, child_rot, child_scale);
+                collider_pose_compose(pose, child_pos, child_rot, child_scale, &child_pose);
+                collider_support_point(child, &child_pose, dir, candidate);
+                {
+                    double d = vec3_dot(candidate, dir);
+                    if (d > best_dot) {
+                        best_dot = d;
+                        vec3_copy(out_point, candidate);
+                    }
                 }
             }
+            return;
         }
-        return;
-    }
-    default:
-        rt_collider3d_compute_world_aabb_raw(collider, pose->position, pose->rotation, pose->scale, mn, mx);
-        out_point[0] = dir[0] >= 0.0 ? mx[0] : mn[0];
-        out_point[1] = dir[1] >= 0.0 ? mx[1] : mn[1];
-        out_point[2] = dir[2] >= 0.0 ? mx[2] : mn[2];
-        return;
+        default:
+            rt_collider3d_compute_world_aabb_raw(
+                collider, pose->position, pose->rotation, pose->scale, mn, mx);
+            out_point[0] = dir[0] >= 0.0 ? mx[0] : mn[0];
+            out_point[1] = dir[1] >= 0.0 ? mx[1] : mn[1];
+            out_point[2] = dir[2] >= 0.0 ? mx[2] : mn[2];
+            return;
     }
 }
 
@@ -1730,10 +1733,9 @@ static void compute_contact_point_from_leafs(void *a_leaf,
     if (abs_n[2] > abs_n[axis])
         axis = 2;
 
-    if (isfinite(amn[0]) && isfinite(amn[1]) && isfinite(amn[2]) &&
-        isfinite(amx[0]) && isfinite(amx[1]) && isfinite(amx[2]) &&
-        isfinite(bmn[0]) && isfinite(bmn[1]) && isfinite(bmn[2]) &&
-        isfinite(bmx[0]) && isfinite(bmx[1]) && isfinite(bmx[2])) {
+    if (isfinite(amn[0]) && isfinite(amn[1]) && isfinite(amn[2]) && isfinite(amx[0]) &&
+        isfinite(amx[1]) && isfinite(amx[2]) && isfinite(bmn[0]) && isfinite(bmn[1]) &&
+        isfinite(bmn[2]) && isfinite(bmx[0]) && isfinite(bmx[1]) && isfinite(bmx[2])) {
         for (int i = 0; i < 3; ++i) {
             double lo = fmax(amn[i], bmn[i]);
             double hi = fmin(amx[i], bmx[i]);
@@ -1892,9 +1894,7 @@ static int collider_type_is_simple(int64_t type) {
 /// a transient body so we can reuse the body-level narrow-phase tests.
 /// Applies the pose's scale to extents/radius/height. Returns 0 for
 /// non-simple shapes (the caller falls back to AABB-vs-AABB).
-static int build_simple_proxy(const rt_collider_pose *pose,
-                              void *collider,
-                              rt_body3d *out) {
+static int build_simple_proxy(const rt_collider_pose *pose, void *collider, rt_body3d *out) {
     double hx[3];
     double sx = fabs(pose->scale[0]);
     double sy = fabs(pose->scale[1]);
@@ -1912,35 +1912,35 @@ static int build_simple_proxy(const rt_collider_pose *pose,
     out->orientation[3] = pose->rotation[3];
     type = rt_collider3d_get_type(collider);
     switch (type) {
-    case RT_COLLIDER3D_TYPE_BOX:
-        out->shape = PH3D_SHAPE_AABB;
-        rt_collider3d_get_box_half_extents_raw(collider, hx);
-        out->half_extents[0] = hx[0] * sx;
-        out->half_extents[1] = hx[1] * sy;
-        out->half_extents[2] = hx[2] * sz;
-        return 1;
-    case RT_COLLIDER3D_TYPE_SPHERE:
-        out->shape = PH3D_SHAPE_SPHERE;
-        out->radius = rt_collider3d_get_radius_raw(collider);
-        if (sy > sx)
-            sx = sy;
-        if (sz > sx)
-            sx = sz;
-        out->radius *= sx;
-        return 1;
-    case RT_COLLIDER3D_TYPE_CAPSULE:
-        out->shape = PH3D_SHAPE_CAPSULE;
-        {
-            double raw_radius = rt_collider3d_get_radius_raw(collider);
-            double raw_height = rt_collider3d_get_height_raw(collider);
-            double scaled_radius = raw_radius * (sx > sz ? sx : sz);
-            double scaled_cylinder = fmax(raw_height - 2.0 * raw_radius, 0.0) * sy;
-            out->radius = scaled_radius;
-            out->height = scaled_cylinder + 2.0 * scaled_radius;
-        }
-        return 1;
-    default:
-        return 0;
+        case RT_COLLIDER3D_TYPE_BOX:
+            out->shape = PH3D_SHAPE_AABB;
+            rt_collider3d_get_box_half_extents_raw(collider, hx);
+            out->half_extents[0] = hx[0] * sx;
+            out->half_extents[1] = hx[1] * sy;
+            out->half_extents[2] = hx[2] * sz;
+            return 1;
+        case RT_COLLIDER3D_TYPE_SPHERE:
+            out->shape = PH3D_SHAPE_SPHERE;
+            out->radius = rt_collider3d_get_radius_raw(collider);
+            if (sy > sx)
+                sx = sy;
+            if (sz > sx)
+                sx = sz;
+            out->radius *= sx;
+            return 1;
+        case RT_COLLIDER3D_TYPE_CAPSULE:
+            out->shape = PH3D_SHAPE_CAPSULE;
+            {
+                double raw_radius = rt_collider3d_get_radius_raw(collider);
+                double raw_height = rt_collider3d_get_height_raw(collider);
+                double scaled_radius = raw_radius * (sx > sz ? sx : sz);
+                double scaled_cylinder = fmax(raw_height - 2.0 * raw_radius, 0.0) * sy;
+                out->radius = scaled_radius;
+                out->height = scaled_cylinder + 2.0 * scaled_radius;
+            }
+            return 1;
+        default:
+            return 0;
     }
 }
 
@@ -2053,12 +2053,11 @@ static int test_box_box_obb(void *a_collider,
             vec3_cross(A[i], B[j], axis);
             if (vec3_normalize_in_place(axis) <= 1e-8)
                 continue;
-            ra = a_he[(i + 1) % 3] * AbsR[(i + 2) % 3][j] +
-                 a_he[(i + 2) % 3] * AbsR[(i + 1) % 3][j];
-            rb = b_he[(j + 1) % 3] * AbsR[i][(j + 2) % 3] +
-                 b_he[(j + 2) % 3] * AbsR[i][(j + 1) % 3];
-            dist = fabs(t[(i + 2) % 3] * R[(i + 1) % 3][j] -
-                        t[(i + 1) % 3] * R[(i + 2) % 3][j]);
+            ra =
+                a_he[(i + 1) % 3] * AbsR[(i + 2) % 3][j] + a_he[(i + 2) % 3] * AbsR[(i + 1) % 3][j];
+            rb =
+                b_he[(j + 1) % 3] * AbsR[i][(j + 2) % 3] + b_he[(j + 2) % 3] * AbsR[i][(j + 1) % 3];
+            dist = fabs(t[(i + 2) % 3] * R[(i + 1) % 3][j] - t[(i + 1) % 3] * R[(i + 2) % 3][j]);
             penetration = ra + rb - dist;
             if (penetration < 0.0)
                 return 0;
@@ -2148,9 +2147,7 @@ static int test_box_capsule_pose(void *box_collider,
         double cur_normal[3];
         double cur_depth;
         make_temp_sphere(&sphere,
-                         (double[3]){a[0] + axis[0] * t,
-                                     a[1] + axis[1] * t,
-                                     a[2] + axis[2] * t},
+                         (double[3]){a[0] + axis[0] * t, a[1] + axis[1] * t, a[2] + axis[2] * t},
                          capsule->radius);
         if (test_box_sphere_pose(box_collider, box_pose, &sphere, cur_normal, &cur_depth) &&
             (!hit || cur_depth > best_depth)) {
@@ -2346,11 +2343,8 @@ static int test_bounds_overlap(const double *amn,
 /// Implements the standard Voronoi-region algorithm from Real-Time
 /// Collision Detection (Ericson §5.1.5): tests whether `p` falls into
 /// the vertex, edge, or interior region and clamps accordingly.
-static void closest_point_on_triangle(const double *p,
-                                      const double *a,
-                                      const double *b,
-                                      const double *c,
-                                      double *closest) {
+static void closest_point_on_triangle(
+    const double *p, const double *a, const double *b, const double *c, double *closest) {
     double ab[3] = {b[0] - a[0], b[1] - a[1], b[2] - a[2]};
     double ac[3] = {c[0] - a[0], c[1] - a[1], c[2] - a[2]};
     double ap[3] = {p[0] - a[0], p[1] - a[1], p[2] - a[2]};
@@ -2414,7 +2408,8 @@ static void closest_point_on_triangle(const double *p,
     }
 
     {
-        double denom = 1.0 / ((vec3_dot(ab, ab) * vec3_dot(ac, ac)) - vec3_dot(ab, ac) * vec3_dot(ab, ac));
+        double denom =
+            1.0 / ((vec3_dot(ab, ab) * vec3_dot(ac, ac)) - vec3_dot(ab, ac) * vec3_dot(ab, ac));
         double dot_ap_ab = vec3_dot(ap, ab);
         double dot_ap_ac = vec3_dot(ap, ac);
         double dot_ab_ab = vec3_dot(ab, ab);
@@ -2930,8 +2925,7 @@ static int test_collider_pair(const rt_body3d *a_body,
             void *child = rt_collider3d_get_child_raw(a_collider, i);
             double child_pos[3], child_rot[4], child_scale[3];
             rt_collider_pose child_pose;
-            rt_collider3d_get_child_transform_raw(
-                a_collider, i, child_pos, child_rot, child_scale);
+            rt_collider3d_get_child_transform_raw(a_collider, i, child_pos, child_rot, child_scale);
             collider_pose_compose(a_pose, child_pos, child_rot, child_scale, &child_pose);
             {
                 double cur_normal[3];
@@ -2940,19 +2934,18 @@ static int test_collider_pair(const rt_body3d *a_body,
                 void *cur_leaf_b = NULL;
                 rt_collider_pose cur_leaf_a_pose;
                 rt_collider_pose cur_leaf_b_pose;
-                if (test_collider_pair(
-                        a_body,
-                        child,
-                        &child_pose,
-                        b_body,
-                        b_collider,
-                        b_pose,
-                        cur_normal,
-                        &cur_depth,
-                        &cur_leaf_a,
-                        &cur_leaf_a_pose,
-                        &cur_leaf_b,
-                        &cur_leaf_b_pose) &&
+                if (test_collider_pair(a_body,
+                                       child,
+                                       &child_pose,
+                                       b_body,
+                                       b_collider,
+                                       b_pose,
+                                       cur_normal,
+                                       &cur_depth,
+                                       &cur_leaf_a,
+                                       &cur_leaf_a_pose,
+                                       &cur_leaf_b,
+                                       &cur_leaf_b_pose) &&
                     cur_depth > best_depth) {
                     best_depth = cur_depth;
                     vec3_copy(best_normal, cur_normal);
@@ -2984,8 +2977,7 @@ static int test_collider_pair(const rt_body3d *a_body,
             void *child = rt_collider3d_get_child_raw(b_collider, i);
             double child_pos[3], child_rot[4], child_scale[3];
             rt_collider_pose child_pose;
-            rt_collider3d_get_child_transform_raw(
-                b_collider, i, child_pos, child_rot, child_scale);
+            rt_collider3d_get_child_transform_raw(b_collider, i, child_pos, child_rot, child_scale);
             collider_pose_compose(b_pose, child_pos, child_rot, child_scale, &child_pose);
             {
                 double cur_normal[3];
@@ -2994,19 +2986,18 @@ static int test_collider_pair(const rt_body3d *a_body,
                 void *cur_leaf_b = NULL;
                 rt_collider_pose cur_leaf_a_pose;
                 rt_collider_pose cur_leaf_b_pose;
-                if (test_collider_pair(
-                        a_body,
-                        a_collider,
-                        a_pose,
-                        b_body,
-                        child,
-                        &child_pose,
-                        cur_normal,
-                        &cur_depth,
-                        &cur_leaf_a,
-                        &cur_leaf_a_pose,
-                        &cur_leaf_b,
-                        &cur_leaf_b_pose) &&
+                if (test_collider_pair(a_body,
+                                       a_collider,
+                                       a_pose,
+                                       b_body,
+                                       child,
+                                       &child_pose,
+                                       cur_normal,
+                                       &cur_depth,
+                                       &cur_leaf_a,
+                                       &cur_leaf_a_pose,
+                                       &cur_leaf_b,
+                                       &cur_leaf_b_pose) &&
                     cur_depth > best_depth) {
                     best_depth = cur_depth;
                     vec3_copy(best_normal, cur_normal);
@@ -3075,19 +3066,18 @@ static int test_collider_pair(const rt_body3d *a_body,
     if (collider_type_is_simple(a_type) &&
         (b_type == RT_COLLIDER3D_TYPE_CONVEX_HULL || b_type == RT_COLLIDER3D_TYPE_MESH)) {
         int hit;
-        hit = test_collider_pair(
-            b_body,
-            b_collider,
-            b_pose,
-            a_body,
-            a_collider,
-            a_pose,
-            normal,
-            depth,
-            leaf_b_out,
-            leaf_b_pose_out,
-            leaf_a_out,
-            leaf_a_pose_out);
+        hit = test_collider_pair(b_body,
+                                 b_collider,
+                                 b_pose,
+                                 a_body,
+                                 a_collider,
+                                 a_pose,
+                                 normal,
+                                 depth,
+                                 leaf_b_out,
+                                 leaf_b_pose_out,
+                                 leaf_a_out,
+                                 leaf_a_pose_out);
         if (hit) {
             normal[0] = -normal[0];
             normal[1] = -normal[1];
@@ -3121,19 +3111,18 @@ static int test_collider_pair(const rt_body3d *a_body,
 
     if (collider_type_is_simple(a_type) && b_type == RT_COLLIDER3D_TYPE_HEIGHTFIELD) {
         int hit;
-        hit = test_collider_pair(
-            b_body,
-            b_collider,
-            b_pose,
-            a_body,
-            a_collider,
-            a_pose,
-            normal,
-            depth,
-            leaf_b_out,
-            leaf_b_pose_out,
-            leaf_a_out,
-            leaf_a_pose_out);
+        hit = test_collider_pair(b_body,
+                                 b_collider,
+                                 b_pose,
+                                 a_body,
+                                 a_collider,
+                                 a_pose,
+                                 normal,
+                                 depth,
+                                 leaf_b_out,
+                                 leaf_b_pose_out,
+                                 leaf_a_out,
+                                 leaf_a_pose_out);
         if (hit) {
             normal[0] = -normal[0];
             normal[1] = -normal[1];
@@ -3355,7 +3344,10 @@ static int ph3d_broadphase_compare_min_x(const void *lhs, const void *rhs) {
 /// @brief Return 1 if two 3D AABBs overlap, 0 if separated on any axis.
 /// @details Separating-axis test on all three axes simultaneously.  Used in the
 ///   broad phase after the X-axis early-out to confirm overlap on Y and Z.
-static int ph3d_bounds_overlap(const double *a_min, const double *a_max, const double *b_min, const double *b_max) {
+static int ph3d_bounds_overlap(const double *a_min,
+                               const double *a_max,
+                               const double *b_min,
+                               const double *b_max) {
     return a_min[0] <= b_max[0] && a_max[0] >= b_min[0] && a_min[1] <= b_max[1] &&
            a_max[1] >= b_min[1] && a_min[2] <= b_max[2] && a_max[2] >= b_min[2];
 }
@@ -3495,10 +3487,8 @@ static int world3d_detect_and_resolve_contacts(rt_world3d *w) {
         for (int32_t j = i + 1; j < entry_count; j++) {
             if (entries[j].min[0] > entries[i].max[0])
                 break;
-            if (!ph3d_bounds_overlap(entries[i].min,
-                                     entries[i].max,
-                                     entries[j].min,
-                                     entries[j].max))
+            if (!ph3d_bounds_overlap(
+                    entries[i].min, entries[i].max, entries[j].min, entries[j].max))
                 continue;
             if (!world3d_pair_can_collide_cheap(entries[i].body, entries[j].body))
                 continue;
@@ -3568,8 +3558,8 @@ static void collision_event3d_finalizer(void *obj) {
 /// Copies all hit fields and retains the body/collider pointers so the
 /// hit object can outlive the originating query call.
 static void *physics_hit3d_new(const rt_query_hit3d *src) {
-    rt_physics_hit3d_obj *hit =
-        (rt_physics_hit3d_obj *)rt_obj_new_i64(RT_G3D_PHYSICSHIT3D_CLASS_ID, (int64_t)sizeof(rt_physics_hit3d_obj));
+    rt_physics_hit3d_obj *hit = (rt_physics_hit3d_obj *)rt_obj_new_i64(
+        RT_G3D_PHYSICSHIT3D_CLASS_ID, (int64_t)sizeof(rt_physics_hit3d_obj));
     if (!hit) {
         rt_trap("PhysicsHit3D: allocation failed");
         return NULL;
@@ -3603,7 +3593,8 @@ static void *physics_hit_list3d_new(const rt_query_hit3d *hits, int32_t count) {
     rt_physics_hit_list3d_obj *list;
     if (count <= 0)
         return NULL;
-    list = (rt_physics_hit_list3d_obj *)rt_obj_new_i64(RT_G3D_PHYSICSHITLIST3D_CLASS_ID, (int64_t)sizeof(*list));
+    list = (rt_physics_hit_list3d_obj *)rt_obj_new_i64(RT_G3D_PHYSICSHITLIST3D_CLASS_ID,
+                                                       (int64_t)sizeof(*list));
     if (!list) {
         rt_trap("PhysicsHitList3D: allocation failed");
         return NULL;
@@ -3638,7 +3629,8 @@ static void *contact_point3d_new_from_contact(const rt_contact3d *contact) {
     rt_contact_point3d_obj *point;
     if (!contact)
         return NULL;
-    point = (rt_contact_point3d_obj *)rt_obj_new_i64(RT_G3D_CONTACTPOINT3D_CLASS_ID, (int64_t)sizeof(*point));
+    point = (rt_contact_point3d_obj *)rt_obj_new_i64(RT_G3D_CONTACTPOINT3D_CLASS_ID,
+                                                     (int64_t)sizeof(*point));
     if (!point) {
         rt_trap("ContactPoint3D: allocation failed");
         return NULL;
@@ -3660,7 +3652,8 @@ static void *collision_event3d_new_from_contact(const rt_contact3d *contact) {
     rt_collision_event3d_obj *event;
     if (!contact)
         return NULL;
-    event = (rt_collision_event3d_obj *)rt_obj_new_i64(RT_G3D_COLLISIONEVENT3D_CLASS_ID, (int64_t)sizeof(*event));
+    event = (rt_collision_event3d_obj *)rt_obj_new_i64(RT_G3D_COLLISIONEVENT3D_CLASS_ID,
+                                                       (int64_t)sizeof(*event));
     if (!event) {
         rt_trap("CollisionEvent3D: allocation failed");
         return NULL;
@@ -3714,9 +3707,8 @@ static void world3d_build_event_buffers(rt_world3d *w) {
         contact_pair_table_build(w->contacts, w->contact_count, &current_table_capacity);
 
     for (int32_t i = 0; i < w->contact_count; ++i) {
-        int found = previous_table ? contact_pair_table_contains(previous_table,
-                                                                 previous_table_capacity,
-                                                                 &w->contacts[i])
+        int found = previous_table ? contact_pair_table_contains(
+                                         previous_table, previous_table_capacity, &w->contacts[i])
                                    : 0;
         if (!previous_table) {
             for (int32_t j = 0; j < w->previous_contact_count; ++j) {
@@ -3751,8 +3743,8 @@ static void world3d_build_event_buffers(rt_world3d *w) {
 
     for (int32_t i = 0; i < w->previous_contact_count; ++i) {
         int found = current_table ? contact_pair_table_contains(current_table,
-                                                               current_table_capacity,
-                                                               &w->previous_contacts[i])
+                                                                current_table_capacity,
+                                                                &w->previous_contacts[i])
                                   : 0;
         if (!current_table) {
             for (int32_t j = 0; j < w->contact_count; ++j) {
@@ -3851,7 +3843,8 @@ static void world3d_finalizer(void *obj) {
 /// @param gx,gy,gz Initial world gravity acceleration (m/s²).
 /// @return Owned `World3D` handle.
 void *rt_world3d_new(double gx, double gy, double gz) {
-    rt_world3d *w = (rt_world3d *)rt_obj_new_i64(RT_G3D_WORLD3D_CLASS_ID, (int64_t)sizeof(rt_world3d));
+    rt_world3d *w =
+        (rt_world3d *)rt_obj_new_i64(RT_G3D_WORLD3D_CLASS_ID, (int64_t)sizeof(rt_world3d));
     if (!w) {
         rt_trap("Physics3D.World.New: allocation failed");
         return NULL;
@@ -4695,7 +4688,8 @@ static int sweep_capsule_against_body(const double *a,
             a[2] + axis[2] * t,
         };
         rt_query_hit3d cur_hit;
-        if (!sweep_sphere_against_body(sphere_collider, center, radius, delta, other, max_distance, &cur_hit))
+        if (!sweep_sphere_against_body(
+                sphere_collider, center, radius, delta, other, max_distance, &cur_hit))
             continue;
         if (!hit || cur_hit.distance < best.distance) {
             best = cur_hit;
@@ -4800,7 +4794,8 @@ void *rt_world3d_overlap_aabb(void *obj, void *min_obj, void *max_obj, int64_t m
 /// Returns the closest hit as a `PhysicsHit3D`, or NULL if the sweep
 /// reaches `delta` without contact. Used for trajectory predictions
 /// and projectile collision.
-void *rt_world3d_sweep_sphere(void *obj, void *center_obj, double radius, void *delta_obj, int64_t mask) {
+void *rt_world3d_sweep_sphere(
+    void *obj, void *center_obj, double radius, void *delta_obj, int64_t mask) {
     rt_world3d *w = world3d_checked(obj);
     rt_query_hit3d best_hit = {0};
     int found = 0;
@@ -4829,7 +4824,8 @@ void *rt_world3d_sweep_sphere(void *obj, void *center_obj, double radius, void *
         rt_query_hit3d hit;
         if (!body || !body->collider || !query_mask_matches_body(body, mask))
             continue;
-        if (!sweep_sphere_against_body(sphere_collider, center, radius, delta, body, max_distance, &hit))
+        if (!sweep_sphere_against_body(
+                sphere_collider, center, radius, delta, body, max_distance, &hit))
             continue;
         if (!found || hit.distance < best_hit.distance) {
             best_hit = hit;
@@ -4845,12 +4841,8 @@ void *rt_world3d_sweep_sphere(void *obj, void *center_obj, double radius, void *
 ///
 /// Like `SweepSphere` but for capsule queries — primary use case is
 /// character-controller motion against world geometry.
-void *rt_world3d_sweep_capsule(void *obj,
-                               void *a_obj,
-                               void *b_obj,
-                               double radius,
-                               void *delta_obj,
-                               int64_t mask) {
+void *rt_world3d_sweep_capsule(
+    void *obj, void *a_obj, void *b_obj, double radius, void *delta_obj, int64_t mask) {
     rt_world3d *w = world3d_checked(obj);
     rt_query_hit3d best_hit = {0};
     int found = 0;
@@ -4868,8 +4860,7 @@ void *rt_world3d_sweep_capsule(void *obj,
     delta[0] = rt_vec3_x(delta_obj);
     delta[1] = rt_vec3_y(delta_obj);
     delta[2] = rt_vec3_z(delta_obj);
-    if (!ph3d_vec3_all_finite(a) || !ph3d_vec3_all_finite(b) ||
-        !ph3d_vec3_all_finite(delta))
+    if (!ph3d_vec3_all_finite(a) || !ph3d_vec3_all_finite(b) || !ph3d_vec3_all_finite(delta))
         return NULL;
     max_distance = vec3_len(delta);
     if (!isfinite(max_distance))
@@ -5140,7 +5131,8 @@ static int raycast_box_pose_raw(void *box_collider,
     }
     transform_point_to_local(pose, origin, local_origin);
     transform_vector_to_local(pose, dir, local_dir);
-    if (!raycast_aabb_raw(local_origin, local_dir, mn, mx, max_distance, &t, local_normal, &started))
+    if (!raycast_aabb_raw(
+            local_origin, local_dir, mn, mx, max_distance, &t, local_normal, &started))
         return 0;
     if (out_t)
         *out_t = t;
@@ -5268,7 +5260,8 @@ static int raycast_heightfield_pose_raw(void *heightfield,
     double prev_t;
     double prev_clearance = DBL_MAX;
     int has_prev = 0;
-    rt_collider3d_compute_world_aabb_raw(heightfield, pose->position, pose->rotation, pose->scale, mn, mx);
+    rt_collider3d_compute_world_aabb_raw(
+        heightfield, pose->position, pose->rotation, pose->scale, mn, mx);
     if (!raycast_aabb_raw(origin, dir, mn, mx, max_distance, &entry_t, aabb_normal, &started))
         return 0;
     transform_point_to_local(pose, origin, local_origin);
@@ -5353,7 +5346,8 @@ static int raycast_collider_pose(void *collider,
         return 0;
     type = rt_collider3d_get_type(collider);
     if (type == RT_COLLIDER3D_TYPE_BOX) {
-        if (!raycast_box_pose_raw(collider, pose, origin, dir, max_distance, 0.0, &t, normal, &started))
+        if (!raycast_box_pose_raw(
+                collider, pose, origin, dir, max_distance, 0.0, &t, normal, &started))
             return 0;
     } else if (type == RT_COLLIDER3D_TYPE_SPHERE) {
         double radius = rt_collider3d_get_radius_raw(collider);
@@ -5363,7 +5357,14 @@ static int raycast_collider_pose(void *collider,
         double max_scale = sx > sy ? sx : sy;
         if (sz > max_scale)
             max_scale = sz;
-        if (!raycast_sphere_raw(origin, dir, pose->position, radius * max_scale, max_distance, &t, normal, &started))
+        if (!raycast_sphere_raw(origin,
+                                dir,
+                                pose->position,
+                                radius * max_scale,
+                                max_distance,
+                                &t,
+                                normal,
+                                &started))
             return 0;
     } else if (type == RT_COLLIDER3D_TYPE_CAPSULE) {
         rt_body3d proxy;
@@ -5371,7 +5372,8 @@ static int raycast_collider_pose(void *collider,
         if (!build_simple_proxy(pose, collider, &proxy))
             return 0;
         capsule_axis_endpoints(&proxy, a, b);
-        if (!raycast_capsule_raw(origin, dir, a, b, proxy.radius, max_distance, &t, normal, &started))
+        if (!raycast_capsule_raw(
+                origin, dir, a, b, proxy.radius, max_distance, &t, normal, &started))
             return 0;
     } else if (type == RT_COLLIDER3D_TYPE_COMPOUND) {
         int64_t child_count = rt_collider3d_get_child_count_raw(collider);
@@ -5417,11 +5419,13 @@ static int raycast_collider_pose(void *collider,
         if (!raycast_meshlike_pose_raw(mesh, pose, origin, dir, max_distance, &t, normal, &started))
             return 0;
     } else if (type == RT_COLLIDER3D_TYPE_HEIGHTFIELD) {
-        if (!raycast_heightfield_pose_raw(collider, pose, origin, dir, max_distance, &t, normal, &started))
+        if (!raycast_heightfield_pose_raw(
+                collider, pose, origin, dir, max_distance, &t, normal, &started))
             return 0;
     } else {
         double mn[3], mx[3];
-        rt_collider3d_compute_world_aabb_raw(collider, pose->position, pose->rotation, pose->scale, mn, mx);
+        rt_collider3d_compute_world_aabb_raw(
+            collider, pose->position, pose->rotation, pose->scale, mn, mx);
         if (!raycast_aabb_raw(origin, dir, mn, mx, max_distance, &t, normal, &started))
             return 0;
     }
@@ -5468,14 +5472,15 @@ static int raycast_body(rt_body3d *body,
 /// Uses collider-specific tests for boxes, spheres, capsules, meshes, hulls,
 /// compounds, and heightfields. Returns NULL when the direction is zero or
 /// `maxDistance <= 0`.
-void *rt_world3d_raycast(void *obj, void *origin_obj, void *direction_obj, double max_distance, int64_t mask) {
+void *rt_world3d_raycast(
+    void *obj, void *origin_obj, void *direction_obj, double max_distance, int64_t mask) {
     rt_world3d *w = world3d_checked(obj);
     rt_query_hit3d best_hit = {0};
     int found = 0;
     double origin[3];
     double dir[3];
-    if (!w || !rt_g3d_is_vec3(origin_obj) || !rt_g3d_is_vec3(direction_obj) || !isfinite(max_distance) ||
-        max_distance <= 0.0)
+    if (!w || !rt_g3d_is_vec3(origin_obj) || !rt_g3d_is_vec3(direction_obj) ||
+        !isfinite(max_distance) || max_distance <= 0.0)
         return NULL;
     origin[0] = rt_vec3_x(origin_obj);
     origin[1] = rt_vec3_y(origin_obj);
@@ -5504,22 +5509,20 @@ void *rt_world3d_raycast(void *obj, void *origin_obj, void *direction_obj, doubl
     return found ? physics_hit3d_new(&best_hit) : NULL;
 }
 
-/// @brief `World3D.RaycastAll(origin, direction, maxDistance, mask)` — all hits along a ray, sorted.
+/// @brief `World3D.RaycastAll(origin, direction, maxDistance, mask)` — all hits along a ray,
+/// sorted.
 ///
 /// Like `Raycast` but doesn't stop at the first hit — every body
 /// the ray pierces is recorded. Results come back sorted by distance.
 /// Bounded by `PH3D_MAX_QUERY_HITS` (256).
-void *rt_world3d_raycast_all(void *obj,
-                             void *origin_obj,
-                             void *direction_obj,
-                             double max_distance,
-                             int64_t mask) {
+void *rt_world3d_raycast_all(
+    void *obj, void *origin_obj, void *direction_obj, double max_distance, int64_t mask) {
     rt_world3d *w = world3d_checked(obj);
     rt_query_hit3d hits[PH3D_MAX_QUERY_HITS];
     double origin[3], dir[3];
     int32_t hit_count = 0;
-    if (!w || !rt_g3d_is_vec3(origin_obj) || !rt_g3d_is_vec3(direction_obj) || !isfinite(max_distance) ||
-        max_distance <= 0.0)
+    if (!w || !rt_g3d_is_vec3(origin_obj) || !rt_g3d_is_vec3(direction_obj) ||
+        !isfinite(max_distance) || max_distance <= 0.0)
         return NULL;
     origin[0] = rt_vec3_x(origin_obj);
     origin[1] = rt_vec3_y(origin_obj);
@@ -5578,8 +5581,7 @@ static int body3d_assign_collider(rt_body3d *body, void *collider, const char *a
     }
     if (collider == body->collider)
         return 1;
-    if (!body3d_motion_mode_allowed(
-            body, collider, body->motion_mode, api_name))
+    if (!body3d_motion_mode_allowed(body, collider, body->motion_mode, api_name))
         return 0;
     if (collider)
         rt_obj_retain_maybe(collider);
@@ -5750,8 +5752,7 @@ void *rt_body3d_get_orientation(void *o) {
     rt_body3d *b = body3d_checked(o);
     if (!b)
         return rt_quat_new(0.0, 0.0, 0.0, 1.0);
-    return rt_quat_new(
-        b->orientation[0], b->orientation[1], b->orientation[2], b->orientation[3]);
+    return rt_quat_new(b->orientation[0], b->orientation[1], b->orientation[2], b->orientation[3]);
 }
 
 /// @brief `Body3D.SetVelocity(x, y, z)` — set linear velocity (m/s).
@@ -5793,8 +5794,7 @@ void *rt_body3d_get_angular_velocity(void *o) {
     rt_body3d *b = body3d_checked(o);
     if (!b)
         return rt_vec3_new(0, 0, 0);
-    return rt_vec3_new(
-        b->angular_velocity[0], b->angular_velocity[1], b->angular_velocity[2]);
+    return rt_vec3_new(b->angular_velocity[0], b->angular_velocity[1], b->angular_velocity[2]);
 }
 
 /// @brief `Body3D.ApplyForce(fx, fy, fz)` — accumulate a continuous force (N).
@@ -6464,7 +6464,8 @@ static void character3d_finalizer(void *obj) {
 /// added to a world automatically — call `SetWorld` before using
 /// `Move`.
 void *rt_character3d_new(double radius, double height, double mass) {
-    rt_character3d *c = (rt_character3d *)rt_obj_new_i64(RT_G3D_CHARACTER3D_CLASS_ID, (int64_t)sizeof(rt_character3d));
+    rt_character3d *c = (rt_character3d *)rt_obj_new_i64(RT_G3D_CHARACTER3D_CLASS_ID,
+                                                         (int64_t)sizeof(rt_character3d));
     if (!c) {
         rt_trap("Physics3D.Character.New: allocation failed");
         return NULL;
@@ -6650,7 +6651,8 @@ static void trigger3d_finalizer(void *obj) {
 /// Auto-orders the corners so caller can pass them in any order. Up to
 /// 64 bodies are tracked for enter/exit edge detection.
 void *rt_trigger3d_new(double x0, double y0, double z0, double x1, double y1, double z1) {
-    rt_trigger3d *t = (rt_trigger3d *)rt_obj_new_i64(RT_G3D_TRIGGER3D_CLASS_ID, (int64_t)sizeof(rt_trigger3d));
+    rt_trigger3d *t =
+        (rt_trigger3d *)rt_obj_new_i64(RT_G3D_TRIGGER3D_CLASS_ID, (int64_t)sizeof(rt_trigger3d));
     if (!t) {
         rt_trap("Trigger3D.New: allocation failed");
         return NULL;

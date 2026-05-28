@@ -57,9 +57,9 @@
 
 /// @brief BinFile implementation structure.
 typedef struct rt_binfile_impl {
-    FILE *fp;      ///< File pointer.
-    int8_t eof;    ///< EOF flag.
-    int8_t closed; ///< Closed flag.
+    FILE *fp;       ///< File pointer.
+    int8_t eof;     ///< EOF flag.
+    int8_t closed;  ///< Closed flag.
     int8_t last_op; ///< Last stdio direction used on update streams.
 } rt_binfile_impl;
 

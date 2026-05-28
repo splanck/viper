@@ -50,11 +50,11 @@ namespace fs = std::filesystem;
 //===----------------------------------------------------------------------===//
 
 struct RuntimeFunc {
-    std::string id;        // Unique identifier (e.g., "PrintStr")
-    std::string c_symbol;  // C runtime symbol (e.g., "rt_print_str")
-    std::string canonical; // Canonical Viper.* name (e.g., "Viper.Console.PrintStr")
-    std::string signature; // Type signature (e.g., "void(str)")
-    std::string lowering;  // Lowering kind: "always" or "" (default: manual)
+    std::string id;                       // Unique identifier (e.g., "PrintStr")
+    std::string c_symbol;                 // C runtime symbol (e.g., "rt_print_str")
+    std::string canonical;                // Canonical Viper.* name (e.g., "Viper.Console.PrintStr")
+    std::string signature;                // Type signature (e.g., "void(str)")
+    std::string lowering;                 // Lowering kind: "always" or "" (default: manual)
     std::vector<std::string> bridgeRoles; // Safe Zia bridge roles: none/callback/payload
 };
 
@@ -432,12 +432,9 @@ static void parseRtBridge(ParseState &state, const std::string &args) {
     size_t surfaceParamCount = 0;
     size_t parenPos = func.signature.find('(');
     size_t closePos = func.signature.rfind(')');
-    if (parenPos != std::string::npos && closePos != std::string::npos &&
-        closePos > parenPos + 1) {
-        surfaceParamCount = splitTopLevel(
-                                func.signature.substr(parenPos + 1, closePos - parenPos - 1),
-                                ',')
-                                .size();
+    if (parenPos != std::string::npos && closePos != std::string::npos && closePos > parenPos + 1) {
+        surfaceParamCount =
+            splitTopLevel(func.signature.substr(parenPos + 1, closePos - parenPos - 1), ',').size();
     }
     auto roles = splitTopLevel(stripQuotes(parts[1]), ',');
     if (roles.size() != surfaceParamCount) {

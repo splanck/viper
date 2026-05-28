@@ -34,8 +34,8 @@ namespace {
 
 /// @brief Description of a frame-relative memory access used by the optimiser.
 struct FrameAccess {
-    int32_t disp{0};               ///< Signed displacement from %rbp.
-    RegClass cls{RegClass::GPR};   ///< Whether the access uses GPR or XMM.
+    int32_t disp{0};             ///< Signed displacement from %rbp.
+    RegClass cls{RegClass::GPR}; ///< Whether the access uses GPR or XMM.
 };
 
 /// @brief Decode @p instr as a load from a %rbp-relative frame slot, if applicable.
@@ -172,8 +172,7 @@ std::size_t eliminateDeadFrameStores(std::vector<MInstr> &instrs, PeepholeStats 
                 remove[it->second] = true;
                 ++removed;
             }
-            auto &otherStores =
-                mapFor(store->cls == RegClass::XMM ? RegClass::GPR : RegClass::XMM);
+            auto &otherStores = mapFor(store->cls == RegClass::XMM ? RegClass::GPR : RegClass::XMM);
             auto otherIt = otherStores.find(store->disp);
             if (otherIt != otherStores.end() && !remove[otherIt->second]) {
                 remove[otherIt->second] = true;

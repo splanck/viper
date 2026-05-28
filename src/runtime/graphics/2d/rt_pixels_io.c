@@ -214,8 +214,7 @@ void *rt_pixels_load_bmp(void *path) {
     if (!px_mul_size(row_size, (size_t)height, &data_size))
         goto bmp_cleanup;
 
-    uint64_t min_data_offset =
-        (uint64_t)sizeof(bmp_file_header) + (uint64_t)info_hdr.header_size;
+    uint64_t min_data_offset = (uint64_t)sizeof(bmp_file_header) + (uint64_t)info_hdr.header_size;
     uint64_t data_offset = (uint64_t)file_hdr.data_offset;
     if (data_offset < min_data_offset || data_offset > (uint64_t)INT64_MAX)
         goto bmp_cleanup;

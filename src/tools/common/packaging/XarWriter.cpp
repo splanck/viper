@@ -101,7 +101,8 @@ std::vector<std::string> splitPathComponents(const std::string &path) {
     size_t pos = 0;
     while (pos <= path.size()) {
         const size_t next = path.find('/', pos);
-        parts.push_back(next == std::string::npos ? path.substr(pos) : path.substr(pos, next - pos));
+        parts.push_back(next == std::string::npos ? path.substr(pos)
+                                                  : path.substr(pos, next - pos));
         if (next == std::string::npos)
             break;
         pos = next + 1;
@@ -243,7 +244,8 @@ void XarWriter::addFileString(const std::string &name,
                               const std::string &content,
                               bool compress,
                               uint32_t mode) {
-    addFile(name, reinterpret_cast<const uint8_t *>(content.data()), content.size(), compress, mode);
+    addFile(
+        name, reinterpret_cast<const uint8_t *>(content.data()), content.size(), compress, mode);
 }
 
 std::vector<uint8_t> XarWriter::finish() const {
@@ -256,7 +258,8 @@ std::vector<uint8_t> XarWriter::finish() const {
         PreparedEntry out;
         out.path = entry.path;
         out.extracted = entry.data;
-        out.archived = entry.compress ? zlibCompress(entry.data.data(), entry.data.size()) : entry.data;
+        out.archived =
+            entry.compress ? zlibCompress(entry.data.data(), entry.data.size()) : entry.data;
         out.compressed = entry.compress;
         out.mode = entry.mode;
         out.offset = heapOffset;
@@ -312,7 +315,8 @@ void XarWriter::finishToFile(const std::string &path) const {
     std::ofstream out(path, std::ios::binary | std::ios::trunc);
     if (!out)
         throw std::runtime_error("cannot write xar archive: " + path);
-    out.write(reinterpret_cast<const char *>(data.data()), static_cast<std::streamsize>(data.size()));
+    out.write(reinterpret_cast<const char *>(data.data()),
+              static_cast<std::streamsize>(data.size()));
     if (!out)
         throw std::runtime_error("failed to write xar archive: " + path);
 }

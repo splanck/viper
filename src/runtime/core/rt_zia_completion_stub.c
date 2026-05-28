@@ -370,11 +370,8 @@ RT_WEAK void rt_zia_project_index_destroy(void *handle) {
 }
 
 /// @brief Weak stub: definition lookup unavailable.
-RT_WEAK void *rt_zia_project_index_definition(void *handle,
-                                              rt_string file_path,
-                                              rt_string source,
-                                              int64_t line,
-                                              int64_t col) {
+RT_WEAK void *rt_zia_project_index_definition(
+    void *handle, rt_string file_path, rt_string source, int64_t line, int64_t col) {
     (void)handle;
     (void)file_path;
     (void)source;
@@ -384,11 +381,8 @@ RT_WEAK void *rt_zia_project_index_definition(void *handle,
 }
 
 /// @brief Weak stub: reference lookup unavailable.
-RT_WEAK void *rt_zia_project_index_references(void *handle,
-                                              rt_string file_path,
-                                              rt_string source,
-                                              int64_t line,
-                                              int64_t col) {
+RT_WEAK void *rt_zia_project_index_references(
+    void *handle, rt_string file_path, rt_string source, int64_t line, int64_t col) {
     (void)handle;
     (void)file_path;
     (void)source;

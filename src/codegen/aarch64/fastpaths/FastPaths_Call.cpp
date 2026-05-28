@@ -289,11 +289,11 @@ std::optional<MFunction> tryCallFastPaths(FastPathContext &ctx) {
         mappedCallee = std::string(*mapped);
     const bool hasKnownVarArg =
         ctx.knownVarArgNamedArgCounts &&
-        (ctx.knownVarArgNamedArgCounts->find(mappedCallee) != ctx.knownVarArgNamedArgCounts->end() ||
+        (ctx.knownVarArgNamedArgCounts->find(mappedCallee) !=
+             ctx.knownVarArgNamedArgCounts->end() ||
          ctx.knownVarArgNamedArgCounts->find(binI.callee) != ctx.knownVarArgNamedArgCounts->end());
-    const bool isVarArg =
-        il::runtime::isVarArgCallee(mappedCallee) || il::runtime::isVarArgCallee(binI.callee) ||
-        hasKnownVarArg;
+    const bool isVarArg = il::runtime::isVarArgCallee(mappedCallee) ||
+                          il::runtime::isVarArgCallee(binI.callee) || hasKnownVarArg;
     const bool needsGenericResultSemantics =
         binI.type.kind == il::core::Type::Kind::Str || binI.type.kind == il::core::Type::Kind::I1;
 
@@ -383,17 +383,16 @@ std::optional<MFunction> tryCallFastPaths(FastPathContext &ctx) {
         std::unordered_map<unsigned, uint16_t> tempVReg;
         std::unordered_map<unsigned, RegClass> tempRegClass;
         uint16_t nextVRegId = kFirstVirtualRegId;
-        if (lowerCallWithArgs(
-                binI,
-                bb,
-                ctx.ti,
-                ctx.fb,
-                bbMir,
-                seq,
-                tempVReg,
-                tempRegClass,
-                nextVRegId,
-                ctx.knownVarArgNamedArgCounts)) {
+        if (lowerCallWithArgs(binI,
+                              bb,
+                              ctx.ti,
+                              ctx.fb,
+                              bbMir,
+                              seq,
+                              tempVReg,
+                              tempRegClass,
+                              nextVRegId,
+                              ctx.knownVarArgNamedArgCounts)) {
             for (auto &mi : seq.prefix)
                 bbMir.instrs.push_back(std::move(mi));
             bbMir.instrs.push_back(std::move(seq.call));

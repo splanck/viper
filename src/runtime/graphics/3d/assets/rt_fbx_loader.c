@@ -890,7 +890,8 @@ static int fbx_mesh_remap_init(fbx_mesh_remap_t *remap, int64_t id, int32_t cont
     return remap->control_vertices != NULL;
 }
 
-/// @brief Append a new mesh vertex index to the list for a given control vertex (grows dynamically).
+/// @brief Append a new mesh vertex index to the list for a given control vertex (grows
+/// dynamically).
 static void fbx_mesh_remap_add_vertex(fbx_mesh_remap_t *remap,
                                       int32_t control_index,
                                       int32_t vertex_index) {
@@ -1096,7 +1097,6 @@ static void *fbx_extract_geometry(fbx_node_t *geom_node, int z_up, fbx_mesh_rema
             }
             poly_count = 0;
         }
-
     }
 
     return mesh;
@@ -1281,8 +1281,9 @@ static void fbx_extract_model_trs(
 /// @brief Linear search for a `Mesh3D` associated with an FBX object ID. Typical FBX
 /// assets have a few dozen meshes so O(n) is fine — switching to a hash would cost
 /// more in setup than it saves on lookup. Returns NULL when no binding matches.
-static void *fbx_lookup_mesh_binding(
-    const fbx_mesh_binding_t *bindings, int32_t count, int64_t id) {
+static void *fbx_lookup_mesh_binding(const fbx_mesh_binding_t *bindings,
+                                     int32_t count,
+                                     int64_t id) {
     for (int32_t i = 0; i < count; i++)
         if (bindings[i].id == id)
             return bindings[i].mesh;
@@ -1291,8 +1292,9 @@ static void *fbx_lookup_mesh_binding(
 
 /// @brief Linear search for a `Material3D` associated with an FBX object ID. Mirror of
 /// `fbx_lookup_mesh_binding` for the material table.
-static void *fbx_lookup_material_binding(
-    const fbx_material_binding_t *bindings, int32_t count, int64_t id) {
+static void *fbx_lookup_material_binding(const fbx_material_binding_t *bindings,
+                                         int32_t count,
+                                         int64_t id) {
     for (int32_t i = 0; i < count; i++)
         if (bindings[i].id == id)
             return bindings[i].material;
@@ -1693,7 +1695,8 @@ static void *fbx_extract_skeleton(fbx_node_t *root, const fbx_conn_table_t *ct, 
 /// @details Scans every entry in @p ct and copies matching child IDs (and optional
 ///          relationship property strings) into the caller-supplied output arrays up to
 ///          @p max_out entries. Does not sort or deduplicate results.
-/// @param out_props May be NULL; when non-NULL receives the relationship prop string for each child.
+/// @param out_props May be NULL; when non-NULL receives the relationship prop string for each
+/// child.
 /// @return Number of children written to @p out_ids (capped at @p max_out).
 static int32_t fbx_find_children(const fbx_conn_table_t *ct,
                                  int64_t parent_id,
@@ -1797,7 +1800,9 @@ static const float *fbx_get_f32_array(fbx_node_t *node, const char *child_name, 
 ///          FBX `"Name\x00\x01Type"` suffix), then asks the engine skeleton for the matching
 ///          bone index via `rt_skeleton3d_find_bone`.
 /// @return Engine bone index in [0, bone_count), or -1 if the model is not found or not a bone.
-static int32_t fbx_find_bone_index_for_model(fbx_node_t *objects, void *skeleton, int64_t model_id) {
+static int32_t fbx_find_bone_index_for_model(fbx_node_t *objects,
+                                             void *skeleton,
+                                             int64_t model_id) {
     fbx_node_t *model_node;
     char decoded_name[64];
     if (!objects || !skeleton || model_id == 0)
@@ -2007,7 +2012,8 @@ static void fbx_apply_skinning(fbx_node_t *objects,
         if (!mesh_obj)
             continue;
         remap = fbx_find_mesh_remap(mesh_remaps, mesh_remap_count, geometry_id);
-        control_count = remap ? remap->control_count : (int32_t)((rt_mesh3d *)mesh_obj)->vertex_count;
+        control_count =
+            remap ? remap->control_count : (int32_t)((rt_mesh3d *)mesh_obj)->vertex_count;
         if (control_count <= 0)
             continue;
         controls = (fbx_skin_influence_t *)calloc((size_t)control_count, sizeof(*controls));
@@ -2160,10 +2166,7 @@ static double fbx_anim_curve_value(const fbx_anim_curve_view_t *curve,
 ///          exists (returns 1 without modification), otherwise shifts elements right and inserts.
 ///          The array is grown geometrically (starting at 16, doubling) via realloc.
 /// @return 1 on success (inserted or already present); 0 on allocation failure.
-static int fbx_anim_insert_time(int64_t **times,
-                                int32_t *count,
-                                int32_t *capacity,
-                                int64_t value) {
+static int fbx_anim_insert_time(int64_t **times, int32_t *count, int32_t *capacity, int64_t value) {
     int32_t pos = 0;
     while (pos < *count && (*times)[pos] < value)
         pos++;
@@ -2248,7 +2251,8 @@ static void fbx_extract_animations(fbx_node_t *root,
         char decoded_anim_name[64];
         const char *anim_name = "Untitled";
         if (obj->prop_count >= 2) {
-            fbx_decode_object_name(fbx_prop_str(obj, 1), decoded_anim_name, sizeof(decoded_anim_name));
+            fbx_decode_object_name(
+                fbx_prop_str(obj, 1), decoded_anim_name, sizeof(decoded_anim_name));
             if (decoded_anim_name[0] != '\0')
                 anim_name = decoded_anim_name;
         }
@@ -2260,8 +2264,7 @@ static void fbx_extract_animations(fbx_node_t *root,
             continue;
 
         double max_time = 0.0;
-        builders =
-            (fbx_anim_bone_builder_t *)calloc((size_t)bone_count, sizeof(*builders));
+        builders = (fbx_anim_bone_builder_t *)calloc((size_t)bone_count, sizeof(*builders));
         if (!builders)
             continue;
 
@@ -2465,7 +2468,8 @@ static void fbx_extract_animations(fbx_node_t *root,
  * Top-level FBX loader
  *=========================================================================*/
 
-/// @brief GC finalizer for `rt_fbx_asset` — release every owned mesh / material / skeleton / animation.
+/// @brief GC finalizer for `rt_fbx_asset` — release every owned mesh / material / skeleton /
+/// animation.
 static void rt_fbx_asset_finalize(void *obj) {
     rt_fbx_asset *fbx = (rt_fbx_asset *)obj;
     if (!fbx)
@@ -2625,7 +2629,8 @@ void *rt_fbx_load(rt_string path) {
     int z_up = fbx_is_z_up(&root);
 
     /* Extract assets */
-    rt_fbx_asset *asset = (rt_fbx_asset *)rt_obj_new_i64(RT_G3D_FBX_ASSET_CLASS_ID, (int64_t)sizeof(rt_fbx_asset));
+    rt_fbx_asset *asset =
+        (rt_fbx_asset *)rt_obj_new_i64(RT_G3D_FBX_ASSET_CLASS_ID, (int64_t)sizeof(rt_fbx_asset));
     if (!asset) {
         free(mesh_bindings);
         fbx_mesh_remaps_free(mesh_remaps, mesh_remap_count);
@@ -2665,8 +2670,8 @@ void *rt_fbx_load(rt_string path) {
                         asset->meshes[asset->mesh_count] = mesh;
                         asset->mesh_count = nc;
                         {
-                            void *nb =
-                                realloc(mesh_bindings, (size_t)asset->mesh_count * sizeof(*mesh_bindings));
+                            void *nb = realloc(mesh_bindings,
+                                               (size_t)asset->mesh_count * sizeof(*mesh_bindings));
                             if (nb) {
                                 mesh_bindings = (fbx_mesh_binding_t *)nb;
                                 mesh_bindings[mesh_binding_count].id = fbx_prop_i64(obj, 0);
@@ -2698,9 +2703,9 @@ void *rt_fbx_load(rt_string path) {
                         asset->materials[asset->material_count] = mat;
                         asset->material_count = nc;
                         {
-                            void *nb = realloc(material_bindings,
-                                               (size_t)asset->material_count *
-                                                   sizeof(*material_bindings));
+                            void *nb =
+                                realloc(material_bindings,
+                                        (size_t)asset->material_count * sizeof(*material_bindings));
                             if (nb) {
                                 material_bindings = (fbx_material_binding_t *)nb;
                                 material_bindings[material_binding_count].id = fbx_prop_i64(obj, 0);

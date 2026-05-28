@@ -79,74 +79,74 @@ using Operand = std::variant<OpReg, OpImm, OpMem, OpLabel, OpRipLabel>;
 
 /// \brief Enumerates the opcode set required for Phase A.
 enum class MOpcode {
-    PUSH,      ///< Push register onto the stack.
-    POP,       ///< Pop register from the stack.
-    MOVrr,     ///< Move register to register.
-    MOVrm,     ///< Move register to memory.
-    MOVmr,     ///< Move memory to register.
-    CMOVNErr,  ///< Conditional move when not equal (register-register).
-    MOVri,     ///< Move immediate to register.
-    SELECT_GPR, ///< Select pseudo for integer/pointer values before ISel.
-    SELECT_XMM, ///< Select pseudo for scalar floating-point values before ISel.
-    LEA,       ///< Load effective address into register.
-    ADDrr,     ///< Add registers.
-    ADDri,     ///< Add immediate to register.
-    ANDrr,     ///< Bitwise AND register with register.
-    ANDri,     ///< Bitwise AND register with immediate.
-    ORrr,      ///< Bitwise OR register with register.
-    ORri,      ///< Bitwise OR register with immediate.
-    XORrr,     ///< Bitwise XOR register with register.
-    XORri,     ///< Bitwise XOR register with immediate.
-    SUBrr,     ///< Subtract registers.
-    SHLri,     ///< Shift left by immediate (imm8).
-    SHLrc,     ///< Shift left by CL register.
-    SHRri,     ///< Logical shift right by immediate (imm8).
-    SHRrc,     ///< Logical shift right by CL register.
-    SARri,     ///< Arithmetic shift right by immediate (imm8).
-    SARrc,     ///< Arithmetic shift right by CL register.
-    IMULrr,    ///< Signed multiply registers.
-    DIVS64rr,  ///< Signed 64-bit division pseudo (dest <- lhs / rhs).
-    REMS64rr,  ///< Signed 64-bit remainder pseudo (dest <- lhs % rhs).
+    PUSH,         ///< Push register onto the stack.
+    POP,          ///< Pop register from the stack.
+    MOVrr,        ///< Move register to register.
+    MOVrm,        ///< Move register to memory.
+    MOVmr,        ///< Move memory to register.
+    CMOVNErr,     ///< Conditional move when not equal (register-register).
+    MOVri,        ///< Move immediate to register.
+    SELECT_GPR,   ///< Select pseudo for integer/pointer values before ISel.
+    SELECT_XMM,   ///< Select pseudo for scalar floating-point values before ISel.
+    LEA,          ///< Load effective address into register.
+    ADDrr,        ///< Add registers.
+    ADDri,        ///< Add immediate to register.
+    ANDrr,        ///< Bitwise AND register with register.
+    ANDri,        ///< Bitwise AND register with immediate.
+    ORrr,         ///< Bitwise OR register with register.
+    ORri,         ///< Bitwise OR register with immediate.
+    XORrr,        ///< Bitwise XOR register with register.
+    XORri,        ///< Bitwise XOR register with immediate.
+    SUBrr,        ///< Subtract registers.
+    SHLri,        ///< Shift left by immediate (imm8).
+    SHLrc,        ///< Shift left by CL register.
+    SHRri,        ///< Logical shift right by immediate (imm8).
+    SHRrc,        ///< Logical shift right by CL register.
+    SARri,        ///< Arithmetic shift right by immediate (imm8).
+    SARrc,        ///< Arithmetic shift right by CL register.
+    IMULrr,       ///< Signed multiply registers.
+    DIVS64rr,     ///< Signed 64-bit division pseudo (dest <- lhs / rhs).
+    REMS64rr,     ///< Signed 64-bit remainder pseudo (dest <- lhs % rhs).
     DIVS64Chk0rr, ///< Checked signed 64-bit division pseudo (trap on /0 or MIN/-1).
     REMS64Chk0rr, ///< Checked signed 64-bit remainder pseudo (/0 trap, MIN%-1 = 0).
-    DIVU64rr,  ///< Unsigned 64-bit division pseudo (dest <- lhs / rhs).
-    REMU64rr,  ///< Unsigned 64-bit remainder pseudo (dest <- lhs % rhs).
+    DIVU64rr,     ///< Unsigned 64-bit division pseudo (dest <- lhs / rhs).
+    REMU64rr,     ///< Unsigned 64-bit remainder pseudo (dest <- lhs % rhs).
     DIVU64Chk0rr, ///< Checked unsigned 64-bit division pseudo (trap on /0).
     REMU64Chk0rr, ///< Checked unsigned 64-bit remainder pseudo (trap on /0).
-    CQO,       ///< Sign-extend RAX into RDX:RAX.
-    IDIVrm,    ///< Signed divide RDX:RAX by the given operand.
-    DIVrm,     ///< Unsigned divide RDX:RAX by the given operand.
-    XORrr32,   ///< 32-bit XOR to zero register.
-    CMPrr,     ///< Compare registers.
-    CMPri,     ///< Compare register with immediate.
-    SETcc,     ///< Set byte on condition code.
-    MOVZXrr8,  ///< Zero-extend an 8-bit low-byte register to 64-bit.
-    MOVZXrr32, ///< Zero-extend a 32-bit register to 64-bit using a 32-bit write.
-    TESTrr,    ///< Bitwise test between registers.
-    JMP,       ///< Unconditional jump.
-    JCC,       ///< Conditional jump.
-    LABEL,     ///< In-block label definition.
-    CALL,      ///< Call near label or register.
-    UD2,       ///< Undefined instruction used to flag hard failures (alignment trap).
-    RET,       ///< Return from function.
-    PX_COPY,   ///< Parallel copy pseudo-instruction for phi lowering.
-    FADD,      ///< Floating-point add (scalar double).
-    FSUB,      ///< Floating-point subtract (scalar double).
-    FMUL,      ///< Floating-point multiply (scalar double).
-    FDIV,      ///< Floating-point divide (scalar double).
-    UCOMIS,    ///< Unordered compare scalar double.
-    CVTSI2SD,  ///< Convert signed integer to scalar double.
-    CVTTSD2SI, ///< Convert scalar double to signed integer with truncation.
-    MOVQrx,    ///< Move 64-bit GPR to XMM (bit-pattern transfer, no conversion).
-    MOVQxr,    ///< Move 64-bit XMM to GPR (bit-pattern transfer, no conversion).
-    MOVSDrr,   ///< Move scalar double register to register.
-    MOVSDrm,   ///< Move scalar double register to memory.
-    MOVSDmr,   ///< Move scalar double memory to register.
-    MOVUPSrm,  ///< Store 128-bit XMM to memory (unaligned).
-    MOVUPSmr,  ///< Load 128-bit XMM from memory (unaligned).
-    ADDOvfrr,  ///< Signed addition pseudo with overflow check (dest, lhs, rhs).
-    SUBOvfrr,  ///< Signed subtraction pseudo with overflow check (dest, lhs, rhs).
-    IMULOvfrr  ///< Signed multiplication pseudo with overflow check (dest, lhs, rhs).
+    CQO,          ///< Sign-extend RAX into RDX:RAX.
+    IDIVrm,       ///< Signed divide RDX:RAX by the given operand.
+    DIVrm,        ///< Unsigned divide RDX:RAX by the given operand.
+    XORrr32,      ///< 32-bit XOR to zero register.
+    CMPrr,        ///< Compare registers.
+    CMPri,        ///< Compare register with immediate.
+    SETcc,        ///< Set byte on condition code.
+    MOVZXrr8,     ///< Zero-extend an 8-bit low-byte register to 64-bit.
+    MOVZXrr32,    ///< Zero-extend a 32-bit register to 64-bit using a 32-bit write.
+    TESTrr,       ///< Bitwise test between registers.
+    JMP,          ///< Unconditional jump.
+    JCC,          ///< Conditional jump.
+    LABEL,        ///< In-block label definition.
+    CALL,         ///< Call near label or register.
+    UD2,          ///< Undefined instruction used to flag hard failures (alignment trap).
+    RET,          ///< Return from function.
+    PX_COPY,      ///< Parallel copy pseudo-instruction for phi lowering.
+    FADD,         ///< Floating-point add (scalar double).
+    FSUB,         ///< Floating-point subtract (scalar double).
+    FMUL,         ///< Floating-point multiply (scalar double).
+    FDIV,         ///< Floating-point divide (scalar double).
+    UCOMIS,       ///< Unordered compare scalar double.
+    CVTSI2SD,     ///< Convert signed integer to scalar double.
+    CVTTSD2SI,    ///< Convert scalar double to signed integer with truncation.
+    MOVQrx,       ///< Move 64-bit GPR to XMM (bit-pattern transfer, no conversion).
+    MOVQxr,       ///< Move 64-bit XMM to GPR (bit-pattern transfer, no conversion).
+    MOVSDrr,      ///< Move scalar double register to register.
+    MOVSDrm,      ///< Move scalar double register to memory.
+    MOVSDmr,      ///< Move scalar double memory to register.
+    MOVUPSrm,     ///< Store 128-bit XMM to memory (unaligned).
+    MOVUPSmr,     ///< Load 128-bit XMM from memory (unaligned).
+    ADDOvfrr,     ///< Signed addition pseudo with overflow check (dest, lhs, rhs).
+    SUBOvfrr,     ///< Signed subtraction pseudo with overflow check (dest, lhs, rhs).
+    IMULOvfrr     ///< Signed multiplication pseudo with overflow check (dest, lhs, rhs).
 };
 
 /// \brief Machine instruction: opcode with ordered operands.

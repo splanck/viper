@@ -63,8 +63,7 @@ extern "C" void vm_trap(const char *msg) {
         }                                                                                          \
     } while (0)
 
-template <typename Fn>
-static bool expect_trap_contains(Fn &&fn, const char *needle) {
+template <typename Fn> static bool expect_trap_contains(Fn &&fn, const char *needle) {
     g_last_trap = nullptr;
     g_expect_trap = true;
     if (setjmp(g_trap_jmp) == 0) {
@@ -135,8 +134,7 @@ static void test_wrapper_constructors_assign_colliders() {
     void *capsule = rt_body3d_new_capsule(0.5, 2.0, 1.0);
     EXPECT_TRUE(rt_collider3d_get_type(rt_body3d_get_collider(box)) == RT_COLLIDER3D_TYPE_BOX,
                 "AABB wrapper assigns box collider");
-    EXPECT_TRUE(rt_collider3d_get_type(rt_body3d_get_collider(sphere)) ==
-                    RT_COLLIDER3D_TYPE_SPHERE,
+    EXPECT_TRUE(rt_collider3d_get_type(rt_body3d_get_collider(sphere)) == RT_COLLIDER3D_TYPE_SPHERE,
                 "Sphere wrapper assigns sphere collider");
     EXPECT_TRUE(rt_collider3d_get_type(rt_body3d_get_collider(capsule)) ==
                     RT_COLLIDER3D_TYPE_CAPSULE,
@@ -148,16 +146,27 @@ static void test_collider_constructors_sanitize_nonfinite_dimensions() {
     double mn[3], mx[3];
     void *box = rt_collider3d_new_box(NAN, -2.0, INFINITY);
     rt_collider3d_get_box_half_extents_raw(box, half_extents);
-    EXPECT_NEAR(half_extents[0], 1.0, 0.001, "Box collider NaN half extent falls back to unit extent");
+    EXPECT_NEAR(
+        half_extents[0], 1.0, 0.001, "Box collider NaN half extent falls back to unit extent");
     EXPECT_NEAR(half_extents[1], 2.0, 0.001, "Box collider negative half extent becomes positive");
-    EXPECT_NEAR(half_extents[2], 1.0, 0.001, "Box collider infinite half extent falls back to unit extent");
+    EXPECT_NEAR(
+        half_extents[2], 1.0, 0.001, "Box collider infinite half extent falls back to unit extent");
 
     void *sphere = rt_collider3d_new_sphere(NAN);
-    EXPECT_NEAR(rt_collider3d_get_radius_raw(sphere), 1.0, 0.001, "Sphere collider NaN radius falls back to unit radius");
+    EXPECT_NEAR(rt_collider3d_get_radius_raw(sphere),
+                1.0,
+                0.001,
+                "Sphere collider NaN radius falls back to unit radius");
 
     void *capsule = rt_collider3d_new_capsule(INFINITY, NAN);
-    EXPECT_NEAR(rt_collider3d_get_radius_raw(capsule), 1.0, 0.001, "Capsule infinite radius falls back to unit radius");
-    EXPECT_NEAR(rt_collider3d_get_height_raw(capsule), 2.0, 0.001, "Capsule NaN height falls back to diameter");
+    EXPECT_NEAR(rt_collider3d_get_radius_raw(capsule),
+                1.0,
+                0.001,
+                "Capsule infinite radius falls back to unit radius");
+    EXPECT_NEAR(rt_collider3d_get_height_raw(capsule),
+                2.0,
+                0.001,
+                "Capsule NaN height falls back to diameter");
 
     void *pixels = rt_pixels_new(2, 2);
     rt_pixels_set(pixels, 0, 0, encode_height16(0));
@@ -177,8 +186,7 @@ static void test_mesh_collider_attaches_to_static_body() {
     void *body = rt_body3d_new(0.0);
     EXPECT_TRUE(body != nullptr, "Static body for mesh collider created");
     rt_body3d_set_collider(body, mesh_collider);
-    EXPECT_TRUE(rt_body3d_get_collider(body) == mesh_collider,
-                "Static body accepts mesh collider");
+    EXPECT_TRUE(rt_body3d_get_collider(body) == mesh_collider, "Static body accepts mesh collider");
 }
 
 /*==========================================================================
@@ -268,8 +276,10 @@ static void test_body_sanitizes_nonfinite_motion_state() {
 
     rt_body3d_set_linear_damping(b, INFINITY);
     rt_body3d_set_angular_damping(b, NAN);
-    EXPECT_NEAR(rt_body3d_get_linear_damping(b), 0.0, 0.001, "Body non-finite linear damping clamps");
-    EXPECT_NEAR(rt_body3d_get_angular_damping(b), 0.0, 0.001, "Body non-finite angular damping clamps");
+    EXPECT_NEAR(
+        rt_body3d_get_linear_damping(b), 0.0, 0.001, "Body non-finite linear damping clamps");
+    EXPECT_NEAR(
+        rt_body3d_get_angular_damping(b), 0.0, 0.001, "Body non-finite angular damping clamps");
 }
 
 static void test_body_trigger() {
@@ -345,11 +355,9 @@ static void test_kinematic_body_ignores_gravity_but_integrates_velocity() {
     {
         void *pos = rt_body3d_get_position(b);
         void *q = rt_body3d_get_orientation(b);
-        EXPECT_NEAR(
-            rt_vec3_x(pos), 2.0, 0.05, "Kinematic body advances from explicit velocity");
+        EXPECT_NEAR(rt_vec3_x(pos), 2.0, 0.05, "Kinematic body advances from explicit velocity");
         EXPECT_NEAR(rt_vec3_y(pos), 0.0, 0.05, "Kinematic body ignores gravity");
-        EXPECT_TRUE(
-            fabs(rt_quat_w(q)) < 0.95, "Kinematic angular velocity updates orientation");
+        EXPECT_TRUE(fabs(rt_quat_w(q)) < 0.95, "Kinematic angular velocity updates orientation");
     }
 }
 
@@ -598,7 +606,8 @@ static void test_character_sanitizes_motion_config() {
     rt_character3d_set_step_height(c, NAN);
     EXPECT_NEAR(rt_character3d_get_step_height(c), 0.0, 0.001, "NaN step height clamps to zero");
     rt_character3d_set_step_height(c, -1.0);
-    EXPECT_NEAR(rt_character3d_get_step_height(c), 0.0, 0.001, "Negative step height clamps to zero");
+    EXPECT_NEAR(
+        rt_character3d_get_step_height(c), 0.0, 0.001, "Negative step height clamps to zero");
 
     rt_character3d_set_position(c, 1.0, 2.0, 3.0);
     rt_character3d_move(c, rt_vec3_new(NAN, 0.0, INFINITY), 1.0);
@@ -774,9 +783,9 @@ static void test_offcenter_contact_generates_angular_velocity() {
 
     {
         void *ang = rt_body3d_get_angular_velocity(capsule);
-        double angular_speed = sqrt(rt_vec3_x(ang) * rt_vec3_x(ang) +
-                                    rt_vec3_y(ang) * rt_vec3_y(ang) +
-                                    rt_vec3_z(ang) * rt_vec3_z(ang));
+        double angular_speed =
+            sqrt(rt_vec3_x(ang) * rt_vec3_x(ang) + rt_vec3_y(ang) * rt_vec3_y(ang) +
+                 rt_vec3_z(ang) * rt_vec3_z(ang));
         EXPECT_TRUE(rt_world3d_get_collision_count(world) == 1,
                     "off-center contact: collision recorded");
         EXPECT_TRUE(angular_speed > 0.1,
@@ -800,10 +809,8 @@ static void test_large_floor_contact_point_stays_near_dynamic_body() {
         void *point = rt_collision_event3d_get_contact_point(event, 0);
         EXPECT_TRUE(rt_world3d_get_collision_count(world) == 1,
                     "floor contact point: collision recorded");
-        EXPECT_NEAR(rt_vec3_x(point), 10.0, 0.05,
-                    "floor contact point: x remains near sphere");
-        EXPECT_NEAR(rt_vec3_z(point), 20.0, 0.05,
-                    "floor contact point: z remains near sphere");
+        EXPECT_NEAR(rt_vec3_x(point), 10.0, 0.05, "floor contact point: x remains near sphere");
+        EXPECT_NEAR(rt_vec3_z(point), 20.0, 0.05, "floor contact point: z remains near sphere");
     }
 }
 
@@ -864,7 +871,8 @@ static void test_compound_collider_rejects_transitive_cycle() {
     void *a = rt_collider3d_new_compound();
     void *b = rt_collider3d_new_compound();
     rt_collider3d_add_child(a, b, NULL);
-    EXPECT_TRUE(rt_collider3d_get_child_count_raw(a) == 1, "Compound cycle test starts with one child");
+    EXPECT_TRUE(rt_collider3d_get_child_count_raw(a) == 1,
+                "Compound cycle test starts with one child");
     EXPECT_TRUE(expect_trap_contains([&] { rt_collider3d_add_child(b, a, NULL); }, "cycle"),
                 "Compound collider rejects transitive cycles");
     EXPECT_TRUE(rt_collider3d_get_child_count_raw(b) == 0,
@@ -1053,18 +1061,23 @@ static void test_collision_events_enter_stay_exit() {
     rt_world3d_add(world, box);
 
     rt_world3d_step(world, 1.0 / 60.0);
-    EXPECT_TRUE(rt_world3d_get_enter_event_count(world) == 1, "collision events: first step enters");
-    EXPECT_TRUE(rt_world3d_get_stay_event_count(world) == 0, "collision events: no stay on first step");
-    EXPECT_TRUE(rt_world3d_get_exit_event_count(world) == 0, "collision events: no exit on first step");
+    EXPECT_TRUE(rt_world3d_get_enter_event_count(world) == 1,
+                "collision events: first step enters");
+    EXPECT_TRUE(rt_world3d_get_stay_event_count(world) == 0,
+                "collision events: no stay on first step");
+    EXPECT_TRUE(rt_world3d_get_exit_event_count(world) == 0,
+                "collision events: no exit on first step");
 
     rt_world3d_step(world, 1.0 / 60.0);
     EXPECT_TRUE(rt_world3d_get_enter_event_count(world) == 0, "collision events: no re-enter");
-    EXPECT_TRUE(rt_world3d_get_stay_event_count(world) == 1, "collision events: stay on second step");
+    EXPECT_TRUE(rt_world3d_get_stay_event_count(world) == 1,
+                "collision events: stay on second step");
 
     rt_body3d_set_position(box, 5.0, 0.0, 0.0);
     rt_body3d_set_velocity(box, 0.0, 0.0, 0.0);
     rt_world3d_step(world, 1.0 / 60.0);
-    EXPECT_TRUE(rt_world3d_get_exit_event_count(world) == 1, "collision events: exit when separated");
+    EXPECT_TRUE(rt_world3d_get_exit_event_count(world) == 1,
+                "collision events: exit when separated");
 }
 
 static void test_collision_event_surface_and_trigger_flag() {
@@ -1220,7 +1233,9 @@ static void test_joints_retain_bodies_and_sanitize_parameters() {
 
     EXPECT_TRUE(a_reached_zero == 0, "DistanceJoint3D retains body A");
     EXPECT_TRUE(b_reached_zero == 0, "DistanceJoint3D retains body B");
-    EXPECT_NEAR(rt_distance_joint3d_get_distance(distance), 0.0, 0.01,
+    EXPECT_NEAR(rt_distance_joint3d_get_distance(distance),
+                0.0,
+                0.01,
                 "DistanceJoint3D converts infinite distances to zero");
 
     void *c = rt_body3d_new_sphere(1.0, 1.0);
@@ -1230,18 +1245,24 @@ static void test_joints_retain_bodies_and_sanitize_parameters() {
     int d_reached_zero = rt_obj_release_check0(d);
     EXPECT_TRUE(c_reached_zero == 0, "SpringJoint3D retains body A");
     EXPECT_TRUE(d_reached_zero == 0, "SpringJoint3D retains body B");
-    EXPECT_NEAR(rt_spring_joint3d_get_rest_length(spring), 0.0, 0.01,
+    EXPECT_NEAR(rt_spring_joint3d_get_rest_length(spring),
+                0.0,
+                0.01,
                 "SpringJoint3D converts NaN rest length to zero");
-    EXPECT_NEAR(rt_spring_joint3d_get_stiffness(spring), 0.0, 0.01,
+    EXPECT_NEAR(rt_spring_joint3d_get_stiffness(spring),
+                0.0,
+                0.01,
                 "SpringJoint3D converts infinite stiffness to zero");
-    EXPECT_NEAR(rt_spring_joint3d_get_damping(spring), 0.0, 0.01,
+    EXPECT_NEAR(rt_spring_joint3d_get_damping(spring),
+                0.0,
+                0.01,
                 "SpringJoint3D converts negative damping to zero");
     rt_spring_joint3d_set_stiffness(spring, 1.0e100);
     rt_spring_joint3d_set_damping(spring, 1.0e100);
-    EXPECT_NEAR(rt_spring_joint3d_get_stiffness(spring), 1.0e9, 1.0,
-                "SpringJoint3D clamps huge stiffness");
-    EXPECT_NEAR(rt_spring_joint3d_get_damping(spring), 1.0e9, 1.0,
-                "SpringJoint3D clamps huge damping");
+    EXPECT_NEAR(
+        rt_spring_joint3d_get_stiffness(spring), 1.0e9, 1.0, "SpringJoint3D clamps huge stiffness");
+    EXPECT_NEAR(
+        rt_spring_joint3d_get_damping(spring), 1.0e9, 1.0, "SpringJoint3D clamps huge damping");
 }
 
 static void test_distance_joint_constraint() {

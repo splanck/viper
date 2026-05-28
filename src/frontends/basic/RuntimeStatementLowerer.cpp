@@ -145,7 +145,8 @@ void RuntimeStatementLowerer::lowerLet(const LetStmt &stmt) {
 ///          sources (NEW/constructors override; inferred classes only fill generic OBJECT),
 ///          stores into the slot (array vs scalar), and balances the creation reference of a
 ///          user-class NEW temporary so its refcount settles with the variable as sole owner.
-void RuntimeStatementLowerer::lowerLetToVar(const LetStmt &stmt, const VarExpr &varRef,
+void RuntimeStatementLowerer::lowerLetToVar(const LetStmt &stmt,
+                                            const VarExpr &varRef,
                                             Lowerer::RVal value) {
     const VarExpr *var = &varRef;
     {
@@ -239,7 +240,8 @@ void RuntimeStatementLowerer::lowerLetToVar(const LetStmt &stmt, const VarExpr &
 ///          flattened index for multi-dimensional arrays (BUG-094), emits a bounds check, and
 ///          stores via the element-kind-appropriate `rt_arr_*_put`/`set` helper. Unsupported
 ///          lvalue forms are no-ops (the analyzer reports them).
-void RuntimeStatementLowerer::lowerLetToMethodCall(const LetStmt &stmt, const MethodCallExpr &mcRef,
+void RuntimeStatementLowerer::lowerLetToMethodCall(const LetStmt &stmt,
+                                                   const MethodCallExpr &mcRef,
                                                    Lowerer::RVal value) {
     const MethodCallExpr *mc = &mcRef;
     {
@@ -431,7 +433,8 @@ void RuntimeStatementLowerer::lowerLetToMethodCall(const LetStmt &stmt, const Me
 /// @details Handles implicit field arrays inside a method (BUG-089): loads the array handle from
 ///          the `ME` object field, lowers the index, bounds-checks, and stores via the
 ///          element-kind-appropriate runtime put/set helper.
-void RuntimeStatementLowerer::lowerLetToCall(const LetStmt &stmt, const CallExpr &callRef,
+void RuntimeStatementLowerer::lowerLetToCall(const LetStmt &stmt,
+                                             const CallExpr &callRef,
                                              Lowerer::RVal value) {
     const CallExpr *call = &callRef;
     {
@@ -568,7 +571,8 @@ void RuntimeStatementLowerer::lowerLetToCall(const LetStmt &stmt, const CallExpr
 /// @param value The already-lowered right-hand value.
 /// @details Resolves the array's storage and element kind, lowers/coerces the index, and stores
 ///          the value with the appropriate bounds-checked runtime array setter.
-void RuntimeStatementLowerer::lowerLetToArray(const LetStmt &stmt, const ArrayExpr &arr,
+void RuntimeStatementLowerer::lowerLetToArray(const LetStmt &stmt,
+                                              const ArrayExpr &arr,
                                               Lowerer::RVal value) {
     assignArrayElement(arr, std::move(value), stmt.loc);
 }

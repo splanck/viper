@@ -163,11 +163,11 @@ namespace {
 
 /// @brief Classification flags decoded from a division/remainder pseudo opcode.
 struct DivOpcodeKind {
-    bool isDiv{false};        ///< true ⇒ produce quotient (div), false ⇒ remainder.
-    bool isSigned{false};     ///< true ⇒ uses CQO/IDIV; false ⇒ XOR/DIV.
-    bool isCheckedSigned{false};   ///< true ⇒ emit INT_MIN / -1 overflow guard.
-    bool needsDiv0Check{false};    ///< true ⇒ emit divisor-is-zero trap branch.
-    bool matched{false};      ///< true ⇒ opcode was a div/rem pseudo we handle.
+    bool isDiv{false};           ///< true ⇒ produce quotient (div), false ⇒ remainder.
+    bool isSigned{false};        ///< true ⇒ uses CQO/IDIV; false ⇒ XOR/DIV.
+    bool isCheckedSigned{false}; ///< true ⇒ emit INT_MIN / -1 overflow guard.
+    bool needsDiv0Check{false};  ///< true ⇒ emit divisor-is-zero trap branch.
+    bool matched{false};         ///< true ⇒ opcode was a div/rem pseudo we handle.
 };
 
 /// @brief Decode the opcode flags for a candidate instruction.
@@ -210,19 +210,19 @@ struct DivOpcodeKind {
         trapIndex = *existing;
         auto &trapBlock = fn.blocks[*trapIndex];
         const bool hasCall = std::any_of(
-            trapBlock.instructions.begin(), trapBlock.instructions.end(),
-            [&](const MInstr &instr) {
+            trapBlock.instructions.begin(), trapBlock.instructions.end(), [&](const MInstr &instr) {
                 return instr.opcode == MOpcode::CALL && !instr.operands.empty() &&
                        std::holds_alternative<OpLabel>(instr.operands[0]) &&
                        std::get<OpLabel>(instr.operands[0]).name == callee;
             });
         if (!hasCall) {
-            trapBlock.append(MInstr::make(
-                MOpcode::CALL, std::vector<Operand>{makeLabelOperand(callee)}));
+            trapBlock.append(
+                MInstr::make(MOpcode::CALL, std::vector<Operand>{makeLabelOperand(callee)}));
         }
-        const bool hasTerminator = std::any_of(
-            trapBlock.instructions.begin(), trapBlock.instructions.end(),
-            [](const MInstr &instr) { return instr.opcode == MOpcode::UD2; });
+        const bool hasTerminator =
+            std::any_of(trapBlock.instructions.begin(),
+                        trapBlock.instructions.end(),
+                        [](const MInstr &instr) { return instr.opcode == MOpcode::UD2; });
         if (!hasTerminator)
             trapBlock.append(MInstr::make(MOpcode::UD2));
         return *trapIndex;
@@ -230,8 +230,7 @@ struct DivOpcodeKind {
 
     MBasicBlock trapBlock{};
     trapBlock.label = label;
-    trapBlock.append(MInstr::make(MOpcode::CALL,
-                                  std::vector<Operand>{makeLabelOperand(callee)}));
+    trapBlock.append(MInstr::make(MOpcode::CALL, std::vector<Operand>{makeLabelOperand(callee)}));
     trapBlock.append(MInstr::make(MOpcode::UD2));
     fn.blocks.push_back(std::move(trapBlock));
     trapIndex = fn.blocks.size() - 1U;
@@ -321,12 +320,10 @@ void emitDivOverflowGuards(MBasicBlock &currentBlock,
                            const DivOpcodeKind &kind,
                            const std::string &ovfTrapLabel,
                            const std::string &afterLabel) {
-    const std::string skipOverflowLabel =
-        fn.makeLocalLabel(currentBlock.label + ".divchk_skip");
+    const std::string skipOverflowLabel = fn.makeLocalLabel(currentBlock.label + ".divchk_skip");
     const bool dividendIsImmediate = std::holds_alternative<OpImm>(dividendClone);
-    const bool dividendIsMin = dividendIsImmediate &&
-                               std::get<OpImm>(dividendClone).val ==
-                                   std::numeric_limits<int64_t>::min();
+    const bool dividendIsMin = dividendIsImmediate && std::get<OpImm>(dividendClone).val ==
+                                                          std::numeric_limits<int64_t>::min();
 
     if (!dividendIsImmediate) {
         currentBlock.append(MInstr::make(
@@ -334,37 +331,33 @@ void emitDivOverflowGuards(MBasicBlock &currentBlock,
             std::vector<Operand>{cloneOperand(scratchRegOp),
                                  makeImmOperand(std::numeric_limits<int64_t>::min())}));
         currentBlock.append(MInstr::make(
-            MOpcode::CMPrr,
-            std::vector<Operand>{cloneOperand(raxOp), cloneOperand(scratchRegOp)}));
+            MOpcode::CMPrr, std::vector<Operand>{cloneOperand(raxOp), cloneOperand(scratchRegOp)}));
         currentBlock.append(MInstr::make(
             MOpcode::JCC,
             std::vector<Operand>{makeImmOperand(1), makeLabelOperand(skipOverflowLabel)}));
     } else if (!dividendIsMin) {
-        currentBlock.append(MInstr::make(
-            MOpcode::JMP, std::vector<Operand>{makeLabelOperand(skipOverflowLabel)}));
+        currentBlock.append(
+            MInstr::make(MOpcode::JMP, std::vector<Operand>{makeLabelOperand(skipOverflowLabel)}));
     }
 
     currentBlock.append(MInstr::make(
-        MOpcode::CMPri,
-        std::vector<Operand>{cloneOperand(divisorRegOp), makeImmOperand(-1)}));
-    currentBlock.append(MInstr::make(
-        MOpcode::JCC,
-        std::vector<Operand>{makeImmOperand(1), makeLabelOperand(skipOverflowLabel)}));
+        MOpcode::CMPri, std::vector<Operand>{cloneOperand(divisorRegOp), makeImmOperand(-1)}));
+    currentBlock.append(
+        MInstr::make(MOpcode::JCC,
+                     std::vector<Operand>{makeImmOperand(1), makeLabelOperand(skipOverflowLabel)}));
 
     if (kind.isDiv) {
-        currentBlock.append(MInstr::make(
-            MOpcode::JMP, std::vector<Operand>{makeLabelOperand(ovfTrapLabel)}));
+        currentBlock.append(
+            MInstr::make(MOpcode::JMP, std::vector<Operand>{makeLabelOperand(ovfTrapLabel)}));
     } else {
         currentBlock.append(MInstr::make(
-            MOpcode::MOVri,
-            std::vector<Operand>{cloneOperand(destOp), makeImmOperand(0)}));
-        currentBlock.append(MInstr::make(
-            MOpcode::JMP, std::vector<Operand>{makeLabelOperand(afterLabel)}));
+            MOpcode::MOVri, std::vector<Operand>{cloneOperand(destOp), makeImmOperand(0)}));
+        currentBlock.append(
+            MInstr::make(MOpcode::JMP, std::vector<Operand>{makeLabelOperand(afterLabel)}));
     }
 
-    currentBlock.append(MInstr::make(
-        MOpcode::LABEL,
-        std::vector<Operand>{makeLabelOperand(skipOverflowLabel)}));
+    currentBlock.append(
+        MInstr::make(MOpcode::LABEL, std::vector<Operand>{makeLabelOperand(skipOverflowLabel)}));
 }
 
 /// @brief Emit the canonical CQO/IDIV (signed) or XOR/DIV (unsigned) sequence
@@ -377,19 +370,17 @@ void emitDivOrIdiv(MBasicBlock &currentBlock,
                    const DivOpcodeKind &kind) {
     if (kind.isSigned) {
         currentBlock.append(MInstr::make(MOpcode::CQO, {}));
-        currentBlock.append(MInstr::make(
-            MOpcode::IDIVrm, std::vector<Operand>{cloneOperand(divisorRegOp)}));
+        currentBlock.append(
+            MInstr::make(MOpcode::IDIVrm, std::vector<Operand>{cloneOperand(divisorRegOp)}));
     } else {
         currentBlock.append(MInstr::make(
-            MOpcode::XORrr32,
-            std::vector<Operand>{cloneOperand(rdxOp), cloneOperand(rdxOp)}));
-        currentBlock.append(MInstr::make(
-            MOpcode::DIVrm, std::vector<Operand>{cloneOperand(divisorRegOp)}));
+            MOpcode::XORrr32, std::vector<Operand>{cloneOperand(rdxOp), cloneOperand(rdxOp)}));
+        currentBlock.append(
+            MInstr::make(MOpcode::DIVrm, std::vector<Operand>{cloneOperand(divisorRegOp)}));
     }
     const Operand resultPhys = kind.isDiv ? raxOp : rdxOp;
     currentBlock.append(MInstr::make(
-        MOpcode::MOVrr,
-        std::vector<Operand>{cloneOperand(destOp), cloneOperand(resultPhys)}));
+        MOpcode::MOVrr, std::vector<Operand>{cloneOperand(destOp), cloneOperand(resultPhys)}));
 }
 
 } // namespace
@@ -436,8 +427,8 @@ void lowerSignedDivRem(MFunction &fn) {
             if (!std::holds_alternative<OpReg>(divisorOp))
                 continue;
 
-            if (tryLowerDivByPowerOfTwo(fn.blocks[blockIdx], instrIdx, kind, candidate,
-                                        dividendOp, divisorOp))
+            if (tryLowerDivByPowerOfTwo(
+                    fn.blocks[blockIdx], instrIdx, kind, candidate, dividendOp, divisorOp))
                 continue;
 
             MInstr pseudo = std::move(fn.blocks[blockIdx].instructions[instrIdx]);
@@ -497,8 +488,15 @@ void lowerSignedDivRem(MFunction &fn) {
             }
 
             if (kind.isCheckedSigned) {
-                emitDivOverflowGuards(currentBlock, fn, raxOp, divisorRegOp, scratchRegOp,
-                                      destOp, dividendClone, kind, ovfTrapLabel,
+                emitDivOverflowGuards(currentBlock,
+                                      fn,
+                                      raxOp,
+                                      divisorRegOp,
+                                      scratchRegOp,
+                                      destOp,
+                                      dividendClone,
+                                      kind,
+                                      ovfTrapLabel,
                                       afterBlock.label);
             }
 

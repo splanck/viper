@@ -29,10 +29,10 @@
 #include "rt_videoplayer.h"
 
 #include <limits.h>
+#include <math.h>
 #include <stdint.h>
 #include <stdlib.h>
 #include <string.h>
-#include <math.h>
 
 extern void *rt_obj_new_i64(int64_t class_id, int64_t byte_size);
 extern void rt_obj_set_finalizer(void *obj, void (*fn)(void *));
@@ -211,7 +211,8 @@ static double clamp_volume(double vol) {
 
 /// @brief Construct a video-playback GUI widget. Opens the file via `rt_videoplayer_open`,
 /// builds a vbox containing an Image widget (for frames) plus an hbox of Play/Pause/Stop buttons
-/// and a position-slider. Returns NULL if the file can't be opened or the video has zero dimensions.
+/// and a position-slider. Returns NULL if the file can't be opened or the video has zero
+/// dimensions.
 void *rt_videowidget_new(void *parent, rt_string path) {
     RT_ASSERT_MAIN_THREAD();
     if (!parent || !path)

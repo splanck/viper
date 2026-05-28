@@ -176,14 +176,8 @@ int main() {
                 Err_InvalidOperation,
                 "null receiver");
     expect_trap(trap_url_invalid_port, RT_TRAP_KIND_NETWORK_ERROR, Err_InvalidUrl, "parse URL");
-    expect_trap(trap_diag_embedded_nul_message,
-                RT_TRAP_KIND_DOMAIN_ERROR,
-                0,
-                "A\\x00B");
+    expect_trap(trap_diag_embedded_nul_message, RT_TRAP_KIND_DOMAIN_ERROR, 0, "A\\x00B");
     expect_trap(trap_runtime_string_message, RT_TRAP_KIND_DOMAIN_ERROR, 0, "managed trap");
-    expect_trap(trap_runtime_string_embedded_nul_message,
-                RT_TRAP_KIND_DOMAIN_ERROR,
-                0,
-                "A\\x00B");
+    expect_trap(trap_runtime_string_embedded_nul_message, RT_TRAP_KIND_DOMAIN_ERROR, 0, "A\\x00B");
     return 0;
 }

@@ -320,7 +320,7 @@ inline BasicAA::CallEffect BasicAA::queryFunctionEffect(const il::core::Function
     return effect;
 }
 
-    inline BasicAA::CallEffect BasicAA::queryRuntimeEffect(std::string_view name) const {
+inline BasicAA::CallEffect BasicAA::queryRuntimeEffect(std::string_view name) const {
     if (const auto *sig = il::runtime::findRuntimeSignature(name))
         return CallEffect{sig->pure, sig->readonly, true};
 
@@ -487,7 +487,9 @@ inline AliasResult BasicAA::alias(const il::core::Value &lhs,
     if (l.kind == BaseKind::Null || r.kind == BaseKind::Null)
         return basesEqual(l, r) ? AliasResult::MustAlias : AliasResult::NoAlias;
 
-    auto isParamLike = [](BaseKind k) { return k == BaseKind::Param || k == BaseKind::NoAliasParam; };
+    auto isParamLike = [](BaseKind k) {
+        return k == BaseKind::Param || k == BaseKind::NoAliasParam;
+    };
 
     if (l.kind == BaseKind::NoAliasParam && isParamLike(r.kind) && !basesEqual(l, r))
         return AliasResult::NoAlias;

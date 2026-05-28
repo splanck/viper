@@ -147,9 +147,8 @@ PkgImage pngReadMemory(const uint8_t *data, size_t len) {
             interlaceMethod = chunkData[12];
             if (width == 0 || height == 0)
                 throw PNGError("PNG: empty image");
-            if (bitDepth != 8 ||
-                (colorType != 0 && colorType != 2 && colorType != 3 && colorType != 4 &&
-                 colorType != 6))
+            if (bitDepth != 8 || (colorType != 0 && colorType != 2 && colorType != 3 &&
+                                  colorType != 4 && colorType != 6))
                 throw PNGError("PNG: unsupported format (need 8-bit grayscale, palette, RGB, "
                                "grayscale-alpha, or RGBA)");
             if (compression != 0 || filter != 0 || interlaceMethod > 1)
@@ -273,8 +272,7 @@ PkgImage pngReadMemory(const uint8_t *data, size_t len) {
     };
 
     if (interlaceMethod == 0) {
-        if (stride + 1 > kMaxDecodedPngBytes ||
-            height > kMaxDecodedPngBytes / (stride + 1))
+        if (stride + 1 > kMaxDecodedPngBytes || height > kMaxDecodedPngBytes / (stride + 1))
             throw PNGError("PNG: image data is too large");
         const size_t expected = (stride + 1) * height;
         if (raw.size() != expected)
@@ -361,9 +359,8 @@ PkgImage pngReadMemory(const uint8_t *data, size_t len) {
                     dst[0] = palette[static_cast<size_t>(index) * 3];
                     dst[1] = palette[static_cast<size_t>(index) * 3 + 1];
                     dst[2] = palette[static_cast<size_t>(index) * 3 + 2];
-                    dst[3] = static_cast<size_t>(index) < transparency.size()
-                                 ? transparency[index]
-                                 : 0xFF;
+                    dst[3] = static_cast<size_t>(index) < transparency.size() ? transparency[index]
+                                                                              : 0xFF;
                     break;
                 }
                 case 4:

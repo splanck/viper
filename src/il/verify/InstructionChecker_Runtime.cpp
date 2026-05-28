@@ -95,7 +95,8 @@ CalleeEffectMetadata queryCalleeEffects(const Extern *externSig,
                                         const il::runtime::RuntimeSignature *runtimeSig,
                                         std::string_view calleeName) {
     if (runtimeSig)
-        return CalleeEffectMetadata{true, runtimeSig->pure, runtimeSig->readonly, runtimeSig->nothrow};
+        return CalleeEffectMetadata{
+            true, runtimeSig->pure, runtimeSig->readonly, runtimeSig->nothrow};
     if (fnSig)
         return CalleeEffectMetadata{
             true, fnSig->attrs().pure, fnSig->attrs().readonly, fnSig->attrs().nothrow};
@@ -206,8 +207,7 @@ bool runtimeArgTypeCompatible(Type::Kind actual,
         return true;
     if (!runtimeSig || index >= 64)
         return false;
-    const bool objectParam =
-        (runtimeSig->objectParamMask & (std::uint64_t{1} << index)) != 0;
+    const bool objectParam = (runtimeSig->objectParamMask & (std::uint64_t{1} << index)) != 0;
     return objectParam && expected == Type::Kind::Ptr && actual == Type::Kind::Str;
 }
 
@@ -282,7 +282,8 @@ struct RuntimeArrayCallChecker {
     }
 
     /// @brief Require operand @p index to have type @p expected.
-    Expected<void> requireOperandType(size_t index, Type::Kind expected,
+    Expected<void> requireOperandType(size_t index,
+                                      Type::Kind expected,
                                       std::string_view role) const {
         bool missing = false;
         const Type actual = ctx.types.valueType(ctx.instr.operands[index], &missing);
@@ -747,8 +748,8 @@ Expected<void> checkCall(const VerifyCtx &ctx) {
         const CalleeEffectMetadata effects =
             queryCalleeEffects(externSig, fnSig, runtimeSig, calleeName);
 
-        if (!effects.known &&
-            (ctx.instr.CallAttr.pure || ctx.instr.CallAttr.readonly || ctx.instr.CallAttr.nothrow)) {
+        if (!effects.known && (ctx.instr.CallAttr.pure || ctx.instr.CallAttr.readonly ||
+                               ctx.instr.CallAttr.nothrow)) {
             return fail(ctx, "call attributes require callee effect metadata");
         }
 

@@ -10,8 +10,8 @@
 //
 //===----------------------------------------------------------------------===//
 
-#include "bytecode/BytecodeCompiler.hpp"
 #include "bytecode/Bytecode.hpp"
+#include "bytecode/BytecodeCompiler.hpp"
 #include "bytecode/BytecodeVM.hpp"
 #include "il/core/BasicBlock.hpp"
 #include "il/core/Function.hpp"

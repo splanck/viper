@@ -355,9 +355,10 @@ TEST(RuntimeMethodIndexBasic, TypedLookupMatchesArgumentTypes) {
 TEST(RuntimeMethodIndexBasic, TypedLookupAcceptsObjectCompatibleArguments) {
     runtimeMethodIndex().seed();
 
-    auto mapSet = runtimeMethodIndex().find(
-        "Viper.Collections.Map", "Set", std::vector<BasicType>{BasicType::String,
-                                                               BasicType::String});
+    auto mapSet =
+        runtimeMethodIndex().find("Viper.Collections.Map",
+                                  "Set",
+                                  std::vector<BasicType>{BasicType::String, BasicType::String});
     ASSERT_TRUE(mapSet.has_value());
     EXPECT_EQ(mapSet->target, std::string("Viper.Collections.Map.Set"));
 
@@ -374,10 +375,10 @@ TEST(RuntimeMethodIndexBasic, TypedLookupAcceptsObjectCompatibleArguments) {
 TEST(RuntimeMethodIndexBasic, TypedLookupAcceptsIntegerBooleanArguments) {
     runtimeMethodIndex().seed();
 
-    auto looping = runtimeMethodIndex().find(
-        "Viper.Graphics3D.AnimController3D",
-        "SetStateLooping",
-        std::vector<BasicType>{BasicType::String, BasicType::Int});
+    auto looping =
+        runtimeMethodIndex().find("Viper.Graphics3D.AnimController3D",
+                                  "SetStateLooping",
+                                  std::vector<BasicType>{BasicType::String, BasicType::Int});
     ASSERT_TRUE(looping.has_value());
     EXPECT_EQ(looping->target, std::string("Viper.Graphics3D.AnimController3D.SetStateLooping"));
 }

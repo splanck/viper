@@ -85,8 +85,7 @@ static uint32_t decode_codepoint(const char *s, size_t len, size_t *pos) {
         }
         cp = (cp << 6) | (nc & 0x3F);
     }
-    if ((need > 1 && cp < min_cp) || (cp >= 0xD800 && cp <= 0xDFFF) ||
-        cp > 0x10FFFF) {
+    if ((need > 1 && cp < min_cp) || (cp >= 0xD800 && cp <= 0xDFFF) || cp > 0x10FFFF) {
         *pos = i + 1;
         return 0xFFFD;
     }
@@ -110,38 +109,68 @@ typedef enum {
 ///          above U+0800 (with minor Arabic Supplement handling) is LTR.
 static cp_dir_t classify(uint32_t cp) {
     // RTL scripts.
-    if (cp >= 0x0590 && cp <= 0x05FF) return DIR_RTL;  // Hebrew
-    if (cp >= 0x0600 && cp <= 0x06FF) return DIR_RTL;  // Arabic
-    if (cp >= 0x0700 && cp <= 0x074F) return DIR_RTL;  // Syriac
-    if (cp >= 0x0750 && cp <= 0x077F) return DIR_RTL;  // Arabic Supplement
-    if (cp >= 0x0780 && cp <= 0x07BF) return DIR_RTL;  // Thaana
-    if (cp >= 0x07C0 && cp <= 0x07FF) return DIR_RTL;  // N'Ko
-    if (cp >= 0x0800 && cp <= 0x083F) return DIR_RTL;  // Samaritan
-    if (cp >= 0x0840 && cp <= 0x085F) return DIR_RTL;  // Mandaic
-    if (cp >= 0x0860 && cp <= 0x086F) return DIR_RTL;  // Syriac Supplement
-    if (cp >= 0x0870 && cp <= 0x089F) return DIR_RTL;  // Arabic Extended-B
-    if (cp >= 0x08A0 && cp <= 0x08FF) return DIR_RTL;  // Arabic Extended-A
-    if (cp >= 0xFB1D && cp <= 0xFB4F) return DIR_RTL;  // Hebrew presentation
-    if (cp >= 0xFB50 && cp <= 0xFDFF) return DIR_RTL;  // Arabic presentation
-    if (cp >= 0xFE70 && cp <= 0xFEFF) return DIR_RTL;  // Arabic presentation-B
-    if (cp >= 0x10800 && cp <= 0x1091F) return DIR_RTL; // Cypriot/Kharoshthi
-    if (cp >= 0x10A00 && cp <= 0x10A5F) return DIR_RTL; // Kharoshthi
-    if (cp >= 0x10A60 && cp <= 0x10A7F) return DIR_RTL; // Old South Arabian
-    if (cp >= 0x10AC0 && cp <= 0x10AFF) return DIR_RTL; // Manichaean
-    if (cp >= 0x10B00 && cp <= 0x10B7F) return DIR_RTL; // Avestan/Inscriptional
-    if (cp >= 0x10D00 && cp <= 0x10D3F) return DIR_RTL; // Hanifi Rohingya
-    if (cp >= 0x10E60 && cp <= 0x10E7F) return DIR_RTL; // Rumi numerals
-    if (cp >= 0x10EC0 && cp <= 0x10EFF) return DIR_RTL; // Arabic Extended-C
-    if (cp >= 0x1E800 && cp <= 0x1E95F) return DIR_RTL; // Mende/Adlam
+    if (cp >= 0x0590 && cp <= 0x05FF)
+        return DIR_RTL; // Hebrew
+    if (cp >= 0x0600 && cp <= 0x06FF)
+        return DIR_RTL; // Arabic
+    if (cp >= 0x0700 && cp <= 0x074F)
+        return DIR_RTL; // Syriac
+    if (cp >= 0x0750 && cp <= 0x077F)
+        return DIR_RTL; // Arabic Supplement
+    if (cp >= 0x0780 && cp <= 0x07BF)
+        return DIR_RTL; // Thaana
+    if (cp >= 0x07C0 && cp <= 0x07FF)
+        return DIR_RTL; // N'Ko
+    if (cp >= 0x0800 && cp <= 0x083F)
+        return DIR_RTL; // Samaritan
+    if (cp >= 0x0840 && cp <= 0x085F)
+        return DIR_RTL; // Mandaic
+    if (cp >= 0x0860 && cp <= 0x086F)
+        return DIR_RTL; // Syriac Supplement
+    if (cp >= 0x0870 && cp <= 0x089F)
+        return DIR_RTL; // Arabic Extended-B
+    if (cp >= 0x08A0 && cp <= 0x08FF)
+        return DIR_RTL; // Arabic Extended-A
+    if (cp >= 0xFB1D && cp <= 0xFB4F)
+        return DIR_RTL; // Hebrew presentation
+    if (cp >= 0xFB50 && cp <= 0xFDFF)
+        return DIR_RTL; // Arabic presentation
+    if (cp >= 0xFE70 && cp <= 0xFEFF)
+        return DIR_RTL; // Arabic presentation-B
+    if (cp >= 0x10800 && cp <= 0x1091F)
+        return DIR_RTL; // Cypriot/Kharoshthi
+    if (cp >= 0x10A00 && cp <= 0x10A5F)
+        return DIR_RTL; // Kharoshthi
+    if (cp >= 0x10A60 && cp <= 0x10A7F)
+        return DIR_RTL; // Old South Arabian
+    if (cp >= 0x10AC0 && cp <= 0x10AFF)
+        return DIR_RTL; // Manichaean
+    if (cp >= 0x10B00 && cp <= 0x10B7F)
+        return DIR_RTL; // Avestan/Inscriptional
+    if (cp >= 0x10D00 && cp <= 0x10D3F)
+        return DIR_RTL; // Hanifi Rohingya
+    if (cp >= 0x10E60 && cp <= 0x10E7F)
+        return DIR_RTL; // Rumi numerals
+    if (cp >= 0x10EC0 && cp <= 0x10EFF)
+        return DIR_RTL; // Arabic Extended-C
+    if (cp >= 0x1E800 && cp <= 0x1E95F)
+        return DIR_RTL; // Mende/Adlam
 
     // Common neutrals: ASCII space, punctuation, digits, control.
-    if (cp < 0x30) return DIR_NEUTRAL;                   // controls + space + punct
-    if (cp >= 0x30 && cp <= 0x39) return DIR_NEUTRAL;    // digits
-    if (cp >= 0x3A && cp <= 0x40) return DIR_NEUTRAL;    // more punct
-    if (cp >= 0x5B && cp <= 0x60) return DIR_NEUTRAL;    // [\]^_`
-    if (cp >= 0x7B && cp <= 0xBF) return DIR_NEUTRAL;    // punct + Latin-1 supp controls
-    if (cp == 0x00A0) return DIR_NEUTRAL;                // NBSP
-    if (cp >= 0x2000 && cp <= 0x206F) return DIR_NEUTRAL;// general punctuation
+    if (cp < 0x30)
+        return DIR_NEUTRAL; // controls + space + punct
+    if (cp >= 0x30 && cp <= 0x39)
+        return DIR_NEUTRAL; // digits
+    if (cp >= 0x3A && cp <= 0x40)
+        return DIR_NEUTRAL; // more punct
+    if (cp >= 0x5B && cp <= 0x60)
+        return DIR_NEUTRAL; // [\]^_`
+    if (cp >= 0x7B && cp <= 0xBF)
+        return DIR_NEUTRAL; // punct + Latin-1 supp controls
+    if (cp == 0x00A0)
+        return DIR_NEUTRAL; // NBSP
+    if (cp >= 0x2000 && cp <= 0x206F)
+        return DIR_NEUTRAL; // general punctuation
 
     // Everything else (Latin, Greek, Cyrillic, CJK, etc.) is LTR.
     return DIR_LTR;
@@ -154,14 +183,14 @@ static cp_dir_t classify(uint32_t cp) {
 typedef struct {
     int64_t ltr_count;
     int64_t rtl_count;
-    cp_dir_t first_strong;  ///< DIR_NEUTRAL if the string has no strong chars
+    cp_dir_t first_strong; ///< DIR_NEUTRAL if the string has no strong chars
 } scan_result_t;
 
 /// @brief Single pass over a UTF-8 string tallying strong LTR/RTL codepoints
 ///        and recording the first strong direction (the UAX#9 P2/P3 input).
 /// @return Counts plus @c first_strong (DIR_NEUTRAL if no strong char appears).
 static scan_result_t scan(const char *s, size_t len) {
-    scan_result_t r = { 0, 0, DIR_NEUTRAL };
+    scan_result_t r = {0, 0, DIR_NEUTRAL};
     if (!s || len == 0)
         return r;
     size_t pos = 0;
@@ -188,12 +217,14 @@ static scan_result_t scan(const char *s, size_t len) {
 rt_string rt_text_direction_of_locale(void *locale) {
     const rt_locale_data_t *d = rt_locale_get_data(locale);
     const char *td = d->text_direction;
-    if (!td || !*td) td = "ltr";
+    if (!td || !*td)
+        td = "ltr";
     return rt_string_from_bytes(td, strlen(td));
 }
 
 rt_string rt_text_direction_detect(rt_string s) {
-    if (!s) return rt_string_from_bytes("", 0);
+    if (!s)
+        return rt_string_from_bytes("", 0);
     const char *cs = rt_string_cstr(s);
     int64_t len = rt_str_len(s);
     if (!cs || len <= 0)
@@ -210,39 +241,48 @@ rt_string rt_text_direction_detect(rt_string s) {
 }
 
 int8_t rt_text_direction_is_rtl(rt_string s) {
-    if (!s) return 0;
+    if (!s)
+        return 0;
     const char *cs = rt_string_cstr(s);
     int64_t len = rt_str_len(s);
-    if (!cs || len <= 0) return 0;
+    if (!cs || len <= 0)
+        return 0;
     scan_result_t r = scan(cs, (size_t)len);
     return (int8_t)(r.rtl_count > r.ltr_count ? 1 : 0);
 }
 
 int8_t rt_text_direction_is_ltr(rt_string s) {
-    if (!s) return 1; // empty -> LTR (matches Detect)
+    if (!s)
+        return 1; // empty -> LTR (matches Detect)
     const char *cs = rt_string_cstr(s);
     int64_t len = rt_str_len(s);
-    if (!cs || len <= 0) return 1;
+    if (!cs || len <= 0)
+        return 1;
     scan_result_t r = scan(cs, (size_t)len);
     return (int8_t)(r.ltr_count >= r.rtl_count ? 1 : 0);
 }
 
 rt_string rt_text_direction_first_strong(rt_string s) {
-    if (!s) return rt_string_from_bytes("neutral", 7);
+    if (!s)
+        return rt_string_from_bytes("neutral", 7);
     const char *cs = rt_string_cstr(s);
     int64_t len = rt_str_len(s);
     if (!cs || len <= 0)
         return rt_string_from_bytes("neutral", 7);
     scan_result_t r = scan(cs, (size_t)len);
     switch (r.first_strong) {
-        case DIR_LTR: return rt_string_from_bytes("ltr", 3);
-        case DIR_RTL: return rt_string_from_bytes("rtl", 3);
-        default:      return rt_string_from_bytes("neutral", 7);
+        case DIR_LTR:
+            return rt_string_from_bytes("ltr", 3);
+        case DIR_RTL:
+            return rt_string_from_bytes("rtl", 3);
+        default:
+            return rt_string_from_bytes("neutral", 7);
     }
 }
 
 rt_string rt_text_direction_bidi(rt_string s) {
-    if (!s) return rt_string_from_bytes("", 0);
+    if (!s)
+        return rt_string_from_bytes("", 0);
     const char *cs = rt_string_cstr(s);
     int64_t len = rt_str_len(s);
     if (!cs || len <= 0)

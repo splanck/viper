@@ -111,7 +111,6 @@ static void test_embedded_nul_str_roundtrip(void) {
     rt_string_unref(plaintext);
 }
 
-
 static void test_str_format_magic(void) {
     printf("rt_aes_encrypt_str emits authenticated VAG1 payload:\n");
 

@@ -196,12 +196,13 @@ size_t deduplicateStrings(std::vector<ObjFile> &allObjects,
     sectionKeys.reserve(sectionMap.size());
     for (const auto &entry : sectionMap)
         sectionKeys.push_back(entry.first);
-    std::sort(sectionKeys.begin(), sectionKeys.end(), [](const InputSectionKey &a,
-                                                         const InputSectionKey &b) {
-        if (a.objIndex != b.objIndex)
-            return a.objIndex < b.objIndex;
-        return a.secIndex < b.secIndex;
-    });
+    std::sort(sectionKeys.begin(),
+              sectionKeys.end(),
+              [](const InputSectionKey &a, const InputSectionKey &b) {
+                  if (a.objIndex != b.objIndex)
+                      return a.objIndex < b.objIndex;
+                  return a.secIndex < b.secIndex;
+              });
 
     for (const auto &sectionKey : sectionKeys) {
         auto &locIndices = sectionMap[sectionKey];

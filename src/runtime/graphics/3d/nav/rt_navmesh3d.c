@@ -96,7 +96,8 @@ static void navmesh3d_finalizer(void *obj) {
     nm->triangles = NULL;
 }
 
-/// @brief Release a partially-constructed navmesh on allocation failure, freeing if refcount hits zero.
+/// @brief Release a partially-constructed navmesh on allocation failure, freeing if refcount hits
+/// zero.
 /// @details Called in error paths where the navmesh object was allocated but bake failed,
 ///          so the half-built object must be dropped without going through the normal finalizer.
 static void navmesh3d_free_partial(rt_navmesh3d *nm) {
@@ -342,7 +343,8 @@ static int point_in_tri_xz(float px, float pz, const float *v0, const float *v1,
 /// @brief Interpolate the world-space Y coordinate at `(px, pz)` on a triangle defined by
 ///        @p v0 / @p v1 / @p v2. Used by navmesh height queries to project an XZ point onto
 ///        the walkable surface. Caller must already have confirmed `(px,pz)` lies inside.
-static float triangle_y_at_xz(float px, float pz, const float *v0, const float *v1, const float *v2) {
+static float triangle_y_at_xz(
+    float px, float pz, const float *v0, const float *v1, const float *v2) {
     float d1x = v1[0] - v0[0], d1z = v1[2] - v0[2];
     float d2x = v2[0] - v0[0], d2z = v2[2] - v0[2];
     float dpx = px - v0[0], dpz = pz - v0[2];
@@ -369,13 +371,8 @@ static float navmesh3d_vertical_tolerance(const rt_navmesh3d *nm) {
 /// @details Y is ignored (navmesh queries are horizontal). The parametric `t` is
 ///          clamped to `[0,1]` to stay on the segment; near-zero-length segments
 ///          collapse to endpoint `a`. Outputs the point and its squared XZ distance.
-static void closest_point_on_segment_xz(float px,
-                                        float pz,
-                                        const float *a,
-                                        const float *b,
-                                        float *out_x,
-                                        float *out_z,
-                                        float *out_d2) {
+static void closest_point_on_segment_xz(
+    float px, float pz, const float *a, const float *b, float *out_x, float *out_z, float *out_d2) {
     float abx = b[0] - a[0];
     float abz = b[2] - a[2];
     float len_sq = abx * abx + abz * abz;
@@ -434,7 +431,8 @@ static void closest_point_on_tri_xz(float px,
 }
 
 /// @brief Find triangle containing point (projected onto XZ), with optional vertical tolerance.
-static int32_t find_tri_with_max_dy(const rt_navmesh3d *nm, float px, float py, float pz, float max_dy) {
+static int32_t find_tri_with_max_dy(
+    const rt_navmesh3d *nm, float px, float py, float pz, float max_dy) {
     float best_dy = FLT_MAX;
     int32_t best = -1;
     for (int32_t i = 0; i < nm->triangle_count; i++) {
@@ -529,15 +527,17 @@ static float centroid_dist(const rt_navmesh3d *nm, int32_t a, int32_t b) {
 /// @brief Internal: compute the path from `from_v` to `to_v` and copy the waypoints into a
 /// freshly malloc'd `*out_points_xyz` (interleaved x,y,z). Returns the point count, or 0 on
 /// failure. Caller frees `*out_points_xyz`.
-int64_t rt_navmesh3d_copy_path_points(void *obj, void *from_v, void *to_v, double **out_points_xyz) {
+int64_t rt_navmesh3d_copy_path_points(void *obj,
+                                      void *from_v,
+                                      void *to_v,
+                                      double **out_points_xyz) {
     double *points = NULL;
     int64_t point_count = 0;
     if (!obj || !rt_g3d_is_vec3(from_v) || !rt_g3d_is_vec3(to_v))
         return 0;
     if (out_points_xyz)
         *out_points_xyz = NULL;
-    rt_navmesh3d *nm =
-        (rt_navmesh3d *)rt_g3d_checked_or_null(obj, RT_G3D_NAVMESH3D_CLASS_ID);
+    rt_navmesh3d *nm = (rt_navmesh3d *)rt_g3d_checked_or_null(obj, RT_G3D_NAVMESH3D_CLASS_ID);
     if (!nm || nm->triangle_count == 0 || !nm->triangles || !nm->vertices)
         return 0;
 
@@ -546,8 +546,8 @@ int64_t rt_navmesh3d_copy_path_points(void *obj, void *from_v, void *to_v, doubl
     float fx = (float)fdx, fy = (float)fdy, fz = (float)fdz;
     float tx = (float)tdx, ty = (float)tdy, tz = (float)tdz;
     float max_dy = navmesh3d_vertical_tolerance(nm);
-    if (!isfinite(fx) || !isfinite(fy) || !isfinite(fz) || !isfinite(tx) ||
-        !isfinite(ty) || !isfinite(tz))
+    if (!isfinite(fx) || !isfinite(fy) || !isfinite(fz) || !isfinite(tx) || !isfinite(ty) ||
+        !isfinite(tz))
         return 0;
 
     int32_t start = find_tri_with_max_dy(nm, fx, fy, fz, max_dy);
@@ -578,8 +578,7 @@ int64_t rt_navmesh3d_copy_path_points(void *obj, void *from_v, void *to_v, doubl
     if (tc <= 0 || tc > INT32_MAX / 3)
         return 0;
     int32_t heap_cap = tc * 3;
-    if ((size_t)tc > SIZE_MAX / sizeof(float) ||
-        (size_t)tc > SIZE_MAX / sizeof(int32_t) ||
+    if ((size_t)tc > SIZE_MAX / sizeof(float) || (size_t)tc > SIZE_MAX / sizeof(int32_t) ||
         (size_t)tc > SIZE_MAX / sizeof(int8_t) ||
         (size_t)heap_cap > SIZE_MAX / sizeof(heap_entry_t))
         return 0;
@@ -759,8 +758,7 @@ void *rt_navmesh3d_find_path(void *obj, void *from_v, void *to_v) {
         return NULL;
     }
     for (int64_t i = 0; i < point_count; i++) {
-        void *point =
-            rt_vec3_new(points[i * 3 + 0], points[i * 3 + 1], points[i * 3 + 2]);
+        void *point = rt_vec3_new(points[i * 3 + 0], points[i * 3 + 1], points[i * 3 + 2]);
         rt_path3d_add_point(path, point);
         navmesh3d_release_local(point);
     }
@@ -774,8 +772,7 @@ void *rt_navmesh3d_find_path(void *obj, void *from_v, void *to_v) {
 void *rt_navmesh3d_sample_position(void *obj, void *point) {
     if (!obj || !rt_g3d_is_vec3(point))
         return rt_vec3_new(0, 0, 0);
-    rt_navmesh3d *nm =
-        (rt_navmesh3d *)rt_g3d_checked_or_null(obj, RT_G3D_NAVMESH3D_CLASS_ID);
+    rt_navmesh3d *nm = (rt_navmesh3d *)rt_g3d_checked_or_null(obj, RT_G3D_NAVMESH3D_CLASS_ID);
     if (!nm)
         return rt_vec3_new(0, 0, 0);
     double pdx = rt_vec3_x(point), pdy = rt_vec3_y(point), pdz = rt_vec3_z(point);
@@ -833,8 +830,7 @@ void *rt_navmesh3d_sample_position(void *obj, void *point) {
 int8_t rt_navmesh3d_is_walkable(void *obj, void *point) {
     if (!obj || !rt_g3d_is_vec3(point))
         return 0;
-    rt_navmesh3d *nm =
-        (rt_navmesh3d *)rt_g3d_checked_or_null(obj, RT_G3D_NAVMESH3D_CLASS_ID);
+    rt_navmesh3d *nm = (rt_navmesh3d *)rt_g3d_checked_or_null(obj, RT_G3D_NAVMESH3D_CLASS_ID);
     if (!nm || nm->triangle_count <= 0 || !nm->triangles || !nm->vertices)
         return 0;
     double pdx = rt_vec3_x(point), pdy = rt_vec3_y(point), pdz = rt_vec3_z(point);
@@ -846,16 +842,14 @@ int8_t rt_navmesh3d_is_walkable(void *obj, void *point) {
 
 /// @brief Number of walkable triangles in the baked navmesh.
 int64_t rt_navmesh3d_get_triangle_count(void *obj) {
-    rt_navmesh3d *nm =
-        (rt_navmesh3d *)rt_g3d_checked_or_null(obj, RT_G3D_NAVMESH3D_CLASS_ID);
+    rt_navmesh3d *nm = (rt_navmesh3d *)rt_g3d_checked_or_null(obj, RT_G3D_NAVMESH3D_CLASS_ID);
     return nm ? nm->triangle_count : 0;
 }
 
 /// @brief Set the maximum slope angle (in degrees) considered walkable.
 /// Refilters the preserved source triangles and rebuilds adjacency immediately.
 void rt_navmesh3d_set_max_slope(void *obj, double degrees) {
-    rt_navmesh3d *nm =
-        (rt_navmesh3d *)rt_g3d_checked_or_null(obj, RT_G3D_NAVMESH3D_CLASS_ID);
+    rt_navmesh3d *nm = (rt_navmesh3d *)rt_g3d_checked_or_null(obj, RT_G3D_NAVMESH3D_CLASS_ID);
     if (!nm)
         return;
     nm->max_slope = navmesh3d_sanitize_slope(degrees);
@@ -867,8 +861,7 @@ void rt_navmesh3d_set_max_slope(void *obj, double degrees) {
 void rt_navmesh3d_debug_draw(void *obj, void *canvas) {
     if (!obj || !canvas)
         return;
-    rt_navmesh3d *nm =
-        (rt_navmesh3d *)rt_g3d_checked_or_null(obj, RT_G3D_NAVMESH3D_CLASS_ID);
+    rt_navmesh3d *nm = (rt_navmesh3d *)rt_g3d_checked_or_null(obj, RT_G3D_NAVMESH3D_CLASS_ID);
     if (!nm || nm->triangle_count <= 0 || !nm->vertices || !nm->triangles)
         return;
     int64_t color = 0x00FF44; /* green */

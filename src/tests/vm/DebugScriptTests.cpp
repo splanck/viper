@@ -175,8 +175,8 @@ int main(int argc, char **argv) {
         !writeScript(stepOutScript, {"step-out", "continue"}))
         return 1;
 
-    cmd = ilc + " -run " + stepModesIl + " --trace=il --break M0 --debug-cmds " +
-          stepOverScript + " >" + stepModesOut + " 2>" + stepOverErr;
+    cmd = ilc + " -run " + stepModesIl + " --trace=il --break M0 --debug-cmds " + stepOverScript +
+          " >" + stepModesOut + " 2>" + stepOverErr;
     if (std::system(cmd.c_str()) != 0)
         return 1;
     const auto stepOverBreaks = readBreakLines(stepOverErr);
@@ -195,8 +195,8 @@ int main(int argc, char **argv) {
         helperTrace > stepOverBreak)
         return 1;
 
-    cmd = ilc + " -run " + stepModesIl + " --trace=il --break H0 --debug-cmds " +
-          stepOutScript + " >" + stepModesOut + " 2>" + stepOutErr;
+    cmd = ilc + " -run " + stepModesIl + " --trace=il --break H0 --debug-cmds " + stepOutScript +
+          " >" + stepModesOut + " 2>" + stepOutErr;
     if (std::system(cmd.c_str()) != 0)
         return 1;
     const auto stepOutBreaks = readBreakLines(stepOutErr);

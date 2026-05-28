@@ -25,8 +25,8 @@
 
 #include "Liveness.hpp"
 
-#include "codegen/x86_64/OperandRoles.hpp"
 #include "codegen/common/ra/DataflowLiveness.hpp"
+#include "codegen/x86_64/OperandRoles.hpp"
 
 #include <algorithm>
 #include <cassert>
@@ -126,11 +126,10 @@ void LivenessAnalysis::buildBlockIndex(const MFunction &func) {
 void LivenessAnalysis::buildCFG(const MFunction &func) {
     for (std::size_t bi = 0; bi < func.blocks.size(); ++bi) {
         const auto &block = func.blocks[bi];
-        auto termIt = std::find_if(block.instructions.rbegin(),
-                                   block.instructions.rend(),
-                                   [](const MInstr &instr) {
-                                       return isControlTerminator(instr.opcode);
-                                   });
+        auto termIt =
+            std::find_if(block.instructions.rbegin(),
+                         block.instructions.rend(),
+                         [](const MInstr &instr) { return isControlTerminator(instr.opcode); });
         if (termIt == block.instructions.rend()) {
             if (bi + 1 < func.blocks.size()) {
                 succs_[bi].push_back(bi + 1);

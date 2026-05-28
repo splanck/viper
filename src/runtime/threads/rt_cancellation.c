@@ -57,8 +57,8 @@ typedef struct rt_cancellation_data {
 #else
     atomic_int cancelled;
 #endif
-    void *parent;                         // linked parent token (NULL if root)
-    void *monitor;                        // protects the weak child list
+    void *parent;  // linked parent token (NULL if root)
+    void *monitor; // protects the weak child list
     struct rt_cancellation_data *first_child;
     struct rt_cancellation_data *next_sibling;
 } rt_cancellation_data;

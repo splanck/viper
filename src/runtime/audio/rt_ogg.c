@@ -383,8 +383,7 @@ static int process_page_packets(ogg_reader_t *r, const uint8_t *body, size_t bod
         if (offset + seg_size > body_len)
             return 0;
 
-        if (!discarding_continuation &&
-            !packet_append(&state->partial, body + offset, seg_size)) {
+        if (!discarding_continuation && !packet_append(&state->partial, body + offset, seg_size)) {
             packet_reset(&state->partial);
             return 0;
         }

@@ -49,10 +49,8 @@ static void test_new_pbr_defaults() {
     EXPECT_NEAR(mat->metallic, 0.0, 0.001, "Material3D.NewPBR defaults metallic to dielectric");
     EXPECT_NEAR(mat->roughness, 0.5, 0.001, "Material3D.NewPBR defaults roughness to mid value");
     EXPECT_NEAR(mat->ao, 1.0, 0.001, "Material3D.NewPBR defaults AO to full");
-    EXPECT_NEAR(mat->emissive_intensity,
-                1.0,
-                0.001,
-                "Material3D.NewPBR defaults emissive intensity to 1");
+    EXPECT_NEAR(
+        mat->emissive_intensity, 1.0, 0.001, "Material3D.NewPBR defaults emissive intensity to 1");
     EXPECT_NEAR(mat->normal_scale, 1.0, 0.001, "Material3D.NewPBR defaults normal scale to 1");
     EXPECT_TRUE(mat->alpha_mode == RT_MATERIAL3D_ALPHA_MODE_OPAQUE,
                 "Material3D.NewPBR defaults to opaque alpha mode");
@@ -121,20 +119,14 @@ static void test_clone_and_instance_share_resources_but_copy_scalars() {
     rt_material3d_set_metallic(inst, 0.1);
     rt_material3d_set_double_sided(inst, 0);
 
-    EXPECT_NEAR(base->roughness,
-                0.15,
-                0.001,
-                "Material3D.MakeInstance keeps scalar overrides independent");
-    EXPECT_NEAR(base->metallic,
-                0.9,
-                0.001,
-                "Instance scalar writes do not mutate the source material");
+    EXPECT_NEAR(
+        base->roughness, 0.15, 0.001, "Material3D.MakeInstance keeps scalar overrides independent");
+    EXPECT_NEAR(
+        base->metallic, 0.9, 0.001, "Instance scalar writes do not mutate the source material");
     EXPECT_TRUE(base->double_sided == 1 && inst->double_sided == 0,
                 "Instance boolean overrides do not mutate the source material");
-    EXPECT_NEAR(clone->emissive_intensity,
-                2.0,
-                0.001,
-                "Material3D.Clone preserves PBR scalar state");
+    EXPECT_NEAR(
+        clone->emissive_intensity, 2.0, 0.001, "Material3D.Clone preserves PBR scalar state");
     EXPECT_TRUE(clone->alpha_mode == RT_MATERIAL3D_ALPHA_MODE_BLEND,
                 "Material3D.Clone preserves alpha-mode state");
 }
@@ -145,8 +137,7 @@ int main() {
     test_clone_and_instance_share_resources_but_copy_scalars();
 
     if (tests_passed != tests_run) {
-        std::fprintf(
-            stderr, "test_rt_material3d: %d/%d checks passed\n", tests_passed, tests_run);
+        std::fprintf(stderr, "test_rt_material3d: %d/%d checks passed\n", tests_passed, tests_run);
         return 1;
     }
 

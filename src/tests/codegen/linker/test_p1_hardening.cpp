@@ -152,7 +152,8 @@ int main() {
         const std::string needle = "_tlv_bootstrap";
         size_t count = 0;
         std::string blob(reinterpret_cast<const char *>(bindData.data()), bindData.size());
-        for (size_t pos = 0; (pos = blob.find(needle, pos)) != std::string::npos; pos += needle.size())
+        for (size_t pos = 0; (pos = blob.find(needle, pos)) != std::string::npos;
+             pos += needle.size())
             ++count;
         CHECK(count == 2);
     }

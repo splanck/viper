@@ -250,8 +250,7 @@ static inline vg_widget_t *rt_gui_widget_handle_checked(void *handle) {
 
 /// @brief Safe-cast @p handle to a widget of a specific @p type.
 /// @return The widget if it is live and matches @p type, else NULL.
-static inline vg_widget_t *rt_gui_widget_handle_checked_type(void *handle,
-                                                            vg_widget_type_t type) {
+static inline vg_widget_t *rt_gui_widget_handle_checked_type(void *handle, vg_widget_type_t type) {
     vg_widget_t *widget = rt_gui_widget_handle_checked(handle);
     return widget && widget->type == type ? widget : NULL;
 }
@@ -424,8 +423,7 @@ static inline rt_gui_string_data_t *rt_gui_string_data_new(rt_string value) {
     const char *bytes = len ? rt_string_cstr(value) : "";
     if (len && !bytes)
         return NULL;
-    rt_gui_string_data_t *data =
-        (rt_gui_string_data_t *)malloc(header_size + len + 1);
+    rt_gui_string_data_t *data = (rt_gui_string_data_t *)malloc(header_size + len + 1);
     if (!data)
         return NULL;
     data->magic = RT_GUI_STRING_DATA_MAGIC;
@@ -443,8 +441,7 @@ static inline rt_gui_string_data_t *rt_gui_string_data_new_bytes(const char *byt
     const size_t header_size = offsetof(rt_gui_string_data_t, bytes);
     if (len > SIZE_MAX - header_size - 1)
         return NULL;
-    rt_gui_string_data_t *data =
-        (rt_gui_string_data_t *)malloc(header_size + len + 1);
+    rt_gui_string_data_t *data = (rt_gui_string_data_t *)malloc(header_size + len + 1);
     if (!data)
         return NULL;
     data->magic = RT_GUI_STRING_DATA_MAGIC;

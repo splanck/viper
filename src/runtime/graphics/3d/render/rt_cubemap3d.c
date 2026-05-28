@@ -29,9 +29,9 @@
 
 #include "rt_canvas3d.h"
 #include "rt_canvas3d_internal.h"
-#include "rt_platform.h"
 #include "rt_pixels.h"
 #include "rt_pixels_internal.h"
+#include "rt_platform.h"
 
 #include <math.h>
 #include <stdint.h>
@@ -296,7 +296,8 @@ void *rt_cubemap3d_new(void *px, void *nx, void *py, void *ny, void *pz, void *n
         }
     }
 
-    rt_cubemap3d *cm = (rt_cubemap3d *)rt_obj_new_i64(RT_G3D_CUBEMAP3D_CLASS_ID, (int64_t)sizeof(rt_cubemap3d));
+    rt_cubemap3d *cm =
+        (rt_cubemap3d *)rt_obj_new_i64(RT_G3D_CUBEMAP3D_CLASS_ID, (int64_t)sizeof(rt_cubemap3d));
     if (!cm) {
         rt_trap("CubeMap3D.New: memory allocation failed");
         return NULL;
@@ -310,8 +311,8 @@ void *rt_cubemap3d_new(void *px, void *nx, void *py, void *ny, void *pz, void *n
     cm->cache_identity =
         (uint64_t)__atomic_fetch_add(&g_next_cubemap_cache_identity, (int64_t)1, __ATOMIC_RELAXED);
     if (cm->cache_identity == 0)
-        cm->cache_identity =
-            (uint64_t)__atomic_fetch_add(&g_next_cubemap_cache_identity, (int64_t)1, __ATOMIC_RELAXED);
+        cm->cache_identity = (uint64_t)__atomic_fetch_add(
+            &g_next_cubemap_cache_identity, (int64_t)1, __ATOMIC_RELAXED);
     rt_obj_set_finalizer(cm, cubemap_finalize);
     return cm;
 }
@@ -520,8 +521,8 @@ void rt_cubemap_sample_roughness(const rt_cubemap3d *cm,
         float sample_dx = dx + tx * k_offsets[i][0] * spread + bx * k_offsets[i][1] * spread;
         float sample_dy = dy + ty * k_offsets[i][0] * spread + by * k_offsets[i][1] * spread;
         float sample_dz = dz + tz * k_offsets[i][0] * spread + bz * k_offsets[i][1] * spread;
-        float sample_len = sqrtf(
-            sample_dx * sample_dx + sample_dy * sample_dy + sample_dz * sample_dz);
+        float sample_len =
+            sqrtf(sample_dx * sample_dx + sample_dy * sample_dy + sample_dz * sample_dz);
         float sr;
         float sg;
         float sb;
@@ -589,8 +590,7 @@ void rt_material3d_set_env_map(void *obj, void *cubemap) {
 
 /// @brief Set the environment reflection strength for a material (0.0–1.0).
 void rt_material3d_set_reflectivity(void *obj, double r) {
-    rt_material3d *mat =
-        (rt_material3d *)rt_g3d_checked_or_null(obj, RT_G3D_MATERIAL3D_CLASS_ID);
+    rt_material3d *mat = (rt_material3d *)rt_g3d_checked_or_null(obj, RT_G3D_MATERIAL3D_CLASS_ID);
     if (!mat)
         return;
     if (!isfinite(r))
@@ -604,8 +604,7 @@ void rt_material3d_set_reflectivity(void *obj, double r) {
 
 /// @brief Get the current environment reflection strength of a material.
 double rt_material3d_get_reflectivity(void *obj) {
-    rt_material3d *mat =
-        (rt_material3d *)rt_g3d_checked_or_null(obj, RT_G3D_MATERIAL3D_CLASS_ID);
+    rt_material3d *mat = (rt_material3d *)rt_g3d_checked_or_null(obj, RT_G3D_MATERIAL3D_CLASS_ID);
     if (!mat)
         return 0.0;
     return mat->reflectivity;

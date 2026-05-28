@@ -14,13 +14,10 @@
 #define VIPER_ENABLE_GRAPHICS 1
 #endif
 
-#include "rt_animcontroller3d.h"
 #include "rt.hpp"
+#include "rt_animcontroller3d.h"
 #include "rt_audio.h"
-#include "rt_sound3d.h"
 #include "rt_canvas3d.h"
-#include "rt_soundlistener3d.h"
-#include "rt_soundsource3d.h"
 #include "rt_decal3d.h"
 #include "rt_game3d.h"
 #include "rt_input.h"
@@ -29,13 +26,16 @@
 #include "rt_particles3d.h"
 #include "rt_physics3d.h"
 #include "rt_pixels.h"
+#include "rt_platform.h"
 #include "rt_postfx3d.h"
 #include "rt_quat.h"
-#include "rt_platform.h"
 #include "rt_scene3d.h"
 #include "rt_skeleton3d.h"
-#include "rt_synth.h"
+#include "rt_sound3d.h"
+#include "rt_soundlistener3d.h"
+#include "rt_soundsource3d.h"
 #include "rt_string.h"
+#include "rt_synth.h"
 #include "rt_vec2.h"
 #include "rt_vec3.h"
 
@@ -78,13 +78,13 @@ extern "C" void vm_trap(const char *msg) {
 #define PASS()                                                                                     \
     do {                                                                                           \
         ++g_tests_passed;                                                                          \
-        std::printf("ok\n");                                                                      \
+        std::printf("ok\n");                                                                       \
         return true;                                                                               \
     } while (0)
 
 #define FAIL(msg)                                                                                  \
     do {                                                                                           \
-        std::printf("FAIL: %s\n", msg);                                                           \
+        std::printf("FAIL: %s\n", msg);                                                            \
         return false;                                                                              \
     } while (0)
 
@@ -94,21 +94,21 @@ extern "C" void vm_trap(const char *msg) {
             FAIL(msg);                                                                             \
     } while (0)
 
-#define EXPECT_EQ_INT(actual, expected, msg)                                                        \
+#define EXPECT_EQ_INT(actual, expected, msg)                                                       \
     do {                                                                                           \
-        const long long got_ = (long long)(actual);                                                 \
-        const long long want_ = (long long)(expected);                                              \
+        const long long got_ = (long long)(actual);                                                \
+        const long long want_ = (long long)(expected);                                             \
         if (got_ != want_) {                                                                       \
             std::printf("FAIL: %s (got %lld, expected %lld)\n", msg, got_, want_);                 \
             return false;                                                                          \
         }                                                                                          \
     } while (0)
 
-#define EXPECT_NEAR(actual, expected, eps, msg)                                                     \
+#define EXPECT_NEAR(actual, expected, eps, msg)                                                    \
     do {                                                                                           \
-        const double got_ = (double)(actual);                                                       \
-        const double want_ = (double)(expected);                                                    \
-        if (std::fabs(got_ - want_) > (eps)) {                                                      \
+        const double got_ = (double)(actual);                                                      \
+        const double want_ = (double)(expected);                                                   \
+        if (std::fabs(got_ - want_) > (eps)) {                                                     \
             std::printf("FAIL: %s (got %.6f, expected %.6f)\n", msg, got_, want_);                 \
             return false;                                                                          \
         }                                                                                          \
@@ -124,8 +124,7 @@ static rt_string test_fixture_path(const char *relative) {
 #endif
 }
 
-template <typename Fn>
-static bool expect_trap_contains(Fn &&fn, const char *needle) {
+template <typename Fn> static bool expect_trap_contains(Fn &&fn, const char *needle) {
     g_last_trap = nullptr;
     g_expect_trap = true;
     if (setjmp(g_trap_jmp) == 0) {
@@ -179,12 +178,12 @@ static void *make_game3d_test_controller(double walk_distance, double event_time
     rt_skeleton3d_compute_inverse_bind(skel);
 
     void *idle = make_game3d_test_anim("idle", root, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0);
-    void *walk =
-        make_game3d_test_anim("walk", root, 0.0, 0.0, 0.0, walk_distance, 0.0, 0.0);
+    void *walk = make_game3d_test_anim("walk", root, 0.0, 0.0, 0.0, walk_distance, 0.0, 0.0);
     void *controller = rt_anim_controller3d_new(skel);
     rt_anim_controller3d_add_state(controller, rt_const_cstr("idle"), idle);
     rt_anim_controller3d_add_state(controller, rt_const_cstr("walk"), walk);
-    rt_anim_controller3d_add_event(controller, rt_const_cstr("walk"), event_time, rt_const_cstr("step"));
+    rt_anim_controller3d_add_event(
+        controller, rt_const_cstr("walk"), event_time, rt_const_cstr("step"));
     rt_anim_controller3d_set_root_motion_bone(controller, root);
     return controller;
 }
@@ -197,8 +196,10 @@ static bool test_layermasks_and_constants() {
     EXPECT_EQ_INT(rt_game3d_quality_balanced(), 1, "Balanced quality value");
     EXPECT_EQ_INT(rt_game3d_collision_any(), 3, "Any collision phase value");
     EXPECT_EQ_INT(rt_game3d_shading_model_unlit(), 3, "Game3D unlit matches backend shading slot");
-    EXPECT_EQ_INT(rt_game3d_shading_model_fresnel(), 4, "Game3D fresnel matches backend shading slot");
-    EXPECT_EQ_INT(rt_game3d_shading_model_emissive(), 5, "Game3D emissive matches backend shading slot");
+    EXPECT_EQ_INT(
+        rt_game3d_shading_model_fresnel(), 4, "Game3D fresnel matches backend shading slot");
+    EXPECT_EQ_INT(
+        rt_game3d_shading_model_emissive(), 5, "Game3D emissive matches backend shading slot");
 
     void *mask = rt_game3d_layermask_of(rt_game3d_layers_world());
     EXPECT_TRUE(mask != nullptr, "LayerMask.Of returns an object");
@@ -221,9 +222,9 @@ static bool test_layermasks_and_constants() {
 
     EXPECT_TRUE(expect_trap_contains([&] { rt_game3d_layermask_of(3); }, "single positive bit"),
                 "LayerMask.Of rejects multi-bit layers");
-    EXPECT_TRUE(expect_trap_contains([&] { rt_game3d_layermask_include(mask, 0); },
-                                     "single positive bit"),
-                "LayerMask.include rejects zero layer");
+    EXPECT_TRUE(
+        expect_trap_contains([&] { rt_game3d_layermask_include(mask, 0); }, "single positive bit"),
+        "LayerMask.include rejects zero layer");
     PASS();
 }
 
@@ -330,8 +331,7 @@ static bool test_world_entity_registry_and_collision_clear() {
     rt_game3d_entity_set_name(other, rt_const_cstr("Wall"));
     rt_game3d_entity_add_child(parent, child);
     rt_game3d_entity_set_layer(parent, rt_game3d_layers_player());
-    rt_game3d_entity_set_collision_mask(
-        parent, rt_game3d_layermask_of(rt_game3d_layers_world()));
+    rt_game3d_entity_set_collision_mask(parent, rt_game3d_layermask_of(rt_game3d_layers_world()));
     rt_game3d_entity_attach_body(parent, body);
     rt_game3d_entity_set_layer(other, rt_game3d_layers_world());
     rt_game3d_entity_attach_body(other, other_body);
@@ -372,12 +372,12 @@ static bool test_world_entity_registry_and_collision_clear() {
     EXPECT_EQ_INT(rt_canvas3d_get_height(rt_game3d_world_get_canvas(world)),
                   72,
                   "World3D.onResize resizes the canvas height");
-    EXPECT_TRUE(expect_trap_contains([&] { rt_game3d_world_add_light(world, 0, parent); },
-                                     "Light3D"),
-                "World3D.addLight rejects non-Light3D handles");
-    EXPECT_TRUE(expect_trap_contains([&] { rt_game3d_world_set_skybox(world, parent); },
-                                     "CubeMap3D"),
-                "World3D.setSkybox rejects non-CubeMap3D handles");
+    EXPECT_TRUE(
+        expect_trap_contains([&] { rt_game3d_world_add_light(world, 0, parent); }, "Light3D"),
+        "World3D.addLight rejects non-Light3D handles");
+    EXPECT_TRUE(
+        expect_trap_contains([&] { rt_game3d_world_set_skybox(world, parent); }, "CubeMap3D"),
+        "World3D.setSkybox rejects non-CubeMap3D handles");
     EXPECT_EQ_INT(rt_scene3d_get_node_count(rt_game3d_world_get_scene(world)),
                   4,
                   "scene contains root, parent, child, and wall");
@@ -435,12 +435,11 @@ static bool test_entity_child_graph_reparents_and_rejects_cycles() {
                   1,
                   "reparent adds child to new parent node");
 
-    EXPECT_TRUE(expect_trap_contains([&] { rt_game3d_entity_add_child(child, parent_b); },
-                                     "cycle"),
+    EXPECT_TRUE(expect_trap_contains([&] { rt_game3d_entity_add_child(child, parent_b); }, "cycle"),
                 "child graph rejects cycles");
-    EXPECT_TRUE(expect_trap_contains([&] { rt_game3d_entity_add_child(child, child); },
-                                     "own child"),
-                "child graph rejects self-parenting");
+    EXPECT_TRUE(
+        expect_trap_contains([&] { rt_game3d_entity_add_child(child, child); }, "own child"),
+        "child graph rejects self-parenting");
     PASS();
 }
 
@@ -503,7 +502,8 @@ static bool test_free_fly_controller_synthetic_input() {
                 "W moves the free-fly camera forward before simulation");
     EXPECT_TRUE(std::fabs(rt_vec3_x(after) - rt_vec3_x(before)) > 0.001,
                 "synthetic mouse look changes the free-fly heading");
-    EXPECT_EQ_INT(rt_game3d_world_get_frame(world), 1, "controller frame increments with runFramesOnly");
+    EXPECT_EQ_INT(
+        rt_game3d_world_get_frame(world), 1, "controller frame increments with runFramesOnly");
     rt_canvas3d_clear_synthetic_input(canvas);
     rt_game3d_world_destroy(world);
     PASS();
@@ -580,8 +580,10 @@ static bool test_first_person_character_controller_same_frame_motion() {
                 "first-person W moves the character in the same run frame");
 
     void *camera_pos = rt_camera3d_get_position(rt_game3d_world_get_camera(world));
-    EXPECT_NEAR(rt_vec3_x(camera_pos), rt_vec3_x(after), 0.0001, "camera lateUpdate follows character x");
-    EXPECT_NEAR(rt_vec3_z(camera_pos), rt_vec3_z(after), 0.0001, "camera lateUpdate follows character z");
+    EXPECT_NEAR(
+        rt_vec3_x(camera_pos), rt_vec3_x(after), 0.0001, "camera lateUpdate follows character x");
+    EXPECT_NEAR(
+        rt_vec3_z(camera_pos), rt_vec3_z(after), 0.0001, "camera lateUpdate follows character z");
     EXPECT_TRUE(rt_vec3_y(camera_pos) > rt_vec3_y(after),
                 "camera lateUpdate places the eye above the character");
 
@@ -616,10 +618,7 @@ static bool test_phase3_material_presets_and_prefabs() {
     EXPECT_EQ_INT(rt_material3d_get_shading_model(emissive),
                   rt_game3d_shading_model_emissive(),
                   "Emissive uses emissive shading");
-    EXPECT_NEAR(rt_material3d_get_emissive_intensity(emissive),
-                2.5,
-                0.0001,
-                "Emissive intensity");
+    EXPECT_NEAR(rt_material3d_get_emissive_intensity(emissive), 2.5, 0.0001, "Emissive intensity");
     EXPECT_TRUE(rt_material3d_get_unlit(unlit) != 0, "Unlit marks material unlit");
     EXPECT_TRUE(textured != nullptr, "FromAlbedoMap returns Material3D");
 
@@ -634,7 +633,8 @@ static bool test_phase3_material_presets_and_prefabs() {
     EXPECT_EQ_INT(rt_mesh3d_get_triangle_count(rt_game3d_entity_get_mesh(box)),
                   12,
                   "Box prefab uses box mesh");
-    EXPECT_TRUE(rt_game3d_entity_get_material(box) == plastic, "Box prefab retains caller material");
+    EXPECT_TRUE(rt_game3d_entity_get_material(box) == plastic,
+                "Box prefab retains caller material");
     EXPECT_TRUE(rt_game3d_entity_get_mesh(box_xyz) != nullptr, "BoxXYZ prefab has mesh");
     EXPECT_TRUE(rt_mesh3d_get_triangle_count(rt_game3d_entity_get_mesh(sphere)) > 0,
                 "Sphere prefab has triangles");
@@ -945,7 +945,8 @@ static bool test_phase5_animator3d_events_and_root_motion() {
                 0.0001,
                 "Animator3D.stateTime reports base layer time");
     EXPECT_EQ_INT(rt_game3d_animator_event_count(animator), 1, "Animator3D captures events");
-    EXPECT_TRUE(std::strcmp(rt_string_cstr(rt_game3d_animator_event_name(animator, 0)), "step") == 0,
+    EXPECT_TRUE(std::strcmp(rt_string_cstr(rt_game3d_animator_event_name(animator, 0)), "step") ==
+                    0,
                 "Animator3D.eventName returns the captured event");
     EXPECT_TRUE(rt_game3d_animator_crossfade(animator, rt_const_cstr("idle"), 0.1) != 0,
                 "Animator3D.crossfade switches to another state");
@@ -972,7 +973,8 @@ static bool test_phase5_animator3d_events_and_root_motion() {
     EXPECT_EQ_INT(rt_game3d_animator_event_count(animator2),
                   1,
                   "World3D animation update exposes frame events");
-    EXPECT_TRUE(std::strcmp(rt_string_cstr(rt_game3d_animator_event_name(animator2, 0)), "step") == 0,
+    EXPECT_TRUE(std::strcmp(rt_string_cstr(rt_game3d_animator_event_name(animator2, 0)), "step") ==
+                    0,
                 "World3D animation update preserves event names");
 
     void *entity2 = rt_game3d_entity_new();
@@ -980,7 +982,8 @@ static bool test_phase5_animator3d_events_and_root_motion() {
     rt_game3d_entity_attach_animator(entity2, controller3);
     EXPECT_TRUE(rt_game3d_entity_get_anim(entity2) != nullptr,
                 "Entity3D.attachAnimator accepts raw AnimController3D");
-    EXPECT_TRUE(rt_game3d_animator_get_controller(rt_game3d_entity_get_anim(entity2)) == controller3,
+    EXPECT_TRUE(rt_game3d_animator_get_controller(rt_game3d_entity_get_anim(entity2)) ==
+                    controller3,
                 "raw controller attach creates an Animator3D wrapper");
 
     rt_game3d_world_destroy(world);
@@ -1012,7 +1015,8 @@ static bool test_phase6_sound3d_and_effects3d_helpers() {
         camera, rt_vec3_new(7.0, 2.0, 6.0), rt_vec3_new(7.0, 2.0, 5.0), rt_vec3_new(0.0, 1.0, 0.0));
     rt_game3d_world_step_simulation(world, 0.1);
     listener_pos = rt_soundlistener3d_get_position(listener);
-    EXPECT_NEAR(rt_vec3_x(listener_pos), 3.0, 0.001, "listenerFollowCamera(false) freezes listener pose");
+    EXPECT_NEAR(
+        rt_vec3_x(listener_pos), 3.0, 0.001, "listenerFollowCamera(false) freezes listener pose");
 
     void *manual_pos = rt_vec3_new(9.0, 1.0, 2.0);
     void *manual_forward = rt_vec3_new(0.0, 0.0, -1.0);
@@ -1024,8 +1028,10 @@ static bool test_phase6_sound3d_and_effects3d_helpers() {
                 "setListenerPose disables camera follow");
     rt_game3d_audio_set_attenuation(audio, 2.0, 12.0);
     rt_game3d_audio_set_volume(audio, 70);
-    EXPECT_NEAR(rt_game3d_audio_get_ref_distance(audio), 2.0, 0.0001, "Sound3D stores ref distance");
-    EXPECT_NEAR(rt_game3d_audio_get_max_distance(audio), 12.0, 0.0001, "Sound3D stores max distance");
+    EXPECT_NEAR(
+        rt_game3d_audio_get_ref_distance(audio), 2.0, 0.0001, "Sound3D stores ref distance");
+    EXPECT_NEAR(
+        rt_game3d_audio_get_max_distance(audio), 12.0, 0.0001, "Sound3D stores max distance");
     EXPECT_EQ_INT(rt_game3d_audio_get_volume(audio), 70, "Sound3D clamps/stores volume");
 
     rt_sound3d_listener_state state;
@@ -1062,7 +1068,8 @@ static bool test_phase6_sound3d_and_effects3d_helpers() {
             EXPECT_TRUE(rt_game3d_audio_get_source_count(audio) >= 2,
                         "Sound3D tracks sources it creates");
             rt_game3d_audio_clear_sources(audio);
-            EXPECT_EQ_INT(rt_game3d_audio_get_source_count(audio), 0, "clearSources drops source refs");
+            EXPECT_EQ_INT(
+                rt_game3d_audio_get_source_count(audio), 0, "clearSources drops source refs");
         }
     }
 
@@ -1077,8 +1084,10 @@ static bool test_phase6_sound3d_and_effects3d_helpers() {
     EXPECT_TRUE(explosion != nullptr && sparks != nullptr && dust != nullptr && smoke != nullptr,
                 "Effects3D particle presets return emitters");
     EXPECT_TRUE(decal != nullptr, "Effects3D.ImpactDecal returns a decal");
-    EXPECT_EQ_INT(rt_game3d_effects_get_count(effects), 5, "Effects3D presets register five effects");
-    EXPECT_EQ_INT(rt_game3d_effects_get_particles_count(effects), 4, "Effects3D registers particles");
+    EXPECT_EQ_INT(
+        rt_game3d_effects_get_count(effects), 5, "Effects3D presets register five effects");
+    EXPECT_EQ_INT(
+        rt_game3d_effects_get_particles_count(effects), 4, "Effects3D registers particles");
     EXPECT_EQ_INT(rt_game3d_effects_get_decal_count(effects), 1, "Effects3D registers decals");
     EXPECT_TRUE(rt_particles3d_get_count(explosion) > 0, "Explosion spawns an immediate burst");
 
@@ -1086,7 +1095,8 @@ static bool test_phase6_sound3d_and_effects3d_helpers() {
     rt_game3d_world_draw_scene(world);
     rt_game3d_world_draw_effects(world);
     rt_game3d_world_end_scene(world);
-    EXPECT_TRUE(rt_game3d_world_capture_final_frame(world) != nullptr, "drawEffects renders without failing");
+    EXPECT_TRUE(rt_game3d_world_capture_final_frame(world) != nullptr,
+                "drawEffects renders without failing");
 
     rt_game3d_effects_update(effects, 3.0);
     EXPECT_EQ_INT(rt_game3d_effects_get_count(effects), 0, "Effects3D presets auto-expire");
@@ -1097,9 +1107,11 @@ static bool test_phase6_sound3d_and_effects3d_helpers() {
     void *manual_decal = rt_decal3d_new(origin, up, 0.25, nullptr);
     rt_decal3d_set_lifetime(manual_decal, 0.1);
     rt_game3d_effects_add_decal(effects, manual_decal);
-    EXPECT_EQ_INT(rt_game3d_effects_get_count(effects), 2, "EffectRegistry3D accepts manual effects");
+    EXPECT_EQ_INT(
+        rt_game3d_effects_get_count(effects), 2, "EffectRegistry3D accepts manual effects");
     rt_game3d_effects_update(effects, 0.2);
-    EXPECT_EQ_INT(rt_game3d_effects_get_count(effects), 0, "EffectRegistry3D expires manual effects");
+    EXPECT_EQ_INT(
+        rt_game3d_effects_get_count(effects), 0, "EffectRegistry3D expires manual effects");
 
     rt_game3d_world_set_gravity(world, 0.0, 0.0, 0.0);
     void *ground = rt_game3d_entity_new();

@@ -39,14 +39,14 @@ class ZipWriter {
     /// @brief Metadata about a written entry, used by callers that need the
     ///        exact byte offsets to embed into stub data before finish() is called.
     struct LayoutEntry {
-        std::string name;               ///< Normalised entry path as stored in the archive.
-        uint32_t localHeaderOffset{0};  ///< Byte offset of the local file header from archive start.
-        uint32_t localDataOffset{0};    ///< Byte offset of the compressed data from archive start.
-        uint32_t compressedSize{0};     ///< Compressed byte count (equals uncompressedSize for stored).
-        uint32_t uncompressedSize{0};   ///< Original byte count before compression.
-        uint32_t crc32{0};              ///< CRC-32 of the uncompressed data.
-        uint16_t method{0};             ///< Compression method: 0=stored, 8=deflate.
-        bool isDirectory{false};        ///< True for directory entries (typeflag 5).
+        std::string name;              ///< Normalised entry path as stored in the archive.
+        uint32_t localHeaderOffset{0}; ///< Byte offset of the local file header from archive start.
+        uint32_t localDataOffset{0};   ///< Byte offset of the compressed data from archive start.
+        uint32_t compressedSize{0}; ///< Compressed byte count (equals uncompressedSize for stored).
+        uint32_t uncompressedSize{0}; ///< Original byte count before compression.
+        uint32_t crc32{0};            ///< CRC-32 of the uncompressed data.
+        uint16_t method{0};           ///< Compression method: 0=stored, 8=deflate.
+        bool isDirectory{false};      ///< True for directory entries (typeflag 5).
     };
 
     /// @brief Construct an empty ZIP writer with compression enabled.
@@ -102,15 +102,15 @@ class ZipWriter {
   private:
     // Internal per-entry record used to build the central directory on finish().
     struct Entry {
-        std::string name;           ///< Normalised entry path.
-        uint32_t crc32;             ///< CRC-32 of uncompressed data.
-        uint32_t compressedSize;    ///< Byte count of data as stored in archive.
-        uint32_t uncompressedSize;  ///< Byte count of data before compression.
-        uint16_t method;            ///< Compression method (0=stored, 8=deflate).
-        uint16_t modTime;           ///< DOS last-modified time.
-        uint16_t modDate;           ///< DOS last-modified date.
-        uint32_t localOffset;       ///< Byte offset of this entry's local header from archive start.
-        uint32_t externalAttrs;     ///< ZIP external file attributes (Unix mode in upper 16 bits).
+        std::string name;          ///< Normalised entry path.
+        uint32_t crc32;            ///< CRC-32 of uncompressed data.
+        uint32_t compressedSize;   ///< Byte count of data as stored in archive.
+        uint32_t uncompressedSize; ///< Byte count of data before compression.
+        uint16_t method;           ///< Compression method (0=stored, 8=deflate).
+        uint16_t modTime;          ///< DOS last-modified time.
+        uint16_t modDate;          ///< DOS last-modified date.
+        uint32_t localOffset;      ///< Byte offset of this entry's local header from archive start.
+        uint32_t externalAttrs;    ///< ZIP external file attributes (Unix mode in upper 16 bits).
     };
 
     std::vector<uint8_t> buffer_;
@@ -124,10 +124,12 @@ class ZipWriter {
     void ensureOpen() const;
     /// @brief Sanitize an entry path: reject control characters, absolute paths, and ".." segments.
     std::string normalizeEntryName(const std::string &name) const;
-    /// @brief Normalize and validate that a symlink target remains relative inside the archive root.
+    /// @brief Normalize and validate that a symlink target remains relative inside the archive
+    /// root.
     std::string normalizeSymlinkTarget(const std::string &entryName,
                                        const std::string &target) const;
-    /// @brief Throw if value > maxValue; prevents central-directory integer overflow on large archives.
+    /// @brief Throw if value > maxValue; prevents central-directory integer overflow on large
+    /// archives.
     void validateArchiveLimit(size_t value, size_t maxValue, const char *what) const;
     /// @brief Append len bytes of data to buffer_.
     void writeBytes(const uint8_t *data, size_t len);

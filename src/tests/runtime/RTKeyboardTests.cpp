@@ -278,8 +278,8 @@ static void test_text_input_utf8() {
     rt_keyboard_begin_frame();
     rt_keyboard_enable_text_input();
 
-    rt_keyboard_text_input(0x00E9);   // e acute
-    rt_keyboard_text_input(0x1F642);  // slightly smiling face
+    rt_keyboard_text_input(0x00E9);  // e acute
+    rt_keyboard_text_input(0x1F642); // slightly smiling face
 
     rt_string text = rt_keyboard_get_text();
     assert(text != nullptr);

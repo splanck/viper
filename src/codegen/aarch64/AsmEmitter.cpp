@@ -113,9 +113,8 @@ static std::string mapRuntimeSymbol(const std::string &name) {
 /// @param name Candidate symbol name to classify.
 /// @return True if the name follows the Darwin assembler-local convention.
 static bool isDarwinLocalSymbolName(std::string_view name) {
-    return !name.empty() &&
-           (name.front() == '.' || name.rfind("L.", 0) == 0 || name.rfind("Ltmp", 0) == 0 ||
-            name.rfind("LBB", 0) == 0);
+    return !name.empty() && (name.front() == '.' || name.rfind("L.", 0) == 0 ||
+                             name.rfind("Ltmp", 0) == 0 || name.rfind("LBB", 0) == 0);
 }
 
 /// @brief Mangle a symbol name for the target platform.
@@ -161,7 +160,8 @@ void AsmEmitter::emitFunctionHeader(std::ostream &os, const std::string &name) c
     // Windows: emit .globl only; PE/COFF has no .type/.size directives.
     if (darwin) {
         if (!isDarwinLocalSymbolName(sym) &&
-            !(sym.size() > 1 && sym[0] == '_' && isDarwinLocalSymbolName(std::string_view(sym).substr(1)))) {
+            !(sym.size() > 1 && sym[0] == '_' &&
+              isDarwinLocalSymbolName(std::string_view(sym).substr(1)))) {
             os << ".globl " << sym << "\n";
         }
     } else if (target_->isLinux()) {
@@ -198,16 +198,31 @@ void AsmEmitter::emitPrologue(std::ostream &os, const FramePlan &plan) const {
     struct Steps {
         std::ostream &os;
         const AsmEmitter &self;
-        void paciasp() const { os << "  paciasp\n"; }
-        void stpFpLrPre() const { os << "  stp x29, x30, [sp, #-16]!\n"; }
-        void movFpSp() const { os << "  mov x29, sp\n"; }
-        void subSp(int32_t n) const { self.emitSubSp(os, n); }
+
+        void paciasp() const {
+            os << "  paciasp\n";
+        }
+
+        void stpFpLrPre() const {
+            os << "  stp x29, x30, [sp, #-16]!\n";
+        }
+
+        void movFpSp() const {
+            os << "  mov x29, sp\n";
+        }
+
+        void subSp(int32_t n) const {
+            self.emitSubSp(os, n);
+        }
+
         void stpGprPair(PhysReg r0, PhysReg r1) const {
             os << "  stp " << rn(r0) << ", " << rn(r1) << ", [sp, #-16]!\n";
         }
+
         void strGprSingle(PhysReg r0) const {
             os << "  str " << rn(r0) << ", [sp, #-16]!\n";
         }
+
         void stpFprPair(PhysReg r0, PhysReg r1) const {
             os << "  stp ";
             self.printD(os, r0);
@@ -215,20 +230,26 @@ void AsmEmitter::emitPrologue(std::ostream &os, const FramePlan &plan) const {
             self.printD(os, r1);
             os << ", [sp, #-16]!\n";
         }
+
         void strFprSingle(PhysReg r0) const {
             os << "  str ";
             self.printD(os, r0);
             os << ", [sp, #-16]!\n";
         }
     };
-    iteratePrologue(plan.saveGPRs, plan.saveFPRs, plan.localFrameSize,
-                    target_->hasReturnAddressSigning(), Steps{os, *this});
+
+    iteratePrologue(plan.saveGPRs,
+                    plan.saveFPRs,
+                    plan.localFrameSize,
+                    target_->hasReturnAddressSigning(),
+                    Steps{os, *this});
 }
 
 void AsmEmitter::emitEpilogue(std::ostream &os, const FramePlan &plan) const {
     struct Steps {
         std::ostream &os;
         const AsmEmitter &self;
+
         void ldpFprPair(PhysReg r0, PhysReg r1) const {
             os << "  ldp ";
             self.printD(os, r0);
@@ -236,24 +257,43 @@ void AsmEmitter::emitEpilogue(std::ostream &os, const FramePlan &plan) const {
             self.printD(os, r1);
             os << ", [sp], #16\n";
         }
+
         void ldrFprSingle(PhysReg r0) const {
             os << "  ldr ";
             self.printD(os, r0);
             os << ", [sp], #16\n";
         }
+
         void ldpGprPair(PhysReg r0, PhysReg r1) const {
             os << "  ldp " << rn(r0) << ", " << rn(r1) << ", [sp], #16\n";
         }
+
         void ldrGprSingle(PhysReg r0) const {
             os << "  ldr " << rn(r0) << ", [sp], #16\n";
         }
-        void addSp(int32_t n) const { self.emitAddSp(os, n); }
-        void ldpFpLrPost() const { os << "  ldp x29, x30, [sp], #16\n"; }
-        void autiasp() const { os << "  autiasp\n"; }
-        void ret() const { os << "  ret\n"; }
+
+        void addSp(int32_t n) const {
+            self.emitAddSp(os, n);
+        }
+
+        void ldpFpLrPost() const {
+            os << "  ldp x29, x30, [sp], #16\n";
+        }
+
+        void autiasp() const {
+            os << "  autiasp\n";
+        }
+
+        void ret() const {
+            os << "  ret\n";
+        }
     };
-    iterateEpilogue(plan.saveGPRs, plan.saveFPRs, plan.localFrameSize,
-                    target_->hasReturnAddressSigning(), Steps{os, *this});
+
+    iterateEpilogue(plan.saveGPRs,
+                    plan.saveFPRs,
+                    plan.localFrameSize,
+                    target_->hasReturnAddressSigning(),
+                    Steps{os, *this});
 }
 
 void AsmEmitter::emitMovRR(std::ostream &os, PhysReg dst, PhysReg src) const {
@@ -484,7 +524,8 @@ static PhysReg chooseGprScratch(PhysReg base, std::optional<PhysReg> avoid = std
             continue;
         return candidate;
     }
-    throw std::runtime_error("AArch64 asm emitter: no scratch register for large offset load/store");
+    throw std::runtime_error(
+        "AArch64 asm emitter: no scratch register for large offset load/store");
 }
 
 void AsmEmitter::emitStrToSp(std::ostream &os, PhysReg src, long long offset) const {
@@ -572,11 +613,8 @@ static const char *narrowStoreMnemonic(unsigned bytes) {
 /// @param rt       Transfer register (printed as its W alias).
 /// @param base     Base address register.
 /// @param offset   Signed byte offset from @p base.
-static void emitNarrowGprAccess(std::ostream &os,
-                                const char *mnemonic,
-                                PhysReg rt,
-                                PhysReg base,
-                                long long offset) {
+static void emitNarrowGprAccess(
+    std::ostream &os, const char *mnemonic, PhysReg rt, PhysReg base, long long offset) {
     os << "  " << mnemonic << " ";
     printWReg(os, rt);
     os << ", [" << regName(base) << ", #" << offset << "]\n";
@@ -716,7 +754,8 @@ PhysReg AsmEmitter::resolveBaseOffset(std::ostream &os,
         break;
     }
     if (!scratch)
-        throw std::runtime_error("AArch64 asm emitter: no scratch register for large offset load/store");
+        throw std::runtime_error(
+            "AArch64 asm emitter: no scratch register for large offset load/store");
     // Large offset: materialise effective address into scratch register.
     emitMovRI(os, *scratch, offset);
     os << "  add " << rn(*scratch) << ", " << rn(base) << ", " << rn(*scratch) << "\n";
@@ -978,8 +1017,8 @@ void AsmEmitter::emitFunction(std::ostream &os, const MFunction &fn) const {
     // makes no calls, uses no callee-saved registers, and has no local frame.
     // LegalizePass inserts any backend-required calls before emission, so
     // fn.isLeaf already reflects the emitted instruction stream.
-    const bool skipFrame = fn.isLeaf && fn.savedGPRs.empty() && fn.savedFPRs.empty() &&
-                           fn.localFrameSize == 0;
+    const bool skipFrame =
+        fn.isLeaf && fn.savedGPRs.empty() && fn.savedFPRs.empty() && fn.localFrameSize == 0;
 
     const bool usePlan = !fn.savedGPRs.empty() || !fn.savedFPRs.empty() || fn.localFrameSize > 0;
     FramePlan plan;

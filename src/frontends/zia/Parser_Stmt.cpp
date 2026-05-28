@@ -527,8 +527,7 @@ StmtPtr Parser::parseDeferStmt() {
     if (!expect(TokenKind::Semicolon, ";"))
         return nullptr;
 
-    return std::make_unique<DeferStmt>(
-        loc, std::make_unique<ExprStmt>(loc, std::move(expr)));
+    return std::make_unique<DeferStmt>(loc, std::make_unique<ExprStmt>(loc, std::move(expr)));
 }
 
 /// @brief Parse a guard statement (guard condition else { body }).
@@ -624,10 +623,10 @@ StmtPtr Parser::parseMatchStmt() {
                 return nullptr;
             std::vector<StmtPtr> statements;
             statements.push_back(std::move(stmt));
-            arm.body = std::make_unique<BlockExpr>(arm.pattern.literal ? arm.pattern.literal->loc
-                                                                        : loc,
-                                                   std::move(statements),
-                                                   nullptr);
+            arm.body =
+                std::make_unique<BlockExpr>(arm.pattern.literal ? arm.pattern.literal->loc : loc,
+                                            std::move(statements),
+                                            nullptr);
         } else {
             // Expression body
             arm.body = parseExpressionAllowingStructLiterals();

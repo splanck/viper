@@ -189,8 +189,8 @@ TEST(AArch64PassManager, LegalizePassExpandsOverflowPseudos) {
     bool sawTrapCall = false;
     for (const auto &bb : m.mir[0].blocks) {
         for (const auto &instr : bb.instrs) {
-            sawPseudo = sawPseudo || instr.opc == MOpcode::AddOvfRRR ||
-                        instr.opc == MOpcode::AddOvfRI;
+            sawPseudo =
+                sawPseudo || instr.opc == MOpcode::AddOvfRRR || instr.opc == MOpcode::AddOvfRI;
             sawGuard = sawGuard || instr.opc == MOpcode::BCond;
             sawTrapCall = sawTrapCall || instr.opc == MOpcode::Bl;
         }
@@ -426,8 +426,8 @@ TEST(AArch64PassManager, RegAllocPoolExhaustionBecomesDiagnostic) {
 
     MBasicBlock entry;
     entry.name = "entry";
-    entry.instrs.push_back(MInstr{
-        MOpcode::MovRI, {MOperand::vregOp(RegClass::GPR, 1), MOperand::immOp(42)}});
+    entry.instrs.push_back(
+        MInstr{MOpcode::MovRI, {MOperand::vregOp(RegClass::GPR, 1), MOperand::immOp(42)}});
     fn.blocks.push_back(std::move(entry));
 
     AArch64Module m;
@@ -458,8 +458,7 @@ TEST(AArch64PassManager, PeepholeRejectsRemainingVirtualRegisters) {
     MBasicBlock entry;
     entry.name = "entry";
     entry.instrs.push_back(
-        MInstr{MOpcode::MovRR,
-               {MOperand::vregOp(RegClass::GPR, 1), MOperand::regOp(PhysReg::X0)}});
+        MInstr{MOpcode::MovRR, {MOperand::vregOp(RegClass::GPR, 1), MOperand::regOp(PhysReg::X0)}});
     entry.instrs.push_back(MInstr{MOpcode::Ret, {}});
     fn.blocks.push_back(std::move(entry));
     m.mir.push_back(std::move(fn));

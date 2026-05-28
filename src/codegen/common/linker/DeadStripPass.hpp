@@ -58,8 +58,7 @@ inline void deadStrip(std::vector<ObjFile> &allObjects,
                       const std::string &entrySymbol,
                       LinkPlatform platform,
                       std::ostream &err) {
-    deadStrip(
-        allObjects, userObjCount, globalSyms, entrySymbol, platform, false, err);
+    deadStrip(allObjects, userObjCount, globalSyms, entrySymbol, platform, false, err);
 }
 
 inline void deadStrip(std::vector<ObjFile> &allObjects,
@@ -67,8 +66,7 @@ inline void deadStrip(std::vector<ObjFile> &allObjects,
                       const std::unordered_map<std::string, GlobalSymEntry> &globalSyms,
                       const std::string &entrySymbol,
                       std::ostream &err) {
-    deadStrip(
-        allObjects, userObjCount, globalSyms, entrySymbol, detectLinkPlatform(), false, err);
+    deadStrip(allObjects, userObjCount, globalSyms, entrySymbol, detectLinkPlatform(), false, err);
 }
 
 } // namespace viper::codegen::linker

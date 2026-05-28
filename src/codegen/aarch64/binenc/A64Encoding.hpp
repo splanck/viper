@@ -201,28 +201,28 @@ inline constexpr uint32_t kCsel = 0x9A800000; // csel Xd, Xn, Xm, cond
 // Instruction Templates — Load/Store Unsigned Offset
 // =============================================================================
 
-inline constexpr uint32_t kLdrGpr = 0xF9400000; // ldr Xt, [Xn, #imm12*8]
-inline constexpr uint32_t kStrGpr = 0xF9000000; // str Xt, [Xn, #imm12*8]
+inline constexpr uint32_t kLdrGpr = 0xF9400000;   // ldr Xt, [Xn, #imm12*8]
+inline constexpr uint32_t kStrGpr = 0xF9000000;   // str Xt, [Xn, #imm12*8]
 inline constexpr uint32_t kLdr8Gpr = 0x39400000;  // ldrb Wt, [Xn, #imm12]
 inline constexpr uint32_t kStr8Gpr = 0x39000000;  // strb Wt, [Xn, #imm12]
 inline constexpr uint32_t kLdr16Gpr = 0x79400000; // ldrh Wt, [Xn, #imm12*2]
 inline constexpr uint32_t kStr16Gpr = 0x79000000; // strh Wt, [Xn, #imm12*2]
 inline constexpr uint32_t kLdr32Gpr = 0xB9400000; // ldr  Wt, [Xn, #imm12*4]
 inline constexpr uint32_t kStr32Gpr = 0xB9000000; // str  Wt, [Xn, #imm12*4]
-inline constexpr uint32_t kLdrFpr = 0xFD400000; // ldr Dt, [Xn, #imm12*8]
-inline constexpr uint32_t kStrFpr = 0xFD000000; // str Dt, [Xn, #imm12*8]
+inline constexpr uint32_t kLdrFpr = 0xFD400000;   // ldr Dt, [Xn, #imm12*8]
+inline constexpr uint32_t kStrFpr = 0xFD000000;   // str Dt, [Xn, #imm12*8]
 
 // Unscaled variants (for offsets not divisible by 8 or negative)
-inline constexpr uint32_t kLdurGpr = 0xF8400000; // ldur Xt, [Xn, #simm9]
-inline constexpr uint32_t kSturGpr = 0xF8000000; // stur Xt, [Xn, #simm9]
+inline constexpr uint32_t kLdurGpr = 0xF8400000;   // ldur Xt, [Xn, #simm9]
+inline constexpr uint32_t kSturGpr = 0xF8000000;   // stur Xt, [Xn, #simm9]
 inline constexpr uint32_t kLdur8Gpr = 0x38400000;  // ldurb Wt, [Xn, #simm9]
 inline constexpr uint32_t kStur8Gpr = 0x38000000;  // sturb Wt, [Xn, #simm9]
 inline constexpr uint32_t kLdur16Gpr = 0x78400000; // ldurh Wt, [Xn, #simm9]
 inline constexpr uint32_t kStur16Gpr = 0x78000000; // sturh Wt, [Xn, #simm9]
 inline constexpr uint32_t kLdur32Gpr = 0xB8400000; // ldur  Wt, [Xn, #simm9]
 inline constexpr uint32_t kStur32Gpr = 0xB8000000; // stur  Wt, [Xn, #simm9]
-inline constexpr uint32_t kLdurFpr = 0xFC400000; // ldur Dt, [Xn, #simm9]
-inline constexpr uint32_t kSturFpr = 0xFC000000; // stur Dt, [Xn, #simm9]
+inline constexpr uint32_t kLdurFpr = 0xFC400000;   // ldur Dt, [Xn, #simm9]
+inline constexpr uint32_t kSturFpr = 0xFC000000;   // stur Dt, [Xn, #simm9]
 
 // =============================================================================
 // Instruction Templates — Load/Store Pair

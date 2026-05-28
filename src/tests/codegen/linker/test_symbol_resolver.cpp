@@ -278,8 +278,7 @@ int main() {
     // --- COMDAT SAME_SIZE diagnoses mismatched section sizes ---
     {
         auto obj1 = makeComdatObj("a.o", "same_size_func", ComdatSelection::SameSize, {0xC3});
-        auto obj2 =
-            makeComdatObj("b.o", "same_size_func", ComdatSelection::SameSize, {0x90, 0xC3});
+        auto obj2 = makeComdatObj("b.o", "same_size_func", ComdatSelection::SameSize, {0x90, 0xC3});
 
         std::vector<ObjFile> initObjs = {obj1, obj2};
         std::vector<Archive> archives;
@@ -295,10 +294,8 @@ int main() {
 
     // --- COMDAT EXACT_MATCH diagnoses same-size content mismatches ---
     {
-        auto obj1 =
-            makeComdatObj("a.o", "exact_func", ComdatSelection::ExactMatch, {0x90, 0xC3});
-        auto obj2 =
-            makeComdatObj("b.o", "exact_func", ComdatSelection::ExactMatch, {0xCC, 0xC3});
+        auto obj1 = makeComdatObj("a.o", "exact_func", ComdatSelection::ExactMatch, {0x90, 0xC3});
+        auto obj2 = makeComdatObj("b.o", "exact_func", ComdatSelection::ExactMatch, {0xCC, 0xC3});
 
         std::vector<ObjFile> initObjs = {obj1, obj2};
         std::vector<Archive> archives;
@@ -380,12 +377,10 @@ int main() {
 
     // --- Windows CRT inline stdio option storage is pick-any ---
     {
-        const std::string printfOptions =
-            "?_OptionsStorage@?1??__local_stdio_printf_options@@9@9";
+        const std::string printfOptions = "?_OptionsStorage@?1??__local_stdio_printf_options@@9@9";
         const std::string printfOptionsAlt =
             "?_OptionsStorage@?1??__local_stdio_printf_options@@9@4_KA";
-        const std::string scanfOptions =
-            "?_OptionsStorage@?1??__local_stdio_scanf_options@@9@9";
+        const std::string scanfOptions = "?_OptionsStorage@?1??__local_stdio_scanf_options@@9@9";
 
         auto obj1 = makeObj("a.obj", {".data"});
         addSymbol(obj1, printfOptions, 1, ObjSymbol::Global);
@@ -556,7 +551,8 @@ int main() {
     // --- MSVC thread-safe static guards are linker-owned zero-fill storage ---
     {
         const std::string guard =
-            "?$TSS0@?1??runtimeRegistry@runtime@il@@YAAEBV?$vector@URuntimeDescriptor@runtime@il@@V?$allocator@URuntimeDescriptor@runtime@il@@@std@@@std@@XZ@4HA";
+            "?$TSS0@?1??runtimeRegistry@runtime@il@@YAAEBV?$vector@URuntimeDescriptor@runtime@il@@"
+            "V?$allocator@URuntimeDescriptor@runtime@il@@@std@@@std@@XZ@4HA";
 
         auto obj = makeObj("runtime.obj", {".text"});
         obj.format = ObjFileFormat::COFF;
@@ -954,8 +950,8 @@ int main() {
         weak.weakExternalCharacteristics = 3; // IMAGE_WEAK_EXTERN_SEARCH_ALIAS.
         user.symbols.push_back(std::move(weak));
 
-        auto providerBytes =
-            writeElfObjectWithGlobals("build/test-out/weak_alias_provider.o", {"fallback_alias_func"});
+        auto providerBytes = writeElfObjectWithGlobals("build/test-out/weak_alias_provider.o",
+                                                       {"fallback_alias_func"});
         Archive archive;
         archive.path = "synthetic_weak_alias.a";
         archive.data = providerBytes;
@@ -983,8 +979,10 @@ int main() {
         addSymbol(user, "main", 1, ObjSymbol::Global);
         addSymbol(user, "target_func", 0, ObjSymbol::Undefined);
 
-        auto staleBytes = writeElfObjectWithGlobals("build/test-out/stale_candidate.o", {"other_func"});
-        auto targetBytes = writeElfObjectWithGlobals("build/test-out/target_candidate.o", {"target_func"});
+        auto staleBytes =
+            writeElfObjectWithGlobals("build/test-out/stale_candidate.o", {"other_func"});
+        auto targetBytes =
+            writeElfObjectWithGlobals("build/test-out/target_candidate.o", {"target_func"});
 
         Archive archive;
         archive.path = "synthetic_duplicate_candidates.a";

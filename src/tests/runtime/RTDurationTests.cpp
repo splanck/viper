@@ -32,13 +32,13 @@ extern "C" void vm_trap(const char *msg) {
     abort();
 }
 
-#define EXPECT_TRAP(expr)                                                                         \
-    do {                                                                                          \
+#define EXPECT_TRAP(expr)                                                                          \
+    do {                                                                                           \
         g_expect_trap = 1;                                                                         \
-        if (setjmp(g_trap_env) == 0) {                                                            \
+        if (setjmp(g_trap_env) == 0) {                                                             \
             (void)(expr);                                                                          \
             g_expect_trap = 0;                                                                     \
-            assert(!"expected runtime trap");                                                     \
+            assert(!"expected runtime trap");                                                      \
         } else {                                                                                   \
             g_expect_trap = 0;                                                                     \
         }                                                                                          \
@@ -173,8 +173,7 @@ static void test_duration_components() {
     test_result("Negative - Hours component", rt_duration_get_hours(neg) == 2);
     test_result("INT64_MIN days component safe", rt_duration_get_days(INT64_MIN) > 0);
     test_result("INT64_MIN millis component safe",
-                rt_duration_get_millis(INT64_MIN) >= 0 &&
-                    rt_duration_get_millis(INT64_MIN) < 1000);
+                rt_duration_get_millis(INT64_MIN) >= 0 && rt_duration_get_millis(INT64_MIN) < 1000);
 
     printf("\n");
 }

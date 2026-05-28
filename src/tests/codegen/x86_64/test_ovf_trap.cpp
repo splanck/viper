@@ -102,8 +102,7 @@ int main() {
     MBasicBlock continuation{};
     continuation.label = "continuation";
     continuation.append(MInstr::make(
-        MOpcode::ADDOvfrr,
-        {makeVRegOperand(RegClass::GPR, 1), makeVRegOperand(RegClass::GPR, 2)}));
+        MOpcode::ADDOvfrr, {makeVRegOperand(RegClass::GPR, 1), makeVRegOperand(RegClass::GPR, 2)}));
 
     existingTrapNotLast.blocks = {entry, trap, continuation};
     lowerOverflowOps(existingTrapNotLast);

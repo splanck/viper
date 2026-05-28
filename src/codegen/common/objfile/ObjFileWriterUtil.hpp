@@ -24,8 +24,8 @@
 
 #include <cstddef>
 #include <cstdint>
-#include <limits>
 #include <ios>
+#include <limits>
 #include <ostream>
 #include <stdexcept>
 #include <string>
@@ -75,16 +75,13 @@ inline void writeLE64(uint8_t *p, uint64_t val) {
 
 /// Load a 16-bit value from @p p in little-endian byte order.
 inline uint16_t readLE16(const uint8_t *p) {
-    return static_cast<uint16_t>(p[0]) |
-           (static_cast<uint16_t>(p[1]) << 8);
+    return static_cast<uint16_t>(p[0]) | (static_cast<uint16_t>(p[1]) << 8);
 }
 
 /// Load a 32-bit value from @p p in little-endian byte order.
 inline uint32_t readLE32(const uint8_t *p) {
-    return static_cast<uint32_t>(p[0]) |
-           (static_cast<uint32_t>(p[1]) << 8) |
-           (static_cast<uint32_t>(p[2]) << 16) |
-           (static_cast<uint32_t>(p[3]) << 24);
+    return static_cast<uint32_t>(p[0]) | (static_cast<uint32_t>(p[1]) << 8) |
+           (static_cast<uint32_t>(p[2]) << 16) | (static_cast<uint32_t>(p[3]) << 24);
 }
 
 /// Load a 64-bit value from @p p in little-endian byte order.
@@ -181,12 +178,8 @@ inline size_t alignUp(size_t val, size_t align) {
 /// @details The convention is shared by every writer so a "size_t overflow"
 ///          message identifies which writer (ELF/Mach-O/COFF) caught it and
 ///          which conceptual quantity (@p what) overflowed.
-inline bool checkedAddSize(size_t a,
-                           size_t b,
-                           const char *writerName,
-                           const char *what,
-                           std::ostream &err,
-                           size_t &out) {
+inline bool checkedAddSize(
+    size_t a, size_t b, const char *writerName, const char *what, std::ostream &err, size_t &out) {
     if (a > std::numeric_limits<size_t>::max() - b) {
         err << writerName << ": " << what << " exceeds addressable size\n";
         return false;
@@ -196,12 +189,8 @@ inline bool checkedAddSize(size_t a,
 }
 
 /// @brief Multiply @p a * @p b into @p out with the writer-prefixed overflow error.
-inline bool checkedMulSize(size_t a,
-                           size_t b,
-                           const char *writerName,
-                           const char *what,
-                           std::ostream &err,
-                           size_t &out) {
+inline bool checkedMulSize(
+    size_t a, size_t b, const char *writerName, const char *what, std::ostream &err, size_t &out) {
     if (a != 0 && b > std::numeric_limits<size_t>::max() / a) {
         err << writerName << ": " << what << " exceeds addressable size\n";
         return false;
@@ -285,11 +274,8 @@ inline bool checkedAlignUpU64(uint64_t val,
     return true;
 }
 
-inline bool checkedSizeTFromU64(uint64_t value,
-                                const char *writerName,
-                                const char *what,
-                                std::ostream &err,
-                                size_t &out) {
+inline bool checkedSizeTFromU64(
+    uint64_t value, const char *writerName, const char *what, std::ostream &err, size_t &out) {
     if (value > static_cast<uint64_t>(std::numeric_limits<size_t>::max())) {
         err << writerName << ": " << what << " exceeds addressable size\n";
         return false;
@@ -307,15 +293,15 @@ inline bool checkedSectionOffsetAddend(int64_t addend,
                                        std::ostream &err,
                                        int64_t &out) {
     if (targetOffset > static_cast<size_t>(std::numeric_limits<int64_t>::max())) {
-        err << writerName << ": relocation in " << sectionName << " at offset "
-            << relocOffset << " has a section-offset addend outside int64 range\n";
+        err << writerName << ": relocation in " << sectionName << " at offset " << relocOffset
+            << " has a section-offset addend outside int64 range\n";
         return false;
     }
     const int64_t signedOffset = static_cast<int64_t>(targetOffset);
     if ((addend > 0 && signedOffset > std::numeric_limits<int64_t>::max() - addend) ||
         (addend < 0 && signedOffset < std::numeric_limits<int64_t>::min() - addend)) {
-        err << writerName << ": relocation in " << sectionName << " at offset "
-            << relocOffset << " has a section-offset addend outside int64 range\n";
+        err << writerName << ": relocation in " << sectionName << " at offset " << relocOffset
+            << " has a section-offset addend outside int64 range\n";
         return false;
     }
     out = signedOffset + addend;
@@ -328,10 +314,8 @@ inline bool checkedWriteAll(std::ostream &os,
                             const char *writerName,
                             const std::string &path,
                             std::ostream &err) {
-    if (data.size() >
-        static_cast<size_t>(std::numeric_limits<std::streamsize>::max())) {
-        err << writerName << ": output file '" << path
-            << "' exceeds stream write size limit\n";
+    if (data.size() > static_cast<size_t>(std::numeric_limits<std::streamsize>::max())) {
+        err << writerName << ": output file '" << path << "' exceeds stream write size limit\n";
         return false;
     }
     if (!data.empty())

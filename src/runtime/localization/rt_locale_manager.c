@@ -35,12 +35,12 @@
 
 #include "rt_locale_manager.h"
 
-#include "rt_internal.h"
 #include "rt_asset.h"
 #include "rt_box.h"
 #include "rt_bytes.h"
 #include "rt_file_ext.h"
 #include "rt_heap.h"
+#include "rt_internal.h"
 #include "rt_json.h"
 #include "rt_list.h"
 #include "rt_locale.h"
@@ -72,9 +72,9 @@
 //===----------------------------------------------------------------------===//
 
 typedef struct loc_registry_entry {
-    const char             *tag;   ///< borrowed when baked; owned copy when loaded
-    const rt_locale_data_t *data;  ///< borrowed; arena-owned for loaded records
-    int                     is_baked; ///< 1 for en-US; 0 for JSON/VPA (freed on unload)
+    const char *tag;              ///< borrowed when baked; owned copy when loaded
+    const rt_locale_data_t *data; ///< borrowed; arena-owned for loaded records
+    int is_baked;                 ///< 1 for en-US; 0 for JSON/VPA (freed on unload)
 } loc_registry_entry_t;
 
 typedef struct loc_arena_alloc {
@@ -87,22 +87,21 @@ typedef struct loc_arena {
 } loc_arena_t;
 
 static struct {
-    void                  *lock;
-    int                    initialized;
-    loc_registry_entry_t  *entries;
-    size_t                 count;
-    size_t                 capacity;
+    void *lock;
+    int initialized;
+    loc_registry_entry_t *entries;
+    size_t count;
+    size_t capacity;
 
-    void                  *current;   ///< Locale handle; strong ref
-    void                  *system;    ///< Locale handle; strong ref
+    void *current; ///< Locale handle; strong ref
+    void *system;  ///< Locale handle; strong ref
 
-    char                 **search_paths;
-    size_t                 search_count;
-    size_t                 search_capacity;
+    char **search_paths;
+    size_t search_count;
+    size_t search_capacity;
 } g_mgr;
 
-extern int rt_locale_internal_parse_into(const char *input, size_t input_len,
-                                         rt_locale_t *out);
+extern int rt_locale_internal_parse_into(const char *input, size_t input_len, rt_locale_t *out);
 extern void rt_locale_internal_finalizer(void *obj);
 
 static int loc_register_entry_locked(const rt_locale_data_t *data, int is_baked);
@@ -275,13 +274,15 @@ static void *json_get(void *map, const char *key) {
 /// @param ok  Out-parameter set to 1 on success, 0 on type mismatch; may be NULL.
 /// @return Pointer to the NUL-terminated string data, or NULL on type mismatch.
 static const char *json_string_cstr(void *obj, int *ok) {
-    if (ok) *ok = 0;
+    if (ok)
+        *ok = 0;
     if (!loc_is_string(obj))
         return NULL;
     const char *s = rt_string_cstr((rt_string)obj);
     if (!s)
         return NULL;
-    if (ok) *ok = 1;
+    if (ok)
+        *ok = 1;
     return s;
 }
 
@@ -291,12 +292,17 @@ static const char *json_string_cstr(void *obj, int *ok) {
 /// @param s Pointer to the first byte of a UTF-8 sequence.
 /// @return 1, 2, 3, or 4 for valid sequences; 0 for invalid/empty input.
 static size_t loc_utf8_cp_len(const char *s) {
-    if (!s || !*s) return 0;
+    if (!s || !*s)
+        return 0;
     unsigned char c = (unsigned char)s[0];
-    if (c < 0x80) return 1;
-    if ((c & 0xE0) == 0xC0 && s[1]) return 2;
-    if ((c & 0xF0) == 0xE0 && s[1] && s[2]) return 3;
-    if ((c & 0xF8) == 0xF0 && s[1] && s[2] && s[3]) return 4;
+    if (c < 0x80)
+        return 1;
+    if ((c & 0xE0) == 0xC0 && s[1])
+        return 2;
+    if ((c & 0xF0) == 0xE0 && s[1] && s[2])
+        return 3;
+    if ((c & 0xF8) == 0xF0 && s[1] && s[2] && s[3])
+        return 4;
     return 0;
 }
 
@@ -324,9 +330,8 @@ static int loc_digits_are_valid(const char *digits) {
 static int loc_currency_code_valid(const char *code) {
     if (!code || strlen(code) != 3)
         return 0;
-    return code[0] >= 'A' && code[0] <= 'Z' &&
-           code[1] >= 'A' && code[1] <= 'Z' &&
-           code[2] >= 'A' && code[2] <= 'Z';
+    return code[0] >= 'A' && code[0] <= 'Z' && code[1] >= 'A' && code[1] <= 'Z' && code[2] >= 'A' &&
+           code[2] <= 'Z';
 }
 
 /// @brief Return 1 if @p pattern contains exactly one `{n}` and one `{s}` placeholder.
@@ -370,14 +375,20 @@ static int loc_currency_pattern_valid(const char *pattern) {
 /// @param trap_on_error Non-zero to trap on validation failure.
 /// @param ok            Out-parameter cleared to 0 on error; may be NULL.
 /// @return Arena-owned duplicate of the field value, or @p fallback copy on absence.
-static char *json_dup_string(loc_arena_t *arena, void *map, const char *key,
-                             const char *fallback, int required,
-                             int trap_on_error, int *ok) {
+static char *json_dup_string(loc_arena_t *arena,
+                             void *map,
+                             const char *key,
+                             const char *fallback,
+                             int required,
+                             int trap_on_error,
+                             int *ok) {
     void *v = json_get(map, key);
     if (!v) {
         if (required) {
-            if (ok) *ok = 0;
-            loc_fail(trap_on_error, "Viper.Localization.LocaleManager: locale JSON missing string field");
+            if (ok)
+                *ok = 0;
+            loc_fail(trap_on_error,
+                     "Viper.Localization.LocaleManager: locale JSON missing string field");
             return NULL;
         }
         return loc_arena_strdup(arena, fallback ? fallback : "");
@@ -385,13 +396,16 @@ static char *json_dup_string(loc_arena_t *arena, void *map, const char *key,
     int is_str = 0;
     const char *cs = json_string_cstr(v, &is_str);
     if (!is_str) {
-        if (ok) *ok = 0;
-        loc_fail(trap_on_error, "Viper.Localization.LocaleManager: locale JSON field must be a string");
+        if (ok)
+            *ok = 0;
+        loc_fail(trap_on_error,
+                 "Viper.Localization.LocaleManager: locale JSON field must be a string");
         return NULL;
     }
     int64_t len = rt_str_len((rt_string)v);
     if (len < 0 || len > 256) {
-        if (ok) *ok = 0;
+        if (ok)
+            *ok = 0;
         loc_fail(trap_on_error, "Viper.Localization.LocaleManager: locale JSON string too long");
         return NULL;
     }
@@ -409,13 +423,15 @@ static char *json_dup_string(loc_arena_t *arena, void *map, const char *key,
 /// @param trap_on_error Non-zero to trap on type/range error.
 /// @param ok            Out-parameter cleared to 0 on error; may be NULL.
 /// @return The field value as int32_t, or @p fallback on absence or error.
-static int32_t json_get_i32(void *map, const char *key, int32_t fallback,
-                            int required, int trap_on_error, int *ok) {
+static int32_t json_get_i32(
+    void *map, const char *key, int32_t fallback, int required, int trap_on_error, int *ok) {
     void *v = json_get(map, key);
     if (!v) {
         if (required) {
-            if (ok) *ok = 0;
-            loc_fail(trap_on_error, "Viper.Localization.LocaleManager: locale JSON missing numeric field");
+            if (ok)
+                *ok = 0;
+            loc_fail(trap_on_error,
+                     "Viper.Localization.LocaleManager: locale JSON missing numeric field");
         }
         return fallback;
     }
@@ -426,13 +442,17 @@ static int32_t json_get_i32(void *map, const char *key, int32_t fallback,
     else if (type == RT_BOX_I64)
         d = (double)rt_unbox_i64(v);
     else {
-        if (ok) *ok = 0;
-        loc_fail(trap_on_error, "Viper.Localization.LocaleManager: locale JSON field must be numeric");
+        if (ok)
+            *ok = 0;
+        loc_fail(trap_on_error,
+                 "Viper.Localization.LocaleManager: locale JSON field must be numeric");
         return fallback;
     }
     if (d < (double)INT32_MIN || d > (double)INT32_MAX || d != (double)(int32_t)d) {
-        if (ok) *ok = 0;
-        loc_fail(trap_on_error, "Viper.Localization.LocaleManager: locale JSON integer out of range");
+        if (ok)
+            *ok = 0;
+        loc_fail(trap_on_error,
+                 "Viper.Localization.LocaleManager: locale JSON integer out of range");
         return fallback;
     }
     return (int32_t)d;
@@ -444,12 +464,18 @@ static int32_t json_get_i32(void *map, const char *key, int32_t fallback,
 /// @param s NUL-terminated category name; NULL maps to RT_PLURAL_OTHER.
 /// @return The matching `rt_plural_category_t` value.
 static rt_plural_category_t parse_category(const char *s) {
-    if (!s) return RT_PLURAL_OTHER;
-    if (strcmp(s, "zero") == 0) return RT_PLURAL_ZERO;
-    if (strcmp(s, "one") == 0) return RT_PLURAL_ONE;
-    if (strcmp(s, "two") == 0) return RT_PLURAL_TWO;
-    if (strcmp(s, "few") == 0) return RT_PLURAL_FEW;
-    if (strcmp(s, "many") == 0) return RT_PLURAL_MANY;
+    if (!s)
+        return RT_PLURAL_OTHER;
+    if (strcmp(s, "zero") == 0)
+        return RT_PLURAL_ZERO;
+    if (strcmp(s, "one") == 0)
+        return RT_PLURAL_ONE;
+    if (strcmp(s, "two") == 0)
+        return RT_PLURAL_TWO;
+    if (strcmp(s, "few") == 0)
+        return RT_PLURAL_FEW;
+    if (strcmp(s, "many") == 0)
+        return RT_PLURAL_MANY;
     return RT_PLURAL_OTHER;
 }
 
@@ -458,13 +484,8 @@ static rt_plural_category_t parse_category(const char *s) {
 /// @param s NUL-terminated string to test; NULL returns 0.
 /// @return 1 if @p s is a valid CLDR plural category name; 0 otherwise.
 static int valid_category_name(const char *s) {
-    return s &&
-           (strcmp(s, "zero") == 0 ||
-            strcmp(s, "one") == 0 ||
-            strcmp(s, "two") == 0 ||
-            strcmp(s, "few") == 0 ||
-            strcmp(s, "many") == 0 ||
-            strcmp(s, "other") == 0);
+    return s && (strcmp(s, "zero") == 0 || strcmp(s, "one") == 0 || strcmp(s, "two") == 0 ||
+                 strcmp(s, "few") == 0 || strcmp(s, "many") == 0 || strcmp(s, "other") == 0);
 }
 
 typedef struct rule_parser {
@@ -513,8 +534,7 @@ static int rp_word(rule_parser_t *p, const char *word) {
 /// @param kind The node kind (`RT_PRN_*`).
 /// @return Pointer to a fresh, uninitialised node; NULL on OOM.
 static rt_plural_rule_node_t *rp_node(rule_parser_t *p, rt_plural_rule_kind_t kind) {
-    rt_plural_rule_node_t *n =
-        (rt_plural_rule_node_t *)loc_arena_alloc(p->arena, sizeof(*n));
+    rt_plural_rule_node_t *n = (rt_plural_rule_node_t *)loc_arena_alloc(p->arena, sizeof(*n));
     if (!n) {
         p->failed = 1;
         return NULL;
@@ -547,15 +567,21 @@ static rt_plural_rule_node_t *rp_expr(rule_parser_t *p) {
             value = value * 10 + d;
         }
         rt_plural_rule_node_t *n = rp_node(p, RT_PRN_INT);
-        if (n) n->u.int_val = value;
+        if (n)
+            n->u.int_val = value;
         return n;
     }
     rt_plural_var_t var;
-    if (c == 'n') var = RT_PVAR_N;
-    else if (c == 'i') var = RT_PVAR_I;
-    else if (c == 'v') var = RT_PVAR_V;
-    else if (c == 'f') var = RT_PVAR_F;
-    else if (c == 't') var = RT_PVAR_T;
+    if (c == 'n')
+        var = RT_PVAR_N;
+    else if (c == 'i')
+        var = RT_PVAR_I;
+    else if (c == 'v')
+        var = RT_PVAR_V;
+    else if (c == 'f')
+        var = RT_PVAR_F;
+    else if (c == 't')
+        var = RT_PVAR_T;
     else {
         p->failed = 1;
         return NULL;
@@ -623,7 +649,8 @@ static int rp_integer(rule_parser_t *p, int64_t *out) {
 /// @param out_count Written with the number of parsed ranges on success.
 /// @return Arena-allocated array of `rt_plural_rule_range_t`; NULL on failure.
 static rt_plural_rule_range_t *rp_range_list(rule_parser_t *p, size_t *out_count) {
-    if (out_count) *out_count = 0;
+    if (out_count)
+        *out_count = 0;
     size_t cap = 4;
     size_t count = 0;
     rt_plural_rule_range_t *ranges =
@@ -680,7 +707,8 @@ static rt_plural_rule_range_t *rp_range_list(rule_parser_t *p, size_t *out_count
         break;
     }
 
-    if (out_count) *out_count = count;
+    if (out_count)
+        *out_count = count;
     return ranges;
 }
 
@@ -750,8 +778,8 @@ static rt_plural_rule_node_t *rp_comparison(rule_parser_t *p) {
             p->failed = 1;
             return NULL;
         }
-        rt_plural_rule_node_t *n = rp_node(p, kind == RT_PRN_NE ? RT_PRN_NOT_WITHIN
-                                                               : RT_PRN_WITHIN);
+        rt_plural_rule_node_t *n =
+            rp_node(p, kind == RT_PRN_NE ? RT_PRN_NOT_WITHIN : RT_PRN_WITHIN);
         if (n) {
             n->u.range.expr = left;
             n->u.range.ranges = ranges;
@@ -779,7 +807,8 @@ static rt_plural_rule_node_t *rp_and(rule_parser_t *p) {
     while (!p->failed && rp_word(p, "and")) {
         rt_plural_rule_node_t *right = rp_comparison(p);
         rt_plural_rule_node_t *n = rp_node(p, RT_PRN_AND);
-        if (!n) return left;
+        if (!n)
+            return left;
         n->u.bin.l = left;
         n->u.bin.r = right;
         left = n;
@@ -797,7 +826,8 @@ static rt_plural_rule_node_t *rp_or(rule_parser_t *p) {
     while (!p->failed && rp_word(p, "or")) {
         rt_plural_rule_node_t *right = rp_and(p);
         rt_plural_rule_node_t *n = rp_node(p, RT_PRN_OR);
-        if (!n) return left;
+        if (!n)
+            return left;
         n->u.bin.l = left;
         n->u.bin.r = right;
         left = n;
@@ -818,7 +848,7 @@ static rt_plural_rule_node_t *parse_rule(loc_arena_t *arena, const char *rule) {
     size_t len = strlen(rule);
     if (len > 256)
         return NULL;
-    rule_parser_t p = { rule, 0, len, arena, 0 };
+    rule_parser_t p = {rule, 0, len, arena, 0};
     rt_plural_rule_node_t *head = rp_or(&p);
     rp_skip(&p);
     if (p.failed || p.pos != p.len)
@@ -838,8 +868,11 @@ static rt_plural_rule_node_t *parse_rule(loc_arena_t *arena, const char *rule) {
 /// @param out           Written with a pointer to the loaded (or fallback) array.
 /// @param trap_on_error Non-zero to trap on schema violations.
 /// @return 1 on success (or absent-with-fallback); 0 on validation failure.
-static int load_string_array(loc_arena_t *arena, void *map, const char *key,
-                             const char *const *fallback, size_t expected,
+static int load_string_array(loc_arena_t *arena,
+                             void *map,
+                             const char *key,
+                             const char *const *fallback,
+                             size_t expected,
                              const char *const **out,
                              int trap_on_error) {
     void *v = json_get(map, key);
@@ -848,17 +881,21 @@ static int load_string_array(loc_arena_t *arena, void *map, const char *key,
         return 1;
     }
     if (!loc_is_seq(v) || rt_seq_len(v) != (int64_t)expected)
-        return loc_fail(trap_on_error, "Viper.Localization.LocaleManager: locale JSON array has wrong length");
+        return loc_fail(trap_on_error,
+                        "Viper.Localization.LocaleManager: locale JSON array has wrong length");
     const char **arr = (const char **)loc_arena_alloc(arena, expected * sizeof(char *));
     for (size_t i = 0; i < expected; ++i) {
         void *item = rt_seq_get(v, (int64_t)i);
         int ok = 0;
         const char *cs = json_string_cstr(item, &ok);
         if (!ok)
-            return loc_fail(trap_on_error, "Viper.Localization.LocaleManager: locale JSON array item must be string");
+            return loc_fail(
+                trap_on_error,
+                "Viper.Localization.LocaleManager: locale JSON array item must be string");
         int64_t len = rt_str_len((rt_string)item);
         if (len < 0 || len > 256)
-            return loc_fail(trap_on_error, "Viper.Localization.LocaleManager: locale JSON array string too long");
+            return loc_fail(trap_on_error,
+                            "Viper.Localization.LocaleManager: locale JSON array string too long");
         arr[i] = loc_arena_strndup(arena, cs, (size_t)len);
     }
     *out = arr;
@@ -878,7 +915,9 @@ static int load_string_array(loc_arena_t *arena, void *map, const char *key,
 /// @param out_count       Written with the entry count.
 /// @param trap_on_error   Non-zero to trap on schema violations.
 /// @return 1 on success; 0 on validation failure.
-static int load_plural_chain(loc_arena_t *arena, void *root, const char *key,
+static int load_plural_chain(loc_arena_t *arena,
+                             void *root,
+                             const char *key,
                              const rt_plural_rule_entry_t *fallback_entries,
                              size_t fallback_count,
                              const rt_plural_rule_entry_t **out_entries,
@@ -891,23 +930,27 @@ static int load_plural_chain(loc_arena_t *arena, void *root, const char *key,
         return 1;
     }
     if (!loc_is_seq(v))
-        return loc_fail(trap_on_error, "Viper.Localization.LocaleManager: plural rule field must be an array");
+        return loc_fail(trap_on_error,
+                        "Viper.Localization.LocaleManager: plural rule field must be an array");
     int64_t n = rt_seq_len(v);
     if (n <= 0 || n > 32)
-        return loc_fail(trap_on_error, "Viper.Localization.LocaleManager: plural rule count out of range");
+        return loc_fail(trap_on_error,
+                        "Viper.Localization.LocaleManager: plural rule count out of range");
     rt_plural_rule_entry_t *entries =
         (rt_plural_rule_entry_t *)loc_arena_alloc(arena, (size_t)n * sizeof(*entries));
     for (int64_t i = 0; i < n; ++i) {
         void *entry = rt_seq_get(v, i);
         if (!loc_is_map(entry))
-            return loc_fail(trap_on_error, "Viper.Localization.LocaleManager: plural rule entry must be object");
+            return loc_fail(trap_on_error,
+                            "Viper.Localization.LocaleManager: plural rule entry must be object");
         int ok = 1;
         char *cat = json_dup_string(arena, entry, "category", "other", 1, trap_on_error, &ok);
         char *rule = json_dup_string(arena, entry, "rule", "true", 1, trap_on_error, &ok);
         if (!ok)
             return 0;
         if (!valid_category_name(cat))
-            return loc_fail(trap_on_error, "Viper.Localization.LocaleManager: invalid plural category");
+            return loc_fail(trap_on_error,
+                            "Viper.Localization.LocaleManager: invalid plural category");
         rt_plural_rule_node_t *head = parse_rule(arena, rule);
         if (!head)
             return loc_fail(trap_on_error, "Viper.Localization.LocaleManager: invalid plural rule");
@@ -930,7 +973,8 @@ static int load_plural_chain(loc_arena_t *arena, void *root, const char *key,
 /// @param out           Written with the loaded unit data.
 /// @param trap_on_error Non-zero to trap on schema violations.
 /// @return 1 on success; 0 on validation failure.
-static int load_reltime_unit(loc_arena_t *arena, void *units,
+static int load_reltime_unit(loc_arena_t *arena,
+                             void *units,
                              const char *name,
                              const rt_locdata_reltime_unit_t *fallback,
                              rt_locdata_reltime_unit_t *out,
@@ -940,14 +984,15 @@ static int load_reltime_unit(loc_arena_t *arena, void *units,
     if (!u)
         return 1;
     if (!loc_is_map(u))
-        return loc_fail(trap_on_error, "Viper.Localization.LocaleManager: relative_time unit must be object");
+        return loc_fail(trap_on_error,
+                        "Viper.Localization.LocaleManager: relative_time unit must be object");
     int ok = 1;
     out->other = json_dup_string(arena, u, "other", fallback->other, 0, trap_on_error, &ok);
-    out->zero  = json_dup_string(arena, u, "zero",  fallback->zero,  0, trap_on_error, &ok);
-    out->one   = json_dup_string(arena, u, "one",   fallback->one,   0, trap_on_error, &ok);
-    out->two   = json_dup_string(arena, u, "two",   fallback->two,   0, trap_on_error, &ok);
-    out->few   = json_dup_string(arena, u, "few",   fallback->few,   0, trap_on_error, &ok);
-    out->many  = json_dup_string(arena, u, "many",  fallback->many,  0, trap_on_error, &ok);
+    out->zero = json_dup_string(arena, u, "zero", fallback->zero, 0, trap_on_error, &ok);
+    out->one = json_dup_string(arena, u, "one", fallback->one, 0, trap_on_error, &ok);
+    out->two = json_dup_string(arena, u, "two", fallback->two, 0, trap_on_error, &ok);
+    out->few = json_dup_string(arena, u, "few", fallback->few, 0, trap_on_error, &ok);
+    out->many = json_dup_string(arena, u, "many", fallback->many, 0, trap_on_error, &ok);
     return ok;
 }
 
@@ -961,7 +1006,9 @@ static int load_reltime_unit(loc_arena_t *arena, void *units,
 /// @param out           Written with the loaded style.
 /// @param trap_on_error Non-zero to trap on schema violations.
 /// @return 1 on success; 0 on validation failure.
-static int load_list_style(loc_arena_t *arena, void *parent, const char *key,
+static int load_list_style(loc_arena_t *arena,
+                           void *parent,
+                           const char *key,
                            const rt_locdata_list_style_t *fallback,
                            rt_locdata_list_style_t *out,
                            int trap_on_error) {
@@ -970,12 +1017,13 @@ static int load_list_style(loc_arena_t *arena, void *parent, const char *key,
     if (!style)
         return 1;
     if (!loc_is_map(style))
-        return loc_fail(trap_on_error, "Viper.Localization.LocaleManager: list style must be object");
+        return loc_fail(trap_on_error,
+                        "Viper.Localization.LocaleManager: list style must be object");
     int ok = 1;
-    out->pair   = json_dup_string(arena, style, "pair",   fallback->pair,   0, trap_on_error, &ok);
-    out->start  = json_dup_string(arena, style, "start",  fallback->start,  0, trap_on_error, &ok);
+    out->pair = json_dup_string(arena, style, "pair", fallback->pair, 0, trap_on_error, &ok);
+    out->start = json_dup_string(arena, style, "start", fallback->start, 0, trap_on_error, &ok);
     out->middle = json_dup_string(arena, style, "middle", fallback->middle, 0, trap_on_error, &ok);
-    out->end    = json_dup_string(arena, style, "end",    fallback->end,    0, trap_on_error, &ok);
+    out->end = json_dup_string(arena, style, "end", fallback->end, 0, trap_on_error, &ok);
     return ok;
 }
 
@@ -989,13 +1037,13 @@ static int load_list_style(loc_arena_t *arena, void *parent, const char *key,
 /// @return Heap-allocated, arena-owned locale-data record; NULL on failure.
 static rt_locale_data_t *loc_data_from_json(void *root, int trap_on_error) {
     if (!loc_is_map(root)) {
-        loc_fail(trap_on_error, "Viper.Localization.LocaleManager: locale JSON root must be object");
+        loc_fail(trap_on_error,
+                 "Viper.Localization.LocaleManager: locale JSON root must be object");
         return NULL;
     }
 
     loc_arena_t *arena = loc_arena_new();
-    rt_locale_data_t *data =
-        (rt_locale_data_t *)loc_arena_alloc(arena, sizeof(*data));
+    rt_locale_data_t *data = (rt_locale_data_t *)loc_arena_alloc(arena, sizeof(*data));
     *data = *rt_locale_data_en_us();
     data->arena = arena;
     data->formatter_refs = 0;
@@ -1022,17 +1070,22 @@ static rt_locale_data_t *loc_data_from_json(void *root, int trap_on_error) {
         return NULL;
     }
     if (names) {
-        data->names.language = json_dup_string(arena, names, "language", data->names.language, 0, trap_on_error, &ok);
-        data->names.region   = json_dup_string(arena, names, "region",   data->names.region,   0, trap_on_error, &ok);
-        data->names.display  = json_dup_string(arena, names, "display",  data->names.display,  0, trap_on_error, &ok);
+        data->names.language =
+            json_dup_string(arena, names, "language", data->names.language, 0, trap_on_error, &ok);
+        data->names.region =
+            json_dup_string(arena, names, "region", data->names.region, 0, trap_on_error, &ok);
+        data->names.display =
+            json_dup_string(arena, names, "display", data->names.display, 0, trap_on_error, &ok);
     }
 
-    char *text_dir = json_dup_string(arena, root, "text_direction", data->text_direction, 0, trap_on_error, &ok);
+    char *text_dir =
+        json_dup_string(arena, root, "text_direction", data->text_direction, 0, trap_on_error, &ok);
     if (text_dir && (strcmp(text_dir, "ltr") == 0 || strcmp(text_dir, "rtl") == 0)) {
         memset(data->text_direction, 0, sizeof(data->text_direction));
         memcpy(data->text_direction, text_dir, strlen(text_dir));
     } else if (text_dir) {
-        loc_fail(trap_on_error, "Viper.Localization.LocaleManager: text_direction must be ltr or rtl");
+        loc_fail(trap_on_error,
+                 "Viper.Localization.LocaleManager: text_direction must be ltr or rtl");
         loc_arena_free(arena);
         return NULL;
     }
@@ -1043,12 +1096,13 @@ static rt_locale_data_t *loc_data_from_json(void *root, int trap_on_error) {
         loc_arena_free(arena);
         return NULL;
     }
-    char *measurement = json_dup_string(arena, root, "measurement", data->measurement, 0, trap_on_error, &ok);
+    char *measurement =
+        json_dup_string(arena, root, "measurement", data->measurement, 0, trap_on_error, &ok);
     if (measurement) {
-        if (strcmp(measurement, "metric") != 0 &&
-            strcmp(measurement, "us") != 0 &&
+        if (strcmp(measurement, "metric") != 0 && strcmp(measurement, "us") != 0 &&
             strcmp(measurement, "uk") != 0) {
-            loc_fail(trap_on_error, "Viper.Localization.LocaleManager: measurement must be metric/us/uk");
+            loc_fail(trap_on_error,
+                     "Viper.Localization.LocaleManager: measurement must be metric/us/uk");
             loc_arena_free(arena);
             return NULL;
         }
@@ -1063,25 +1117,36 @@ static rt_locale_data_t *loc_data_from_json(void *root, int trap_on_error) {
             loc_arena_free(arena);
             return NULL;
         }
-        data->numbers.decimal_sep = json_dup_string(arena, numbers, "decimal_sep", data->numbers.decimal_sep, 0, trap_on_error, &ok);
-        data->numbers.group_sep   = json_dup_string(arena, numbers, "group_sep",   data->numbers.group_sep,   0, trap_on_error, &ok);
-        data->numbers.group_size  = json_get_i32(numbers, "group_size", data->numbers.group_size, 0, trap_on_error, &ok);
-        data->numbers.secondary_group_size =
-            json_get_i32(numbers, "secondary_group_size",
-                         data->numbers.secondary_group_size, 0, trap_on_error, &ok);
-        data->numbers.minus       = json_dup_string(arena, numbers, "minus",       data->numbers.minus,       0, trap_on_error, &ok);
-        data->numbers.plus        = json_dup_string(arena, numbers, "plus",        data->numbers.plus,        0, trap_on_error, &ok);
-        data->numbers.percent     = json_dup_string(arena, numbers, "percent",     data->numbers.percent,     0, trap_on_error, &ok);
-        data->numbers.infinity    = json_dup_string(arena, numbers, "infinity",    data->numbers.infinity,    0, trap_on_error, &ok);
-        data->numbers.nan         = json_dup_string(arena, numbers, "nan",         data->numbers.nan,         0, trap_on_error, &ok);
-        data->numbers.exponent    = json_dup_string(arena, numbers, "exponent",    data->numbers.exponent,    0, trap_on_error, &ok);
-        data->numbers.digits      = json_dup_string(arena, numbers, "digits",      data->numbers.digits,      0, trap_on_error, &ok);
+        data->numbers.decimal_sep = json_dup_string(
+            arena, numbers, "decimal_sep", data->numbers.decimal_sep, 0, trap_on_error, &ok);
+        data->numbers.group_sep = json_dup_string(
+            arena, numbers, "group_sep", data->numbers.group_sep, 0, trap_on_error, &ok);
+        data->numbers.group_size =
+            json_get_i32(numbers, "group_size", data->numbers.group_size, 0, trap_on_error, &ok);
+        data->numbers.secondary_group_size = json_get_i32(numbers,
+                                                          "secondary_group_size",
+                                                          data->numbers.secondary_group_size,
+                                                          0,
+                                                          trap_on_error,
+                                                          &ok);
+        data->numbers.minus =
+            json_dup_string(arena, numbers, "minus", data->numbers.minus, 0, trap_on_error, &ok);
+        data->numbers.plus =
+            json_dup_string(arena, numbers, "plus", data->numbers.plus, 0, trap_on_error, &ok);
+        data->numbers.percent = json_dup_string(
+            arena, numbers, "percent", data->numbers.percent, 0, trap_on_error, &ok);
+        data->numbers.infinity = json_dup_string(
+            arena, numbers, "infinity", data->numbers.infinity, 0, trap_on_error, &ok);
+        data->numbers.nan =
+            json_dup_string(arena, numbers, "nan", data->numbers.nan, 0, trap_on_error, &ok);
+        data->numbers.exponent = json_dup_string(
+            arena, numbers, "exponent", data->numbers.exponent, 0, trap_on_error, &ok);
+        data->numbers.digits =
+            json_dup_string(arena, numbers, "digits", data->numbers.digits, 0, trap_on_error, &ok);
         if (data->numbers.group_size < 1 || data->numbers.group_size > 9 ||
-            data->numbers.secondary_group_size < 0 ||
-            data->numbers.secondary_group_size > 9 ||
-            !data->numbers.decimal_sep || !*data->numbers.decimal_sep ||
-            !data->numbers.minus || !*data->numbers.minus ||
-            !data->numbers.plus || !*data->numbers.plus ||
+            data->numbers.secondary_group_size < 0 || data->numbers.secondary_group_size > 9 ||
+            !data->numbers.decimal_sep || !*data->numbers.decimal_sep || !data->numbers.minus ||
+            !*data->numbers.minus || !data->numbers.plus || !*data->numbers.plus ||
             !loc_digits_are_valid(data->numbers.digits)) {
             loc_fail(trap_on_error, "Viper.Localization.LocaleManager: invalid numbers schema");
             loc_arena_free(arena);
@@ -1096,16 +1161,30 @@ static rt_locale_data_t *loc_data_from_json(void *root, int trap_on_error) {
             loc_arena_free(arena);
             return NULL;
         }
-        data->currency.default_code     = json_dup_string(arena, currency, "default_code",     data->currency.default_code,     0, trap_on_error, &ok);
-        data->currency.symbol           = json_dup_string(arena, currency, "symbol",           data->currency.symbol,           0, trap_on_error, &ok);
-        data->currency.pattern_positive = json_dup_string(arena, currency, "pattern_positive", data->currency.pattern_positive, 0, trap_on_error, &ok);
-        data->currency.pattern_negative = json_dup_string(arena, currency, "pattern_negative", data->currency.pattern_negative, 0, trap_on_error, &ok);
-        data->currency.fraction_digits  = json_get_i32(currency, "fraction_digits", data->currency.fraction_digits, 0, trap_on_error, &ok);
+        data->currency.default_code = json_dup_string(
+            arena, currency, "default_code", data->currency.default_code, 0, trap_on_error, &ok);
+        data->currency.symbol = json_dup_string(
+            arena, currency, "symbol", data->currency.symbol, 0, trap_on_error, &ok);
+        data->currency.pattern_positive = json_dup_string(arena,
+                                                          currency,
+                                                          "pattern_positive",
+                                                          data->currency.pattern_positive,
+                                                          0,
+                                                          trap_on_error,
+                                                          &ok);
+        data->currency.pattern_negative = json_dup_string(arena,
+                                                          currency,
+                                                          "pattern_negative",
+                                                          data->currency.pattern_negative,
+                                                          0,
+                                                          trap_on_error,
+                                                          &ok);
+        data->currency.fraction_digits = json_get_i32(
+            currency, "fraction_digits", data->currency.fraction_digits, 0, trap_on_error, &ok);
         if (!loc_currency_code_valid(data->currency.default_code) ||
             !loc_currency_pattern_valid(data->currency.pattern_positive) ||
             !loc_currency_pattern_valid(data->currency.pattern_negative) ||
-            data->currency.fraction_digits < 0 ||
-            data->currency.fraction_digits > 9) {
+            data->currency.fraction_digits < 0 || data->currency.fraction_digits > 9) {
             loc_fail(trap_on_error, "Viper.Localization.LocaleManager: invalid currency schema");
             loc_arena_free(arena);
             return NULL;
@@ -1119,10 +1198,34 @@ static rt_locale_data_t *loc_data_from_json(void *root, int trap_on_error) {
             loc_arena_free(arena);
             return NULL;
         }
-        if (!load_string_array(arena, dates, "months_wide", data->dates.months_wide, 12, &data->dates.months_wide, trap_on_error) ||
-            !load_string_array(arena, dates, "months_abbr", data->dates.months_abbr, 12, &data->dates.months_abbr, trap_on_error) ||
-            !load_string_array(arena, dates, "days_wide", data->dates.days_wide, 7, &data->dates.days_wide, trap_on_error) ||
-            !load_string_array(arena, dates, "days_abbr", data->dates.days_abbr, 7, &data->dates.days_abbr, trap_on_error)) {
+        if (!load_string_array(arena,
+                               dates,
+                               "months_wide",
+                               data->dates.months_wide,
+                               12,
+                               &data->dates.months_wide,
+                               trap_on_error) ||
+            !load_string_array(arena,
+                               dates,
+                               "months_abbr",
+                               data->dates.months_abbr,
+                               12,
+                               &data->dates.months_abbr,
+                               trap_on_error) ||
+            !load_string_array(arena,
+                               dates,
+                               "days_wide",
+                               data->dates.days_wide,
+                               7,
+                               &data->dates.days_wide,
+                               trap_on_error) ||
+            !load_string_array(arena,
+                               dates,
+                               "days_abbr",
+                               data->dates.days_abbr,
+                               7,
+                               &data->dates.days_abbr,
+                               trap_on_error)) {
             loc_arena_free(arena);
             return NULL;
         }
@@ -1131,52 +1234,87 @@ static rt_locale_data_t *loc_data_from_json(void *root, int trap_on_error) {
         void *patterns = json_get(dates, "patterns");
         if (patterns) {
             if (!loc_is_map(patterns)) {
-                loc_fail(trap_on_error, "Viper.Localization.LocaleManager: date patterns must be object");
+                loc_fail(trap_on_error,
+                         "Viper.Localization.LocaleManager: date patterns must be object");
                 loc_arena_free(arena);
                 return NULL;
             }
-            data->dates.patterns.short_p     = json_dup_string(arena, patterns, "short",       data->dates.patterns.short_p,     0, trap_on_error, &ok);
-            data->dates.patterns.medium_p    = json_dup_string(arena, patterns, "medium",      data->dates.patterns.medium_p,    0, trap_on_error, &ok);
-            data->dates.patterns.long_p      = json_dup_string(arena, patterns, "long",        data->dates.patterns.long_p,      0, trap_on_error, &ok);
-            data->dates.patterns.full_p      = json_dup_string(arena, patterns, "full",        data->dates.patterns.full_p,      0, trap_on_error, &ok);
-            data->dates.patterns.time_short  = json_dup_string(arena, patterns, "time_short",  data->dates.patterns.time_short,  0, trap_on_error, &ok);
-            data->dates.patterns.time_medium = json_dup_string(arena, patterns, "time_medium", data->dates.patterns.time_medium, 0, trap_on_error, &ok);
+            data->dates.patterns.short_p = json_dup_string(
+                arena, patterns, "short", data->dates.patterns.short_p, 0, trap_on_error, &ok);
+            data->dates.patterns.medium_p = json_dup_string(
+                arena, patterns, "medium", data->dates.patterns.medium_p, 0, trap_on_error, &ok);
+            data->dates.patterns.long_p = json_dup_string(
+                arena, patterns, "long", data->dates.patterns.long_p, 0, trap_on_error, &ok);
+            data->dates.patterns.full_p = json_dup_string(
+                arena, patterns, "full", data->dates.patterns.full_p, 0, trap_on_error, &ok);
+            data->dates.patterns.time_short = json_dup_string(arena,
+                                                              patterns,
+                                                              "time_short",
+                                                              data->dates.patterns.time_short,
+                                                              0,
+                                                              trap_on_error,
+                                                              &ok);
+            data->dates.patterns.time_medium = json_dup_string(arena,
+                                                               patterns,
+                                                               "time_medium",
+                                                               data->dates.patterns.time_medium,
+                                                               0,
+                                                               trap_on_error,
+                                                               &ok);
             data->dates.patterns.datetime_short =
-                json_dup_string(arena, patterns, "datetime_short",
-                                data->dates.patterns.datetime_short, 0, trap_on_error, &ok);
+                json_dup_string(arena,
+                                patterns,
+                                "datetime_short",
+                                data->dates.patterns.datetime_short,
+                                0,
+                                trap_on_error,
+                                &ok);
             data->dates.patterns.datetime_medium =
-                json_dup_string(arena, patterns, "datetime_medium",
-                                data->dates.patterns.datetime_medium, 0, trap_on_error, &ok);
+                json_dup_string(arena,
+                                patterns,
+                                "datetime_medium",
+                                data->dates.patterns.datetime_medium,
+                                0,
+                                trap_on_error,
+                                &ok);
         }
     }
 
     void *rt = json_get(root, "relative_time");
     if (rt) {
         if (!loc_is_map(rt)) {
-            loc_fail(trap_on_error, "Viper.Localization.LocaleManager: relative_time must be object");
+            loc_fail(trap_on_error,
+                     "Viper.Localization.LocaleManager: relative_time must be object");
             loc_arena_free(arena);
             return NULL;
         }
-        data->reltime.now = json_dup_string(arena, rt, "now", data->reltime.now, 0, trap_on_error, &ok);
-        data->reltime.past = json_dup_string(arena, rt, "past", data->reltime.past, 0, trap_on_error, &ok);
-        data->reltime.future = json_dup_string(arena, rt, "future", data->reltime.future, 0, trap_on_error, &ok);
-        data->reltime.short_past =
-            json_dup_string(arena, rt, "short_past", data->reltime.short_past, 0, trap_on_error, &ok);
-        data->reltime.short_future =
-            json_dup_string(arena, rt, "short_future", data->reltime.short_future, 0, trap_on_error, &ok);
+        data->reltime.now =
+            json_dup_string(arena, rt, "now", data->reltime.now, 0, trap_on_error, &ok);
+        data->reltime.past =
+            json_dup_string(arena, rt, "past", data->reltime.past, 0, trap_on_error, &ok);
+        data->reltime.future =
+            json_dup_string(arena, rt, "future", data->reltime.future, 0, trap_on_error, &ok);
+        data->reltime.short_past = json_dup_string(
+            arena, rt, "short_past", data->reltime.short_past, 0, trap_on_error, &ok);
+        data->reltime.short_future = json_dup_string(
+            arena, rt, "short_future", data->reltime.short_future, 0, trap_on_error, &ok);
         void *units = json_get(rt, "units");
         static const char *const unit_names[7] = {
-            "second", "minute", "hour", "day", "week", "month", "year"
-        };
+            "second", "minute", "hour", "day", "week", "month", "year"};
         if (units) {
             if (!loc_is_map(units)) {
-                loc_fail(trap_on_error, "Viper.Localization.LocaleManager: relative_time.units must be object");
+                loc_fail(trap_on_error,
+                         "Viper.Localization.LocaleManager: relative_time.units must be object");
                 loc_arena_free(arena);
                 return NULL;
             }
             for (size_t i = 0; i < 7; ++i) {
-                if (!load_reltime_unit(arena, units, unit_names[i], &data->reltime.units[i],
-                                       &data->reltime.units[i], trap_on_error)) {
+                if (!load_reltime_unit(arena,
+                                       units,
+                                       unit_names[i],
+                                       &data->reltime.units[i],
+                                       &data->reltime.units[i],
+                                       trap_on_error)) {
                     loc_arena_free(arena);
                     return NULL;
                 }
@@ -1185,37 +1323,50 @@ static rt_locale_data_t *loc_data_from_json(void *root, int trap_on_error) {
         void *short_units = json_get(rt, "short_units");
         if (short_units) {
             if (!loc_is_map(short_units)) {
-                loc_fail(trap_on_error, "Viper.Localization.LocaleManager: relative_time.short_units must be object");
+                loc_fail(
+                    trap_on_error,
+                    "Viper.Localization.LocaleManager: relative_time.short_units must be object");
                 loc_arena_free(arena);
                 return NULL;
             }
             for (size_t i = 0; i < 7; ++i) {
-                if (!load_reltime_unit(arena, short_units, unit_names[i],
+                if (!load_reltime_unit(arena,
+                                       short_units,
+                                       unit_names[i],
                                        &data->reltime.short_units[i],
-                                       &data->reltime.short_units[i], trap_on_error)) {
+                                       &data->reltime.short_units[i],
+                                       trap_on_error)) {
                     loc_arena_free(arena);
                     return NULL;
                 }
             }
         }
-        if (!data->reltime.now || !*data->reltime.now ||
-            !data->reltime.past || !strstr(data->reltime.past, "{n}") ||
-            !strstr(data->reltime.past, "{unit}") ||
+        if (!data->reltime.now || !*data->reltime.now || !data->reltime.past ||
+            !strstr(data->reltime.past, "{n}") || !strstr(data->reltime.past, "{unit}") ||
             !data->reltime.future || !strstr(data->reltime.future, "{n}") ||
             !strstr(data->reltime.future, "{unit}")) {
-            loc_fail(trap_on_error, "Viper.Localization.LocaleManager: invalid relative_time schema");
+            loc_fail(trap_on_error,
+                     "Viper.Localization.LocaleManager: invalid relative_time schema");
             loc_arena_free(arena);
             return NULL;
         }
     }
 
-    if (!load_plural_chain(arena, root, "plural_cardinal",
-                           data->plural_cardinal, data->cardinal_count,
-                           &data->plural_cardinal, &data->cardinal_count,
+    if (!load_plural_chain(arena,
+                           root,
+                           "plural_cardinal",
+                           data->plural_cardinal,
+                           data->cardinal_count,
+                           &data->plural_cardinal,
+                           &data->cardinal_count,
                            trap_on_error) ||
-        !load_plural_chain(arena, root, "plural_ordinal",
-                           data->plural_ordinal, data->ordinal_count,
-                           &data->plural_ordinal, &data->ordinal_count,
+        !load_plural_chain(arena,
+                           root,
+                           "plural_ordinal",
+                           data->plural_ordinal,
+                           data->ordinal_count,
+                           &data->plural_ordinal,
+                           &data->ordinal_count,
                            trap_on_error)) {
         loc_arena_free(arena);
         return NULL;
@@ -1228,12 +1379,24 @@ static rt_locale_data_t *loc_data_from_json(void *root, int trap_on_error) {
             loc_arena_free(arena);
             return NULL;
         }
-        if (!load_list_style(arena, list_format, "and", &data->list_format.and_p,
-                             &data->list_format.and_p, trap_on_error) ||
-            !load_list_style(arena, list_format, "or", &data->list_format.or_p,
-                             &data->list_format.or_p, trap_on_error) ||
-            !load_list_style(arena, list_format, "unit", &data->list_format.unit_p,
-                             &data->list_format.unit_p, trap_on_error)) {
+        if (!load_list_style(arena,
+                             list_format,
+                             "and",
+                             &data->list_format.and_p,
+                             &data->list_format.and_p,
+                             trap_on_error) ||
+            !load_list_style(arena,
+                             list_format,
+                             "or",
+                             &data->list_format.or_p,
+                             &data->list_format.or_p,
+                             trap_on_error) ||
+            !load_list_style(arena,
+                             list_format,
+                             "unit",
+                             &data->list_format.unit_p,
+                             &data->list_format.unit_p,
+                             trap_on_error)) {
             loc_arena_free(arena);
             return NULL;
         }
@@ -1249,7 +1412,8 @@ static rt_locale_data_t *loc_data_from_json(void *root, int trap_on_error) {
         data->collation.strength =
             json_get_i32(collation, "strength", data->collation.strength, 0, trap_on_error, &ok);
         if (data->collation.strength < 1 || data->collation.strength > 4) {
-            loc_fail(trap_on_error, "Viper.Localization.LocaleManager: collation.strength out of range");
+            loc_fail(trap_on_error,
+                     "Viper.Localization.LocaleManager: collation.strength out of range");
             loc_arena_free(arena);
             return NULL;
         }
@@ -1295,13 +1459,15 @@ static int loc_register_json_text(rt_string text, int trap_on_error) {
         return loc_fail(trap_on_error, "Viper.Localization.LocaleManager: empty locale JSON");
     int64_t len = rt_str_len(text);
     if (len <= 0 || len > 256 * 1024)
-        return loc_fail(trap_on_error, "Viper.Localization.LocaleManager: locale JSON size out of range");
+        return loc_fail(trap_on_error,
+                        "Viper.Localization.LocaleManager: locale JSON size out of range");
     if (!loc_text_starts_object(text) || rt_json_is_valid(text) != 1)
         return loc_fail(trap_on_error, "Viper.Localization.LocaleManager: malformed locale JSON");
 
     void *root = rt_json_parse_object(text);
     if (!root)
-        return loc_fail(trap_on_error, "Viper.Localization.LocaleManager: malformed locale JSON object");
+        return loc_fail(trap_on_error,
+                        "Viper.Localization.LocaleManager: malformed locale JSON object");
     rt_locale_data_t *data = loc_data_from_json(root, trap_on_error);
     loc_release_object(root);
     if (!data)
@@ -1311,7 +1477,8 @@ static int loc_register_json_text(rt_string text, int trap_on_error) {
     int registered = loc_register_entry_locked(data, /*is_baked=*/0);
     rt_rwlock_write_exit(g_mgr.lock);
     if (!registered)
-        return loc_fail(trap_on_error, "Viper.Localization.LocaleManager: cannot replace locale while in use");
+        return loc_fail(trap_on_error,
+                        "Viper.Localization.LocaleManager: cannot replace locale while in use");
     return 1;
 }
 
@@ -1324,8 +1491,7 @@ static int loc_register_json_text(rt_string text, int trap_on_error) {
 ///          Caller must hold the write lock.
 static void loc_registry_grow(void) {
     size_t new_cap = g_mgr.capacity == 0 ? 4 : g_mgr.capacity * 2;
-    if (g_mgr.capacity > SIZE_MAX / 2 ||
-        new_cap > SIZE_MAX / sizeof(*g_mgr.entries)) {
+    if (g_mgr.capacity > SIZE_MAX / 2 || new_cap > SIZE_MAX / sizeof(*g_mgr.entries)) {
         rt_trap("Viper.Localization.LocaleManager: registry capacity overflow");
         return;
     }
@@ -1440,11 +1606,8 @@ static void loc_mgr_ensure_init(void) {
         // effects until shutdown; under concurrent load the odds of more
         // than 2-3 allocations are low in practice.
 #if RT_COMPILER_MSVC
-        if (!rt_atomic_compare_exchange_ptr((void *volatile *)&g_mgr.lock,
-                                            &lock,
-                                            fresh,
-                                            __ATOMIC_ACQ_REL,
-                                            __ATOMIC_ACQUIRE))
+        if (!rt_atomic_compare_exchange_ptr(
+                (void *volatile *)&g_mgr.lock, &lock, fresh, __ATOMIC_ACQ_REL, __ATOMIC_ACQUIRE))
 #else
         if (!__atomic_compare_exchange_n(
                 &g_mgr.lock, &lock, fresh, /*weak=*/0, __ATOMIC_ACQ_REL, __ATOMIC_ACQUIRE))
@@ -1662,8 +1825,7 @@ void *rt_locale_manager_available(void) {
         return NULL;
     rt_rwlock_read_enter(g_mgr.lock);
     for (size_t i = 0; i < g_mgr.count; ++i) {
-        rt_string s = rt_string_from_bytes(g_mgr.entries[i].tag,
-                                            strlen(g_mgr.entries[i].tag));
+        rt_string s = rt_string_from_bytes(g_mgr.entries[i].tag, strlen(g_mgr.entries[i].tag));
         rt_list_push(list, s);
         rt_string_unref(s);
     }
@@ -1866,12 +2028,14 @@ void *rt_locale_manager_load(rt_string tag) {
                 char candidate[4608];
                 const char sep =
 #if RT_PLATFORM_WINDOWS
-                    (bl > 0 && (base_copy[bl - 1] == '/' || base_copy[bl - 1] == '\\')) ? '\0' : '\\';
+                    (bl > 0 && (base_copy[bl - 1] == '/' || base_copy[bl - 1] == '\\')) ? '\0'
+                                                                                        : '\\';
 #else
                     (bl > 0 && base_copy[bl - 1] == '/') ? '\0' : '/';
 #endif
                 if (sep)
-                    snprintf(candidate, sizeof(candidate), "%s%c%s.json", base_copy, sep, parsed.tag);
+                    snprintf(
+                        candidate, sizeof(candidate), "%s%c%s.json", base_copy, sep, parsed.tag);
                 else
                     snprintf(candidate, sizeof(candidate), "%s%s.json", base_copy, parsed.tag);
                 rt_string path = rt_string_from_bytes(candidate, strlen(candidate));

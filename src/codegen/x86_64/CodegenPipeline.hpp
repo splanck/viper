@@ -53,14 +53,14 @@ class CodegenPipeline {
 
     /// \brief User-configurable options controlling pipeline behaviour.
     struct Options {
-        std::string input_il_path;   ///< IL module to load and compile.
-        std::string output_obj_path; ///< Destination path for executable/object output.
-        std::string output_asm_path; ///< Optional assembly output path when emit_asm is true.
-        bool emit_asm = false;       ///< Emit assembly text to disk for inspection.
-        int optimize = 1;            ///< Optimization level: 0 = none, 1 = O1, 2 = O2.
+        std::string input_il_path;         ///< IL module to load and compile.
+        std::string output_obj_path;       ///< Destination path for executable/object output.
+        std::string output_asm_path;       ///< Optional assembly output path when emit_asm is true.
+        bool emit_asm = false;             ///< Emit assembly text to disk for inspection.
+        int optimize = 1;                  ///< Optimization level: 0 = none, 1 = O1, 2 = O2.
         bool skip_il_optimization = false; ///< True when input IL is already optimized.
-        bool run_native = false;     ///< Execute the produced binary after linking when true.
-        std::size_t stack_size = 0;  ///< Stack size in bytes; 0 means use system default.
+        bool run_native = false;           ///< Execute the produced binary after linking when true.
+        std::size_t stack_size = 0;        ///< Stack size in bytes; 0 means use system default.
         bool emit_debug_lines = false;
         bool time_passes = false; ///< Emit per-backend-pass timings.
         bool fast_link = false;   ///< Skip non-essential native-link size reductions.

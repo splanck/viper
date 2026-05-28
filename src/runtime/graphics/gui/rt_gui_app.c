@@ -370,7 +370,8 @@ static bool rt_gui_app_overlays_need_paint(const rt_gui_app_t *app) {
         if (app->dialog_stack[i] && rt_gui_widget_tree_needs_paint(&app->dialog_stack[i]->base))
             return true;
     }
-    if (app->notification_manager && rt_gui_widget_tree_needs_paint(&app->notification_manager->base))
+    if (app->notification_manager &&
+        rt_gui_widget_tree_needs_paint(&app->notification_manager->base))
         return true;
     vg_tooltip_manager_t *tooltip_mgr = vg_tooltip_manager_get();
     if (tooltip_mgr && tooltip_mgr->active_tooltip &&
@@ -824,8 +825,7 @@ static int rt_gui_app_uses_font(rt_gui_app_t *app, vg_font_t *font) {
     for (int i = 0; i < app->dialog_count; i++) {
         if (app->dialog_stack[i] && app->dialog_stack[i]->font == font)
             return 1;
-        if (app->dialog_stack[i] &&
-            rt_gui_widget_tree_uses_font(&app->dialog_stack[i]->base, font))
+        if (app->dialog_stack[i] && rt_gui_widget_tree_uses_font(&app->dialog_stack[i]->base, font))
             return 1;
     }
     for (int i = 0; i < app->command_palette_count; i++) {
@@ -1093,29 +1093,25 @@ static void rt_gui_inherit_font_to_widget(vg_widget_t *widget, vg_font_t *font, 
         case VG_WIDGET_BUTTON: {
             vg_button_t *button = (vg_button_t *)widget;
             button->font = font;
-            button->font_size =
-                size > 0 ? size : (theme ? theme->typography.size_normal : 13.0f);
+            button->font_size = size > 0 ? size : (theme ? theme->typography.size_normal : 13.0f);
             break;
         }
         case VG_WIDGET_TEXTINPUT: {
             vg_textinput_t *input = (vg_textinput_t *)widget;
             input->font = font;
-            input->font_size =
-                size > 0 ? size : (theme ? theme->typography.size_normal : 14.0f);
+            input->font_size = size > 0 ? size : (theme ? theme->typography.size_normal : 14.0f);
             break;
         }
         case VG_WIDGET_CHECKBOX: {
             vg_checkbox_t *checkbox = (vg_checkbox_t *)widget;
             checkbox->font = font;
-            checkbox->font_size =
-                size > 0 ? size : (theme ? theme->typography.size_normal : 14.0f);
+            checkbox->font_size = size > 0 ? size : (theme ? theme->typography.size_normal : 14.0f);
             break;
         }
         case VG_WIDGET_LISTBOX: {
             vg_listbox_t *listbox = (vg_listbox_t *)widget;
             listbox->font = font;
-            listbox->font_size =
-                size > 0 ? size : (theme ? theme->typography.size_normal : 14.0f);
+            listbox->font_size = size > 0 ? size : (theme ? theme->typography.size_normal : 14.0f);
             float min_item_height =
                 (theme ? theme->input.height : 28.0f * scale) > (listbox->font_size + 8.0f * scale)
                     ? (theme ? theme->input.height : 28.0f * scale)
@@ -1127,22 +1123,19 @@ static void rt_gui_inherit_font_to_widget(vg_widget_t *widget, vg_font_t *font, 
         case VG_WIDGET_DROPDOWN: {
             vg_dropdown_t *dropdown = (vg_dropdown_t *)widget;
             dropdown->font = font;
-            dropdown->font_size =
-                size > 0 ? size : (theme ? theme->typography.size_normal : 14.0f);
+            dropdown->font_size = size > 0 ? size : (theme ? theme->typography.size_normal : 14.0f);
             break;
         }
         case VG_WIDGET_SLIDER: {
             vg_slider_t *slider = (vg_slider_t *)widget;
             slider->font = font;
-            slider->font_size =
-                size > 0 ? size : (theme ? theme->typography.size_small : 12.0f);
+            slider->font_size = size > 0 ? size : (theme ? theme->typography.size_small : 12.0f);
             break;
         }
         case VG_WIDGET_PROGRESS: {
             vg_progressbar_t *progress = (vg_progressbar_t *)widget;
             progress->font = font;
-            progress->font_size =
-                size > 0 ? size : (theme ? theme->typography.size_small : 12.0f);
+            progress->font_size = size > 0 ? size : (theme ? theme->typography.size_small : 12.0f);
             break;
         }
         case VG_WIDGET_SPINNER: {
@@ -1160,8 +1153,7 @@ static void rt_gui_inherit_font_to_widget(vg_widget_t *widget, vg_font_t *font, 
         case VG_WIDGET_TREEVIEW: {
             vg_treeview_t *tree = (vg_treeview_t *)widget;
             tree->font = font;
-            tree->font_size =
-                size > 0 ? size : (theme ? theme->typography.size_normal : 14.0f);
+            tree->font_size = size > 0 ? size : (theme ? theme->typography.size_normal : 14.0f);
             {
                 float row_height = 28.0f * scale;
                 float text_height = tree->font_size + 8.0f * scale;
@@ -1174,44 +1166,38 @@ static void rt_gui_inherit_font_to_widget(vg_widget_t *widget, vg_font_t *font, 
         case VG_WIDGET_TABBAR: {
             vg_tabbar_t *tabbar = (vg_tabbar_t *)widget;
             tabbar->font = font;
-            tabbar->font_size =
-                size > 0 ? size : (theme ? theme->typography.size_normal : 14.0f);
+            tabbar->font_size = size > 0 ? size : (theme ? theme->typography.size_normal : 14.0f);
             break;
         }
         case VG_WIDGET_MENUBAR: {
             vg_menubar_t *menubar = (vg_menubar_t *)widget;
             menubar->font = font;
-            menubar->font_size =
-                size > 0 ? size : (theme ? theme->typography.size_normal : 14.0f);
+            menubar->font_size = size > 0 ? size : (theme ? theme->typography.size_normal : 14.0f);
             break;
         }
         case VG_WIDGET_TOOLBAR: {
             vg_toolbar_t *toolbar = (vg_toolbar_t *)widget;
             toolbar->font = font;
-            toolbar->font_size =
-                size > 0 ? size : (theme ? theme->typography.size_small : 12.0f);
+            toolbar->font_size = size > 0 ? size : (theme ? theme->typography.size_small : 12.0f);
             break;
         }
         case VG_WIDGET_STATUSBAR: {
             vg_statusbar_t *statusbar = (vg_statusbar_t *)widget;
             statusbar->font = font;
-            statusbar->font_size =
-                size > 0 ? size : (theme ? theme->typography.size_small : 12.0f);
+            statusbar->font_size = size > 0 ? size : (theme ? theme->typography.size_small : 12.0f);
             break;
         }
         case VG_WIDGET_DIALOG: {
             vg_dialog_t *dialog = (vg_dialog_t *)widget;
             dialog->font = font;
-            dialog->font_size =
-                size > 0 ? size : (theme ? theme->typography.size_normal : 14.0f);
+            dialog->font_size = size > 0 ? size : (theme ? theme->typography.size_normal : 14.0f);
             dialog->title_font_size = dialog->font_size + scale;
             break;
         }
         case VG_WIDGET_CODEEDITOR: {
             vg_codeeditor_t *editor = (vg_codeeditor_t *)widget;
             editor->font = font;
-            editor->font_size =
-                size > 0 ? size : (theme ? theme->typography.size_normal : 14.0f);
+            editor->font_size = size > 0 ? size : (theme ? theme->typography.size_normal : 14.0f);
             if (editor->char_width <= 0.0f)
                 editor->char_width = editor->font_size * 0.6f;
             if (editor->line_height <= 0.0f)
@@ -1221,8 +1207,7 @@ static void rt_gui_inherit_font_to_widget(vg_widget_t *widget, vg_font_t *font, 
         case VG_WIDGET_OUTPUTPANE: {
             vg_outputpane_t *pane = (vg_outputpane_t *)widget;
             pane->font = font;
-            pane->font_size =
-                size > 0 ? size : (theme ? theme->typography.size_normal : 14.0f);
+            pane->font_size = size > 0 ? size : (theme ? theme->typography.size_normal : 14.0f);
             if (pane->line_height <= 0.0f)
                 pane->line_height = pane->font_size * 1.35f;
             break;
@@ -1230,8 +1215,7 @@ static void rt_gui_inherit_font_to_widget(vg_widget_t *widget, vg_font_t *font, 
         case VG_WIDGET_RADIO: {
             vg_radiobutton_t *radio = (vg_radiobutton_t *)widget;
             radio->font = font;
-            radio->font_size =
-                size > 0 ? size : (theme ? theme->typography.size_normal : 14.0f);
+            radio->font_size = size > 0 ? size : (theme ? theme->typography.size_normal : 14.0f);
             break;
         }
         default:
@@ -1702,8 +1686,7 @@ static void rt_gui_update_drag_over_target(rt_gui_app_t *app, vg_widget_t *event
         app->drag_over_widget = NULL;
 
     if (app->drag_source && event_root) {
-        vg_widget_t *hit =
-            vg_widget_hit_test(event_root, (float)app->mouse_x, (float)app->mouse_y);
+        vg_widget_t *hit = vg_widget_hit_test(event_root, (float)app->mouse_x, (float)app->mouse_y);
         next = rt_gui_find_drop_target(hit, app->drag_source, app->drag_source->drag_type);
     }
 
@@ -1768,9 +1751,9 @@ static void rt_gui_complete_drag_drop(rt_gui_app_t *app, vg_widget_t *event_root
 
     vg_widget_t *source = app->drag_source;
     source->_is_being_dragged = false;
-    vg_widget_t *hit = event_root ? vg_widget_hit_test(
-                                        event_root, (float)app->mouse_x, (float)app->mouse_y)
-                                  : NULL;
+    vg_widget_t *hit =
+        event_root ? vg_widget_hit_test(event_root, (float)app->mouse_x, (float)app->mouse_y)
+                   : NULL;
     vg_widget_t *target = rt_gui_find_drop_target(hit, source, source->drag_type);
     if (target) {
         char *new_type = source->drag_type ? strdup(source->drag_type) : NULL;
@@ -1886,16 +1869,17 @@ void rt_gui_app_poll(void *app_ptr) {
         } else if (event.type == VGFX_EVENT_MOUSE_MOVE) {
             rt_mouse_update_pos((int64_t)event.data.mouse_move.x, (int64_t)event.data.mouse_move.y);
         } else if (event.type == VGFX_EVENT_MOUSE_DOWN) {
-            rt_mouse_update_pos(
-                (int64_t)event.data.mouse_button.x, (int64_t)event.data.mouse_button.y);
+            rt_mouse_update_pos((int64_t)event.data.mouse_button.x,
+                                (int64_t)event.data.mouse_button.y);
             rt_mouse_button_down((int64_t)event.data.mouse_button.button);
         } else if (event.type == VGFX_EVENT_MOUSE_UP) {
-            rt_mouse_update_pos(
-                (int64_t)event.data.mouse_button.x, (int64_t)event.data.mouse_button.y);
+            rt_mouse_update_pos((int64_t)event.data.mouse_button.x,
+                                (int64_t)event.data.mouse_button.y);
             rt_mouse_button_up((int64_t)event.data.mouse_button.button);
         } else if (event.type == VGFX_EVENT_SCROLL) {
             rt_mouse_update_pos((int64_t)event.data.scroll.x, (int64_t)event.data.scroll.y);
-            rt_mouse_update_wheel((double)event.data.scroll.delta_x, (double)event.data.scroll.delta_y);
+            rt_mouse_update_wheel((double)event.data.scroll.delta_x,
+                                  (double)event.data.scroll.delta_y);
         }
 
         if (event.type == VGFX_EVENT_CLOSE) {
@@ -1960,8 +1944,10 @@ void rt_gui_app_poll(void *app_ptr) {
                     gui_event.type == VG_EVENT_MOUSE_DOWN || gui_event.type == VG_EVENT_MOUSE_UP ||
                     gui_event.type == VG_EVENT_CLICK || gui_event.type == VG_EVENT_DOUBLE_CLICK ||
                     gui_event.type == VG_EVENT_MOUSE_WHEEL;
-                int inside_palette = rt_gui_palette_contains_point(
-                    top_palette, rt_gui_event_screen_x(&gui_event), rt_gui_event_screen_y(&gui_event));
+                int inside_palette =
+                    rt_gui_palette_contains_point(top_palette,
+                                                  rt_gui_event_screen_x(&gui_event),
+                                                  rt_gui_event_screen_y(&gui_event));
 
                 if (is_mouse_event && inside_palette) {
                     rt_gui_send_event_to_widget(&top_palette->base, &gui_event);
@@ -2141,7 +2127,8 @@ void rt_gui_app_render(void *app_ptr) {
 
     vg_tooltip_manager_t *tooltip_mgr = vg_tooltip_manager_get();
     vg_tooltip_manager_update(tooltip_mgr, now_ms);
-    if (tooltip_mgr->active_tooltip && tooltip_mgr->active_tooltip->is_visible && app->default_font) {
+    if (tooltip_mgr->active_tooltip && tooltip_mgr->active_tooltip->is_visible &&
+        app->default_font) {
         tooltip_mgr->active_tooltip->font = app->default_font;
         tooltip_mgr->active_tooltip->font_size = app->default_font_size;
     }

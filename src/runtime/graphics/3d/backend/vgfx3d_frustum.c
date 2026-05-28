@@ -27,8 +27,8 @@
 
 #include <float.h>
 #include <math.h>
-#include <stdint.h>
 #include <stddef.h>
+#include <stdint.h>
 
 /*==========================================================================
  * Frustum plane extraction (Gribb-Hartmann method)
@@ -282,15 +282,14 @@ void vgfx3d_transform_aabb(const float obj_min[3],
         float cz = (i & 4) ? safe_max[2] : safe_min[2];
 
         /* Transform by row-major 4x4 matrix (column-vector convention) */
-        double dx = world_matrix[0] * cx + world_matrix[1] * cy + world_matrix[2] * cz +
-                    world_matrix[3];
-        double dy = world_matrix[4] * cx + world_matrix[5] * cy + world_matrix[6] * cz +
-                    world_matrix[7];
-        double dz = world_matrix[8] * cx + world_matrix[9] * cy + world_matrix[10] * cz +
-                    world_matrix[11];
-        if (!isfinite(dx) || !isfinite(dy) || !isfinite(dz) ||
-            dx < -FLT_MAX || dx > FLT_MAX || dy < -FLT_MAX || dy > FLT_MAX ||
-            dz < -FLT_MAX || dz > FLT_MAX) {
+        double dx =
+            world_matrix[0] * cx + world_matrix[1] * cy + world_matrix[2] * cz + world_matrix[3];
+        double dy =
+            world_matrix[4] * cx + world_matrix[5] * cy + world_matrix[6] * cz + world_matrix[7];
+        double dz =
+            world_matrix[8] * cx + world_matrix[9] * cy + world_matrix[10] * cz + world_matrix[11];
+        if (!isfinite(dx) || !isfinite(dy) || !isfinite(dz) || dx < -FLT_MAX || dx > FLT_MAX ||
+            dy < -FLT_MAX || dy > FLT_MAX || dz < -FLT_MAX || dz > FLT_MAX) {
             out_min[0] = out_min[1] = out_min[2] = 0.0f;
             out_max[0] = out_max[1] = out_max[2] = 0.0f;
             return;

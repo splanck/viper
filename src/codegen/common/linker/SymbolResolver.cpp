@@ -223,16 +223,14 @@ static bool getComdatDefinition(const ObjFile &obj,
         return false;
     const auto &sec = obj.sections[sym.sectionIndex];
     if (sec.comdatSelection == ComdatSelection::None ||
-        sec.comdatSelection == ComdatSelection::Associative ||
-        sec.comdatKey.empty())
+        sec.comdatSelection == ComdatSelection::Associative || sec.comdatKey.empty())
         return false;
     out.selection = sec.comdatSelection;
     out.key = sec.comdatKey;
     out.objIdx = objIdx;
     out.secIdx = sym.sectionIndex;
     out.size = objSectionMemSize(sec);
-    out.hash =
-        sec.comdatSelection == ComdatSelection::ExactMatch ? hashComdatSection(obj, sec) : 0;
+    out.hash = sec.comdatSelection == ComdatSelection::ExactMatch ? hashComdatSection(obj, sec) : 0;
     return true;
 }
 
@@ -241,13 +239,13 @@ static bool selectComdatDuplicate(const ObjFile &obj,
                                   size_t objIdx,
                                   const ComdatDefinition &existing,
                                   const ComdatDefinition &candidate,
-    GlobalSymEntry &entry,
-    std::ostream &err) {
+                                  GlobalSymEntry &entry,
+                                  std::ostream &err) {
     if (existing.key != candidate.key) {
-        if (existing.selection == ComdatSelection::Any && candidate.selection == ComdatSelection::Any)
+        if (existing.selection == ComdatSelection::Any &&
+            candidate.selection == ComdatSelection::Any)
             return true;
-        err << "error: multiply defined symbol '" << sym.name
-            << "' has mismatched COMDAT keys\n";
+        err << "error: multiply defined symbol '" << sym.name << "' has mismatched COMDAT keys\n";
         return false;
     }
 
@@ -265,8 +263,7 @@ static bool selectComdatDuplicate(const ObjFile &obj,
         case ComdatSelection::ExactMatch:
             if (existing.size == candidate.size && existing.hash == candidate.hash)
                 return true;
-            err << "error: COMDAT EXACT_MATCH symbol '" << sym.name
-                << "' has different contents\n";
+            err << "error: COMDAT EXACT_MATCH symbol '" << sym.name << "' has different contents\n";
             return false;
         case ComdatSelection::Largest:
             if (candidate.size > existing.size)
@@ -278,8 +275,7 @@ static bool selectComdatDuplicate(const ObjFile &obj,
             return false;
         case ComdatSelection::None:
         case ComdatSelection::Associative:
-            err << "error: multiply defined symbol '" << sym.name << "' in " << obj.name
-                << "\n";
+            err << "error: multiply defined symbol '" << sym.name << "' in " << obj.name << "\n";
             return false;
     }
     return false;
@@ -474,10 +470,10 @@ static bool preferArchiveDefinition(const std::string &name, LinkPlatform platfo
         name == "?_OptionsStorage@?1??__local_stdio_scanf_options@@9@9")
         return false;
 
-    if (name == "fprintf" || name == "snprintf" || name == "vsnprintf" ||
-        name == "_vfprintf_l" || name == "_vfscanf_l" || name == "_vsprintf_l" ||
-        name == "_vsnprintf_l" || name == "_vswprintf_l" || name == "_vfwprintf_l" ||
-        name == "fstat" || name == "_fstat64i32" || name == "stat" || name == "_stat64i32" ||
+    if (name == "fprintf" || name == "snprintf" || name == "vsnprintf" || name == "_vfprintf_l" ||
+        name == "_vfscanf_l" || name == "_vsprintf_l" || name == "_vsnprintf_l" ||
+        name == "_vswprintf_l" || name == "_vfwprintf_l" || name == "fstat" ||
+        name == "_fstat64i32" || name == "stat" || name == "_stat64i32" ||
         name == "mainCRTStartup" || name == "WinMainCRTStartup" || name == "wmainCRTStartup" ||
         name == "wWinMainCRTStartup" || name == "__security_check_cookie" ||
         name == "__security_init_cookie" || name == "__GSHandlerCheck" ||
@@ -670,9 +666,8 @@ bool resolveSymbols(const std::vector<ObjFile> &initialObjects,
 
         const bool allowSynthetic =
             platform == LinkPlatform::Windows && isWindowsLinkerHelperSymbol(undef);
-        const bool allowDynamic =
-            allowSynthetic ||
-            (isKnownDynamicSymbol(undef, platform) && !preferArchiveDefinition(undef, platform));
+        const bool allowDynamic = allowSynthetic || (isKnownDynamicSymbol(undef, platform) &&
+                                                     !preferArchiveDefinition(undef, platform));
         if (!allowDynamic) {
             unresolvedErrors.push_back(undef);
             continue;
@@ -687,8 +682,8 @@ bool resolveSymbols(const std::vector<ObjFile> &initialObjects,
 
     if (!unresolvedErrors.empty()) {
         std::sort(unresolvedErrors.begin(), unresolvedErrors.end());
-        unresolvedErrors.erase(
-            std::unique(unresolvedErrors.begin(), unresolvedErrors.end()), unresolvedErrors.end());
+        unresolvedErrors.erase(std::unique(unresolvedErrors.begin(), unresolvedErrors.end()),
+                               unresolvedErrors.end());
         for (const auto &name : unresolvedErrors) {
             err << "error: undefined symbol '" << name << "'";
             if (preferArchiveDefinition(name, platform))
@@ -799,8 +794,7 @@ static bool materializeCommonSymbols(std::vector<ObjFile> &allObjects,
 
         ObjSymbol sym;
         sym.name = entry.name.empty() ? name : entry.name;
-        sym.binding =
-            entry.binding == GlobalSymEntry::Weak ? ObjSymbol::Weak : ObjSymbol::Global;
+        sym.binding = entry.binding == GlobalSymEntry::Weak ? ObjSymbol::Weak : ObjSymbol::Global;
         sym.sectionIndex = 1;
         sym.offset = offset;
         sym.size = entry.commonSize;

@@ -35,9 +35,7 @@ class CpioWriter {
                        const std::string &content,
                        uint32_t mode = 0644,
                        uint32_t mtime = 0);
-    void addSymlink(const std::string &path,
-                    const std::string &target,
-                    uint32_t mtime = 0);
+    void addSymlink(const std::string &path, const std::string &target, uint32_t mtime = 0);
 
     std::vector<uint8_t> finish() const;
 

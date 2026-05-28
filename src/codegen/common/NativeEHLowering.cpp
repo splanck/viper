@@ -705,7 +705,8 @@ std::optional<std::string> findResidualStructuredEh(const Module &module) {
             if (bb.params.size() >= 2 && bb.params[0].type.kind == Type::Kind::Error &&
                 bb.params[1].type.kind == Type::Kind::ResumeTok) {
                 return fn.name + ":" + bb.label +
-                       ": residual handler error/resume-token block parameters after NativeEHLowering";
+                       ": residual handler error/resume-token block parameters after "
+                       "NativeEHLowering";
             }
 
             for (const auto &instr : bb.instructions) {

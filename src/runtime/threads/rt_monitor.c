@@ -1243,8 +1243,7 @@ static monitor_deadline_t monitor_deadline_ms_from_now(int64_t ms, int8_t use_mo
     int64_t add_sec = ms / 1000;
     long add_nsec = (long)((ms % 1000) * 1000000L);
     int64_t sec_room = (int64_t)LONG_MAX - (int64_t)d.deadline.tv_sec;
-    if (add_sec > sec_room ||
-        (add_sec == sec_room && d.deadline.tv_nsec > 999999999L - add_nsec)) {
+    if (add_sec > sec_room || (add_sec == sec_room && d.deadline.tv_nsec > 999999999L - add_nsec)) {
         d.deadline.tv_sec = (time_t)LONG_MAX;
         d.deadline.tv_nsec = 999999999L;
         return d;
@@ -1356,8 +1355,7 @@ static int monitor_enter_blocking(RtMonitor *m, pthread_t self, int64_t timeout_
         if (!timed) {
             rc = pthread_cond_wait(&w.cv, &m->mu);
         } else {
-            rc = monitor_cond_timedwait_deadline(
-                &w.cv, &m->mu, deadline, w.cond_uses_monotonic);
+            rc = monitor_cond_timedwait_deadline(&w.cv, &m->mu, deadline, w.cond_uses_monotonic);
         }
 
         if (timed && rc == ETIMEDOUT && w.state != RT_MON_WAITER_ACQUIRED) {

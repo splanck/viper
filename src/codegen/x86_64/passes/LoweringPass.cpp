@@ -556,49 +556,65 @@ class ModuleAdapter {
     ///          uses one of three adapter calls. Returning false leaves @p out
     ///          untouched and tells the dispatcher to keep matching.
     bool tryAdaptArithLike(const il::core::Instr &source, ILInstr &out) {
-        struct Entry { il::core::Opcode op; const char *name; };
+        struct Entry {
+            il::core::Opcode op;
+            const char *name;
+        };
+
         static constexpr std::array<Entry, 9> kArith = {{
-            {il::core::Opcode::Add,      "add"},
-            {il::core::Opcode::FAdd,     "add"},
-            {il::core::Opcode::IAddOvf,  "iadd.ovf"},
-            {il::core::Opcode::Sub,      "sub"},
-            {il::core::Opcode::FSub,     "sub"},
-            {il::core::Opcode::ISubOvf,  "isub.ovf"},
-            {il::core::Opcode::Mul,      "mul"},
-            {il::core::Opcode::FMul,     "mul"},
-            {il::core::Opcode::IMulOvf,  "imul.ovf"},
+            {il::core::Opcode::Add, "add"},
+            {il::core::Opcode::FAdd, "add"},
+            {il::core::Opcode::IAddOvf, "iadd.ovf"},
+            {il::core::Opcode::Sub, "sub"},
+            {il::core::Opcode::FSub, "sub"},
+            {il::core::Opcode::ISubOvf, "isub.ovf"},
+            {il::core::Opcode::Mul, "mul"},
+            {il::core::Opcode::FMul, "mul"},
+            {il::core::Opcode::IMulOvf, "imul.ovf"},
         }};
         for (const auto &e : kArith)
-            if (source.op == e.op) { adaptBinaryArithmetic(source, out, e.name); return true; }
+            if (source.op == e.op) {
+                adaptBinaryArithmetic(source, out, e.name);
+                return true;
+            }
 
         static constexpr std::array<Entry, 8> kIntDiv = {{
-            {il::core::Opcode::SDiv,     "sdiv"},
+            {il::core::Opcode::SDiv, "sdiv"},
             {il::core::Opcode::SDivChk0, "sdiv.chk0"},
-            {il::core::Opcode::SRem,     "srem"},
+            {il::core::Opcode::SRem, "srem"},
             {il::core::Opcode::SRemChk0, "srem.chk0"},
-            {il::core::Opcode::UDiv,     "udiv"},
+            {il::core::Opcode::UDiv, "udiv"},
             {il::core::Opcode::UDivChk0, "udiv.chk0"},
-            {il::core::Opcode::URem,     "urem"},
+            {il::core::Opcode::URem, "urem"},
             {il::core::Opcode::URemChk0, "urem.chk0"},
         }};
         for (const auto &e : kIntDiv)
-            if (source.op == e.op) { adaptIntDiv(source, out, e.name); return true; }
+            if (source.op == e.op) {
+                adaptIntDiv(source, out, e.name);
+                return true;
+            }
 
         static constexpr std::array<Entry, 3> kShift = {{
-            {il::core::Opcode::Shl,  "shl"},
+            {il::core::Opcode::Shl, "shl"},
             {il::core::Opcode::LShr, "lshr"},
             {il::core::Opcode::AShr, "ashr"},
         }};
         for (const auto &e : kShift)
-            if (source.op == e.op) { adaptShift(source, out, e.name); return true; }
+            if (source.op == e.op) {
+                adaptShift(source, out, e.name);
+                return true;
+            }
 
         static constexpr std::array<Entry, 3> kBitwise = {{
             {il::core::Opcode::And, "and"},
-            {il::core::Opcode::Or,  "or"},
+            {il::core::Opcode::Or, "or"},
             {il::core::Opcode::Xor, "xor"},
         }};
         for (const auto &e : kBitwise)
-            if (source.op == e.op) { adaptBitwise(source, out, e.name); return true; }
+            if (source.op == e.op) {
+                adaptBitwise(source, out, e.name);
+                return true;
+            }
 
         return false;
     }
@@ -606,28 +622,43 @@ class ModuleAdapter {
     /// @brief Table-driven adapter for integer and float comparison clusters.
     bool tryAdaptCompare(const il::core::Instr &source, ILInstr &out) {
         static constexpr std::array<il::core::Opcode, 10> kIntCmp = {
-            il::core::Opcode::ICmpEq, il::core::Opcode::ICmpNe,
-            il::core::Opcode::SCmpLT, il::core::Opcode::SCmpLE,
-            il::core::Opcode::SCmpGT, il::core::Opcode::SCmpGE,
-            il::core::Opcode::UCmpGT, il::core::Opcode::UCmpGE,
-            il::core::Opcode::UCmpLT, il::core::Opcode::UCmpLE,
+            il::core::Opcode::ICmpEq,
+            il::core::Opcode::ICmpNe,
+            il::core::Opcode::SCmpLT,
+            il::core::Opcode::SCmpLE,
+            il::core::Opcode::SCmpGT,
+            il::core::Opcode::SCmpGE,
+            il::core::Opcode::UCmpGT,
+            il::core::Opcode::UCmpGE,
+            il::core::Opcode::UCmpLT,
+            il::core::Opcode::UCmpLE,
         };
         for (auto op : kIntCmp)
-            if (source.op == op) { adaptIntCompare(source, out); return true; }
+            if (source.op == op) {
+                adaptIntCompare(source, out);
+                return true;
+            }
 
-        struct FpEntry { il::core::Opcode op; const char *name; };
+        struct FpEntry {
+            il::core::Opcode op;
+            const char *name;
+        };
+
         static constexpr std::array<FpEntry, 8> kFpCmp = {{
-            {il::core::Opcode::FCmpEQ,  "fcmp_eq"},
-            {il::core::Opcode::FCmpNE,  "fcmp_ne"},
-            {il::core::Opcode::FCmpLT,  "fcmp_lt"},
-            {il::core::Opcode::FCmpLE,  "fcmp_le"},
-            {il::core::Opcode::FCmpGT,  "fcmp_gt"},
-            {il::core::Opcode::FCmpGE,  "fcmp_ge"},
+            {il::core::Opcode::FCmpEQ, "fcmp_eq"},
+            {il::core::Opcode::FCmpNE, "fcmp_ne"},
+            {il::core::Opcode::FCmpLT, "fcmp_lt"},
+            {il::core::Opcode::FCmpLE, "fcmp_le"},
+            {il::core::Opcode::FCmpGT, "fcmp_gt"},
+            {il::core::Opcode::FCmpGE, "fcmp_ge"},
             {il::core::Opcode::FCmpOrd, "fcmp_ord"},
             {il::core::Opcode::FCmpUno, "fcmp_uno"},
         }};
         for (const auto &e : kFpCmp)
-            if (source.op == e.op) { adaptFloatCompareAs(source, out, e.name); return true; }
+            if (source.op == e.op) {
+                adaptFloatCompareAs(source, out, e.name);
+                return true;
+            }
 
         return false;
     }
@@ -644,7 +675,9 @@ class ModuleAdapter {
                 adaptRuntimeCall(source, out, "rt_trap_get_kind");
                 return true;
             case il::core::Opcode::TrapErr:
-                adaptRuntimeCall(source, out, "rt_trap_error_make",
+                adaptRuntimeCall(source,
+                                 out,
+                                 "rt_trap_error_make",
                                  HintList{ILValue::Kind::I64, ILValue::Kind::STR});
                 return true;
             case il::core::Opcode::ErrGetCode:
@@ -660,8 +693,7 @@ class ModuleAdapter {
                 adaptRuntimeCall(source, out, "rt_throw_msg_get");
                 return true;
             case il::core::Opcode::TrapFromErr:
-                adaptRuntimeCall(source, out, "rt_trap_raise_error",
-                                 HintList{ILValue::Kind::I64});
+                adaptRuntimeCall(source, out, "rt_trap_raise_error", HintList{ILValue::Kind::I64});
                 return true;
             default:
                 return false;
@@ -679,8 +711,7 @@ class ModuleAdapter {
         out.loc = source.loc;
 
         // Fast paths for homogeneous opcode clusters.
-        if (tryAdaptArithLike(source, out) ||
-            tryAdaptCompare(source, out) ||
+        if (tryAdaptArithLike(source, out) || tryAdaptCompare(source, out) ||
             tryAdaptRuntimeCall(source, out)) {
             block.instrs.push_back(std::move(out));
             return;
@@ -1171,8 +1202,8 @@ class ModuleAdapter {
     /// @brief Adapt narrowing cast (i64 -> i32 etc).
     void adaptNarrowCast(const il::core::Instr &instr, ILInstr &out) {
         setResultKind(out, instr, instr.type);
-        out.opcode = instr.op == il::core::Opcode::CastSiNarrowChk ? "si_narrow_chk"
-                                                                    : "ui_narrow_chk";
+        out.opcode =
+            instr.op == il::core::Opcode::CastSiNarrowChk ? "si_narrow_chk" : "ui_narrow_chk";
         convertOperands(instr, {ILValue::Kind::I64}, out);
     }
 

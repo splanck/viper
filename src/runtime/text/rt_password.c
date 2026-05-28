@@ -255,7 +255,8 @@ static int password_fixed_time_eq(const uint8_t *a, const uint8_t *b, size_t len
     return diff == 0;
 }
 
-/// @brief Compute log2(N) for a scrypt N parameter, returning -1 if N is not a positive power of two.
+/// @brief Compute log2(N) for a scrypt N parameter, returning -1 if N is not a positive power of
+/// two.
 /// @details The encoded SCRYPT$ format stores log2(N) rather than N itself
 ///          (one decimal digit fits up to N=2^9 = 512; two digits cover
 ///          today's policy maximum). This helper extracts that exponent
@@ -277,8 +278,7 @@ static int scrypt_log2_from_n(uint64_t n) {
 ///          *minimum* cost so weakly-configured callers can't store easily-
 ///          cracked hashes. log2N ≥ PASSWORD_SCRYPT_MIN_N_LOG2 etc.
 static int password_scrypt_params_strong_enough(int log2n, uint32_t r, uint32_t p) {
-    return log2n >= (int)PASSWORD_SCRYPT_MIN_N_LOG2 &&
-           r >= PASSWORD_SCRYPT_MIN_R &&
+    return log2n >= (int)PASSWORD_SCRYPT_MIN_N_LOG2 && r >= PASSWORD_SCRYPT_MIN_R &&
            p >= PASSWORD_SCRYPT_MIN_P;
 }
 
@@ -304,9 +304,10 @@ static rt_string password_format_hash(const char *prefix,
     }
 
     char buffer[192];
-    int written = params && params[0]
-                      ? snprintf(buffer, sizeof(buffer), "%s$%s$%s$%s", prefix, params, salt_b64, hash_b64)
-                      : snprintf(buffer, sizeof(buffer), "%s$%s$%s", prefix, salt_b64, hash_b64);
+    int written =
+        params && params[0]
+            ? snprintf(buffer, sizeof(buffer), "%s$%s$%s$%s", prefix, params, salt_b64, hash_b64)
+            : snprintf(buffer, sizeof(buffer), "%s$%s$%s", prefix, salt_b64, hash_b64);
     if (written < 0 || (size_t)written >= sizeof(buffer)) {
         free(salt_b64);
         free(hash_b64);
@@ -350,7 +351,8 @@ rt_string rt_password_hash_with_iterations(rt_string password, int64_t iteration
     rt_crypto_random_bytes(salt, SALT_LENGTH);
 
     uint8_t hash[HASH_LENGTH];
-    rt_keyderive_pbkdf2_sha256_raw(pwd, pwd_len, salt, SALT_LENGTH, (uint32_t)iterations, hash, HASH_LENGTH);
+    rt_keyderive_pbkdf2_sha256_raw(
+        pwd, pwd_len, salt, SALT_LENGTH, (uint32_t)iterations, hash, HASH_LENGTH);
 
     char params[32];
     snprintf(params, sizeof(params), "%lld", (long long)iterations);
@@ -383,7 +385,10 @@ rt_string rt_password_hash_scrypt(rt_string password) {
 ///          password-policy minimum strength — any violation traps. Used
 ///          by callers that want to pin specific cost parameters (e.g.
 ///          slower for high-value credentials, faster for migration).
-rt_string rt_password_hash_scrypt_params(rt_string password, int64_t n64, int64_t r64, int64_t p64) {
+rt_string rt_password_hash_scrypt_params(rt_string password,
+                                         int64_t n64,
+                                         int64_t r64,
+                                         int64_t p64) {
     if (!rt_crypto_module_service_allowed(RT_CRYPTO_SERVICE_SCRYPT))
         rt_trap("Password.HashScryptParams is disabled in approved mode");
     if (n64 < 2 || r64 < 1 || p64 < 1 || r64 > RT_SCRYPT_MAX_R || p64 > RT_SCRYPT_MAX_P)
@@ -520,8 +525,14 @@ static int password_verify_pbkdf2(rt_string password, const char *hash_str) {
     size_t expected_len;
     uint8_t *salt = NULL;
     uint8_t *expected = NULL;
-    int ok = password_decode_salt_hash(
-        salt_b64, salt_b64_len, hash_b64_start, hash_b64_len, &salt, &salt_len, &expected, &expected_len);
+    int ok = password_decode_salt_hash(salt_b64,
+                                       salt_b64_len,
+                                       hash_b64_start,
+                                       hash_b64_len,
+                                       &salt,
+                                       &salt_len,
+                                       &expected,
+                                       &expected_len);
     free(salt_b64);
     if (!ok)
         return 0;
@@ -536,7 +547,8 @@ static int password_verify_pbkdf2(rt_string password, const char *hash_str) {
         return 0;
     }
     uint8_t computed[HASH_LENGTH];
-    rt_keyderive_pbkdf2_sha256_raw(pwd, pwd_len, salt, salt_len, (uint32_t)iterations, computed, HASH_LENGTH);
+    rt_keyderive_pbkdf2_sha256_raw(
+        pwd, pwd_len, salt, salt_len, (uint32_t)iterations, computed, HASH_LENGTH);
 
     ok = password_fixed_time_eq(computed, expected, HASH_LENGTH);
     password_secure_zero(salt, salt_len);
@@ -559,8 +571,7 @@ static int password_verify_scrypt(rt_string password, const char *hash_str) {
 
     errno = 0;
     long long log2n_ll = strtoll(p, &end, 10);
-    if (errno != 0 || end == p || *end != '$' || log2n_ll < 1 ||
-        log2n_ll > RT_SCRYPT_MAX_N_LOG2)
+    if (errno != 0 || end == p || *end != '$' || log2n_ll < 1 || log2n_ll > RT_SCRYPT_MAX_N_LOG2)
         return 0;
     p = end + 1;
 
@@ -596,8 +607,14 @@ static int password_verify_scrypt(rt_string password, const char *hash_str) {
     size_t expected_len;
     uint8_t *salt = NULL;
     uint8_t *expected = NULL;
-    int ok = password_decode_salt_hash(
-        salt_b64, salt_b64_len, hash_b64_start, hash_b64_len, &salt, &salt_len, &expected, &expected_len);
+    int ok = password_decode_salt_hash(salt_b64,
+                                       salt_b64_len,
+                                       hash_b64_start,
+                                       hash_b64_len,
+                                       &salt,
+                                       &salt_len,
+                                       &expected,
+                                       &expected_len);
     free(salt_b64);
     if (!ok)
         return 0;
@@ -640,8 +657,7 @@ static int password_stored_scrypt_params(const char *hash_str,
 
     errno = 0;
     long long log2n_ll = strtoll(p, &end, 10);
-    if (errno != 0 || end == p || *end != '$' || log2n_ll < 1 ||
-        log2n_ll > RT_SCRYPT_MAX_N_LOG2)
+    if (errno != 0 || end == p || *end != '$' || log2n_ll < 1 || log2n_ll > RT_SCRYPT_MAX_N_LOG2)
         return 0;
     p = end + 1;
 
@@ -677,8 +693,14 @@ static int password_stored_scrypt_params(const char *hash_str,
     size_t expected_len = 0;
     uint8_t *salt = NULL;
     uint8_t *expected = NULL;
-    int ok = password_decode_salt_hash(
-        salt_b64, salt_b64_len, hash_b64_start, hash_b64_len, &salt, &salt_len, &expected, &expected_len);
+    int ok = password_decode_salt_hash(salt_b64,
+                                       salt_b64_len,
+                                       hash_b64_start,
+                                       hash_b64_len,
+                                       &salt,
+                                       &salt_len,
+                                       &expected,
+                                       &expected_len);
     free(salt_b64);
     if (!ok)
         return 0;
@@ -729,8 +751,14 @@ static int password_stored_pbkdf2_params(const char *hash_str, long long *iterat
     size_t expected_len = 0;
     uint8_t *salt = NULL;
     uint8_t *expected = NULL;
-    int ok = password_decode_salt_hash(
-        salt_b64, salt_b64_len, hash_b64_start, hash_b64_len, &salt, &salt_len, &expected, &expected_len);
+    int ok = password_decode_salt_hash(salt_b64,
+                                       salt_b64_len,
+                                       hash_b64_start,
+                                       hash_b64_len,
+                                       &salt,
+                                       &salt_len,
+                                       &expected,
+                                       &expected_len);
     free(salt_b64);
     if (!ok)
         return 0;

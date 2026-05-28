@@ -140,9 +140,10 @@ int main() {
     {
         bool threw = false;
         try {
-            (void)encodeOne(MOpcode::MOVrr,
-                            {makePhysRegOperand(RegClass::GPR, static_cast<uint16_t>(PhysReg::XMM0)),
-                             gpr(PhysReg::RAX)});
+            (void)encodeOne(
+                MOpcode::MOVrr,
+                {makePhysRegOperand(RegClass::GPR, static_cast<uint16_t>(PhysReg::XMM0)),
+                 gpr(PhysReg::RAX)});
         } catch (const std::runtime_error &ex) {
             threw = std::string(ex.what()).find("register class") != std::string::npos;
         }

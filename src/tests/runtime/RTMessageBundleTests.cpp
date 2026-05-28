@@ -13,9 +13,9 @@
 //
 //===----------------------------------------------------------------------===//
 
+#include "rt_list.h"
 #include "rt_locale.h"
 #include "rt_map.h"
-#include "rt_list.h"
 #include "rt_message_bundle.h"
 #include "rt_string.h"
 
@@ -49,16 +49,16 @@ extern "C" void vm_trap(const char *msg) {
     abort();
 }
 
-#define EXPECT_TRAP(expr)                                                         \
-    do {                                                                          \
-        g_expect_trap = 1;                                                         \
-        if (setjmp(g_trap_env) == 0) {                                            \
-            (void)(expr);                                                          \
-            g_expect_trap = 0;                                                     \
-            assert(!"expected runtime trap");                                     \
-        } else {                                                                   \
-            g_expect_trap = 0;                                                     \
-        }                                                                          \
+#define EXPECT_TRAP(expr)                                                                          \
+    do {                                                                                           \
+        g_expect_trap = 1;                                                                         \
+        if (setjmp(g_trap_env) == 0) {                                                             \
+            (void)(expr);                                                                          \
+            g_expect_trap = 0;                                                                     \
+            assert(!"expected runtime trap");                                                      \
+        } else {                                                                                   \
+            g_expect_trap = 0;                                                                     \
+        }                                                                                          \
     } while (0)
 
 static void test_result(const char *name, bool passed) {
@@ -89,8 +89,7 @@ static std::string temp_dir(const char *name) {
     if (!base || !*base)
         base = "/tmp";
     char buf[512];
-    snprintf(buf, sizeof(buf), "%s/viper_msg_%ld_%s",
-             base, (long)TEST_GETPID(), name);
+    snprintf(buf, sizeof(buf), "%s/viper_msg_%ld_%s", base, (long)TEST_GETPID(), name);
     TEST_MKDIR(buf);
     return std::string(buf);
 }
@@ -133,8 +132,7 @@ static void test_from_map_basic() {
     rt_string_unref(k1);
 
     rt_string k2 = S("bye");
-    test_result("Get(bye) = \"Goodbye.\"",
-                eq(rt_message_bundle_get(b, k2), "Goodbye."));
+    test_result("Get(bye) = \"Goodbye.\"", eq(rt_message_bundle_get(b, k2), "Goodbye."));
     rt_string_unref(k2);
 }
 
@@ -144,13 +142,11 @@ static void test_try_get_missing() {
     void *b = rt_message_bundle_from_map(en_locale(), build_map(pairs));
 
     rt_string missing = S("gone");
-    test_result("TryGet(missing) = \"\"",
-                eq(rt_message_bundle_try_get(b, missing), ""));
+    test_result("TryGet(missing) = \"\"", eq(rt_message_bundle_try_get(b, missing), ""));
     rt_string_unref(missing);
 
     rt_string existing = S("hello");
-    test_result("TryGet(existing) = \"hi\"",
-                eq(rt_message_bundle_try_get(b, existing), "hi"));
+    test_result("TryGet(existing) = \"hi\"", eq(rt_message_bundle_try_get(b, existing), "hi"));
     rt_string_unref(existing);
 }
 
@@ -232,8 +228,7 @@ static void test_format_with_positional() {
 
     rt_string key = S("order");
     test_result("FormatWith -> \"apples, bananas, and cherries\"",
-                eq(rt_message_bundle_format_with(b, key, list),
-                   "apples, bananas, and cherries"));
+                eq(rt_message_bundle_format_with(b, key, list), "apples, bananas, and cherries"));
     rt_string_unref(key);
 }
 
@@ -244,9 +239,9 @@ static void test_format_with_large_index_preserved() {
     void *list = rt_list_new();
 
     rt_string key = S("big");
-    test_result("Overflowing positional index is preserved",
-                eq(rt_message_bundle_format_with(b, key, list),
-                   "{999999999999999999999999999999}"));
+    test_result(
+        "Overflowing positional index is preserved",
+        eq(rt_message_bundle_format_with(b, key, list), "{999999999999999999999999999999}"));
     rt_string_unref(key);
 }
 
@@ -256,11 +251,7 @@ static void test_format_with_large_index_preserved() {
 
 static void test_plural_basic() {
     printf("Testing MessageBundle.Plural:\n");
-    const char *pairs[] = {
-        "items.one",   "1 item",
-        "items.other", "{n} items",
-        nullptr
-    };
+    const char *pairs[] = {"items.one", "1 item", "items.other", "{n} items", nullptr};
     void *b = rt_message_bundle_from_map(en_locale(), build_map(pairs));
 
     rt_string key = S("items");
@@ -323,8 +314,7 @@ static void test_load_from_json_schema() {
     void *b = rt_message_bundle_load_from_json(en_locale(), good_path);
     rt_string_unref(good_path);
     rt_string hello = S("hello");
-    test_result("LoadFromJson string map works",
-                eq(rt_message_bundle_get(b, hello), "Hello"));
+    test_result("LoadFromJson string map works", eq(rt_message_bundle_get(b, hello), "Hello"));
     rt_string_unref(hello);
 
     std::string bad = dir + "/bad.json";
@@ -364,11 +354,7 @@ static void test_locale_qualified_fallback_keys() {
     rt_string loc_s = S("fr-CA");
     void *loc = rt_locale_parse(loc_s);
     rt_string_unref(loc_s);
-    const char *pairs[] = {
-        "fr:greet", "Bonjour",
-        "root:greet", "Hello",
-        nullptr
-    };
+    const char *pairs[] = {"fr:greet", "Bonjour", "root:greet", "Hello", nullptr};
     void *b = rt_message_bundle_from_map(loc, build_map(pairs));
 
     rt_string key = S("greet");

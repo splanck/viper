@@ -37,9 +37,12 @@ namespace {
 /// @brief True if @p target is an HTTP(S) server route-registration method (Get/Post/Put/Delete).
 bool isHttpServerRouteTarget(const std::string &target) {
     return target == "Viper.Network.HttpServer.Get" || target == "Viper.Network.HttpServer.Post" ||
-           target == "Viper.Network.HttpServer.Put" || target == "Viper.Network.HttpServer.Delete" ||
-           target == "Viper.Network.HttpsServer.Get" || target == "Viper.Network.HttpsServer.Post" ||
-           target == "Viper.Network.HttpsServer.Put" || target == "Viper.Network.HttpsServer.Delete";
+           target == "Viper.Network.HttpServer.Put" ||
+           target == "Viper.Network.HttpServer.Delete" ||
+           target == "Viper.Network.HttpsServer.Get" ||
+           target == "Viper.Network.HttpsServer.Post" ||
+           target == "Viper.Network.HttpsServer.Put" ||
+           target == "Viper.Network.HttpsServer.Delete";
 }
 
 /// @brief True if a procedure signature matches the HTTP handler shape `void(ptr, ptr)`.
@@ -115,8 +118,8 @@ std::vector<BasicType> Lowerer::methodCallRuntimeArgTypes(const MethodCallExpr &
 /// @brief Compute the BASIC AST Type of each argument of a method call.
 /// @param expr The method-call expression.
 /// @return One AST Type per argument (I64 for a null argument), used for overload resolution.
-std::vector<::il::frontends::basic::Type>
-Lowerer::methodCallAstArgTypes(const MethodCallExpr &expr) {
+std::vector<::il::frontends::basic::Type> Lowerer::methodCallAstArgTypes(
+    const MethodCallExpr &expr) {
     std::vector<::il::frontends::basic::Type> result;
     result.reserve(expr.args.size());
     for (const auto &arg : expr.args)
@@ -382,10 +385,9 @@ Lowerer::RVal Lowerer::lowerMethodCallExpr(const MethodCallExpr &expr) {
             }
 
             auto &midx = runtimeMethodIndex();
-            auto info =
-                midx.find(std::string(il::runtime::RTCLASS_OBJECT),
-                          expr.method,
-                          methodCallRuntimeArgTypes(expr));
+            auto info = midx.find(std::string(il::runtime::RTCLASS_OBJECT),
+                                  expr.method,
+                                  methodCallRuntimeArgTypes(expr));
             if (info && !info->hasReceiver)
                 info = std::nullopt;
             if (info && !userClassHasMethod) {
@@ -432,10 +434,9 @@ Lowerer::RVal Lowerer::lowerMethodCallExpr(const MethodCallExpr &expr) {
                 RVal rhs = lowerExpr(*expr.args[0]);
                 runtimeTracker.trackCalleeName(std::string(il::runtime::RTCLASS_OBJECT) +
                                                ".Equals");
-                Value result = emitCallRet(
-                    Type(Type::Kind::I1),
-                    std::string(il::runtime::RTCLASS_OBJECT) + ".Equals",
-                    {base.value, rhs.value});
+                Value result = emitCallRet(Type(Type::Kind::I1),
+                                           std::string(il::runtime::RTCLASS_OBJECT) + ".Equals",
+                                           {base.value, rhs.value});
                 return {result, Type(Type::Kind::I1)};
             }
         }

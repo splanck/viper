@@ -46,11 +46,8 @@ static int32_t clamp_i64_to_i32(int64_t value) {
     return (int32_t)value;
 }
 
-static int get_effective_clip_bounds(const struct vgfx_window *win,
-                                     int64_t *min_x,
-                                     int64_t *min_y,
-                                     int64_t *max_x,
-                                     int64_t *max_y) {
+static int get_effective_clip_bounds(
+    const struct vgfx_window *win, int64_t *min_x, int64_t *min_y, int64_t *max_x, int64_t *max_y) {
     if (!win || !min_x || !min_y || !max_x || !max_y || win->width <= 0 || win->height <= 0)
         return 0;
 
@@ -152,8 +149,7 @@ static inline void plot_pixel_checked(struct vgfx_window *win,
     if (!get_effective_clip_bounds(win, &min_x, &min_y, &max_x, &max_y))
         return;
 
-    if ((int64_t)x < min_x || (int64_t)x >= max_x || (int64_t)y < min_y ||
-        (int64_t)y >= max_y) {
+    if ((int64_t)x < min_x || (int64_t)x >= max_x || (int64_t)y < min_y || (int64_t)y >= max_y) {
         return;
     }
 
@@ -337,12 +333,8 @@ enum {
     CLIP_BOTTOM = 8,
 };
 
-static int line_outcode(int64_t x,
-                        int64_t y,
-                        int64_t min_x,
-                        int64_t min_y,
-                        int64_t max_x,
-                        int64_t max_y) {
+static int line_outcode(
+    int64_t x, int64_t y, int64_t min_x, int64_t min_y, int64_t max_x, int64_t max_y) {
     int code = 0;
     if (x < min_x)
         code |= CLIP_LEFT;
@@ -385,30 +377,26 @@ static int clip_line_to_bounds(int64_t *x0,
         if (out & CLIP_TOP) {
             if (*y1 == *y0)
                 return 0;
-            x = round_double_to_i64((double)*x0 +
-                                    (double)(*x1 - *x0) * (double)(min_y - *y0) /
-                                        (double)(*y1 - *y0));
+            x = round_double_to_i64((double)*x0 + (double)(*x1 - *x0) * (double)(min_y - *y0) /
+                                                      (double)(*y1 - *y0));
             y = min_y;
         } else if (out & CLIP_BOTTOM) {
             if (*y1 == *y0)
                 return 0;
-            x = round_double_to_i64((double)*x0 +
-                                    (double)(*x1 - *x0) * (double)(max_y - *y0) /
-                                        (double)(*y1 - *y0));
+            x = round_double_to_i64((double)*x0 + (double)(*x1 - *x0) * (double)(max_y - *y0) /
+                                                      (double)(*y1 - *y0));
             y = max_y;
         } else if (out & CLIP_RIGHT) {
             if (*x1 == *x0)
                 return 0;
-            y = round_double_to_i64((double)*y0 +
-                                    (double)(*y1 - *y0) * (double)(max_x - *x0) /
-                                        (double)(*x1 - *x0));
+            y = round_double_to_i64((double)*y0 + (double)(*y1 - *y0) * (double)(max_x - *x0) /
+                                                      (double)(*x1 - *x0));
             x = max_x;
         } else {
             if (*x1 == *x0)
                 return 0;
-            y = round_double_to_i64((double)*y0 +
-                                    (double)(*y1 - *y0) * (double)(min_x - *x0) /
-                                        (double)(*x1 - *x0));
+            y = round_double_to_i64((double)*y0 + (double)(*y1 - *y0) * (double)(min_x - *x0) /
+                                                      (double)(*x1 - *x0));
             x = min_x;
         }
 
@@ -705,14 +693,30 @@ void vgfx_draw_rect(
      * Left:   (x, y) to (x, y+h-1)
      * Right:  (x+w-1, y) to (x+w-1, y+h-1)
      */
-    vgfx_draw_line(
-        window, clamp_i64_to_i32(x0), clamp_i64_to_i32(y0), clamp_i64_to_i32(x1), clamp_i64_to_i32(y0), color);
-    vgfx_draw_line(
-        window, clamp_i64_to_i32(x0), clamp_i64_to_i32(y1), clamp_i64_to_i32(x1), clamp_i64_to_i32(y1), color);
-    vgfx_draw_line(
-        window, clamp_i64_to_i32(x0), clamp_i64_to_i32(y0), clamp_i64_to_i32(x0), clamp_i64_to_i32(y1), color);
-    vgfx_draw_line(
-        window, clamp_i64_to_i32(x1), clamp_i64_to_i32(y0), clamp_i64_to_i32(x1), clamp_i64_to_i32(y1), color);
+    vgfx_draw_line(window,
+                   clamp_i64_to_i32(x0),
+                   clamp_i64_to_i32(y0),
+                   clamp_i64_to_i32(x1),
+                   clamp_i64_to_i32(y0),
+                   color);
+    vgfx_draw_line(window,
+                   clamp_i64_to_i32(x0),
+                   clamp_i64_to_i32(y1),
+                   clamp_i64_to_i32(x1),
+                   clamp_i64_to_i32(y1),
+                   color);
+    vgfx_draw_line(window,
+                   clamp_i64_to_i32(x0),
+                   clamp_i64_to_i32(y0),
+                   clamp_i64_to_i32(x0),
+                   clamp_i64_to_i32(y1),
+                   color);
+    vgfx_draw_line(window,
+                   clamp_i64_to_i32(x1),
+                   clamp_i64_to_i32(y0),
+                   clamp_i64_to_i32(x1),
+                   clamp_i64_to_i32(y1),
+                   color);
 }
 
 /// @brief Draw a filled rectangle.

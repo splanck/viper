@@ -16,8 +16,8 @@
 //
 //===----------------------------------------------------------------------===//
 
-#include "codegen/common/linker/ObjFileReader.hpp"
 #include "codegen/common/AArch64RelocUtil.hpp"
+#include "codegen/common/linker/ObjFileReader.hpp"
 #include "codegen/common/linker/RelocConstants.hpp"
 #include "codegen/common/objfile/ObjFileWriterUtil.hpp"
 
@@ -40,8 +40,7 @@ static constexpr uint16_t IMAGE_FILE_MACHINE_AMD64 = 0x8664;
 static constexpr uint16_t IMAGE_FILE_MACHINE_ARM64 = 0xAA64;
 
 static constexpr uint8_t kBigObjClassId[16] = {
-    0xC7, 0xA1, 0xBA, 0xD1, 0xEE, 0xBA, 0xA9, 0x4B,
-    0xAF, 0x20, 0xFA, 0xF6, 0x6A, 0xA4, 0xDC, 0xB8};
+    0xC7, 0xA1, 0xBA, 0xD1, 0xEE, 0xBA, 0xA9, 0x4B, 0xAF, 0x20, 0xFA, 0xF6, 0x6A, 0xA4, 0xDC, 0xB8};
 
 static constexpr uint16_t IMAGE_SYM_CLASS_EXTERNAL = 2;
 static constexpr uint16_t IMAGE_SYM_CLASS_STATIC = 3;
@@ -59,12 +58,12 @@ static constexpr uint32_t IMAGE_SCN_MEM_EXECUTE = 0x20000000;
 static constexpr uint32_t IMAGE_SCN_MEM_READ = 0x40000000;
 static constexpr uint32_t IMAGE_SCN_MEM_WRITE = 0x80000000;
 
-    static constexpr uint8_t IMAGE_COMDAT_SELECT_NODUPLICATES = 1;
-    static constexpr uint8_t IMAGE_COMDAT_SELECT_ANY = 2;
-    static constexpr uint8_t IMAGE_COMDAT_SELECT_SAME_SIZE = 3;
-    static constexpr uint8_t IMAGE_COMDAT_SELECT_EXACT_MATCH = 4;
-    static constexpr uint8_t IMAGE_COMDAT_SELECT_ASSOCIATIVE = 5;
-    static constexpr uint8_t IMAGE_COMDAT_SELECT_LARGEST = 6;
+static constexpr uint8_t IMAGE_COMDAT_SELECT_NODUPLICATES = 1;
+static constexpr uint8_t IMAGE_COMDAT_SELECT_ANY = 2;
+static constexpr uint8_t IMAGE_COMDAT_SELECT_SAME_SIZE = 3;
+static constexpr uint8_t IMAGE_COMDAT_SELECT_EXACT_MATCH = 4;
+static constexpr uint8_t IMAGE_COMDAT_SELECT_ASSOCIATIVE = 5;
+static constexpr uint8_t IMAGE_COMDAT_SELECT_LARGEST = 6;
 
 #pragma pack(push, 1)
 
@@ -399,8 +398,7 @@ bool readCoffObj(
     obj.name = name;
     obj.machine = machine;
     obj.symbols.assign(1, ObjSymbol{});
-    if (machine != coff::IMAGE_FILE_MACHINE_AMD64 &&
-        machine != coff::IMAGE_FILE_MACHINE_ARM64) {
+    if (machine != coff::IMAGE_FILE_MACHINE_AMD64 && machine != coff::IMAGE_FILE_MACHINE_ARM64) {
         err << "error: " << name << ": unsupported COFF machine\n";
         return false;
     }
@@ -423,8 +421,7 @@ bool readCoffObj(
         err << "error: " << name << ": COFF symbol table pointer is missing\n";
         return false;
     }
-    if (numberOfSymbols > 0 &&
-        !checkedRange(pointerToSymbolTable, symtabBytes, size)) {
+    if (numberOfSymbols > 0 && !checkedRange(pointerToSymbolTable, symtabBytes, size)) {
         err << "error: " << name << ": COFF symbol table is out of bounds\n";
         return false;
     }
@@ -491,8 +488,7 @@ bool readCoffObj(
     std::vector<uint32_t> primarySymbolByRawIndex(numberOfSymbols, kNoPrimarySymbol);
     for (uint32_t i = 0; i < numberOfSymbols;) {
         CoffSymbolView sym{};
-        if (!readCoffSymbolView(
-                data, size, pointerToSymbolTable, symbolSize, i, bigObj, sym)) {
+        if (!readCoffSymbolView(data, size, pointerToSymbolTable, symbolSize, i, bigObj, sym)) {
             err << "error: " << name << ": COFF symbol table is truncated\n";
             return false;
         }
@@ -608,7 +604,8 @@ bool readCoffObj(
             firstReloc = 1;
         }
         size_t relocBytes = 0;
-        if (!checkedMul(static_cast<size_t>(totalRelocRecords), sizeof(coff::CoffReloc), relocBytes)) {
+        if (!checkedMul(
+                static_cast<size_t>(totalRelocRecords), sizeof(coff::CoffReloc), relocBytes)) {
             err << "error: " << name << ": COFF relocation table size overflows address space\n";
             return false;
         }
@@ -662,8 +659,7 @@ bool readCoffObj(
 
     for (uint32_t i = 0; i < numberOfSymbols;) {
         CoffSymbolView sym{};
-        if (!readCoffSymbolView(
-                data, size, pointerToSymbolTable, symbolSize, i, bigObj, sym)) {
+        if (!readCoffSymbolView(data, size, pointerToSymbolTable, symbolSize, i, bigObj, sym)) {
             err << "error: " << name << ": COFF symbol table is truncated\n";
             return false;
         }
@@ -672,10 +668,9 @@ bool readCoffObj(
             return false;
         }
 
-        const bool hasSectionAux = sym.sectionNumber > 0 &&
-                                   static_cast<uint32_t>(sym.sectionNumber) <= numberOfSections &&
-                                   sym.storageClass == coff::IMAGE_SYM_CLASS_STATIC &&
-                                   sym.auxCount > 0;
+        const bool hasSectionAux =
+            sym.sectionNumber > 0 && static_cast<uint32_t>(sym.sectionNumber) <= numberOfSections &&
+            sym.storageClass == coff::IMAGE_SYM_CLASS_STATIC && sym.auxCount > 0;
         if (hasSectionAux) {
             const uint32_t sectionNumber = static_cast<uint32_t>(sym.sectionNumber);
             const bool isComdat =
@@ -686,8 +681,7 @@ bool readCoffObj(
                     err << "error: " << name << ": COFF auxiliary symbol offset overflows\n";
                     return false;
                 }
-                const auto *aux = coffAt<coff::CoffAuxSectionDefinition>(
-                    data, size, auxOffset);
+                const auto *aux = coffAt<coff::CoffAuxSectionDefinition>(data, size, auxOffset);
                 if (aux) {
                     comdatSelectionBySection[sectionNumber] = aux->Selection;
                     if (coffComdatSelection(aux->Selection) == ComdatSelection::None) {
@@ -707,7 +701,8 @@ bool readCoffObj(
                         assocSection > 0 && assocSection <= numberOfSections)
                         associativeSectionBySection[sectionNumber] = assocSection;
                     else if (aux->Selection == coff::IMAGE_COMDAT_SELECT_ASSOCIATIVE) {
-                        err << "error: " << name << ": COFF associative COMDAT references invalid section "
+                        err << "error: " << name
+                            << ": COFF associative COMDAT references invalid section "
                             << assocSection << "\n";
                         return false;
                     }
@@ -728,8 +723,7 @@ bool readCoffObj(
 
     for (uint32_t i = 0; i < numberOfSymbols;) {
         CoffSymbolView sym{};
-        if (!readCoffSymbolView(
-                data, size, pointerToSymbolTable, symbolSize, i, bigObj, sym)) {
+        if (!readCoffSymbolView(data, size, pointerToSymbolTable, symbolSize, i, bigObj, sym)) {
             err << "error: " << name << ": COFF symbol table is truncated\n";
             return false;
         }
@@ -757,7 +751,8 @@ bool readCoffObj(
             if (sym.storageClass == coff::IMAGE_SYM_CLASS_WEAK_EXTERNAL) {
                 os.weakExternal = true;
                 if (sym.auxCount == 0) {
-                    err << "error: " << name << ": COFF weak external is missing auxiliary record\n";
+                    err << "error: " << name
+                        << ": COFF weak external is missing auxiliary record\n";
                     return false;
                 }
                 size_t auxOffset = 0;
@@ -823,8 +818,8 @@ bool readCoffObj(
         if (!os.common && os.sectionIndex > 0 && os.sectionIndex < obj.sections.size()) {
             const size_t secSize = objSectionMemSize(obj.sections[os.sectionIndex]);
             if (os.offset > secSize) {
-                err << "error: " << name << ": COFF symbol '" << os.name
-                    << "' is outside section '" << obj.sections[os.sectionIndex].name << "'\n";
+                err << "error: " << name << ": COFF symbol '" << os.name << "' is outside section '"
+                    << obj.sections[os.sectionIndex].name << "'\n";
                 return false;
             }
         }

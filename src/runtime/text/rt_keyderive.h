@@ -64,20 +64,12 @@ rt_string rt_keyderive_pbkdf2_sha256_str(rt_string password,
 /// @param p Parallelization parameter.
 /// @param key_len Desired key length in bytes (1-1024).
 /// @return Derived key as a Bytes object.
-void *rt_keyderive_scrypt_sha256(rt_string password,
-                                 void *salt,
-                                 int64_t n,
-                                 int64_t r,
-                                 int64_t p,
-                                 int64_t key_len);
+void *rt_keyderive_scrypt_sha256(
+    rt_string password, void *salt, int64_t n, int64_t r, int64_t p, int64_t key_len);
 
 /// @brief Derive a key using scrypt-SHA256 and return as hex string.
-rt_string rt_keyderive_scrypt_sha256_str(rt_string password,
-                                         void *salt,
-                                         int64_t n,
-                                         int64_t r,
-                                         int64_t p,
-                                         int64_t key_len);
+rt_string rt_keyderive_scrypt_sha256_str(
+    rt_string password, void *salt, int64_t n, int64_t r, int64_t p, int64_t key_len);
 
 #ifdef __cplusplus
 }

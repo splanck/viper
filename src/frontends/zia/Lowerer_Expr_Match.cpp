@@ -36,9 +36,9 @@ Lowerer::PatternValue Lowerer::emitTupleElement(const PatternValue &tuple,
     if (offset > 0) {
         elemPtr = emitGEP(tuple.value, static_cast<int64_t>(offset));
     }
-    if (elemType && (elemType->kind == TypeKindSem::Struct ||
-                     elemType->kind == TypeKindSem::FixedArray ||
-                     elemType->kind == TypeKindSem::Tuple))
+    if (elemType &&
+        (elemType->kind == TypeKindSem::Struct || elemType->kind == TypeKindSem::FixedArray ||
+         elemType->kind == TypeKindSem::Tuple))
         return {elemPtr, elemType};
     Value elemVal = emitLoad(elemPtr, ilType);
     if (ilType.kind == Type::Kind::Str)
@@ -268,9 +268,8 @@ void Lowerer::emitPatternTest(const MatchArm::Pattern &pattern,
                     if (successType && successType->kind == TypeKindSem::String) {
                         callee = "Viper.Result.UnwrapStr";
                         runtimeReturn = Type(Type::Kind::Str);
-                    } else if (successType &&
-                               (successType->kind == TypeKindSem::Integer ||
-                                successType->kind == TypeKindSem::Enum)) {
+                    } else if (successType && (successType->kind == TypeKindSem::Integer ||
+                                               successType->kind == TypeKindSem::Enum)) {
                         callee = "Viper.Result.UnwrapI64";
                         runtimeReturn = Type(Type::Kind::I64);
                     } else if (successType && successType->kind == TypeKindSem::Number) {
@@ -296,8 +295,8 @@ void Lowerer::emitPatternTest(const MatchArm::Pattern &pattern,
                     size_t errBlock = createBlock("match_result_err");
                     emitCBr(isErr, errBlock, failureBlock);
                     setBlock(errBlock);
-                    Value err =
-                        emitCallRet(Type(Type::Kind::Str), "Viper.Result.UnwrapErrStr", {scrutinee.value});
+                    Value err = emitCallRet(
+                        Type(Type::Kind::Str), "Viper.Result.UnwrapErrStr", {scrutinee.value});
                     PatternValue errValue{err, types::string()};
                     emitPatternTest(pattern.subpatterns[0], errValue, successBlock, failureBlock);
                     return;
@@ -407,9 +406,8 @@ void Lowerer::emitPatternBindings(const MatchArm::Pattern &pattern, const Patter
                     if (successType && successType->kind == TypeKindSem::String) {
                         callee = "Viper.Result.UnwrapStr";
                         runtimeReturn = Type(Type::Kind::Str);
-                    } else if (successType &&
-                               (successType->kind == TypeKindSem::Integer ||
-                                successType->kind == TypeKindSem::Enum)) {
+                    } else if (successType && (successType->kind == TypeKindSem::Integer ||
+                                               successType->kind == TypeKindSem::Enum)) {
                         callee = "Viper.Result.UnwrapI64";
                         runtimeReturn = Type(Type::Kind::I64);
                     } else if (successType && successType->kind == TypeKindSem::Number) {

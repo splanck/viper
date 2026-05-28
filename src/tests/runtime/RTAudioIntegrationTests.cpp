@@ -1257,8 +1257,7 @@ static void test_crossfade_stop_fade_out_keeps_destination() {
 static void test_crossfade_stop_fade_in_restores_source_loop() {
     const char *path1 = "/tmp/viper_test_crossfade_stop_in_1.wav";
     const char *path2 = "/tmp/viper_test_crossfade_stop_in_2.wav";
-    if (!write_test_wav_frames(path1, 44100, 4410) ||
-        !write_test_wav_frames(path2, 44100, 44100)) {
+    if (!write_test_wav_frames(path1, 44100, 4410) || !write_test_wav_frames(path2, 44100, 44100)) {
         ASSERT(1, "could not write temp WAV files (skip stop-fade-in test)");
         return;
     }

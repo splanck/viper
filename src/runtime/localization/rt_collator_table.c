@@ -54,9 +54,9 @@
 //
 //===----------------------------------------------------------------------===//
 
-#define PRI_SPACE   0x0010u
-#define PRI_PUNCT   0x0100u
-#define PRI_DIGIT0  0x0200u
+#define PRI_SPACE 0x0010u
+#define PRI_PUNCT 0x0100u
+#define PRI_DIGIT0 0x0200u
 #define PRI_LETTER0 0x0300u
 
 //===----------------------------------------------------------------------===//
@@ -71,82 +71,264 @@ static int decompose_latin(uint32_t cp, char *base_out, uint16_t *sec_out) {
     uint16_t sec = 0;
     switch (cp) {
         // Latin-1 Supplement — lowercase with diacritics
-        case 0x00E0: base = 'a'; sec = 1; break; // à grave
-        case 0x00E1: base = 'a'; sec = 2; break; // á acute
-        case 0x00E2: base = 'a'; sec = 3; break; // â circumflex
-        case 0x00E3: base = 'a'; sec = 4; break; // ã tilde
-        case 0x00E4: base = 'a'; sec = 5; break; // ä diaeresis
-        case 0x00E5: base = 'a'; sec = 6; break; // å ring
-        case 0x00E7: base = 'c'; sec = 7; break; // ç cedilla
-        case 0x00E8: base = 'e'; sec = 1; break;
-        case 0x00E9: base = 'e'; sec = 2; break;
-        case 0x00EA: base = 'e'; sec = 3; break;
-        case 0x00EB: base = 'e'; sec = 5; break;
-        case 0x00EC: base = 'i'; sec = 1; break;
-        case 0x00ED: base = 'i'; sec = 2; break;
-        case 0x00EE: base = 'i'; sec = 3; break;
-        case 0x00EF: base = 'i'; sec = 5; break;
-        case 0x00F1: base = 'n'; sec = 4; break;
-        case 0x00F2: base = 'o'; sec = 1; break;
-        case 0x00F3: base = 'o'; sec = 2; break;
-        case 0x00F4: base = 'o'; sec = 3; break;
-        case 0x00F5: base = 'o'; sec = 4; break;
-        case 0x00F6: base = 'o'; sec = 5; break;
-        case 0x00F9: base = 'u'; sec = 1; break;
-        case 0x00FA: base = 'u'; sec = 2; break;
-        case 0x00FB: base = 'u'; sec = 3; break;
-        case 0x00FC: base = 'u'; sec = 5; break;
-        case 0x00FD: base = 'y'; sec = 2; break;
-        case 0x00FF: base = 'y'; sec = 5; break;
+        case 0x00E0:
+            base = 'a';
+            sec = 1;
+            break; // à grave
+        case 0x00E1:
+            base = 'a';
+            sec = 2;
+            break; // á acute
+        case 0x00E2:
+            base = 'a';
+            sec = 3;
+            break; // â circumflex
+        case 0x00E3:
+            base = 'a';
+            sec = 4;
+            break; // ã tilde
+        case 0x00E4:
+            base = 'a';
+            sec = 5;
+            break; // ä diaeresis
+        case 0x00E5:
+            base = 'a';
+            sec = 6;
+            break; // å ring
+        case 0x00E7:
+            base = 'c';
+            sec = 7;
+            break; // ç cedilla
+        case 0x00E8:
+            base = 'e';
+            sec = 1;
+            break;
+        case 0x00E9:
+            base = 'e';
+            sec = 2;
+            break;
+        case 0x00EA:
+            base = 'e';
+            sec = 3;
+            break;
+        case 0x00EB:
+            base = 'e';
+            sec = 5;
+            break;
+        case 0x00EC:
+            base = 'i';
+            sec = 1;
+            break;
+        case 0x00ED:
+            base = 'i';
+            sec = 2;
+            break;
+        case 0x00EE:
+            base = 'i';
+            sec = 3;
+            break;
+        case 0x00EF:
+            base = 'i';
+            sec = 5;
+            break;
+        case 0x00F1:
+            base = 'n';
+            sec = 4;
+            break;
+        case 0x00F2:
+            base = 'o';
+            sec = 1;
+            break;
+        case 0x00F3:
+            base = 'o';
+            sec = 2;
+            break;
+        case 0x00F4:
+            base = 'o';
+            sec = 3;
+            break;
+        case 0x00F5:
+            base = 'o';
+            sec = 4;
+            break;
+        case 0x00F6:
+            base = 'o';
+            sec = 5;
+            break;
+        case 0x00F9:
+            base = 'u';
+            sec = 1;
+            break;
+        case 0x00FA:
+            base = 'u';
+            sec = 2;
+            break;
+        case 0x00FB:
+            base = 'u';
+            sec = 3;
+            break;
+        case 0x00FC:
+            base = 'u';
+            sec = 5;
+            break;
+        case 0x00FD:
+            base = 'y';
+            sec = 2;
+            break;
+        case 0x00FF:
+            base = 'y';
+            sec = 5;
+            break;
         // Latin-1 Supplement — uppercase with diacritics (tertiary handled outside)
-        case 0x00C0: base = 'a'; sec = 1; break;
-        case 0x00C1: base = 'a'; sec = 2; break;
-        case 0x00C2: base = 'a'; sec = 3; break;
-        case 0x00C3: base = 'a'; sec = 4; break;
-        case 0x00C4: base = 'a'; sec = 5; break;
-        case 0x00C5: base = 'a'; sec = 6; break;
-        case 0x00C7: base = 'c'; sec = 7; break;
-        case 0x00C8: base = 'e'; sec = 1; break;
-        case 0x00C9: base = 'e'; sec = 2; break;
-        case 0x00CA: base = 'e'; sec = 3; break;
-        case 0x00CB: base = 'e'; sec = 5; break;
-        case 0x00CC: base = 'i'; sec = 1; break;
-        case 0x00CD: base = 'i'; sec = 2; break;
-        case 0x00CE: base = 'i'; sec = 3; break;
-        case 0x00CF: base = 'i'; sec = 5; break;
-        case 0x00D1: base = 'n'; sec = 4; break;
-        case 0x00D2: base = 'o'; sec = 1; break;
-        case 0x00D3: base = 'o'; sec = 2; break;
-        case 0x00D4: base = 'o'; sec = 3; break;
-        case 0x00D5: base = 'o'; sec = 4; break;
-        case 0x00D6: base = 'o'; sec = 5; break;
-        case 0x00D9: base = 'u'; sec = 1; break;
-        case 0x00DA: base = 'u'; sec = 2; break;
-        case 0x00DB: base = 'u'; sec = 3; break;
-        case 0x00DC: base = 'u'; sec = 5; break;
-        case 0x00DD: base = 'y'; sec = 2; break;
-        case 0x00E6: base = 'a'; sec = 8; break; // æ -> treat as a-with-special
-        case 0x00C6: base = 'a'; sec = 8; break; // Æ
-        case 0x00F8: base = 'o'; sec = 8; break; // ø
-        case 0x00D8: base = 'o'; sec = 8; break; // Ø
-        case 0x00DF: base = 's'; sec = 8; break; // ß -> treat as s-special for now
-        default: return 0;
+        case 0x00C0:
+            base = 'a';
+            sec = 1;
+            break;
+        case 0x00C1:
+            base = 'a';
+            sec = 2;
+            break;
+        case 0x00C2:
+            base = 'a';
+            sec = 3;
+            break;
+        case 0x00C3:
+            base = 'a';
+            sec = 4;
+            break;
+        case 0x00C4:
+            base = 'a';
+            sec = 5;
+            break;
+        case 0x00C5:
+            base = 'a';
+            sec = 6;
+            break;
+        case 0x00C7:
+            base = 'c';
+            sec = 7;
+            break;
+        case 0x00C8:
+            base = 'e';
+            sec = 1;
+            break;
+        case 0x00C9:
+            base = 'e';
+            sec = 2;
+            break;
+        case 0x00CA:
+            base = 'e';
+            sec = 3;
+            break;
+        case 0x00CB:
+            base = 'e';
+            sec = 5;
+            break;
+        case 0x00CC:
+            base = 'i';
+            sec = 1;
+            break;
+        case 0x00CD:
+            base = 'i';
+            sec = 2;
+            break;
+        case 0x00CE:
+            base = 'i';
+            sec = 3;
+            break;
+        case 0x00CF:
+            base = 'i';
+            sec = 5;
+            break;
+        case 0x00D1:
+            base = 'n';
+            sec = 4;
+            break;
+        case 0x00D2:
+            base = 'o';
+            sec = 1;
+            break;
+        case 0x00D3:
+            base = 'o';
+            sec = 2;
+            break;
+        case 0x00D4:
+            base = 'o';
+            sec = 3;
+            break;
+        case 0x00D5:
+            base = 'o';
+            sec = 4;
+            break;
+        case 0x00D6:
+            base = 'o';
+            sec = 5;
+            break;
+        case 0x00D9:
+            base = 'u';
+            sec = 1;
+            break;
+        case 0x00DA:
+            base = 'u';
+            sec = 2;
+            break;
+        case 0x00DB:
+            base = 'u';
+            sec = 3;
+            break;
+        case 0x00DC:
+            base = 'u';
+            sec = 5;
+            break;
+        case 0x00DD:
+            base = 'y';
+            sec = 2;
+            break;
+        case 0x00E6:
+            base = 'a';
+            sec = 8;
+            break; // æ -> treat as a-with-special
+        case 0x00C6:
+            base = 'a';
+            sec = 8;
+            break; // Æ
+        case 0x00F8:
+            base = 'o';
+            sec = 8;
+            break; // ø
+        case 0x00D8:
+            base = 'o';
+            sec = 8;
+            break; // Ø
+        case 0x00DF:
+            base = 's';
+            sec = 8;
+            break; // ß -> treat as s-special for now
+        default:
+            return 0;
     }
-    if (base_out) *base_out = base;
-    if (sec_out) *sec_out = sec;
+    if (base_out)
+        *base_out = base;
+    if (sec_out)
+        *sec_out = sec;
     return 1;
 }
 
-int rt_collator_codepoint_weights(uint32_t cp, uint32_t *primary,
-                                  uint16_t *secondary, uint16_t *tertiary) {
+int rt_collator_codepoint_weights(uint32_t cp,
+                                  uint32_t *primary,
+                                  uint16_t *secondary,
+                                  uint16_t *tertiary) {
     uint32_t p = 0;
     uint16_t s = 0;
     uint16_t t = 0;
 
     if (cp == 0) {
-        if (primary) *primary = 0;
-        if (secondary) *secondary = 0;
-        if (tertiary) *tertiary = 0;
+        if (primary)
+            *primary = 0;
+        if (secondary)
+            *secondary = 0;
+        if (tertiary)
+            *tertiary = 0;
         return 0;
     }
 
@@ -155,8 +337,8 @@ int rt_collator_codepoint_weights(uint32_t cp, uint32_t *primary,
         p = PRI_SPACE;
     }
     // ASCII punctuation.
-    else if (cp < 0x30 || (cp >= 0x3A && cp <= 0x40)
-             || (cp >= 0x5B && cp <= 0x60) || (cp >= 0x7B && cp <= 0x7E)) {
+    else if (cp < 0x30 || (cp >= 0x3A && cp <= 0x40) || (cp >= 0x5B && cp <= 0x60) ||
+             (cp >= 0x7B && cp <= 0x7E)) {
         p = PRI_PUNCT + (cp & 0x7F);
     }
     // ASCII digits.
@@ -190,39 +372,96 @@ int rt_collator_codepoint_weights(uint32_t cp, uint32_t *primary,
     // compact; adding full coverage is a Phase-6+ improvement).
     else if (cp >= 0x0100 && cp <= 0x017F) {
         // Best-effort: attempt base-letter recovery for common pairs.
-        if ((cp >= 0x0100 && cp <= 0x0105)) { p = PRI_LETTER0 + 0; s = 9; t = (cp & 1) ? 0 : 1; }
-        else if (cp >= 0x0106 && cp <= 0x010D) { p = PRI_LETTER0 + 2; s = 9; t = (cp & 1) ? 0 : 1; }
-        else if (cp >= 0x010E && cp <= 0x0111) { p = PRI_LETTER0 + 3; s = 9; t = (cp & 1) ? 0 : 1; }
-        else if (cp >= 0x0112 && cp <= 0x011B) { p = PRI_LETTER0 + 4; s = 9; t = (cp & 1) ? 0 : 1; }
-        else if (cp >= 0x011C && cp <= 0x0123) { p = PRI_LETTER0 + 6; s = 9; t = (cp & 1) ? 0 : 1; }
-        else if (cp >= 0x0124 && cp <= 0x0127) { p = PRI_LETTER0 + 7; s = 9; t = (cp & 1) ? 0 : 1; }
-        else if (cp >= 0x0128 && cp <= 0x0131) { p = PRI_LETTER0 + 8; s = 9; t = (cp & 1) ? 0 : 1; }
-        else if (cp >= 0x0139 && cp <= 0x0142) { p = PRI_LETTER0 + 11; s = 9; t = (cp & 1) ? 0 : 1; }
-        else if (cp >= 0x0143 && cp <= 0x0148) { p = PRI_LETTER0 + 13; s = 9; t = (cp & 1) ? 0 : 1; }
-        else if (cp >= 0x014C && cp <= 0x0151) { p = PRI_LETTER0 + 14; s = 9; t = (cp & 1) ? 0 : 1; }
-        else if (cp >= 0x0154 && cp <= 0x0159) { p = PRI_LETTER0 + 17; s = 9; t = (cp & 1) ? 0 : 1; }
-        else if (cp >= 0x015A && cp <= 0x0161) { p = PRI_LETTER0 + 18; s = 9; t = (cp & 1) ? 0 : 1; }
-        else if (cp >= 0x0162 && cp <= 0x0167) { p = PRI_LETTER0 + 19; s = 9; t = (cp & 1) ? 0 : 1; }
-        else if (cp >= 0x0168 && cp <= 0x0173) { p = PRI_LETTER0 + 20; s = 9; t = (cp & 1) ? 0 : 1; }
-        else if (cp >= 0x0174 && cp <= 0x0175) { p = PRI_LETTER0 + 22; s = 9; t = (cp & 1) ? 0 : 1; }
-        else if (cp >= 0x0176 && cp <= 0x0178) { p = PRI_LETTER0 + 24; s = 9; t = (cp & 1) ? 0 : 1; }
-        else if (cp >= 0x0179 && cp <= 0x017E) { p = PRI_LETTER0 + 25; s = 9; t = (cp & 1) ? 0 : 1; }
-        else {
+        if ((cp >= 0x0100 && cp <= 0x0105)) {
+            p = PRI_LETTER0 + 0;
+            s = 9;
+            t = (cp & 1) ? 0 : 1;
+        } else if (cp >= 0x0106 && cp <= 0x010D) {
+            p = PRI_LETTER0 + 2;
+            s = 9;
+            t = (cp & 1) ? 0 : 1;
+        } else if (cp >= 0x010E && cp <= 0x0111) {
+            p = PRI_LETTER0 + 3;
+            s = 9;
+            t = (cp & 1) ? 0 : 1;
+        } else if (cp >= 0x0112 && cp <= 0x011B) {
+            p = PRI_LETTER0 + 4;
+            s = 9;
+            t = (cp & 1) ? 0 : 1;
+        } else if (cp >= 0x011C && cp <= 0x0123) {
+            p = PRI_LETTER0 + 6;
+            s = 9;
+            t = (cp & 1) ? 0 : 1;
+        } else if (cp >= 0x0124 && cp <= 0x0127) {
+            p = PRI_LETTER0 + 7;
+            s = 9;
+            t = (cp & 1) ? 0 : 1;
+        } else if (cp >= 0x0128 && cp <= 0x0131) {
+            p = PRI_LETTER0 + 8;
+            s = 9;
+            t = (cp & 1) ? 0 : 1;
+        } else if (cp >= 0x0139 && cp <= 0x0142) {
+            p = PRI_LETTER0 + 11;
+            s = 9;
+            t = (cp & 1) ? 0 : 1;
+        } else if (cp >= 0x0143 && cp <= 0x0148) {
+            p = PRI_LETTER0 + 13;
+            s = 9;
+            t = (cp & 1) ? 0 : 1;
+        } else if (cp >= 0x014C && cp <= 0x0151) {
+            p = PRI_LETTER0 + 14;
+            s = 9;
+            t = (cp & 1) ? 0 : 1;
+        } else if (cp >= 0x0154 && cp <= 0x0159) {
+            p = PRI_LETTER0 + 17;
+            s = 9;
+            t = (cp & 1) ? 0 : 1;
+        } else if (cp >= 0x015A && cp <= 0x0161) {
+            p = PRI_LETTER0 + 18;
+            s = 9;
+            t = (cp & 1) ? 0 : 1;
+        } else if (cp >= 0x0162 && cp <= 0x0167) {
+            p = PRI_LETTER0 + 19;
+            s = 9;
+            t = (cp & 1) ? 0 : 1;
+        } else if (cp >= 0x0168 && cp <= 0x0173) {
+            p = PRI_LETTER0 + 20;
+            s = 9;
+            t = (cp & 1) ? 0 : 1;
+        } else if (cp >= 0x0174 && cp <= 0x0175) {
+            p = PRI_LETTER0 + 22;
+            s = 9;
+            t = (cp & 1) ? 0 : 1;
+        } else if (cp >= 0x0176 && cp <= 0x0178) {
+            p = PRI_LETTER0 + 24;
+            s = 9;
+            t = (cp & 1) ? 0 : 1;
+        } else if (cp >= 0x0179 && cp <= 0x017E) {
+            p = PRI_LETTER0 + 25;
+            s = 9;
+            t = (cp & 1) ? 0 : 1;
+        } else {
             p = 0x8000u + cp;
         }
     }
     // Everything else: codepoint-order fallback.
     else {
         p = 0x8000u + cp;
-        if (primary) *primary = p;
-        if (secondary) *secondary = 0;
-        if (tertiary) *tertiary = 0;
+        if (primary)
+            *primary = p;
+        if (secondary)
+            *secondary = 0;
+        if (tertiary)
+            *tertiary = 0;
         return 1;
     }
 
-    if (primary) *primary = p;
-    if (secondary) *secondary = s;
-    if (tertiary) *tertiary = t;
+    if (primary)
+        *primary = p;
+    if (secondary)
+        *secondary = s;
+    if (tertiary)
+        *tertiary = t;
     return 0;
 }
 
@@ -241,12 +480,12 @@ int rt_collator_codepoint_weights(uint32_t cp, uint32_t *primary,
 // We give them primary weights starting at PRI_LETTER0 + 26 (beyond 'z' which
 // is PRI_LETTER0 + 25) so they collate at the end of the alphabet.
 static const rt_collator_locale_patch_t g_patches_sv[] = {
-    { 0x00E5u, PRI_LETTER0 + 26u, 0, 0 },
-    { 0x00C5u, PRI_LETTER0 + 26u, 0, 1 },
-    { 0x00E4u, PRI_LETTER0 + 27u, 0, 0 },
-    { 0x00C4u, PRI_LETTER0 + 27u, 0, 1 },
-    { 0x00F6u, PRI_LETTER0 + 28u, 0, 0 },
-    { 0x00D6u, PRI_LETTER0 + 28u, 0, 1 },
+    {0x00E5u, PRI_LETTER0 + 26u, 0, 0},
+    {0x00C5u, PRI_LETTER0 + 26u, 0, 1},
+    {0x00E4u, PRI_LETTER0 + 27u, 0, 0},
+    {0x00C4u, PRI_LETTER0 + 27u, 0, 1},
+    {0x00F6u, PRI_LETTER0 + 28u, 0, 0},
+    {0x00D6u, PRI_LETTER0 + 28u, 0, 1},
 };
 
 // German phonebook-style: ä/ö/ü treated as ae/oe/ue (folded); ß as ss.
@@ -256,17 +495,19 @@ static const rt_collator_locale_patch_t g_patches_sv[] = {
 // this; the patch array is therefore empty to document that the default
 // applies.
 static const rt_collator_locale_patch_t g_patches_de[] = {
-    { 0, 0, 0, 0 }, // Sentinel; count returns 0 below.
+    {0, 0, 0, 0}, // Sentinel; count returns 0 below.
 };
 
-const rt_collator_locale_patch_t *rt_collator_locale_patches(const char *tag,
-                                                             size_t *out_count) {
-    if (out_count) *out_count = 0;
-    if (!tag) return NULL;
+const rt_collator_locale_patch_t *rt_collator_locale_patches(const char *tag, size_t *out_count) {
+    if (out_count)
+        *out_count = 0;
+    if (!tag)
+        return NULL;
 
     // Swedish: "sv", "sv-SE", "sv-FI"
     if (tag[0] == 's' && tag[1] == 'v' && (tag[2] == '\0' || tag[2] == '-')) {
-        if (out_count) *out_count = sizeof(g_patches_sv) / sizeof(g_patches_sv[0]);
+        if (out_count)
+            *out_count = sizeof(g_patches_sv) / sizeof(g_patches_sv[0]);
         return g_patches_sv;
     }
 

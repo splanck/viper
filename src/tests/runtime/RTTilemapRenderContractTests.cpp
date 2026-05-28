@@ -92,8 +92,8 @@ void destroy_rt_object(void *obj) {
 } // namespace
 
 extern "C" void *rt_obj_new_i64(int64_t class_id, int64_t byte_size) {
-    auto *header =
-        static_cast<ObjHeader *>(std::calloc(1, sizeof(ObjHeader) + static_cast<size_t>(byte_size)));
+    auto *header = static_cast<ObjHeader *>(
+        std::calloc(1, sizeof(ObjHeader) + static_cast<size_t>(byte_size)));
     assert(header != nullptr);
     header->class_id = class_id;
     return header + 1;
@@ -192,8 +192,8 @@ extern "C" void rt_canvas_blit(void *canvas, int64_t x, int64_t y, void *pixels)
     (void)canvas;
     assert(g_blit_count < (int)(sizeof(g_blits) / sizeof(g_blits[0])));
     auto *stub = static_cast<StubPixels *>(pixels);
-    g_blits[g_blit_count++] = {x, y, 0, 0, stub ? stub->width : 0, stub ? stub->height : 0,
-                               stub ? stub->id : 0};
+    g_blits[g_blit_count++] = {
+        x, y, 0, 0, stub ? stub->width : 0, stub ? stub->height : 0, stub ? stub->id : 0};
 }
 
 extern "C" void *rt_pixels_new(int64_t width, int64_t height) {

@@ -229,8 +229,9 @@ static int32_t controller_find_state(const rt_anim_controller3d *controller, rt_
 
 /// @brief Linear-scan the transition table for an exact `(from, to)` pair.
 /// @return Transition index, or -1 if no match is registered.
-static int32_t controller_find_transition(
-    const rt_anim_controller3d *controller, int32_t from_state, int32_t to_state) {
+static int32_t controller_find_transition(const rt_anim_controller3d *controller,
+                                          int32_t from_state,
+                                          int32_t to_state) {
     if (!controller)
         return -1;
     for (int32_t i = 0; i < controller->transition_count; i++) {
@@ -401,8 +402,8 @@ static void controller_rebuild_layer_mask(rt_anim_controller3d *controller, int3
 /// @details Always enables the player's loop-override so the controller's
 ///          per-state looping decision wins over whatever the underlying
 ///          Animation3D defaults to.
-static void controller_apply_state_settings(
-    rt_anim_player3d *player, const anim_controller3d_state_t *state) {
+static void controller_apply_state_settings(rt_anim_player3d *player,
+                                            const anim_controller3d_state_t *state) {
     if (!player || !state)
         return;
     player->loop_override_enabled = 1;
@@ -438,7 +439,8 @@ static int8_t controller_set_layer_state(rt_anim_controller3d *controller,
         return 0;
 
     use_crossfade = blend_seconds > 0.0 && layer->current_state >= 0 &&
-                    layer->current_state != state_index && rt_anim_player3d_is_playing(layer->player);
+                    layer->current_state != state_index &&
+                    rt_anim_player3d_is_playing(layer->player);
 
     layer->previous_state = layer->current_state;
     layer->current_state = state_index;
@@ -464,10 +466,8 @@ static int8_t controller_set_layer_state(rt_anim_controller3d *controller,
 static void controller_mat4f_mul(const float *a, const float *b, float *out) {
     for (int r = 0; r < 4; r++) {
         for (int c = 0; c < 4; c++) {
-            out[r * 4 + c] = a[r * 4 + 0] * b[0 * 4 + c] +
-                             a[r * 4 + 1] * b[1 * 4 + c] +
-                             a[r * 4 + 2] * b[2 * 4 + c] +
-                             a[r * 4 + 3] * b[3 * 4 + c];
+            out[r * 4 + c] = a[r * 4 + 0] * b[0 * 4 + c] + a[r * 4 + 1] * b[1 * 4 + c] +
+                             a[r * 4 + 2] * b[2 * 4 + c] + a[r * 4 + 3] * b[3 * 4 + c];
         }
     }
 }
@@ -696,20 +696,10 @@ static void controller_sample_channel_trs(const vgfx3d_anim_channel_t *channel,
 
     float pos0[3], rot0[4], scl0[3];
     float pos1[3], rot1[4], scl1[3];
-    controller_keyframe_effective_trs(&channel->keyframes[k0],
-                                      fallback_pos,
-                                      fallback_rot,
-                                      fallback_scl,
-                                      pos0,
-                                      rot0,
-                                      scl0);
-    controller_keyframe_effective_trs(&channel->keyframes[k1],
-                                      fallback_pos,
-                                      fallback_rot,
-                                      fallback_scl,
-                                      pos1,
-                                      rot1,
-                                      scl1);
+    controller_keyframe_effective_trs(
+        &channel->keyframes[k0], fallback_pos, fallback_rot, fallback_scl, pos0, rot0, scl0);
+    controller_keyframe_effective_trs(
+        &channel->keyframes[k1], fallback_pos, fallback_rot, fallback_scl, pos1, rot1, scl1);
     for (int32_t i = 0; i < 3; i++) {
         out_pos[i] = pos0[i] + (pos1[i] - pos0[i]) * alpha;
         out_scl[i] = scl0[i] + (scl1[i] - scl0[i]) * alpha;
@@ -877,11 +867,8 @@ static void controller_compute_final_palette(rt_anim_controller3d *controller) {
 ///          column-major 4x4 matrix used by the player's bone palette.
 ///          Used by root-motion delta accumulation. Out-pointers are zeroed
 ///          on any failure path so callers don't have to NULL-check.
-static void controller_get_layer_translation(const anim_controller3d_layer_t *layer,
-                                             int32_t bone_index,
-                                             double *x,
-                                             double *y,
-                                             double *z) {
+static void controller_get_layer_translation(
+    const anim_controller3d_layer_t *layer, int32_t bone_index, double *x, double *y, double *z) {
     const float *m;
     if (!x || !y || !z) {
         return;
@@ -951,9 +938,8 @@ static void controller_quat_from_matrix_rows(double m00,
     double trace;
     if (!out)
         return;
-    if (!isfinite(m00) || !isfinite(m01) || !isfinite(m02) || !isfinite(m10) ||
-        !isfinite(m11) || !isfinite(m12) || !isfinite(m20) || !isfinite(m21) ||
-        !isfinite(m22)) {
+    if (!isfinite(m00) || !isfinite(m01) || !isfinite(m02) || !isfinite(m10) || !isfinite(m11) ||
+        !isfinite(m12) || !isfinite(m20) || !isfinite(m21) || !isfinite(m22)) {
         controller_quat_identity(out);
         return;
     }
@@ -993,8 +979,9 @@ static void controller_quat_from_matrix_rows(double m00,
 ///          divides each column out by its scale to recover an orthonormal
 ///          rotation matrix, then converts via Shepperd's method. Falls
 ///          back to identity when any axis scale is degenerate (< 1e-8).
-static void controller_get_layer_rotation(
-    const anim_controller3d_layer_t *layer, int32_t bone_index, double *out_quat) {
+static void controller_get_layer_rotation(const anim_controller3d_layer_t *layer,
+                                          int32_t bone_index,
+                                          double *out_quat) {
     const float *m;
     double sx;
     double sy;
@@ -1009,9 +996,12 @@ static void controller_get_layer_rotation(
     if (bone_index < 0 || bone_index >= layer->player->skeleton->bone_count)
         return;
     m = &layer->player->globals_buf[bone_index * 16];
-    sx = sqrt((double)m[0] * (double)m[0] + (double)m[4] * (double)m[4] + (double)m[8] * (double)m[8]);
-    sy = sqrt((double)m[1] * (double)m[1] + (double)m[5] * (double)m[5] + (double)m[9] * (double)m[9]);
-    sz = sqrt((double)m[2] * (double)m[2] + (double)m[6] * (double)m[6] + (double)m[10] * (double)m[10]);
+    sx = sqrt((double)m[0] * (double)m[0] + (double)m[4] * (double)m[4] +
+              (double)m[8] * (double)m[8]);
+    sy = sqrt((double)m[1] * (double)m[1] + (double)m[5] * (double)m[5] +
+              (double)m[9] * (double)m[9]);
+    sz = sqrt((double)m[2] * (double)m[2] + (double)m[6] * (double)m[6] +
+              (double)m[10] * (double)m[10]);
     if (sx < 1e-8 || sy < 1e-8 || sz < 1e-8)
         return;
     inv_sx = 1.0 / sx;
@@ -1111,8 +1101,8 @@ void *rt_anim_controller3d_new(void *skeleton) {
         rt_trap("AnimController3D.New: skeleton must be a Skeleton3D");
         return NULL;
     }
-    controller =
-        (rt_anim_controller3d *)rt_obj_new_i64(RT_G3D_ANIMCONTROLLER3D_CLASS_ID, (int64_t)sizeof(rt_anim_controller3d));
+    controller = (rt_anim_controller3d *)rt_obj_new_i64(RT_G3D_ANIMCONTROLLER3D_CLASS_ID,
+                                                        (int64_t)sizeof(rt_anim_controller3d));
     if (!controller) {
         rt_trap("AnimController3D.New: allocation failed");
         return NULL;
@@ -1189,8 +1179,10 @@ int64_t rt_anim_controller3d_add_state(void *obj, rt_string name, void *animatio
 /// @brief Register a directional transition with a default blend time. When `_play` is later
 /// called with `to_state` while in `from_state`, this blend time is used automatically. If the
 /// transition already exists, its blend time is updated. Returns 1 on success.
-int8_t rt_anim_controller3d_add_transition(
-    void *obj, rt_string from_state, rt_string to_state, double blend_seconds) {
+int8_t rt_anim_controller3d_add_transition(void *obj,
+                                           rt_string from_state,
+                                           rt_string to_state,
+                                           double blend_seconds) {
     rt_anim_controller3d *controller = anim_controller3d_checked(obj);
     int32_t from_index;
     int32_t to_index;
@@ -1330,13 +1322,14 @@ void rt_anim_controller3d_update(void *obj, double delta_time) {
             base_duration = rt_animation3d_get_duration(controller->states[state_index].animation);
             base_looping = controller->states[state_index].looping;
         }
-        controller_process_events(controller,
-                                  state_index,
-                                  prev_time,
-                                  curr_time,
-                                  rt_animation3d_get_duration(controller->states[state_index].animation),
-                                  controller->states[state_index].looping,
-                                  elapsed_time);
+        controller_process_events(
+            controller,
+            state_index,
+            prev_time,
+            curr_time,
+            rt_animation3d_get_duration(controller->states[state_index].animation),
+            controller->states[state_index].looping,
+            elapsed_time);
         if (layer->transitioning) {
             layer->transition_time += controller_clamp_to_float(delta_time, 0.0f);
             if (layer->transition_time >= layer->transition_duration) {
@@ -1359,8 +1352,7 @@ void rt_anim_controller3d_update(void *obj, double delta_time) {
         controller_quat_conjugate(before_rot, inv_before_rot);
         controller_quat_mul(after_rot, inv_before_rot, delta_rot);
 
-        if (base_looping && base_state >= 0 && base_duration > 0.0 &&
-            isfinite(base_elapsed_time)) {
+        if (base_looping && base_state >= 0 && base_duration > 0.0 && isfinite(base_elapsed_time)) {
             double raw_time = base_prev_time + base_elapsed_time;
             if (base_elapsed_time >= 0.0 && raw_time >= base_duration)
                 cycle_count = (int64_t)floor(raw_time / base_duration);
@@ -1371,11 +1363,8 @@ void rt_anim_controller3d_update(void *obj, double delta_time) {
         if (cycle_count > 0) {
             float start_global[16];
             float end_global[16];
-            if (controller_sample_state_global_matrix(controller,
-                                                      base_state,
-                                                      0.0f,
-                                                      controller->root_motion_bone,
-                                                      start_global) &&
+            if (controller_sample_state_global_matrix(
+                    controller, base_state, 0.0f, controller->root_motion_bone, start_global) &&
                 controller_sample_state_global_matrix(controller,
                                                       base_state,
                                                       (float)base_duration,
@@ -1402,8 +1391,7 @@ void rt_anim_controller3d_update(void *obj, double delta_time) {
                 controller_quat_mul(end_rot, inv_start_rot, cycle_rot);
                 if (!forward_cycles)
                     controller_quat_conjugate(cycle_rot, cycle_rot);
-                int32_t rotation_cycles =
-                    cycle_count > 1024 ? 1024 : (int32_t)cycle_count;
+                int32_t rotation_cycles = cycle_count > 1024 ? 1024 : (int32_t)cycle_count;
                 for (int32_t i = 0; i < rotation_cycles; i++)
                     controller_quat_mul(cycle_rot, delta_rot, delta_rot);
             }
@@ -1527,8 +1515,10 @@ void rt_anim_controller3d_set_state_looping(void *obj, rt_string state_name, int
 /// @brief Register a time-stamped event on a state. When `_update` advances playback past
 /// `time_seconds`, `event_name` is enqueued for `_poll_event`. Useful for footstep sounds,
 /// hit-frame triggers, attack windows. Multiple events per state are allowed.
-void rt_anim_controller3d_add_event(
-    void *obj, rt_string state_name, double time_seconds, rt_string event_name) {
+void rt_anim_controller3d_add_event(void *obj,
+                                    rt_string state_name,
+                                    double time_seconds,
+                                    rt_string event_name) {
     rt_anim_controller3d *controller = anim_controller3d_checked(obj);
     anim_controller3d_event_t *event;
     int32_t state_index;
@@ -1696,8 +1686,10 @@ int8_t rt_anim_controller3d_play_layer(void *obj, int64_t layer_index, rt_string
 
 /// @brief Cross-fade an overlay layer to `state_name` over `blend_seconds`. Mirrors `_crossfade`
 /// but targets a specific layer, leaving the base unaffected.
-int8_t rt_anim_controller3d_crossfade_layer(
-    void *obj, int64_t layer_index, rt_string state_name, double blend_seconds) {
+int8_t rt_anim_controller3d_crossfade_layer(void *obj,
+                                            int64_t layer_index,
+                                            rt_string state_name,
+                                            double blend_seconds) {
     rt_anim_controller3d *controller = anim_controller3d_checked(obj);
     int32_t state_index;
     if (!controller || layer_index < 0 || layer_index >= RT_ANIM_CONTROLLER3D_MAX_LAYERS)

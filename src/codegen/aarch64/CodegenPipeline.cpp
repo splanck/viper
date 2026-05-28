@@ -116,9 +116,9 @@ static std::vector<std::string> systemAssemblerArgs(TargetPlatform platform) {
             return systemAssemblerArgs(
                 targetLinkPlatform(TargetPlatform::Host) == linker::LinkPlatform::macOS
                     ? TargetPlatform::Darwin
-                    : targetLinkPlatform(TargetPlatform::Host) == linker::LinkPlatform::Windows
-                          ? TargetPlatform::Windows
-                          : TargetPlatform::Linux);
+                : targetLinkPlatform(TargetPlatform::Host) == linker::LinkPlatform::Windows
+                    ? TargetPlatform::Windows
+                    : TargetPlatform::Linux);
     }
     return {"clang", "--target=aarch64-unknown-linux-gnu"};
 }
@@ -166,18 +166,17 @@ static int linkToExe(const std::string &asmPath,
     if (arc != 0)
         return arc;
 
-    const int lrc = linkObjToExe(
-        objPath.string(),
-        exePath,
-        ctx,
-        targetPlatform,
-        stackSize,
-        extraObjects,
-        false,
-        windowsDebugRuntime,
-        preserveDebugSections,
-        out,
-        err);
+    const int lrc = linkObjToExe(objPath.string(),
+                                 exePath,
+                                 ctx,
+                                 targetPlatform,
+                                 stackSize,
+                                 extraObjects,
+                                 false,
+                                 windowsDebugRuntime,
+                                 preserveDebugSections,
+                                 out,
+                                 err);
     std::error_code ec;
     std::filesystem::remove(objPath, ec);
     return lrc;
@@ -593,7 +592,8 @@ PipelineResult CodegenPipeline::runWithModule(il::core::Module mod,
         }
 
         using namespace viper::codegen::objfile;
-        auto writer = createObjectFileWriter(targetObjectFormat(opts_.target_platform), ObjArch::AArch64);
+        auto writer =
+            createObjectFileWriter(targetObjectFormat(opts_.target_platform), ObjArch::AArch64);
         if (!writer) {
             err << "error: no native object file writer for this platform\n";
             result.exit_code = 1;
@@ -602,16 +602,14 @@ PipelineResult CodegenPipeline::runWithModule(il::core::Module mod,
         const bool hasDebugLine = !pipelineModule.debugLineData.empty();
         if (hasDebugLine)
             writer->setDebugLineData(std::move(pipelineModule.debugLineData));
-        const bool wroteObject =
-            hasDebugLine
-                ? writer->write(objPath.string(),
-                                *pipelineModule.binaryText,
-                                *pipelineModule.binaryRodata,
-                                err)
-                : writer->write(objPath.string(),
-                                pipelineModule.binaryTextSections,
-                                *pipelineModule.binaryRodata,
-                                err);
+        const bool wroteObject = hasDebugLine ? writer->write(objPath.string(),
+                                                              *pipelineModule.binaryText,
+                                                              *pipelineModule.binaryRodata,
+                                                              err)
+                                              : writer->write(objPath.string(),
+                                                              pipelineModule.binaryTextSections,
+                                                              *pipelineModule.binaryRodata,
+                                                              err);
         if (!wroteObject) {
             err << "error: failed to write object file '" << objPath.string() << "'\n";
             result.exit_code = 1;
@@ -651,18 +649,17 @@ PipelineResult CodegenPipeline::runWithModule(il::core::Module mod,
         if (opts_.link_mode == LinkMode::System)
             err << "warning: --system-link is deprecated; using the native linker\n";
 
-        const int lrc =
-            linkObjToExe(objPath.string(),
-                         exe.string(),
-                         ctx,
-                         opts_.target_platform,
-                         opts_.stack_size,
-                         opts_.extra_objects,
-                         opts_.fast_link,
-                         opts_.windows_debug_runtime,
-                         opts_.emit_debug_lines,
-                         out,
-                         err);
+        const int lrc = linkObjToExe(objPath.string(),
+                                     exe.string(),
+                                     ctx,
+                                     opts_.target_platform,
+                                     opts_.stack_size,
+                                     opts_.extra_objects,
+                                     opts_.fast_link,
+                                     opts_.windows_debug_runtime,
+                                     opts_.emit_debug_lines,
+                                     out,
+                                     err);
 
         if (!outputIsObj) {
             std::error_code ec;

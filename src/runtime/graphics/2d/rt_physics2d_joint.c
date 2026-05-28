@@ -185,7 +185,8 @@ static ph_joint *alloc_joint(int32_t type, void *body_a, void *body_b) {
     if (!a || !b)
         return NULL;
 
-    ph_joint *j = (ph_joint *)rt_obj_new_i64(RT_PHYSICS2D_JOINT_CLASS_ID, (int64_t)sizeof(ph_joint));
+    ph_joint *j =
+        (ph_joint *)rt_obj_new_i64(RT_PHYSICS2D_JOINT_CLASS_ID, (int64_t)sizeof(ph_joint));
     if (!j)
         return NULL;
 
@@ -236,7 +237,8 @@ double rt_physics2d_distance_joint_get_length(void *joint) {
 /// @param joint   Physics2D.DistanceJoint handle.
 /// @param length  New rest length; must be >= 0.
 void rt_physics2d_distance_joint_set_length(void *joint, double length) {
-    ph_joint *j = checked_joint(joint, "Physics2D.DistanceJoint.Length.set: expected Physics2D.Joint");
+    ph_joint *j =
+        checked_joint(joint, "Physics2D.DistanceJoint.Length.set: expected Physics2D.Joint");
     if (j)
         j->length = nonnegative_finite_or_zero(length);
 }
@@ -274,7 +276,8 @@ double rt_physics2d_spring_joint_get_stiffness(void *joint) {
 /// @param joint      Physics2D.SpringJoint handle.
 /// @param stiffness  New stiffness; must be >= 0.
 void rt_physics2d_spring_joint_set_stiffness(void *joint, double stiffness) {
-    ph_joint *j = checked_joint(joint, "Physics2D.SpringJoint.Stiffness.set: expected Physics2D.Joint");
+    ph_joint *j =
+        checked_joint(joint, "Physics2D.SpringJoint.Stiffness.set: expected Physics2D.Joint");
     if (j)
         j->stiffness = nonnegative_finite_or_zero(stiffness);
 }
@@ -295,7 +298,8 @@ double rt_physics2d_spring_joint_get_damping(void *joint) {
 /// @param joint    Physics2D.SpringJoint handle.
 /// @param damping  New damping coefficient; must be >= 0.
 void rt_physics2d_spring_joint_set_damping(void *joint, double damping) {
-    ph_joint *j = checked_joint(joint, "Physics2D.SpringJoint.Damping.set: expected Physics2D.Joint");
+    ph_joint *j =
+        checked_joint(joint, "Physics2D.SpringJoint.Damping.set: expected Physics2D.Joint");
     if (j)
         j->damping = nonnegative_finite_or_zero(damping);
 }
@@ -370,7 +374,8 @@ double rt_physics2d_rope_joint_get_max_length(void *joint) {
 /// @param joint       Physics2D.RopeJoint handle.
 /// @param max_length  New maximum length; must be >= 0.
 void rt_physics2d_rope_joint_set_max_length(void *joint, double max_length) {
-    ph_joint *j = checked_joint(joint, "Physics2D.RopeJoint.MaxLength.set: expected Physics2D.Joint");
+    ph_joint *j =
+        checked_joint(joint, "Physics2D.RopeJoint.MaxLength.set: expected Physics2D.Joint");
     if (j)
         j->length = nonnegative_finite_or_zero(max_length);
 }
@@ -448,7 +453,8 @@ void rt_physics2d_world_add_joint(void *world, void *joint) {
             return;
     }
     if (!world_has_body(w, j->body_a) || !world_has_body(w, j->body_b)) {
-        rt_trap("Physics2D.World.AddJoint: both joint bodies must be added to the same world first");
+        rt_trap(
+            "Physics2D.World.AddJoint: both joint bodies must be added to the same world first");
         return;
     }
     if (w->joint_count >= PH_MAX_JOINTS) {
@@ -470,7 +476,8 @@ void rt_physics2d_world_add_joint(void *world, void *joint) {
 void rt_physics2d_world_remove_joint(void *world, void *joint) {
     if (!world || !joint)
         return;
-    rt_world_impl *w = checked_world(world, "Physics2D.World.RemoveJoint: expected Physics2D.World");
+    rt_world_impl *w =
+        checked_world(world, "Physics2D.World.RemoveJoint: expected Physics2D.World");
     ph_joint *j = checked_joint(joint, "Physics2D.World.RemoveJoint: expected Physics2D.Joint");
     if (!w || !j)
         return;
@@ -613,12 +620,8 @@ static void solve_hinge(ph_joint *j, double dt) {
     double dx = b_anchor_x - a_anchor_x;
     double dy = b_anchor_y - a_anchor_y;
 
-    body_set_center(a,
-                    acx + dx * (a->inv_mass / total_inv),
-                    acy + dy * (a->inv_mass / total_inv));
-    body_set_center(b,
-                    bcx - dx * (b->inv_mass / total_inv),
-                    bcy - dy * (b->inv_mass / total_inv));
+    body_set_center(a, acx + dx * (a->inv_mass / total_inv), acy + dy * (a->inv_mass / total_inv));
+    body_set_center(b, bcx - dx * (b->inv_mass / total_inv), bcy - dy * (b->inv_mass / total_inv));
     j->anchor_x = (a_anchor_x + b_anchor_x) * 0.5;
     j->anchor_y = (a_anchor_y + b_anchor_y) * 0.5;
 }
@@ -730,7 +733,8 @@ void rt_physics2d_solve_joints(void *world, double dt) {
 //=============================================================================
 
 /// @brief Construct a circle-shaped rigid body centered at (cx, cy) with `radius` and `mass`.
-/// Otherwise behaves like `_body_new` (default restitution 0.5, friction 0.3, layer 1, mask 0xFF...).
+/// Otherwise behaves like `_body_new` (default restitution 0.5, friction 0.3, layer 1, mask
+/// 0xFF...).
 void *rt_physics2d_circle_body_new(double cx, double cy, double radius, double mass) {
     cx = finite_or(cx, 0.0);
     cy = finite_or(cy, 0.0);

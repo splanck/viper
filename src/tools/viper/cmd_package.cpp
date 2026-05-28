@@ -279,8 +279,7 @@ uint32_t readLE32(const std::vector<uint8_t> &data, size_t off) {
 }
 
 uint32_t readBE32(const std::vector<uint8_t> &data, size_t off) {
-    return (static_cast<uint32_t>(data[off]) << 24) |
-           (static_cast<uint32_t>(data[off + 1]) << 16) |
+    return (static_cast<uint32_t>(data[off]) << 24) | (static_cast<uint32_t>(data[off + 1]) << 16) |
            (static_cast<uint32_t>(data[off + 2]) << 8) | static_cast<uint32_t>(data[off + 3]);
 }
 
@@ -440,9 +439,8 @@ bool signWindowsInstallerArtifact(const ProjectConfig &proj,
     if (thumbprint.empty())
         thumbprint = getenvOrEmpty("VIPER_WINDOWS_SIGN_THUMBPRINT");
     try {
-        thumbprint =
-            viper::pkg::normalizeWindowsCertificateThumbprint(thumbprint,
-                                                              "Windows signing thumbprint");
+        thumbprint = viper::pkg::normalizeWindowsCertificateThumbprint(
+            thumbprint, "Windows signing thumbprint");
     } catch (const std::exception &ex) {
         err << "error: " << ex.what() << "\n";
         return false;
@@ -510,8 +508,7 @@ bool signWindowsInstallerArtifact(const ProjectConfig &proj,
         const RunResult verifyResult =
             run_process({signtool, "verify", "/pa", "/all", artifactPath.string()});
         if (verifyResult.exit_code != 0) {
-            err << "error: signtool verify failed with exit code " << verifyResult.exit_code
-                << "\n"
+            err << "error: signtool verify failed with exit code " << verifyResult.exit_code << "\n"
                 << verifyResult.out << verifyResult.err;
             return false;
         }
@@ -749,23 +746,21 @@ bool validatePackageConfigForTarget(const ProjectConfig &proj,
                 for (const auto &dep : pkg.depends)
                     viper::pkg::validateDebDependency(dep);
                 (void)viper::pkg::normalizePackageHookScript(pkg.postInstallScript,
-                                                              "post-install script");
+                                                             "post-install script");
                 (void)viper::pkg::normalizePackageHookScript(pkg.preUninstallScript,
-                                                              "pre-uninstall script");
+                                                             "pre-uninstall script");
                 (void)viper::pkg::normalizeDebName(proj.name);
                 (void)viper::pkg::normalizeExecName(proj.name);
                 break;
             }
             case PackageTarget::Windows:
                 viper::pkg::validateWindowsFileName(displayName, "Windows display name");
-                viper::pkg::validateWindowsProgIdBase(pkg.identifier,
-                                                       "Windows package identifier");
+                viper::pkg::validateWindowsProgIdBase(pkg.identifier, "Windows package identifier");
                 viper::pkg::validateSingleLineField(version, "Windows package version");
                 if (!pkg.windowsInstallScope.empty() && pkg.windowsInstallScope != "machine" &&
                     pkg.windowsInstallScope != "user") {
-                    throw std::runtime_error(
-                        "Windows install scope must be machine or user: " +
-                        pkg.windowsInstallScope);
+                    throw std::runtime_error("Windows install scope must be machine or user: " +
+                                             pkg.windowsInstallScope);
                 }
                 if (!pkg.windowsInstallDir.empty())
                     viper::pkg::validateWindowsFileName(pkg.windowsInstallDir,
@@ -773,17 +768,16 @@ bool validatePackageConfigForTarget(const ProjectConfig &proj,
                 if (!pkg.minOsWindows.empty())
                     viper::pkg::validateDottedNumericVersion(pkg.minOsWindows,
                                                              "minimum Windows version");
-                viper::pkg::validatePackageUrl(pkg.windowsTimestampUrl,
-                                                "Windows timestamp URL");
+                viper::pkg::validatePackageUrl(pkg.windowsTimestampUrl, "Windows timestamp URL");
                 viper::pkg::validateSingleLineField(pkg.windowsSigntoolPath,
-                                                     "Windows signtool path");
-                viper::pkg::validateWindowsCertificateThumbprint(
-                    pkg.windowsSignThumbprint, "Windows signing thumbprint");
+                                                    "Windows signtool path");
+                viper::pkg::validateWindowsCertificateThumbprint(pkg.windowsSignThumbprint,
+                                                                 "Windows signing thumbprint");
                 if (!pkg.windowsSignPfx.empty()) {
-                    const fs::path pfx = resolveOptionalProjectPath(proj.rootDir, pkg.windowsSignPfx);
+                    const fs::path pfx =
+                        resolveOptionalProjectPath(proj.rootDir, pkg.windowsSignPfx);
                     if (!fs::is_regular_file(pfx)) {
-                        throw std::runtime_error("Windows signing PFX not found: " +
-                                                 pfx.string());
+                        throw std::runtime_error("Windows signing PFX not found: " + pfx.string());
                     }
                 }
                 (void)viper::pkg::normalizeExecName(proj.name);
@@ -960,16 +954,16 @@ int cmdPackage(int argc, char **argv) {
                 viper::pkg::resolveMacOSSignModeForHost(proj.packageConfig);
             std::cerr << "  macOS signing: " << signMode << "\n";
             if (!proj.packageConfig.macosSignIdentity.empty())
-                std::cerr << "  macOS signing identity: "
-                          << proj.packageConfig.macosSignIdentity << "\n";
+                std::cerr << "  macOS signing identity: " << proj.packageConfig.macosSignIdentity
+                          << "\n";
             if (!proj.packageConfig.macosEntitlements.empty())
                 std::cerr << "  macOS entitlements: " << proj.packageConfig.macosEntitlements
                           << "\n";
             if (proj.packageConfig.macosHardenedRuntime)
                 std::cerr << "  macOS hardened runtime: on\n";
             if (!proj.packageConfig.macosNotaryProfile.empty())
-                std::cerr << "  macOS notary profile: "
-                          << proj.packageConfig.macosNotaryProfile << "\n";
+                std::cerr << "  macOS notary profile: " << proj.packageConfig.macosNotaryProfile
+                          << "\n";
             if (proj.packageConfig.macosStaple)
                 std::cerr << "  macOS staple: on\n";
         }
@@ -979,13 +973,13 @@ int cmdPackage(int argc, char **argv) {
                                           : proj.packageConfig.windowsInstallScope;
             std::cerr << "  Windows install scope: " << scope << "\n";
             if (!proj.packageConfig.windowsInstallDir.empty())
-                std::cerr << "  Windows install directory: "
-                          << proj.packageConfig.windowsInstallDir << "\n";
+                std::cerr << "  Windows install directory: " << proj.packageConfig.windowsInstallDir
+                          << "\n";
             if (windowsSigningRequested(proj.packageConfig)) {
                 std::cerr << "  Windows signing: on\n";
                 if (!proj.packageConfig.windowsSignPfx.empty())
-                    std::cerr << "  Windows signing PFX: "
-                              << proj.packageConfig.windowsSignPfx << "\n";
+                    std::cerr << "  Windows signing PFX: " << proj.packageConfig.windowsSignPfx
+                              << "\n";
                 if (!proj.packageConfig.windowsSignThumbprint.empty())
                     std::cerr << "  Windows signing thumbprint: "
                               << proj.packageConfig.windowsSignThumbprint << "\n";
@@ -1057,8 +1051,8 @@ int cmdPackage(int argc, char **argv) {
             return 1;
         }
         if (!fs::is_regular_file(packageBinaryPath)) {
-            std::cerr << "error: prebuilt executable is not a regular file at "
-                      << packageBinaryPath << "\n";
+            std::cerr << "error: prebuilt executable is not a regular file at " << packageBinaryPath
+                      << "\n";
             return 1;
         }
         try {
@@ -1234,8 +1228,7 @@ int cmdPackage(int argc, char **argv) {
     try {
         pkgData = viper::pkg::readFile(args.outputPath);
     } catch (const std::exception &ex) {
-        std::cerr << "error: cannot read generated package for verification: " << ex.what()
-                  << "\n";
+        std::cerr << "error: cannot read generated package for verification: " << ex.what() << "\n";
         if (cleanupPackagedBinary)
             fs::remove(packageBinaryPath, ec);
         return 1;
@@ -1246,8 +1239,8 @@ int cmdPackage(int argc, char **argv) {
     const std::string execName = viper::pkg::normalizeExecName(proj.name);
     switch (args.platformTarget) {
         case PackageTarget::MacOS:
-            valid = viper::pkg::verifyMacOSAppZip(
-                pkgData, displayName + ".app", execName, verifyErr);
+            valid =
+                viper::pkg::verifyMacOSAppZip(pkgData, displayName + ".app", execName, verifyErr);
             break;
         case PackageTarget::Linux:
             valid = viper::pkg::verifyDebPayload(pkgData, {"usr/bin/" + execName}, verifyErr);
@@ -1263,8 +1256,7 @@ int cmdPackage(int argc, char **argv) {
         case PackageTarget::Tarball: {
             const std::string topDir = viper::pkg::normalizeDebName(proj.name) + "-" +
                                        portableArchiveVersionComponent(resolvedVersion);
-            valid = viper::pkg::verifyTarGzPayload(
-                pkgData, {topDir + "/" + execName}, verifyErr);
+            valid = viper::pkg::verifyTarGzPayload(pkgData, {topDir + "/" + execName}, verifyErr);
             break;
         }
         default:

@@ -314,7 +314,8 @@ static int ws_origin_matches_expected(const char *origin,
 
     authority = scheme_sep + 3;
     authority_end = authority;
-    while (*authority_end && *authority_end != '/' && *authority_end != '?' && *authority_end != '#')
+    while (*authority_end && *authority_end != '/' && *authority_end != '?' &&
+           *authority_end != '#')
         authority_end++;
     authority_len = (size_t)(authority_end - authority);
     origin_authority = (char *)malloc(authority_len + 1);

@@ -8,8 +8,8 @@
 //
 //===----------------------------------------------------------------------===//
 
-#include "vg_ide_widgets.h"
 #include "vg_event.h"
+#include "vg_ide_widgets.h"
 
 #include <assert.h>
 #include <stdint.h>
@@ -67,7 +67,8 @@ static void put_u32(uint8_t *p, uint32_t value) {
     p[3] = (uint8_t)value;
 }
 
-static void put_table(uint8_t *dir, int index, const char tag[4], uint32_t offset, uint32_t length) {
+static void put_table(
+    uint8_t *dir, int index, const char tag[4], uint32_t offset, uint32_t length) {
     uint8_t *entry = dir + 12 + index * 16;
     memcpy(entry, tag, 4);
     put_u32(entry + 4, 0);
@@ -206,6 +207,7 @@ static void send_wheel(vg_codeeditor_t *editor, float delta_y) {
 
 static void test_nowrap_large_file_navigation_avoids_linear_scans(void) {
     enum { line_count = 50000 };
+
     char *text = make_lines(line_count);
     vg_codeeditor_t *editor = vg_codeeditor_create(NULL);
     assert(editor != NULL);
@@ -275,6 +277,7 @@ static void test_set_text_clears_stale_fold_regions(void) {
 
 static void test_folded_large_file_navigation_uses_layout_cache(void) {
     enum { line_count = 50000 };
+
     char *text = make_lines(line_count);
     vg_codeeditor_t *editor = vg_codeeditor_create(NULL);
     assert(editor != NULL);
@@ -311,6 +314,7 @@ static void test_folded_large_file_navigation_uses_layout_cache(void) {
 
 static void test_wrapped_large_file_navigation_uses_layout_cache(void) {
     enum { line_count = 20000 };
+
     char *text = make_lines(line_count);
     vg_codeeditor_t *editor = vg_codeeditor_create(NULL);
     assert(editor != NULL);
@@ -339,6 +343,7 @@ static void test_wrapped_large_file_navigation_uses_layout_cache(void) {
 
 static void test_highlight_span_paint_uses_line_index(void) {
     enum { line_count = 50000, span_count = 10000 };
+
     char *text = make_lines(line_count);
     vg_codeeditor_t *editor = vg_codeeditor_create(NULL);
     assert(editor != NULL);
@@ -356,7 +361,8 @@ static void test_highlight_span_paint_uses_line_index(void) {
     vg_codeeditor_set_font(editor, font, 16.0f);
     vg_codeeditor_set_text(editor, text);
 
-    editor->highlight_spans = (struct vg_highlight_span *)calloc(span_count, sizeof(*editor->highlight_spans));
+    editor->highlight_spans =
+        (struct vg_highlight_span *)calloc(span_count, sizeof(*editor->highlight_spans));
     assert(editor->highlight_spans != NULL);
     editor->highlight_span_cap = span_count;
     editor->highlight_span_count = span_count;
@@ -384,6 +390,7 @@ static void test_highlight_span_paint_uses_line_index(void) {
 
 static void test_typing_burst_does_not_copy_full_buffer(void) {
     enum { line_count = 20000, burst_count = 200 };
+
     char *text = make_lines(line_count);
     vg_codeeditor_t *editor = vg_codeeditor_create(NULL);
     assert(editor != NULL);
@@ -413,6 +420,7 @@ static void test_typing_burst_does_not_copy_full_buffer(void) {
 
 static void test_large_selection_does_not_copy_full_buffer(void) {
     enum { line_count = 20000 };
+
     char *text = make_lines(line_count);
     vg_codeeditor_t *editor = vg_codeeditor_create(NULL);
     assert(editor != NULL);
@@ -474,10 +482,9 @@ static void test_typing_and_paint_wall_clock_budgets(void) {
                 max_ms = elapsed;
         }
 
-        assert_under_ms(
-            line_count == 5000 ? "5k typing+paint frame" : "20k typing+paint frame",
-            max_ms,
-            budgets[case_idx]);
+        assert_under_ms(line_count == 5000 ? "5k typing+paint frame" : "20k typing+paint frame",
+                        max_ms,
+                        budgets[case_idx]);
 
         vg_codeeditor_perf_stats_t stats = vg_codeeditor_get_perf_stats(editor);
         assert(stats.full_text_copies == 0);
@@ -496,6 +503,7 @@ static void test_typing_and_paint_wall_clock_budgets(void) {
 
 static void test_paint_and_scroll_wall_clock_budgets(void) {
     enum { line_count = 50000 };
+
     char *text = make_lines(line_count);
     vg_codeeditor_t *editor = vg_codeeditor_create(NULL);
     assert(editor != NULL);
@@ -553,6 +561,7 @@ static void test_paint_and_scroll_wall_clock_budgets(void) {
 
 static void test_pointer_selection_drag_wall_clock_budget(void) {
     enum { line_count = 50000 };
+
     char *text = make_lines(line_count);
     vg_codeeditor_t *editor = vg_codeeditor_create(NULL);
     assert(editor != NULL);
@@ -612,6 +621,7 @@ static void test_pointer_selection_drag_wall_clock_budget(void) {
 
 static void test_minimap_wall_clock_budget(void) {
     enum { line_count = 50000 };
+
     char *text = make_lines(line_count);
     vg_codeeditor_t *editor = vg_codeeditor_create(NULL);
     assert(editor != NULL);

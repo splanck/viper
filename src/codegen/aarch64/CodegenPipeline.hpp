@@ -38,20 +38,20 @@ namespace viper::codegen::aarch64 {
 
 /// @brief Result returned by a pipeline run.
 struct PipelineResult {
-    int exit_code{0};           ///< 0 on success, non-zero on error.
-    std::string stdout_text{};  ///< Captured stdout (assembly text when emit_asm is set).
-    std::string stderr_text{};  ///< Captured stderr (diagnostics, MIR dumps).
+    int exit_code{0};          ///< 0 on success, non-zero on error.
+    std::string stdout_text{}; ///< Captured stdout (assembly text when emit_asm is set).
+    std::string stderr_text{}; ///< Captured stderr (diagnostics, MIR dumps).
 };
 
 /// @brief Options controlling optional MIR dumps and diagnostics for the
 ///        pass-level pipeline (used by runCodegenPipeline).
 struct PipelineOptions {
-    bool dumpMirBeforeRA = false;  ///< Dump MIR to diagOut before register allocation.
-    bool dumpMirAfterRA = false;   ///< Dump MIR to diagOut after register allocation.
-    bool emitAssemblyText = true;  ///< Run EmitPass to produce assembly text output.
-    bool useBinaryEmit = false;    ///< Also run BinaryEmitPass to produce an object file.
-    int optimizeLevel = 1;         ///< Backend optimization level: 0 = none, 1 = peephole+scheduler.
-    bool timePasses = false;       ///< Emit per-pass wall-clock timings to diagOut.
+    bool dumpMirBeforeRA = false; ///< Dump MIR to diagOut before register allocation.
+    bool dumpMirAfterRA = false;  ///< Dump MIR to diagOut after register allocation.
+    bool emitAssemblyText = true; ///< Run EmitPass to produce assembly text output.
+    bool useBinaryEmit = false;   ///< Also run BinaryEmitPass to produce an object file.
+    int optimizeLevel = 1;        ///< Backend optimization level: 0 = none, 1 = peephole+scheduler.
+    bool timePasses = false;      ///< Emit per-pass wall-clock timings to diagOut.
 };
 
 /// @brief High-level driver for the AArch64 code-generation pipeline.
@@ -83,24 +83,24 @@ class CodegenPipeline {
 
     /// @brief All configuration for a single pipeline run.
     struct Options {
-        std::string input_il_path{};   ///< Path to the IL module file (.il) to compile.
-        std::string output_obj_path{}; ///< Path to write the output .o file.
-        std::string output_asm_path{}; ///< Path to write the assembly text (if emit_asm).
-        bool emit_asm = false;         ///< Also write assembly text to output_asm_path.
-        bool run_native = false;       ///< Execute the compiled binary after linking.
-        bool dump_mir_before_ra = false; ///< Dump MIR to stderr before register allocation.
-        bool dump_mir_after_ra = false;  ///< Dump MIR to stderr after register allocation.
-        int optimize = 1;              ///< 0 = no backend opts; 1 = peephole + scheduler.
+        std::string input_il_path{};       ///< Path to the IL module file (.il) to compile.
+        std::string output_obj_path{};     ///< Path to write the output .o file.
+        std::string output_asm_path{};     ///< Path to write the assembly text (if emit_asm).
+        bool emit_asm = false;             ///< Also write assembly text to output_asm_path.
+        bool run_native = false;           ///< Execute the compiled binary after linking.
+        bool dump_mir_before_ra = false;   ///< Dump MIR to stderr before register allocation.
+        bool dump_mir_after_ra = false;    ///< Dump MIR to stderr after register allocation.
+        int optimize = 1;                  ///< 0 = no backend opts; 1 = peephole + scheduler.
         bool skip_il_optimization = false; ///< Skip IL optimizer passes (for testing).
-        std::size_t stack_size = 0;    ///< Requested stack size in bytes; 0 = platform default.
-        AssemblerMode assembler_mode = AssemblerMode::Native; ///< Assembler selection.
-        LinkMode link_mode = LinkMode::Native;                ///< Linker selection.
+        std::size_t stack_size = 0;        ///< Requested stack size in bytes; 0 = platform default.
+        AssemblerMode assembler_mode = AssemblerMode::Native;  ///< Assembler selection.
+        LinkMode link_mode = LinkMode::Native;                 ///< Linker selection.
         TargetPlatform target_platform = TargetPlatform::Host; ///< OS ABI target.
         bool emit_debug_lines = false; ///< Emit .loc / line-number directives in assembly.
         bool time_passes = false;      ///< Print per-pass wall-clock timings to stderr.
         bool fast_link = false;        ///< Skip non-essential size-reduction passes in the linker.
-        std::string asset_blob_path{};             ///< Path to VPA asset blob for .rodata embedding.
-        std::vector<std::string> extra_objects{};  ///< Extra .o files to pass to the linker.
+        std::string asset_blob_path{}; ///< Path to VPA asset blob for .rodata embedding.
+        std::vector<std::string> extra_objects{};    ///< Extra .o files to pass to the linker.
         std::optional<bool> windows_debug_runtime{}; ///< Override Windows CRT import flavor.
     };
 

@@ -37,6 +37,7 @@
 
 // FindBar state tracking
 #define RT_FINDBAR_DATA_MAGIC UINT64_C(0x525446494E444241)
+
 typedef struct {
     uint64_t magic;
     vg_findreplacebar_t *bar;
@@ -153,9 +154,7 @@ static rt_findbar_data_t *rt_findbar_wrapper_checked(void *bar) {
 ///        backing widget is still live. Returns NULL otherwise.
 static rt_findbar_data_t *rt_findbar_checked(void *bar) {
     rt_findbar_data_t *data = rt_findbar_wrapper_checked(bar);
-    return data && data->bar && vg_widget_is_live(&data->bar->base)
-               ? data
-               : NULL;
+    return data && data->bar && vg_widget_is_live(&data->bar->base) ? data : NULL;
 }
 
 /// @brief Safe-cast an opaque handle to the code editor the find-bar targets.

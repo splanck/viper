@@ -86,8 +86,7 @@ int main() {
     TypeInference unknownCbrTypes(temps, defined);
     auto unknownCbrResult = verifyCBr_E(fn, source, unknownCbr, blockMap, unknownCbrTypes);
     assert(!unknownCbrResult);
-    assert(unknownCbrResult.error().message.find("unknown branch condition") !=
-           std::string::npos);
+    assert(unknownCbrResult.error().message.find("unknown branch condition") != std::string::npos);
 
     Function retFn;
     retFn.name = "r";

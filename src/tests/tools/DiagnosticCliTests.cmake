@@ -108,11 +108,11 @@ endif ()
 
 set(_fixed_oob_zia "${TEST_WORK_DIR}/fixed_oob.zia")
 file(WRITE "${_fixed_oob_zia}" "module T;\n"
-                             "class Numbers {\n"
-                             "  expose Integer[2] values;\n"
-                             "  expose func bad() -> Integer { return values[2]; }\n"
-                             "}\n"
-                             "func start() { var n = new Numbers(); n.bad(); }\n")
+        "class Numbers {\n"
+        "  expose Integer[2] values;\n"
+        "  expose func bad() -> Integer { return values[2]; }\n"
+        "}\n"
+        "func start() { var n = new Numbers(); n.bad(); }\n")
 
 execute_process(
         COMMAND "${VIPER_EXE}" front zia -emit-il "${_fixed_oob_zia}"
@@ -123,17 +123,17 @@ if (_fixed_oob_rc EQUAL 0)
     message(FATAL_ERROR "fixed-array literal out-of-bounds access unexpectedly compiled")
 endif ()
 if (NOT _fixed_oob_err MATCHES "error\\[V-ZIA-BOUNDS\\]" OR
-    NOT _fixed_oob_err MATCHES "fixed array index 2 is out of bounds")
+        NOT _fixed_oob_err MATCHES "fixed array index 2 is out of bounds")
     message(FATAL_ERROR "fixed-array out-of-bounds diagnostic was not specific:\n${_fixed_oob_err}")
 endif ()
 
 set(_gaddr_il "${TEST_WORK_DIR}/bytecode_gaddr_unknown_global.il")
 file(WRITE "${_gaddr_il}" "il 0.2.0\n"
-                          "func @main() -> ptr {\n"
-                          "entry:\n"
-                          "  %p = gaddr @missing\n"
-                          "  ret %p\n"
-                          "}\n")
+        "func @main() -> ptr {\n"
+        "entry:\n"
+        "  %p = gaddr @missing\n"
+        "  ret %p\n"
+        "}\n")
 
 execute_process(
         COMMAND "${VIPER_EXE}" -run "${_gaddr_il}" --bytecode --dump-trap
@@ -144,7 +144,7 @@ if (_gaddr_rc EQUAL 0)
     message(FATAL_ERROR "bytecode gaddr unknown-global case unexpectedly succeeded")
 endif ()
 if (NOT _gaddr_err MATCHES "error\\[V-IL-VERIFY\\]" OR
-    NOT _gaddr_err MATCHES "unknown global")
+        NOT _gaddr_err MATCHES "unknown global")
     message(FATAL_ERROR "bytecode gaddr unknown-global case did not print structured diagnostic:\n${_gaddr_err}")
 endif ()
 if (_gaddr_err MATCHES "libc\\+\\+abi|terminate called|Abort trap|SIGABRT")

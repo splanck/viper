@@ -77,10 +77,10 @@ constexpr uint64_t defaultImageBaseForPlatform(LinkPlatform platform) {
 
 /// A chunk of data from one input section within an output section.
 struct InputChunk {
-    size_t inputObjIndex; ///< Index into the linker's object file list.
-    size_t inputSecIndex; ///< Index into that ObjFile's sections.
-    size_t outputOffset;  ///< Byte offset within the output section.
-    size_t size;          ///< Size in bytes.
+    size_t inputObjIndex;   ///< Index into the linker's object file list.
+    size_t inputSecIndex;   ///< Index into that ObjFile's sections.
+    size_t outputOffset;    ///< Byte offset within the output section.
+    size_t size;            ///< Size in bytes.
     bool synthetic = false; ///< True when the bytes were created by the linker.
 };
 
@@ -113,8 +113,8 @@ struct OutputSection {
     bool executable = false;
     bool writable = false;
     bool tls = false;
-    bool zeroFill = false; ///< Occupies memory but has no file backing.
-    bool alloc = true; ///< Section is loadable (false for debug sections).
+    bool zeroFill = false;    ///< Occupies memory but has no file backing.
+    bool alloc = true;        ///< Section is loadable (false for debug sections).
     bool dataSegment = false; ///< Emit in data segment even when final protections are read-only.
     /// True when this section contains Mach-O TLV descriptors (24-byte
     /// {thunk, key, offset} records). Set by SectionMerger when merging
@@ -131,15 +131,15 @@ inline size_t outputSectionMemSize(const OutputSection &sec) {
 
 /// Section classification for merging.
 enum class SectionClass : uint8_t {
-    Text,    ///< Executable code.
-    Rodata,  ///< Read-only data.
-    Data,    ///< Read-write data.
-    Bss,     ///< Uninitialized data (zero-filled).
-    TlsData, ///< Thread-local initialized data.
-    TlsBss,  ///< Thread-local uninitialized data.
-    ObjC,    ///< ObjC metadata — preserved with original section name.
+    Text,      ///< Executable code.
+    Rodata,    ///< Read-only data.
+    Data,      ///< Read-write data.
+    Bss,       ///< Uninitialized data (zero-filled).
+    TlsData,   ///< Thread-local initialized data.
+    TlsBss,    ///< Thread-local uninitialized data.
+    ObjC,      ///< ObjC metadata — preserved with original section name.
     Preserved, ///< Platform metadata preserved with its original section name.
-    Other,   ///< Non-allocatable, debug, etc.
+    Other,     ///< Non-allocatable, debug, etc.
 };
 
 /// Check whether a Mach-O section name is ObjC metadata that must be preserved.
@@ -156,9 +156,9 @@ inline bool isWindowsMetadataSection(const std::string &name) {
 }
 
 inline bool isElfMetadataSection(const std::string &name) {
-    return name == ".eh_frame" || name.rfind(".eh_frame.", 0) == 0 ||
-           name == ".gcc_except_table" || name.rfind(".gcc_except_table.", 0) == 0 ||
-           name.rfind(".note.", 0) == 0 || name == ".note";
+    return name == ".eh_frame" || name.rfind(".eh_frame.", 0) == 0 || name == ".gcc_except_table" ||
+           name.rfind(".gcc_except_table.", 0) == 0 || name.rfind(".note.", 0) == 0 ||
+           name == ".note";
 }
 
 inline bool isMachOConstDataSection(const std::string &name) {
@@ -182,35 +182,29 @@ inline bool isMsvcThreadSafeStaticGuardSymbol(const std::string &name) {
 }
 
 inline bool isWindowsLinkerHelperSymbol(const std::string &name) {
-    return name == "_fltused" || name == "__ImageBase" ||
-           name == "__security_cookie" || name == "__security_check_cookie" ||
-           name == "__security_init_cookie" || name == "__GSHandlerCheck" ||
-           name == "__GSHandlerCheck_EH4" || name == "_RTC_InitBase" || name == "_RTC_Shutdown" ||
-           name == "_RTC_CheckStackVars" || name == "_RTC_UninitUse" ||
-           name == "__report_rangecheckfailure" || name == "__chkstk" || name == "_tls_index" ||
-           name == "__security_cookie_complement" || name == "__guard_dispatch_icall_fptr" ||
-           name == "_is_c_termination_complete" || name == "__vcrt_initialize" ||
-           name == "__vcrt_thread_attach" || name == "__vcrt_thread_detach" ||
-           name == "__vcrt_uninitialize" || name == "__vcrt_uninitialize_critical" ||
-           name == "__acrt_initialize" || name == "__acrt_thread_attach" ||
-           name == "__acrt_thread_detach" || name == "__acrt_uninitialize" ||
-           name == "__acrt_uninitialize_critical" || name == "__isa_available_init" ||
-           name == "__scrt_exe_initialize_mta" ||
+    return name == "_fltused" || name == "__ImageBase" || name == "__security_cookie" ||
+           name == "__security_check_cookie" || name == "__security_init_cookie" ||
+           name == "__GSHandlerCheck" || name == "__GSHandlerCheck_EH4" ||
+           name == "_RTC_InitBase" || name == "_RTC_Shutdown" || name == "_RTC_CheckStackVars" ||
+           name == "_RTC_UninitUse" || name == "__report_rangecheckfailure" || name == "__chkstk" ||
+           name == "_tls_index" || name == "__security_cookie_complement" ||
+           name == "__guard_dispatch_icall_fptr" || name == "_is_c_termination_complete" ||
+           name == "__vcrt_initialize" || name == "__vcrt_thread_attach" ||
+           name == "__vcrt_thread_detach" || name == "__vcrt_uninitialize" ||
+           name == "__vcrt_uninitialize_critical" || name == "__acrt_initialize" ||
+           name == "__acrt_thread_attach" || name == "__acrt_thread_detach" ||
+           name == "__acrt_uninitialize" || name == "__acrt_uninitialize_critical" ||
+           name == "__isa_available_init" || name == "__scrt_exe_initialize_mta" ||
            name == "__CxxFrameHandler4" || name == "??_7type_info@@6B@" ||
-           name == "??2@YAPEAX_K@Z" ||
-           name == "??2@YAPEAX_KAEBUnothrow_t@std@@@Z" ||
-           name == "??3@YAXPEAX@Z" || name == "??3@YAXPEAX_K@Z" ||
-           name == "IID_ID3D11Texture2D" ||
+           name == "??2@YAPEAX_K@Z" || name == "??2@YAPEAX_KAEBUnothrow_t@std@@@Z" ||
+           name == "??3@YAXPEAX@Z" || name == "??3@YAXPEAX_K@Z" || name == "IID_ID3D11Texture2D" ||
            isWindowsStdioOptionsStorageSymbol(name) || name == "vm_trap" ||
            name == "rt_audio_shutdown";
 }
 
 /// Classify a section by name and attributes.
-inline SectionClass classifySection(const std::string &name,
-                                    bool executable,
-                                    bool writable,
-                                    bool tls,
-                                    bool zeroFill) {
+inline SectionClass classifySection(
+    const std::string &name, bool executable, bool writable, bool tls, bool zeroFill) {
     if (tls) {
         if (zeroFill || name.find("bss") != std::string::npos ||
             name.find("zerofill") != std::string::npos)
@@ -256,10 +250,11 @@ struct GlobalSymEntry {
     uint32_t secIndex = 0;     ///< Section within that ObjFile.
     size_t offset = 0;         ///< Offset within the section.
     uint64_t resolvedAddr = 0; ///< Final virtual address after layout.
-    bool resolvedAddrValid = false; ///< True when resolvedAddr is an intentional address, including zero.
-    bool absolute = false;     ///< Symbol resolves to offset/resolvedAddr directly.
-    bool common = false;       ///< Tentative/common symbol awaiting materialization.
-    size_t commonSize = 0;     ///< Largest requested tentative definition size.
+    bool resolvedAddrValid =
+        false;             ///< True when resolvedAddr is an intentional address, including zero.
+    bool absolute = false; ///< Symbol resolves to offset/resolvedAddr directly.
+    bool common = false;   ///< Tentative/common symbol awaiting materialization.
+    size_t commonSize = 0; ///< Largest requested tentative definition size.
     size_t commonAlignment = 1; ///< Maximum requested tentative definition alignment.
 };
 
@@ -295,7 +290,7 @@ struct LinkLayout {
     /// through one field instead of dozens of `defaultImageBaseForPlatform`
     /// call sites.
     uint64_t imageBase = 0;
-    size_t pageSize = 0x1000;                                   ///< Page size (platform-dependent).
+    size_t pageSize = 0x1000;               ///< Page size (platform-dependent).
     std::vector<GotEntry> gotEntries;       ///< GOT entries for dynamic linking.
     std::vector<RebaseEntry> rebaseEntries; ///< Locations needing ASLR pointer rebase.
     std::vector<BindEntry> bindEntries;     ///< Non-GOT data pointers needing dyld bind.

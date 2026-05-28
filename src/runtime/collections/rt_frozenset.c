@@ -334,7 +334,8 @@ void *rt_frozenset_union(void *obj, void *other) {
 /// Returns an empty set if either operand is NULL.
 void *rt_frozenset_intersect(void *obj, void *other) {
     void *seq = rt_seq_new();
-    rt_frozenset_impl *a = obj ? as_frozenset(obj, "FrozenSet.Intersect: invalid FrozenSet object") : NULL;
+    rt_frozenset_impl *a =
+        obj ? as_frozenset(obj, "FrozenSet.Intersect: invalid FrozenSet object") : NULL;
     rt_frozenset_impl *b =
         other ? as_frozenset(other, "FrozenSet.Intersect: invalid FrozenSet object") : NULL;
     if (!a || !b) {
@@ -367,7 +368,8 @@ void *rt_frozenset_diff(void *obj, void *other) {
     }
 
     rt_frozenset_impl *a = as_frozenset(obj, "FrozenSet.Diff: invalid FrozenSet object");
-    rt_frozenset_impl *b = other ? as_frozenset(other, "FrozenSet.Diff: invalid FrozenSet object") : NULL;
+    rt_frozenset_impl *b =
+        other ? as_frozenset(other, "FrozenSet.Diff: invalid FrozenSet object") : NULL;
 
     for (int64_t i = 0; i < a->capacity; i++) {
         if (a->slots[i].key) {

@@ -25,10 +25,10 @@
 #include "rt_string.h"
 #include "rt_tls.h"
 
+#include <limits.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
-#include <limits.h>
 
 // Forward declarations (defined in rt_io.c).
 #include "rt_trap.h"
@@ -125,7 +125,8 @@ static int ws_default_port(int is_secure) {
     return is_secure ? 443 : 80;
 }
 
-static int ws_format_host_header(char *buf, size_t buf_len, const char *host, int port, int is_secure) {
+static int ws_format_host_header(
+    char *buf, size_t buf_len, const char *host, int port, int is_secure) {
     int include_port = 0;
 
     if (!buf || buf_len == 0 || !host || port <= 0)
@@ -546,8 +547,7 @@ static int parse_ws_url(const char *url, int *is_secure, char **host, int *port,
         (*host)[host_len] = '\0';
     }
 
-    if (*host_end && *host_end != ':' && *host_end != '/' && *host_end != '?' &&
-        *host_end != '#') {
+    if (*host_end && *host_end != ':' && *host_end != '/' && *host_end != '?' && *host_end != '#') {
         free(*host);
         *host = NULL;
         return 0;
@@ -777,7 +777,10 @@ static int ws_ascii_ieq_n(const char *a, const char *b, size_t len) {
 /// `Connection: Upgrade` (which may appear as `Connection:
 /// keep-alive, Upgrade`).
 /// @return 1 if token is present, 0 otherwise.
-static int ws_header_has_token(const char *value, size_t len, const char *token, int case_sensitive) {
+static int ws_header_has_token(const char *value,
+                               size_t len,
+                               const char *token,
+                               int case_sensitive) {
     size_t token_len = strlen(token);
     size_t i = 0;
     while (i < len) {
@@ -869,9 +872,8 @@ static int ws_validate_handshake_response(const char *response,
             return 0;
         memcpy(negotiated_protocol, protocol_hdr, protocol_len);
         negotiated_protocol[protocol_len] = '\0';
-        while (protocol_len > 0 &&
-               (negotiated_protocol[protocol_len - 1] == ' ' ||
-                negotiated_protocol[protocol_len - 1] == '\t')) {
+        while (protocol_len > 0 && (negotiated_protocol[protocol_len - 1] == ' ' ||
+                                    negotiated_protocol[protocol_len - 1] == '\t')) {
             negotiated_protocol[--protocol_len] = '\0';
         }
         if (!ws_token_is_valid(expected_protocol) || !ws_token_is_valid(negotiated_protocol))
@@ -1015,7 +1017,8 @@ static int ws_handshake(rt_ws_impl *ws,
     // Build handshake request
     char request[2048];
     char host_header[512];
-    int host_header_len = ws_format_host_header(host_header, sizeof(host_header), host, port, ws->tls != NULL);
+    int host_header_len =
+        ws_format_host_header(host_header, sizeof(host_header), host, port, ws->tls != NULL);
     if (host_header_len < 0 || (size_t)host_header_len >= sizeof(host_header)) {
         rt_string_unref(ws_key);
         return 0;
@@ -1076,7 +1079,8 @@ static int ws_handshake(rt_ws_impl *ws,
 
     free(ws->subprotocol);
     ws->subprotocol = NULL;
-    if (!ws_validate_handshake_response(response, key_copy, requested_subprotocol, &ws->subprotocol))
+    if (!ws_validate_handshake_response(
+            response, key_copy, requested_subprotocol, &ws->subprotocol))
         return 0;
     return 1;
 }
@@ -1852,7 +1856,8 @@ void rt_ws_close_with(void *obj, int64_t code, rt_string reason) {
         rt_trap_net("WebSocket: invalid close code", Err_ProtocolError);
         return;
     }
-    if (reason_len > 123 || (reason_cstr && !ws_is_valid_utf8((const uint8_t *)reason_cstr, reason_len))) {
+    if (reason_len > 123 ||
+        (reason_cstr && !ws_is_valid_utf8((const uint8_t *)reason_cstr, reason_len))) {
         rt_trap_net("WebSocket: invalid close reason", Err_ProtocolError);
         return;
     }

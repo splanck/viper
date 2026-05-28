@@ -1401,16 +1401,16 @@ TEST(treeview_drag_and_drop_invokes_callback) {
     tree->base.width = 240.0f;
     tree->base.height = 120.0f;
 
-    vg_event_t down = vg_event_mouse(
-        VG_EVENT_MOUSE_DOWN, 24.0f, tree->row_height * 0.5f, VG_MOUSE_LEFT, 0);
+    vg_event_t down =
+        vg_event_mouse(VG_EVENT_MOUSE_DOWN, 24.0f, tree->row_height * 0.5f, VG_MOUSE_LEFT, 0);
     ASSERT_FALSE(vg_event_send(&tree->base, &down));
 
-    vg_event_t move = vg_event_mouse(
-        VG_EVENT_MOUSE_MOVE, 24.0f, tree->row_height * 1.5f, VG_MOUSE_LEFT, 0);
+    vg_event_t move =
+        vg_event_mouse(VG_EVENT_MOUSE_MOVE, 24.0f, tree->row_height * 1.5f, VG_MOUSE_LEFT, 0);
     ASSERT_TRUE(vg_event_send(&tree->base, &move));
 
-    vg_event_t up = vg_event_mouse(
-        VG_EVENT_MOUSE_UP, 24.0f, tree->row_height * 1.5f, VG_MOUSE_LEFT, 0);
+    vg_event_t up =
+        vg_event_mouse(VG_EVENT_MOUSE_UP, 24.0f, tree->row_height * 1.5f, VG_MOUSE_LEFT, 0);
     ASSERT_TRUE(vg_event_send(&tree->base, &up));
 
     ASSERT_EQ(state.count, 1);
@@ -1495,7 +1495,8 @@ TEST(widget_hide_and_disable_clear_focus_and_capture) {
     float splitter_x = split->base.x + first->width + split->splitter_size * 0.5f;
     float splitter_y = split->base.y + 10.0f;
 
-    vg_event_t hover = vg_event_mouse(VG_EVENT_MOUSE_MOVE, splitter_x, splitter_y, VG_MOUSE_LEFT, 0);
+    vg_event_t hover =
+        vg_event_mouse(VG_EVENT_MOUSE_MOVE, splitter_x, splitter_y, VG_MOUSE_LEFT, 0);
     ASSERT_FALSE(vg_event_dispatch(root, &hover));
     ASSERT_TRUE(split->splitter_hovered);
 
@@ -1555,13 +1556,16 @@ TEST(splitpane_drag_captures_pointer_until_mouse_up) {
     ASSERT_EQ(vg_widget_get_input_capture(), &split->base);
 
     float old_pos = split->split_position;
-    vg_event_t drag =
-        vg_event_mouse(VG_EVENT_MOUSE_MOVE, split->base.x + split->base.width + 40.0f, splitter_y, VG_MOUSE_LEFT, 0);
+    vg_event_t drag = vg_event_mouse(VG_EVENT_MOUSE_MOVE,
+                                     split->base.x + split->base.width + 40.0f,
+                                     splitter_y,
+                                     VG_MOUSE_LEFT,
+                                     0);
     ASSERT_TRUE(vg_event_dispatch(root, &drag));
     ASSERT_TRUE(split->split_position > old_pos);
 
-    vg_event_t up =
-        vg_event_mouse(VG_EVENT_MOUSE_UP, split->base.x + split->base.width + 40.0f, splitter_y, VG_MOUSE_LEFT, 0);
+    vg_event_t up = vg_event_mouse(
+        VG_EVENT_MOUSE_UP, split->base.x + split->base.width + 40.0f, splitter_y, VG_MOUSE_LEFT, 0);
     ASSERT_TRUE(vg_event_dispatch(root, &up));
     ASSERT_NULL(vg_widget_get_input_capture());
 
@@ -1610,11 +1614,13 @@ TEST(scrollview_scrollbar_drag_captures_until_release_outside_widget) {
     ASSERT_EQ(vg_widget_get_input_capture(), &sv->base);
     ASSERT_TRUE(sv->v_scrollbar_dragging);
 
-    vg_event_t move = vg_event_mouse(VG_EVENT_MOUSE_MOVE, thumb_x, sv->base.y + sv->base.height + 40.0f, VG_MOUSE_LEFT, 0);
+    vg_event_t move = vg_event_mouse(
+        VG_EVENT_MOUSE_MOVE, thumb_x, sv->base.y + sv->base.height + 40.0f, VG_MOUSE_LEFT, 0);
     ASSERT_TRUE(vg_event_dispatch(root, &move));
     ASSERT_TRUE(sv->scroll_y > 0.0f);
 
-    vg_event_t up = vg_event_mouse(VG_EVENT_MOUSE_UP, thumb_x, sv->base.y + sv->base.height + 40.0f, VG_MOUSE_LEFT, 0);
+    vg_event_t up = vg_event_mouse(
+        VG_EVENT_MOUSE_UP, thumb_x, sv->base.y + sv->base.height + 40.0f, VG_MOUSE_LEFT, 0);
     ASSERT_TRUE(vg_event_dispatch(root, &up));
     ASSERT_NULL(vg_widget_get_input_capture());
     ASSERT_FALSE(sv->v_scrollbar_dragging);
@@ -1678,8 +1684,8 @@ TEST(codeeditor_scrollbar_drag_captures_until_release_outside_widget) {
     vg_codeeditor_t *editor = vg_codeeditor_create(root);
     ASSERT_NOT_NULL(editor);
     vg_widget_arrange(&editor->base, 10.0f, 10.0f, 140.0f, 60.0f);
-    vg_codeeditor_set_text(editor,
-                           "line 1\nline 2\nline 3\nline 4\nline 5\nline 6\nline 7\nline 8\nline 9\nline 10");
+    vg_codeeditor_set_text(
+        editor, "line 1\nline 2\nline 3\nline 4\nline 5\nline 6\nline 7\nline 8\nline 9\nline 10");
 
     float thumb_x = editor->base.x + editor->base.width - 6.0f;
     float thumb_y = editor->base.y + 10.0f;
@@ -1689,8 +1695,11 @@ TEST(codeeditor_scrollbar_drag_captures_until_release_outside_widget) {
     ASSERT_EQ(vg_widget_get_input_capture(), &editor->base);
     ASSERT_TRUE(editor->scrollbar_dragging);
 
-    vg_event_t move = vg_event_mouse(
-        VG_EVENT_MOUSE_MOVE, thumb_x, editor->base.y + editor->base.height + 40.0f, VG_MOUSE_LEFT, 0);
+    vg_event_t move = vg_event_mouse(VG_EVENT_MOUSE_MOVE,
+                                     thumb_x,
+                                     editor->base.y + editor->base.height + 40.0f,
+                                     VG_MOUSE_LEFT,
+                                     0);
     ASSERT_TRUE(vg_event_dispatch(root, &move));
     ASSERT_TRUE(editor->scroll_y > 0.0f);
 
@@ -1779,8 +1788,7 @@ TEST(toolbar_overflow_popup_exposes_hidden_items) {
     vg_widget_arrange(&tb->base, 0.0f, 0.0f, 80.0f, 32.0f);
     ASSERT_TRUE(tb->overflow_start_index >= 0);
 
-    vg_event_t click_overflow =
-        vg_event_mouse(VG_EVENT_MOUSE_DOWN, 75.0f, 10.0f, VG_MOUSE_LEFT, 0);
+    vg_event_t click_overflow = vg_event_mouse(VG_EVENT_MOUSE_DOWN, 75.0f, 10.0f, VG_MOUSE_LEFT, 0);
     ASSERT_TRUE(vg_event_dispatch(root, &click_overflow));
     ASSERT_NOT_NULL(tb->overflow_popup);
     ASSERT_TRUE(tb->overflow_popup->is_visible);
@@ -1816,8 +1824,7 @@ TEST(toolbar_dropdown_opens_menu_popup_and_triggers_menu_item) {
 
     vg_toolbar_t *tb = vg_toolbar_create(root, VG_TOOLBAR_HORIZONTAL);
     ASSERT_NOT_NULL(tb);
-    ASSERT_NOT_NULL(vg_toolbar_add_dropdown(
-        tb, "file", "File", vg_icon_from_glyph('F'), menu));
+    ASSERT_NOT_NULL(vg_toolbar_add_dropdown(tb, "file", "File", vg_icon_from_glyph('F'), menu));
     vg_widget_arrange(&tb->base, 20.0f, 20.0f, 140.0f, 32.0f);
 
     vg_event_t down = vg_event_mouse(VG_EVENT_MOUSE_DOWN, 30.0f, 30.0f, VG_MOUSE_LEFT, 0);
@@ -1848,8 +1855,7 @@ TEST(toolbar_item_text_change_marks_owner_dirty) {
     vg_toolbar_t *tb = vg_toolbar_create(NULL, VG_TOOLBAR_HORIZONTAL);
     ASSERT_NOT_NULL(tb);
 
-    vg_toolbar_item_t *item =
-        vg_toolbar_add_button(tb, "run", "Run", (vg_icon_t){0}, NULL, NULL);
+    vg_toolbar_item_t *item = vg_toolbar_add_button(tb, "run", "Run", (vg_icon_t){0}, NULL, NULL);
     ASSERT_NOT_NULL(item);
 
     tb->base.needs_layout = false;
@@ -1871,8 +1877,7 @@ TEST(toolbar_item_mutators_skip_unchanged_values) {
     vg_toolbar_t *tb = vg_toolbar_create(NULL, VG_TOOLBAR_HORIZONTAL);
     ASSERT_NOT_NULL(tb);
 
-    vg_toolbar_item_t *item =
-        vg_toolbar_add_button(tb, "run", "Run", (vg_icon_t){0}, NULL, NULL);
+    vg_toolbar_item_t *item = vg_toolbar_add_button(tb, "run", "Run", (vg_icon_t){0}, NULL, NULL);
     ASSERT_NOT_NULL(item);
     vg_toolbar_item_set_tooltip(item, "Run");
 
@@ -1896,10 +1901,10 @@ TEST(toolbar_keyboard_navigation_activates_focused_item) {
     int click_count = 0;
     vg_toolbar_t *tb = vg_toolbar_create(NULL, VG_TOOLBAR_HORIZONTAL);
     ASSERT_NOT_NULL(tb);
-    ASSERT_NOT_NULL(
-        vg_toolbar_add_button(tb, "one", "One", (vg_icon_t){0}, toolbar_click_counter, &click_count));
-    ASSERT_NOT_NULL(
-        vg_toolbar_add_button(tb, "two", "Two", (vg_icon_t){0}, toolbar_click_counter, &click_count));
+    ASSERT_NOT_NULL(vg_toolbar_add_button(
+        tb, "one", "One", (vg_icon_t){0}, toolbar_click_counter, &click_count));
+    ASSERT_NOT_NULL(vg_toolbar_add_button(
+        tb, "two", "Two", (vg_icon_t){0}, toolbar_click_counter, &click_count));
     vg_widget_arrange(&tb->base, 0.0f, 0.0f, 240.0f, 32.0f);
     vg_widget_set_focus(&tb->base);
     ASSERT_EQ(tb->focused_index, 0);
@@ -1945,8 +1950,8 @@ TEST(statusbar_hit_testing_uses_local_coords) {
     int click_count = 0;
     vg_statusbar_t *sb = vg_statusbar_create(NULL);
     ASSERT_NOT_NULL(sb);
-    ASSERT_NOT_NULL(
-        vg_statusbar_add_button(sb, VG_STATUSBAR_ZONE_LEFT, "Build", statusbar_click_counter, &click_count));
+    ASSERT_NOT_NULL(vg_statusbar_add_button(
+        sb, VG_STATUSBAR_ZONE_LEFT, "Build", statusbar_click_counter, &click_count));
     vg_widget_arrange(&sb->base, 200.0f, 50.0f, 240.0f, (float)sb->height);
 
     vg_event_t click = {0};

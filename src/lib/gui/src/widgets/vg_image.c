@@ -22,9 +22,9 @@
 //        lib/gui/include/vg_widget.h
 //
 //===----------------------------------------------------------------------===//
+#include "../../../graphics/src/vgfx_internal.h"
 #include "../../include/vg_widget.h"
 #include "../../include/vg_widgets.h"
-#include "../../../graphics/src/vgfx_internal.h"
 #include "vgfx.h"
 #if defined(__APPLE__)
 #include <CoreFoundation/CoreFoundation.h>
@@ -66,8 +66,7 @@ static uint16_t image_read_le16(const uint8_t *p) {
 
 /// @brief Read a little-endian uint32 from an unaligned byte pointer.
 static uint32_t image_read_le32(const uint8_t *p) {
-    return (uint32_t)p[0] | ((uint32_t)p[1] << 8) | ((uint32_t)p[2] << 16) |
-           ((uint32_t)p[3] << 24);
+    return (uint32_t)p[0] | ((uint32_t)p[1] << 8) | ((uint32_t)p[2] << 16) | ((uint32_t)p[3] << 24);
 }
 
 /// @brief Convert premultiplied RGBA in-place back to straight alpha.
@@ -134,8 +133,7 @@ static bool image_load_bmp(vg_image_t *image, const char *path) {
     size_t row_size = (bpp == 24) ? ((row_payload + 3u) & ~(size_t)3u) : row_payload;
     if (height > 0 && (size_t)height > SIZE_MAX / row_size)
         goto cleanup;
-    if ((size_t)width > SIZE_MAX / (size_t)height ||
-        (size_t)width * (size_t)height > SIZE_MAX / 4u)
+    if ((size_t)width > SIZE_MAX / (size_t)height || (size_t)width * (size_t)height > SIZE_MAX / 4u)
         goto cleanup;
 
     row = malloc(row_size);
@@ -318,7 +316,8 @@ static void image_paint(vg_widget_t *widget, void *canvas) {
     if (image->scale_mode == VG_IMAGE_SCALE_NONE) {
         draw_w = (float)sw;
         draw_h = (float)sh;
-    } else if (image->scale_mode == VG_IMAGE_SCALE_FIT || image->scale_mode == VG_IMAGE_SCALE_FILL) {
+    } else if (image->scale_mode == VG_IMAGE_SCALE_FIT ||
+               image->scale_mode == VG_IMAGE_SCALE_FILL) {
         const float scale_x = (float)dw / (float)sw;
         const float scale_y = (float)dh / (float)sh;
         const float scale = (image->scale_mode == VG_IMAGE_SCALE_FILL)

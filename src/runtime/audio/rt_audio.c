@@ -45,9 +45,9 @@
 #include "rt_trap.h"
 #include "rt_vorbis.h"
 
-#include <stddef.h>
 #include <float.h>
 #include <math.h>
+#include <stddef.h>
 #include <stdint.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -1176,9 +1176,9 @@ static int detect_audio_format(const char *filepath) {
 static int build_wav_from_pcm(const int16_t *pcm,
                               size_t frames,
                               int channels,
-    int sample_rate,
-    uint8_t **out_data,
-    size_t *out_len) {
+                              int sample_rate,
+                              uint8_t **out_data,
+                              size_t *out_len) {
     if (out_data)
         *out_data = NULL;
     if (out_len)
@@ -2194,8 +2194,7 @@ void rt_music_stop_related(void *music) {
         rt_music_crossfade_state *xf = &g_crossfades[xf_idx];
         int stop_fade_out = (xf->fade_out == mus);
         int stop_fade_in = (xf->fade_in == mus);
-        rt_audio_crossfade_cancel_entry_locked(
-            xf, stop_fade_out, stop_fade_in, 1, &releases);
+        rt_audio_crossfade_cancel_entry_locked(xf, stop_fade_out, stop_fade_in, 1, &releases);
     } else {
         mus->paused = 0;
         vaud_music_stop(mus->music);
@@ -2317,8 +2316,7 @@ int64_t rt_audio_get_group_volume_named(rt_string group_name) {
 
 rt_string rt_audio_group_name(int64_t group_id) {
     audio_state_lock();
-    const char *name =
-        audio_group_id_valid_unlocked(group_id) ? g_group_names[group_id] : "";
+    const char *name = audio_group_id_valid_unlocked(group_id) ? g_group_names[group_id] : "";
     rt_string result = rt_const_cstr(name);
     audio_state_unlock();
     return result;

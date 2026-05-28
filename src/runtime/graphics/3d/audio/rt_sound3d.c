@@ -246,8 +246,10 @@ void rt_sound3d_clear_active_listener_state(void) {
 ///          then the oldest entry (slot 0) is overwritten — sufficient for
 ///          typical workloads (≤ 64 simultaneously moving 3D sounds) and
 ///          much cheaper than a heap-managed map.
-void rt_sound3d_register_voice_ex(
-    int64_t voice, double ref_dist, double max_dist, int64_t base_volume) {
+void rt_sound3d_register_voice_ex(int64_t voice,
+                                  double ref_dist,
+                                  double max_dist,
+                                  int64_t base_volume) {
     if (voice <= 0)
         return;
     if (!isfinite(ref_dist) || ref_dist < 0.0)
@@ -508,8 +510,15 @@ void rt_sound3d_update_voice_ex(int64_t voice,
     int64_t vol = 0;
     int64_t pan = 0;
     double doppler = 1.0;
-    rt_sound3d_compute_voice_params_ex(
-        &listener, source_pos, source_velocity, ref_distance, max_distance, base_volume, &vol, &pan, &doppler);
+    rt_sound3d_compute_voice_params_ex(&listener,
+                                       source_pos,
+                                       source_velocity,
+                                       ref_distance,
+                                       max_distance,
+                                       base_volume,
+                                       &vol,
+                                       &pan,
+                                       &doppler);
     (void)doppler;
     rt_voice_set_volume(voice, vol);
     rt_voice_set_pan(voice, pan);

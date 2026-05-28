@@ -135,6 +135,7 @@ static void test_animation_keyframes_are_sorted() {
     typedef struct {
         double m[16];
     } mat4_view;
+
     mat4_view *mv = (mat4_view *)rt_anim_player3d_get_bone_matrix(player, 0);
     EXPECT_NEAR(mv->m[3], 5.0, 0.1, "Out-of-order keyframes sample at sorted midpoint");
 }
@@ -260,7 +261,9 @@ static void test_player_reverse_timing_and_bad_handles() {
     rt_anim_player3d_update(player, 0.5);
     EXPECT_TRUE(rt_anim_player3d_is_playing(player) == 1,
                 "Reverse looping playback keeps playing after wrapping below zero");
-    EXPECT_NEAR(rt_anim_player3d_get_time(player), 0.75, 0.01,
+    EXPECT_NEAR(rt_anim_player3d_get_time(player),
+                0.75,
+                0.01,
                 "Reverse looping playback wraps negative time");
 
     rt_animation3d_set_looping(anim, 0);
@@ -270,7 +273,9 @@ static void test_player_reverse_timing_and_bad_handles() {
     rt_anim_player3d_update(player, 0.5);
     EXPECT_TRUE(rt_anim_player3d_is_playing(player) == 0,
                 "Reverse non-looping playback stops at the start");
-    EXPECT_NEAR(rt_anim_player3d_get_time(player), 0.0, 0.01,
+    EXPECT_NEAR(rt_anim_player3d_get_time(player),
+                0.0,
+                0.01,
                 "Reverse non-looping playback clamps to zero");
 
     void *fresh_player = rt_anim_player3d_new(skel);
@@ -278,7 +283,9 @@ static void test_player_reverse_timing_and_bad_handles() {
     EXPECT_TRUE(rt_anim_player3d_is_playing(fresh_player) == 0,
                 "AnimPlayer3D.Play rejects non-Animation3D handles");
     rt_anim_player3d_set_time(skel, 0.5);
-    EXPECT_NEAR(rt_anim_player3d_get_time(skel), 0.0, 0.01,
+    EXPECT_NEAR(rt_anim_player3d_get_time(skel),
+                0.0,
+                0.01,
                 "AnimPlayer3D accessors reject non-player handles");
 }
 
@@ -320,6 +327,7 @@ static void test_player_stop_returns_to_bind_pose() {
     typedef struct {
         double m[16];
     } mat4_view;
+
     mat4_view *mv = (mat4_view *)rt_anim_player3d_get_bone_matrix(player, 0);
     EXPECT_NEAR(mv->m[3], 3.0, 0.1, "AnimPlayer3D.Stop restores bind-pose world matrix");
 }
@@ -434,9 +442,10 @@ static void test_partial_keyframes_preserve_bind_components() {
     typedef struct {
         double m[16];
     } mat4_view;
+
     mat4_view *mv = (mat4_view *)rt_anim_player3d_get_bone_matrix(player, 0);
-    EXPECT_NEAR(mv->m[3], 3.0, 0.1,
-                "Partial/overflow keyframe position components fall back to bind pose");
+    EXPECT_NEAR(
+        mv->m[3], 3.0, 0.1, "Partial/overflow keyframe position components fall back to bind pose");
 }
 
 static void test_bone_name() {
@@ -509,8 +518,11 @@ static void test_crossfade_falls_back_to_bind_pose_translation() {
     typedef struct {
         double m[16];
     } mat4_view;
+
     mat4_view *mv = (mat4_view *)rt_anim_player3d_get_bone_matrix(player, 0);
-    EXPECT_NEAR(mv->m[3], 6.0, 0.1,
+    EXPECT_NEAR(mv->m[3],
+                6.0,
+                0.1,
                 "Crossfade missing-channel fallback blends toward bind-pose world translation");
 }
 
@@ -534,8 +546,11 @@ static void test_crossfade_blends_target_only_channels() {
     typedef struct {
         double m[16];
     } mat4_view;
+
     mat4_view *mv = (mat4_view *)rt_anim_player3d_get_bone_matrix(player, 0);
-    EXPECT_NEAR(mv->m[3], 6.0, 0.1,
+    EXPECT_NEAR(mv->m[3],
+                6.0,
+                0.1,
                 "Crossfade target-only channels blend from bind pose instead of popping");
 }
 
@@ -556,11 +571,15 @@ static void test_anim_blend_dt_zero_and_looping_defaults() {
     rt_anim_blend3d_set_weight(blend, state, 1.0);
     rt_anim_blend3d_update(blend, 0.0);
     rt_anim_blend3d *blend_impl = (rt_anim_blend3d *)blend;
-    EXPECT_NEAR(blend_impl->bone_palette[3], 4.0, 0.1,
+    EXPECT_NEAR(blend_impl->bone_palette[3],
+                4.0,
+                0.1,
                 "AnimBlend3D.Update recomputes weighted pose when dt is zero");
 
     rt_anim_blend3d_update(blend, 1.5);
-    EXPECT_NEAR(blend_impl->states[state].anim_time, 1.0, 0.01,
+    EXPECT_NEAR(blend_impl->states[state].anim_time,
+                1.0,
+                0.01,
                 "AnimBlend3D state inherits non-looping animation default");
 }
 

@@ -119,13 +119,15 @@ static int mesh_positions_form_triangle(const float *a, const float *b, const fl
 }
 
 /// @brief Return non-zero when three mesh indices define a usable, non-degenerate face.
-static int mesh_indices_form_triangle(const rt_mesh3d *mesh, uint32_t i0, uint32_t i1, uint32_t i2) {
-    if (!mesh || !mesh->vertices || i0 == i1 || i1 == i2 || i0 == i2 ||
-        i0 >= mesh->vertex_count || i1 >= mesh->vertex_count || i2 >= mesh->vertex_count)
+static int mesh_indices_form_triangle(const rt_mesh3d *mesh,
+                                      uint32_t i0,
+                                      uint32_t i1,
+                                      uint32_t i2) {
+    if (!mesh || !mesh->vertices || i0 == i1 || i1 == i2 || i0 == i2 || i0 >= mesh->vertex_count ||
+        i1 >= mesh->vertex_count || i2 >= mesh->vertex_count)
         return 0;
-    return mesh_positions_form_triangle(mesh->vertices[i0].pos,
-                                        mesh->vertices[i1].pos,
-                                        mesh->vertices[i2].pos);
+    return mesh_positions_form_triangle(
+        mesh->vertices[i0].pos, mesh->vertices[i1].pos, mesh->vertices[i2].pos);
 }
 
 /// @brief Guard for procedural-generator dimensions — trap if `value` is NaN/inf or ≤ 0.
@@ -137,7 +139,8 @@ static int mesh_validate_positive_finite(double value, const char *label) {
     char msg[128];
     if (mesh_value_fits_float(value) && value > 0.0)
         return 1;
-    snprintf(msg, sizeof(msg), "%s must be finite, fit float range, and be greater than zero", label);
+    snprintf(
+        msg, sizeof(msg), "%s must be finite, fit float range, and be greater than zero", label);
     rt_trap(msg);
     return 0;
 }
@@ -495,8 +498,7 @@ void rt_mesh3d_recalc_normals(void *obj) {
         double len_sq = nx * nx + ny * ny + nz * nz;
         if (!isfinite(len_sq) || len_sq <= 1e-20)
             continue;
-        if (!mesh_value_fits_float(nx) || !mesh_value_fits_float(ny) ||
-            !mesh_value_fits_float(nz))
+        if (!mesh_value_fits_float(nx) || !mesh_value_fits_float(ny) || !mesh_value_fits_float(nz))
             continue;
 
         m->vertices[i0].normal[0] += (float)nx;
@@ -640,12 +642,12 @@ void rt_mesh3d_transform(void *obj, void *mat4_obj) {
         return;
     }
     {
-        float det = model_matrix[0] * (model_matrix[5] * model_matrix[10] -
-                                       model_matrix[6] * model_matrix[9]) -
-                    model_matrix[1] * (model_matrix[4] * model_matrix[10] -
-                                       model_matrix[6] * model_matrix[8]) +
-                    model_matrix[2] * (model_matrix[4] * model_matrix[9] -
-                                       model_matrix[5] * model_matrix[8]);
+        float det = model_matrix[0] *
+                        (model_matrix[5] * model_matrix[10] - model_matrix[6] * model_matrix[9]) -
+                    model_matrix[1] *
+                        (model_matrix[4] * model_matrix[10] - model_matrix[6] * model_matrix[8]) +
+                    model_matrix[2] *
+                        (model_matrix[4] * model_matrix[9] - model_matrix[5] * model_matrix[8]);
         if (det < 0.0f)
             handedness_sign = -1.0f;
     }
@@ -658,7 +660,8 @@ void rt_mesh3d_transform(void *obj, void *mat4_obj) {
         double tz = xform->m[8] * x + xform->m[9] * y + xform->m[10] * z + xform->m[11];
         if (!mesh_value_fits_float(tx) || !mesh_value_fits_float(ty) ||
             !mesh_value_fits_float(tz)) {
-            rt_trap("Mesh3D.Transform: transformed vertex position must be finite and fit float range");
+            rt_trap(
+                "Mesh3D.Transform: transformed vertex position must be finite and fit float range");
             return;
         }
         {
@@ -679,7 +682,8 @@ void rt_mesh3d_transform(void *obj, void *mat4_obj) {
             if (!mesh_value_fits_float(nx) || !mesh_value_fits_float(ny) ||
                 !mesh_value_fits_float(nz) || !mesh_value_fits_float(txv) ||
                 !mesh_value_fits_float(tyv) || !mesh_value_fits_float(tzv)) {
-                rt_trap("Mesh3D.Transform: transformed normal/tangent must be finite and fit float range");
+                rt_trap("Mesh3D.Transform: transformed normal/tangent must be finite and fit float "
+                        "range");
                 return;
             }
         }
@@ -1170,11 +1174,8 @@ static int obj_vertex_cache_grow(obj_vertex_cache_t *cache) {
 /// @details Returns 1 and writes the cached mesh-vertex index when found, 0 otherwise.
 ///   Probing stops at the first unused slot — matching the invariant maintained by
 ///   `obj_vertex_cache_insert` that entries are contiguous along their probe chain.
-static int obj_vertex_cache_lookup(const obj_vertex_cache_t *cache,
-                                   int64_t vi,
-                                   int64_t ti,
-                                   int64_t ni,
-                                   uint32_t *out_index) {
+static int obj_vertex_cache_lookup(
+    const obj_vertex_cache_t *cache, int64_t vi, int64_t ti, int64_t ni, uint32_t *out_index) {
     if (!cache || !cache->entries || cache->capacity == 0)
         return 0;
     uint64_t h = obj_hash_index_triplet(vi, ti, ni);
@@ -1197,11 +1198,8 @@ static int obj_vertex_cache_lookup(const obj_vertex_cache_t *cache,
 ///   1 on success, 0 on allocation failure in grow (which propagates upward to fail the
 ///   OBJ import). Duplicate keys never reach this function — callers always do a lookup
 ///   first via `obj_get_or_add_mesh_vertex`.
-static int obj_vertex_cache_insert(obj_vertex_cache_t *cache,
-                                   int64_t vi,
-                                   int64_t ti,
-                                   int64_t ni,
-                                   uint32_t mesh_index) {
+static int obj_vertex_cache_insert(
+    obj_vertex_cache_t *cache, int64_t vi, int64_t ti, int64_t ni, uint32_t mesh_index) {
     if (!cache || !cache->entries)
         return 0;
     if ((cache->count + 1u) * 10u >= cache->capacity * 7u) {
@@ -1380,10 +1378,8 @@ void rt_mesh3d_calc_tangents(void *obj) {
         double edge2[3] = {(double)p2[0] - (double)p0[0],
                            (double)p2[1] - (double)p0[1],
                            (double)p2[2] - (double)p0[2]};
-        double duv1[2] = {(double)uv1[0] - (double)uv0[0],
-                          (double)uv1[1] - (double)uv0[1]};
-        double duv2[2] = {(double)uv2[0] - (double)uv0[0],
-                          (double)uv2[1] - (double)uv0[1]};
+        double duv1[2] = {(double)uv1[0] - (double)uv0[0], (double)uv1[1] - (double)uv0[1]};
+        double duv2[2] = {(double)uv2[0] - (double)uv0[0], (double)uv2[1] - (double)uv0[1]};
 
         double det = duv1[0] * duv2[1] - duv1[1] * duv2[0];
         if (!isfinite(det) || fabs(det) < 1e-8)
@@ -1447,8 +1443,8 @@ void rt_mesh3d_calc_tangents(void *obj) {
                 float cross_nt[3] = {n[1] * t[2] - n[2] * t[1],
                                      n[2] * t[0] - n[0] * t[2],
                                      n[0] * t[1] - n[1] * t[0]};
-                float handedness = cross_nt[0] * bitan[0] + cross_nt[1] * bitan[1] +
-                                    cross_nt[2] * bitan[2];
+                float handedness =
+                    cross_nt[0] * bitan[0] + cross_nt[1] * bitan[1] + cross_nt[2] * bitan[2];
                 t[3] = (isfinite(handedness) && handedness < 0.0f) ? -1.0f : 1.0f;
             }
         } else {
@@ -1842,8 +1838,8 @@ static uint32_t stl_read_u32_le(const uint8_t *p) {
 
 /// @brief Read a little-endian IEEE-754 float from a binary STL byte stream.
 static float stl_read_f32_le(const uint8_t *p) {
-    uint32_t bits = (uint32_t)p[0] | ((uint32_t)p[1] << 8) | ((uint32_t)p[2] << 16) |
-                    ((uint32_t)p[3] << 24);
+    uint32_t bits =
+        (uint32_t)p[0] | ((uint32_t)p[1] << 8) | ((uint32_t)p[2] << 16) | ((uint32_t)p[3] << 24);
     float val;
     memcpy(&val, &bits, sizeof(val));
     return val;
@@ -2106,8 +2102,8 @@ static int stl_parse_vertex_line(const char *start, const char *end, float *out_
         return 0;
     p = p + 6;
     if (!stl_parse_double(&p, end, &x) || !stl_parse_double(&p, end, &y) ||
-        !stl_parse_double(&p, end, &z) || !mesh_value_fits_float(x) ||
-        !mesh_value_fits_float(y) || !mesh_value_fits_float(z))
+        !stl_parse_double(&p, end, &z) || !mesh_value_fits_float(x) || !mesh_value_fits_float(y) ||
+        !mesh_value_fits_float(z))
         return 0;
     p = stl_skip_horizontal_ws(p, end);
     if (p != end)
@@ -2130,6 +2126,7 @@ static void *stl_load_ascii(const uint8_t *data, size_t len) {
         STL_ASCII_IN_LOOP = 2,
         STL_ASCII_EXPECT_ENDFACET = 3
     };
+
     void *mesh = rt_mesh3d_new();
     if (!mesh)
         return NULL;
@@ -2165,53 +2162,55 @@ static void *stl_load_ascii(const uint8_t *data, size_t len) {
             continue;
 
         switch (state) {
-        case STL_ASCII_OUTSIDE_FACET:
-            if (stl_line_starts_keyword(line, line_end, "solid") ||
-                stl_line_starts_keyword(line, line_end, "endsolid"))
-                continue;
-            if (!stl_parse_facet_normal_line(line, line_end, normal)) {
-                parse_failed = 1;
-            } else {
-                vert_idx = 0;
-                state = STL_ASCII_EXPECT_OUTER_LOOP;
-            }
-            break;
-        case STL_ASCII_EXPECT_OUTER_LOOP:
-            if (stl_line_equals(line, line_end, "outer loop")) {
-                state = STL_ASCII_IN_LOOP;
-            } else {
-                parse_failed = 1;
-            }
-            break;
-        case STL_ASCII_IN_LOOP:
-            if (stl_line_starts_keyword(line, line_end, "vertex")) {
-                if (vert_idx >= 3 || !stl_parse_vertex_line(line, line_end, &verts[vert_idx * 3])) {
+            case STL_ASCII_OUTSIDE_FACET:
+                if (stl_line_starts_keyword(line, line_end, "solid") ||
+                    stl_line_starts_keyword(line, line_end, "endsolid"))
+                    continue;
+                if (!stl_parse_facet_normal_line(line, line_end, normal)) {
                     parse_failed = 1;
                 } else {
-                    vert_idx++;
+                    vert_idx = 0;
+                    state = STL_ASCII_EXPECT_OUTER_LOOP;
                 }
-            } else if (stl_line_equals(line, line_end, "endloop")) {
-                if (vert_idx != 3)
+                break;
+            case STL_ASCII_EXPECT_OUTER_LOOP:
+                if (stl_line_equals(line, line_end, "outer loop")) {
+                    state = STL_ASCII_IN_LOOP;
+                } else {
                     parse_failed = 1;
-                else
-                    state = STL_ASCII_EXPECT_ENDFACET;
-            } else {
-                parse_failed = 1;
-            }
-            break;
-        case STL_ASCII_EXPECT_ENDFACET:
-            if (!stl_line_equals(line, line_end, "endfacet")) {
-                parse_failed = 1;
-            } else {
-                uint32_t before = ((rt_mesh3d *)mesh)->index_count;
-                if (!stl_emit_triangle(mesh, verts, normal) || ((rt_mesh3d *)mesh)->build_failed)
+                }
+                break;
+            case STL_ASCII_IN_LOOP:
+                if (stl_line_starts_keyword(line, line_end, "vertex")) {
+                    if (vert_idx >= 3 ||
+                        !stl_parse_vertex_line(line, line_end, &verts[vert_idx * 3])) {
+                        parse_failed = 1;
+                    } else {
+                        vert_idx++;
+                    }
+                } else if (stl_line_equals(line, line_end, "endloop")) {
+                    if (vert_idx != 3)
+                        parse_failed = 1;
+                    else
+                        state = STL_ASCII_EXPECT_ENDFACET;
+                } else {
                     parse_failed = 1;
-                if (((rt_mesh3d *)mesh)->index_count > before)
-                    emitted_triangles++;
-                vert_idx = 0;
-                state = STL_ASCII_OUTSIDE_FACET;
-            }
-            break;
+                }
+                break;
+            case STL_ASCII_EXPECT_ENDFACET:
+                if (!stl_line_equals(line, line_end, "endfacet")) {
+                    parse_failed = 1;
+                } else {
+                    uint32_t before = ((rt_mesh3d *)mesh)->index_count;
+                    if (!stl_emit_triangle(mesh, verts, normal) ||
+                        ((rt_mesh3d *)mesh)->build_failed)
+                        parse_failed = 1;
+                    if (((rt_mesh3d *)mesh)->index_count > before)
+                        emitted_triangles++;
+                    vert_idx = 0;
+                    state = STL_ASCII_OUTSIDE_FACET;
+                }
+                break;
         }
         if (parse_failed)
             break;

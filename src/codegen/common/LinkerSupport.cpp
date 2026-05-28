@@ -121,9 +121,8 @@ std::filesystem::path supportLibBuildSubdir(std::string_view libBaseName) {
         return std::filesystem::path("src") / "support";
     if (libBaseName == "viper_il_io")
         return std::filesystem::path("src") / "il" / "io";
-    if (libBaseName == "il_build" || libBaseName == "il_transform" ||
-        libBaseName == "il_runtime" || libBaseName == "il_analysis" ||
-        libBaseName == "il_utils" || libBaseName == "il_api" ||
+    if (libBaseName == "il_build" || libBaseName == "il_transform" || libBaseName == "il_runtime" ||
+        libBaseName == "il_analysis" || libBaseName == "il_utils" || libBaseName == "il_api" ||
         libBaseName == "viper_il_core" || libBaseName == "viper_il_verify" ||
         libBaseName == "viper_pass")
         return std::filesystem::path("src");
@@ -191,7 +190,8 @@ void rebuildRequiredArchives(LinkContext &ctx) {
     ctx.requiredArchives.clear();
     for (auto comp : ctx.requiredComponents) {
         auto name = archiveNameForComponent(comp);
-        ctx.requiredArchives.emplace_back(std::string(name), runtimeArchivePath(ctx.buildDir, name));
+        ctx.requiredArchives.emplace_back(std::string(name),
+                                          runtimeArchivePath(ctx.buildDir, name));
     }
 }
 
@@ -273,8 +273,8 @@ bool addArchiveClosureSymbols(const LinkContext &ctx,
             continue;
         Archive ar;
         if (!readArchive(path.string(), ar, err)) {
-            err << "error: failed to inspect runtime archive '" << name << "' at '"
-                << path.string() << "'\n";
+            err << "error: failed to inspect runtime archive '" << name << "' at '" << path.string()
+                << "'\n";
             return false;
         }
         archives.push_back(std::move(ar));
@@ -654,9 +654,17 @@ std::filesystem::path supportLibraryPath(const std::filesystem::path &buildDir,
 
 const std::vector<std::string> &ziaFrontendClosureLibs() {
     static const std::vector<std::string> kLibs = {
-        "il_build",      "il_transform",   "il_runtime",  "il_analysis",
-        "il_utils",      "il_api",         "viper_pass",  "viper_il_core",
-        "viper_il_verify", "viper_il_io",  "viper_support",
+        "il_build",
+        "il_transform",
+        "il_runtime",
+        "il_analysis",
+        "il_utils",
+        "il_api",
+        "viper_pass",
+        "viper_il_core",
+        "viper_il_verify",
+        "viper_il_io",
+        "viper_support",
     };
     return kLibs;
 }
@@ -716,8 +724,8 @@ static int resolveAndBuildArchives(const std::unordered_set<std::string> &symbol
         }
     }
 
-    ctx.needsZiaFrontend = std::any_of(
-        closureSymbols.begin(), closureSymbols.end(), [](const std::string &sym) {
+    ctx.needsZiaFrontend =
+        std::any_of(closureSymbols.begin(), closureSymbols.end(), [](const std::string &sym) {
             return sym.rfind("rt_zia_", 0) == 0 || sym.rfind("_rt_zia_", 0) == 0 ||
                    sym.rfind("Viper.Zia.", 0) == 0 || sym.rfind("_Viper.Zia.", 0) == 0;
         });
@@ -800,7 +808,13 @@ void appendAudioLibs(const LinkContext &ctx, std::vector<std::string> &cmd) {
 
 std::vector<std::string> defaultGraphicsFrameworks() {
 #if defined(__APPLE__)
-    return {"Cocoa", "IOKit", "CoreFoundation", "UniformTypeIdentifiers", "ImageIO", "Metal", "QuartzCore"};
+    return {"Cocoa",
+            "IOKit",
+            "CoreFoundation",
+            "UniformTypeIdentifiers",
+            "ImageIO",
+            "Metal",
+            "QuartzCore"};
 #else
     return {};
 #endif

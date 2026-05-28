@@ -129,8 +129,7 @@ namespace il::frontends::basic::semantic_analyzer_detail {
 ///          runtime functions, and method calls that surface typed runtime
 ///          returns. Returns std::nullopt when the expression is not known to
 ///          produce a concrete object class.
-std::optional<std::string> inferObjectClassQName(SemanticAnalyzer &analyzer,
-                                                 const Expr &expr);
+std::optional<std::string> inferObjectClassQName(SemanticAnalyzer &analyzer, const Expr &expr);
 
 /// @brief Convert class field metadata to the semantic analyzer's scalar type.
 SemanticAnalyzer::Type semanticTypeFromOopField(const ClassInfo::FieldInfo &field);

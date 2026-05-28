@@ -19,8 +19,8 @@
 
 #include "tests/TestHarness.hpp"
 
-#include <cstdio>
 #include <cstdint>
+#include <cstdio>
 #include <cstdlib>
 #include <cstring>
 

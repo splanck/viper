@@ -220,8 +220,8 @@ bool Sema::validateGenericConstraints(const std::vector<std::string> &params,
                   "Type '" + (argType ? argType->toDisplayString() : "unknown") +
                       "' does not implement interface '" + constraints[i] +
                       "' required by type parameter '" +
-                      (i < params.size() ? params[i] : std::to_string(i)) + "' of '" +
-                      subjectName + "'");
+                      (i < params.size() ? params[i] : std::to_string(i)) + "' of '" + subjectName +
+                      "'");
             return false;
         }
     }
@@ -526,11 +526,8 @@ TypeRef Sema::instantiateGenericFunction(const std::string &name,
         return types::unknown();
     }
 
-    if (!validateGenericConstraints(funcDecl->genericParams,
-                                    funcDecl->genericParamConstraints,
-                                    args,
-                                    loc,
-                                    name))
+    if (!validateGenericConstraints(
+            funcDecl->genericParams, funcDecl->genericParamConstraints, args, loc, name))
         return types::unknown();
 
     // Build substitution map

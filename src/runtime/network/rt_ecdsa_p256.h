@@ -75,7 +75,8 @@ int ecdsa_p256_sign(const uint8_t privkey[32],
 /// @param peer_x  Peer public key affine X coordinate.
 /// @param peer_y  Peer public key affine Y coordinate.
 /// @param shared_x Output shared point X coordinate.
-/// @return 1 on success, 0 on invalid key material, null buffers, or invalid/non-canonical peer point.
+/// @return 1 on success, 0 on invalid key material, null buffers, or invalid/non-canonical peer
+/// point.
 int ecdsa_p256_ecdh(const uint8_t privkey[32],
                     const uint8_t peer_x[32],
                     const uint8_t peer_y[32],

@@ -34,8 +34,8 @@ namespace {
 ///          a copy's destination so the use can be rewritten to refer to
 ///          the copy's source instead.
 struct UseSite {
-    std::size_t instrIndex{0};    ///< Index of the consuming instruction.
-    std::size_t operandIndex{0};  ///< Operand index within that instruction.
+    std::size_t instrIndex{0};   ///< Index of the consuming instruction.
+    std::size_t operandIndex{0}; ///< Operand index within that instruction.
 };
 
 /// @brief Compare two register operands for equality (phys flag, class, id).
@@ -269,10 +269,9 @@ std::size_t runPreRegAllocOpt(MFunction &fn) {
     std::size_t removed = 0;
     for (auto &block : fn.blocks) {
         const auto oldSize = block.instructions.size();
-        block.instructions.erase(std::remove_if(block.instructions.begin(),
-                                                block.instructions.end(),
-                                                isIdentityCopy),
-                                 block.instructions.end());
+        block.instructions.erase(
+            std::remove_if(block.instructions.begin(), block.instructions.end(), isIdentityCopy),
+            block.instructions.end());
         removed += oldSize - block.instructions.size();
         removed += rewriteSingleUseCopies(block);
     }

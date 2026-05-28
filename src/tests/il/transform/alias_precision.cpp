@@ -68,9 +68,8 @@ static void verifyOrDie(const Module &module) {
 }
 
 static BasicBlock *findBlock(Function &fn, const std::string &label) {
-    auto it = std::find_if(fn.blocks.begin(), fn.blocks.end(), [&](BasicBlock &blk) {
-        return blk.label == label;
-    });
+    auto it = std::find_if(
+        fn.blocks.begin(), fn.blocks.end(), [&](BasicBlock &blk) { return blk.label == label; });
     return it == fn.blocks.end() ? nullptr : &*it;
 }
 
@@ -249,7 +248,9 @@ TEST(IL, testLICMLoadHoistWithDisjointStore) {
     auto storeSize = viper::analysis::BasicAA::typeSizeBytes(storeAfterSimplify->type);
     std::cerr << "alias(load,store)="
               << static_cast<int>(aa.alias(loadAfterSimplify->operands[0],
-                                           storeAfterSimplify->operands[0], loadSize, storeSize))
+                                           storeAfterSimplify->operands[0],
+                                           loadSize,
+                                           storeSize))
               << std::endl;
 
     bool loopHasMod = false;

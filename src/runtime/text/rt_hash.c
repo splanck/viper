@@ -42,8 +42,8 @@
 
 #include "rt_bytes.h"
 #include "rt_codec.h"
-#include "rt_crypto_module.h"
 #include "rt_crc32.h"
+#include "rt_crypto_module.h"
 #include "rt_internal.h"
 #include "rt_string.h"
 
@@ -992,11 +992,7 @@ int64_t rt_hash_crc32_bytes(void *bytes) {
 
 #define HMAC_BLOCK_SIZE 64 // Block size for MD5, SHA1, SHA256
 
-typedef enum {
-    HMAC_HASH_MD5,
-    HMAC_HASH_SHA1,
-    HMAC_HASH_SHA256
-} hmac_hash_alg_t;
+typedef enum { HMAC_HASH_MD5, HMAC_HASH_SHA1, HMAC_HASH_SHA256 } hmac_hash_alg_t;
 
 typedef union {
     MD5_CTX md5;
@@ -1010,9 +1006,12 @@ typedef union {
 ///          into their own code.
 static size_t hmac_digest_size(hmac_hash_alg_t alg) {
     switch (alg) {
-        case HMAC_HASH_MD5: return 16;
-        case HMAC_HASH_SHA1: return 20;
-        case HMAC_HASH_SHA256: return 32;
+        case HMAC_HASH_MD5:
+            return 16;
+        case HMAC_HASH_SHA1:
+            return 20;
+        case HMAC_HASH_SHA256:
+            return 32;
     }
     return 0;
 }
@@ -1024,9 +1023,15 @@ static size_t hmac_digest_size(hmac_hash_alg_t alg) {
 ///          without per-algorithm specialization.
 static void hmac_hash_init(hmac_hash_alg_t alg, hmac_hash_ctx_t *ctx) {
     switch (alg) {
-        case HMAC_HASH_MD5: md5_init(&ctx->md5); break;
-        case HMAC_HASH_SHA1: sha1_init(&ctx->sha1); break;
-        case HMAC_HASH_SHA256: sha256_init(&ctx->sha256); break;
+        case HMAC_HASH_MD5:
+            md5_init(&ctx->md5);
+            break;
+        case HMAC_HASH_SHA1:
+            sha1_init(&ctx->sha1);
+            break;
+        case HMAC_HASH_SHA256:
+            sha256_init(&ctx->sha256);
+            break;
     }
 }
 
@@ -1043,9 +1048,15 @@ static void hmac_hash_update(hmac_hash_alg_t alg,
     if (!data)
         data = (const uint8_t *)"";
     switch (alg) {
-        case HMAC_HASH_MD5: md5_update(&ctx->md5, data, len); break;
-        case HMAC_HASH_SHA1: sha1_update(&ctx->sha1, data, len); break;
-        case HMAC_HASH_SHA256: sha256_update(&ctx->sha256, data, len); break;
+        case HMAC_HASH_MD5:
+            md5_update(&ctx->md5, data, len);
+            break;
+        case HMAC_HASH_SHA1:
+            sha1_update(&ctx->sha1, data, len);
+            break;
+        case HMAC_HASH_SHA256:
+            sha256_update(&ctx->sha256, data, len);
+            break;
     }
 }
 
@@ -1054,9 +1065,15 @@ static void hmac_hash_update(hmac_hash_alg_t alg,
 ///          @p digest must have at least hmac_digest_size(alg) bytes capacity.
 static void hmac_hash_final(hmac_hash_alg_t alg, hmac_hash_ctx_t *ctx, uint8_t *digest) {
     switch (alg) {
-        case HMAC_HASH_MD5: md5_final(digest, &ctx->md5); break;
-        case HMAC_HASH_SHA1: sha1_final(digest, &ctx->sha1); break;
-        case HMAC_HASH_SHA256: sha256_final(digest, &ctx->sha256); break;
+        case HMAC_HASH_MD5:
+            md5_final(digest, &ctx->md5);
+            break;
+        case HMAC_HASH_SHA1:
+            sha1_final(digest, &ctx->sha1);
+            break;
+        case HMAC_HASH_SHA256:
+            sha256_final(digest, &ctx->sha256);
+            break;
     }
 }
 
@@ -1064,10 +1081,7 @@ static void hmac_hash_final(hmac_hash_alg_t alg, hmac_hash_ctx_t *ctx, uint8_t *
 /// @details Convenience wrapper for the common pattern of hashing a single
 ///          input buffer in one go. Securely zeros the context after final
 ///          so any sensitive intermediate state doesn't linger on the stack.
-static void hmac_hash_once(hmac_hash_alg_t alg,
-                           const uint8_t *data,
-                           size_t len,
-                           uint8_t *digest) {
+static void hmac_hash_once(hmac_hash_alg_t alg, const uint8_t *data, size_t len, uint8_t *digest) {
     hmac_hash_ctx_t ctx;
     hmac_hash_init(alg, &ctx);
     hmac_hash_update(alg, &ctx, data, len);

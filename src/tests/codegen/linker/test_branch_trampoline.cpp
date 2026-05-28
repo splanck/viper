@@ -262,8 +262,7 @@ int main() {
         layout.globalSyms["_funcB"] = e;
 
         std::ostringstream err;
-        CHECK(insertBranchTrampolines(
-            objs, layout, LinkArch::AArch64, LinkPlatform::macOS, err));
+        CHECK(insertBranchTrampolines(objs, layout, LinkArch::AArch64, LinkPlatform::macOS, err));
         CHECK(layout.sections[0].data.size() >= 16);
         CHECK(countInsn(layout.sections[0].data, 0xD61F0200) == 1);
     }
@@ -307,11 +306,8 @@ int main() {
         rel.symIndex = 2; // far_target
         rel.addend = 0;
 
-        auto obj = makeCodeObj("collision.o",
-                               "funcA",
-                               {0x00, 0x00, 0x00, 0x94},
-                               {rel},
-                               {farTarget, userCollision});
+        auto obj = makeCodeObj(
+            "collision.o", "funcA", {0x00, 0x00, 0x00, 0x94}, {rel}, {farTarget, userCollision});
 
         std::vector<ObjFile> objs = {obj};
         std::unordered_map<std::string, GlobalSymEntry> globalSyms;
@@ -827,8 +823,7 @@ int main() {
         layout.globalSyms["funcA"] = entry;
 
         std::ostringstream err;
-        CHECK(!insertBranchTrampolines(
-            objs, layout, LinkArch::AArch64, LinkPlatform::Linux, err));
+        CHECK(!insertBranchTrampolines(objs, layout, LinkArch::AArch64, LinkPlatform::Linux, err));
         CHECK(err.str().find("symbol address overflow") != std::string::npos);
     }
 
@@ -859,7 +854,8 @@ int main() {
         targetSym.binding = ObjSymbol::Undefined;
 
         // BL with imm26 = 0 — needs trampoline because target is far away.
-        auto obj = makeCodeObj("trampoline_oob.o", "src", {0x00, 0x00, 0x00, 0x94}, {rel}, {targetSym});
+        auto obj =
+            makeCodeObj("trampoline_oob.o", "src", {0x00, 0x00, 0x00, 0x94}, {rel}, {targetSym});
 
         std::vector<ObjFile> objs = {obj};
         std::unordered_map<std::string, GlobalSymEntry> globalSyms;

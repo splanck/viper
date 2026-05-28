@@ -30,9 +30,7 @@
 namespace viper::codegen::linker {
 
 /// Return the exact embedded signature size for a Mach-O executable.
-size_t estimateCodeSignatureSize(size_t codeLimit,
-                                 const std::string &identifier,
-                                 size_t pageSize);
+size_t estimateCodeSignatureSize(size_t codeLimit, const std::string &identifier, size_t pageSize);
 
 /// Build an ad-hoc code signature (SuperBlob) for a Mach-O executable.
 /// Returns the complete code signature blob to append to __LINKEDIT.

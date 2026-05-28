@@ -316,8 +316,8 @@ std::vector<fs::path> gatherFromInstallManifest(const fs::path &stagePrefix,
         } catch (const std::runtime_error &) {
             continue;
         }
-        const std::string relKey = sanitizePackageRelativePath(toForwardSlashes(rel.generic_string()),
-                                                               "staged install path");
+        const std::string relKey = sanitizePackageRelativePath(
+            toForwardSlashes(rel.generic_string()), "staged install path");
         if (seen.insert(relKey).second)
             files.push_back(filePath);
     }
@@ -333,7 +333,8 @@ std::vector<fs::path> gatherFromStageWalk(const fs::path &stagePrefix) {
     std::error_code ec;
     const fs::path normalizedStage = fs::weakly_canonical(stagePrefix);
     for (fs::recursive_directory_iterator it(stagePrefix, ec);
-         it != fs::recursive_directory_iterator(); it.increment(ec)) {
+         it != fs::recursive_directory_iterator();
+         it.increment(ec)) {
         if (ec)
             throw std::runtime_error("cannot enumerate staged install tree: " + ec.message());
         std::error_code typeEc;
@@ -352,8 +353,8 @@ std::vector<fs::path> gatherFromStageWalk(const fs::path &stagePrefix) {
         } catch (const std::runtime_error &) {
             continue;
         }
-        const std::string relKey = sanitizePackageRelativePath(toForwardSlashes(rel.generic_string()),
-                                                               "staged install path");
+        const std::string relKey = sanitizePackageRelativePath(
+            toForwardSlashes(rel.generic_string()), "staged install path");
         if (seen.insert(relKey).second)
             files.push_back(it->path());
     }
@@ -421,9 +422,10 @@ ToolchainFileEntry makeEntry(const fs::path &stagePrefix, const fs::path &filePa
 /// required files like ViperConfig.cmake and ViperTargets.cmake.
 bool manifestHasRelativePath(const ToolchainInstallManifest &manifest, std::string_view relPath) {
     const std::string needle = lowerCopy(std::string(relPath));
-    return std::any_of(manifest.files.begin(), manifest.files.end(), [&](const ToolchainFileEntry &entry) {
-        return lowerCopy(entry.stagedRelativePath) == needle;
-    });
+    return std::any_of(
+        manifest.files.begin(), manifest.files.end(), [&](const ToolchainFileEntry &entry) {
+            return lowerCopy(entry.stagedRelativePath) == needle;
+        });
 }
 
 /// @brief Return true if any manifest entry has both the given kind and the given base
@@ -433,18 +435,20 @@ bool manifestHasRelativePath(const ToolchainInstallManifest &manifest, std::stri
 bool manifestHasBaseNameKind(const ToolchainInstallManifest &manifest,
                              ToolchainFileKind kind,
                              std::string_view baseName) {
-    return std::any_of(manifest.files.begin(), manifest.files.end(), [&](const ToolchainFileEntry &entry) {
-        if (entry.kind != kind)
-            return false;
-        return toolchainBaseNameFromFilename(fs::path(entry.stagedRelativePath).filename().string()) ==
-               baseName;
-    });
+    return std::any_of(
+        manifest.files.begin(), manifest.files.end(), [&](const ToolchainFileEntry &entry) {
+            if (entry.kind != kind)
+                return false;
+            return toolchainBaseNameFromFilename(
+                       fs::path(entry.stagedRelativePath).filename().string()) == baseName;
+        });
 }
 
 /// @brief Scan every CMakeConfig entry in the manifest for needle (case-insensitive).
 /// Used to detect optional support-library components declared in ViperTargets.cmake
 /// so validation can require their corresponding library archives to be present.
-bool stagedCMakeMetadataMentions(const ToolchainInstallManifest &manifest, std::string_view needle) {
+bool stagedCMakeMetadataMentions(const ToolchainInstallManifest &manifest,
+                                 std::string_view needle) {
     const std::string lowerNeedle = lowerCopy(std::string(needle));
     for (const auto &entry : manifest.files) {
         if (entry.kind != ToolchainFileKind::CMakeConfig || entry.symlink)
@@ -493,8 +497,7 @@ std::vector<FileAssoc> defaultToolchainFileAssociations() {
 /// each entry is classified, validated against stage-escape rules, and the
 /// manifest is sorted by stagedRelativePath before being returned.
 ToolchainInstallManifest gatherToolchainInstallManifest(
-    const fs::path &stagePrefix,
-    std::optional<fs::path> installManifestPath) {
+    const fs::path &stagePrefix, std::optional<fs::path> installManifestPath) {
     std::error_code ec;
     const fs::path absoluteStagePrefix = fs::absolute(stagePrefix, ec);
     const fs::path stageAlias = (ec ? stagePrefix : absoluteStagePrefix).lexically_normal();
@@ -519,10 +522,11 @@ ToolchainInstallManifest gatherToolchainInstallManifest(
     for (const auto &file : files)
         manifest.files.push_back(makeEntry(stage, file));
 
-    std::sort(manifest.files.begin(), manifest.files.end(), [](const ToolchainFileEntry &a,
-                                                               const ToolchainFileEntry &b) {
-        return a.stagedRelativePath < b.stagedRelativePath;
-    });
+    std::sort(manifest.files.begin(),
+              manifest.files.end(),
+              [](const ToolchainFileEntry &a, const ToolchainFileEntry &b) {
+                  return a.stagedRelativePath < b.stagedRelativePath;
+              });
 
     validateToolchainInstallManifest(manifest);
     return manifest;
@@ -546,13 +550,14 @@ void validateToolchainInstallManifest(const ToolchainInstallManifest &manifest) 
     validatePackageFileAssociations(manifest.fileAssociations);
 
     auto hasBinary = [&](const char *nameNoExt) {
-        return std::any_of(manifest.files.begin(), manifest.files.end(), [&](const ToolchainFileEntry &entry) {
-            if (entry.kind != ToolchainFileKind::Binary)
-                return false;
-            const std::string base = toolchainBaseNameFromFilename(
-                fs::path(entry.stagedRelativePath).filename().string());
-            return base == nameNoExt;
-        });
+        return std::any_of(
+            manifest.files.begin(), manifest.files.end(), [&](const ToolchainFileEntry &entry) {
+                if (entry.kind != ToolchainFileKind::Binary)
+                    return false;
+                const std::string base = toolchainBaseNameFromFilename(
+                    fs::path(entry.stagedRelativePath).filename().string());
+                return base == nameNoExt;
+            });
     };
 
     if (!hasBinary("viper"))
@@ -588,7 +593,8 @@ void validateToolchainInstallManifest(const ToolchainInstallManifest &manifest) 
 /// macOS: "bin/viper" → "/usr/local/viper/bin/viper";
 /// Linux: "bin/viper" → "/usr/bin/viper" (FHS merge); PortableArchive: unchanged.
 std::string mapInstallPath(const ToolchainFileEntry &file, InstallPathPolicy policy) {
-    const std::string rel = sanitizePackageRelativePath(file.stagedRelativePath, "staged install path");
+    const std::string rel =
+        sanitizePackageRelativePath(file.stagedRelativePath, "staged install path");
     switch (policy) {
         case InstallPathPolicy::WindowsProgramFilesRoot: {
             std::string path = "C:\\Program Files\\Viper";

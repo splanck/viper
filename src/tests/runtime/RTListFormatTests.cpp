@@ -63,23 +63,21 @@ static void test_and_sizes() {
     printf("Testing ListFormat.And (en-US):\n");
     void *fmt = en_fmt();
 
-    const char *e0[] = { nullptr };
+    const char *e0[] = {nullptr};
     test_result("And([]) = \"\"", eq(rt_list_format_and(fmt, mk_list(e0)), ""));
 
-    const char *e1[] = { "apples", nullptr };
-    test_result("And([apples]) = \"apples\"",
-                eq(rt_list_format_and(fmt, mk_list(e1)), "apples"));
+    const char *e1[] = {"apples", nullptr};
+    test_result("And([apples]) = \"apples\"", eq(rt_list_format_and(fmt, mk_list(e1)), "apples"));
 
-    const char *e2[] = { "apples", "bananas", nullptr };
+    const char *e2[] = {"apples", "bananas", nullptr};
     test_result("And([apples, bananas]) = \"apples and bananas\"",
                 eq(rt_list_format_and(fmt, mk_list(e2)), "apples and bananas"));
 
-    const char *e3[] = { "apples", "bananas", "cherries", nullptr };
+    const char *e3[] = {"apples", "bananas", "cherries", nullptr};
     test_result("And([a,b,c]) = \"apples, bananas, and cherries\"",
-                eq(rt_list_format_and(fmt, mk_list(e3)),
-                   "apples, bananas, and cherries"));
+                eq(rt_list_format_and(fmt, mk_list(e3)), "apples, bananas, and cherries"));
 
-    const char *e4[] = { "a", "b", "c", "d", nullptr };
+    const char *e4[] = {"a", "b", "c", "d", nullptr};
     test_result("And([a,b,c,d]) = \"a, b, c, and d\"",
                 eq(rt_list_format_and(fmt, mk_list(e4)), "a, b, c, and d"));
 }
@@ -92,14 +90,13 @@ static void test_or_sizes() {
     printf("Testing ListFormat.Or (en-US):\n");
     void *fmt = en_fmt();
 
-    const char *e2[] = { "red", "blue", nullptr };
+    const char *e2[] = {"red", "blue", nullptr};
     test_result("Or([red, blue]) = \"red or blue\"",
                 eq(rt_list_format_or(fmt, mk_list(e2)), "red or blue"));
 
-    const char *e3[] = { "red", "green", "blue", nullptr };
+    const char *e3[] = {"red", "green", "blue", nullptr};
     test_result("Or([r,g,b]) = \"red, green, or blue\"",
-                eq(rt_list_format_or(fmt, mk_list(e3)),
-                   "red, green, or blue"));
+                eq(rt_list_format_or(fmt, mk_list(e3)), "red, green, or blue"));
 }
 
 //=============================================================================
@@ -110,11 +107,11 @@ static void test_unit_sizes() {
     printf("Testing ListFormat.Unit (en-US):\n");
     void *fmt = en_fmt();
 
-    const char *e2[] = { "3h", "45m", nullptr };
+    const char *e2[] = {"3h", "45m", nullptr};
     test_result("Unit([3h, 45m]) = \"3h 45m\"",
                 eq(rt_list_format_unit(fmt, mk_list(e2)), "3h 45m"));
 
-    const char *e3[] = { "1d", "2h", "3m", nullptr };
+    const char *e3[] = {"1d", "2h", "3m", nullptr};
     test_result("Unit([1d, 2h, 3m]) = \"1d 2h 3m\"",
                 eq(rt_list_format_unit(fmt, mk_list(e3)), "1d 2h 3m"));
 }
@@ -127,10 +124,9 @@ static void test_short() {
     printf("Testing ListFormat.Short (en-US):\n");
     void *fmt = en_fmt();
 
-    const char *e3[] = { "a", "b", "c", nullptr };
+    const char *e3[] = {"a", "b", "c", nullptr};
     test_result("Short([a,b,c]) mirrors And in v1",
-                eq(rt_list_format_short(fmt, mk_list(e3)),
-                   "a, b, and c"));
+                eq(rt_list_format_short(fmt, mk_list(e3)), "a, b, and c"));
 }
 
 //=============================================================================

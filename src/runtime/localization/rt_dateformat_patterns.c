@@ -53,12 +53,17 @@ typedef struct digit_spans {
 /// @brief Byte length of the leading UTF-8 codepoint in @p s (0 if empty/NULL,
 ///        1 on a malformed lead byte so callers always make forward progress).
 static size_t utf8_cp_len(const char *s) {
-    if (!s || !*s) return 0;
+    if (!s || !*s)
+        return 0;
     unsigned char c = (unsigned char)s[0];
-    if (c < 0x80) return 1;
-    if ((c & 0xE0) == 0xC0 && s[1]) return 2;
-    if ((c & 0xF0) == 0xE0 && s[1] && s[2]) return 3;
-    if ((c & 0xF8) == 0xF0 && s[1] && s[2] && s[3]) return 4;
+    if (c < 0x80)
+        return 1;
+    if ((c & 0xE0) == 0xC0 && s[1])
+        return 2;
+    if ((c & 0xF0) == 0xE0 && s[1] && s[2])
+        return 3;
+    if ((c & 0xF8) == 0xF0 && s[1] && s[2] && s[3])
+        return 4;
     return 1;
 }
 
@@ -87,8 +92,10 @@ static digit_spans_t digit_spans_from_locale(const rt_locale_data_t *data) {
 
 /// @brief Append @p len bytes, transliterating ASCII '0'-'9' to the locale's
 ///        native digit glyphs; non-digit bytes are passed through verbatim.
-static void emit_ascii_digits(rt_string_builder *sb, const rt_locale_data_t *data,
-                              const char *bytes, size_t len) {
+static void emit_ascii_digits(rt_string_builder *sb,
+                              const rt_locale_data_t *data,
+                              const char *bytes,
+                              size_t len) {
     digit_spans_t ds = digit_spans_from_locale(data);
     for (size_t i = 0; i < len; ++i) {
         unsigned char c = (unsigned char)bytes[i];
@@ -102,8 +109,10 @@ static void emit_ascii_digits(rt_string_builder *sb, const rt_locale_data_t *dat
 }
 
 /// @brief Append @p value as a zero-padded decimal of @p width digits.
-static void emit_padded_int(rt_string_builder *sb, const rt_locale_data_t *data,
-                            int64_t value, int width) {
+static void emit_padded_int(rt_string_builder *sb,
+                            const rt_locale_data_t *data,
+                            int64_t value,
+                            int width) {
     char buf[32];
     int n = snprintf(buf, sizeof(buf), "%lld", (long long)value);
     if (n < 0)
@@ -147,9 +156,12 @@ static void emit_narrow(rt_string_builder *sb, const char *s) {
         return;
     unsigned char c = (unsigned char)s[0];
     size_t len = 1;
-    if ((c & 0xE0) == 0xC0 && s[1]) len = 2;
-    else if ((c & 0xF0) == 0xE0 && s[1] && s[2]) len = 3;
-    else if ((c & 0xF8) == 0xF0 && s[1] && s[2] && s[3]) len = 4;
+    if ((c & 0xE0) == 0xC0 && s[1])
+        len = 2;
+    else if ((c & 0xF0) == 0xE0 && s[1] && s[2])
+        len = 3;
+    else if ((c & 0xF8) == 0xF0 && s[1] && s[2] && s[3])
+        len = 4;
     (void)rt_sb_append_bytes(sb, s, len);
 }
 
@@ -159,18 +171,20 @@ static void emit_narrow(rt_string_builder *sb, const char *s) {
 
 typedef struct {
     int64_t year;
-    int64_t month;   // 1-12
-    int64_t day;     // 1-31
-    int64_t hour;    // 0-23
-    int64_t minute;  // 0-59
-    int64_t second;  // 0-59
-    int64_t dow;     // 0=Sunday..6=Saturday
+    int64_t month;  // 1-12
+    int64_t day;    // 1-31
+    int64_t hour;   // 0-23
+    int64_t minute; // 0-59
+    int64_t second; // 0-59
+    int64_t dow;    // 0=Sunday..6=Saturday
 } dt_components_t;
 
 /// @brief Emit the year for a CLDR 'y' run: count==2 → 2-digit (year % 100),
 ///        count>=4 → zero-padded to @p count, else the full year unclamped.
-static void emit_year(rt_string_builder *sb, const dt_components_t *c,
-                      int count, const rt_locale_data_t *data) {
+static void emit_year(rt_string_builder *sb,
+                      const dt_components_t *c,
+                      int count,
+                      const rt_locale_data_t *data) {
     if (count == 2) {
         emit_padded_int(sb, data, c->year % 100, 2);
     } else {
@@ -183,8 +197,10 @@ static void emit_year(rt_string_builder *sb, const dt_components_t *c,
 /// @brief Emit the month for a CLDR 'M' run: 1=numeric, 2=zero-padded,
 ///        3=abbreviated name, 4=wide name, 5+=narrow (first glyph of wide).
 /// @details Traps if the component month is outside 1-12.
-static void emit_month(rt_string_builder *sb, const dt_components_t *c,
-                       int count, const rt_locale_data_t *data) {
+static void emit_month(rt_string_builder *sb,
+                       const dt_components_t *c,
+                       int count,
+                       const rt_locale_data_t *data) {
     int idx = (int)(c->month - 1);
     if (idx < 0 || idx > 11) {
         rt_trap("Viper.Localization.DateFormat: month component out of range");
@@ -207,8 +223,10 @@ static void emit_month(rt_string_builder *sb, const dt_components_t *c,
 
 /// @brief Emit the day-of-month for a CLDR 'd' run: count>=2 → zero-padded to
 ///        two digits, otherwise the bare number.
-static void emit_day(rt_string_builder *sb, const dt_components_t *c,
-                     int count, const rt_locale_data_t *data) {
+static void emit_day(rt_string_builder *sb,
+                     const dt_components_t *c,
+                     int count,
+                     const rt_locale_data_t *data) {
     if (count >= 2)
         emit_padded_int(sb, data, c->day, 2);
     else
@@ -218,8 +236,10 @@ static void emit_day(rt_string_builder *sb, const dt_components_t *c,
 /// @brief Emit the weekday name for a CLDR 'E' run: count<=3 → abbreviated,
 ///        4 → wide, 5+ → narrow (first glyph of wide).
 /// @details Traps if the component day-of-week is outside 0-6 (Sun..Sat).
-static void emit_dow(rt_string_builder *sb, const dt_components_t *c,
-                     int count, const rt_locale_data_t *data) {
+static void emit_dow(rt_string_builder *sb,
+                     const dt_components_t *c,
+                     int count,
+                     const rt_locale_data_t *data) {
     int idx = (int)c->dow;
     if (idx < 0 || idx > 6) {
         rt_trap("Viper.Localization.DateFormat: weekday component out of range");
@@ -236,8 +256,10 @@ static void emit_dow(rt_string_builder *sb, const dt_components_t *c,
 }
 
 /// @brief Emit the hour on a 24-hour clock (CLDR 'H'); count>=2 → zero-padded.
-static void emit_hour24(rt_string_builder *sb, const dt_components_t *c,
-                        int count, const rt_locale_data_t *data) {
+static void emit_hour24(rt_string_builder *sb,
+                        const dt_components_t *c,
+                        int count,
+                        const rt_locale_data_t *data) {
     if (count >= 2)
         emit_padded_int(sb, data, c->hour, 2);
     else
@@ -246,10 +268,13 @@ static void emit_hour24(rt_string_builder *sb, const dt_components_t *c,
 
 /// @brief Emit the hour on a 12-hour clock (CLDR 'h'); 0 maps to 12,
 ///        count>=2 → zero-padded.
-static void emit_hour12(rt_string_builder *sb, const dt_components_t *c,
-                        int count, const rt_locale_data_t *data) {
+static void emit_hour12(rt_string_builder *sb,
+                        const dt_components_t *c,
+                        int count,
+                        const rt_locale_data_t *data) {
     int64_t h = c->hour % 12;
-    if (h == 0) h = 12;
+    if (h == 0)
+        h = 12;
     if (count >= 2)
         emit_padded_int(sb, data, h, 2);
     else
@@ -257,8 +282,10 @@ static void emit_hour12(rt_string_builder *sb, const dt_components_t *c,
 }
 
 /// @brief Emit the minute (CLDR 'm'); count>=2 → zero-padded to two digits.
-static void emit_minute(rt_string_builder *sb, const dt_components_t *c,
-                        int count, const rt_locale_data_t *data) {
+static void emit_minute(rt_string_builder *sb,
+                        const dt_components_t *c,
+                        int count,
+                        const rt_locale_data_t *data) {
     if (count >= 2)
         emit_padded_int(sb, data, c->minute, 2);
     else
@@ -266,8 +293,10 @@ static void emit_minute(rt_string_builder *sb, const dt_components_t *c,
 }
 
 /// @brief Emit the second (CLDR 's'); count>=2 → zero-padded to two digits.
-static void emit_second(rt_string_builder *sb, const dt_components_t *c,
-                        int count, const rt_locale_data_t *data) {
+static void emit_second(rt_string_builder *sb,
+                        const dt_components_t *c,
+                        int count,
+                        const rt_locale_data_t *data) {
     if (count >= 2)
         emit_padded_int(sb, data, c->second, 2);
     else
@@ -276,7 +305,8 @@ static void emit_second(rt_string_builder *sb, const dt_components_t *c,
 
 /// @brief Emit the AM/PM marker (CLDR 'a') using the locale's tokens,
 ///        falling back to literal "AM"/"PM" when the locale omits them.
-static void emit_ampm(rt_string_builder *sb, const dt_components_t *c,
+static void emit_ampm(rt_string_builder *sb,
+                      const dt_components_t *c,
                       const rt_locale_data_t *data) {
     const char *token = c->hour < 12 ? data->dates.am : data->dates.pm;
     emit_cstr(sb, token ? token : (c->hour < 12 ? "AM" : "PM"));
@@ -360,15 +390,33 @@ void rt_dateformat_emit_pattern(rt_string_builder *sb,
             int count = (int)(j - i);
             i = j;
             switch (ch) {
-                case 'y': emit_year(sb, &c, count, data); break;
-                case 'M': emit_month(sb, &c, count, data); break;
-                case 'd': emit_day(sb, &c, count, data); break;
-                case 'E': emit_dow(sb, &c, count, data); break;
-                case 'H': emit_hour24(sb, &c, count, data); break;
-                case 'h': emit_hour12(sb, &c, count, data); break;
-                case 'm': emit_minute(sb, &c, count, data); break;
-                case 's': emit_second(sb, &c, count, data); break;
-                case 'a': emit_ampm(sb, &c, data); break;
+                case 'y':
+                    emit_year(sb, &c, count, data);
+                    break;
+                case 'M':
+                    emit_month(sb, &c, count, data);
+                    break;
+                case 'd':
+                    emit_day(sb, &c, count, data);
+                    break;
+                case 'E':
+                    emit_dow(sb, &c, count, data);
+                    break;
+                case 'H':
+                    emit_hour24(sb, &c, count, data);
+                    break;
+                case 'h':
+                    emit_hour12(sb, &c, count, data);
+                    break;
+                case 'm':
+                    emit_minute(sb, &c, count, data);
+                    break;
+                case 's':
+                    emit_second(sb, &c, count, data);
+                    break;
+                case 'a':
+                    emit_ampm(sb, &c, data);
+                    break;
                 default:
                     rt_trap("Viper.Localization.DateFormat: unsupported pattern letter");
                     return;

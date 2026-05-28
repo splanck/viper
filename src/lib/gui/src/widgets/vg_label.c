@@ -250,7 +250,8 @@ wrap_oom:
     return 1;
 }
 
-/// @brief VTable measure: measures text using the word-wrap cache (when enabled) or a single-line font measurement, then applies constraints.
+/// @brief VTable measure: measures text using the word-wrap cache (when enabled) or a single-line
+/// font measurement, then applies constraints.
 static void label_measure(vg_widget_t *widget, float available_width, float available_height) {
     vg_label_t *label = (vg_label_t *)widget;
     (void)available_height;
@@ -287,7 +288,8 @@ static void label_measure(vg_widget_t *widget, float available_width, float avai
     vg_widget_apply_constraints(widget);
 }
 
-/// @brief VTable paint: renders the label text aligned within the widget bounds, handling word-wrap by drawing each cached line individually.
+/// @brief VTable paint: renders the label text aligned within the widget bounds, handling word-wrap
+/// by drawing each cached line individually.
 static void label_paint(vg_widget_t *widget, void *canvas) {
     vg_label_t *label = (vg_label_t *)widget;
 

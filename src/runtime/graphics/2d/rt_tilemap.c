@@ -712,10 +712,10 @@ void rt_tilemap_draw_scaled(void *tilemap_ptr,
     int64_t first_y = 0;
     int64_t vis_w = 0;
     int64_t vis_h = 0;
-    if (!tilemap_visible_span(rt_canvas_width(canvas_ptr), offset_x, dst_w, tilemap->width,
-                              &first_x, &vis_w) ||
-        !tilemap_visible_span(rt_canvas_height(canvas_ptr), offset_y, dst_h, tilemap->height,
-                              &first_y, &vis_h))
+    if (!tilemap_visible_span(
+            rt_canvas_width(canvas_ptr), offset_x, dst_w, tilemap->width, &first_x, &vis_w) ||
+        !tilemap_visible_span(
+            rt_canvas_height(canvas_ptr), offset_y, dst_h, tilemap->height, &first_y, &vis_h))
         return;
 
     int64_t end_y = tilemap_add_saturating(first_y, vis_h);
@@ -742,8 +742,8 @@ void rt_tilemap_draw_scaled(void *tilemap_ptr,
                 void *tile = rt_pixels_new(tilemap->tile_width, tilemap->tile_height);
                 if (!tile)
                     continue;
-                rt_pixels_copy(tile, 0, 0, tileset, sx, sy, tilemap->tile_width,
-                               tilemap->tile_height);
+                rt_pixels_copy(
+                    tile, 0, 0, tileset, sx, sy, tilemap->tile_width, tilemap->tile_height);
                 void *scaled = rt_pixels_scale(tile, dst_w, dst_h);
                 if (scaled) {
                     int64_t screen_x =
@@ -760,11 +760,8 @@ void rt_tilemap_draw_scaled(void *tilemap_ptr,
 }
 
 /// @brief Count non-empty, drawable tiles in a tile-coordinate sub-region.
-int64_t rt_tilemap_count_drawn_region(void *tilemap_ptr,
-                                      int64_t view_x,
-                                      int64_t view_y,
-                                      int64_t view_w,
-                                      int64_t view_h) {
+int64_t rt_tilemap_count_drawn_region(
+    void *tilemap_ptr, int64_t view_x, int64_t view_y, int64_t view_w, int64_t view_h) {
     rt_tilemap_impl *tilemap = tilemap_checked(tilemap_ptr, NULL);
     if (!tilemap)
         return 0;
@@ -786,8 +783,10 @@ int64_t rt_tilemap_count_drawn_region(void *tilemap_ptr,
 }
 
 /// @brief Count non-empty, drawable tiles visible in a canvas-sized viewport.
-int64_t rt_tilemap_count_drawn_visible(
-    void *tilemap_ptr, void *canvas_ptr, int64_t offset_x, int64_t offset_y) {
+int64_t rt_tilemap_count_drawn_visible(void *tilemap_ptr,
+                                       void *canvas_ptr,
+                                       int64_t offset_x,
+                                       int64_t offset_y) {
     if (!tilemap_ptr || !canvas_ptr)
         return 0;
 
@@ -810,8 +809,11 @@ int64_t rt_tilemap_count_drawn_visible(
 }
 
 /// @brief Count drawable tiles visible in a scaled canvas viewport.
-int64_t rt_tilemap_count_drawn_visible_scaled(
-    void *tilemap_ptr, void *canvas_ptr, int64_t offset_x, int64_t offset_y, int64_t scale_percent) {
+int64_t rt_tilemap_count_drawn_visible_scaled(void *tilemap_ptr,
+                                              void *canvas_ptr,
+                                              int64_t offset_x,
+                                              int64_t offset_y,
+                                              int64_t scale_percent) {
     if (!tilemap_ptr || !canvas_ptr || scale_percent <= 0)
         return 0;
     if (scale_percent == 100)
@@ -825,10 +827,10 @@ int64_t rt_tilemap_count_drawn_visible_scaled(
     int64_t first_y = 0;
     int64_t vis_w = 0;
     int64_t vis_h = 0;
-    if (!tilemap_visible_span(rt_canvas_width(canvas_ptr), offset_x, dst_w, tilemap->width,
-                              &first_x, &vis_w) ||
-        !tilemap_visible_span(rt_canvas_height(canvas_ptr), offset_y, dst_h, tilemap->height,
-                              &first_y, &vis_h))
+    if (!tilemap_visible_span(
+            rt_canvas_width(canvas_ptr), offset_x, dst_w, tilemap->width, &first_x, &vis_w) ||
+        !tilemap_visible_span(
+            rt_canvas_height(canvas_ptr), offset_y, dst_h, tilemap->height, &first_y, &vis_h))
         return 0;
     return rt_tilemap_count_drawn_region(tilemap_ptr, first_x, first_y, vis_w, vis_h);
 }

@@ -470,7 +470,8 @@ static void test_camera_smooth_follow_deadzone_and_system_clipboard() {
     if (str_eq(roundtrip, sentinel))
         assert(rt_system_clipboard_has_text() == 1);
     else
-        assert(rt_str_len(roundtrip) >= 0); // Headless desktop backends may have no clipboard owner.
+        assert(rt_str_len(roundtrip) >=
+               0); // Headless desktop backends may have no clipboard owner.
 
     if (had_previous && !rt_str_is_empty(previous))
         rt_system_clipboard_set(previous);

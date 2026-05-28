@@ -30,7 +30,8 @@ extern "C" {
 
 /// @brief Create an empty PostFX chain.
 void *rt_postfx3d_new(void);
-/// @brief Append a bloom pass (threshold = brightness cutoff, intensity = mix amount, blur_passes = quality).
+/// @brief Append a bloom pass (threshold = brightness cutoff, intensity = mix amount, blur_passes =
+/// quality).
 void rt_postfx3d_add_bloom(void *obj, double threshold, double intensity, int64_t blur_passes);
 /// @brief Append a tonemap pass (mode: 0=off, 1=Reinhard, 2=ACES) with exposure stops.
 void rt_postfx3d_add_tonemap(void *obj, int64_t mode, double exposure);
@@ -48,7 +49,8 @@ int8_t rt_postfx3d_get_enabled(void *obj);
 void rt_postfx3d_clear(void *obj);
 /// @brief Number of effects currently in the chain.
 int64_t rt_postfx3d_get_effect_count(void *obj);
-/// @brief Bind a PostFX chain to a Canvas3D for automatic application during Flip to the active output.
+/// @brief Bind a PostFX chain to a Canvas3D for automatic application during Flip to the active
+/// output.
 void rt_canvas3d_set_post_fx(void *canvas, void *postfx);
 
 #define RT_GRAPHICS3D_QUALITY_PERFORMANCE 0
@@ -71,7 +73,8 @@ rt_string rt_canvas3d_get_quality_fallback_reason(void *canvas);
 /* Phase F additions */
 /// @brief Append an SSAO (screen-space ambient occlusion) pass with sample radius and intensity.
 void rt_postfx3d_add_ssao(void *obj, double radius, double intensity, int64_t samples);
-/// @brief Append a depth-of-field pass (focus distance in world units, aperture controls bokeh size).
+/// @brief Append a depth-of-field pass (focus distance in world units, aperture controls bokeh
+/// size).
 void rt_postfx3d_add_dof(void *obj, double focus_distance, double aperture, double max_blur);
 /// @brief Append a motion-blur pass (intensity 0..1, sample count for blur quality).
 void rt_postfx3d_add_motion_blur(void *obj, double intensity, int64_t samples);
@@ -134,7 +137,8 @@ typedef struct {
 int vgfx3d_postfx_get_snapshot(void *postfx, vgfx3d_postfx_snapshot_t *out);
 /// @brief Export the ordered PostFX chain for GPU backends, reusing @p out's storage when possible.
 int vgfx3d_postfx_get_chain(void *postfx, vgfx3d_postfx_chain_t *out);
-/// @brief Non-zero if the chain has effects (SSAO/DoF/motion blur) needing scene depth/motion buffers.
+/// @brief Non-zero if the chain has effects (SSAO/DoF/motion blur) needing scene depth/motion
+/// buffers.
 int vgfx3d_postfx_requires_gpu_scene_buffers(void *postfx);
 /// @brief Deep-copy one exported PostFX chain into another (grows @p dst as needed).
 int vgfx3d_postfx_chain_copy(vgfx3d_postfx_chain_t *dst, const vgfx3d_postfx_chain_t *src);

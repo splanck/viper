@@ -15,9 +15,9 @@
 #define _GNU_SOURCE 1
 #endif
 
+#include "rt_http2.h"
 #include "rt_network_http_internal.h"
 #include "rt_network_internal.h"
-#include "rt_http2.h"
 #include "rt_tls.h"
 
 #include "rt_box.h"
@@ -411,8 +411,9 @@ void *rt_http_conn_pool_new(int64_t max_size) {
     if (!pool)
         rt_trap("HTTP: connection pool allocation failed");
     memset(pool, 0, sizeof(*pool));
-    pool->max_size = (int)(max_size > 0 && max_size < HTTP_CONN_POOL_MAX_ENTRIES ? max_size
-                                                                                  : HTTP_CONN_POOL_MAX_ENTRIES);
+    pool->max_size =
+        (int)(max_size > 0 && max_size < HTTP_CONN_POOL_MAX_ENTRIES ? max_size
+                                                                    : HTTP_CONN_POOL_MAX_ENTRIES);
     for (int i = 0; i < HTTP_CONN_POOL_MAX_ENTRIES; i++) {
         pool->entries[i].conn.socket_fd = INVALID_SOCK;
         pool->entries[i].conn.pool_slot = -1;
@@ -446,12 +447,8 @@ static void http_conn_pool_evict_idle_locked(http_conn_pool_t *pool, time_t now)
     http_conn_pool_trim_locked(pool);
 }
 
-static int http_conn_pool_acquire(void *obj,
-                                  const char *host,
-                                  int port,
-                                  int use_tls,
-                                  int tls_verify,
-                                  http_conn_t *out_conn) {
+static int http_conn_pool_acquire(
+    void *obj, const char *host, int port, int use_tls, int tls_verify, http_conn_t *out_conn) {
     if (!obj || !host || !out_conn)
         return 0;
 
@@ -619,9 +616,8 @@ static int http_request_wants_pool(const rt_http_req_t *req) {
 }
 
 static int http_method_retryable_on_stale_reuse(const char *method) {
-    return method &&
-           (strcmp(method, "GET") == 0 || strcmp(method, "HEAD") == 0 ||
-            strcmp(method, "OPTIONS") == 0 || strcmp(method, "DELETE") == 0);
+    return method && (strcmp(method, "GET") == 0 || strcmp(method, "HEAD") == 0 ||
+                      strcmp(method, "OPTIONS") == 0 || strcmp(method, "DELETE") == 0);
 }
 
 static int http_open_connection(rt_http_req_t *req, http_conn_t *conn, int *err_out) {
@@ -645,13 +641,12 @@ static int http_open_connection(rt_http_req_t *req, http_conn_t *conn, int *err_
                        conn->pool_key,
                        sizeof(conn->pool_key));
 
-    if (http_request_wants_pool(req) &&
-        http_conn_pool_acquire(req->connection_pool,
-                               req->url.host,
-                               req->url.port,
-                               req->url.use_tls,
-                               conn->tls_verify,
-                               conn)) {
+    if (http_request_wants_pool(req) && http_conn_pool_acquire(req->connection_pool,
+                                                               req->url.host,
+                                                               req->url.port,
+                                                               req->url.use_tls,
+                                                               conn->tls_verify,
+                                                               conn)) {
         if (req->timeout_ms > 0 && conn->socket_fd != INVALID_SOCK) {
             set_socket_timeout(conn->socket_fd, req->timeout_ms, true);
             set_socket_timeout(conn->socket_fd, req->timeout_ms, false);
@@ -1134,8 +1129,7 @@ static char *build_absolute_url(const parsed_url_t *url) {
 int8_t rt_http_header_is_sensitive_for_cross_origin_redirect(const char *name) {
     if (!name)
         return 0;
-    return strcasecmp(name, "Authorization") == 0 ||
-           strcasecmp(name, "Proxy-Authorization") == 0 ||
+    return strcasecmp(name, "Authorization") == 0 || strcasecmp(name, "Proxy-Authorization") == 0 ||
            strcasecmp(name, "Cookie") == 0 || strcasecmp(name, "Cookie2") == 0 ||
            strcasecmp(name, "X-API-Key") == 0 || strcasecmp(name, "Api-Key") == 0 ||
            strcasecmp(name, "ApiKey") == 0 || strcasecmp(name, "X-Auth-Token") == 0 ||
@@ -1198,11 +1192,7 @@ rt_string rt_http_resolve_redirect_url(rt_string current_url, rt_string location
             return rt_string_from_bytes(location_cstr, strlen(location_cstr));
         }
 
-        snprintf(absolute,
-                 out_len + 1,
-                 "%s:%s",
-                 scheme_cstr ? scheme_cstr : "http",
-                 location_cstr);
+        snprintf(absolute, out_len + 1, "%s:%s", scheme_cstr ? scheme_cstr : "http", location_cstr);
         full = rt_string_from_bytes(absolute, strlen(absolute));
         free(absolute);
         rt_string_unref(scheme);
@@ -1367,8 +1357,7 @@ int8_t rt_http_header_value_has_token(const char *value, const char *token) {
         while (*value && *value != ',' && *value != ';')
             value++;
         segment_end = value;
-        while (segment_end > segment_start &&
-               (segment_end[-1] == ' ' || segment_end[-1] == '\t')) {
+        while (segment_end > segment_start && (segment_end[-1] == ' ' || segment_end[-1] == '\t')) {
             segment_end--;
         }
         segment_len = (size_t)(segment_end - segment_start);
@@ -1409,8 +1398,7 @@ static int parse_transfer_encoding_supported(const char *value, int *chunked_out
             token_end--;
         if (token_end == token_start)
             return 0;
-        if ((size_t)(token_end - token_start) != 7 ||
-            strncasecmp(token_start, "chunked", 7) != 0) {
+        if ((size_t)(token_end - token_start) != 7 || strncasecmp(token_start, "chunked", 7) != 0) {
             return 0;
         }
         if (saw_chunked)
@@ -1519,8 +1507,10 @@ static void set_content_length_header(void *headers_map, size_t body_len) {
 }
 
 /// @brief Decode a gzip response body in-place when the response advertises Content-Encoding:gzip.
-static int maybe_decode_gzip_body(
-    const rt_http_req_t *req, void *headers_map, uint8_t **body_io, size_t *body_len_io) {
+static int maybe_decode_gzip_body(const rt_http_req_t *req,
+                                  void *headers_map,
+                                  uint8_t **body_io,
+                                  size_t *body_len_io) {
     uint8_t *body = body_io ? *body_io : NULL;
     size_t body_len = body_len_io ? *body_len_io : 0;
     rt_string content_encoding;
@@ -1652,8 +1642,8 @@ static char *build_request(rt_http_req_t *req) {
         SNPRINTF_OR_FAIL("%s", content_len_header);
 
     if (add_default_connection)
-        SNPRINTF_OR_FAIL("%s", want_keep_alive ? "Connection: keep-alive\r\n"
-                                               : "Connection: close\r\n");
+        SNPRINTF_OR_FAIL("%s",
+                         want_keep_alive ? "Connection: keep-alive\r\n" : "Connection: close\r\n");
     if (req->accept_gzip && !has_header(req, "Accept-Encoding"))
         SNPRINTF_OR_FAIL("%s", "Accept-Encoding: gzip\r\n");
 
@@ -1756,8 +1746,7 @@ static char *read_line_conn(http_conn_t *conn) {
 
 /// @brief Parse HTTP response status line.
 /// @return Status code, or -1 on error.
-static int parse_status_line(
-    const char *line, int *http_minor_out, char **status_text_out) {
+static int parse_status_line(const char *line, int *http_minor_out, char **status_text_out) {
     // Format: HTTP/1.x STATUS_CODE STATUS_TEXT
     if (strncmp(line, "HTTP/1.", 7) != 0)
         return -1;
@@ -2522,8 +2511,9 @@ static rt_http_res_t *http_make_response_obj(
     return res;
 }
 
-static rt_http_res_t *do_http2_request_opened(
-    rt_http_req_t *req, http_conn_t *conn, int redirects_remaining) {
+static rt_http_res_t *do_http2_request_opened(rt_http_req_t *req,
+                                              http_conn_t *conn,
+                                              int redirects_remaining) {
     rt_http2_header_t *request_headers = NULL;
     rt_http2_response_t h2res;
     char *authority = NULL;
@@ -2609,7 +2599,8 @@ static rt_http_res_t *do_http2_request_opened(
             rt_obj_free(headers_map);
         if (cross_origin)
             strip_sensitive_redirect_headers(req);
-        if (status == 303 || ((status == 301 || status == 302) && strcmp(req->method, "POST") == 0)) {
+        if (status == 303 ||
+            ((status == 301 || status == 302) && strcmp(req->method, "POST") == 0)) {
             free(req->method);
             req->method = strdup("GET");
             free(req->body);
@@ -2799,8 +2790,10 @@ open_connection:
         if (cross_origin)
             strip_sensitive_redirect_headers(req);
 
-        // RFC 7231 / browser de-facto behavior: 303 always switches to GET; 301/302 switch POST to GET.
-        if (status == 303 || ((status == 301 || status == 302) && strcmp(req->method, "POST") == 0)) {
+        // RFC 7231 / browser de-facto behavior: 303 always switches to GET; 301/302 switch POST to
+        // GET.
+        if (status == 303 ||
+            ((status == 301 || status == 302) && strcmp(req->method, "POST") == 0)) {
             free(req->method);
             req->method = strdup("GET");
             free(req->body);
@@ -2868,9 +2861,8 @@ open_connection:
     rt_string connection_val = get_header_value(headers_map, "connection");
     int response_closes =
         connection_val && rt_http_header_value_has_token(rt_string_cstr(connection_val), "close");
-    int response_keepalive =
-        connection_val &&
-        rt_http_header_value_has_token(rt_string_cstr(connection_val), "keep-alive");
+    int response_keepalive = connection_val && rt_http_header_value_has_token(
+                                                   rt_string_cstr(connection_val), "keep-alive");
     int has_content_length = content_length_val != NULL;
 
     bool no_body = response_has_no_body(req, status) != 0;
@@ -2964,8 +2956,7 @@ open_connection:
 
     {
         int reusable = http_request_wants_pool(req) &&
-                       (no_body || chunked_transfer || has_content_length) &&
-                       !response_closes &&
+                       (no_body || chunked_transfer || has_content_length) && !response_closes &&
                        (http_minor >= 1 || response_keepalive);
         http_conn_pool_release(&conn, reusable);
     }
@@ -3012,8 +3003,7 @@ static int do_http_download_request(rt_http_req_t *req, int redirects_remaining,
             goto cleanup;
         }
         {
-            if (res->body_len > 0 &&
-                fwrite(res->body, 1, res->body_len, out) != res->body_len) {
+            if (res->body_len > 0 && fwrite(res->body, 1, res->body_len, out) != res->body_len) {
                 if (res && rt_obj_release_check0(res))
                     rt_obj_free(res);
                 goto cleanup;
@@ -3069,7 +3059,8 @@ static int do_http_download_request(rt_http_req_t *req, int redirects_remaining,
         http_conn_close(&conn);
         if (cross_origin)
             strip_sensitive_redirect_headers(req);
-        if (status == 303 || ((status == 301 || status == 302) && strcmp(req->method, "POST") == 0)) {
+        if (status == 303 ||
+            ((status == 301 || status == 302) && strcmp(req->method, "POST") == 0)) {
             free(req->method);
             req->method = strdup("GET");
             free(req->body);

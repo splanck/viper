@@ -37,8 +37,7 @@ constexpr int64_t kErrBounds = 7;
 
 /// @brief True if @p kind is integer-like (I64/I1/PTR) — GPR-eligible.
 [[nodiscard]] bool isIntegerLikeKind(ILValue::Kind kind) noexcept {
-    return kind == ILValue::Kind::I64 || kind == ILValue::Kind::I1 ||
-           kind == ILValue::Kind::PTR;
+    return kind == ILValue::Kind::I64 || kind == ILValue::Kind::I1 || kind == ILValue::Kind::PTR;
 }
 
 /// @brief Extract the integer value of an immediate ILValue.
@@ -72,7 +71,8 @@ void emitBoundsTrap(MIRBuilder &builder) {
     plan.args.push_back(
         CallArg{.cls = CallArgClass::GPR, .vreg = 0, .isImm = true, .imm = kErrBounds});
     const uint32_t callPlanId = builder.recordCallPlan(std::move(plan));
-    builder.append(makePlannedCall(makeLabelOperand(std::string{"rt_trap_raise_error"}), callPlanId));
+    builder.append(
+        makePlannedCall(makeLabelOperand(std::string{"rt_trap_raise_error"}), callPlanId));
     builder.append(MInstr::make(MOpcode::UD2));
 }
 
@@ -106,8 +106,8 @@ Operand emitSignExtendedToWidth(MIRBuilder &builder,
 
 /// @brief One arm of a switch statement during lowering.
 struct SwitchCase {
-    int64_t value{0};    ///< Constant value matched by this case.
-    Operand label{};     ///< Successor label when @c value matches the scrutinee.
+    int64_t value{0}; ///< Constant value matched by this case.
+    Operand label{};  ///< Successor label when @c value matches the scrutinee.
 };
 
 /// @brief Recursively emit a balanced compare-tree for a sorted case list.
@@ -139,22 +139,21 @@ void emitSwitchTree(const std::vector<SwitchCase> &cases,
     const SwitchCase &pivot = cases[mid];
     builder.append(
         MInstr::make(MOpcode::CMPri, std::vector<Operand>{scrutinee, makeImmOperand(pivot.value)}));
-    builder.append(MInstr::make(MOpcode::JCC, std::vector<Operand>{makeImmOperand(0), pivot.label}));
+    builder.append(
+        MInstr::make(MOpcode::JCC, std::vector<Operand>{makeImmOperand(0), pivot.label}));
 
     const bool hasLeft = begin < mid;
     const bool hasRight = mid + 1 < end;
     const uint32_t labelSeed = builder.lower().nextLocalLabelId();
-    const Operand leftLabel =
-        makeLabelOperand(".Lswitch_left_" + std::to_string(labelSeed));
-    const Operand rightLabel =
-        makeLabelOperand(".Lswitch_right_" + std::to_string(labelSeed));
+    const Operand leftLabel = makeLabelOperand(".Lswitch_left_" + std::to_string(labelSeed));
+    const Operand rightLabel = makeLabelOperand(".Lswitch_right_" + std::to_string(labelSeed));
 
     if (hasLeft) {
         builder.append(
             MInstr::make(MOpcode::JCC, std::vector<Operand>{makeImmOperand(2), leftLabel}));
     }
-    builder.append(MInstr::make(
-        MOpcode::JMP, std::vector<Operand>{hasRight ? rightLabel : defaultLabel}));
+    builder.append(
+        MInstr::make(MOpcode::JMP, std::vector<Operand>{hasRight ? rightLabel : defaultLabel}));
 
     if (hasLeft) {
         builder.append(MInstr::make(MOpcode::LABEL, std::vector<Operand>{leftLabel}));
@@ -284,8 +283,8 @@ void emitIdxChk(const ILInstr &instr, MIRBuilder &builder) {
         return;
     }
 
-    if (const auto *imm = std::get_if<OpImm>(&lower); imm && fitsImm32(imm->val) &&
-                                                 imm->val != std::numeric_limits<int64_t>::min()) {
+    if (const auto *imm = std::get_if<OpImm>(&lower);
+        imm && fitsImm32(imm->val) && imm->val != std::numeric_limits<int64_t>::min()) {
         builder.append(
             MInstr::make(MOpcode::ADDri, std::vector<Operand>{dest, makeImmOperand(-imm->val)}));
         return;
@@ -345,8 +344,8 @@ void emitSwitchI32(const ILInstr &instr, MIRBuilder &builder) {
         for (const auto &caseEntry : cases) {
             builder.append(MInstr::make(
                 MOpcode::CMPri, std::vector<Operand>{scrutinee, makeImmOperand(caseEntry.value)}));
-            builder.append(
-                MInstr::make(MOpcode::JCC, std::vector<Operand>{makeImmOperand(0), caseEntry.label}));
+            builder.append(MInstr::make(MOpcode::JCC,
+                                        std::vector<Operand>{makeImmOperand(0), caseEntry.label}));
         }
         builder.append(MInstr::make(MOpcode::JMP, std::vector<Operand>{defLabel}));
         return;

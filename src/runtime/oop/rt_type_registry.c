@@ -831,8 +831,12 @@ const rt_class_info *rt_get_class_info_from_vptr(void **vptr) {
 /// @param qname        Qualified class name (borrowed).
 /// @param vslot_count  Number of entries in the vtable.
 /// @param base_type_id Base class id or -1 when none.
-static void rt_register_class_with_base_impl(
-    int type_id, void **vtable, const char *qname, int vslot_count, int base_type_id, int owned_qname) {
+static void rt_register_class_with_base_impl(int type_id,
+                                             void **vtable,
+                                             const char *qname,
+                                             int vslot_count,
+                                             int base_type_id,
+                                             int owned_qname) {
     if (!vtable) {
         if (owned_qname && qname)
             tr_free_owned_cstr(qname);
@@ -956,8 +960,7 @@ void rt_register_class_direct_rs(int type_id, void **vtable, rt_string qname, in
 void rt_register_class_with_base_rs(
     int type_id, void **vtable, rt_string qname, int64_t vslot_count, int64_t base_type_id) {
     // strdup the name to avoid dangling pointer if the rt_string is freed
-    if (vslot_count < 0 || vslot_count > INT_MAX || base_type_id < -1 ||
-        base_type_id > INT_MAX) {
+    if (vslot_count < 0 || vslot_count > INT_MAX || base_type_id < -1 || base_type_id > INT_MAX) {
         rt_trap("rt_type_registry: class metadata out of range");
         return;
     }

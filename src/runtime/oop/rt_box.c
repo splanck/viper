@@ -201,7 +201,7 @@ static int value_type_release_layout_slots(void *obj,
         return 0;
 
     int trapped = 0;
-    value_type_field * volatile cursor = layout->fields;
+    value_type_field *volatile cursor = layout->fields;
     jmp_buf recovery;
     rt_trap_set_recovery(&recovery);
 
@@ -310,7 +310,7 @@ static void value_type_traverse(void *obj, rt_gc_visitor_t visitor, void *ctx) {
         rt_trap("rt_box_value_type: traversal allocation too large");
         return;
     }
-    value_type_field_desc * volatile fields =
+    value_type_field_desc *volatile fields =
         (value_type_field_desc *)calloc((size_t)count, sizeof(value_type_field_desc));
     if (!fields) {
         value_type_unlock();
@@ -328,7 +328,7 @@ static void value_type_traverse(void *obj, rt_gc_visitor_t visitor, void *ctx) {
     }
     value_type_unlock();
 
-    void ** volatile children = (void **)calloc((size_t)copied, sizeof(void *));
+    void **volatile children = (void **)calloc((size_t)copied, sizeof(void *));
     if (!children) {
         free((void *)fields);
         rt_trap("rt_box_value_type: traversal allocation failed");
@@ -398,9 +398,8 @@ static rt_box_t *box_maybe(void *box) {
     rt_heap_hdr_t *hdr = NULL;
     if (!box || !rt_heap_try_get_header(box, &hdr))
         return NULL;
-    if (!hdr || (rt_heap_kind_t)hdr->kind != RT_HEAP_OBJECT ||
-        hdr->class_id != RT_BOX_CLASS_ID || hdr->elem_kind != RT_ELEM_BOX ||
-        hdr->cap < sizeof(rt_box_t))
+    if (!hdr || (rt_heap_kind_t)hdr->kind != RT_HEAP_OBJECT || hdr->class_id != RT_BOX_CLASS_ID ||
+        hdr->elem_kind != RT_ELEM_BOX || hdr->cap < sizeof(rt_box_t))
         return NULL;
     rt_box_t *b = (rt_box_t *)box;
     return box_tag_is_valid(b->tag) ? b : NULL;
@@ -759,13 +758,13 @@ void rt_box_value_type_add_field(void *obj, int64_t offset, int64_t kind, int8_t
         return;
     }
     rt_heap_hdr_t *hdr = NULL;
-    if (!rt_heap_try_get_header(obj, &hdr) || !hdr ||
-        (rt_heap_kind_t)hdr->kind != RT_HEAP_OBJECT || hdr->class_id != RT_VALUE_TYPE_CLASS_ID) {
+    if (!rt_heap_try_get_header(obj, &hdr) || !hdr || (rt_heap_kind_t)hdr->kind != RT_HEAP_OBJECT ||
+        hdr->class_id != RT_VALUE_TYPE_CLASS_ID) {
         rt_trap("rt_box_value_type_add_field: invalid value type object");
         return;
     }
-    if (offset < 0 || (uint64_t)offset > (uint64_t)SIZE_MAX ||
-        (size_t)offset > hdr->cap || hdr->cap - (size_t)offset < sizeof(void *)) {
+    if (offset < 0 || (uint64_t)offset > (uint64_t)SIZE_MAX || (size_t)offset > hdr->cap ||
+        hdr->cap - (size_t)offset < sizeof(void *)) {
         rt_trap("rt_box_value_type_add_field: field offset out of range");
         return;
     }
@@ -782,7 +781,8 @@ void rt_box_value_type_add_field(void *obj, int64_t offset, int64_t kind, int8_t
     value_type_lock();
     value_type_layout *existing_layout = value_type_find_locked(obj);
     if (existing_layout) {
-        for (value_type_field *existing = existing_layout->fields; existing; existing = existing->next) {
+        for (value_type_field *existing = existing_layout->fields; existing;
+             existing = existing->next) {
             if (existing->offset == field_offset) {
                 int same_kind = existing->kind == kind;
                 value_type_unlock();
@@ -928,8 +928,7 @@ size_t rt_box_hash(void *elem) {
             case RT_BOX_I64:
             case RT_BOX_I1:
                 return (size_t)rt_fnv1a(&box->data.i64_val, sizeof(int64_t));
-            case RT_BOX_F64:
-            {
+            case RT_BOX_F64: {
                 double value = box->data.f64_val;
                 if (isnan(value)) {
                     uint64_t canonical_nan = UINT64_C(0x7ff8000000000000);

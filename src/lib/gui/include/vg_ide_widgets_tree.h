@@ -37,9 +37,9 @@ typedef struct vg_contextmenu {
     vg_widget_t base;
 
     // Menu items (reuses vg_menu_item_t structure)
-    vg_menu_item_t **items; ///< Array of items
-    size_t item_count;      ///< Number of items
-    size_t item_capacity;   ///< Allocated capacity
+    vg_menu_item_t **items;        ///< Array of items
+    size_t item_count;             ///< Number of items
+    size_t item_capacity;          ///< Allocated capacity
     vg_menu_item_t *retired_items; ///< Removed items kept until menu destroy for stale handles
 
     // Positioning
@@ -71,9 +71,9 @@ typedef struct vg_contextmenu {
     uint32_t separator_color; ///< Separator color
 
     // Callbacks
-    void *user_data;        ///< Legacy selection user data.
-    void *on_select_data;   ///< User data for selection callback.
-    void *on_dismiss_data;  ///< User data for dismiss callback.
+    void *user_data;       ///< Legacy selection user data.
+    void *on_select_data;  ///< User data for selection callback.
+    void *on_dismiss_data; ///< User data for dismiss callback.
     void (*on_select)(struct vg_contextmenu *menu,
                       vg_menu_item_t *item,
                       void *user_data);                               ///< Selection callback
@@ -198,8 +198,8 @@ void vg_contextmenu_set_font(vg_contextmenu_t *menu, vg_font_t *font, float size
 
 /// @brief Tree node structure
 typedef struct vg_tree_node {
-    uint64_t magic;               ///< Live-node sentinel for stale handle detection
-    struct vg_treeview *owner;    ///< Owning tree while node is live
+    uint64_t magic;              ///< Live-node sentinel for stale handle detection
+    struct vg_treeview *owner;   ///< Owning tree while node is live
     const char *text;            ///< Node text (owned)
     size_t text_len;             ///< Node text length in bytes
     void *user_data;             ///< User data associated with node
@@ -259,14 +259,14 @@ typedef void (*vg_tree_load_children_callback_t)(struct vg_treeview *tree,
 typedef struct vg_treeview {
     vg_widget_t base;
 
-    vg_tree_node_t *root;          ///< Root node (hidden, children are top-level)
-    vg_tree_node_t *selected;      ///< Currently selected node
-    vg_tree_node_t *prev_selected; ///< Previous selection (for change detection)
-    vg_tree_node_t *retired_nodes; ///< Detached stale node subtrees freed on tree destroy
-    uint64_t selection_revision;   ///< Incremented whenever logical selection changes
+    vg_tree_node_t *root;                 ///< Root node (hidden, children are top-level)
+    vg_tree_node_t *selected;             ///< Currently selected node
+    vg_tree_node_t *prev_selected;        ///< Previous selection (for change detection)
+    vg_tree_node_t *retired_nodes;        ///< Detached stale node subtrees freed on tree destroy
+    uint64_t selection_revision;          ///< Incremented whenever logical selection changes
     uint64_t reported_selection_revision; ///< Last selection revision reported to runtime callers
-    vg_font_t *font;               ///< Font for rendering
-    float font_size;               ///< Font size
+    vg_font_t *font;                      ///< Font for rendering
+    float font_size;                      ///< Font size
 
     // Appearance
     float row_height;     ///< Height of each row
@@ -478,21 +478,21 @@ typedef struct vg_accelerator {
 
 /// @brief Menu item structure (forward declared in vg_ide_widgets_common.h)
 struct vg_menu_item {
-    uint64_t magic;              ///< Live-item sentinel for stale handle detection
-    char *text;                  ///< Item text (owned, heap-allocated)
-    char *shortcut;              ///< Keyboard shortcut text (owned, heap-allocated)
-    vg_accelerator_t accel;      ///< Parsed accelerator
-    void (*action)(void *data);  ///< Action callback
-    void *action_data;           ///< Action data
-    bool enabled;                ///< Is item enabled
-    bool checked;                ///< Is item checked (for toggles)
-    bool checkable;              ///< Can item display/toggle checked state
-    bool separator;              ///< Is this a separator
-    bool was_clicked;            ///< Set true when item is clicked (cleared on read)
-    vg_icon_t icon;              ///< Optional icon (VG_ICON_NONE = no icon)
-    struct vg_menu *parent_menu; ///< Owning menu for change propagation.
+    uint64_t magic;                           ///< Live-item sentinel for stale handle detection
+    char *text;                               ///< Item text (owned, heap-allocated)
+    char *shortcut;                           ///< Keyboard shortcut text (owned, heap-allocated)
+    vg_accelerator_t accel;                   ///< Parsed accelerator
+    void (*action)(void *data);               ///< Action callback
+    void *action_data;                        ///< Action data
+    bool enabled;                             ///< Is item enabled
+    bool checked;                             ///< Is item checked (for toggles)
+    bool checkable;                           ///< Can item display/toggle checked state
+    bool separator;                           ///< Is this a separator
+    bool was_clicked;                         ///< Set true when item is clicked (cleared on read)
+    vg_icon_t icon;                           ///< Optional icon (VG_ICON_NONE = no icon)
+    struct vg_menu *parent_menu;              ///< Owning menu for change propagation.
     struct vg_contextmenu *owner_contextmenu; ///< Owning context menu for change propagation.
-    struct vg_menu *submenu;     ///< Submenu (if any)
+    struct vg_menu *submenu;                  ///< Submenu (if any)
     struct vg_menu_item *next;
     struct vg_menu_item *prev;
     struct vg_menu_item *retired_next; ///< Retired-item list link
@@ -500,7 +500,7 @@ struct vg_menu_item {
 
 /// @brief Menu structure (forward declared in vg_ide_widgets_common.h)
 struct vg_menu {
-    uint64_t magic;                    ///< Live-menu sentinel for stale handle detection
+    uint64_t magic;                   ///< Live-menu sentinel for stale handle detection
     char *title;                      ///< Menu title (owned, heap-allocated)
     struct vg_menubar *owner_menubar; ///< Owning menubar for change propagation.
     vg_menu_item_t *first_item;
@@ -510,8 +510,8 @@ struct vg_menu {
     struct vg_menu *next;
     struct vg_menu *prev;
     struct vg_menu *retired_next; ///< Retired-menu list link
-    bool open;    ///< Is menu currently open
-    bool enabled; ///< Is menu enabled (default true)
+    bool open;                    ///< Is menu currently open
+    bool enabled;                 ///< Is menu enabled (default true)
 };
 
 /// @brief Accelerator table entry

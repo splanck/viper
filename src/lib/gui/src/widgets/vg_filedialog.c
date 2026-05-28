@@ -957,7 +957,8 @@ static void confirm_selection(vg_filedialog_t *dialog) {
         const char *filename = dialog->default_filename;
         if ((!filename || !filename[0]) && dialog->selection_count > 0) {
             int idx = dialog->selected_indices[0];
-            if (idx >= 0 && (size_t)idx < dialog->entry_count && !dialog->entries[idx]->is_directory)
+            if (idx >= 0 && (size_t)idx < dialog->entry_count &&
+                !dialog->entries[idx]->is_directory)
                 filename = dialog->entries[idx]->name;
         }
 
@@ -1009,9 +1010,8 @@ static void confirm_selection(vg_filedialog_t *dialog) {
         dialog->selected_file_count = 1;
     } else if (dialog->selection_count > 0) {
         int single_idx = dialog->selected_indices[0];
-        if (dialog->mode == VG_FILEDIALOG_OPEN && dialog->selection_count == 1 &&
-            single_idx >= 0 && (size_t)single_idx < dialog->entry_count &&
-            dialog->entries[single_idx]->is_directory) {
+        if (dialog->mode == VG_FILEDIALOG_OPEN && dialog->selection_count == 1 && single_idx >= 0 &&
+            (size_t)single_idx < dialog->entry_count && dialog->entries[single_idx]->is_directory) {
             load_directory(dialog, dialog->entries[single_idx]->full_path);
             dialog->base.base.needs_paint = true;
             return;
@@ -1148,7 +1148,8 @@ vg_filedialog_t *vg_filedialog_create(vg_filedialog_mode_t mode) {
     return dialog;
 }
 
-/// @brief VTable destroy: releases input capture and modal root if held, then frees entries, selections, filters, bookmarks, string fields, and result arrays.
+/// @brief VTable destroy: releases input capture and modal root if held, then frees entries,
+/// selections, filters, bookmarks, string fields, and result arrays.
 static void filedialog_destroy(vg_widget_t *widget) {
     vg_filedialog_t *dialog = (vg_filedialog_t *)widget;
     if (vg_widget_get_input_capture() == widget)
@@ -1195,7 +1196,8 @@ static void filedialog_destroy(vg_widget_t *widget) {
     free((void *)dialog->base.message);
 }
 
-/// @brief VTable measure: sizes the dialog to its configured minimum width and height (full measure is handled by the dialog's fixed-size layout constants).
+/// @brief VTable measure: sizes the dialog to its configured minimum width and height (full measure
+/// is handled by the dialog's fixed-size layout constants).
 static void filedialog_measure(vg_widget_t *widget, float available_width, float available_height) {
     vg_filedialog_t *dialog = (vg_filedialog_t *)widget;
     (void)available_width;
@@ -1205,7 +1207,8 @@ static void filedialog_measure(vg_widget_t *widget, float available_width, float
     widget->measured_height = dialog->base.min_height;
 }
 
-/// @brief VTable paint: renders the modal backdrop, title bar, sidebar bookmarks, file entry grid, filename input row, filter selector, and action buttons.
+/// @brief VTable paint: renders the modal backdrop, title bar, sidebar bookmarks, file entry grid,
+/// filename input row, filter selector, and action buttons.
 static void filedialog_paint(vg_widget_t *widget, void *canvas) {
     vg_filedialog_t *dialog = (vg_filedialog_t *)widget;
     vg_theme_t *theme = vg_theme_get_current();
@@ -1255,8 +1258,12 @@ static void filedialog_paint(vg_widget_t *widget, void *canvas) {
     vgfx_rect(win, (int32_t)x, (int32_t)y, (int32_t)w, (int32_t)h, theme->colors.border_primary);
 
     // Title bar
-    vgfx_fill_rect(
-        win, (int32_t)x, (int32_t)y, (int32_t)w, (int32_t)title_height, dialog->base.title_bg_color);
+    vgfx_fill_rect(win,
+                   (int32_t)x,
+                   (int32_t)y,
+                   (int32_t)w,
+                   (int32_t)title_height,
+                   dialog->base.title_bg_color);
     vgfx_fill_rect(win,
                    (int32_t)x,
                    (int32_t)(y + title_height - 1.0f),
@@ -1312,8 +1319,8 @@ static void filedialog_paint(vg_widget_t *widget, void *canvas) {
         float path_text_x = 0.0f;
 
         vg_font_get_metrics(dialog->base.font, dialog->base.font_size, &path_metrics);
-        path_baseline = y + title_height + (path_height - dialog->base.font_size) * 0.5f +
-                        path_metrics.ascent;
+        path_baseline =
+            y + title_height + (path_height - dialog->base.font_size) * 0.5f + path_metrics.ascent;
         path_text_x = filedialog_text_origin(dialog->base.font,
                                              dialog->base.font_size,
                                              dialog->current_path,
@@ -1423,7 +1430,8 @@ static void filedialog_paint(vg_widget_t *widget, void *canvas) {
             float track_h = file_view_h;
             float content_h = (float)dialog->entry_count * FILEDIALOG_ROW_HEIGHT;
             float thumb_h = track_h * (file_view_h / content_h);
-            float thumb_y = list_y + (track_h - thumb_h) * (dialog->file_scroll_y / max_file_scroll);
+            float thumb_y =
+                list_y + (track_h - thumb_h) * (dialog->file_scroll_y / max_file_scroll);
             if (thumb_h < 16.0f)
                 thumb_h = 16.0f;
             vgfx_fill_rect(win,
@@ -1510,9 +1518,9 @@ static void filedialog_paint(vg_widget_t *widget, void *canvas) {
             float clip_h = FILEDIALOG_FILENAME_HEIGHT - 4.0f;
             float baseline_y = 0.0f;
             float draw_x = field_x + 8.0f;
-            const char *name_text =
-                (dialog->default_filename && dialog->default_filename[0]) ? dialog->default_filename
-                                                                          : "File name";
+            const char *name_text = (dialog->default_filename && dialog->default_filename[0])
+                                        ? dialog->default_filename
+                                        : "File name";
             uint32_t name_color = (dialog->default_filename && dialog->default_filename[0])
                                       ? theme->colors.fg_primary
                                       : theme->colors.fg_placeholder;
@@ -1581,20 +1589,18 @@ static void filedialog_paint(vg_widget_t *widget, void *canvas) {
         const char *ok_label = filedialog_accept_label(dialog);
 
         // Cancel button
-        vgfx_fill_rect(
-            win,
-            (int32_t)cancel_x,
-            (int32_t)button_y,
-            (int32_t)FILEDIALOG_BUTTON_WIDTH,
-            (int32_t)FILEDIALOG_BUTTON_HEIGHT,
-            btn_bg);
-        vgfx_rect(
-            win,
-            (int32_t)cancel_x,
-            (int32_t)button_y,
-            (int32_t)FILEDIALOG_BUTTON_WIDTH,
-            (int32_t)FILEDIALOG_BUTTON_HEIGHT,
-            btn_border);
+        vgfx_fill_rect(win,
+                       (int32_t)cancel_x,
+                       (int32_t)button_y,
+                       (int32_t)FILEDIALOG_BUTTON_WIDTH,
+                       (int32_t)FILEDIALOG_BUTTON_HEIGHT,
+                       btn_bg);
+        vgfx_rect(win,
+                  (int32_t)cancel_x,
+                  (int32_t)button_y,
+                  (int32_t)FILEDIALOG_BUTTON_WIDTH,
+                  (int32_t)FILEDIALOG_BUTTON_HEIGHT,
+                  btn_border);
         vg_font_draw_text(canvas,
                           dialog->base.font,
                           dialog->base.font_size,
@@ -1626,7 +1632,8 @@ static void filedialog_paint(vg_widget_t *widget, void *canvas) {
     }
 }
 
-/// @brief VTable handle_event: routes mouse, key, and scroll events to title-drag, close-button, sidebar, entry-list navigation, filename editing, and OK/Cancel handling.
+/// @brief VTable handle_event: routes mouse, key, and scroll events to title-drag, close-button,
+/// sidebar, entry-list navigation, filename editing, and OK/Cancel handling.
 static bool filedialog_handle_event(vg_widget_t *widget, vg_event_t *event) {
     vg_filedialog_t *dialog = (vg_filedialog_t *)widget;
 
@@ -1684,7 +1691,8 @@ static bool filedialog_handle_event(vg_widget_t *widget, vg_event_t *event) {
             // Title bar close button
             if (dialog->base.show_close_button &&
                 mx >= widget->width - FILEDIALOG_CLOSE_BUTTON_SIZE - 8.0f &&
-                mx < widget->width - 8.0f && my >= (title_height - FILEDIALOG_CLOSE_BUTTON_SIZE) / 2.0f &&
+                mx < widget->width - 8.0f &&
+                my >= (title_height - FILEDIALOG_CLOSE_BUTTON_SIZE) / 2.0f &&
                 my < (title_height + FILEDIALOG_CLOSE_BUTTON_SIZE) / 2.0f) {
                 vg_dialog_close(&dialog->base, VG_DIALOG_RESULT_CANCEL);
                 if (dialog->on_cancel)
@@ -1724,7 +1732,8 @@ static bool filedialog_handle_event(vg_widget_t *widget, vg_event_t *event) {
                                 FILEDIALOG_BUTTON_MARGIN * 3.0f - 20.0f;
                 if (field_w < 120.0f)
                     field_w = 120.0f;
-                dialog->filename_active = mx >= field_x && mx < field_x + field_w && my >= field_y &&
+                dialog->filename_active = mx >= field_x && mx < field_x + field_w &&
+                                          my >= field_y &&
                                           my < field_y + FILEDIALOG_FILENAME_HEIGHT;
                 if (dialog->filename_active) {
                     filedialog_sync_filename_cursor(dialog);
@@ -1739,12 +1748,16 @@ static bool filedialog_handle_event(vg_widget_t *widget, vg_event_t *event) {
 
             // Check if clicking in file list
             if (mx > sidebar_width && my > list_y && my < list_y + list_height) {
-                size_t clicked_index = filedialog_index_from_scroll(
-                    my - list_y - 5.0f, dialog->file_scroll_y, FILEDIALOG_ROW_HEIGHT, dialog->entry_count);
+                size_t clicked_index = filedialog_index_from_scroll(my - list_y - 5.0f,
+                                                                    dialog->file_scroll_y,
+                                                                    FILEDIALOG_ROW_HEIGHT,
+                                                                    dialog->entry_count);
                 if (clicked_index < dialog->entry_count) {
                     select_entry(dialog, clicked_index);
-                    if (dialog->mode == VG_FILEDIALOG_SAVE && !dialog->entries[clicked_index]->is_directory)
-                        filedialog_set_default_filename(dialog, dialog->entries[clicked_index]->name);
+                    if (dialog->mode == VG_FILEDIALOG_SAVE &&
+                        !dialog->entries[clicked_index]->is_directory)
+                        filedialog_set_default_filename(dialog,
+                                                        dialog->entries[clicked_index]->name);
                     filedialog_scroll_selection_into_view(dialog, list_height);
                     widget->needs_paint = true;
                     return true;
@@ -1774,8 +1787,10 @@ static bool filedialog_handle_event(vg_widget_t *widget, vg_event_t *event) {
 
             // Check double-click in file list
             if (mx > sidebar_width && my > list_y && my < list_y + list_height) {
-                size_t clicked_index = filedialog_index_from_scroll(
-                    my - list_y - 5.0f, dialog->file_scroll_y, FILEDIALOG_ROW_HEIGHT, dialog->entry_count);
+                size_t clicked_index = filedialog_index_from_scroll(my - list_y - 5.0f,
+                                                                    dialog->file_scroll_y,
+                                                                    FILEDIALOG_ROW_HEIGHT,
+                                                                    dialog->entry_count);
                 if (clicked_index < dialog->entry_count) {
                     vg_file_entry_t *entry = dialog->entries[clicked_index];
                     if (entry->is_directory) {
@@ -1825,16 +1840,14 @@ static bool filedialog_handle_event(vg_widget_t *widget, vg_event_t *event) {
                     return true;
                 }
                 if (event->key.key == VG_KEY_LEFT) {
-                    dialog->filename_cursor_pos =
-                        filedialog_prev_codepoint_boundary(dialog->default_filename,
-                                                           dialog->filename_cursor_pos);
+                    dialog->filename_cursor_pos = filedialog_prev_codepoint_boundary(
+                        dialog->default_filename, dialog->filename_cursor_pos);
                     widget->needs_paint = true;
                     return true;
                 }
                 if (event->key.key == VG_KEY_RIGHT) {
-                    dialog->filename_cursor_pos =
-                        filedialog_next_codepoint_boundary(dialog->default_filename,
-                                                           dialog->filename_cursor_pos);
+                    dialog->filename_cursor_pos = filedialog_next_codepoint_boundary(
+                        dialog->default_filename, dialog->filename_cursor_pos);
                     widget->needs_paint = true;
                     return true;
                 }

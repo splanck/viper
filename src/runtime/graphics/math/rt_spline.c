@@ -383,7 +383,8 @@ static void tangent_catmull_rom(ViperSpline *s, double t, double *ox, double *oy
 //=============================================================================
 
 /// @brief Evaluate the spline at parameter `t` ∈ [0, 1] (clamped). Returns a freshly allocated
-/// Vec2 at that point along the curve. Dispatches to the per-type evaluator (Catmull/Bezier/Linear).
+/// Vec2 at that point along the curve. Dispatches to the per-type evaluator
+/// (Catmull/Bezier/Linear).
 void *rt_spline_eval(void *spline, double t) {
     if (!spline) {
         rt_trap("Spline.Eval: null spline");

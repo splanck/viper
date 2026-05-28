@@ -236,10 +236,12 @@ static void test_boxed_nan_hash_is_canonical() {
     printf("Testing Box.F64 NaN hash canonicalization:\n");
 
     void *nan_a = rt_box_f64(std::numeric_limits<double>::quiet_NaN());
+
     union {
         std::uint64_t bits;
         double value;
     } payload_nan{};
+
     payload_nan.bits = UINT64_C(0x7ff8000000000001);
     void *nan_b = rt_box_f64(payload_nan.value);
 
@@ -318,7 +320,8 @@ static void test_value_type_chains_existing_finalizer() {
     release_object(child);
     release_object(boxed);
     test_result("Existing ValueType finalizer still runs", g_value_type_previous_finalized == 1);
-    test_result("Chained ValueType finalizer releases object field", g_managed_value_child_finalized == 1);
+    test_result("Chained ValueType finalizer releases object field",
+                g_managed_value_child_finalized == 1);
     printf("\n");
 }
 
@@ -332,8 +335,10 @@ static void call_value_type_conflicting_field() {
 }
 
 static void call_value_type_invalid_retain_field() {
-    rt_box_value_type_add_field(
-        g_invalid_field_value, (int64_t)offsetof(managed_value_payload, str), RT_VALUE_FIELD_STR, 1);
+    rt_box_value_type_add_field(g_invalid_field_value,
+                                (int64_t)offsetof(managed_value_payload, str),
+                                RT_VALUE_FIELD_STR,
+                                1);
 }
 
 static void call_value_type_misaligned_field() {
@@ -370,7 +375,8 @@ static void test_value_type_zero_size_and_duplicate_fields() {
     rt_box_value_type_add_field(
         duplicate_retained, (int64_t)offsetof(managed_value_payload, obj), RT_VALUE_FIELD_OBJ, 1);
     release_object(child);
-    test_result("Duplicate same-kind field does not retain twice", g_managed_value_child_finalized == 0);
+    test_result("Duplicate same-kind field does not retain twice",
+                g_managed_value_child_finalized == 0);
     release_object(duplicate_retained);
     test_result("Duplicate same-kind field releases once", g_managed_value_child_finalized == 1);
 

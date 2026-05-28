@@ -48,7 +48,8 @@ void *rt_skeleton3d_get_bone_bind_pose(void *skel, int64_t index);
 /* Animation3D */
 /// @brief Create a named animation clip with the given duration in seconds.
 void *rt_animation3d_new(rt_string name, double duration);
-/// @brief Add a keyframe for one bone at @p time seconds (any of position/rotation/scale may be NULL).
+/// @brief Add a keyframe for one bone at @p time seconds (any of position/rotation/scale may be
+/// NULL).
 void rt_animation3d_add_keyframe(
     void *anim, int64_t bone_index, double time, void *position, void *rotation, void *scale);
 /// @brief Set whether the animation loops automatically when it reaches its duration.

@@ -50,20 +50,20 @@ typedef enum vg_statusbar_zone {
 
 /// @brief StatusBar item structure
 typedef struct vg_statusbar_item {
-    uint64_t magic;               ///< Live-item sentinel for stale handle detection
+    uint64_t magic;                ///< Live-item sentinel for stale handle detection
     vg_statusbar_item_type_t type; ///< Item type
     struct vg_statusbar *owner;    ///< Owning status bar for invalidation
     char *text;                    ///< Item text (owned)
     char *tooltip;                 ///< Tooltip text (owned)
     float min_width;               ///< Minimum width (0 = auto)
     float max_width;               ///< Maximum width (0 = unlimited)
-    uint32_t text_color;            ///< Optional per-item text color.
-    bool has_text_color;            ///< True when text_color overrides the status bar default.
+    uint32_t text_color;           ///< Optional per-item text color.
+    bool has_text_color;           ///< True when text_color overrides the status bar default.
     bool visible;                  ///< Is item visible
     float progress;                ///< Progress value (0-1) for progress items
     void *user_data;               ///< User data
     void (*on_click)(struct vg_statusbar_item *, void *); ///< Click callback for buttons
-    struct vg_statusbar_item *retired_next; ///< Retired-item list link
+    struct vg_statusbar_item *retired_next;               ///< Retired-item list link
 } vg_statusbar_item_t;
 
 /// @brief StatusBar widget structure
@@ -229,7 +229,7 @@ typedef enum vg_toolbar_icon_size {
 
 /// @brief Toolbar item structure
 typedef struct vg_toolbar_item {
-    uint64_t magic;             ///< Live-item sentinel for stale handle detection
+    uint64_t magic;              ///< Live-item sentinel for stale handle detection
     vg_toolbar_item_type_t type; ///< Item type
     struct vg_toolbar *owner;    ///< Owning toolbar for invalidation/popup handling
     char *id;                    ///< Unique identifier
@@ -247,16 +247,16 @@ typedef struct vg_toolbar_item {
     void *user_data;                                           ///< User data
     void (*on_click)(struct vg_toolbar_item *, void *);        ///< Click callback
     void (*on_toggle)(struct vg_toolbar_item *, bool, void *); ///< Toggle callback
-    struct vg_toolbar_item *retired_next; ///< Retired-item list link
+    struct vg_toolbar_item *retired_next;                      ///< Retired-item list link
 } vg_toolbar_item_t;
 
 /// @brief Toolbar widget structure
 typedef struct vg_toolbar {
     vg_widget_t base;
 
-    vg_toolbar_item_t **items; ///< Array of items
-    size_t item_count;         ///< Number of items
-    size_t item_capacity;      ///< Allocated capacity
+    vg_toolbar_item_t **items;        ///< Array of items
+    size_t item_count;                ///< Number of items
+    size_t item_capacity;             ///< Allocated capacity
     vg_toolbar_item_t *retired_items; ///< Removed items kept until toolbar destroy
 
     // Configuration
@@ -279,10 +279,10 @@ typedef struct vg_toolbar {
     uint32_t disabled_color; ///< Disabled text color
 
     // State
-    vg_toolbar_item_t *hovered_item; ///< Currently hovered item
-    vg_toolbar_item_t *pressed_item; ///< Currently pressed item
-    int overflow_start_index;        ///< First item in overflow (-1 if none)
-    bool overflow_button_hovered;    ///< Hover state for overflow button
+    vg_toolbar_item_t *hovered_item;  ///< Currently hovered item
+    vg_toolbar_item_t *pressed_item;  ///< Currently pressed item
+    int overflow_start_index;         ///< First item in overflow (-1 if none)
+    bool overflow_button_hovered;     ///< Hover state for overflow button
     vg_contextmenu_t *overflow_popup; ///< Popup for overflowed items
     bool overflow_popup_dirty;        ///< Rebuild popup contents before next show
     vg_contextmenu_t *dropdown_popup; ///< Popup sourced from a dropdown menu item
@@ -588,9 +588,9 @@ typedef struct vg_commandpalette {
     char *current_query;    ///< Current search query (UTF-8)
 
     // State
-    bool is_visible;    ///< Is palette visible
-    int selected_index; ///< Selected result index
-    int hovered_index;  ///< Hovered result index
+    bool is_visible;         ///< Is palette visible
+    int selected_index;      ///< Selected result index
+    int hovered_index;       ///< Hovered result index
     int first_visible_index; ///< First filtered result currently visible
 
     // Appearance
@@ -726,10 +726,10 @@ typedef struct vg_notification {
     void *action_user_data;
 
     // State
-    float opacity;             ///< Current opacity (for animation)
-    float slide_progress;      ///< Entrance / exit slide interpolation (0..1)
+    float opacity;               ///< Current opacity (for animation)
+    float slide_progress;        ///< Entrance / exit slide interpolation (0..1)
     uint64_t dismiss_started_at; ///< When the dismissal animation began (0 = not dismissing)
-    bool dismissed;            ///< Dismissal requested / in progress
+    bool dismissed;              ///< Dismissal requested / in progress
 } vg_notification_t;
 
 /// @brief Notification manager widget

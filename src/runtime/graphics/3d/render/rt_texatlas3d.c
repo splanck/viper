@@ -24,9 +24,9 @@
 
 #ifdef VIPER_ENABLE_GRAPHICS
 
+#include "rt_texatlas3d.h"
 #include "rt_graphics3d_ids.h"
 #include "rt_pixels_internal.h"
-#include "rt_texatlas3d.h"
 
 #include <stdint.h>
 #include <stdlib.h>
@@ -83,9 +83,8 @@ void *rt_texatlas3d_new(int64_t width, int64_t height) {
         rt_trap("TextureAtlas3D.New: dimensions must be 16-8192");
         return NULL;
     }
-    rt_texatlas3d *a =
-        (rt_texatlas3d *)rt_obj_new_i64(RT_G3D_TEXTUREATLAS3D_CLASS_ID,
-                                        (int64_t)sizeof(rt_texatlas3d));
+    rt_texatlas3d *a = (rt_texatlas3d *)rt_obj_new_i64(RT_G3D_TEXTUREATLAS3D_CLASS_ID,
+                                                       (int64_t)sizeof(rt_texatlas3d));
     if (!a) {
         rt_trap("TextureAtlas3D.New: allocation failed");
         return NULL;
@@ -117,8 +116,7 @@ void *rt_texatlas3d_new(int64_t width, int64_t height) {
 int64_t rt_texatlas3d_add(void *obj, void *pixels) {
     if (!obj || !pixels)
         return -1;
-    rt_texatlas3d *a =
-        (rt_texatlas3d *)rt_g3d_checked_or_null(obj, RT_G3D_TEXTUREATLAS3D_CLASS_ID);
+    rt_texatlas3d *a = (rt_texatlas3d *)rt_g3d_checked_or_null(obj, RT_G3D_TEXTUREATLAS3D_CLASS_ID);
     if (!a)
         return -1;
     if (a->region_count >= ATLAS_MAX_REGIONS)
@@ -171,8 +169,7 @@ int64_t rt_texatlas3d_add(void *obj, void *pixels) {
     a->data[(dy - 1) * a->width + (dx - 1)] = pv->data[0];
     a->data[(dy - 1) * a->width + (dx + pw)] = pv->data[pw - 1];
     a->data[(dy + ph) * a->width + (dx - 1)] = pv->data[(int64_t)(ph - 1) * pv->width];
-    a->data[(dy + ph) * a->width + (dx + pw)] =
-        pv->data[(int64_t)(ph - 1) * pv->width + (pw - 1)];
+    a->data[(dy + ph) * a->width + (dx + pw)] = pv->data[(int64_t)(ph - 1) * pv->width + (pw - 1)];
 
     atlas_region_t *r = &a->regions[a->region_count];
     r->x = dx;
@@ -194,8 +191,7 @@ int64_t rt_texatlas3d_add(void *obj, void *pixels) {
 void *rt_texatlas3d_get_texture(void *obj) {
     if (!obj)
         return NULL;
-    rt_texatlas3d *a =
-        (rt_texatlas3d *)rt_g3d_checked_or_null(obj, RT_G3D_TEXTUREATLAS3D_CLASS_ID);
+    rt_texatlas3d *a = (rt_texatlas3d *)rt_g3d_checked_or_null(obj, RT_G3D_TEXTUREATLAS3D_CLASS_ID);
     if (!a)
         return NULL;
 
@@ -226,8 +222,7 @@ void rt_texatlas3d_get_uv_rect(
     void *obj, int64_t id, double *u0, double *v0, double *u1, double *v1) {
     if (!obj || !u0 || !v0 || !u1 || !v1)
         return;
-    rt_texatlas3d *a =
-        (rt_texatlas3d *)rt_g3d_checked_or_null(obj, RT_G3D_TEXTUREATLAS3D_CLASS_ID);
+    rt_texatlas3d *a = (rt_texatlas3d *)rt_g3d_checked_or_null(obj, RT_G3D_TEXTUREATLAS3D_CLASS_ID);
     if (!a)
         return;
     if (id < 0 || id >= a->region_count) {

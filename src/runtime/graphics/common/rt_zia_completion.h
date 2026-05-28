@@ -45,19 +45,26 @@ rt_string rt_zia_complete(rt_string source, int64_t line, int64_t col);
 /// @param line      1-based line number of the cursor.
 /// @param col       0-based column number of the cursor.
 /// @return Tab-delimited completion items: label\tinsertText\tkindInt\tdetail\n
-rt_string rt_zia_complete_for_file(rt_string source, rt_string file_path, int64_t line, int64_t col);
+rt_string rt_zia_complete_for_file(rt_string source,
+                                   rt_string file_path,
+                                   int64_t line,
+                                   int64_t col);
 
 /// @brief Run Zia completion and return structured completion maps.
 /// @return Viper.Collections.Seq of Viper.Collections.Map completion items.
 void *rt_zia_completion_items(rt_string source, int64_t line, int64_t col);
 
 /// @brief Run path-aware Zia completion and return structured completion maps.
-void *rt_zia_completion_items_for_file(
-    rt_string source, rt_string file_path, int64_t line, int64_t col);
+void *rt_zia_completion_items_for_file(rt_string source,
+                                       rt_string file_path,
+                                       int64_t line,
+                                       int64_t col);
 
 /// @brief Start path-aware completion on a background worker.
-void *rt_zia_completion_begin_items_for_file(
-    rt_string source, rt_string file_path, int64_t line, int64_t col);
+void *rt_zia_completion_begin_items_for_file(rt_string source,
+                                             rt_string file_path,
+                                             int64_t line,
+                                             int64_t col);
 
 /// @brief Return call signature help for the invocation active at the source location.
 /// @param source Zia source text (full file contents).
@@ -67,19 +74,25 @@ void *rt_zia_completion_begin_items_for_file(
 rt_string rt_zia_signature_help(rt_string source, int64_t line, int64_t col);
 
 /// @brief Return call signature help with the real source file path for relative bind resolution.
-rt_string rt_zia_signature_help_for_file(
-    rt_string source, rt_string file_path, int64_t line, int64_t col);
+rt_string rt_zia_signature_help_for_file(rt_string source,
+                                         rt_string file_path,
+                                         int64_t line,
+                                         int64_t col);
 
 /// @brief Return structured signature help for the invocation active at the source location.
 void *rt_zia_signature_info(rt_string source, int64_t line, int64_t col);
 
 /// @brief Return structured signature help with the real source file path.
-void *rt_zia_signature_info_for_file(
-    rt_string source, rt_string file_path, int64_t line, int64_t col);
+void *rt_zia_signature_info_for_file(rt_string source,
+                                     rt_string file_path,
+                                     int64_t line,
+                                     int64_t col);
 
 /// @brief Start path-aware structured signature help on a background worker.
-void *rt_zia_completion_begin_signature_info_for_file(
-    rt_string source, rt_string file_path, int64_t line, int64_t col);
+void *rt_zia_completion_begin_signature_info_for_file(rt_string source,
+                                                      rt_string file_path,
+                                                      int64_t line,
+                                                      int64_t col);
 
 /// @brief Run semantic analysis and return serialized diagnostics for editor tooling.
 /// @param source Zia source text (full file contents).
@@ -159,8 +172,10 @@ void *rt_zia_hover_info(rt_string source, int64_t line, int64_t col);
 void *rt_zia_hover_info_for_file(rt_string source, rt_string file_path, int64_t line, int64_t col);
 
 /// @brief Start path-aware structured hover info on a background worker.
-void *rt_zia_completion_begin_hover_info_for_file(
-    rt_string source, rt_string file_path, int64_t line, int64_t col);
+void *rt_zia_completion_begin_hover_info_for_file(rt_string source,
+                                                  rt_string file_path,
+                                                  int64_t line,
+                                                  int64_t col);
 
 /// @brief Return serialized document symbols for the supplied source.
 /// @param source Zia source text (full file contents).

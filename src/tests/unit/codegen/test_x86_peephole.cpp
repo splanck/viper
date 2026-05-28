@@ -827,8 +827,7 @@ TEST(X86Peephole, CallArgumentDCEHonorsTargetABI) {
     auto makeCallFunc = [] {
         return makeFunc(".Lentry",
                         {
-                            MInstr{MOpcode::MOVSDrr,
-                                   {xmm(PhysReg::XMM4), xmm(PhysReg::XMM5)}},
+                            MInstr{MOpcode::MOVSDrr, {xmm(PhysReg::XMM4), xmm(PhysReg::XMM5)}},
                             MInstr{MOpcode::CALL, {lbl("callee")}},
                             MInstr{MOpcode::RET, {}},
                         });

@@ -151,12 +151,8 @@ static double sanitize_ortho_size(double size) {
 /// @brief Normalize the (`*x`,`*y`,`*z`) triple in place, reverting to the
 ///        fallback direction when any lane is non-finite or the vector length
 ///        is ~zero. Keeps camera basis vectors unit-length and well-defined.
-static void camera_normalize_vec3_or(double *x,
-                                     double *y,
-                                     double *z,
-                                     double fallback_x,
-                                     double fallback_y,
-                                     double fallback_z) {
+static void camera_normalize_vec3_or(
+    double *x, double *y, double *z, double fallback_x, double fallback_y, double fallback_z) {
     double vx = finite_or(x ? *x : fallback_x, fallback_x);
     double vy = finite_or(y ? *y : fallback_y, fallback_y);
     double vz = finite_or(z ? *z : fallback_z, fallback_z);
@@ -181,8 +177,8 @@ static void camera_normalize_vec3_or(double *x,
 /// @brief Build an OpenGL-style perspective projection matrix into `m` (row-major).
 /// `f = 1 / tan(fov/2)` sets vertical scale; horizontal divides by aspect. Writes depth
 /// in the `[-1, 1]` NDC convention. With Viper's row-major, column-vector transform
-/// path, `m[14] = -1` makes clip.w = -view.z for perspective division. Zeroes the matrix first so unused slots
-/// stay at 0 — callers can assume a fully initialised 4×4.
+/// path, `m[14] = -1` makes clip.w = -view.z for perspective division. Zeroes the matrix first so
+/// unused slots stay at 0 — callers can assume a fully initialised 4×4.
 static void build_perspective(double *m, double fov_deg, double aspect, double near, double far) {
     memset(m, 0, 16 * sizeof(double));
     double fov_rad = fov_deg * (M_PI / 180.0);
@@ -250,9 +246,8 @@ static void build_look_at(double *m, const double *eye, const double *target, co
     double rz = up[0] * fy - up[1] * fx;
     double rlen = sqrt(rx * rx + ry * ry + rz * rz);
     if (!isfinite(rlen) || rlen <= 1e-12) {
-        const double fallback_up[3] = {fabs(fy) > 0.99 ? 0.0 : 0.0,
-                                       fabs(fy) > 0.99 ? 0.0 : 1.0,
-                                       fabs(fy) > 0.99 ? 1.0 : 0.0};
+        const double fallback_up[3] = {
+            fabs(fy) > 0.99 ? 0.0 : 0.0, fabs(fy) > 0.99 ? 0.0 : 1.0, fabs(fy) > 0.99 ? 1.0 : 0.0};
         rx = fallback_up[1] * fz - fallback_up[2] * fy;
         ry = fallback_up[2] * fx - fallback_up[0] * fz;
         rz = fallback_up[0] * fy - fallback_up[1] * fx;
@@ -304,7 +299,8 @@ static void rebuild_projection(rt_camera3d *cam) {
         double half_h = sanitize_ortho_size(cam->ortho_size);
         double half_w = half_h * cam->aspect;
         cam->ortho_size = half_h;
-        build_ortho(cam->projection, -half_w, half_w, -half_h, half_h, cam->near_plane, cam->far_plane);
+        build_ortho(
+            cam->projection, -half_w, half_w, -half_h, half_h, cam->near_plane, cam->far_plane);
     } else {
         cam->fov = sanitize_fov(cam->fov);
         build_perspective(cam->projection, cam->fov, cam->aspect, cam->near_plane, cam->far_plane);
@@ -360,7 +356,8 @@ void rt_camera3d_get_render_projection(void *obj, double aspect_override, float 
 
     for (int i = 0; i < 16; i++) {
         double identity = (i == 0 || i == 5 || i == 10 || i == 15) ? 1.0 : 0.0;
-        out_projection[i] = (float)(camera_value_fits_float(projection[i]) ? projection[i] : identity);
+        out_projection[i] =
+            (float)(camera_value_fits_float(projection[i]) ? projection[i] : identity);
     }
 }
 
@@ -457,7 +454,8 @@ static void camera_apply_shake_to_view(rt_camera3d *cam) {
 /// @param far_val  Far clipping plane distance.
 /// @return Opaque camera handle, or NULL on failure.
 void *rt_camera3d_new(double fov, double aspect, double near_val, double far_val) {
-    rt_camera3d *cam = (rt_camera3d *)rt_obj_new_i64(RT_G3D_CAMERA3D_CLASS_ID, (int64_t)sizeof(rt_camera3d));
+    rt_camera3d *cam =
+        (rt_camera3d *)rt_obj_new_i64(RT_G3D_CAMERA3D_CLASS_ID, (int64_t)sizeof(rt_camera3d));
     if (!cam) {
         rt_trap("Camera3D.New: memory allocation failed");
         return NULL;
@@ -527,7 +525,8 @@ static void build_ortho(double *m,
 /// @param far_val  Far clipping plane distance.
 /// @return Opaque camera handle, or NULL on failure.
 void *rt_camera3d_new_ortho(double size, double aspect, double near_val, double far_val) {
-    rt_camera3d *cam = (rt_camera3d *)rt_obj_new_i64(RT_G3D_CAMERA3D_CLASS_ID, (int64_t)sizeof(rt_camera3d));
+    rt_camera3d *cam =
+        (rt_camera3d *)rt_obj_new_i64(RT_G3D_CAMERA3D_CLASS_ID, (int64_t)sizeof(rt_camera3d));
     if (!cam) {
         rt_trap("Camera3D.NewOrtho: memory allocation failed");
         return NULL;
@@ -670,9 +669,8 @@ void *rt_camera3d_get_position(void *obj) {
     rt_camera3d *cam = rt_camera3d_checked_or_stack(obj);
     if (!cam)
         return NULL;
-    return rt_vec3_new(finite_or(cam->eye[0], 0.0),
-                       finite_or(cam->eye[1], 0.0),
-                       finite_or(cam->eye[2], 0.0));
+    return rt_vec3_new(
+        finite_or(cam->eye[0], 0.0), finite_or(cam->eye[1], 0.0), finite_or(cam->eye[2], 0.0));
 }
 
 /// @brief Set the camera's eye position and rebuild the view matrix.
@@ -1168,18 +1166,14 @@ void rt_camera3d_smooth_follow(
 
     /* Framerate-independent exponential damping */
     double t = 1.0 - exp(-speed * dt);
-    double base_eye[3] = {finite_or(cam->eye[0], 0.0),
-                          finite_or(cam->eye[1], 0.0),
-                          finite_or(cam->eye[2], 0.0)};
-    cam->eye[0] = clamp_abs_or(base_eye[0] + (desired[0] - base_eye[0]) * t,
-                               0.0,
-                               CAMERA3D_WORLD_ABS_MAX);
-    cam->eye[1] = clamp_abs_or(base_eye[1] + (desired[1] - base_eye[1]) * t,
-                               0.0,
-                               CAMERA3D_WORLD_ABS_MAX);
-    cam->eye[2] = clamp_abs_or(base_eye[2] + (desired[2] - base_eye[2]) * t,
-                               0.0,
-                               CAMERA3D_WORLD_ABS_MAX);
+    double base_eye[3] = {
+        finite_or(cam->eye[0], 0.0), finite_or(cam->eye[1], 0.0), finite_or(cam->eye[2], 0.0)};
+    cam->eye[0] =
+        clamp_abs_or(base_eye[0] + (desired[0] - base_eye[0]) * t, 0.0, CAMERA3D_WORLD_ABS_MAX);
+    cam->eye[1] =
+        clamp_abs_or(base_eye[1] + (desired[1] - base_eye[1]) * t, 0.0, CAMERA3D_WORLD_ABS_MAX);
+    cam->eye[2] =
+        clamp_abs_or(base_eye[2] + (desired[2] - base_eye[2]) * t, 0.0, CAMERA3D_WORLD_ABS_MAX);
 
     double look_at[3] = {tx, ty - height * 0.3, tz};
     double up[3] = {0, 1, 0};

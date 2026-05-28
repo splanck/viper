@@ -204,7 +204,8 @@ extern "C" void rt_canvas3d_draw_mesh_matrix_keyed(void *,
     int draw_index = g_draw_mesh_matrix_keyed_calls++;
     if (draw_index < (int)(sizeof(g_keyed_draw_z) / sizeof(g_keyed_draw_z[0]))) {
         g_keyed_draw_z[draw_index] = model_matrix ? model_matrix[11] : 0.0;
-        g_keyed_draw_alpha[draw_index] = material ? static_cast<StubMaterial *>(material)->alpha : 0.0;
+        g_keyed_draw_alpha[draw_index] =
+            material ? static_cast<StubMaterial *>(material)->alpha : 0.0;
         g_keyed_draw_additive[draw_index] =
             material ? static_cast<StubMaterial *>(material)->additive_blend : 0;
     }

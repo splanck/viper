@@ -121,7 +121,8 @@ TEST(LinkerSupport, InstalledLayoutPreferredOverBuildTree) {
     writeArchive(installedDir / archiveFileName("vipergfx"), "installed-gfx");
 
 #if defined(_WIN32)
-    writeArchive(buildDir / "src/runtime/Debug" / archiveFileName("viper_rt_base"), "build-runtime");
+    writeArchive(buildDir / "src/runtime/Debug" / archiveFileName("viper_rt_base"),
+                 "build-runtime");
     writeArchive(buildDir / "lib/Debug" / archiveFileName("vipergfx"), "build-gfx");
 #else
     writeArchive(buildDir / "src/runtime" / archiveFileName("viper_rt_base"), "build-runtime");
@@ -188,10 +189,8 @@ TEST(LinkerSupport, ArchiveClosureAddsTextAndIoFsForGraphicsRuntimeDeps) {
     LinkContext ctx;
     std::ostringstream out;
     std::ostringstream err;
-    ASSERT_EQ(0, prepareLinkContextFromSymbols({"rt_action_load", "rt_pixels_load_png"},
-                                               ctx,
-                                               out,
-                                               err));
+    ASSERT_EQ(
+        0, prepareLinkContextFromSymbols({"rt_action_load", "rt_pixels_load_png"}, ctx, out, err));
     ASSERT_TRUE(err.str().empty());
 
     EXPECT_TRUE(containsComponent(ctx, viper::codegen::RtComponent::Graphics));

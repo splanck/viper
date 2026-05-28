@@ -35,9 +35,9 @@ struct AssetEntry {
 
 /// @brief A file association declaration.
 struct FileAssoc {
-    std::string extension;   ///< e.g. ".zia"
-    std::string description; ///< e.g. "Zia Source File"
-    std::string mimeType;    ///< e.g. "text/x-zia"
+    std::string extension;            ///< e.g. ".zia"
+    std::string description;          ///< e.g. "Zia Source File"
+    std::string mimeType;             ///< e.g. "text/x-zia"
     std::string openCommandArguments; ///< Optional Windows Open verb args before "%1".
 };
 
@@ -60,22 +60,22 @@ struct PackageConfig {
     std::string minOsWindows; ///< "10.0"
     std::string minOsMacos;   ///< "11.0"
 
-    std::string macosSignMode;      ///< none, preserve, adhoc, or developer-id
-    std::string macosSignIdentity;  ///< Developer ID Application identity
-    std::string macosEntitlements;  ///< Entitlements plist path, project-relative
+    std::string macosSignMode;     ///< none, preserve, adhoc, or developer-id
+    std::string macosSignIdentity; ///< Developer ID Application identity
+    std::string macosEntitlements; ///< Entitlements plist path, project-relative
     bool macosHardenedRuntime{false};
     std::string macosNotaryProfile; ///< notarytool keychain profile
     bool macosStaple{false};
 
-    std::string windowsInstallScope; ///< machine (default) or user
-    std::string windowsInstallDir;   ///< Optional install directory override.
-    bool windowsSign{false};         ///< Request Authenticode signing for Windows installers.
-    bool windowsSignSet{false};      ///< True when windows-sign was specified.
-    std::string windowsSignPfx;      ///< PFX certificate path, project-relative unless absolute.
+    std::string windowsInstallScope;   ///< machine (default) or user
+    std::string windowsInstallDir;     ///< Optional install directory override.
+    bool windowsSign{false};           ///< Request Authenticode signing for Windows installers.
+    bool windowsSignSet{false};        ///< True when windows-sign was specified.
+    std::string windowsSignPfx;        ///< PFX certificate path, project-relative unless absolute.
     std::string windowsSignThumbprint; ///< Certificate store SHA-1 thumbprint for signtool /sha1.
-    std::string windowsTimestampUrl; ///< RFC3161 timestamp URL for signtool.
-    std::string windowsSigntoolPath; ///< signtool.exe path override.
-    bool windowsSignNoVerify{false}; ///< Skip signtool verify after signing.
+    std::string windowsTimestampUrl;   ///< RFC3161 timestamp URL for signtool.
+    std::string windowsSigntoolPath;   ///< signtool.exe path override.
+    bool windowsSignNoVerify{false};   ///< Skip signtool verify after signing.
 
     std::vector<std::string> targetArchitectures; ///< "x64", "arm64"
 
@@ -91,13 +91,12 @@ struct PackageConfig {
                !homepage.empty() || !license.empty() || !identifier.empty() || !iconPath.empty() ||
                !assets.empty() || !fileAssociations.empty() || shortcutDesktop || !shortcutMenu ||
                !minOsWindows.empty() || !minOsMacos.empty() || !macosSignMode.empty() ||
-               !macosSignIdentity.empty() || !macosEntitlements.empty() ||
-               macosHardenedRuntime || !macosNotaryProfile.empty() || macosStaple ||
-               !windowsInstallScope.empty() || windowsSignSet || !windowsSignPfx.empty() ||
-               !windowsSignThumbprint.empty() || !windowsTimestampUrl.empty() ||
-               !windowsSigntoolPath.empty() || windowsSignNoVerify ||
-               !targetArchitectures.empty() || !category.empty() || !depends.empty() ||
-               !postInstallScript.empty() || !preUninstallScript.empty();
+               !macosSignIdentity.empty() || !macosEntitlements.empty() || macosHardenedRuntime ||
+               !macosNotaryProfile.empty() || macosStaple || !windowsInstallScope.empty() ||
+               windowsSignSet || !windowsSignPfx.empty() || !windowsSignThumbprint.empty() ||
+               !windowsTimestampUrl.empty() || !windowsSigntoolPath.empty() ||
+               windowsSignNoVerify || !targetArchitectures.empty() || !category.empty() ||
+               !depends.empty() || !postInstallScript.empty() || !preUninstallScript.empty();
     }
 };
 

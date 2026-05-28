@@ -1527,8 +1527,8 @@ bool Sema::analyze(ModuleDecl &module) {
             }
             case DeclKind::Enum: {
                 auto *enumDecl = static_cast<EnumDecl *>(decl.get());
-                registerTypeDeclarationSymbol(
-                    *enumDecl, semanticNameForDecl(*enumDecl, enumDecl->name));
+                registerTypeDeclarationSymbol(*enumDecl,
+                                              semanticNameForDecl(*enumDecl, enumDecl->name));
                 break;
             }
             case DeclKind::TypeAlias: {
@@ -1611,8 +1611,8 @@ bool Sema::analyze(ModuleDecl &module) {
             }
             case DeclKind::Enum: {
                 auto *enumDecl = static_cast<EnumDecl *>(decl.get());
-                registerTypeDeclarationSymbol(
-                    *enumDecl, semanticNameForDecl(*enumDecl, enumDecl->name));
+                registerTypeDeclarationSymbol(*enumDecl,
+                                              semanticNameForDecl(*enumDecl, enumDecl->name));
                 break;
             }
             case DeclKind::GlobalVar: {

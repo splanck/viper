@@ -74,6 +74,7 @@ class X64BinaryEncoder {
 
   private:
     using LabelOffsetMap = std::unordered_map<std::string, size_t>;
+
     struct LabelLayout {
         LabelOffsetMap offsets;
         size_t estimatedSize{0};

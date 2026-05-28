@@ -238,8 +238,8 @@ std::optional<RuntimeMethodInfo> RuntimeMethodIndex::find(
             if (!candidate.name || !string_utils::iequals(candidate.name, method))
                 continue;
 
-            auto sig = il::runtime::parseRuntimeSignature(candidate.signature ? candidate.signature
-                                                                              : "");
+            auto sig =
+                il::runtime::parseRuntimeSignature(candidate.signature ? candidate.signature : "");
             if (!sig.isValid() || sig.params.size() != argTypes.size())
                 continue;
 

@@ -85,8 +85,7 @@ static bool contextmenu_ensure_registry_capacity(size_t needed) {
     }
     if (new_cap > SIZE_MAX / sizeof(*s_registry))
         return false;
-    contextmenu_registry_entry_t *entries =
-        realloc(s_registry, new_cap * sizeof(*s_registry));
+    contextmenu_registry_entry_t *entries = realloc(s_registry, new_cap * sizeof(*s_registry));
     if (!entries)
         return false;
     s_registry = entries;
@@ -284,15 +283,9 @@ static void contextmenu_blend_pixel(uint8_t *dst, const uint8_t *src, uint8_t al
 }
 
 /// @brief Blit a VG_ICON_IMAGE pixel array into the framebuffer with nearest-neighbour scaling.
-static void contextmenu_draw_image_icon(vgfx_window_t win,
-                                        const vg_icon_t *icon,
-                                        float x,
-                                        float y,
-                                        float w,
-                                        float h,
-                                        bool enabled) {
-    if (!icon || icon->type != VG_ICON_IMAGE || !icon->data.image.pixels || w <= 0.0f ||
-        h <= 0.0f)
+static void contextmenu_draw_image_icon(
+    vgfx_window_t win, const vg_icon_t *icon, float x, float y, float w, float h, bool enabled) {
+    if (!icon || icon->type != VG_ICON_IMAGE || !icon->data.image.pixels || w <= 0.0f || h <= 0.0f)
         return;
 
     vgfx_framebuffer_t fb;
@@ -361,7 +354,8 @@ static void contextmenu_draw_image_icon(vgfx_window_t win,
     }
 }
 
-/// @brief Encode a Unicode codepoint into a NUL-terminated UTF-8 byte sequence (out must be 5 bytes).
+/// @brief Encode a Unicode codepoint into a NUL-terminated UTF-8 byte sequence (out must be 5
+/// bytes).
 static bool contextmenu_encode_utf8(uint32_t cp, char out[5]) {
     if (!out)
         return false;
@@ -556,7 +550,8 @@ vg_contextmenu_t *vg_contextmenu_create(void) {
     return menu;
 }
 
-/// @brief vtable destroy — unregisters from the right-click registry, releases input capture, frees all items.
+/// @brief vtable destroy — unregisters from the right-click registry, releases input capture, frees
+/// all items.
 static void contextmenu_destroy(vg_widget_t *widget) {
     vg_contextmenu_t *menu = (vg_contextmenu_t *)widget;
     contextmenu_unregister_menu(menu);
@@ -614,7 +609,8 @@ static void contextmenu_measure(vg_widget_t *widget,
     }
 }
 
-/// @brief vtable paint — draws shadow, background, border, and all items; clamps position to window.
+/// @brief vtable paint — draws shadow, background, border, and all items; clamps position to
+/// window.
 static void contextmenu_paint(vg_widget_t *widget, void *canvas) {
     vg_contextmenu_t *menu = (vg_contextmenu_t *)widget;
     vg_theme_t *theme = vg_theme_get_current();

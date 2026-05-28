@@ -55,7 +55,8 @@ static vg_widget_vtable_t g_colorswatch_vtable = {.destroy = colorswatch_destroy
 // Helper: Draw checkerboard pattern for transparency
 //=============================================================================
 
-/// @brief Paint an alternating grey checkerboard into a rectangular region to indicate transparency.
+/// @brief Paint an alternating grey checkerboard into a rectangular region to indicate
+/// transparency.
 static void draw_checkerboard(void *canvas, float x, float y, float w, float h, int check_size) {
     vgfx_window_t win = (vgfx_window_t)canvas;
     if (check_size <= 0)
@@ -137,7 +138,8 @@ static void colorswatch_destroy(vg_widget_t *widget) {
     // No owned resources to free
 }
 
-/// @brief VTable measure: uses preferred_size constraint (default 24 px square) for both dimensions.
+/// @brief VTable measure: uses preferred_size constraint (default 24 px square) for both
+/// dimensions.
 static void colorswatch_measure(vg_widget_t *widget,
                                 float available_width,
                                 float available_height) {
@@ -165,7 +167,8 @@ static void colorswatch_measure(vg_widget_t *widget,
     }
 }
 
-/// @brief VTable paint: draws a checkerboard transparency pattern then fills the swatch colour, adding a border and focus ring.
+/// @brief VTable paint: draws a checkerboard transparency pattern then fills the swatch colour,
+/// adding a border and focus ring.
 static void colorswatch_paint(vg_widget_t *widget, void *canvas) {
     vg_colorswatch_t *swatch = (vg_colorswatch_t *)widget;
 
@@ -195,7 +198,8 @@ static void colorswatch_paint(vg_widget_t *widget, void *canvas) {
     }
 }
 
-/// @brief VTable handle_event: fires on_click callback on click and on Space/Enter key when enabled.
+/// @brief VTable handle_event: fires on_click callback on click and on Space/Enter key when
+/// enabled.
 static bool colorswatch_handle_event(vg_widget_t *widget, vg_event_t *event) {
     vg_colorswatch_t *swatch = (vg_colorswatch_t *)widget;
 

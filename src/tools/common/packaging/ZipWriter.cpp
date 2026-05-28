@@ -28,8 +28,8 @@
 #include "PkgDeflate.hpp"
 #include "PkgUtils.hpp"
 
-#include <cerrno>
 #include <cctype>
+#include <cerrno>
 #include <cstdlib>
 #include <cstring>
 #include <ctime>
@@ -350,9 +350,9 @@ void ZipWriter::addDirectory(const std::string &name, uint32_t unixMode) {
     dirName = normalizeEntryName(dirName);
     if (dirName.empty())
         return;
-    const std::string key =
-        (!dirName.empty() && dirName.back() == '/') ? dirName.substr(0, dirName.size() - 1)
-                                                    : dirName;
+    const std::string key = (!dirName.empty() && dirName.back() == '/')
+                                ? dirName.substr(0, dirName.size() - 1)
+                                : dirName;
     if (!key.empty() && !seenNames_.insert(key).second)
         throw std::runtime_error("ZipWriter: duplicate entry name: " + key);
     validateArchiveLimit(entries_.size() + 1, 0xFFFFu, "more than 65535 entries");

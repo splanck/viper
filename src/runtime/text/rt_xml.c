@@ -306,7 +306,8 @@ static bool is_name_char(char c) {
 }
 
 /// @brief Return true if the null-terminated string `s` is a valid XML 1.0 name.
-///        We restrict to ASCII: letter/underscore/colon start, alnum/underscore/colon/hyphen/dot continue.
+///        We restrict to ASCII: letter/underscore/colon start, alnum/underscore/colon/hyphen/dot
+///        continue.
 static bool is_valid_xml_name_cstr(const char *s) {
     if (!s || !is_name_start_char(*s))
         return false;
@@ -2153,9 +2154,9 @@ static void buf_append_escaped_bytes(
     }
 }
 
-/// @brief Append `str` (an `rt_string`) to the buffer with XML escaping, delegating to `buf_append_escaped_bytes`.
-static void buf_append_escaped(
-    char **buf, size_t *cap, size_t *len, rt_string str, int for_attr) {
+/// @brief Append `str` (an `rt_string`) to the buffer with XML escaping, delegating to
+/// `buf_append_escaped_bytes`.
+static void buf_append_escaped(char **buf, size_t *cap, size_t *len, rt_string str, int for_attr) {
     if (!str)
         return;
     buf_append_escaped_bytes(buf, cap, len, rt_string_cstr(str), (size_t)rt_str_len(str), for_attr);
@@ -2266,7 +2267,8 @@ static void format_node(void *node, int indent, int level, char **buf, size_t *c
                 buf_append_indent(buf, cap, len, indent * level);
             buf_append(buf, cap, len, "<!--");
             if (n->content)
-                buf_append_bytes(buf, cap, len, rt_string_cstr(n->content), (size_t)rt_str_len(n->content));
+                buf_append_bytes(
+                    buf, cap, len, rt_string_cstr(n->content), (size_t)rt_str_len(n->content));
             buf_append(buf, cap, len, "-->");
             if (indent > 0)
                 buf_append_char(buf, cap, len, '\n');
@@ -2275,7 +2277,8 @@ static void format_node(void *node, int indent, int level, char **buf, size_t *c
         case XML_NODE_CDATA:
             buf_append(buf, cap, len, "<![CDATA[");
             if (n->content)
-                buf_append_bytes(buf, cap, len, rt_string_cstr(n->content), (size_t)rt_str_len(n->content));
+                buf_append_bytes(
+                    buf, cap, len, rt_string_cstr(n->content), (size_t)rt_str_len(n->content));
             buf_append(buf, cap, len, "]]>");
             break;
 

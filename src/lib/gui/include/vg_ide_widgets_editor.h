@@ -76,16 +76,16 @@ typedef struct vg_edit_history {
 
 /// @brief Line information
 typedef struct vg_code_line {
-    char *text;             ///< Line text (owned)
-    size_t length;          ///< Text length
-    size_t capacity;        ///< Buffer capacity
-    uint32_t *colors;       ///< Per-character colors (owned, optional)
-    size_t colors_capacity; ///< Allocated entries in colors array
-    uint64_t highlight_generation; ///< Syntax-cache generation represented by colors.
+    char *text;                       ///< Line text (owned)
+    size_t length;                    ///< Text length
+    size_t capacity;                  ///< Buffer capacity
+    uint32_t *colors;                 ///< Per-character colors (owned, optional)
+    size_t colors_capacity;           ///< Allocated entries in colors array
+    uint64_t highlight_generation;    ///< Syntax-cache generation represented by colors.
     uint64_t syntax_state_generation; ///< Generation for cached language state.
-    int syntax_state_in;     ///< Cached language state before this line.
-    int syntax_state_out;    ///< Cached language state after this line.
-    bool modified;          ///< Line modified since last save
+    int syntax_state_in;              ///< Cached language state before this line.
+    int syntax_state_out;             ///< Cached language state after this line.
+    bool modified;                    ///< Line modified since last save
 } vg_code_line_t;
 
 /// @brief Selection range
@@ -98,9 +98,9 @@ typedef struct vg_selection {
 
 /// @brief Low-level CodeEditor performance counters for tests and diagnostics.
 typedef struct vg_codeeditor_perf_stats {
-    uint64_t total_height_linear_scans;      ///< Lines visited while summing document height.
-    uint64_t total_visual_row_linear_scans;  ///< Lines visited while summing visual rows.
-    uint64_t visual_row_linear_scans;        ///< Lines visited while mapping position to visual row.
+    uint64_t total_height_linear_scans;     ///< Lines visited while summing document height.
+    uint64_t total_visual_row_linear_scans; ///< Lines visited while summing visual rows.
+    uint64_t visual_row_linear_scans;       ///< Lines visited while mapping position to visual row.
     uint64_t locate_visual_row_linear_scans; ///< Lines visited while mapping visual row to line.
     uint64_t line_highlight_calls;           ///< Syntax highlighter invocations from paint.
     uint64_t syntax_state_line_scans;        ///< Lines scanned to compute cached syntax state.
@@ -141,11 +141,12 @@ typedef struct vg_codeeditor {
     float line_height; ///< Line height
 
     // Gutter
-    bool show_line_numbers;     ///< Show line number gutter
-    float gutter_width;         ///< Gutter width
-    float line_number_width_override; ///< Explicit line-number gutter width in character units (0 = auto)
-    uint32_t gutter_bg;         ///< Gutter background color
-    uint32_t line_number_color; ///< Line number color
+    bool show_line_numbers;           ///< Show line number gutter
+    float gutter_width;               ///< Gutter width
+    float line_number_width_override; ///< Explicit line-number gutter width in character units (0 =
+                                      ///< auto)
+    uint32_t gutter_bg;               ///< Gutter background color
+    uint32_t line_number_color;       ///< Line number color
 
     // Appearance
     uint32_t bg_color;        ///< Background color
@@ -189,10 +190,10 @@ typedef struct vg_codeeditor {
     float cursor_blink_time; ///< Cursor blink timer
     bool modified;           ///< Document modified since last save
     uint64_t revision;       ///< Monotonic content revision; cursor/scroll changes do not affect it
-    uint64_t highlight_generation; ///< Monotonic syntax-cache generation.
+    uint64_t highlight_generation;         ///< Monotonic syntax-cache generation.
     vg_codeeditor_perf_stats_t perf_stats; ///< Low-level performance counters.
-    uint64_t layout_generation; ///< Monotonic visual-layout generation.
-    bool has_folded_lines;      ///< True when at least one fold region is collapsed.
+    uint64_t layout_generation;            ///< Monotonic visual-layout generation.
+    bool has_folded_lines;                 ///< True when at least one fold region is collapsed.
 
     // Cached source-line -> visual-row mapping for wrapped or folded layout.
     bool layout_cache_valid;
@@ -214,7 +215,7 @@ typedef struct vg_codeeditor {
     float scrollbar_drag_start_scroll; ///< scroll_y value at drag start
 
     // Pointer selection drag state
-    bool selection_dragging; ///< True while a content-area pointer drag is selecting text
+    bool selection_dragging;   ///< True while a content-area pointer drag is selecting text
     int selection_anchor_line; ///< Selection anchor line for pointer drag
     int selection_anchor_col;  ///< Selection anchor column for pointer drag
 
@@ -237,8 +238,8 @@ typedef struct vg_codeeditor {
         uint32_t color;            ///< Background highlight color (0x00RRGGBB)
     } *highlight_spans;            ///< Owned array; NULL when unused
 
-    int highlight_span_count; ///< Active span count
-    int highlight_span_cap;   ///< Allocated capacity
+    int highlight_span_count;    ///< Active span count
+    int highlight_span_cap;      ///< Allocated capacity
     bool highlight_spans_sorted; ///< True when highlight_spans is ordered by start line/column.
 
     // Per-line highlight index built from highlight_spans for paint.
@@ -258,8 +259,8 @@ typedef struct vg_codeeditor {
         uint32_t color; ///< ARGB text color.
     } *inlay_hints;     ///< Owned array; NULL when unused.
 
-    int inlay_hint_count; ///< Active hint count.
-    int inlay_hint_cap;   ///< Allocated capacity.
+    int inlay_hint_count;    ///< Active hint count.
+    int inlay_hint_cap;      ///< Allocated capacity.
     bool inlay_hints_sorted; ///< True when hints are ordered by line/column for paint.
 
     // Gutter icons (breakpoints, diagnostics, etc.)
@@ -454,11 +455,8 @@ void vg_codeeditor_reset_perf_stats(vg_codeeditor_t *editor);
 /// @param col    Zero-based source column.
 /// @param text   Hint text (copied internally).
 /// @param color  ARGB text color.
-void vg_codeeditor_add_inlay_hint(vg_codeeditor_t *editor,
-                                  int line,
-                                  int col,
-                                  const char *text,
-                                  uint32_t color);
+void vg_codeeditor_add_inlay_hint(
+    vg_codeeditor_t *editor, int line, int col, const char *text, uint32_t color);
 
 /// @brief Clear all inlay hints.
 /// @param editor Code editor widget.

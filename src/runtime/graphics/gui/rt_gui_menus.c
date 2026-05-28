@@ -155,8 +155,7 @@ static vg_icon_t rt_gui_icon_from_pixels(void *pixels) {
     const uint32_t *raw = rt_pixels_raw_buffer(pixels);
     if (width <= 0 || height <= 0 || !raw)
         return icon;
-    if ((uintmax_t)width > (uintmax_t)SIZE_MAX ||
-        (uintmax_t)height > (uintmax_t)SIZE_MAX)
+    if ((uintmax_t)width > (uintmax_t)SIZE_MAX || (uintmax_t)height > (uintmax_t)SIZE_MAX)
         return icon;
 
     size_t pixel_count = (size_t)width * (size_t)height;
@@ -1387,8 +1386,7 @@ void rt_toolbar_set_icon_size(void *toolbar, int64_t size) {
     vg_toolbar_t *tb = rt_toolbar_checked(toolbar);
     if (!tb)
         return;
-    vg_toolbar_set_icon_size(tb,
-                             (vg_toolbar_icon_size_t)rt_gui_clamp_i64_to_i32(size, 0, 2));
+    vg_toolbar_set_icon_size(tb, (vg_toolbar_icon_size_t)rt_gui_clamp_i64_to_i32(size, 0, 2));
 }
 
 /// @brief Get a size property of the toolbar (button width or height).

@@ -77,9 +77,9 @@ static bool hasExactCall(const std::string &asmText, const std::string &name) {
 TEST(Arm64CLI, OverflowVariantsRR) {
     struct Case {
         const char *op;
-        const char *expectOpcode;  // primary instruction opcode
+        const char *expectOpcode;   // primary instruction opcode
         const char *expectOperands; // source operands
-        const char *expectTrap; // trap branch (nullptr if no trap expected)
+        const char *expectTrap;     // trap branch (nullptr if no trap expected)
     } cases[] = {
         {"iadd.ovf", "adds x", ", x0, x1", "b.vs"},
         {"isub.ovf", "subs x", ", x0, x1", "b.vs"},

@@ -122,8 +122,10 @@ LowerResult Lowerer::lowerAssignment(BinaryExpr *expr) {
 ///          coercion, and struct-copy semantics, then stores into the first matching target:
 ///          a slot variable, an implicit `self.field` (struct/class method), a module global,
 ///          or a freshly defined local. Reassigning an SSA-only final is skipped defensively.
-LowerResult Lowerer::lowerIdentAssignment(BinaryExpr *expr, IdentExpr *ident,
-                                          LowerResult right, TypeRef rightType) {
+LowerResult Lowerer::lowerIdentAssignment(BinaryExpr *expr,
+                                          IdentExpr *ident,
+                                          LowerResult right,
+                                          TypeRef rightType) {
     {
         TypeRef targetType = nullptr;
         auto typeIt = localTypes_.find(ident->name);
@@ -343,8 +345,10 @@ LowerResult Lowerer::lowerIdentAssignment(BinaryExpr *expr, IdentExpr *ident,
 /// @details Fixed-size arrays store inline via a bounds-checked GEP + element store (no
 ///          boxing). List/Map targets box the value and call the runtime set helper
 ///          (kListSet / kMapSet).
-LowerResult Lowerer::lowerIndexAssignment(BinaryExpr *expr, IndexExpr *indexExpr,
-                                          LowerResult right, TypeRef rightType) {
+LowerResult Lowerer::lowerIndexAssignment(BinaryExpr *expr,
+                                          IndexExpr *indexExpr,
+                                          LowerResult right,
+                                          TypeRef rightType) {
     (void)rightType;
     {
         auto base = lowerExpr(indexExpr->base.get());
@@ -411,8 +415,10 @@ LowerResult Lowerer::lowerIndexAssignment(BinaryExpr *expr, IndexExpr *indexExpr
 ///          setter (runtime or user-defined), or a struct/class instance field. Applies
 ///          optional-wrapping, Ptr→primitive unboxing, struct boxing, and Number/Integer
 ///          coercion as needed. Unsupported targets are reported (V3000).
-LowerResult Lowerer::lowerFieldAssignment(BinaryExpr *expr, FieldExpr *fieldExpr,
-                                          LowerResult right, TypeRef rightType) {
+LowerResult Lowerer::lowerFieldAssignment(BinaryExpr *expr,
+                                          FieldExpr *fieldExpr,
+                                          LowerResult right,
+                                          TypeRef rightType) {
     (void)rightType;
     {
         TypeRef baseType = sema_.typeOf(fieldExpr->base.get());

@@ -16,8 +16,8 @@
 //
 //===----------------------------------------------------------------------===//
 
-#include "codegen/common/linker/ObjFileReader.hpp"
 #include "codegen/common/AArch64RelocUtil.hpp"
+#include "codegen/common/linker/ObjFileReader.hpp"
 #include "codegen/common/linker/RelocConstants.hpp"
 #include "codegen/common/objfile/ObjFileWriterUtil.hpp"
 
@@ -120,7 +120,8 @@ struct relocation_info {
 } // namespace macho
 
 /// @brief Bounds-checked struct copy at @p offset within a byte buffer.
-template <typename T> static std::optional<T> readAt(const uint8_t *data, size_t size, size_t offset) {
+template <typename T>
+static std::optional<T> readAt(const uint8_t *data, size_t size, size_t offset) {
     if (offset > size || sizeof(T) > size - offset)
         return std::nullopt;
     T value{};
@@ -151,8 +152,7 @@ static std::optional<std::string> readStringOpt(
     const void *nul = std::memchr(begin, '\0', static_cast<size_t>(end - begin));
     if (!nul)
         return std::nullopt;
-    return std::string(reinterpret_cast<const char *>(begin),
-                       static_cast<const char *>(nul));
+    return std::string(reinterpret_cast<const char *>(begin), static_cast<const char *>(nul));
 }
 
 static void splitMachOTextSubsections(ObjFile &obj) {
@@ -253,12 +253,10 @@ static void splitMachOTextSubsections(ObjFile &obj) {
         if (sectionRanges.empty())
             return nullptr;
 
-        auto it = std::upper_bound(sectionRanges.begin(),
-                                   sectionRanges.end(),
-                                   off,
-                                   [](size_t value, const Range *range) {
-                                       return value < range->start;
-                                   });
+        auto it = std::upper_bound(
+            sectionRanges.begin(), sectionRanges.end(), off, [](size_t value, const Range *range) {
+                return value < range->start;
+            });
         if (it != sectionRanges.begin()) {
             --it;
             if (off >= (*it)->start && off < (*it)->end)
@@ -502,29 +500,27 @@ bool readMachOObj(
                     return false;
                 }
                 os.alignment = 1u << sec->align;
-                os.executable = (sec->flags &
-                                 (macho::S_ATTR_PURE_INSTRUCTIONS |
-                                  macho::S_ATTR_SOME_INSTRUCTIONS)) != 0;
+                os.executable = (sec->flags & (macho::S_ATTR_PURE_INSTRUCTIONS |
+                                               macho::S_ATTR_SOME_INSTRUCTIONS)) != 0;
                 os.alloc = !isDebugSection;
 
                 // Infer writability from Mach-O segment name and section type.
                 // .o files don't have segment permission bits, but each section header
                 // carries the intended segment name (__TEXT vs __DATA).
                 const uint32_t secType = sec->flags & 0xFF;
-                const bool dataSegment =
-                    segName == "__DATA" || segName == "__DATA_CONST" ||
-                    segName == "__DATA_DIRTY" || segName == "__AUTH" ||
-                    segName == "__AUTH_CONST";
+                const bool dataSegment = segName == "__DATA" || segName == "__DATA_CONST" ||
+                                         segName == "__DATA_DIRTY" || segName == "__AUTH" ||
+                                         segName == "__AUTH_CONST";
                 const bool writableDataSegment =
                     segName == "__DATA" || segName == "__DATA_DIRTY" || segName == "__AUTH";
                 os.dataSegment = !isDebugSection && dataSegment;
-                os.writable = !isDebugSection &&
-                              (writableDataSegment || (secType == macho::S_ZEROFILL) ||
-                               (secType == macho::S_THREAD_LOCAL_REGULAR) ||
-                               (secType == macho::S_THREAD_LOCAL_ZEROFILL) ||
-                               (secType == macho::S_THREAD_LOCAL_VARIABLES) ||
-                               (secType == macho::S_NON_LAZY_SYMBOL_POINTERS) ||
-                               (secType == macho::S_LAZY_SYMBOL_POINTERS));
+                os.writable =
+                    !isDebugSection && (writableDataSegment || (secType == macho::S_ZEROFILL) ||
+                                        (secType == macho::S_THREAD_LOCAL_REGULAR) ||
+                                        (secType == macho::S_THREAD_LOCAL_ZEROFILL) ||
+                                        (secType == macho::S_THREAD_LOCAL_VARIABLES) ||
+                                        (secType == macho::S_NON_LAZY_SYMBOL_POINTERS) ||
+                                        (secType == macho::S_LAZY_SYMBOL_POINTERS));
 
                 os.tls = (secType == macho::S_THREAD_LOCAL_REGULAR ||
                           secType == macho::S_THREAD_LOCAL_ZEROFILL ||
@@ -547,12 +543,14 @@ bool readMachOObj(
                     return false;
                 }
                 if (!isZerofill && sec->size > kMaxObjMaterializedBytes - materializedBytes) {
-                    err << "error: " << name << ": Mach-O materialized section data exceeds limit\n";
+                    err << "error: " << name
+                        << ": Mach-O materialized section data exceeds limit\n";
                     return false;
                 }
                 if (isZerofill && sec->size > 0) {
                     os.memSize = static_cast<size_t>(sec->size);
-                } else if (sec->size > 0 && checkedRange(sec->offset, static_cast<size_t>(sec->size), size)) {
+                } else if (sec->size > 0 &&
+                           checkedRange(sec->offset, static_cast<size_t>(sec->size), size)) {
                     os.data.assign(data + sec->offset, data + sec->offset + sec->size);
                     os.memSize = os.data.size();
                     materializedBytes += static_cast<size_t>(sec->size);
@@ -569,8 +567,7 @@ bool readMachOObj(
                 bool hasPendingAddend = false;
                 if (sec->nreloc > 0 &&
                     !checkedRange(sec->reloff,
-                                  static_cast<size_t>(sec->nreloc) *
-                                      sizeof(macho::relocation_info),
+                                  static_cast<size_t>(sec->nreloc) * sizeof(macho::relocation_info),
                                   size)) {
                     err << "error: " << name << ": Mach-O relocation table is out of bounds\n";
                     return false;
@@ -614,9 +611,8 @@ bool readMachOObj(
 
                     const size_t fixupSize =
                         isArm64 && relType != macho_a64::kUnsigned ? 4u : (size_t{1} << relLength);
-                    if (!checkedRange(static_cast<size_t>(ri->r_address),
-                                      fixupSize,
-                                      os.data.size())) {
+                    if (!checkedRange(
+                            static_cast<size_t>(ri->r_address), fixupSize, os.data.size())) {
                         err << "error: " << name << ": Mach-O relocation at offset "
                             << ri->r_address << " extends beyond section " << os.name << "\n";
                         return false;
@@ -635,13 +631,12 @@ bool readMachOObj(
                         hasPendingAddend = false;
                     } else {
                         // Extract addend from instruction bytes.
-                        rel.addend = extractMachOAddend(
-                            os.data.data(),
-                            os.data.size(),
-                            rel.offset,
-                            rel.type,
-                            relLength,
-                            isArm64);
+                        rel.addend = extractMachOAddend(os.data.data(),
+                                                        os.data.size(),
+                                                        rel.offset,
+                                                        rel.type,
+                                                        relLength,
+                                                        isArm64);
                     }
 
                     os.relocs.push_back(rel);
@@ -769,8 +764,8 @@ bool readMachOObj(
             } else if (nType == 0x0E) {
                 err << "error: " << name << ": Mach-O symbol '" << os.name
                     << "' references section " << static_cast<unsigned>(nl->n_sect)
-                    << " which is outside the parsed section table (size="
-                    << machoSecMap.size() << ")\n";
+                    << " which is outside the parsed section table (size=" << machoSecMap.size()
+                    << ")\n";
                 return false;
             }
             // Convert Mach-O absolute n_value to section-relative offset.
@@ -828,8 +823,8 @@ bool readMachOObj(
                     const uint32_t mapped = sectionSymbolFor(rel.symIndex);
                     if (mapped == 0) {
                         err << "error: " << name
-                            << ": relocation references unmapped Mach-O section "
-                            << rel.symIndex << "\n";
+                            << ": relocation references unmapped Mach-O section " << rel.symIndex
+                            << "\n";
                         return false;
                     }
                     rel.symIndex = mapped;

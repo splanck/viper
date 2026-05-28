@@ -26,10 +26,10 @@
 #include "rt_mat4.h"
 #include "rt_morphtarget3d.h"
 #include "rt_physics3d.h"
-#include "rt_skeleton3d.h"
 #include "rt_pixels.h"
 #include "rt_scene3d.h"
 #include "rt_scene3d_internal.h"
+#include "rt_skeleton3d.h"
 #include "rt_string.h"
 #include "vgfx3d_backend.h"
 #include <cassert>
@@ -284,8 +284,10 @@ static void test_deep_hierarchy_iterative_traversal() {
     typedef struct {
         double m[16];
     } mat4_view;
+
     mat4_view *mv = (mat4_view *)rt_scene_node3d_get_world_matrix(leaf);
-    EXPECT_NEAR(mv->m[3], (double)depth, 0.001, "Deep hierarchy world matrix traversal is iterative");
+    EXPECT_NEAR(
+        mv->m[3], (double)depth, 0.001, "Deep hierarchy world matrix traversal is iterative");
     EXPECT_TRUE(rt_scene3d_get_node_count(scene) == depth + 1,
                 "Deep hierarchy node count traversal is iterative");
 }
@@ -654,10 +656,12 @@ static void test_scene_draw_culling_uses_canvas_output_aspect() {
 
     rt_scene3d_draw(scene, &canvas, camera);
 
-    EXPECT_TRUE(g_scene_submit_count == 1,
-                "Scene3D culling uses the active canvas aspect instead of the camera's stored aspect");
+    EXPECT_TRUE(
+        g_scene_submit_count == 1,
+        "Scene3D culling uses the active canvas aspect instead of the camera's stored aspect");
     EXPECT_TRUE(rt_scene3d_get_culled_count(scene) == 0,
-                "Wide active outputs keep edge-visible nodes from being culled by a stale camera projection");
+                "Wide active outputs keep edge-visible nodes from being culled by a stale camera "
+                "projection");
 }
 
 static void test_scene_save_escapes_json_names() {
@@ -794,12 +798,9 @@ static void test_scene_roundtrip_loads_shared_assets() {
     material->texture_slot_uv_transform[RT_MATERIAL3D_TEXTURE_SLOT_NORMAL][3] = 0.75;
     material->texture_slot_uv_transform[RT_MATERIAL3D_TEXTURE_SLOT_NORMAL][4] = -0.125;
     material->texture_slot_uv_transform[RT_MATERIAL3D_TEXTURE_SLOT_NORMAL][5] = 0.875;
-    material->texture_wrap_s =
-        material->texture_slot_wrap_s[RT_MATERIAL3D_TEXTURE_SLOT_BASE_COLOR];
-    material->texture_wrap_t =
-        material->texture_slot_wrap_t[RT_MATERIAL3D_TEXTURE_SLOT_BASE_COLOR];
-    material->texture_filter =
-        material->texture_slot_filter[RT_MATERIAL3D_TEXTURE_SLOT_BASE_COLOR];
+    material->texture_wrap_s = material->texture_slot_wrap_s[RT_MATERIAL3D_TEXTURE_SLOT_BASE_COLOR];
+    material->texture_wrap_t = material->texture_slot_wrap_t[RT_MATERIAL3D_TEXTURE_SLOT_BASE_COLOR];
+    material->texture_filter = material->texture_slot_filter[RT_MATERIAL3D_TEXTURE_SLOT_BASE_COLOR];
     rt_material3d_set_texture(material, diffuse);
     rt_material3d_set_normal_map(material, normal);
     rt_material3d_set_specular_map(material, specular);
@@ -891,23 +892,17 @@ static void test_scene_roundtrip_loads_shared_assets() {
         EXPECT_NEAR(loaded_material->alpha, 0.8, 0.001, "Scene3D.Load restores material alpha");
         EXPECT_TRUE(loaded_material->workflow == RT_MATERIAL3D_WORKFLOW_PBR,
                     "Scene3D.Load restores the PBR workflow");
-        EXPECT_NEAR(loaded_material->metallic,
-                    0.65,
-                    0.001,
-                    "Scene3D.Load restores material metallic");
-        EXPECT_NEAR(loaded_material->roughness,
-                    0.35,
-                    0.001,
-                    "Scene3D.Load restores material roughness");
+        EXPECT_NEAR(
+            loaded_material->metallic, 0.65, 0.001, "Scene3D.Load restores material metallic");
+        EXPECT_NEAR(
+            loaded_material->roughness, 0.35, 0.001, "Scene3D.Load restores material roughness");
         EXPECT_NEAR(loaded_material->ao, 0.55, 0.001, "Scene3D.Load restores material AO");
         EXPECT_NEAR(loaded_material->emissive_intensity,
                     1.8,
                     0.001,
                     "Scene3D.Load restores emissive intensity");
-        EXPECT_NEAR(loaded_material->normal_scale,
-                    0.7,
-                    0.001,
-                    "Scene3D.Load restores normal scale");
+        EXPECT_NEAR(
+            loaded_material->normal_scale, 0.7, 0.001, "Scene3D.Load restores normal scale");
         EXPECT_TRUE(loaded_material->alpha_mode == RT_MATERIAL3D_ALPHA_MODE_BLEND &&
                         std::fabs(loaded_material->alpha_cutoff - 0.42) < 0.001 &&
                         loaded_material->double_sided == 1,
@@ -922,34 +917,37 @@ static void test_scene_roundtrip_loads_shared_assets() {
                     3.5,
                     0.001,
                     "Scene3D.Load restores custom shader params");
-        EXPECT_TRUE(loaded_material->texture_slot_uv_set[RT_MATERIAL3D_TEXTURE_SLOT_BASE_COLOR] == 1 &&
-                        loaded_material->texture_slot_wrap_s[RT_MATERIAL3D_TEXTURE_SLOT_BASE_COLOR] ==
-                            RT_MATERIAL3D_TEXTURE_WRAP_CLAMP_TO_EDGE &&
-                        loaded_material->texture_slot_wrap_t[RT_MATERIAL3D_TEXTURE_SLOT_BASE_COLOR] ==
-                            RT_MATERIAL3D_TEXTURE_WRAP_MIRRORED_REPEAT &&
-                        loaded_material->texture_slot_filter[RT_MATERIAL3D_TEXTURE_SLOT_BASE_COLOR] ==
-                            RT_MATERIAL3D_TEXTURE_FILTER_NEAREST,
-                    "Scene3D.Load restores base texture slot sampler and UV set");
-        EXPECT_NEAR(loaded_material->texture_slot_uv_transform[RT_MATERIAL3D_TEXTURE_SLOT_BASE_COLOR][0],
-                    2.0,
-                    0.001,
-                    "Scene3D.Load restores base texture slot U scale");
-        EXPECT_NEAR(loaded_material->texture_slot_uv_transform[RT_MATERIAL3D_TEXTURE_SLOT_BASE_COLOR][5],
-                    0.5,
-                    0.001,
-                    "Scene3D.Load restores base texture slot V offset");
-        EXPECT_TRUE(loaded_material->texture_wrap_s ==
-                        RT_MATERIAL3D_TEXTURE_WRAP_CLAMP_TO_EDGE &&
+        EXPECT_TRUE(
+            loaded_material->texture_slot_uv_set[RT_MATERIAL3D_TEXTURE_SLOT_BASE_COLOR] == 1 &&
+                loaded_material->texture_slot_wrap_s[RT_MATERIAL3D_TEXTURE_SLOT_BASE_COLOR] ==
+                    RT_MATERIAL3D_TEXTURE_WRAP_CLAMP_TO_EDGE &&
+                loaded_material->texture_slot_wrap_t[RT_MATERIAL3D_TEXTURE_SLOT_BASE_COLOR] ==
+                    RT_MATERIAL3D_TEXTURE_WRAP_MIRRORED_REPEAT &&
+                loaded_material->texture_slot_filter[RT_MATERIAL3D_TEXTURE_SLOT_BASE_COLOR] ==
+                    RT_MATERIAL3D_TEXTURE_FILTER_NEAREST,
+            "Scene3D.Load restores base texture slot sampler and UV set");
+        EXPECT_NEAR(
+            loaded_material->texture_slot_uv_transform[RT_MATERIAL3D_TEXTURE_SLOT_BASE_COLOR][0],
+            2.0,
+            0.001,
+            "Scene3D.Load restores base texture slot U scale");
+        EXPECT_NEAR(
+            loaded_material->texture_slot_uv_transform[RT_MATERIAL3D_TEXTURE_SLOT_BASE_COLOR][5],
+            0.5,
+            0.001,
+            "Scene3D.Load restores base texture slot V offset");
+        EXPECT_TRUE(loaded_material->texture_wrap_s == RT_MATERIAL3D_TEXTURE_WRAP_CLAMP_TO_EDGE &&
                         loaded_material->texture_wrap_t ==
                             RT_MATERIAL3D_TEXTURE_WRAP_MIRRORED_REPEAT &&
                         loaded_material->texture_filter == RT_MATERIAL3D_TEXTURE_FILTER_NEAREST,
                     "Scene3D.Load keeps legacy primary sampler fields in sync");
         EXPECT_TRUE(loaded_material->texture_slot_uv_set[RT_MATERIAL3D_TEXTURE_SLOT_NORMAL] == 1,
                     "Scene3D.Load restores normal-map texture coordinate set");
-        EXPECT_NEAR(loaded_material->texture_slot_uv_transform[RT_MATERIAL3D_TEXTURE_SLOT_NORMAL][4],
-                    -0.125,
-                    0.001,
-                    "Scene3D.Load restores independent normal-map UV transform");
+        EXPECT_NEAR(
+            loaded_material->texture_slot_uv_transform[RT_MATERIAL3D_TEXTURE_SLOT_NORMAL][4],
+            -0.125,
+            0.001,
+            "Scene3D.Load restores independent normal-map UV transform");
         EXPECT_TRUE(loaded_material->texture != nullptr &&
                         rt_pixels_get(loaded_material->texture, 0, 0) == 0x10203040ll &&
                         rt_pixels_get(loaded_material->texture, 1, 0) == 0x50607080ll,
@@ -1066,8 +1064,7 @@ static void test_node_animator_slerps_linear_rotation_channels() {
     void *scene = rt_scene3d_new();
     void *node = rt_scene_node3d_new();
     double times[2] = {0.0, 1.0};
-    float values[8] = {0.0f, 0.0f, 0.0f, 1.0f,
-                       0.0f, 0.0f, 0.70710678f, 0.70710678f};
+    float values[8] = {0.0f, 0.0f, 0.0f, 1.0f, 0.0f, 0.0f, 0.70710678f, 0.70710678f};
     void *anim;
     void *animator;
     void *clips[1];
@@ -1090,8 +1087,10 @@ static void test_node_animator_slerps_linear_rotation_channels() {
     rt_scene3d_sync_bindings(scene, 0.25);
 
     void *rot = rt_scene_node3d_get_rotation(node);
-    EXPECT_NEAR(rt_quat_z(rot), 0.19509, 0.001, "Node animation uses quaternion slerp for rotation Z");
-    EXPECT_NEAR(rt_quat_w(rot), 0.98079, 0.001, "Node animation uses quaternion slerp for rotation W");
+    EXPECT_NEAR(
+        rt_quat_z(rot), 0.19509, 0.001, "Node animation uses quaternion slerp for rotation Z");
+    EXPECT_NEAR(
+        rt_quat_w(rot), 0.98079, 0.001, "Node animation uses quaternion slerp for rotation W");
 }
 
 static void test_node_animation_rejects_invalid_channel_data() {
@@ -1445,42 +1444,42 @@ static void test_scene_load_rejects_malformed_json() {
 
 static void test_scene_load_rejects_invalid_node_references() {
     const char *path = "/tmp/viper_scene_invalid_node_ref.vscn";
-    const char *json =
-        "{\n"
-        "  \"format\": \"vscn\",\n"
-        "  \"version\": 2,\n"
-        "  \"textures\": [],\n"
-        "  \"cubemaps\": [],\n"
-        "  \"materials\": [],\n"
-        "  \"meshes\": [],\n"
-        "  \"nodes\": [\n"
-        "    {\"name\": \"bad\", \"position\": [0,0,0], \"rotation\": [0,0,0,1], "
-        "\"scale\": [1,1,1], \"visible\": true, \"mesh\": 0, \"material\": -1}\n"
-        "  ]\n"
-        "}\n";
+    const char *json = "{\n"
+                       "  \"format\": \"vscn\",\n"
+                       "  \"version\": 2,\n"
+                       "  \"textures\": [],\n"
+                       "  \"cubemaps\": [],\n"
+                       "  \"materials\": [],\n"
+                       "  \"meshes\": [],\n"
+                       "  \"nodes\": [\n"
+                       "    {\"name\": \"bad\", \"position\": [0,0,0], \"rotation\": [0,0,0,1], "
+                       "\"scale\": [1,1,1], \"visible\": true, \"mesh\": 0, \"material\": -1}\n"
+                       "  ]\n"
+                       "}\n";
     EXPECT_TRUE(write_text_file(path, json), "Invalid-reference VSCN fixture can be written");
     void *loaded = rt_scene3d_load(rt_const_cstr(path));
-    EXPECT_TRUE(loaded == nullptr, "Scene3D.Load rejects node mesh references outside the mesh table");
+    EXPECT_TRUE(loaded == nullptr,
+                "Scene3D.Load rejects node mesh references outside the mesh table");
 }
 
 static void test_scene_load_sanitizes_degenerate_rotation() {
     const char *path = "/tmp/viper_scene_degenerate_rotation.vscn";
-    const char *json =
-        "{\n"
-        "  \"format\": \"vscn\",\n"
-        "  \"version\": 2,\n"
-        "  \"textures\": [],\n"
-        "  \"cubemaps\": [],\n"
-        "  \"materials\": [],\n"
-        "  \"meshes\": [],\n"
-        "  \"nodes\": [\n"
-        "    {\"name\": \"rot\", \"position\": [0,0,0], \"rotation\": [0,0,0,0], "
-        "\"scale\": [1,1,1], \"visible\": true, \"mesh\": -1, \"material\": -1}\n"
-        "  ]\n"
-        "}\n";
+    const char *json = "{\n"
+                       "  \"format\": \"vscn\",\n"
+                       "  \"version\": 2,\n"
+                       "  \"textures\": [],\n"
+                       "  \"cubemaps\": [],\n"
+                       "  \"materials\": [],\n"
+                       "  \"meshes\": [],\n"
+                       "  \"nodes\": [\n"
+                       "    {\"name\": \"rot\", \"position\": [0,0,0], \"rotation\": [0,0,0,0], "
+                       "\"scale\": [1,1,1], \"visible\": true, \"mesh\": -1, \"material\": -1}\n"
+                       "  ]\n"
+                       "}\n";
     EXPECT_TRUE(write_text_file(path, json), "Degenerate-rotation VSCN fixture can be written");
     void *loaded = rt_scene3d_load(rt_const_cstr(path));
-    EXPECT_TRUE(loaded != nullptr, "Scene3D.Load accepts valid scene with sanitized transform data");
+    EXPECT_TRUE(loaded != nullptr,
+                "Scene3D.Load accepts valid scene with sanitized transform data");
     if (!loaded)
         return;
     void *node = rt_scene3d_find(loaded, rt_const_cstr("rot"));

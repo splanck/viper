@@ -92,15 +92,15 @@ int64_t g_open_height = 32;
 constexpr uint64_t kVideoWidgetMagic = 0x5254564944454F57ull;
 int g_release_count = 0;
 int g_widget_destroy_count = 0;
-    int g_open_count = 0;
+int g_open_count = 0;
 
-    rt_string stub_video_path() {
-        static char path[] = "video.ogv";
-        static StubString str{path};
-        return reinterpret_cast<rt_string>(&str);
-    }
+rt_string stub_video_path() {
+    static char path[] = "video.ogv";
+    static StubString str{path};
+    return reinterpret_cast<rt_string>(&str);
+}
 
-    void reset_open_state() {
+void reset_open_state() {
     g_open_should_fail = false;
     g_parent_valid = true;
     g_open_width = 64;
@@ -372,8 +372,8 @@ static void test_successful_construction_sets_up_widgets() {
     StubWidget parent{};
     reset_open_state();
 
-    auto *widget = static_cast<rt_videowidget_view *>(
-        rt_videowidget_new(&parent, stub_video_path()));
+    auto *widget =
+        static_cast<rt_videowidget_view *>(rt_videowidget_new(&parent, stub_video_path()));
     assert(widget != nullptr);
     assert(widget->magic == kVideoWidgetMagic);
     assert(parent.child_count == 1);
@@ -397,8 +397,8 @@ static void test_controls_drive_player_state() {
     StubWidget parent{};
     reset_open_state();
 
-    auto *widget = static_cast<rt_videowidget_view *>(
-        rt_videowidget_new(&parent, stub_video_path()));
+    auto *widget =
+        static_cast<rt_videowidget_view *>(rt_videowidget_new(&parent, stub_video_path()));
     auto *player = static_cast<StubPlayer *>(widget->player);
 
     static_cast<StubWidget *>(widget->play_button)->clicked = 1;
@@ -418,8 +418,8 @@ static void test_slider_seek_and_looping() {
     StubWidget parent{};
     reset_open_state();
 
-    auto *widget = static_cast<rt_videowidget_view *>(
-        rt_videowidget_new(&parent, stub_video_path()));
+    auto *widget =
+        static_cast<rt_videowidget_view *>(rt_videowidget_new(&parent, stub_video_path()));
     auto *player = static_cast<StubPlayer *>(widget->player);
     auto *slider = static_cast<StubWidget *>(widget->position_slider);
 
@@ -445,8 +445,8 @@ static void test_root_widget_proxy_methods() {
     StubWidget parent{};
     reset_open_state();
 
-    auto *widget = static_cast<rt_videowidget_view *>(
-        rt_videowidget_new(&parent, stub_video_path()));
+    auto *widget =
+        static_cast<rt_videowidget_view *>(rt_videowidget_new(&parent, stub_video_path()));
     auto *root = static_cast<StubWidget *>(widget->root_widget);
 
     assert(rt_videowidget_get_root(widget) == widget->root_widget);
@@ -482,7 +482,8 @@ static void test_frame_upload_accepts_dimension_changes() {
     StubWidget parent{};
     reset_open_state();
 
-    auto *widget = static_cast<rt_videowidget_view *>(rt_videowidget_new(&parent, stub_video_path()));
+    auto *widget =
+        static_cast<rt_videowidget_view *>(rt_videowidget_new(&parent, stub_video_path()));
     auto *player = static_cast<StubPlayer *>(widget->player);
     auto *frame = player->frame;
     auto *image = static_cast<StubWidget *>(widget->image_widget);
@@ -504,8 +505,8 @@ static void test_visibility_and_volume_are_clamped() {
     StubWidget parent{};
     reset_open_state();
 
-    auto *widget = static_cast<rt_videowidget_view *>(
-        rt_videowidget_new(&parent, stub_video_path()));
+    auto *widget =
+        static_cast<rt_videowidget_view *>(rt_videowidget_new(&parent, stub_video_path()));
     auto *controls = static_cast<StubWidget *>(widget->controls_widget);
     auto *player = static_cast<StubPlayer *>(widget->player);
 
@@ -535,8 +536,8 @@ static void test_nonfinite_update_delta_is_ignored() {
     StubWidget parent{};
     reset_open_state();
 
-    auto *widget = static_cast<rt_videowidget_view *>(
-        rt_videowidget_new(&parent, stub_video_path()));
+    auto *widget =
+        static_cast<rt_videowidget_view *>(rt_videowidget_new(&parent, stub_video_path()));
     auto *player = static_cast<StubPlayer *>(widget->player);
     int before = player->update_calls;
 
@@ -552,8 +553,8 @@ static void test_destroy_releases_player_and_widget_tree() {
     StubWidget parent{};
     reset_open_state();
 
-    auto *widget = static_cast<rt_videowidget_view *>(
-        rt_videowidget_new(&parent, stub_video_path()));
+    auto *widget =
+        static_cast<rt_videowidget_view *>(rt_videowidget_new(&parent, stub_video_path()));
     assert(widget != nullptr);
     assert(widget->player != nullptr);
     assert(widget->root_widget != nullptr);

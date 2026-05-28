@@ -281,8 +281,8 @@ static int particle_state_is_finite(const vgfx3d_particle_t *p) {
         if (!isfinite(p->pos[i]) || !isfinite(p->vel[i]) || !isfinite(p->color[i]))
             return 0;
     }
-    return isfinite(p->color[3]) && isfinite(p->size) && p->size >= 0.0f &&
-           isfinite(p->life) && isfinite(p->max_life) && p->max_life > 0.0f;
+    return isfinite(p->color[3]) && isfinite(p->size) && p->size >= 0.0f && isfinite(p->life) &&
+           isfinite(p->max_life) && p->max_life > 0.0f;
 }
 
 /*==========================================================================
@@ -318,7 +318,8 @@ void *rt_particles3d_new(int64_t max_particles) {
         rt_trap("Particles3D.New: max_particles must be 1-100000");
         return NULL;
     }
-    rt_particles3d *ps = (rt_particles3d *)rt_obj_new_i64(RT_G3D_PARTICLES3D_CLASS_ID, (int64_t)sizeof(rt_particles3d));
+    rt_particles3d *ps = (rt_particles3d *)rt_obj_new_i64(RT_G3D_PARTICLES3D_CLASS_ID,
+                                                          (int64_t)sizeof(rt_particles3d));
     if (!ps) {
         rt_trap("Particles3D.New: memory allocation failed");
         return NULL;
@@ -474,7 +475,8 @@ void rt_particles3d_set_gravity(void *o, double gx, double gy, double gz) {
 }
 
 /// @brief Set start (`sc`) and end (`ec`) colors as packed 0xRRGGBBAA. Each particle linearly
-/// interpolates between them based on age ratio. Alpha component is set separately via `_set_alpha`.
+/// interpolates between them based on age ratio. Alpha component is set separately via
+/// `_set_alpha`.
 void rt_particles3d_set_color(void *o, int64_t sc, int64_t ec) {
     rt_particles3d *p = particles3d_checked(o);
     if (!p)
@@ -483,7 +485,8 @@ void rt_particles3d_set_color(void *o, int64_t sc, int64_t ec) {
     unpack_color(ec, p->color_end);
 }
 
-/// @brief Set start (`sa`) and end (`ea`) alpha values [0, 1]. Common pattern: 1.0→0.0 for fade-out.
+/// @brief Set start (`sa`) and end (`ea`) alpha values [0, 1]. Common pattern: 1.0→0.0 for
+/// fade-out.
 void rt_particles3d_set_alpha(void *o, double sa, double ea) {
     rt_particles3d *p = particles3d_checked(o);
     if (!p)
@@ -913,8 +916,22 @@ void rt_particles3d_draw(void *o, void *canvas3d, void *camera) {
     }
 
     static const double identity[16] = {
-        1.0, 0.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0,
-        0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 0.0, 1.0,
+        1.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        1.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        1.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        1.0,
     };
     rt_material3d_set_alpha(mat, 1.0);
     rt_material3d_set_alpha_mode(mat, RT_MATERIAL3D_ALPHA_MODE_BLEND);

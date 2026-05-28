@@ -318,8 +318,7 @@ static void test_format_xml_from_generic_attrs_and_text() {
     ASSERT(xml_out != NULL, "generic @attrs/@text XML formatting");
     ASSERT(strstr(rt_string_cstr(xml_out), "id=\"42\"") != NULL,
            "generic XML output preserves @attrs");
-    ASSERT(strstr(rt_string_cstr(xml_out), "hello") != NULL,
-           "generic XML output preserves @text");
+    ASSERT(strstr(rt_string_cstr(xml_out), "hello") != NULL, "generic XML output preserves @text");
     ASSERT(strstr(rt_string_cstr(xml_out), "<child>world</child>") != NULL,
            "generic XML output preserves child elements");
 

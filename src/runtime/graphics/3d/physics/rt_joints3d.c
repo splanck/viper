@@ -27,8 +27,8 @@
 
 #ifdef VIPER_ENABLE_GRAPHICS
 
-#include "rt_graphics3d_ids.h"
 #include "rt_joints3d.h"
+#include "rt_graphics3d_ids.h"
 #include "rt_physics3d.h"
 
 #include <math.h>
@@ -131,8 +131,8 @@ void *rt_distance_joint3d_new(void *body_a, void *body_b, double distance) {
         rt_trap("DistanceJoint3D.New: both bodies must be non-null");
         return NULL;
     }
-    rt_distance_joint3d *j =
-        (rt_distance_joint3d *)rt_obj_new_i64(RT_G3D_DISTANCEJOINT3D_CLASS_ID, (int64_t)sizeof(rt_distance_joint3d));
+    rt_distance_joint3d *j = (rt_distance_joint3d *)rt_obj_new_i64(
+        RT_G3D_DISTANCEJOINT3D_CLASS_ID, (int64_t)sizeof(rt_distance_joint3d));
     if (!j) {
         rt_trap("DistanceJoint3D.New: allocation failed");
         return NULL;
@@ -268,8 +268,8 @@ void *rt_spring_joint3d_new(
         rt_trap("SpringJoint3D.New: both bodies must be non-null");
         return NULL;
     }
-    rt_spring_joint3d *j =
-        (rt_spring_joint3d *)rt_obj_new_i64(RT_G3D_SPRINGJOINT3D_CLASS_ID, (int64_t)sizeof(rt_spring_joint3d));
+    rt_spring_joint3d *j = (rt_spring_joint3d *)rt_obj_new_i64(RT_G3D_SPRINGJOINT3D_CLASS_ID,
+                                                               (int64_t)sizeof(rt_spring_joint3d));
     if (!j) {
         rt_trap("SpringJoint3D.New: allocation failed");
         return NULL;
@@ -393,8 +393,7 @@ static void solve_spring(rt_spring_joint3d *j, double dt) {
 void rt_joint3d_solve(void *joint, int32_t joint_type, double dt) {
     if (!joint)
         return;
-    if (joint_type == RT_JOINT_DISTANCE &&
-        rt_g3d_has_class(joint, RT_G3D_DISTANCEJOINT3D_CLASS_ID))
+    if (joint_type == RT_JOINT_DISTANCE && rt_g3d_has_class(joint, RT_G3D_DISTANCEJOINT3D_CLASS_ID))
         solve_distance((rt_distance_joint3d *)joint, dt);
     else if (joint_type == RT_JOINT_SPRING &&
              rt_g3d_has_class(joint, RT_G3D_SPRINGJOINT3D_CLASS_ID))

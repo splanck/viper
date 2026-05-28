@@ -246,8 +246,8 @@ static size_t rt_fmt_first_utf8_len(const char *data, size_t len) {
     }
 
     if (first == 0xE0) {
-        if (len >= 3 && (unsigned char)data[1] >= 0xA0 &&
-            (unsigned char)data[1] <= 0xBF && rt_fmt_is_utf8_cont((unsigned char)data[2]))
+        if (len >= 3 && (unsigned char)data[1] >= 0xA0 && (unsigned char)data[1] <= 0xBF &&
+            rt_fmt_is_utf8_cont((unsigned char)data[2]))
             return 3;
         return 0;
     }
@@ -260,15 +260,15 @@ static size_t rt_fmt_first_utf8_len(const char *data, size_t len) {
     }
 
     if (first == 0xED) {
-        if (len >= 3 && (unsigned char)data[1] >= 0x80 &&
-            (unsigned char)data[1] <= 0x9F && rt_fmt_is_utf8_cont((unsigned char)data[2]))
+        if (len >= 3 && (unsigned char)data[1] >= 0x80 && (unsigned char)data[1] <= 0x9F &&
+            rt_fmt_is_utf8_cont((unsigned char)data[2]))
             return 3;
         return 0;
     }
 
     if (first == 0xF0) {
-        if (len >= 4 && (unsigned char)data[1] >= 0x90 &&
-            (unsigned char)data[1] <= 0xBF && rt_fmt_is_utf8_cont((unsigned char)data[2]) &&
+        if (len >= 4 && (unsigned char)data[1] >= 0x90 && (unsigned char)data[1] <= 0xBF &&
+            rt_fmt_is_utf8_cont((unsigned char)data[2]) &&
             rt_fmt_is_utf8_cont((unsigned char)data[3]))
             return 4;
         return 0;
@@ -283,8 +283,8 @@ static size_t rt_fmt_first_utf8_len(const char *data, size_t len) {
     }
 
     if (first == 0xF4) {
-        if (len >= 4 && (unsigned char)data[1] >= 0x80 &&
-            (unsigned char)data[1] <= 0x8F && rt_fmt_is_utf8_cont((unsigned char)data[2]) &&
+        if (len >= 4 && (unsigned char)data[1] >= 0x80 && (unsigned char)data[1] <= 0x8F &&
+            rt_fmt_is_utf8_cont((unsigned char)data[2]) &&
             rt_fmt_is_utf8_cont((unsigned char)data[3]))
             return 4;
         return 0;
@@ -869,8 +869,7 @@ rt_string rt_fmt_int_grouped(int64_t value, rt_string sep) {
         return rt_fmt_empty();
 
     size_t out_len = 0;
-    char *buf = rt_fmt_group_digits_alloc(
-        raw, (size_t)rlen, sep_str, sep_len, negative, &out_len);
+    char *buf = rt_fmt_group_digits_alloc(raw, (size_t)rlen, sep_str, sep_len, negative, &out_len);
     if (!buf)
         return rt_fmt_empty();
 
@@ -994,9 +993,8 @@ static int words_chunk(char *buf, size_t cap, size_t *pos, uint64_t n) {
         if (!rt_fmt_append_cstr(buf, cap, pos, tens_words[t]))
             return 0;
         n %= 10;
-        if (n > 0 &&
-            (!rt_fmt_append_cstr(buf, cap, pos, "-") ||
-             !rt_fmt_append_cstr(buf, cap, pos, ones[n])))
+        if (n > 0 && (!rt_fmt_append_cstr(buf, cap, pos, "-") ||
+                      !rt_fmt_append_cstr(buf, cap, pos, ones[n])))
             return 0;
     } else if (n > 0) {
         if (!rt_fmt_append_cstr(buf, cap, pos, ones[n]))

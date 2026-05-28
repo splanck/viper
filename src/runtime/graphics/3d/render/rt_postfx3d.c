@@ -191,8 +191,7 @@ static postfx_entry_t *postfx_append_entry(rt_postfx3d *fx) {
     new_capacity = fx->effect_capacity > 0 ? fx->effect_capacity * 2 : 8;
     if (new_capacity < fx->effect_count + 1)
         new_capacity = fx->effect_count + 1;
-    effects =
-        (postfx_entry_t *)realloc(fx->effects, (size_t)new_capacity * sizeof(postfx_entry_t));
+    effects = (postfx_entry_t *)realloc(fx->effects, (size_t)new_capacity * sizeof(postfx_entry_t));
     if (!effects)
         return NULL;
     memset(effects + fx->effect_capacity,
@@ -229,8 +228,8 @@ static int vgfx3d_postfx_chain_reserve(vgfx3d_postfx_chain_t *chain, int32_t nee
         }
         new_capacity *= 2;
     }
-    effects = (vgfx3d_postfx_effect_desc_t *)realloc(
-        chain->effects, (size_t)new_capacity * sizeof(*effects));
+    effects = (vgfx3d_postfx_effect_desc_t *)realloc(chain->effects,
+                                                     (size_t)new_capacity * sizeof(*effects));
     if (!effects)
         return 0;
     if (new_capacity > chain->effect_capacity) {
@@ -780,7 +779,8 @@ static void rt_postfx3d_finalize(void *obj) {
 /// allocated on the first append, so a never-used chain pays zero extra memory
 /// beyond the wrapper struct.
 void *rt_postfx3d_new(void) {
-    rt_postfx3d *fx = (rt_postfx3d *)rt_obj_new_i64(RT_G3D_POSTFX3D_CLASS_ID, (int64_t)sizeof(rt_postfx3d));
+    rt_postfx3d *fx =
+        (rt_postfx3d *)rt_obj_new_i64(RT_G3D_POSTFX3D_CLASS_ID, (int64_t)sizeof(rt_postfx3d));
     if (!fx) {
         rt_trap("PostFX3D.New: memory allocation failed");
         return NULL;
@@ -1003,8 +1003,7 @@ static void postfx3d_configure_quality_profile(rt_postfx3d *fx,
                 rt_postfx3d_add_motion_blur(fx, 0.12, 6);
             } else if (canvas) {
                 canvas->quality_fallback = 1;
-                canvas->quality_fallback_reason =
-                    POSTFX3D_QUALITY_FALLBACK_GPU_POSTFX_UNAVAILABLE;
+                canvas->quality_fallback_reason = POSTFX3D_QUALITY_FALLBACK_GPU_POSTFX_UNAVAILABLE;
             }
             break;
     }
@@ -1053,8 +1052,7 @@ int8_t rt_canvas3d_get_quality_fallback(void *canvas) {
 /// @brief Get a human-readable reason for the last quality fallback (empty if none). See header.
 rt_string rt_canvas3d_get_quality_fallback_reason(void *canvas) {
     rt_canvas3d *c = rt_canvas3d_checked_or_stack(canvas);
-    const char *reason =
-        c ? postfx3d_quality_fallback_reason_text(c->quality_fallback_reason) : "";
+    const char *reason = c ? postfx3d_quality_fallback_reason_text(c->quality_fallback_reason) : "";
     return rt_string_from_bytes(reason, strlen(reason));
 }
 

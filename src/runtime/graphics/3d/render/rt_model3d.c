@@ -38,8 +38,8 @@
 #include "rt_canvas3d.h"
 #include "rt_canvas3d_internal.h"
 #include "rt_fbx_loader.h"
-#include "rt_graphics3d_ids.h"
 #include "rt_gltf.h"
+#include "rt_graphics3d_ids.h"
 #include "rt_morphtarget3d.h"
 #include "rt_object.h"
 #include "rt_scene3d.h"
@@ -141,7 +141,8 @@ static void rt_model3d_finalize(void *obj) {
 /// scene node attached. Traps with a user-visible message on either allocation failure;
 /// returns NULL only after trapping so the caller's `goto fail` paths can still run.
 static rt_model3d *model_new(void) {
-    rt_model3d *model = (rt_model3d *)rt_obj_new_i64(RT_G3D_MODEL3D_CLASS_ID, (int64_t)sizeof(rt_model3d));
+    rt_model3d *model =
+        (rt_model3d *)rt_obj_new_i64(RT_G3D_MODEL3D_CLASS_ID, (int64_t)sizeof(rt_model3d));
     if (!model) {
         rt_trap("Model3D.Load: allocation failed");
         return NULL;
@@ -476,7 +477,8 @@ static rt_scene_node3d *model_clone_node(const rt_scene_node3d *src, int clone_m
 /// to graft the imported scene's top-level children under the synthesized template root
 /// *without* copying the import's own root (which often carries loader-specific metadata
 /// we don't want to leak into the user-visible tree).
-static void model_clone_children_to_root(rt_scene_node3d *dst_root, const rt_scene_node3d *src_root) {
+static void model_clone_children_to_root(rt_scene_node3d *dst_root,
+                                         const rt_scene_node3d *src_root) {
     if (!dst_root || !src_root)
         return;
     for (int32_t i = 0; i < src_root->child_count; i++) {
@@ -504,7 +506,8 @@ static int model_collect_template_refs(rt_model3d *model) {
     return 1;
 }
 
-/// @brief Wire a default skeletal AnimationController3D onto `root` when one is present in the model.
+/// @brief Wire a default skeletal AnimationController3D onto `root` when one is present in the
+/// model.
 /// @details Creates an AnimController3D backed by the first skeleton, adds one state per loaded
 ///   animation clip (naming it after its rt_animation3d name, with a "animation_<i>" fallback for
 ///   unnamed clips), then plays the first state so the model arrives in a live pose immediately
@@ -559,8 +562,8 @@ static void model_bind_default_node_animator(rt_model3d *model, rt_scene_node3d 
     void *animator;
     if (!model || !root || root->bound_node_animator || model->node_animation_count <= 0)
         return;
-    animator = rt_node_animator3d_new_from_clips(model->node_animations,
-                                                model->node_animation_count);
+    animator =
+        rt_node_animator3d_new_from_clips(model->node_animations, model->node_animation_count);
     if (!animator)
         return;
     rt_scene_node3d_bind_node_animator(root, animator);
@@ -951,7 +954,8 @@ int64_t rt_model3d_get_node_count(void *obj) {
     return model_count_subtree(model->template_root) - 1;
 }
 
-/// @brief Borrow the i-th Mesh3D (NULL on out-of-range). Caller must NOT release; the model owns it.
+/// @brief Borrow the i-th Mesh3D (NULL on out-of-range). Caller must NOT release; the model owns
+/// it.
 void *rt_model3d_get_mesh(void *obj, int64_t index) {
     rt_model3d *model = model3d_checked(obj);
     if (!model || index < 0 || index >= model->mesh_count)

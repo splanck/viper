@@ -50,10 +50,9 @@ class CheckOpt : public FunctionPass {
     ///        a guarding signed comparison (CBr) proves the operation cannot
     ///        overflow on the taken edge.
     /// @return True if any instruction was rewritten.
-    bool runGuardOverflowElim(
-        core::Function &function,
-        const std::unordered_map<std::string, core::BasicBlock *> &blockMap,
-        const std::unordered_map<std::string, unsigned> &predecessorCounts);
+    bool runGuardOverflowElim(core::Function &function,
+                              const std::unordered_map<std::string, core::BasicBlock *> &blockMap,
+                              const std::unordered_map<std::string, unsigned> &predecessorCounts);
 };
 
 /// @brief Register the CheckOpt pass with the provided registry.

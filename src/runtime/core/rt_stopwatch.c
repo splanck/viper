@@ -39,9 +39,9 @@
 #include "rt_object.h"
 #include "rt_trap.h"
 
+#include <limits.h>
 #include <stdbool.h>
 #include <stdint.h>
-#include <limits.h>
 
 #if defined(_WIN32)
 #define WIN32_LEAN_AND_MEAN
@@ -175,8 +175,7 @@ static int64_t get_timestamp_ns(void) {
         return 0;
     }
     whole_ns = whole * 1000000000LL;
-    int64_t rem_ns =
-        (int64_t)(((long double)rem * 1000000000.0L) / (long double)freq.QuadPart);
+    int64_t rem_ns = (int64_t)(((long double)rem * 1000000000.0L) / (long double)freq.QuadPart);
     if (stopwatch_checked_add_i64(whole_ns, rem_ns, &result)) {
         rt_trap_ovf();
         return 0;

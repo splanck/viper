@@ -69,6 +69,7 @@ typedef struct {
     int64_t body_count;
     ph_joint *joints[PH_MAX_JOINTS];
     int32_t joint_count;
+
     struct {
         rt_body_impl *body_a;
         rt_body_impl *body_b;
@@ -76,6 +77,7 @@ typedef struct {
         double ny;
         double penetration;
     } contacts[PH_MAX_CONTACTS];
+
     int32_t contact_count;
 } rt_world_impl;
 
@@ -85,12 +87,12 @@ struct ph_joint {
     int32_t type; ///< RT_JOINT_DISTANCE, etc.
     void *body_a;
     void *body_b;
-    double anchor_x, anchor_y; ///< World-space anchor (hinge)
+    double anchor_x, anchor_y;   ///< World-space anchor (hinge)
     double anchor_ax, anchor_ay; ///< Body A local hinge anchor offset from center.
     double anchor_bx, anchor_by; ///< Body B local hinge anchor offset from center.
-    double length;             ///< Target distance (distance/rope)
-    double stiffness;          ///< Spring stiffness
-    double damping;            ///< Spring damping
+    double length;               ///< Target distance (distance/rope)
+    double stiffness;            ///< Spring stiffness
+    double damping;              ///< Spring damping
     int8_t active;
 };
 

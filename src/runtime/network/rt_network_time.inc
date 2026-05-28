@@ -19,12 +19,11 @@ static inline time_t rt_network_timegm_utc(const struct tm *tm_val) {
         return (time_t)-1;
     }
 
-    int64_t seconds = rt_network_days_from_civil(tm_val->tm_year + 1900,
-                                                 (unsigned)(tm_val->tm_mon + 1),
-                                                 (unsigned)tm_val->tm_mday) *
-                          86400 +
-                      (int64_t)tm_val->tm_hour * 3600 + (int64_t)tm_val->tm_min * 60 +
-                      (int64_t)tm_val->tm_sec;
+    int64_t seconds =
+        rt_network_days_from_civil(
+            tm_val->tm_year + 1900, (unsigned)(tm_val->tm_mon + 1), (unsigned)tm_val->tm_mday) *
+            86400 +
+        (int64_t)tm_val->tm_hour * 3600 + (int64_t)tm_val->tm_min * 60 + (int64_t)tm_val->tm_sec;
     time_t out = (time_t)seconds;
     return (int64_t)out == seconds ? out : (time_t)-1;
 }

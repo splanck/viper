@@ -63,8 +63,10 @@ void rt_sound3d_compute_voice_params_ex(const rt_sound3d_listener_state *listene
 /// @brief Register an existing voice for later Sound3D.UpdateVoice fallback lookups.
 void rt_sound3d_register_voice(int64_t voice, double max_distance, int64_t base_volume);
 /// @brief Register an existing voice with explicit reference/max falloff distances.
-void rt_sound3d_register_voice_ex(
-    int64_t voice, double ref_distance, double max_distance, int64_t base_volume);
+void rt_sound3d_register_voice_ex(int64_t voice,
+                                  double ref_distance,
+                                  double max_distance,
+                                  int64_t base_volume);
 
 /// @brief Set the fallback listener position and orientation (Vec3 handles).
 void rt_sound3d_set_listener(void *position, void *forward);

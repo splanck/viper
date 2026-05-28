@@ -47,8 +47,8 @@ static rt_canvas *make_canvas(int32_t logical_width, int32_t logical_height, flo
     window->framebuffer.width = (int32_t)rtg_scale_up_i64(logical_width, scale);
     window->framebuffer.height = (int32_t)rtg_scale_up_i64(logical_height, scale);
     window->framebuffer.stride = window->framebuffer.width * 4;
-    window->pixels = static_cast<uint8_t *>(std::calloc(
-        (size_t)window->framebuffer.stride * (size_t)window->framebuffer.height, 1));
+    window->pixels = static_cast<uint8_t *>(
+        std::calloc((size_t)window->framebuffer.stride * (size_t)window->framebuffer.height, 1));
     assert(window->pixels != nullptr);
     window->framebuffer.pixels = window->pixels;
 
@@ -72,8 +72,7 @@ static uint32_t framebuffer_pixel(rt_canvas *canvas, int32_t x, int32_t y) {
     auto *window = reinterpret_cast<FakeWindow *>(canvas->gfx_win);
     assert(window != nullptr);
     uint8_t *p = &window->pixels[(size_t)y * (size_t)window->framebuffer.stride + (size_t)x * 4u];
-    return ((uint32_t)p[0] << 24) | ((uint32_t)p[1] << 16) | ((uint32_t)p[2] << 8) |
-           (uint32_t)p[3];
+    return ((uint32_t)p[0] << 24) | ((uint32_t)p[1] << 16) | ((uint32_t)p[2] << 8) | (uint32_t)p[3];
 }
 
 static uint32_t opaque_rgb(int64_t rgb) {
@@ -151,8 +150,10 @@ static void test_gradient_h_preserves_full_gradient_when_clipped() {
     rt_canvas_gradient_h(canvas, 0, 0, 4, 1, 0x00FF0000, 0x000000FF);
 
     assert(framebuffer_pixel(canvas, 0, 0) == 0);
-    assert(framebuffer_pixel(canvas, 1, 0) == opaque_rgb(rt_color_lerp(0x00FF0000, 0x000000FF, 33)));
-    assert(framebuffer_pixel(canvas, 2, 0) == opaque_rgb(rt_color_lerp(0x00FF0000, 0x000000FF, 66)));
+    assert(framebuffer_pixel(canvas, 1, 0) ==
+           opaque_rgb(rt_color_lerp(0x00FF0000, 0x000000FF, 33)));
+    assert(framebuffer_pixel(canvas, 2, 0) ==
+           opaque_rgb(rt_color_lerp(0x00FF0000, 0x000000FF, 66)));
     assert(framebuffer_pixel(canvas, 3, 0) == 0);
 }
 
@@ -167,15 +168,18 @@ static void test_gradient_v_preserves_full_gradient_when_clipped() {
     rt_canvas_gradient_v(canvas, 0, 0, 1, 4, 0x00FF0000, 0x000000FF);
 
     assert(framebuffer_pixel(canvas, 0, 0) == 0);
-    assert(framebuffer_pixel(canvas, 0, 1) == opaque_rgb(rt_color_lerp(0x00FF0000, 0x000000FF, 33)));
-    assert(framebuffer_pixel(canvas, 0, 2) == opaque_rgb(rt_color_lerp(0x00FF0000, 0x000000FF, 66)));
+    assert(framebuffer_pixel(canvas, 0, 1) ==
+           opaque_rgb(rt_color_lerp(0x00FF0000, 0x000000FF, 33)));
+    assert(framebuffer_pixel(canvas, 0, 2) ==
+           opaque_rgb(rt_color_lerp(0x00FF0000, 0x000000FF, 66)));
     assert(framebuffer_pixel(canvas, 0, 3) == 0);
 }
 
 static void test_gradient_preserves_explicit_alpha_in_framebuffer() {
     rt_canvas *canvas = make_canvas(2, 1, 1.0f);
 
-    rt_canvas_gradient_h(canvas, 0, 0, 2, 1, rt_color_rgba(255, 0, 0, 128), rt_color_rgba(0, 0, 255, 64));
+    rt_canvas_gradient_h(
+        canvas, 0, 0, 2, 1, rt_color_rgba(255, 0, 0, 128), rt_color_rgba(0, 0, 255, 64));
 
     assert(framebuffer_pixel(canvas, 0, 0) == 0xFF000080u);
     assert(framebuffer_pixel(canvas, 1, 0) == 0x0000FF40u);
@@ -189,8 +193,8 @@ static void test_canvas_handle_validation_rejects_non_heap_canvas() {
 
 static void test_polyline_requires_sized_i64_heap_array() {
     rt_canvas *canvas = make_canvas(8, 8, 1.0f);
-    auto *points = static_cast<int64_t *>(
-        rt_heap_alloc(RT_HEAP_ARRAY, RT_ELEM_I64, sizeof(int64_t), 4, 4));
+    auto *points =
+        static_cast<int64_t *>(rt_heap_alloc(RT_HEAP_ARRAY, RT_ELEM_I64, sizeof(int64_t), 4, 4));
     assert(points != nullptr);
     points[0] = 0;
     points[1] = 0;
@@ -280,12 +284,19 @@ extern "C" int32_t vgfx_point(vgfx_window_t window, int32_t x, int32_t y, vgfx_c
 extern "C" void vgfx_line(vgfx_window_t, int32_t, int32_t, int32_t, int32_t, vgfx_color_t) {
     g_line_calls++;
 }
+
 extern "C" void vgfx_fill_rect(vgfx_window_t, int32_t, int32_t, int32_t, int32_t, vgfx_color_t) {}
+
 extern "C" void vgfx_rect(vgfx_window_t, int32_t, int32_t, int32_t, int32_t, vgfx_color_t) {}
+
 extern "C" void vgfx_fill_circle(vgfx_window_t, int32_t, int32_t, int32_t, vgfx_color_t) {}
+
 extern "C" void vgfx_circle(vgfx_window_t, int32_t, int32_t, int32_t, vgfx_color_t) {}
+
 extern "C" void vgfx_set_coord_scale(vgfx_window_t, float) {}
+
 extern "C" void vgfx_set_clip(vgfx_window_t, int32_t, int32_t, int32_t, int32_t) {}
+
 extern "C" void vgfx_clear_clip(vgfx_window_t) {}
 
 extern "C" const uint8_t *rt_font_get_glyph(int) {

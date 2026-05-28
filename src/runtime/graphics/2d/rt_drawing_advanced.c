@@ -1457,9 +1457,8 @@ void rt_canvas_gradient_h(
             continue;
 
         int64_t gradient_col = rtg_add_sat64(logical_x, -orig_x);
-        uint32_t rgba =
-            rt_pixels_color_to_rgba(
-                rt_color_lerp(c1, c2, rtg_mul_sat64(gradient_col, 100) / w_minus1));
+        uint32_t rgba = rt_pixels_color_to_rgba(
+            rt_color_lerp(c1, c2, rtg_mul_sat64(gradient_col, 100) / w_minus1));
         uint8_t cr = (uint8_t)((rgba >> 24) & 0xFF);
         uint8_t cg = (uint8_t)((rgba >> 16) & 0xFF);
         uint8_t cb = (uint8_t)((rgba >> 8) & 0xFF);
@@ -1551,9 +1550,8 @@ void rt_canvas_gradient_v(
             continue;
 
         int64_t gradient_row = rtg_add_sat64(logical_y, -orig_y);
-        uint32_t rgba =
-            rt_pixels_color_to_rgba(
-                rt_color_lerp(c1, c2, rtg_mul_sat64(gradient_row, 100) / h_minus1));
+        uint32_t rgba = rt_pixels_color_to_rgba(
+            rt_color_lerp(c1, c2, rtg_mul_sat64(gradient_row, 100) / h_minus1));
         uint8_t cr = (uint8_t)((rgba >> 24) & 0xFF);
         uint8_t cg = (uint8_t)((rgba >> 16) & 0xFF);
         uint8_t cb = (uint8_t)((rgba >> 8) & 0xFF);

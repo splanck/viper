@@ -246,8 +246,8 @@ TEST(X64FrameLowering, IncomingStackParamsPreventLeafElision) {
     MBasicBlock block;
     block.label = "entry";
     const OpReg rbp{true, RegClass::GPR, static_cast<uint16_t>(PhysReg::RBP)};
-    block.instructions.push_back(MInstr::make(
-        MOpcode::MOVmr, {makeVRegOperand(RegClass::GPR, 1), makeMemOperand(rbp, 16)}));
+    block.instructions.push_back(
+        MInstr::make(MOpcode::MOVmr, {makeVRegOperand(RegClass::GPR, 1), makeMemOperand(rbp, 16)}));
     block.instructions.push_back(MInstr::make(MOpcode::RET, {}));
     func.blocks.push_back(std::move(block));
 

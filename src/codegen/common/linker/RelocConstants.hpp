@@ -25,13 +25,13 @@ namespace viper::codegen::linker {
 // ── ELF x86_64 Relocation Types (elf.h / System V AMD64 ABI) ────────────
 
 namespace elf_x64 {
-constexpr uint32_t kAbs64 = 1;  // R_X86_64_64
-constexpr uint32_t kPC32 = 2;   // R_X86_64_PC32
-constexpr uint32_t kPLT32 = 4;  // R_X86_64_PLT32
-constexpr uint32_t kGotPcRel = 9; // R_X86_64_GOTPCREL
-constexpr uint32_t kAbs32 = 10; // R_X86_64_32
-constexpr uint32_t kTpoff32 = 23; // R_X86_64_TPOFF32
-constexpr uint32_t kGotPcRelX = 41; // R_X86_64_GOTPCRELX
+constexpr uint32_t kAbs64 = 1;         // R_X86_64_64
+constexpr uint32_t kPC32 = 2;          // R_X86_64_PC32
+constexpr uint32_t kPLT32 = 4;         // R_X86_64_PLT32
+constexpr uint32_t kGotPcRel = 9;      // R_X86_64_GOTPCREL
+constexpr uint32_t kAbs32 = 10;        // R_X86_64_32
+constexpr uint32_t kTpoff32 = 23;      // R_X86_64_TPOFF32
+constexpr uint32_t kGotPcRelX = 41;    // R_X86_64_GOTPCRELX
 constexpr uint32_t kRexGotPcRelX = 42; // R_X86_64_REX_GOTPCRELX
 } // namespace elf_x64
 
@@ -95,19 +95,19 @@ constexpr uint32_t kSecRel = 11;  // IMAGE_REL_AMD64_SECREL
 // ── COFF ARM64 Relocation Types (winnt.h) ───────────────────────────────
 
 namespace coff_a64 {
-constexpr uint32_t kAddr32 = 1;     // IMAGE_REL_ARM64_ADDR32
-constexpr uint32_t kAddr32Nb = 2;   // IMAGE_REL_ARM64_ADDR32NB
-constexpr uint32_t kBranch26 = 3;   // IMAGE_REL_ARM64_BRANCH26
-constexpr uint32_t kPageRel21 = 4;  // IMAGE_REL_ARM64_PAGEBASE_REL21
-constexpr uint32_t kPageOff12A = 6; // IMAGE_REL_ARM64_PAGEOFFSET_12A
-constexpr uint32_t kPageOff12L = 7; // IMAGE_REL_ARM64_PAGEOFFSET_12L
-constexpr uint32_t kSecRel = 8;     // IMAGE_REL_ARM64_SECREL
-constexpr uint32_t kSecRelLow12A = 9;  // IMAGE_REL_ARM64_SECREL_LOW12A
+constexpr uint32_t kAddr32 = 1;         // IMAGE_REL_ARM64_ADDR32
+constexpr uint32_t kAddr32Nb = 2;       // IMAGE_REL_ARM64_ADDR32NB
+constexpr uint32_t kBranch26 = 3;       // IMAGE_REL_ARM64_BRANCH26
+constexpr uint32_t kPageRel21 = 4;      // IMAGE_REL_ARM64_PAGEBASE_REL21
+constexpr uint32_t kPageOff12A = 6;     // IMAGE_REL_ARM64_PAGEOFFSET_12A
+constexpr uint32_t kPageOff12L = 7;     // IMAGE_REL_ARM64_PAGEOFFSET_12L
+constexpr uint32_t kSecRel = 8;         // IMAGE_REL_ARM64_SECREL
+constexpr uint32_t kSecRelLow12A = 9;   // IMAGE_REL_ARM64_SECREL_LOW12A
 constexpr uint32_t kSecRelHigh12A = 10; // IMAGE_REL_ARM64_SECREL_HIGH12A
 constexpr uint32_t kSecRelLow12L = 11;  // IMAGE_REL_ARM64_SECREL_LOW12L
-constexpr uint32_t kSection = 13;   // IMAGE_REL_ARM64_SECTION
-constexpr uint32_t kAddr64 = 14;    // IMAGE_REL_ARM64_ADDR64
-constexpr uint32_t kBranch19 = 15;  // IMAGE_REL_ARM64_BRANCH19
+constexpr uint32_t kSection = 13;       // IMAGE_REL_ARM64_SECTION
+constexpr uint32_t kAddr64 = 14;        // IMAGE_REL_ARM64_ADDR64
+constexpr uint32_t kBranch19 = 15;      // IMAGE_REL_ARM64_BRANCH19
 } // namespace coff_a64
 
 } // namespace viper::codegen::linker

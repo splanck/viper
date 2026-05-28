@@ -18,9 +18,9 @@
 #include "il/core/Opcode.hpp"
 #include "il/core/Value.hpp"
 
+#include <memory>
 #include <string>
 #include <unordered_map>
-#include <memory>
 
 using namespace il::core;
 
@@ -87,7 +87,8 @@ PreservedAnalyses Devirtualize::run(Function &function, AnalysisManager & /*anal
 }
 
 void registerDevirtualizePass(PassRegistry &registry) {
-    registry.registerFunctionPass("devirt", []() { return std::make_unique<Devirtualize>(); }, true);
+    registry.registerFunctionPass(
+        "devirt", []() { return std::make_unique<Devirtualize>(); }, true);
 }
 
 } // namespace il::transform

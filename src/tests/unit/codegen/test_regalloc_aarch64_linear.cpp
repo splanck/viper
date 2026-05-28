@@ -58,8 +58,8 @@ TEST(Arm64RegAlloc, SpillsAndCalleeSaved) {
         acc = dstId;
     }
     // Move result to x0 to make output deterministic
-    bb.instrs.push_back(
-        MInstr{MOpcode::MovRR, {MOperand::regOp(PhysReg::X0), MOperand::vregOp(RegClass::GPR, acc)}});
+    bb.instrs.push_back(MInstr{
+        MOpcode::MovRR, {MOperand::regOp(PhysReg::X0), MOperand::vregOp(RegClass::GPR, acc)}});
 
     // Run allocator
     auto result = allocate(fn, ti);
@@ -122,12 +122,10 @@ TEST(Arm64RegAlloc, LiveOutSpillsStayAfterInternalOverflowBranch) {
     entry.instrs.push_back(MInstr{MOpcode::Br, {MOperand::labelOp("exit")}});
 
     fn.blocks[1].instrs.push_back(
-        MInstr{MOpcode::MovRR,
-               {MOperand::regOp(PhysReg::X0), MOperand::vregOp(RegClass::GPR, 2)}});
+        MInstr{MOpcode::MovRR, {MOperand::regOp(PhysReg::X0), MOperand::vregOp(RegClass::GPR, 2)}});
     fn.blocks[1].instrs.push_back(MInstr{MOpcode::Ret, {}});
     fn.blocks[2].instrs.push_back(
-        MInstr{MOpcode::MovRR,
-               {MOperand::regOp(PhysReg::X0), MOperand::vregOp(RegClass::GPR, 3)}});
+        MInstr{MOpcode::MovRR, {MOperand::regOp(PhysReg::X0), MOperand::vregOp(RegClass::GPR, 3)}});
     fn.blocks[2].instrs.push_back(MInstr{MOpcode::Ret, {}});
     fn.blocks[3].instrs.push_back(MInstr{MOpcode::Bl, {MOperand::labelOp("rt_trap_ovf")}});
 
@@ -144,9 +142,10 @@ TEST(Arm64RegAlloc, LiveOutSpillsStayAfterInternalOverflowBranch) {
     ASSERT_NE(afterAdd, rewritten.end());
     EXPECT_EQ(afterAdd->opc, MOpcode::BCond);
 
-    const auto trailingBr = std::find_if(rewritten.begin(), rewritten.end(), [](const MInstr &instr) {
-        return instr.opc == MOpcode::Br;
-    });
+    const auto trailingBr =
+        std::find_if(rewritten.begin(), rewritten.end(), [](const MInstr &instr) {
+            return instr.opc == MOpcode::Br;
+        });
     ASSERT_NE(trailingBr, rewritten.end());
     const auto firstTrailingTerm = std::prev(trailingBr);
     EXPECT_EQ(firstTrailingTerm->opc, MOpcode::BCond);

@@ -65,13 +65,8 @@ static int button_corner_radius(const vg_button_t *button, const vg_theme_t *the
 
 /// @brief Fill a rounded rectangle by decomposing it into a centre rect and four
 ///        corner discs drawn via vgfx primitives.
-static void button_fill_round_rect(vgfx_window_t win,
-                                   int32_t x,
-                                   int32_t y,
-                                   int32_t w,
-                                   int32_t h,
-                                   int32_t radius,
-                                   uint32_t color) {
+static void button_fill_round_rect(
+    vgfx_window_t win, int32_t x, int32_t y, int32_t w, int32_t h, int32_t radius, uint32_t color) {
     if (w <= 0 || h <= 0)
         return;
 
@@ -97,13 +92,8 @@ static void button_fill_round_rect(vgfx_window_t win,
 }
 
 /// @brief Stroke a rounded rectangle border using vgfx line primitives.
-static void button_stroke_round_rect(vgfx_window_t win,
-                                     int32_t x,
-                                     int32_t y,
-                                     int32_t w,
-                                     int32_t h,
-                                     int32_t radius,
-                                     uint32_t color) {
+static void button_stroke_round_rect(
+    vgfx_window_t win, int32_t x, int32_t y, int32_t w, int32_t h, int32_t radius, uint32_t color) {
     if (w <= 1 || h <= 1)
         return;
 
@@ -190,7 +180,8 @@ static void button_destroy(vg_widget_t *widget) {
     button->icon_text = NULL;
 }
 
-/// @brief VTable measure: sizes the button from icon, text, and padding dimensions then applies layout constraints.
+/// @brief VTable measure: sizes the button from icon, text, and padding dimensions then applies
+/// layout constraints.
 static void button_measure(vg_widget_t *widget, float available_width, float available_height) {
     vg_button_t *button = (vg_button_t *)widget;
     (void)available_width;
@@ -234,7 +225,8 @@ static void button_measure(vg_widget_t *widget, float available_width, float ava
     vg_widget_apply_constraints(widget);
 }
 
-/// @brief VTable paint: renders the button background (rounded rect), border, hover/press tints, optional icon, and centred label text.
+/// @brief VTable paint: renders the button background (rounded rect), border, hover/press tints,
+/// optional icon, and centred label text.
 static void button_paint(vg_widget_t *widget, void *canvas) {
     vg_button_t *button = (vg_button_t *)widget;
     vg_theme_t *theme = vg_theme_get_current();
@@ -243,12 +235,14 @@ static void button_paint(vg_widget_t *widget, void *canvas) {
 
     uint32_t bg_color = button->bg_color ? button->bg_color : theme->colors.bg_tertiary;
     uint32_t fg_color = button->fg_color ? button->fg_color : theme->colors.fg_primary;
-    uint32_t border_color = button->border_color ? button->border_color : theme->colors.border_primary;
+    uint32_t border_color =
+        button->border_color ? button->border_color : theme->colors.border_primary;
 
     if (button->style == VG_BUTTON_STYLE_PRIMARY) {
         bg_color = theme->colors.accent_primary;
         fg_color = 0x00FFFFFF;
-        border_color = vg_color_blend(theme->colors.accent_primary, theme->colors.border_focus, 0.45f);
+        border_color =
+            vg_color_blend(theme->colors.accent_primary, theme->colors.border_focus, 0.45f);
     } else if (button->style == VG_BUTTON_STYLE_DANGER) {
         bg_color = theme->colors.accent_danger;
         fg_color = 0x00FFFFFF;
@@ -270,11 +264,17 @@ static void button_paint(vg_widget_t *widget, void *canvas) {
     } else if (widget->state & VG_STATE_PRESSED) {
         bg_color = vg_color_darken(bg_color, button->style == VG_BUTTON_STYLE_TEXT ? 0.04f : 0.10f);
     } else if (widget->state & VG_STATE_HOVERED) {
-        bg_color = vg_color_lighten(bg_color, button->style == VG_BUTTON_STYLE_TEXT ? 0.03f : 0.05f);
+        bg_color =
+            vg_color_lighten(bg_color, button->style == VG_BUTTON_STYLE_TEXT ? 0.03f : 0.05f);
     }
 
-    button_fill_round_rect(
-        win, (int32_t)widget->x, (int32_t)widget->y, (int32_t)widget->width, (int32_t)widget->height, radius, bg_color);
+    button_fill_round_rect(win,
+                           (int32_t)widget->x,
+                           (int32_t)widget->y,
+                           (int32_t)widget->width,
+                           (int32_t)widget->height,
+                           radius,
+                           bg_color);
     if (button->style != VG_BUTTON_STYLE_TEXT) {
         vgfx_fill_rect(win,
                        (int32_t)widget->x + radius,
@@ -287,7 +287,8 @@ static void button_paint(vg_widget_t *widget, void *canvas) {
     if (widget->state & VG_STATE_FOCUSED) {
         border_color = theme->colors.border_focus;
     }
-    if (button->style != VG_BUTTON_STYLE_TEXT || (widget->state & (VG_STATE_HOVERED | VG_STATE_FOCUSED))) {
+    if (button->style != VG_BUTTON_STYLE_TEXT ||
+        (widget->state & (VG_STATE_HOVERED | VG_STATE_FOCUSED))) {
         button_stroke_round_rect(win,
                                  (int32_t)widget->x,
                                  (int32_t)widget->y,
@@ -386,7 +387,8 @@ static void button_paint(vg_widget_t *widget, void *canvas) {
     }
 }
 
-/// @brief VTable handle_event: handles hover, press/release state transitions, click firing, and Space/Enter keyboard activation.
+/// @brief VTable handle_event: handles hover, press/release state transitions, click firing, and
+/// Space/Enter keyboard activation.
 static bool button_handle_event(vg_widget_t *widget, vg_event_t *event) {
     vg_button_t *button = (vg_button_t *)widget;
 
@@ -499,7 +501,8 @@ void vg_button_set_style(vg_button_t *button, vg_button_style_t style) {
                 vg_color_blend(theme->colors.accent_primary, theme->colors.border_focus, 0.45f);
             break;
         case VG_BUTTON_STYLE_SECONDARY:
-            button->bg_color = vg_color_blend(theme->colors.bg_secondary, theme->colors.bg_primary, 0.35f);
+            button->bg_color =
+                vg_color_blend(theme->colors.bg_secondary, theme->colors.bg_primary, 0.35f);
             button->fg_color = theme->colors.fg_primary;
             button->border_color = theme->colors.border_secondary;
             break;

@@ -6,8 +6,8 @@
 //===----------------------------------------------------------------------===//
 
 extern "C" {
-#include "rt_graphics_internal.h"
 #include "rt_bitmapfont.h"
+#include "rt_graphics_internal.h"
 }
 
 #include <cassert>
@@ -75,8 +75,7 @@ static rt_canvas *make_canvas(int32_t width, int32_t height) {
 }
 
 static TestBitmapFont *make_font_as(int64_t class_id) {
-    auto *font = static_cast<TestBitmapFont *>(
-        rt_obj_new_i64(class_id, sizeof(TestBitmapFont)));
+    auto *font = static_cast<TestBitmapFont *>(rt_obj_new_i64(class_id, sizeof(TestBitmapFont)));
     assert(font != nullptr);
     std::memset(font, 0, sizeof(TestBitmapFont));
     font->line_height = 1;
@@ -229,7 +228,9 @@ extern "C" float vgfx_window_get_scale(vgfx_window_t window) {
 }
 
 extern "C" void vgfx_set_coord_scale(vgfx_window_t, float) {}
+
 extern "C" void vgfx_set_clip(vgfx_window_t, int32_t, int32_t, int32_t, int32_t) {}
+
 extern "C" void vgfx_clear_clip(vgfx_window_t) {}
 
 extern "C" int32_t vgfx_get_size(vgfx_window_t window, int32_t *width, int32_t *height) {

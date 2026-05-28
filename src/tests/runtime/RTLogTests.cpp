@@ -187,8 +187,8 @@ static void test_enabled() {
 
 static void emit_sanitized_info() {
     rt_log_set_level(rt_log_level_debug());
-    const char bytes[] = {'l',  'i', 'n', 'e', '1', '\n', 'l', 'i', 'n', 'e',
-                          '2', '\0', 't', 'a', 'i', 'l', '\t', 'e', 'n', 'd'};
+    const char bytes[] = {'l', 'i',  'n', 'e', '1', '\n', 'l',  'i', 'n', 'e',
+                          '2', '\0', 't', 'a', 'i', 'l',  '\t', 'e', 'n', 'd'};
     rt_string s = make_bytes(bytes, sizeof(bytes));
     rt_log_info(s);
     rt_string_unref(s);

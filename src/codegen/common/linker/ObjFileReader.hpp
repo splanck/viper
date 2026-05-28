@@ -43,12 +43,12 @@ enum class ComdatSelection : uint8_t {
 
 /// Relocation in a parsed object file.
 struct ObjReloc {
-    size_t offset = 0;     ///< Byte offset within the section.
-    uint32_t type = 0;     ///< Format-native relocation type (e.g., R_X86_64_PLT32).
-    uint32_t symIndex = 0; ///< Index into ObjFile::symbols.
-    int64_t addend = 0;    ///< Addend (explicit for ELF; extracted for Mach-O/COFF).
-    bool pcrel = false;    ///< Mach-O r_pcrel bit; unused by ELF/COFF readers.
-    uint8_t length = 0;    ///< Mach-O r_length field (0=byte, 1=word, 2=long, 3=quad).
+    size_t offset = 0;            ///< Byte offset within the section.
+    uint32_t type = 0;            ///< Format-native relocation type (e.g., R_X86_64_PLT32).
+    uint32_t symIndex = 0;        ///< Index into ObjFile::symbols.
+    int64_t addend = 0;           ///< Addend (explicit for ELF; extracted for Mach-O/COFF).
+    bool pcrel = false;           ///< Mach-O r_pcrel bit; unused by ELF/COFF readers.
+    uint8_t length = 0;           ///< Mach-O r_length field (0=byte, 1=word, 2=long, 3=quad).
     bool sectionRelative = false; ///< Reader-internal: raw reloc targeted a section ordinal.
 };
 
@@ -61,32 +61,32 @@ struct ObjSymbol {
     uint32_t sectionIndex = 0; ///< Index into ObjFile::sections (0 = undefined).
     size_t offset = 0;         ///< Byte offset within section.
     size_t size = 0;
-    bool absolute = false;          ///< Symbol value is absolute, not section-relative.
-    bool weakExternal = false;      ///< Undefined weak external that may resolve to zero/default.
-    std::string weakDefaultName;    ///< Optional COFF weak-external fallback symbol.
+    bool absolute = false;       ///< Symbol value is absolute, not section-relative.
+    bool weakExternal = false;   ///< Undefined weak external that may resolve to zero/default.
+    std::string weakDefaultName; ///< Optional COFF weak-external fallback symbol.
     uint32_t weakExternalCharacteristics = 0; ///< COFF IMAGE_WEAK_EXTERN_SEARCH_* value.
-    bool common = false;            ///< Tentative/common symbol, coalesced by linker.
-    size_t commonAlignment = 1;     ///< Required alignment for common storage.
+    bool common = false;                      ///< Tentative/common symbol, coalesced by linker.
+    size_t commonAlignment = 1;               ///< Required alignment for common storage.
 };
 
 /// Section in a parsed object file.
 struct ObjSection {
     std::string name;
     std::vector<uint8_t> data;
-    size_t memSize = 0;            ///< Logical in-memory size. For non-zero-fill sections this is data.size().
+    size_t memSize = 0; ///< Logical in-memory size. For non-zero-fill sections this is data.size().
     std::vector<ObjReloc> relocs;
     uint32_t alignment = 1;
     bool executable = false;
     bool writable = false;
-    bool alloc = true;             ///< Section contributes to memory image.
-    bool tls = false;              ///< Thread-local storage section.
-    bool zeroFill = false;         ///< Section occupies memory but has no file bytes.
-    bool dataSegment = false;      ///< Must be emitted in a data segment even if final read-only.
-    bool isCStringSection = false; ///< Section contains NUL-terminated C strings only.
+    bool alloc = true;               ///< Section contributes to memory image.
+    bool tls = false;                ///< Thread-local storage section.
+    bool zeroFill = false;           ///< Section occupies memory but has no file bytes.
+    bool dataSegment = false;        ///< Must be emitted in a data segment even if final read-only.
+    bool isCStringSection = false;   ///< Section contains NUL-terminated C strings only.
     uint32_t associativeSection = 0; ///< COFF associative COMDAT parent section, if any.
     ComdatSelection comdatSelection = ComdatSelection::None; ///< Duplicate-selection policy.
     std::string comdatKey; ///< COFF/ELF COMDAT group key/signature.
-    bool stripped = false;         ///< Dead-strip removed this section explicitly.
+    bool stripped = false; ///< Dead-strip removed this section explicitly.
 };
 
 inline size_t objSectionMemSize(const ObjSection &sec) {
@@ -108,7 +108,7 @@ struct ObjFile {
     bool is64bit = true;
     bool isLittleEndian = true;
     bool synthetic = false; ///< True for linker-created helper objects, never user/archive input.
-    uint16_t machine = 0; ///< Machine type (EM_X86_64, EM_AARCH64, etc.)
+    uint16_t machine = 0;   ///< Machine type (EM_X86_64, EM_AARCH64, etc.)
 
     std::vector<ObjSection> sections; ///< Index 0 is reserved (null section).
     std::vector<ObjSymbol> symbols;   ///< Index 0 is reserved (null symbol).

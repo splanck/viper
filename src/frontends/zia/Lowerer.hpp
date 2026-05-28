@@ -683,15 +683,14 @@ class Lowerer {
     /// @param stmt The for statement.
     void lowerForStmt(ForStmt *stmt);
 
-    struct RangeModifierInfo;  // defined below
+    struct RangeModifierInfo; // defined below
 
     /// @brief Lower a for-in statement.
     /// @param stmt The for-in statement.
     void lowerForInStmt(ForInStmt *stmt);
 
     /// @brief Lower a for-in over an integer range (with optional step / reversed).
-    void lowerForInRange(ForInStmt *stmt, RangeExpr *rangeExpr,
-                         const RangeModifierInfo &rangeInfo);
+    void lowerForInRange(ForInStmt *stmt, RangeExpr *rangeExpr, const RangeModifierInfo &rangeInfo);
 
     /// @brief Lower a single-iteration tuple-destructuring for-in
     ///        (`for (a, b) in twoElementTuple`).
@@ -711,8 +710,11 @@ class Lowerer {
     ///        (e.g., from `Map.Keys()`) so kSeqGetStr is used instead of
     ///        kSeqGet + unbox.
     /// @param labelPrefix     Block-name prefix used for diagnostics.
-    void lowerForInSeq(LowerResult seqValue, ForInStmt *stmt, TypeRef elemType,
-                       bool rawStringElements, const std::string &labelPrefix);
+    void lowerForInSeq(LowerResult seqValue,
+                       ForInStmt *stmt,
+                       TypeRef elemType,
+                       bool rawStringElements,
+                       const std::string &labelPrefix);
 
     /// @brief Lower a return statement.
     /// @param stmt The return statement.
@@ -813,17 +815,23 @@ class Lowerer {
     /// @brief Lower an `ident = value` assignment — handles local slots,
     ///        method-implicit fields (on `currentStructType_`/`currentClassType_`),
     ///        and module-scoped globals.
-    LowerResult lowerIdentAssignment(BinaryExpr *expr, IdentExpr *ident,
-                                     LowerResult right, TypeRef rightType);
+    LowerResult lowerIdentAssignment(BinaryExpr *expr,
+                                     IdentExpr *ident,
+                                     LowerResult right,
+                                     TypeRef rightType);
 
     /// @brief Lower `base[index] = value` for List, Map, and FixedArray targets.
-    LowerResult lowerIndexAssignment(BinaryExpr *expr, IndexExpr *indexExpr,
-                                     LowerResult right, TypeRef rightType);
+    LowerResult lowerIndexAssignment(BinaryExpr *expr,
+                                     IndexExpr *indexExpr,
+                                     LowerResult right,
+                                     TypeRef rightType);
 
     /// @brief Lower `base.field = value` for module-static, class, struct,
     ///        and runtime-class property setters.
-    LowerResult lowerFieldAssignment(BinaryExpr *expr, FieldExpr *fieldExpr,
-                                     LowerResult right, TypeRef rightType);
+    LowerResult lowerFieldAssignment(BinaryExpr *expr,
+                                     FieldExpr *fieldExpr,
+                                     LowerResult right,
+                                     TypeRef rightType);
 
     /// @brief Lower a binary expression.
     /// @return LowerResult with the operation result.
@@ -1180,10 +1188,7 @@ class Lowerer {
     /// @brief Store a lowered value into inline semantic storage.
     /// @details Aggregate values are represented by source pointers; scalar
     ///          values are stored directly with string retain/release handling.
-    void emitInlineValueStore(TypeRef valueType,
-                              Value destPtr,
-                              Value value,
-                              bool destInitialized);
+    void emitInlineValueStore(TypeRef valueType, Value destPtr, Value value, bool destInitialized);
 
     /// @brief Zero-initialize inline semantic storage.
     void emitInlineValueZero(TypeRef valueType, Value destPtr);
@@ -1383,9 +1388,7 @@ class Lowerer {
     //=========================================================================
 
     /// @brief Report a lowerer invariant violation at @p loc.
-    void reportLoweringInvariant(il::support::SourceLoc loc,
-                                 std::string code,
-                                 std::string message);
+    void reportLoweringInvariant(il::support::SourceLoc loc, std::string code, std::string message);
 
     /// @brief Check whether a semantic type is concrete enough for lowering.
     bool isInvalidLoweringType(TypeRef type) const;

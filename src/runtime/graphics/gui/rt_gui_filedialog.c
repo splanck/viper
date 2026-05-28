@@ -188,7 +188,8 @@ static char *rt_filedialog_join_paths_escaped(char **paths, size_t count, size_t
 
 /// @brief Configure `dialog` for modal presentation and push it onto the app's dialog stack.
 /// @details Ensures default font is applied, sets the dialog as the modal root over `app->root`,
-///          shows it, and pushes it so the main loop blocks on it. Returns 0 if any pointer is NULL.
+///          shows it, and pushes it so the main loop blocks on it. Returns 0 if any pointer is
+///          NULL.
 static int rt_filedialog_prepare_modal(rt_gui_app_t *app, vg_filedialog_t *dialog) {
     if (!app || !app->window || !app->root || !dialog)
         return 0;
@@ -247,8 +248,8 @@ rt_string rt_filedialog_open(rt_string title, rt_string default_path, rt_string 
         if (cfilter && cfilter[0])
             vg_filedialog_add_filter(dlg, "Files", cfilter);
         vg_filedialog_add_default_bookmarks(dlg);
-        if (rt_filedialog_show_modal(rt_filedialog_app(), dlg) &&
-            dlg->selected_file_count > 0 && dlg->selected_files[0]) {
+        if (rt_filedialog_show_modal(rt_filedialog_app(), dlg) && dlg->selected_file_count > 0 &&
+            dlg->selected_files[0]) {
             result = rt_filedialog_strdup(dlg->selected_files[0]);
         }
         vg_filedialog_destroy(dlg);
@@ -375,8 +376,8 @@ rt_string rt_filedialog_save(rt_string title,
         if (cfilter && cfilter[0])
             vg_filedialog_add_filter(dlg, "Files", cfilter);
         vg_filedialog_add_default_bookmarks(dlg);
-        if (rt_filedialog_show_modal(rt_filedialog_app(), dlg) &&
-            dlg->selected_file_count > 0 && dlg->selected_files[0]) {
+        if (rt_filedialog_show_modal(rt_filedialog_app(), dlg) && dlg->selected_file_count > 0 &&
+            dlg->selected_files[0]) {
             result = rt_filedialog_strdup(dlg->selected_files[0]);
         }
         vg_filedialog_destroy(dlg);
@@ -418,8 +419,8 @@ rt_string rt_filedialog_select_folder(rt_string title, rt_string default_path) {
         if (cpath)
             vg_filedialog_set_initial_path(dlg, cpath);
         vg_filedialog_add_default_bookmarks(dlg);
-        if (rt_filedialog_show_modal(rt_filedialog_app(), dlg) &&
-            dlg->selected_file_count > 0 && dlg->selected_files[0]) {
+        if (rt_filedialog_show_modal(rt_filedialog_app(), dlg) && dlg->selected_file_count > 0 &&
+            dlg->selected_files[0]) {
             result = rt_filedialog_strdup(dlg->selected_files[0]);
         }
         vg_filedialog_destroy(dlg);
@@ -535,10 +536,7 @@ static rt_filedialog_data_t *rt_filedialog_wrapper_checked(void *dialog) {
 /// @brief Safe-cast an opaque handle to a wrapper with a live backing dialog.
 static rt_filedialog_data_t *rt_filedialog_data_checked(void *dialog) {
     rt_filedialog_data_t *data = rt_filedialog_wrapper_checked(dialog);
-    return data && data->dialog &&
-                   vg_widget_is_live(&data->dialog->base.base)
-               ? data
-               : NULL;
+    return data && data->dialog && vg_widget_is_live(&data->dialog->base.base) ? data : NULL;
 }
 
 /// @brief Free the selected-paths array and reset count to zero.
@@ -599,8 +597,8 @@ static void rt_filedialog_dispose(rt_filedialog_data_t *data) {
         return;
     rt_filedialog_clear_selected_paths(data);
     if (data->dialog) {
-        rt_gui_app_t *app = rt_gui_is_app_handle(data->owner_app) ? data->owner_app
-                                                                  : rt_filedialog_app();
+        rt_gui_app_t *app =
+            rt_gui_is_app_handle(data->owner_app) ? data->owner_app : rt_filedialog_app();
         if (app)
             rt_gui_remove_dialog(app, &data->dialog->base);
         vg_filedialog_destroy(data->dialog);

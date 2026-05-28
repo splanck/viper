@@ -128,9 +128,7 @@ static std::string machoSectionFieldName(const std::string &name) {
     return (comma != std::string::npos) ? name.substr(comma + 1) : name;
 }
 
-static bool validateMachOName(const std::string &name,
-                              const char *field,
-                              std::ostream &err) {
+static bool validateMachOName(const std::string &name, const char *field, std::ostream &err) {
     if (name.size() <= 16)
         return true;
     err << "error: Mach-O " << field << " name '" << name << "' exceeds 16 bytes\n";
@@ -146,11 +144,8 @@ static bool checkedU32(uint64_t value, const char *what, std::ostream &err, uint
     return true;
 }
 
-static bool checkedAddSize(size_t lhs,
-                           size_t rhs,
-                           const char *what,
-                           std::ostream &err,
-                           size_t &out) {
+static bool checkedAddSize(
+    size_t lhs, size_t rhs, const char *what, std::ostream &err, size_t &out) {
     if (lhs > std::numeric_limits<size_t>::max() - rhs) {
         err << "error: Mach-O " << what << " overflows addressable size\n";
         return false;
@@ -159,11 +154,8 @@ static bool checkedAddSize(size_t lhs,
     return true;
 }
 
-static bool checkedAddU64(uint64_t lhs,
-                          uint64_t rhs,
-                          const char *what,
-                          std::ostream &err,
-                          uint64_t &out) {
+static bool checkedAddU64(
+    uint64_t lhs, uint64_t rhs, const char *what, std::ostream &err, uint64_t &out) {
     if (lhs > std::numeric_limits<uint64_t>::max() - rhs) {
         err << "error: Mach-O " << what << " overflows 64-bit address range\n";
         return false;
@@ -172,11 +164,8 @@ static bool checkedAddU64(uint64_t lhs,
     return true;
 }
 
-static bool checkedAlignUpSize(size_t value,
-                               size_t alignment,
-                               const char *what,
-                               std::ostream &err,
-                               size_t &out) {
+static bool checkedAlignUpSize(
+    size_t value, size_t alignment, const char *what, std::ostream &err, size_t &out) {
     try {
         out = alignUp(value, alignment);
     } catch (const std::exception &ex) {
@@ -186,11 +175,8 @@ static bool checkedAlignUpSize(size_t value,
     return true;
 }
 
-static bool appendLoadCommand(uint32_t &ncmds,
-                              uint32_t &sizeofcmds,
-                              uint64_t cmdSize,
-                              const char *what,
-                              std::ostream &err) {
+static bool appendLoadCommand(
+    uint32_t &ncmds, uint32_t &sizeofcmds, uint64_t cmdSize, const char *what, std::ostream &err) {
     uint32_t cmdSize32 = 0;
     if (!checkedU32(cmdSize, what, err, cmdSize32))
         return false;
@@ -368,7 +354,8 @@ bool writeMachOExe(const std::string &path,
 
     const char *dylinkerPath = "/usr/lib/dyld";
     size_t dylinkerRawSize = 0;
-    if (!checkedAddSize(12, std::strlen(dylinkerPath) + 1, "LC_LOAD_DYLINKER size", err, dylinkerRawSize))
+    if (!checkedAddSize(
+            12, std::strlen(dylinkerPath) + 1, "LC_LOAD_DYLINKER size", err, dylinkerRawSize))
         return false;
     size_t dylinkerCmdSize = 0;
     if (!checkedAlignUpSize(dylinkerRawSize, 8, "LC_LOAD_DYLINKER size", err, dylinkerCmdSize))
@@ -421,7 +408,8 @@ bool writeMachOExe(const std::string &path,
     // Section data starts at the first page boundary after header+cmds.
     // In standard Mach-O, __TEXT segment fileoff=0 and includes the header.
     size_t textDataFileOff = 0;
-    if (!checkedAlignUpSize(headerAndCmds, pageSize, "__TEXT data file offset", err, textDataFileOff))
+    if (!checkedAlignUpSize(
+            headerAndCmds, pageSize, "__TEXT data file offset", err, textDataFileOff))
         return false;
     size_t textDataFileSize = 0;
     if (!checkedAlignUpSize(textDataSize, pageSize, "__TEXT data file size", err, textDataFileSize))
@@ -430,7 +418,8 @@ bool writeMachOExe(const std::string &path,
     // __TEXT segment: fileoff=0, filesize includes header+cmds+section data.
     const size_t textSegFileOff = 0;
     size_t textSegFileSize = 0;
-    if (!checkedAddSize(textDataFileOff, textDataFileSize, "__TEXT segment file size", err, textSegFileSize))
+    if (!checkedAddSize(
+            textDataFileOff, textDataFileSize, "__TEXT segment file size", err, textSegFileSize))
         return false;
 
     // Use the first text section's VA from SectionMerger to derive __TEXT segment vmsize.
@@ -535,7 +524,8 @@ bool writeMachOExe(const std::string &path,
                     dwarfTotalSize, sec.alignment, "__DWARF section offset", err, padded))
                 return false;
             dwarfSecInfos.push_back({idx, padded});
-            if (!checkedAddSize(padded, sec.data.size(), "__DWARF section data size", err, dwarfTotalSize))
+            if (!checkedAddSize(
+                    padded, sec.data.size(), "__DWARF section data size", err, dwarfTotalSize))
                 return false;
         }
     }
@@ -546,7 +536,8 @@ bool writeMachOExe(const std::string &path,
 
     // __LINKEDIT segment.
     size_t linkeditFileOff = 0;
-    if (!checkedAddSize(dwarfFileOff, dwarfFileSize, "__LINKEDIT file offset", err, linkeditFileOff))
+    if (!checkedAddSize(
+            dwarfFileOff, dwarfFileSize, "__LINKEDIT file offset", err, linkeditFileOff))
         return false;
 
     // Code signature lives at end of __LINKEDIT (arm64 only).
@@ -556,8 +547,11 @@ bool writeMachOExe(const std::string &path,
     size_t codeSignSize = 0;
     if (needsCodeSign) {
         size_t codeSignRawOff = 0;
-        if (!checkedAddSize(
-                linkeditFileOff, linkeditDataSize, "code-signature file offset", err, codeSignRawOff))
+        if (!checkedAddSize(linkeditFileOff,
+                            linkeditDataSize,
+                            "code-signature file offset",
+                            err,
+                            codeSignRawOff))
             return false;
         if (!checkedAlignUpSize(codeSignRawOff, 16, "code-signature file offset", err, codeSignOff))
             return false;
@@ -585,13 +579,15 @@ bool writeMachOExe(const std::string &path,
     // __DWARF segment has no VM mapping (vmaddr=0, vmsize=0), so it doesn't
     // shift __LINKEDIT's vmaddr. However, it does occupy file space.
     uint64_t linkeditVmAddr = 0;
-    if (!checkedAddU64(textSegVmAddr, textSegVmSize, "__LINKEDIT VM address", err, linkeditVmAddr) ||
+    if (!checkedAddU64(
+            textSegVmAddr, textSegVmSize, "__LINKEDIT VM address", err, linkeditVmAddr) ||
         (!dataSections.empty() &&
          !checkedAddU64(
              linkeditVmAddr, dataSegVmSize, "__LINKEDIT VM address", err, linkeditVmAddr)))
         return false;
     size_t linkeditVmSizeSize = 0;
-    if (!checkedAlignUpSize(linkeditTotalSize, pageSize, "__LINKEDIT VM size", err, linkeditVmSizeSize))
+    if (!checkedAlignUpSize(
+            linkeditTotalSize, pageSize, "__LINKEDIT VM size", err, linkeditVmSizeSize))
         return false;
     const uint64_t linkeditVmSize = linkeditVmSizeSize;
 
@@ -604,9 +600,12 @@ bool writeMachOExe(const std::string &path,
     size_t bindOffSize = 0;
     size_t symtabOffSize = 0;
     size_t strtabOffSize = 0;
-    if (!checkedAddSize(linkeditFileOff, rebaseData.size(), "bind opcode file offset", err, bindOffSize) ||
-        !checkedAddSize(bindOffSize, bindData.size(), "symbol-table file offset", err, symtabOffSize) ||
-        !checkedAddSize(symtabOffSize, symtabData.size(), "string-table file offset", err, strtabOffSize))
+    if (!checkedAddSize(
+            linkeditFileOff, rebaseData.size(), "bind opcode file offset", err, bindOffSize) ||
+        !checkedAddSize(
+            bindOffSize, bindData.size(), "symbol-table file offset", err, symtabOffSize) ||
+        !checkedAddSize(
+            symtabOffSize, symtabData.size(), "string-table file offset", err, strtabOffSize))
         return false;
     uint32_t rebaseOff = 0;
     uint32_t bindOff = 0;
@@ -636,18 +635,18 @@ bool writeMachOExe(const std::string &path,
             bool foundEntry = false;
             for (size_t idx : textSections) {
                 const auto &sec = layout.sections[idx];
-            const size_t secMemSize = outputSectionMemSize(sec);
-            if (secMemSize > std::numeric_limits<uint64_t>::max() - sec.virtualAddr) {
-                err << "error: Mach-O text section '" << sec.name
-                    << "' address range overflows\n";
-                return false;
-            }
-            const uint64_t secEnd = sec.virtualAddr + secMemSize;
+                const size_t secMemSize = outputSectionMemSize(sec);
+                if (secMemSize > std::numeric_limits<uint64_t>::max() - sec.virtualAddr) {
+                    err << "error: Mach-O text section '" << sec.name
+                        << "' address range overflows\n";
+                    return false;
+                }
+                const uint64_t secEnd = sec.virtualAddr + secMemSize;
                 if (entryVA < sec.virtualAddr || entryVA >= secEnd)
                     continue;
                 const uint64_t delta = entryVA - firstTextSecVA;
-                if (delta > std::numeric_limits<uint64_t>::max() -
-                                static_cast<uint64_t>(textDataFileOff)) {
+                if (delta >
+                    std::numeric_limits<uint64_t>::max() - static_cast<uint64_t>(textDataFileOff)) {
                     err << "error: Mach-O entry file offset overflows\n";
                     return false;
                 }
@@ -1006,7 +1005,8 @@ bool writeMachOExe(const std::string &path,
             return false;
         }
         if (sec.virtualAddr - textSegVmAddr > std::numeric_limits<size_t>::max()) {
-            err << "error: Mach-O section '" << sec.name << "' file offset exceeds addressable size\n";
+            err << "error: Mach-O section '" << sec.name
+                << "' file offset exceeds addressable size\n";
             return false;
         }
         size_t targetOff = static_cast<size_t>(sec.virtualAddr - textSegVmAddr);
@@ -1026,7 +1026,8 @@ bool writeMachOExe(const std::string &path,
                 return false;
             }
             if (sec.virtualAddr - dataSegVmAddr > std::numeric_limits<size_t>::max()) {
-                err << "error: Mach-O section '" << sec.name << "' file offset exceeds addressable size\n";
+                err << "error: Mach-O section '" << sec.name
+                    << "' file offset exceeds addressable size\n";
                 return false;
             }
             size_t targetOff = 0;
@@ -1047,7 +1048,8 @@ bool writeMachOExe(const std::string &path,
         for (const auto &dsi : dwarfSecInfos) {
             const auto &sec = layout.sections[dsi.layoutIdx];
             size_t targetOff = 0;
-            if (!checkedAddSize(dwarfFileOff, dsi.offset, "__DWARF section file offset", err, targetOff))
+            if (!checkedAddSize(
+                    dwarfFileOff, dsi.offset, "__DWARF section file offset", err, targetOff))
                 return false;
             if (!padToExact(file, targetOff, sec.name.c_str(), err))
                 return false;
@@ -1072,16 +1074,16 @@ bool writeMachOExe(const std::string &path,
             return false;
 
         // Build linker-signed ad-hoc code signature with CS_LINKER_SIGNED flag.
-        auto sig =
-            buildCodeSignature(
-                file, codeSignOff, codeSignIdent, textSegFileOff, textSegFileSize, pageSize);
+        auto sig = buildCodeSignature(
+            file, codeSignOff, codeSignIdent, textSegFileOff, textSegFileSize, pageSize);
         file.insert(file.end(), sig.begin(), sig.end());
     }
 
     // Pad only to the declared end of __LINKEDIT. The final segment's file
     // size is intentionally not page-aligned.
     size_t declaredFileSize = 0;
-    if (!checkedAddSize(linkeditFileOff, linkeditFileSize, "declared file size", err, declaredFileSize))
+    if (!checkedAddSize(
+            linkeditFileOff, linkeditFileSize, "declared file size", err, declaredFileSize))
         return false;
     if (!padToExact(file, declaredFileSize, "declared file size", err))
         return false;

@@ -216,8 +216,7 @@ static std::string formatFunctionSignature(const std::string &name,
         std::string paramName = "arg" + std::to_string(i + 1);
         if (paramNames && i < paramNames->size() && !(*paramNames)[i].empty())
             paramName = (*paramNames)[i];
-        out << paramName << ": "
-            << (params[i] ? params[i]->toDisplayString() : "Unknown");
+        out << paramName << ": " << (params[i] ? params[i]->toDisplayString() : "Unknown");
     }
     out << ")";
     if (ret)
@@ -294,8 +293,7 @@ static std::string docCommentBefore(const il::support::SourceManager &sm,
     return doc;
 }
 
-static std::string documentationForSymbol(const il::support::SourceManager *sm,
-                                          const Symbol &sym) {
+static std::string documentationForSymbol(const il::support::SourceManager *sm, const Symbol &sym) {
     if (!sym.documentation.empty())
         return sym.documentation;
     if (!sm)
@@ -798,11 +796,8 @@ std::vector<CompletionItem> CompletionEngine::provideSnippets(const std::string 
     return items;
 }
 
-std::vector<CompletionItem> CompletionEngine::provideScopeSymbols(const Sema &sema,
-                                                                  const std::string &prefix,
-                                                                  uint32_t fileId,
-                                                                  int line,
-                                                                  int col) const {
+std::vector<CompletionItem> CompletionEngine::provideScopeSymbols(
+    const Sema &sema, const std::string &prefix, uint32_t fileId, int line, int col) const {
     std::vector<CompletionItem> items;
     auto symbols = sema.getVisibleSymbolsAtPosition(
         fileId, static_cast<uint32_t>(line), static_cast<uint32_t>(std::max(1, col + 1)));
@@ -1203,8 +1198,8 @@ std::vector<CompletionItem> CompletionEngine::complete(
             // Scope symbols and type names require sema.
             if (hasSema) {
                 const Sema &sema = *analysis->sema;
-                auto scope = provideScopeSymbols(
-                    sema, ctx.prefix, analysis->fileId, ctx.line, ctx.col);
+                auto scope =
+                    provideScopeSymbols(sema, ctx.prefix, analysis->fileId, ctx.line, ctx.col);
                 items.insert(items.end(), scope.begin(), scope.end());
                 auto modules = provideBoundFileModules(sema, ctx.prefix);
                 items.insert(items.end(), modules.begin(), modules.end());
@@ -1305,11 +1300,11 @@ std::string CompletionEngine::signatureHelp(std::string_view source,
     if (call.receiverExpr.empty()) {
         addFunctionDeclOverloads();
 
-        if (const ScopedSymbol *scoped = sema.findSymbolAtPosition(
-                call.name,
-                analysis->fileId,
-                static_cast<uint32_t>(line),
-                static_cast<uint32_t>(col + 1))) {
+        if (const ScopedSymbol *scoped =
+                sema.findSymbolAtPosition(call.name,
+                                          analysis->fileId,
+                                          static_cast<uint32_t>(line),
+                                          static_cast<uint32_t>(col + 1))) {
             addFunctionSymbol(scoped->symbol);
         }
 
@@ -1330,11 +1325,7 @@ std::string CompletionEngine::signatureHelp(std::string_view source,
 
         if (signatures.empty()) {
             TypeRef receiverType =
-                resolveExprType(sema,
-                                call.receiverExpr,
-                                analysis->fileId,
-                                line,
-                                col + 1);
+                resolveExprType(sema, call.receiverExpr, analysis->fileId, line, col + 1);
             if (receiverType)
                 addMatchingMembers(sema.getMembersOf(receiverType));
         }

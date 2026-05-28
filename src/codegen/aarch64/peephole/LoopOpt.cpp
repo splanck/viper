@@ -38,8 +38,7 @@ namespace {
 [[nodiscard]] std::string getBranchTarget(const MInstr &mi) {
     if (mi.opc == MOpcode::Br && !mi.ops.empty() && mi.ops[0].kind == MOperand::Kind::Label)
         return mi.ops[0].label;
-    if (mi.opc == MOpcode::BCond && mi.ops.size() >= 2 &&
-        mi.ops[1].kind == MOperand::Kind::Label)
+    if (mi.opc == MOpcode::BCond && mi.ops.size() >= 2 && mi.ops[1].kind == MOperand::Kind::Label)
         return mi.ops[1].label;
     if ((mi.opc == MOpcode::Cbz || mi.opc == MOpcode::Cbnz) && mi.ops.size() >= 2 &&
         mi.ops[1].kind == MOperand::Kind::Label)
@@ -573,8 +572,8 @@ std::size_t eliminateLoopPhiSpills(MFunction &fn) {
             if (target.empty())
                 continue;
             auto it = nameToIdx.find(target);
-            if (it != nameToIdx.end() && it->second <= i &&
-                i < dominators.blockCount && dominators.dominates(it->second, i))
+            if (it != nameToIdx.end() && it->second <= i && i < dominators.blockCount &&
+                dominators.dominates(it->second, i))
                 backEdges.push_back({i, it->second});
         }
     }
@@ -629,9 +628,8 @@ std::size_t eliminateLoopPhiSpills(MFunction &fn) {
         MOperand srcReg;
     };
 
-    auto appendPhiLoads = [](const MInstr &mi,
-                             std::size_t instrIdx,
-                             std::vector<PhiLoad> &out) -> bool {
+    auto appendPhiLoads =
+        [](const MInstr &mi, std::size_t instrIdx, std::vector<PhiLoad> &out) -> bool {
         auto pushLoad = [&](const MOperand &dst, int64_t offset) {
             out.push_back({instrIdx, offset, dst});
         };
@@ -873,8 +871,8 @@ std::size_t eliminateLoopPhiSpills(MFunction &fn) {
                     plan.storeIndicesToRemove.insert(store.instrIdx);
                     ++plan.eliminatedCount;
                     if (store.srcReg.reg.idOrPhys != load.dstReg.reg.idOrPhys) {
-                        moves.push_back(
-                            EdgeMove{store.instrIdx, store.srcReg, load.dstReg, load.dstReg.reg.cls});
+                        moves.push_back(EdgeMove{
+                            store.instrIdx, store.srcReg, load.dstReg, load.dstReg.reg.cls});
                     }
                     break;
                 }
@@ -890,9 +888,9 @@ std::size_t eliminateLoopPhiSpills(MFunction &fn) {
         EdgePlan edgePlan;
         std::vector<MInstr> selfBodyInstrs;
         if (edge.latchIdx == edge.headerIdx) {
-            selfBodyInstrs.assign(
-                header.instrs.begin() + static_cast<std::ptrdiff_t>(firstNonPhiIdx),
-                header.instrs.end());
+            selfBodyInstrs.assign(header.instrs.begin() +
+                                      static_cast<std::ptrdiff_t>(firstNonPhiIdx),
+                                  header.instrs.end());
             std::vector<PhiStore> bodyPhiStores;
             for (std::size_t i = 0; i < selfBodyInstrs.size(); ++i) {
                 (void)appendPhiStores(selfBodyInstrs[i], i, bodyPhiStores, phiLoadOffsets);
@@ -916,9 +914,9 @@ std::size_t eliminateLoopPhiSpills(MFunction &fn) {
         if (edge.latchIdx == edge.headerIdx) {
             bodyBlock.instrs = std::move(selfBodyInstrs);
         } else {
-            bodyBlock.instrs.assign(
-                header.instrs.begin() + static_cast<std::ptrdiff_t>(firstNonPhiIdx),
-                header.instrs.end());
+            bodyBlock.instrs.assign(header.instrs.begin() +
+                                        static_cast<std::ptrdiff_t>(firstNonPhiIdx),
+                                    header.instrs.end());
         }
 
         // Trim the header to just the phi loads + unconditional branch to body.
@@ -945,8 +943,7 @@ std::size_t eliminateLoopPhiSpills(MFunction &fn) {
             std::vector<MInstr> movs;
             movs.reserve(plan.orderedMoves.size());
             for (const auto &move : plan.orderedMoves) {
-                const MOpcode movOpc =
-                    move.cls == RegClass::FPR ? MOpcode::FMovRR : MOpcode::MovRR;
+                const MOpcode movOpc = move.cls == RegClass::FPR ? MOpcode::FMovRR : MOpcode::MovRR;
                 movs.push_back(MInstr{movOpc, {move.dstReg, move.srcReg}});
             }
             std::size_t insertPos = bb.instrs.size();

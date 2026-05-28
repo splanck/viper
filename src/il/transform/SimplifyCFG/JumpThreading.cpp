@@ -235,8 +235,7 @@ bool threadJumps(SimplifyCFG::SimplifyCFGPassContext &ctx) {
                 continue;
 
             // Check if pred passes a constant for the condition
-            auto constArg =
-                getConstantArgForParam(*pred, block, predEdge.edgeIndex, *condParamIdx);
+            auto constArg = getConstantArgForParam(*pred, block, predEdge.edgeIndex, *condParamIdx);
             if (!constArg)
                 continue;
 
@@ -256,8 +255,8 @@ bool threadJumps(SimplifyCFG::SimplifyCFGPassContext &ctx) {
             auto *targetBlock = findBlock(F, newTarget);
             if (!targetBlock)
                 continue;
-            auto newArgs =
-                computeThreadedArgs(*pred, block, *targetBlock, predEdge.edgeIndex, targetBranchIdx);
+            auto newArgs = computeThreadedArgs(
+                *pred, block, *targetBlock, predEdge.edgeIndex, targetBranchIdx);
 
             // Find which branch index in pred goes to this block
             il::core::Instr *predTerm = findTerminator(*pred);

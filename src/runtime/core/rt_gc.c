@@ -492,7 +492,8 @@ rt_weakref *rt_weakref_new(void *target) {
         rt_trap("gc: weak reference target is not a live runtime handle");
         return NULL;
     }
-    rt_weakref *ref = (rt_weakref *)rt_obj_new_i64(RT_WEAKREF_CLASS_ID, (int64_t)sizeof(rt_weakref));
+    rt_weakref *ref =
+        (rt_weakref *)rt_obj_new_i64(RT_WEAKREF_CLASS_ID, (int64_t)sizeof(rt_weakref));
     if (!ref) {
         rt_trap("gc: weak reference allocation failed");
         return NULL;
@@ -608,8 +609,7 @@ int8_t rt_weakref_alive(rt_weakref *ref) {
         if (rt_string_is_handle(target)) {
             rt_string s = (rt_string)target;
             rt_heap_hdr_t *hdr = s->heap && s->heap != RT_SSO_SENTINEL ? s->heap : NULL;
-            size_t refs =
-                __atomic_load_n(hdr ? &hdr->refcnt : &s->literal_refs, __ATOMIC_RELAXED);
+            size_t refs = __atomic_load_n(hdr ? &hdr->refcnt : &s->literal_refs, __ATOMIC_RELAXED);
             alive = refs > 0 ? 1 : 0;
         } else {
             rt_heap_hdr_t *hdr = NULL;
@@ -959,8 +959,7 @@ static void gc_restore_garbage_state(gc_garbage_state *garbage,
             __atomic_store_n(&hdr->refcnt, restored, __ATOMIC_RELEASE);
         }
         if (restore_finalizers && state->finalizer_cleared && state->finalized &&
-            !state->resurrected &&
-            (rt_heap_kind_t)hdr->kind == RT_HEAP_OBJECT && !hdr->finalizer)
+            !state->resurrected && (rt_heap_kind_t)hdr->kind == RT_HEAP_OBJECT && !hdr->finalizer)
             hdr->finalizer = state->saved_finalizer;
         if (state->entry.traverse)
             rt_gc_track(obj, state->entry.traverse);
@@ -1062,8 +1061,7 @@ int64_t rt_gc_collect(void) {
             return 0;
         }
         size_t refcnt = __atomic_load_n(&hdr->refcnt, __ATOMIC_ACQUIRE);
-        g_gc.entries[i].trial_rc =
-            refcnt > (size_t)INT64_MAX ? INT64_MAX : (int64_t)refcnt;
+        g_gc.entries[i].trial_rc = refcnt > (size_t)INT64_MAX ? INT64_MAX : (int64_t)refcnt;
 
         /* Skip promoted objects in non-full-scan passes: mark them black
            so they are treated as reachable without trial-deletion. */
@@ -1083,7 +1081,7 @@ int64_t rt_gc_collect(void) {
                 gc_release_snapshot_entry(&snapshot[j]);
             free(snapshot);
             rt_trap(retained < 0 ? "gc: snapshot retain refcount overflow"
-                                  : "gc: tracked object is not live");
+                                 : "gc: tracked object is not live");
             return 0;
         }
 

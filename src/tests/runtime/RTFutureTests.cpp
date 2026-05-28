@@ -488,8 +488,7 @@ static void test_promise_set_owned_retain_overflow_does_not_lock_promise() {
 
     test_result(expect_trap([&]() { rt_promise_set_owned(promise, value); }),
                 "promise_set_owned_overflow: should trap");
-    test_result(!rt_promise_is_done(promise),
-                "promise_set_owned_overflow: promise remains usable");
+    test_result(!rt_promise_is_done(promise), "promise_set_owned_overflow: promise remains usable");
 
     value_hdr->refcnt = 1;
     int fallback = 2;
@@ -581,8 +580,7 @@ static void test_future_try_get_val_retain_overflow_does_not_lock_future() {
 
     test_result(expect_trap([&]() { (void)rt_future_try_get_val(pf.future); }),
                 "future_try_get_val_overflow: should trap");
-    test_result(rt_future_is_done(pf.future),
-                "future_try_get_val_overflow: future remains usable");
+    test_result(rt_future_is_done(pf.future), "future_try_get_val_overflow: future remains usable");
 
     cleanup_poisoned_owned_future(pf);
 }
@@ -592,8 +590,7 @@ static void test_future_get_for_val_retain_overflow_does_not_lock_future() {
 
     test_result(expect_trap([&]() { (void)rt_future_get_for_val(pf.future, 1000); }),
                 "future_get_for_val_overflow: should trap");
-    test_result(rt_future_is_done(pf.future),
-                "future_get_for_val_overflow: future remains usable");
+    test_result(rt_future_is_done(pf.future), "future_get_for_val_overflow: future remains usable");
 
     cleanup_poisoned_owned_future(pf);
 }
@@ -603,8 +600,7 @@ static void test_future_peek_value_retain_overflow_does_not_lock_future() {
 
     test_result(expect_trap([&]() { (void)rt_future_peek_value(pf.future); }),
                 "future_peek_value_overflow: should trap");
-    test_result(rt_future_is_done(pf.future),
-                "future_peek_value_overflow: future remains usable");
+    test_result(rt_future_is_done(pf.future), "future_peek_value_overflow: future remains usable");
 
     cleanup_poisoned_owned_future(pf);
 }

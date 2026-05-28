@@ -919,7 +919,8 @@ static rt_string parse_flow_key(yaml_parser *p) {
         return parse_quoted_string(p, c);
 
     size_t start = p->pos;
-    while (!parser_eof(p) && parser_peek(p) != ':' && parser_peek(p) != '}' && parser_peek(p) != '\n')
+    while (!parser_eof(p) && parser_peek(p) != ':' && parser_peek(p) != '}' &&
+           parser_peek(p) != '\n')
         parser_advance(p);
     size_t len = p->pos - start;
     while (len > 0 && isspace((unsigned char)p->input[start + len - 1]))
@@ -1092,7 +1093,8 @@ static void *parse_flow_value(yaml_parser *p) {
         return (void *)parse_quoted_string(p, c);
 
     size_t start = p->pos;
-    while (!parser_eof(p) && parser_peek(p) != ',' && parser_peek(p) != ']' && parser_peek(p) != '}')
+    while (!parser_eof(p) && parser_peek(p) != ',' && parser_peek(p) != ']' &&
+           parser_peek(p) != '}')
         parser_advance(p);
     size_t len = p->pos - start;
     while (len > 0 && isspace((unsigned char)p->input[start + len - 1]))

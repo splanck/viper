@@ -100,7 +100,8 @@ static void rt_rendertarget3d_finalize(void *obj) {
     }
 }
 
-/// @brief Validate @p obj as a RenderTarget3D handle and return its typed pointer (NULL on mismatch).
+/// @brief Validate @p obj as a RenderTarget3D handle and return its typed pointer (NULL on
+/// mismatch).
 static rt_rendertarget3d *rendertarget3d_checked(void *obj) {
     return (rt_rendertarget3d *)rt_g3d_checked_or_null(obj, RT_G3D_RENDERTARGET3D_CLASS_ID);
 }
@@ -122,8 +123,8 @@ static void *rt_rendertarget3d_new_with_format(int64_t width,
         return NULL;
     }
 
-    rt_rendertarget3d *rtd =
-        (rt_rendertarget3d *)rt_obj_new_i64(RT_G3D_RENDERTARGET3D_CLASS_ID, (int64_t)sizeof(rt_rendertarget3d));
+    rt_rendertarget3d *rtd = (rt_rendertarget3d *)rt_obj_new_i64(
+        RT_G3D_RENDERTARGET3D_CLASS_ID, (int64_t)sizeof(rt_rendertarget3d));
     if (!rtd) {
         rt_trap("RenderTarget3D: memory allocation failed");
         return NULL;
@@ -151,9 +152,10 @@ static void *rt_rendertarget3d_new_with_format(int64_t width,
 ///   message rather than silently clamping.
 /// @return Retained pointer to the new `rt_rendertarget3d`, or traps on failure.
 void *rt_rendertarget3d_new(int64_t width, int64_t height) {
-    return rt_rendertarget3d_new_with_format(
-        width, height, VGFX3D_RENDERTARGET_COLOR_FORMAT_UNORM8,
-        "RenderTarget3D.New: dimensions must be 1-8192");
+    return rt_rendertarget3d_new_with_format(width,
+                                             height,
+                                             VGFX3D_RENDERTARGET_COLOR_FORMAT_UNORM8,
+                                             "RenderTarget3D.New: dimensions must be 1-8192");
 }
 
 /// @brief Allocate an HDR (16-bit float per channel) off-screen render target.
@@ -162,9 +164,10 @@ void *rt_rendertarget3d_new(int64_t width, int64_t height) {
 ///   without early clamping. Callers that don't need HDR should use the plain
 ///   `new` variant — HDR targets consume 2x the VRAM per pixel.
 void *rt_rendertarget3d_new_hdr(int64_t width, int64_t height) {
-    return rt_rendertarget3d_new_with_format(
-        width, height, VGFX3D_RENDERTARGET_COLOR_FORMAT_HDR16F,
-        "RenderTarget3D.NewHdr: dimensions must be 1-8192");
+    return rt_rendertarget3d_new_with_format(width,
+                                             height,
+                                             VGFX3D_RENDERTARGET_COLOR_FORMAT_HDR16F,
+                                             "RenderTarget3D.NewHdr: dimensions must be 1-8192");
 }
 
 /// @brief Get the width of the render target in pixels.

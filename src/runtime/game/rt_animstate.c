@@ -199,8 +199,12 @@ static void animstate_maybe_fire_events(animstate_impl *a, anim_clip_t *c, int64
         uint16_t mask = (uint16_t)(1u << (uint8_t)i);
         if ((c->event_fired_mask & mask) != 0)
             continue;
-        if (!animstate_crossed_frame(
-                c->start_frame, c->end_frame, c->loop, prev_frame, a->current_frame, c->event_frames[i]))
+        if (!animstate_crossed_frame(c->start_frame,
+                                     c->end_frame,
+                                     c->loop,
+                                     prev_frame,
+                                     a->current_frame,
+                                     c->event_frames[i]))
             continue;
         c->event_fired_mask |= mask;
         a->events_fired_ids[a->events_fired_count++] = c->event_ids[i];
@@ -539,8 +543,8 @@ int8_t rt_animstate_event_fired(void *asm_) {
 }
 
 int8_t rt_animstate_add_event(void *asm_, int64_t state_id, int64_t frame, int64_t event_id) {
-    animstate_impl *a = checked_animstate(
-        asm_, "AnimStateMachine.AddEvent: expected Viper.Game.AnimStateMachine");
+    animstate_impl *a =
+        checked_animstate(asm_, "AnimStateMachine.AddEvent: expected Viper.Game.AnimStateMachine");
     if (!a)
         return 0;
     if (state_id < 0)

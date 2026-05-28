@@ -138,7 +138,8 @@ static void checkbox_measure(vg_widget_t *widget, float available_width, float a
     vg_widget_apply_constraints(widget);
 }
 
-/// @brief VTable paint: draws the box border, fill/check-mark when checked, focus ring, and label text.
+/// @brief VTable paint: draws the box border, fill/check-mark when checked, focus ring, and label
+/// text.
 static void checkbox_paint(vg_widget_t *widget, void *canvas) {
     vg_checkbox_t *checkbox = (vg_checkbox_t *)widget;
     vg_theme_t *theme = vg_theme_get_current();

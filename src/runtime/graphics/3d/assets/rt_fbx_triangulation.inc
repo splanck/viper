@@ -1,10 +1,7 @@
 /// @brief Project a mesh vertex to 2D by dropping one axis (0=X, 1=Y, else Z),
 ///   yielding the (out_x, out_y) plane coordinates used for in-plane triangulation.
-static void fbx_project_mesh_vertex(const rt_mesh3d *mesh,
-                                    int32_t vertex_index,
-                                    int drop_axis,
-                                    double *out_x,
-                                    double *out_y) {
+static void fbx_project_mesh_vertex(
+    const rt_mesh3d *mesh, int32_t vertex_index, int drop_axis, double *out_x, double *out_y) {
     const float *p = mesh->vertices[vertex_index].pos;
     if (drop_axis == 0) {
         *out_x = p[1];
@@ -27,14 +24,8 @@ static double fbx_tri_area2(double ax, double ay, double bx, double by, double c
 /// @brief True if point (px,py) lies inside triangle (a,b,c), winding-agnostic.
 /// @details Tests the point against each edge; inside iff the three signed areas
 ///   share one sign (an epsilon tolerance treats edge-coincident points as inside).
-static int fbx_point_in_tri_2d(double px,
-                               double py,
-                               double ax,
-                               double ay,
-                               double bx,
-                               double by,
-                               double cx,
-                               double cy) {
+static int fbx_point_in_tri_2d(
+    double px, double py, double ax, double ay, double bx, double by, double cx, double cy) {
     double ab = fbx_tri_area2(ax, ay, bx, by, px, py);
     double bc = fbx_tri_area2(bx, by, cx, cy, px, py);
     double ca = fbx_tri_area2(cx, cy, ax, ay, px, py);

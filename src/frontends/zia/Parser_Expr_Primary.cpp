@@ -202,7 +202,8 @@ ExprPtr Parser::parsePrimary() {
         return std::make_unique<MapLiteralExpr>(mapLoc, std::move(entries));
     }
 
-    // Identifier or struct-literal: `TypeName { field = expr, ... }` or `TypeName { field: expr, ... }`
+    // Identifier or struct-literal: `TypeName { field = expr, ... }` or `TypeName { field: expr,
+    // ... }`
     if (checkIdentifierLike())
         return parseIdentifierOrStructLiteral(loc);
 

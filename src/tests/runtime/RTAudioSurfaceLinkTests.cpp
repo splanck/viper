@@ -12,13 +12,13 @@
 //===----------------------------------------------------------------------===//
 
 #include "rt_audio.h"
-#include "rt_sound3d.h"
-#include "rt_soundlistener3d.h"
-#include "rt_soundsource3d.h"
 #include "rt_mixgroup.h"
 #include "rt_musicgen.h"
 #include "rt_playlist.h"
+#include "rt_sound3d.h"
 #include "rt_soundbank.h"
+#include "rt_soundlistener3d.h"
+#include "rt_soundsource3d.h"
 #include "rt_synth.h"
 
 #include <cassert>

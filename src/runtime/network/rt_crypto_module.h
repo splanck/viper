@@ -28,8 +28,8 @@ extern "C" {
 ///          RSA-PSS) and reroutes the TLS profile through the locked-down
 ///          handshake.
 typedef enum rt_crypto_module_mode {
-    RT_CRYPTO_MODULE_MODE_COMPAT = 0,    ///< Default: every primitive available.
-    RT_CRYPTO_MODULE_MODE_APPROVED = 1,  ///< Approved mode: legacy primitives refuse to run.
+    RT_CRYPTO_MODULE_MODE_COMPAT = 0,   ///< Default: every primitive available.
+    RT_CRYPTO_MODULE_MODE_APPROVED = 1, ///< Approved mode: legacy primitives refuse to run.
 } rt_crypto_module_mode_t;
 
 /// @brief Lifecycle state of the crypto module singleton.

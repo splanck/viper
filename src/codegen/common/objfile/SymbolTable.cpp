@@ -50,10 +50,9 @@ uint32_t SymbolTable::add(Symbol sym) {
                 return it->second;
             }
 
-            if (sym.binding == SymbolBinding::Global ||
-                existing.binding == SymbolBinding::Global) {
-                throw std::invalid_argument("SymbolTable: duplicate global symbol '" +
-                                            sym.name + "'");
+            if (sym.binding == SymbolBinding::Global || existing.binding == SymbolBinding::Global) {
+                throw std::invalid_argument("SymbolTable: duplicate global symbol '" + sym.name +
+                                            "'");
             }
 
             // Duplicate locals are legal because object formats can carry

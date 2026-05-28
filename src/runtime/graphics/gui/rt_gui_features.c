@@ -58,6 +58,7 @@ static uint64_t rt_gui_feature_now_ms(rt_gui_app_t *app) {
 
 // CommandPalette state tracking
 #define RT_COMMANDPALETTE_DATA_MAGIC UINT64_C(0x5254434D4450414C)
+
 typedef struct {
     uint64_t magic;
     rt_gui_app_t *app;
@@ -101,7 +102,8 @@ static int rt_commandpalette_register_wrapper(rt_commandpalette_data_t *data) {
     return 1;
 }
 
-/// @brief Remove a wrapper from the command-palette registry, compacting the array. No-op if absent.
+/// @brief Remove a wrapper from the command-palette registry, compacting the array. No-op if
+/// absent.
 static void rt_commandpalette_unregister_wrapper(rt_commandpalette_data_t *data) {
     if (!data)
         return;
@@ -599,6 +601,7 @@ void rt_widget_clear_tooltip(void *widget) {
 
 // Wrapper to track toast state
 #define RT_TOAST_DATA_MAGIC UINT64_C(0x5254544F41535431)
+
 typedef struct rt_toast_data {
     uint64_t magic;
     rt_gui_app_t *app;
@@ -615,7 +618,8 @@ static rt_toast_data_t *rt_toast_checked(void *toast) {
     return data && data->magic == RT_TOAST_DATA_MAGIC ? data : NULL;
 }
 
-/// @brief Toast action-button callback — flips an edge-trigger when the user clicks "Undo" / "Retry" etc.
+/// @brief Toast action-button callback — flips an edge-trigger when the user clicks "Undo" /
+/// "Retry" etc.
 static void rt_toast_on_action(uint32_t id, void *user_data) {
     rt_toast_data_t *data = (rt_toast_data_t *)user_data;
     if (!data || data->magic != RT_TOAST_DATA_MAGIC || data->id != id)
@@ -818,8 +822,7 @@ void *rt_toast_new(rt_string message, int64_t type, int64_t duration_ms) {
     if (duration_ms > 0)
         clamped_duration = duration_ms > UINT32_MAX ? UINT32_MAX : (uint32_t)duration_ms;
 
-    data->id =
-        vg_notification_show(mgr, rt_toast_type_to_vg(type), NULL, cmsg, clamped_duration);
+    data->id = vg_notification_show(mgr, rt_toast_type_to_vg(type), NULL, cmsg, clamped_duration);
     if (data->id == 0) {
         free(cmsg);
         data->magic = 0;
@@ -985,6 +988,7 @@ void rt_toast_dismiss_all(void) {
 
 // Wrapper to track breadcrumb state
 #define RT_BREADCRUMB_DATA_MAGIC UINT64_C(0x5254425245414443)
+
 typedef struct rt_breadcrumb_data {
     uint64_t magic;
     vg_breadcrumb_t *breadcrumb;
@@ -1069,10 +1073,9 @@ static void rt_breadcrumb_on_click(vg_breadcrumb_t *bc, int index, void *user_da
     if (index >= 0 && (size_t)index < bc->item_count) {
         if (bc->items[index].owns_user_data &&
             rt_gui_string_data_is_owned(bc->items[index].user_data))
-            data->clicked_data =
-                rt_gui_string_data_new_bytes(
-                    ((rt_gui_string_data_t *)bc->items[index].user_data)->bytes,
-                    ((rt_gui_string_data_t *)bc->items[index].user_data)->len);
+            data->clicked_data = rt_gui_string_data_new_bytes(
+                ((rt_gui_string_data_t *)bc->items[index].user_data)->bytes,
+                ((rt_gui_string_data_t *)bc->items[index].user_data)->len);
     }
 }
 
@@ -1327,8 +1330,7 @@ void rt_breadcrumb_set_max_items(void *crumb, int64_t max) {
     rt_breadcrumb_data_t *data = rt_breadcrumb_checked(crumb);
     if (!data || !data->breadcrumb)
         return;
-    vg_breadcrumb_set_max_items(data->breadcrumb,
-                                rt_gui_clamp_i64_to_i32(max, 0, INT32_MAX));
+    vg_breadcrumb_set_max_items(data->breadcrumb, rt_gui_clamp_i64_to_i32(max, 0, INT32_MAX));
 }
 
 /// @brief Show or hide the breadcrumb widget.
@@ -1355,6 +1357,7 @@ int64_t rt_breadcrumb_is_visible(void *crumb) {
 
 // Wrapper to track minimap state
 #define RT_MINIMAP_DATA_MAGIC UINT64_C(0x52544D494E494D50)
+
 typedef struct rt_minimap_data {
     uint64_t magic;
     vg_minimap_t *minimap;
@@ -1541,8 +1544,7 @@ void rt_minimap_set_width(void *minimap, int64_t width) {
     rt_minimap_data_t *data = rt_minimap_checked(minimap);
     if (!data || !data->minimap)
         return;
-    int32_t clamped_width =
-        rt_gui_clamp_i64_to_i32(width, 64, (int32_t)RT_GUI_MAX_LAYOUT_VALUE);
+    int32_t clamped_width = rt_gui_clamp_i64_to_i32(width, 64, (int32_t)RT_GUI_MAX_LAYOUT_VALUE);
     data->width = clamped_width;
     data->minimap->base.constraints.min_width = (float)clamped_width;
     data->minimap->base.constraints.preferred_width = (float)clamped_width;
@@ -1837,9 +1839,8 @@ void rt_gui_file_drop_add(rt_gui_app_t *app, const char *path) {
         free(path_copy);
         return;
     }
-    char **new_files =
-        (char **)realloc(app->file_drop.files,
-                         (size_t)(app->file_drop.file_count + 1) * sizeof(char *));
+    char **new_files = (char **)realloc(app->file_drop.files,
+                                        (size_t)(app->file_drop.file_count + 1) * sizeof(char *));
     if (!new_files) {
         free(path_copy);
         return;

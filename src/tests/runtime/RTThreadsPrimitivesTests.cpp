@@ -61,8 +61,7 @@ static void test_gate_traps() {
     void *overflow_gate = rt_gate_new(std::numeric_limits<int64_t>::max());
     EXPECT_TRAP(rt_gate_leave(overflow_gate));
     assert(g_last_trap &&
-           std::string(g_last_trap).find("Gate.Leave: permit count overflow") !=
-               std::string::npos);
+           std::string(g_last_trap).find("Gate.Leave: permit count overflow") != std::string::npos);
 
     EXPECT_TRAP(rt_gate_enter(nullptr));
     assert(g_last_trap &&

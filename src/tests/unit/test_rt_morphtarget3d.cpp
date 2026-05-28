@@ -245,8 +245,8 @@ static void test_clone_copies_delta_payloads_and_weights() {
     EXPECT_TRUE(clone != nullptr, "MorphTarget3D.Clone returns a complete clone");
     EXPECT_TRUE(rt_morphtarget3d_get_shape_count(clone) == 1,
                 "MorphTarget3D.Clone copies shape count");
-    EXPECT_NEAR(rt_morphtarget3d_get_weight(clone, 0), 0.6, 0.001,
-                "MorphTarget3D.Clone copies weights");
+    EXPECT_NEAR(
+        rt_morphtarget3d_get_weight(clone, 0), 0.6, 0.001, "MorphTarget3D.Clone copies weights");
 
     const float *clone_pos = rt_morphtarget3d_get_packed_deltas(clone);
     const float *clone_nrm = rt_morphtarget3d_get_packed_normal_deltas(clone);

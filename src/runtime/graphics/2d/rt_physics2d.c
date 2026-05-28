@@ -61,7 +61,8 @@
 
 static int8_t aabb_overlap(rt_body_impl *a, rt_body_impl *b, double *nx, double *ny, double *pen);
 static int8_t shape_overlap(rt_body_impl *a, rt_body_impl *b, double *nx, double *ny, double *pen);
-static int8_t swept_bounds_pair(rt_body_impl *a, rt_body_impl *b, double *nx, double *ny, double *entry);
+static int8_t swept_bounds_pair(
+    rt_body_impl *a, rt_body_impl *b, double *nx, double *ny, double *entry);
 static void resolve_collision(rt_body_impl *a, rt_body_impl *b, double nx, double ny, double pen);
 
 /// @brief Clear the world's per-step contact list (called at the start of
@@ -182,10 +183,9 @@ static void sanitize_body_state(rt_body_impl *b) {
     b->prev_y = clamp_abs_finite(b->prev_y, b->y, max_pos);
     b->w = (isfinite(b->w) && b->w > 0.0) ? (b->w > max_size ? max_size : b->w) : 1.0;
     b->h = (isfinite(b->h) && b->h > 0.0) ? (b->h > max_size ? max_size : b->h) : 1.0;
-    b->radius =
-        (isfinite(b->radius) && b->radius > 0.0)
-            ? (b->radius > max_size ? max_size : b->radius)
-            : (b->is_circle ? 1.0 : 0.0);
+    b->radius = (isfinite(b->radius) && b->radius > 0.0)
+                    ? (b->radius > max_size ? max_size : b->radius)
+                    : (b->is_circle ? 1.0 : 0.0);
     b->vx = clamp_abs_finite(b->vx, 0.0, max_vel);
     b->vy = clamp_abs_finite(b->vy, 0.0, max_vel);
     b->fx = clamp_abs_finite(b->fx, 0.0, max_force);
@@ -511,7 +511,8 @@ static int8_t shape_overlap(rt_body_impl *a, rt_body_impl *b, double *nx, double
     return aabb_overlap(a, b, nx, ny, pen);
 }
 
-/// @brief Compute the entry and exit times for two 1D intervals moving with relative velocity `rel`.
+/// @brief Compute the entry and exit times for two 1D intervals moving with relative velocity
+/// `rel`.
 /// @details Part of the continuous collision detection (CCD) swept AABB test.  When `rel`
 ///   is zero, the intervals are either always overlapping (returns 1, entry=-inf, exit=+inf)
 ///   or always separated (returns 0).  Used by swept_bounds_pair to check each axis
@@ -729,7 +730,8 @@ static int8_t swept_circle_aabb_pair(
 
 /// @brief Swept collision between two AABBs using their relative velocity
 ///        (Minkowski-expanded point sweep). @return non-zero on a hit.
-static int8_t swept_aabb_pair(rt_body_impl *a, rt_body_impl *b, double *nx, double *ny, double *entry_out) {
+static int8_t swept_aabb_pair(
+    rt_body_impl *a, rt_body_impl *b, double *nx, double *ny, double *entry_out) {
     if (!a || !b || !nx || !ny || !entry_out)
         return 0;
 
@@ -790,7 +792,8 @@ static int8_t swept_aabb_pair(rt_body_impl *a, rt_body_impl *b, double *nx, doub
 /// @brief Swept test between two bodies, dispatching to the circle/AABB sweep
 ///        appropriate to their shapes; writes contact normal and entry time.
 /// @return Non-zero if the bodies collide during this step, 0 otherwise.
-static int8_t swept_bounds_pair(rt_body_impl *a, rt_body_impl *b, double *nx, double *ny, double *entry_out) {
+static int8_t swept_bounds_pair(
+    rt_body_impl *a, rt_body_impl *b, double *nx, double *ny, double *entry_out) {
     if (!a || !b || !nx || !ny || !entry_out)
         return 0;
 
@@ -954,8 +957,8 @@ static void world_finalizer(void *obj) {
 /// @param gravity_y World-space Y acceleration (positive = downward in screen coords).
 /// @return Opaque world handle, or NULL on allocation failure (after trapping).
 void *rt_physics2d_world_new(double gravity_x, double gravity_y) {
-    rt_world_impl *w =
-        (rt_world_impl *)rt_obj_new_i64(RT_PHYSICS2D_WORLD_CLASS_ID, (int64_t)sizeof(rt_world_impl));
+    rt_world_impl *w = (rt_world_impl *)rt_obj_new_i64(RT_PHYSICS2D_WORLD_CLASS_ID,
+                                                       (int64_t)sizeof(rt_world_impl));
     if (!w) {
         rt_trap("Physics2D.World: allocation failed");
         return NULL;
@@ -1346,9 +1349,9 @@ void *rt_physics2d_body_new(double x, double y, double w, double h, double mass)
     b->fy = 0.0;
     b->mass = mass;
     b->inv_mass = (mass > 0.0) ? (1.0 / mass) : 0.0;
-    b->restitution = 0.5;           /* Moderately bouncy by default */
-    b->friction = 0.3;              /* Moderate friction by default */
-    b->collision_layer = 1;         /* Default: layer 0, bit 0 set */
+    b->restitution = 0.5;            /* Moderately bouncy by default */
+    b->friction = 0.3;               /* Moderate friction by default */
+    b->collision_layer = 1;          /* Default: layer 0, bit 0 set */
     b->collision_mask = INT64_C(-1); /* Default: collide with all 64 layers */
     b->radius = 0.0;
     b->is_circle = 0;
@@ -1540,7 +1543,8 @@ int64_t rt_physics2d_body_collision_layer(void *obj) {
 /// @brief Set the collision-layer bitmask. Combined with the *other* body's collision_mask
 /// during overlap tests — only pairs where each body's layer matches the other's mask collide.
 void rt_physics2d_body_set_collision_layer(void *obj, int64_t layer) {
-    rt_body_impl *b = checked_body(obj, "Physics2D.Body.CollisionLayer.set: expected Physics2D.Body");
+    rt_body_impl *b =
+        checked_body(obj, "Physics2D.Body.CollisionLayer.set: expected Physics2D.Body");
     if (b)
         b->collision_layer = layer;
 }
@@ -1554,7 +1558,8 @@ int64_t rt_physics2d_body_collision_mask(void *obj) {
 /// @brief Set the collision-mask. Each bit corresponds to a layer this body collides with.
 /// Default -1 = collides with all 64 layers. Use 0 to make the body collision-free.
 void rt_physics2d_body_set_collision_mask(void *obj, int64_t mask) {
-    rt_body_impl *b = checked_body(obj, "Physics2D.Body.CollisionMask.set: expected Physics2D.Body");
+    rt_body_impl *b =
+        checked_body(obj, "Physics2D.Body.CollisionMask.set: expected Physics2D.Body");
     if (b)
         b->collision_mask = mask;
 }
@@ -1609,7 +1614,8 @@ void *rt_projectile2d_new(double p0x, double p0y, double v0x, double v0y, double
 }
 
 void rt_projectile2d_set_drag(void *obj, double drag) {
-    rt_projectile2d_impl *p = checked_projectile(obj, "Projectile2D.SetDrag: expected Projectile2D");
+    rt_projectile2d_impl *p =
+        checked_projectile(obj, "Projectile2D.SetDrag: expected Projectile2D");
     if (!p)
         return;
     p->drag = isfinite(drag) && drag > 0.0 ? drag : 0.0;
@@ -1638,8 +1644,7 @@ static double projectile_pos_at(double p0, double v0, double g, double drag, dou
     if (drag <= 0.0)
         return p0 + v0 * t + 0.5 * g * t * t;
     double e = exp(-drag * t);
-    return p0 + (v0 / drag) * (1.0 - e) + (g / drag) * t -
-           (g / (drag * drag)) * (1.0 - e);
+    return p0 + (v0 / drag) * (1.0 - e) + (g / drag) * t - (g / (drag * drag)) * (1.0 - e);
 }
 
 /// @brief Velocity of one axis at time @p t under gravity @p g and linear

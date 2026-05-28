@@ -100,8 +100,7 @@ using viper::codegen::common::removeMarkedInstructions;
 [[nodiscard]] bool usesReg(const MInstr &instr, const MOperand &reg) noexcept;
 
 /// @brief Classify an operand as use, def, or both.
-[[nodiscard]] std::pair<bool, bool> classifyOperand(const MInstr &instr,
-                                                    std::size_t idx) noexcept;
+[[nodiscard]] std::pair<bool, bool> classifyOperand(const MInstr &instr, std::size_t idx) noexcept;
 
 // ---- Constant tracking -----------------------------------------------------
 

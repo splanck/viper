@@ -183,8 +183,7 @@ static cq_deadline_t cq_deadline_ms_from_now(int64_t timeout_ms, int8_t use_mono
     int64_t add_sec = timeout_ms / 1000;
     long add_nsec = (long)((timeout_ms % 1000) * 1000000L);
     int64_t sec_room = (int64_t)LONG_MAX - (int64_t)d.deadline.tv_sec;
-    if (add_sec > sec_room ||
-        (add_sec == sec_room && d.deadline.tv_nsec > 999999999L - add_nsec)) {
+    if (add_sec > sec_room || (add_sec == sec_room && d.deadline.tv_nsec > 999999999L - add_nsec)) {
         d.deadline.tv_sec = (time_t)LONG_MAX;
         d.deadline.tv_nsec = 999999999L;
         return d;

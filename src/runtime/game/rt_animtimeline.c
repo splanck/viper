@@ -142,16 +142,20 @@ void *rt_animtimeline_new(int64_t total_duration_frames) {
     return tl;
 }
 
-int64_t rt_animtimeline_add_anim_track(
-    void *ptr, rt_string name, int64_t start_frame, int64_t duration_frames, int64_t anim_state_id) {
-    return timeline_add_track(checked_timeline(ptr, "AnimTimeline.AddAnimTrack: expected AnimTimeline"),
-                              TIMELINE_TRACK_ANIM,
-                              name,
-                              start_frame,
-                              duration_frames,
-                              anim_state_id,
-                              0,
-                              0);
+int64_t rt_animtimeline_add_anim_track(void *ptr,
+                                       rt_string name,
+                                       int64_t start_frame,
+                                       int64_t duration_frames,
+                                       int64_t anim_state_id) {
+    return timeline_add_track(
+        checked_timeline(ptr, "AnimTimeline.AddAnimTrack: expected AnimTimeline"),
+        TIMELINE_TRACK_ANIM,
+        name,
+        start_frame,
+        duration_frames,
+        anim_state_id,
+        0,
+        0);
 }
 
 int64_t rt_animtimeline_add_tween_track(void *ptr,
@@ -160,14 +164,15 @@ int64_t rt_animtimeline_add_tween_track(void *ptr,
                                         int64_t duration_frames,
                                         int64_t from,
                                         int64_t to) {
-    return timeline_add_track(checked_timeline(ptr, "AnimTimeline.AddTweenTrack: expected AnimTimeline"),
-                              TIMELINE_TRACK_TWEEN,
-                              name,
-                              start_frame,
-                              duration_frames,
-                              from,
-                              to,
-                              0);
+    return timeline_add_track(
+        checked_timeline(ptr, "AnimTimeline.AddTweenTrack: expected AnimTimeline"),
+        TIMELINE_TRACK_TWEEN,
+        name,
+        start_frame,
+        duration_frames,
+        from,
+        to,
+        0);
 }
 
 int64_t rt_animtimeline_add_marker(void *ptr, int64_t frame, int64_t marker_id) {

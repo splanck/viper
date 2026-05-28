@@ -413,8 +413,7 @@ bool validateBasedIntegerSeparators(std::string_view text,
             previousWasDigit = true;
             continue;
         }
-        if (c != '_' || !previousWasDigit || i + 1 >= text.size() ||
-            !isDigitForBase(text[i + 1])) {
+        if (c != '_' || !previousWasDigit || i + 1 >= text.size() || !isDigitForBase(text[i + 1])) {
             return false;
         }
         previousWasDigit = false;

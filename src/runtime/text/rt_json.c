@@ -944,11 +944,8 @@ static void format_string(string_builder *sb, rt_string s) {
 //=============================================================================
 
 /// @brief Forward declaration: serialise any Viper value as JSON.
-static void format_value(string_builder *sb,
-                         void *obj,
-                         int64_t indent,
-                         int64_t level,
-                         format_context *ctx);
+static void format_value(
+    string_builder *sb, void *obj, int64_t indent, int64_t level, format_context *ctx);
 
 /// @brief Emit a Seq as a JSON array, optionally pretty-printed.
 ///
@@ -1245,9 +1242,9 @@ int8_t rt_json_try_parse(rt_string text,
                 rt_obj_free(result);
         }
         if (out_message)
-            *out_message = rt_string_from_bytes(p.error_message[0] ? p.error_message : "parse error",
-                                                strlen(p.error_message[0] ? p.error_message
-                                                                          : "parse error"));
+            *out_message =
+                rt_string_from_bytes(p.error_message[0] ? p.error_message : "parse error",
+                                     strlen(p.error_message[0] ? p.error_message : "parse error"));
         if (out_line)
             *out_line = p.error_line;
         if (out_column)
@@ -1531,8 +1528,7 @@ static int validate_value(json_parser *p) {
                     case 'r':
                     case 't':
                         break;
-                    case 'u':
-                    {
+                    case 'u': {
                         unsigned int codepoint = 0;
                         if (!validate_hex4(p, &codepoint))
                             return 0;

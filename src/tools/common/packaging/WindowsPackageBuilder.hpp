@@ -77,18 +77,22 @@ std::vector<std::string> importedDllNamesFromPe(const std::vector<uint8_t> &data
 
 /// @brief Parameters for building a Windows toolchain installer from a staged manifest.
 struct WindowsToolchainBuildParams {
-    ToolchainInstallManifest manifest;          ///< Staged file list produced by gatherToolchainInstallManifest.
-    std::string outputPath;                     ///< Output .exe path for the installer.
-    std::string archStr{"x64"};                 ///< Payload architecture ("x64" or "arm64").
-    std::string displayName{"Viper"};           ///< Human-readable product name shown in Add/Remove Programs.
-    std::string publisher{"Viper Project"};     ///< Publisher string written to the uninstall registry key.
-    std::string identifier{"org.viper.toolchain"}; ///< Unique product identifier used as the registry key name.
-    std::string installDirName{"Viper"};        ///< Directory name under the selected install root.
+    ToolchainInstallManifest
+        manifest;               ///< Staged file list produced by gatherToolchainInstallManifest.
+    std::string outputPath;     ///< Output .exe path for the installer.
+    std::string archStr{"x64"}; ///< Payload architecture ("x64" or "arm64").
+    std::string displayName{"Viper"}; ///< Human-readable product name shown in Add/Remove Programs.
+    std::string publisher{
+        "Viper Project"}; ///< Publisher string written to the uninstall registry key.
+    std::string identifier{
+        "org.viper.toolchain"}; ///< Unique product identifier used as the registry key name.
+    std::string installDirName{"Viper"}; ///< Directory name under the selected install root.
     std::string homepage{"https://github.com/splanck/viper"}; ///< Support/update URL.
-    std::string installScope{"user"};           ///< "user" for LocalAppData/HKCU, "machine" for ProgramFiles/HKLM.
-    bool addToPath{true};                       ///< Add bin/ to the selected PATH registry value.
-    bool registerFileAssociations{false};       ///< Register .zia/.bas/.il file associations.
-    bool createStartMenuShortcuts{true};        ///< Create Viper developer shortcuts in the Start Menu.
+    std::string installScope{
+        "user"};          ///< "user" for LocalAppData/HKCU, "machine" for ProgramFiles/HKLM.
+    bool addToPath{true}; ///< Add bin/ to the selected PATH registry value.
+    bool registerFileAssociations{false}; ///< Register .zia/.bas/.il file associations.
+    bool createStartMenuShortcuts{true};  ///< Create Viper developer shortcuts in the Start Menu.
 };
 
 /// @brief Build a Windows toolchain installer .exe from a staged install manifest.

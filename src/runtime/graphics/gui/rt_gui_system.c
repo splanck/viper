@@ -100,7 +100,8 @@ static void rt_shortcuts_ensure_capacity(rt_gui_app_t *app) {
     app->shortcut_cap = new_cap;
 }
 
-/// @brief Parse a `+`-separated shortcut string (e.g. `"Ctrl+Shift+S"`) into modifier flags + key code.
+/// @brief Parse a `+`-separated shortcut string (e.g. `"Ctrl+Shift+S"`) into modifier flags + key
+/// code.
 ///
 /// Recognises `Ctrl`/`Control`, `Shift`, `Alt`, `Cmd`/`Command`
 /// (`Cmd` is distinct on macOS and maps to Ctrl/Super-compatible shortcuts elsewhere),
@@ -512,8 +513,7 @@ int8_t rt_shortcuts_check_key(rt_gui_app_t *app, int key, int mods) {
         if (expected_ctrl == event_ctrl && expected_super == event_super &&
             app->shortcuts[i].parsed_shift == has_shift &&
             app->shortcuts[i].parsed_alt == has_alt && app->shortcuts[i].parsed_key == upper_key) {
-            char *new_triggered_id =
-                app->shortcuts[i].id ? strdup(app->shortcuts[i].id) : NULL;
+            char *new_triggered_id = app->shortcuts[i].id ? strdup(app->shortcuts[i].id) : NULL;
             if (app->shortcuts[i].id && !new_triggered_id)
                 return 0;
             app->shortcuts[i].triggered = 1;

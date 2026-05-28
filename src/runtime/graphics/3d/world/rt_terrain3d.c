@@ -53,8 +53,10 @@ extern void rt_mesh3d_add_vertex(
     void *m, double x, double y, double z, double nx, double ny, double nz, double u, double v);
 extern void rt_mesh3d_add_triangle(void *m, int64_t v0, int64_t v1, int64_t v2);
 extern void rt_canvas3d_draw_mesh(void *canvas, void *mesh, void *transform, void *material);
-extern void rt_canvas3d_draw_mesh_matrix(
-    void *canvas, void *mesh, const double *transform, void *material);
+extern void rt_canvas3d_draw_mesh_matrix(void *canvas,
+                                         void *mesh,
+                                         const double *transform,
+                                         void *material);
 extern void rt_material3d_set_texture(void *material, void *pixels);
 
 #define TERRAIN_CHUNK_SIZE 16
@@ -98,7 +100,8 @@ static void terrain_release_ref(void **slot) {
     *slot = NULL;
 }
 
-/// @brief Clamp `value` into `[-TERRAIN3D_ABS_MAX, TERRAIN3D_ABS_MAX]`, substituting `fallback` when not finite.
+/// @brief Clamp `value` into `[-TERRAIN3D_ABS_MAX, TERRAIN3D_ABS_MAX]`, substituting `fallback`
+/// when not finite.
 static double terrain_clamp_abs_or(double value, double fallback) {
     if (!isfinite(value))
         return fallback;
@@ -269,8 +272,7 @@ extern double rt_perlin_octave2d(
 /// noise frequency (higher = more detail). Invalidates all cached chunk meshes.
 void rt_terrain3d_generate_perlin(
     void *obj, void *perlin, double scale, int64_t octaves, double persistence) {
-    rt_terrain3d *t =
-        (rt_terrain3d *)rt_g3d_checked_or_null(obj, RT_G3D_TERRAIN3D_CLASS_ID);
+    rt_terrain3d *t = (rt_terrain3d *)rt_g3d_checked_or_null(obj, RT_G3D_TERRAIN3D_CLASS_ID);
     if (!t || !perlin)
         return;
     if (!isfinite(scale) || scale < 1e-8)
@@ -312,13 +314,11 @@ void rt_terrain3d_generate_perlin(
 void rt_terrain3d_set_heightmap(void *obj, void *pixels) {
     if (!obj || !pixels)
         return;
-    rt_terrain3d *t =
-        (rt_terrain3d *)rt_g3d_checked_or_null(obj, RT_G3D_TERRAIN3D_CLASS_ID);
+    rt_terrain3d *t = (rt_terrain3d *)rt_g3d_checked_or_null(obj, RT_G3D_TERRAIN3D_CLASS_ID);
     if (!t)
         return;
 
-    rt_pixels_impl *pv =
-        rt_pixels_checked_impl(pixels, "Terrain3D.SetHeightmap: expected Pixels");
+    rt_pixels_impl *pv = rt_pixels_checked_impl(pixels, "Terrain3D.SetHeightmap: expected Pixels");
     if (!pv || !pv->data || pv->width <= 0 || pv->height <= 0 || pv->width > INT32_MAX ||
         pv->height > INT32_MAX) {
         rt_trap("Terrain3D.SetHeightmap: heightmap must be non-empty Pixels");
@@ -351,8 +351,7 @@ void rt_terrain3d_set_heightmap(void *obj, void *pixels) {
 void rt_terrain3d_set_material(void *obj, void *material) {
     if (!obj)
         return;
-    rt_terrain3d *t =
-        (rt_terrain3d *)rt_g3d_checked_or_null(obj, RT_G3D_TERRAIN3D_CLASS_ID);
+    rt_terrain3d *t = (rt_terrain3d *)rt_g3d_checked_or_null(obj, RT_G3D_TERRAIN3D_CLASS_ID);
     if (!t)
         return;
     if (material && !rt_g3d_has_class(material, RT_G3D_MATERIAL3D_CLASS_ID))
@@ -371,8 +370,7 @@ void rt_terrain3d_set_material(void *obj, void *material) {
 void rt_terrain3d_set_scale(void *obj, double sx, double sy, double sz) {
     if (!obj)
         return;
-    rt_terrain3d *t =
-        (rt_terrain3d *)rt_g3d_checked_or_null(obj, RT_G3D_TERRAIN3D_CLASS_ID);
+    rt_terrain3d *t = (rt_terrain3d *)rt_g3d_checked_or_null(obj, RT_G3D_TERRAIN3D_CLASS_ID);
     if (!t)
         return;
     if (!isfinite(sx) || sx <= 0.0)
@@ -396,8 +394,7 @@ void rt_terrain3d_set_scale(void *obj, double sx, double sy, double sz) {
 void rt_terrain3d_set_splat_map(void *obj, void *pixels) {
     if (!obj)
         return;
-    rt_terrain3d *t =
-        (rt_terrain3d *)rt_g3d_checked_or_null(obj, RT_G3D_TERRAIN3D_CLASS_ID);
+    rt_terrain3d *t = (rt_terrain3d *)rt_g3d_checked_or_null(obj, RT_G3D_TERRAIN3D_CLASS_ID);
     if (!t)
         return;
     if (pixels) {
@@ -425,8 +422,7 @@ void rt_terrain3d_set_splat_map(void *obj, void *pixels) {
 void rt_terrain3d_set_layer_texture(void *obj, int64_t layer, void *pixels) {
     if (!obj || layer < 0 || layer >= TERRAIN_MAX_SPLAT_LAYERS)
         return;
-    rt_terrain3d *t =
-        (rt_terrain3d *)rt_g3d_checked_or_null(obj, RT_G3D_TERRAIN3D_CLASS_ID);
+    rt_terrain3d *t = (rt_terrain3d *)rt_g3d_checked_or_null(obj, RT_G3D_TERRAIN3D_CLASS_ID);
     if (!t)
         return;
     if (pixels) {
@@ -448,8 +444,7 @@ void rt_terrain3d_set_layer_texture(void *obj, int64_t layer, void *pixels) {
 void rt_terrain3d_set_layer_scale(void *obj, int64_t layer, double scale) {
     if (!obj || layer < 0 || layer >= TERRAIN_MAX_SPLAT_LAYERS)
         return;
-    rt_terrain3d *t =
-        (rt_terrain3d *)rt_g3d_checked_or_null(obj, RT_G3D_TERRAIN3D_CLASS_ID);
+    rt_terrain3d *t = (rt_terrain3d *)rt_g3d_checked_or_null(obj, RT_G3D_TERRAIN3D_CLASS_ID);
     if (!t)
         return;
     if (!isfinite(scale) || scale <= 0.0)
@@ -672,8 +667,7 @@ static void bake_splat_texture(rt_terrain3d *t) {
                 cg = 255;
             if (cb > 255)
                 cb = 255;
-            int64_t color =
-                ((int64_t)cr << 24) | ((int64_t)cg << 16) | ((int64_t)cb << 8) | 0xFF;
+            int64_t color = ((int64_t)cr << 24) | ((int64_t)cg << 16) | ((int64_t)cb << 8) | 0xFF;
             rt_pixels_set(baked, x, y, color);
         }
     }
@@ -920,8 +914,7 @@ static void *build_chunk(rt_terrain3d *t, int32_t cx, int32_t cz, int32_t step, 
 /// between near and far they use step=2 (¼ triangles); beyond `far_dist` they use step=4
 /// (1/16 triangles). Lower distances trade visual quality for triangle count.
 void rt_terrain3d_set_lod_distances(void *obj, double near_dist, double far_dist) {
-    rt_terrain3d *t =
-        (rt_terrain3d *)rt_g3d_checked_or_null(obj, RT_G3D_TERRAIN3D_CLASS_ID);
+    rt_terrain3d *t = (rt_terrain3d *)rt_g3d_checked_or_null(obj, RT_G3D_TERRAIN3D_CLASS_ID);
     if (!t)
         return;
     if (!isfinite(near_dist) || near_dist < 0.0)
@@ -942,8 +935,7 @@ void rt_terrain3d_set_lod_distances(void *obj, double near_dist, double far_dist
 /// LOD>0 chunk edges. Skirts hide T-junction cracks where adjacent chunks render at different
 /// LODs. Set to 0 to disable. Invalidates cached chunks (skirts are baked into the mesh).
 void rt_terrain3d_set_skirt_depth(void *obj, double depth) {
-    rt_terrain3d *t =
-        (rt_terrain3d *)rt_g3d_checked_or_null(obj, RT_G3D_TERRAIN3D_CLASS_ID);
+    rt_terrain3d *t = (rt_terrain3d *)rt_g3d_checked_or_null(obj, RT_G3D_TERRAIN3D_CLASS_ID);
     if (!t)
         return;
     if (!isfinite(depth) || depth < 0.0)
@@ -986,8 +978,22 @@ void rt_canvas3d_draw_terrain(void *canvas_obj, void *terrain_obj) {
     vgfx3d_frustum_extract(&frustum, c->cached_vp);
 
     static const double identity[16] = {
-        1.0, 0.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0,
-        0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 0.0, 1.0,
+        1.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        1.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        1.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        1.0,
     };
 
     for (int32_t cz = 0; cz < t->chunks_z; cz++) {

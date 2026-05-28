@@ -164,7 +164,10 @@ static const char *archive_entry_name_cstr(rt_string name) {
 /// @param share        Win32 share mode.
 /// @param create_disp  Win32 creation disposition (OPEN_EXISTING, CREATE_ALWAYS, ...).
 /// @return Open Windows file handle, or INVALID_HANDLE_VALUE on failure.
-static HANDLE archive_open_win_path(const char *cpath, DWORD access, DWORD share, DWORD create_disp) {
+static HANDLE archive_open_win_path(const char *cpath,
+                                    DWORD access,
+                                    DWORD share,
+                                    DWORD create_disp) {
     wchar_t *wide = rt_file_path_utf8_to_wide(cpath);
     if (!wide)
         return INVALID_HANDLE_VALUE;
@@ -201,7 +204,10 @@ static void archive_read_exact_win(HANDLE h, uint8_t *dst, size_t total, const c
 /// Mirror of `archive_read_exact_win` for the write path. Loops over
 /// WriteFile, chunking by DWORD_MAX, and traps on any short write or
 /// failure so callers don't need to invent their own retry logic.
-static void archive_write_exact_win(HANDLE h, const uint8_t *src, size_t total, const char *trap_msg) {
+static void archive_write_exact_win(HANDLE h,
+                                    const uint8_t *src,
+                                    size_t total,
+                                    const char *trap_msg) {
     size_t written_total = 0;
     while (written_total < total) {
         DWORD chunk = 0;
@@ -253,7 +259,10 @@ static void archive_read_exact_posix(int fd, uint8_t *dst, size_t total, const c
 /// Mirror of `archive_read_exact_posix` for writes. Retries EINTR,
 /// traps on error or unexpected zero-byte writes (the kernel never
 /// returns zero on a regular file write unless the disk is full).
-static void archive_write_exact_posix(int fd, const uint8_t *src, size_t total, const char *trap_msg) {
+static void archive_write_exact_posix(int fd,
+                                      const uint8_t *src,
+                                      size_t total,
+                                      const char *trap_msg) {
     size_t written_total = 0;
     while (written_total < total) {
         ssize_t n = write(fd, src + written_total, total - written_total);
@@ -335,12 +344,8 @@ static char *archive_make_temp_path(const char *path, unsigned attempt) {
 #else
     unsigned long pid = (unsigned long)getpid();
 #endif
-    int written = snprintf(tmp + parent_len,
-                           cap - parent_len,
-                           ".viper-archive-tmp.%lu.%s.%u",
-                           pid,
-                           nonce,
-                           attempt);
+    int written = snprintf(
+        tmp + parent_len, cap - parent_len, ".viper-archive-tmp.%lu.%s.%u", pid, nonce, attempt);
     if (written < 0 || (size_t)written >= cap - parent_len) {
         free(tmp);
         return NULL;
@@ -451,7 +456,10 @@ static int archive_sync_parent_dir(const char *path) {
 /// @param src      Source byte buffer.
 /// @param total    Number of bytes to write.
 /// @param trap_msg Trap message used on any failure.
-static void archive_write_file_all_utf8(const char *cpath, const uint8_t *src, size_t total, const char *trap_msg) {
+static void archive_write_file_all_utf8(const char *cpath,
+                                        const uint8_t *src,
+                                        size_t total,
+                                        const char *trap_msg) {
 #ifdef _WIN32
     char *tmp = NULL;
     HANDLE h = INVALID_HANDLE_VALUE;
@@ -1081,8 +1089,7 @@ static bool find_eocd(const uint8_t *data, size_t len, size_t *eocd_offset) {
 
     for (size_t i = ZIP_END_RECORD_SIZE; i <= search_len; i++) {
         size_t offset = len - i;
-        if (read_u32(data + offset) == ZIP_END_RECORD_SIG &&
-            offset <= len - ZIP_END_RECORD_SIZE) {
+        if (read_u32(data + offset) == ZIP_END_RECORD_SIG && offset <= len - ZIP_END_RECORD_SIZE) {
             uint16_t comment_len = read_u16(data + offset + 20);
             if (offset + ZIP_END_RECORD_SIZE + (size_t)comment_len != len)
                 continue;
@@ -1182,7 +1189,8 @@ static bool parse_central_directory(rt_archive_t *ar) {
                          ZIP_GP_FLAG_STRONG_ENCRYPTION)) != 0 ||
             e->version_needed >= 45 || e->compressed_size == UINT32_MAX ||
             e->uncompressed_size == UINT32_MAX || e->local_offset == UINT32_MAX ||
-            archive_extra_is_malformed_or_zip64(p + ZIP_CENTRAL_HEADER_SIZE + name_len, extra_len)) {
+            archive_extra_is_malformed_or_zip64(p + ZIP_CENTRAL_HEADER_SIZE + name_len,
+                                                extra_len)) {
             archive_free_entry_array(entries, parsed);
             return false;
         }
@@ -1395,7 +1403,8 @@ static void write_bytes(rt_archive_t *ar, const uint8_t *data, size_t len) {
 /// `write_entries` if full. The supplied `*e` is copied by value —
 /// the caller may reuse the source struct after the call.
 static void add_write_entry(rt_archive_t *ar, zip_entry_t *e) {
-    archive_require_zip16_count(ar->write_entry_count + 1, "Archive: ZIP64 archives are not supported");
+    archive_require_zip16_count(ar->write_entry_count + 1,
+                                "Archive: ZIP64 archives are not supported");
     if (ar->write_entry_count >= ar->write_entry_cap) {
         int new_cap = ar->write_entry_cap == 0 ? 16 : ar->write_entry_cap * 2;
         zip_entry_t *new_entries =
@@ -2583,7 +2592,8 @@ void rt_archive_finish(void *obj) {
 
     // Write to file
     const char *cpath = archive_require_path(ar->path, "Archive: invalid path");
-    archive_write_file_all_utf8(cpath, ar->write_buf, ar->write_len, "Archive: failed to write archive file");
+    archive_write_file_all_utf8(
+        cpath, ar->write_buf, ar->write_len, "Archive: failed to write archive file");
 
     ar->is_finished = true;
 

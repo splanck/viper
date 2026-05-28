@@ -473,13 +473,8 @@ void *rt_keyderive_pbkdf2_sha256(rt_string password,
         rt_trap("PBKDF2: memory allocation failed");
     }
 
-    rt_keyderive_pbkdf2_sha256_raw(pwd,
-                                   pwd_len,
-                                   salt_data,
-                                   salt_len,
-                                   (uint32_t)iterations,
-                                   derived_key,
-                                   (size_t)key_len);
+    rt_keyderive_pbkdf2_sha256_raw(
+        pwd, pwd_len, salt_data, salt_len, (uint32_t)iterations, derived_key, (size_t)key_len);
 
     if (salt_data)
         free(salt_data);
@@ -532,13 +527,8 @@ rt_string rt_keyderive_pbkdf2_sha256_str(rt_string password,
         rt_trap("PBKDF2: memory allocation failed");
     }
 
-    rt_keyderive_pbkdf2_sha256_raw(pwd,
-                                   pwd_len,
-                                   salt_data,
-                                   salt_len,
-                                   (uint32_t)iterations,
-                                   derived_key,
-                                   (size_t)key_len);
+    rt_keyderive_pbkdf2_sha256_raw(
+        pwd, pwd_len, salt_data, salt_len, (uint32_t)iterations, derived_key, (size_t)key_len);
 
     if (salt_data)
         free(salt_data);
@@ -558,13 +548,8 @@ rt_string rt_keyderive_pbkdf2_sha256_str(rt_string password,
 ///          caller learns about misconfiguration immediately rather than
 ///          getting silent clamping. On success, fills @p n / @p r / @p p
 ///          with the validated native-typed values.
-static void validate_public_scrypt_params(int64_t n64,
-                                          int64_t r64,
-                                          int64_t p64,
-                                          int64_t key_len,
-                                          uint64_t *n,
-                                          uint32_t *r,
-                                          uint32_t *p) {
+static void validate_public_scrypt_params(
+    int64_t n64, int64_t r64, int64_t p64, int64_t key_len, uint64_t *n, uint32_t *r, uint32_t *p) {
     if (n64 < 2 || r64 < 1 || p64 < 1)
         rt_trap("scrypt: cost parameters must be positive");
     if (key_len < 1 || key_len > RT_SCRYPT_MAX_KEY_LEN)
@@ -590,12 +575,8 @@ static void validate_public_scrypt_params(int64_t n64,
 /// @param p64      scrypt p parameter.
 /// @param key_len  Output key length in bytes (1..1024).
 /// @return Bytes object owning the derived key.
-void *rt_keyderive_scrypt_sha256(rt_string password,
-                                 void *salt,
-                                 int64_t n64,
-                                 int64_t r64,
-                                 int64_t p64,
-                                 int64_t key_len) {
+void *rt_keyderive_scrypt_sha256(
+    rt_string password, void *salt, int64_t n64, int64_t r64, int64_t p64, int64_t key_len) {
     if (!rt_crypto_module_service_allowed(RT_CRYPTO_SERVICE_SCRYPT))
         rt_trap("KeyDerive.ScryptSHA256 is disabled in approved mode");
     uint64_t n;
@@ -636,12 +617,8 @@ void *rt_keyderive_scrypt_sha256(rt_string password,
 ///          parameter rules (positive cost values, salt non-empty,
 ///          key_len in 1..1024) are identical.
 /// @return Lowercase-hex rt_string of the derived key bytes.
-rt_string rt_keyderive_scrypt_sha256_str(rt_string password,
-                                         void *salt,
-                                         int64_t n64,
-                                         int64_t r64,
-                                         int64_t p64,
-                                         int64_t key_len) {
+rt_string rt_keyderive_scrypt_sha256_str(
+    rt_string password, void *salt, int64_t n64, int64_t r64, int64_t p64, int64_t key_len) {
     if (!rt_crypto_module_service_allowed(RT_CRYPTO_SERVICE_SCRYPT))
         rt_trap("KeyDerive.ScryptSHA256Str is disabled in approved mode");
     uint64_t n;

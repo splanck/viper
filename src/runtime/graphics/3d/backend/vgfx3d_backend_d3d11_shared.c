@@ -245,9 +245,7 @@ static int vgfx3d_d3d11_checked_mul_size(size_t a, size_t b, size_t *out) {
 /// @details Used before upload/readback copies so all callers share the same
 ///   overflow behavior and reject non-positive dimensions before casting to
 ///   unsigned D3D11 pitches.
-int vgfx3d_d3d11_compute_row_bytes(int32_t width,
-                                   int32_t bytes_per_pixel,
-                                   size_t *out_bytes) {
+int vgfx3d_d3d11_compute_row_bytes(int32_t width, int32_t bytes_per_pixel, size_t *out_bytes) {
     if (out_bytes)
         *out_bytes = 0;
     if (!out_bytes || width <= 0 || bytes_per_pixel <= 0)
@@ -331,8 +329,7 @@ int vgfx3d_d3d11_is_valid_cubemap_extent(int32_t face_size) {
 /// @details HLSL buffer indexing is signed-int based in the shader source, so
 ///   the largest accepted shape count is also bounded by
 ///   `(shape * vertex_count + vertex_id) * 3 + component <= INT_MAX`.
-int32_t vgfx3d_d3d11_clamp_morph_shape_count(uint32_t vertex_count,
-                                             int32_t requested_shape_count) {
+int32_t vgfx3d_d3d11_clamp_morph_shape_count(uint32_t vertex_count, int32_t requested_shape_count) {
     int32_t shape_count;
     uint32_t max_indexed_vertices;
     uint32_t max_shapes_by_index;
@@ -393,11 +390,11 @@ vgfx3d_d3d11_target_kind_t vgfx3d_d3d11_choose_target_kind(int8_t rtt_active,
 ///   propagated to the backend state machine. Overlay falls back to scene first
 ///   because that preserves the already-rendered 3D color when a separate HUD
 ///   target allocation failed.
-vgfx3d_d3d11_target_kind_t
-vgfx3d_d3d11_resolve_available_target(vgfx3d_d3d11_target_kind_t requested,
-                                      int scene_available,
-                                      int overlay_available,
-                                      int rtt_available) {
+vgfx3d_d3d11_target_kind_t vgfx3d_d3d11_resolve_available_target(
+    vgfx3d_d3d11_target_kind_t requested,
+    int scene_available,
+    int overlay_available,
+    int rtt_available) {
     if (requested == VGFX3D_D3D11_TARGET_RTT)
         return rtt_available ? VGFX3D_D3D11_TARGET_RTT : VGFX3D_D3D11_TARGET_SWAPCHAIN;
     if (requested == VGFX3D_D3D11_TARGET_OVERLAY) {
@@ -407,8 +404,7 @@ vgfx3d_d3d11_resolve_available_target(vgfx3d_d3d11_target_kind_t requested,
     }
     if (requested == VGFX3D_D3D11_TARGET_SCENE && !scene_available)
         return VGFX3D_D3D11_TARGET_SWAPCHAIN;
-    if (requested == VGFX3D_D3D11_TARGET_SCENE ||
-        requested == VGFX3D_D3D11_TARGET_SWAPCHAIN)
+    if (requested == VGFX3D_D3D11_TARGET_SCENE || requested == VGFX3D_D3D11_TARGET_SWAPCHAIN)
         return requested;
     return VGFX3D_D3D11_TARGET_SWAPCHAIN;
 }
@@ -460,8 +456,7 @@ int vgfx3d_d3d11_should_reuse_morph_cache(const void *cached_key,
 ///   bindings, so advertising a higher slot while an earlier slot is missing
 ///   would let a light sample an unbound shadow texture. Requiring a contiguous
 ///   prefix keeps `0 <= shadowIndex < shadowCount` equivalent to "SRV exists".
-int32_t vgfx3d_d3d11_compute_shadow_count(int32_t slot_count,
-                                          const int *slot_complete) {
+int32_t vgfx3d_d3d11_compute_shadow_count(int32_t slot_count, const int *slot_complete) {
     int32_t count = 0;
     int32_t max_slots;
 
@@ -501,8 +496,7 @@ int vgfx3d_d3d11_should_mark_rtt_dirty(int8_t rtt_active,
 }
 
 /// @brief Map a draw command to its required blend state (alpha vs opaque).
-vgfx3d_d3d11_blend_mode_t
-vgfx3d_d3d11_choose_blend_mode(const vgfx3d_draw_cmd_t *cmd) {
+vgfx3d_d3d11_blend_mode_t vgfx3d_d3d11_choose_blend_mode(const vgfx3d_draw_cmd_t *cmd) {
     if (cmd && cmd->additive_blend)
         return VGFX3D_D3D11_BLEND_ADDITIVE;
     return vgfx3d_draw_cmd_uses_alpha_blend(cmd) ? VGFX3D_D3D11_BLEND_ALPHA
@@ -511,8 +505,8 @@ vgfx3d_d3d11_choose_blend_mode(const vgfx3d_draw_cmd_t *cmd) {
 
 /// @brief Pick the color format for a render target — HDR16F for the scene pass
 /// (so post-FX tonemapping has headroom), UNORM8 for everything else.
-vgfx3d_d3d11_color_format_t
-vgfx3d_d3d11_choose_color_format(vgfx3d_d3d11_target_kind_t target_kind) {
+vgfx3d_d3d11_color_format_t vgfx3d_d3d11_choose_color_format(
+    vgfx3d_d3d11_target_kind_t target_kind) {
     return target_kind == VGFX3D_D3D11_TARGET_SCENE ? VGFX3D_D3D11_COLOR_FORMAT_HDR16F
                                                     : VGFX3D_D3D11_COLOR_FORMAT_UNORM8;
 }
@@ -521,9 +515,8 @@ vgfx3d_d3d11_choose_color_format(vgfx3d_d3d11_target_kind_t target_kind) {
 /// @details Motion vectors are only meaningful for opaque scene draws. Alpha
 ///   and additive passes blend multiple histories into one pixel, so they draw
 ///   color only and leave motion at the clear "no object history" sentinel.
-vgfx3d_d3d11_motion_attachment_mode_t
-vgfx3d_d3d11_choose_motion_attachment_mode(vgfx3d_d3d11_target_kind_t target_kind,
-                                           const vgfx3d_draw_cmd_t *cmd) {
+vgfx3d_d3d11_motion_attachment_mode_t vgfx3d_d3d11_choose_motion_attachment_mode(
+    vgfx3d_d3d11_target_kind_t target_kind, const vgfx3d_draw_cmd_t *cmd) {
     if (target_kind != VGFX3D_D3D11_TARGET_SCENE)
         return VGFX3D_D3D11_MOTION_ATTACHMENTS_COLOR_ONLY;
     return vgfx3d_d3d11_choose_blend_mode(cmd) == VGFX3D_D3D11_BLEND_OPAQUE
@@ -541,6 +534,5 @@ int vgfx3d_d3d11_has_complete_splat(int8_t cmd_has_splat,
                                     int has_layer1,
                                     int has_layer2,
                                     int has_layer3) {
-    return cmd_has_splat && has_splat_map && has_layer0 && has_layer1 && has_layer2 &&
-           has_layer3;
+    return cmd_has_splat && has_splat_map && has_layer0 && has_layer1 && has_layer2 && has_layer3;
 }

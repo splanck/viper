@@ -47,13 +47,12 @@ namespace viper::codegen::aarch64 {
 /// @param knownVarArgNamedArgCounts Optional map of vararg function names to their
 ///        non-variadic prefix arity; allows fast-path matching of calls into varargs.
 /// @returns The lowered MFunction if a fast-path matched, @c nullopt otherwise.
-std::optional<MFunction> tryFastPaths(const il::core::Function &fn,
-                                      const TargetInfo &ti,
-                                      FrameBuilder &fb,
-                                      MFunction &mf,
-                                      const std::unordered_map<std::string, std::size_t>
-                                          *stringLiteralByteLengths = nullptr,
-                                      const std::unordered_map<std::string, std::size_t>
-                                          *knownVarArgNamedArgCounts = nullptr);
+std::optional<MFunction> tryFastPaths(
+    const il::core::Function &fn,
+    const TargetInfo &ti,
+    FrameBuilder &fb,
+    MFunction &mf,
+    const std::unordered_map<std::string, std::size_t> *stringLiteralByteLengths = nullptr,
+    const std::unordered_map<std::string, std::size_t> *knownVarArgNamedArgCounts = nullptr);
 
 } // namespace viper::codegen::aarch64

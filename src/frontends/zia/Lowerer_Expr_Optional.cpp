@@ -439,12 +439,8 @@ LowerResult Lowerer::lowerOptionalMethodCall(OptionalChainExpr *callee, CallExpr
     if (receiverType && receiverType->kind == TypeKindSem::Interface) {
         auto ifaceIt = interfaceTypes_.find(receiverType->name);
         if (ifaceIt != interfaceTypes_.end()) {
-            callResult = lowerInterfaceMethodCall(ifaceIt->second,
-                                                  slotKey,
-                                                  ownerType,
-                                                  method,
-                                                  receiver,
-                                                  expr);
+            callResult = lowerInterfaceMethodCall(
+                ifaceIt->second, slotKey, ownerType, method, receiver, expr);
         }
     } else if (receiverType && receiverType->kind == TypeKindSem::Class && method &&
                !method->isStatic) {
@@ -513,8 +509,7 @@ LowerResult Lowerer::lowerTry(TryExpr *expr) {
 
         size_t okIdx = createBlock("try.result_ok");
         size_t errIdx = createBlock("try.result_err");
-        Value isOk =
-            emitCallRet(Type(Type::Kind::I1), "Viper.Result.get_IsOk", {operand.value});
+        Value isOk = emitCallRet(Type(Type::Kind::I1), "Viper.Result.get_IsOk", {operand.value});
         emitCBr(isOk, okIdx, errIdx);
 
         setBlock(errIdx);
@@ -523,8 +518,8 @@ LowerResult Lowerer::lowerTry(TryExpr *expr) {
         setBlock(okIdx);
         Type ilSuccessType = mapType(successType);
         const char *callee = resultUnwrapCallee(successType);
-        Type runtimeReturn = std::string(callee) == "Viper.Result.Unwrap" ? Type(Type::Kind::Ptr)
-                                                                          : ilSuccessType;
+        Type runtimeReturn =
+            std::string(callee) == "Viper.Result.Unwrap" ? Type(Type::Kind::Ptr) : ilSuccessType;
         Value raw = emitCallRet(runtimeReturn, callee, {operand.value});
         if (runtimeReturn.kind == ilSuccessType.kind)
             return {raw, ilSuccessType};

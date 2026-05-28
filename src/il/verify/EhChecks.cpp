@@ -222,8 +222,8 @@ bool checkUnreachableAfterThrow(const EhModel &model,
     return true;
 }
 
-std::vector<const BasicBlock *>
-handlerStackAfterDispatch(const std::vector<const BasicBlock *> &handlerStack) {
+std::vector<const BasicBlock *> handlerStackAfterDispatch(
+    const std::vector<const BasicBlock *> &handlerStack) {
     std::vector<const BasicBlock *> nextStack = handlerStack;
     if (!nextStack.empty())
         nextStack.pop_back();

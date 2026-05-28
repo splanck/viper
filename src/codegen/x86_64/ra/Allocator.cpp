@@ -57,8 +57,7 @@ template <typename... Ts> Overload(Ts...) -> Overload<Ts...>;
 /// @param reg Candidate register.
 /// @return @c true when @p reg is reserved.
 [[nodiscard]] bool isReservedGPR(PhysReg reg) noexcept {
-    return reg == PhysReg::RSP || reg == PhysReg::RBP || reg == PhysReg::R10 ||
-           reg == PhysReg::R11;
+    return reg == PhysReg::RSP || reg == PhysReg::RBP || reg == PhysReg::R10 || reg == PhysReg::R11;
 }
 
 /// @brief Wrap a physical register into a Machine IR operand.
@@ -150,8 +149,8 @@ bool isIdentityPhysicalMove(const MInstr &instr, PhysReg physDest) {
     const auto *dst = std::get_if<OpReg>(&instr.operands[0]);
     const auto *src = std::get_if<OpReg>(&instr.operands[1]);
     return dst && src && dst->isPhys && src->isPhys &&
-           static_cast<PhysReg>(dst->idOrPhys) == physDest &&
-           dst->cls == src->cls && dst->idOrPhys == src->idOrPhys;
+           static_cast<PhysReg>(dst->idOrPhys) == physDest && dst->cls == src->cls &&
+           dst->idOrPhys == src->idOrPhys;
 }
 
 } // namespace
@@ -423,8 +422,14 @@ void LinearScanAllocator::spillActiveValue(uint16_t vreg,
                                            std::vector<MInstr> &out) {
     const auto *interval = intervals_.lookup(vreg);
     if (interval && !crossBlockSpillVRegs_.contains(vreg)) {
-        spiller_.spillValueWithReuse(
-            state.cls, vreg, state, poolFor(state.cls), out, result_, interval->start, interval->end);
+        spiller_.spillValueWithReuse(state.cls,
+                                     vreg,
+                                     state,
+                                     poolFor(state.cls),
+                                     out,
+                                     result_,
+                                     interval->start,
+                                     interval->end);
         return;
     }
 
@@ -600,8 +605,7 @@ void LinearScanAllocator::processBlock(MBasicBlock &block, Coalescer &coalescer)
             auto &activeSet = activeFor(clobber.cls);
             for (auto vreg : activeSet) {
                 auto it = states_.find(vreg);
-                if (it == states_.end() || !it->second.hasPhys ||
-                    it->second.phys != clobber.reg) {
+                if (it == states_.end() || !it->second.hasPhys || it->second.phys != clobber.reg) {
                     continue;
                 }
                 if (vreg == srcVreg || isIdentityPhysicalMove(instr, clobber.reg)) {

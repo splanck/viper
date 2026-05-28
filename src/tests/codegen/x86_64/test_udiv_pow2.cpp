@@ -102,7 +102,9 @@ namespace {
     return module;
 }
 
-[[nodiscard]] ILModule makeUnsignedDivModule(std::string opcode, int64_t divisor, std::string name) {
+[[nodiscard]] ILModule makeUnsignedDivModule(std::string opcode,
+                                             int64_t divisor,
+                                             std::string name) {
     ILValue dividend = makeI64Param(0);
 
     ILInstr divInstr{};

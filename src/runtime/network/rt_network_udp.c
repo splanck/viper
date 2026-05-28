@@ -40,15 +40,15 @@
 #endif
 
 typedef struct rt_udp {
-    socket_t sock;                     // Socket descriptor
-    char *address;                     // Bound address (allocated, or NULL if unbound)
-    int port;                          // Bound port (0 if unbound)
-    int family;                        // AF_INET or AF_INET6
-    bool is_bound;                     // Whether socket is bound
-    bool is_open;                      // Socket state
+    socket_t sock;                      // Socket descriptor
+    char *address;                      // Bound address (allocated, or NULL if unbound)
+    int port;                           // Bound port (0 if unbound)
+    int family;                         // AF_INET or AF_INET6
+    bool is_bound;                      // Whether socket is bound
+    bool is_open;                       // Socket state
     char sender_host[INET6_ADDRSTRLEN]; // Last sender host
-    int sender_port;                   // Last sender port
-    int recv_timeout_ms;               // Receive timeout (0 = none)
+    int sender_port;                    // Last sender port
+    int recv_timeout_ms;                // Receive timeout (0 = none)
 } rt_udp_t;
 
 static void rt_udp_finalize(void *obj);
@@ -113,8 +113,8 @@ static int udp_recvfrom_checked(socket_t sock,
     if (truncated_out)
         *truncated_out = 0;
 #ifdef _WIN32
-    int received = recvfrom(
-        sock, (char *)buf, recv_len, 0, (struct sockaddr *)sender_addr, sender_len);
+    int received =
+        recvfrom(sock, (char *)buf, recv_len, 0, (struct sockaddr *)sender_addr, sender_len);
     if (received == SOCK_ERROR && WSAGetLastError() == WSAEMSGSIZE && truncated_out)
         *truncated_out = 1;
     return received;
@@ -162,9 +162,7 @@ static void udp_make_v4_mapped(const struct sockaddr_in *src,
 
 static int udp_is_v4_mapped_addr(const struct in6_addr *addr) {
     const unsigned char *bytes = (const unsigned char *)addr->s6_addr;
-    static const unsigned char prefix[12] = {
-        0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0xFF, 0xFF
-    };
+    static const unsigned char prefix[12] = {0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0xFF, 0xFF};
     return memcmp(bytes, prefix, sizeof(prefix)) == 0;
 }
 
@@ -554,12 +552,8 @@ int64_t rt_udp_send_to_str(void *obj, rt_string host, int64_t port, rt_string te
     if (udp_resolve_destination(host_ptr, (int)port, udp->family, &dest_addr, &dest_len) != 0)
         rt_trap_net("Network: host not found", Err_HostNotFound);
 
-    int sent = sendto(udp->sock,
-                      text_ptr,
-                      (int)len,
-                      SEND_FLAGS,
-                      (struct sockaddr *)&dest_addr,
-                      dest_len);
+    int sent =
+        sendto(udp->sock, text_ptr, (int)len, SEND_FLAGS, (struct sockaddr *)&dest_addr, dest_len);
     if (sent == SOCK_ERROR) {
         rt_trap_net("Network: send failed", net_classify_errno());
     }
@@ -653,7 +647,8 @@ void *rt_udp_recv_from(void *obj, int64_t max_bytes) {
 
 /// @brief Bounded-wait variant: `select()` for up to `timeout_ms`, then receive (or return NULL
 /// on no-data). Distinct from setting socket-level recv timeout: this is one-shot and returns
-/// NULL on expiry, while `set_recv_timeout` sets a persistent socket option that returns empty Bytes.
+/// NULL on expiry, while `set_recv_timeout` sets a persistent socket option that returns empty
+/// Bytes.
 void *rt_udp_recv_for(void *obj, int64_t max_bytes, int64_t timeout_ms) {
     if (!obj)
         rt_trap("Network: NULL socket");
@@ -817,11 +812,8 @@ void rt_udp_leave_group(void *obj, rt_string group_addr) {
             memset(&mreq6, 0, sizeof(mreq6));
             mreq6.ipv6mr_multiaddr = mcast_addr6;
             mreq6.ipv6mr_interface = 0;
-            setsockopt(udp->sock,
-                       IPPROTO_IPV6,
-                       IPV6_DROP_MEMBERSHIP,
-                       (const char *)&mreq6,
-                       sizeof(mreq6));
+            setsockopt(
+                udp->sock, IPPROTO_IPV6, IPV6_DROP_MEMBERSHIP, (const char *)&mreq6, sizeof(mreq6));
         }
     }
 #endif

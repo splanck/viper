@@ -67,8 +67,7 @@ static void rt_codeeditor_normalize_range(int *start_line,
                                           int *start_col,
                                           int *end_line,
                                           int *end_col) {
-    if (*start_line > *end_line ||
-        (*start_line == *end_line && *start_col > *end_col)) {
+    if (*start_line > *end_line || (*start_line == *end_line && *start_col > *end_col)) {
         int tmp = *start_line;
         *start_line = *end_line;
         *end_line = tmp;
@@ -105,11 +104,8 @@ static size_t rt_codeeditor_clamp_col_index(const vg_codeeditor_t *ce, int line,
 ///          overflow-guarded length accumulation. The range is normalized, its line
 ///          indices clamped, then re-normalized — clamping can collapse endpoints and
 ///          flip their order. Returns the empty string on bad input or allocation failure.
-static rt_string rt_codeeditor_range_to_rt_string(vg_codeeditor_t *ce,
-                                                  int start_line,
-                                                  int start_col,
-                                                  int end_line,
-                                                  int end_col) {
+static rt_string rt_codeeditor_range_to_rt_string(
+    vg_codeeditor_t *ce, int start_line, int start_col, int end_line, int end_col) {
     if (!ce || ce->line_count <= 0)
         return rt_str_empty();
 
@@ -265,7 +261,7 @@ static vg_widget_t *rt_widget_parent_or_null_if_invalid(void *parent) {
     return parent_widget;
 }
 
-#define RT_RADIOGROUP_MAGIC UINT64_C(0x52474452554E544D)          // "RGDRUNTM"
+#define RT_RADIOGROUP_MAGIC UINT64_C(0x52474452554E544D)           // "RGDRUNTM"
 #define RT_RADIOGROUP_DESTROYED_MAGIC UINT64_C(0x5247444445414444) // "RGDDEAD"
 
 typedef struct rt_radiogroup_data {
@@ -291,9 +287,8 @@ static int rt_radiogroup_registry_add(rt_radiogroup_data_t *data) {
         size_t new_cap = s_radiogroup_handle_cap ? s_radiogroup_handle_cap * 2 : 16;
         if (new_cap > SIZE_MAX / sizeof(*s_radiogroup_handles))
             return 0;
-        rt_radiogroup_data_t **new_handles =
-            (rt_radiogroup_data_t **)realloc(s_radiogroup_handles,
-                                             new_cap * sizeof(*s_radiogroup_handles));
+        rt_radiogroup_data_t **new_handles = (rt_radiogroup_data_t **)realloc(
+            s_radiogroup_handles, new_cap * sizeof(*s_radiogroup_handles));
         if (!new_handles)
             return 0;
         s_radiogroup_handles = new_handles;
@@ -553,9 +548,9 @@ void rt_splitpane_set_position(void *split, double position) {
     RT_ASSERT_MAIN_THREAD();
     vg_splitpane_t *sp = rt_splitpane_checked(split);
     if (sp) {
-        vg_splitpane_set_position(sp,
-                                  (float)rt_gui_clamp_f64(
-                                      rt_gui_double_is_finite(position) ? position : 0.5, 0.0, 1.0));
+        vg_splitpane_set_position(
+            sp,
+            (float)rt_gui_clamp_f64(rt_gui_double_is_finite(position) ? position : 0.5, 0.0, 1.0));
     }
 }
 
@@ -673,8 +668,7 @@ void rt_codeeditor_scroll_to_line(void *editor, int64_t line) {
     RT_ASSERT_MAIN_THREAD();
     vg_codeeditor_t *ce = rt_codeeditor_checked(editor);
     if (ce) {
-        vg_codeeditor_scroll_to_line(ce,
-                                     rt_gui_clamp_i64_to_i32(line, 0, INT32_MAX));
+        vg_codeeditor_scroll_to_line(ce, rt_gui_clamp_i64_to_i32(line, 0, INT32_MAX));
     }
 }
 
@@ -713,9 +707,7 @@ void rt_codeeditor_set_font(void *editor, void *font, double size) {
         vg_font_t *checked_font = rt_gui_font_handle_checked(font);
         if (!checked_font)
             return;
-        vg_codeeditor_set_font(ce,
-                               checked_font,
-                               (float)rt_gui_sanitize_font_size(size, 14.0));
+        vg_codeeditor_set_font(ce, checked_font, (float)rt_gui_sanitize_font_size(size, 14.0));
     }
 }
 
@@ -816,9 +808,8 @@ void rt_container_set_padding(void *container, double padding) {
     RT_ASSERT_MAIN_THREAD();
     vg_widget_t *widget = rt_gui_widget_handle_checked(container);
     if (widget) {
-        vg_widget_set_padding(
-            widget,
-            rt_gui_sanitize_nonnegative_float(padding, RT_GUI_MAX_LAYOUT_VALUE));
+        vg_widget_set_padding(widget,
+                              rt_gui_sanitize_nonnegative_float(padding, RT_GUI_MAX_LAYOUT_VALUE));
     }
 }
 
@@ -931,8 +922,7 @@ void rt_dropdown_remove_item(void *dropdown, int64_t index) {
     RT_ASSERT_MAIN_THREAD();
     vg_dropdown_t *dd = rt_dropdown_checked(dropdown);
     if (dd) {
-        vg_dropdown_remove_item(dd,
-                                rt_gui_clamp_i64_to_i32(index, INT32_MIN, INT32_MAX));
+        vg_dropdown_remove_item(dd, rt_gui_clamp_i64_to_i32(index, INT32_MIN, INT32_MAX));
     }
 }
 
@@ -950,8 +940,7 @@ void rt_dropdown_set_selected(void *dropdown, int64_t index) {
     RT_ASSERT_MAIN_THREAD();
     vg_dropdown_t *dd = rt_dropdown_checked(dropdown);
     if (dd) {
-        vg_dropdown_set_selected(dd,
-                                 rt_gui_clamp_i64_to_i32(index, INT32_MIN, INT32_MAX));
+        vg_dropdown_set_selected(dd, rt_gui_clamp_i64_to_i32(index, INT32_MIN, INT32_MAX));
     }
 }
 
@@ -1012,8 +1001,7 @@ void rt_slider_set_value(void *slider, double value) {
     if (sl) {
         if (!rt_gui_double_is_finite(value))
             return;
-        vg_slider_set_value(sl,
-                            rt_gui_sanitize_signed_float(value, RT_GUI_MAX_LAYOUT_VALUE));
+        vg_slider_set_value(sl, rt_gui_sanitize_signed_float(value, RT_GUI_MAX_LAYOUT_VALUE));
     }
 }
 
@@ -1049,8 +1037,7 @@ void rt_slider_set_step(void *slider, double step) {
     RT_ASSERT_MAIN_THREAD();
     vg_slider_t *sl = rt_slider_checked(slider);
     if (sl) {
-        vg_slider_set_step(sl,
-                           rt_gui_sanitize_nonnegative_float(step, RT_GUI_MAX_LAYOUT_VALUE));
+        vg_slider_set_step(sl, rt_gui_sanitize_nonnegative_float(step, RT_GUI_MAX_LAYOUT_VALUE));
     }
 }
 
@@ -1076,8 +1063,7 @@ void rt_progressbar_set_value(void *progress, double value) {
     vg_progressbar_t *pb = rt_progressbar_checked(progress);
     if (pb) {
         double sanitized = rt_gui_double_is_finite(value) ? value : 0.0;
-        vg_progressbar_set_value(pb,
-                                 (float)rt_gui_clamp_f64(sanitized, 0.0, 1.0));
+        vg_progressbar_set_value(pb, (float)rt_gui_clamp_f64(sanitized, 0.0, 1.0));
     }
 }
 
@@ -1477,9 +1463,7 @@ void rt_listbox_set_font(void *listbox, void *font, double size) {
         vg_font_t *checked_font = rt_gui_font_handle_checked(font);
         if (!checked_font)
             return;
-        vg_listbox_set_font(lb,
-                            checked_font,
-                            (float)rt_gui_sanitize_font_size(size, 14.0));
+        vg_listbox_set_font(lb, checked_font, (float)rt_gui_sanitize_font_size(size, 14.0));
     }
 }
 
@@ -1525,11 +1509,7 @@ void rt_outputpane_append_line(void *pane, rt_string text) {
 }
 
 /// @brief Append a single explicitly styled segment.
-void rt_outputpane_append_styled(void *pane,
-                                 rt_string text,
-                                 int64_t fg,
-                                 int64_t bg,
-                                 int64_t bold) {
+void rt_outputpane_append_styled(void *pane, rt_string text, int64_t fg, int64_t bg, int64_t bold) {
     RT_ASSERT_MAIN_THREAD();
     vg_outputpane_t *out = rt_outputpane_checked(pane);
     if (!out)
@@ -1721,9 +1701,8 @@ void rt_spinner_set_value(void *spinner, double value) {
     if (sp) {
         if (!rt_gui_double_is_finite(value))
             return;
-        vg_spinner_set_value(sp,
-                             rt_gui_clamp_f64(
-                                 value, -RT_GUI_MAX_LAYOUT_VALUE, RT_GUI_MAX_LAYOUT_VALUE));
+        vg_spinner_set_value(
+            sp, rt_gui_clamp_f64(value, -RT_GUI_MAX_LAYOUT_VALUE, RT_GUI_MAX_LAYOUT_VALUE));
     }
 }
 
@@ -1759,8 +1738,8 @@ void rt_spinner_set_step(void *spinner, double step) {
     RT_ASSERT_MAIN_THREAD();
     vg_spinner_t *sp = rt_spinner_checked(spinner);
     if (sp) {
-        vg_spinner_set_step(sp,
-                            (double)rt_gui_sanitize_nonnegative_float(step, RT_GUI_MAX_LAYOUT_VALUE));
+        vg_spinner_set_step(
+            sp, (double)rt_gui_sanitize_nonnegative_float(step, RT_GUI_MAX_LAYOUT_VALUE));
     }
 }
 
@@ -1769,8 +1748,7 @@ void rt_spinner_set_decimals(void *spinner, int64_t decimals) {
     RT_ASSERT_MAIN_THREAD();
     vg_spinner_t *sp = rt_spinner_checked(spinner);
     if (sp) {
-        vg_spinner_set_decimals(sp,
-                                rt_gui_clamp_i64_to_i32(decimals, 0, 9));
+        vg_spinner_set_decimals(sp, rt_gui_clamp_i64_to_i32(decimals, 0, 9));
     }
 }
 
@@ -1813,8 +1791,7 @@ static int rt_image_set_from_pixels_object(vg_image_t *image,
     const uint32_t *src = rt_pixels_raw_buffer(pixels);
     if (source_w <= 0 || source_h <= 0 || !src)
         return 0;
-    if ((uintmax_t)source_w > (uintmax_t)SIZE_MAX ||
-        (uintmax_t)source_h > (uintmax_t)SIZE_MAX)
+    if ((uintmax_t)source_w > (uintmax_t)SIZE_MAX || (uintmax_t)source_h > (uintmax_t)SIZE_MAX)
         return 0;
     if ((size_t)source_w > SIZE_MAX / (size_t)source_h)
         return 0;
@@ -1877,8 +1854,7 @@ void rt_image_set_scale_mode(void *image, int64_t mode) {
     RT_ASSERT_MAIN_THREAD();
     vg_image_t *img = rt_image_checked(image);
     if (img) {
-        vg_image_set_scale_mode(img,
-                                (vg_image_scale_t)rt_gui_clamp_i64_to_i32(mode, 0, 3));
+        vg_image_set_scale_mode(img, (vg_image_scale_t)rt_gui_clamp_i64_to_i32(mode, 0, 3));
     }
 }
 
@@ -1888,8 +1864,7 @@ void rt_image_set_opacity(void *image, double opacity) {
     vg_image_t *img = rt_image_checked(image);
     if (img) {
         double sanitized = rt_gui_double_is_finite(opacity) ? opacity : 1.0;
-        vg_image_set_opacity(img,
-                             (float)rt_gui_clamp_f64(sanitized, 0.0, 1.0));
+        vg_image_set_opacity(img, (float)rt_gui_clamp_f64(sanitized, 0.0, 1.0));
     }
 }
 
@@ -1961,10 +1936,9 @@ void rt_floatingpanel_set_position(void *panel, double x, double y) {
     RT_ASSERT_MAIN_THREAD();
     vg_floatingpanel_t *fp = rt_floatingpanel_checked(panel);
     if (fp)
-        vg_floatingpanel_set_position(
-            fp,
-            rt_gui_sanitize_signed_float(x, RT_GUI_MAX_LAYOUT_VALUE),
-            rt_gui_sanitize_signed_float(y, RT_GUI_MAX_LAYOUT_VALUE));
+        vg_floatingpanel_set_position(fp,
+                                      rt_gui_sanitize_signed_float(x, RT_GUI_MAX_LAYOUT_VALUE),
+                                      rt_gui_sanitize_signed_float(y, RT_GUI_MAX_LAYOUT_VALUE));
 }
 
 /// @brief Set the width and height of a floating panel.
@@ -1972,10 +1946,9 @@ void rt_floatingpanel_set_size(void *panel, double w, double h) {
     RT_ASSERT_MAIN_THREAD();
     vg_floatingpanel_t *fp = rt_floatingpanel_checked(panel);
     if (fp)
-        vg_floatingpanel_set_size(
-            fp,
-            rt_gui_sanitize_nonnegative_float(w, RT_GUI_MAX_LAYOUT_VALUE),
-            rt_gui_sanitize_nonnegative_float(h, RT_GUI_MAX_LAYOUT_VALUE));
+        vg_floatingpanel_set_size(fp,
+                                  rt_gui_sanitize_nonnegative_float(w, RT_GUI_MAX_LAYOUT_VALUE),
+                                  rt_gui_sanitize_nonnegative_float(h, RT_GUI_MAX_LAYOUT_VALUE));
 }
 
 /// @brief Show or hide a floating panel overlay.
@@ -2531,11 +2504,7 @@ void rt_outputpane_append_line(void *pane, rt_string text) {
 }
 
 /// @brief Stub: graphics disabled — no output pane exists.
-void rt_outputpane_append_styled(void *pane,
-                                 rt_string text,
-                                 int64_t fg,
-                                 int64_t bg,
-                                 int64_t bold) {
+void rt_outputpane_append_styled(void *pane, rt_string text, int64_t fg, int64_t bg, int64_t bold) {
     (void)pane;
     (void)text;
     (void)fg;

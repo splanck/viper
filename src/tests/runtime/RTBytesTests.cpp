@@ -222,13 +222,13 @@ static void test_copy_bounds_check() {
     void *src = rt_bytes_new(5);
     void *dst = rt_bytes_new(5);
 
-    EXPECT_TRAP(rt_bytes_copy(dst, 3, src, 0, 5));  // dst overflow
-    EXPECT_TRAP(rt_bytes_copy(dst, 0, src, 3, 5));  // src overflow
+    EXPECT_TRAP(rt_bytes_copy(dst, 3, src, 0, 5));             // dst overflow
+    EXPECT_TRAP(rt_bytes_copy(dst, 0, src, 3, 5));             // src overflow
     EXPECT_TRAP(rt_bytes_copy(dst, INT64_MAX - 1, src, 0, 4)); // dst index overflow guard
     EXPECT_TRAP(rt_bytes_copy(dst, 0, src, INT64_MAX - 1, 4)); // src index overflow guard
-    EXPECT_TRAP(rt_bytes_copy(dst, -1, src, 0, 1)); // negative dst index
-    EXPECT_TRAP(rt_bytes_copy(dst, 0, src, -1, 1)); // negative src index
-    EXPECT_TRAP(rt_bytes_copy(dst, 0, src, 0, -1)); // negative count
+    EXPECT_TRAP(rt_bytes_copy(dst, -1, src, 0, 1));            // negative dst index
+    EXPECT_TRAP(rt_bytes_copy(dst, 0, src, -1, 1));            // negative src index
+    EXPECT_TRAP(rt_bytes_copy(dst, 0, src, 0, -1));            // negative count
 }
 
 static void test_copy_rejects_non_bytes_even_for_zero_count() {

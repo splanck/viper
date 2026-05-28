@@ -189,262 +189,70 @@ static const struct {
     uint32_t nbits;
     uint32_t code;
 } kHpackHuffSym[257] = {
-    {13u, 0xffc00000u},
-    {23u, 0xffffb000u},
-    {28u, 0xfffffe20u},
-    {28u, 0xfffffe30u},
-    {28u, 0xfffffe40u},
-    {28u, 0xfffffe50u},
-    {28u, 0xfffffe60u},
-    {28u, 0xfffffe70u},
-    {28u, 0xfffffe80u},
-    {24u, 0xffffea00u},
-    {30u, 0xfffffff0u},
-    {28u, 0xfffffe90u},
-    {28u, 0xfffffea0u},
-    {30u, 0xfffffff4u},
-    {28u, 0xfffffeb0u},
-    {28u, 0xfffffec0u},
-    {28u, 0xfffffed0u},
-    {28u, 0xfffffee0u},
-    {28u, 0xfffffef0u},
-    {28u, 0xffffff00u},
-    {28u, 0xffffff10u},
-    {28u, 0xffffff20u},
-    {30u, 0xfffffff8u},
-    {28u, 0xffffff30u},
-    {28u, 0xffffff40u},
-    {28u, 0xffffff50u},
-    {28u, 0xffffff60u},
-    {28u, 0xffffff70u},
-    {28u, 0xffffff80u},
-    {28u, 0xffffff90u},
-    {28u, 0xffffffa0u},
-    {28u, 0xffffffb0u},
-    {6u, 0x50000000u},
-    {10u, 0xfe000000u},
-    {10u, 0xfe400000u},
-    {12u, 0xffa00000u},
-    {13u, 0xffc80000u},
-    {6u, 0x54000000u},
-    {8u, 0xf8000000u},
-    {11u, 0xff400000u},
-    {10u, 0xfe800000u},
-    {10u, 0xfec00000u},
-    {8u, 0xf9000000u},
-    {11u, 0xff600000u},
-    {8u, 0xfa000000u},
-    {6u, 0x58000000u},
-    {6u, 0x5c000000u},
-    {6u, 0x60000000u},
-    {5u, 0x00000000u},
-    {5u, 0x08000000u},
-    {5u, 0x10000000u},
-    {6u, 0x64000000u},
-    {6u, 0x68000000u},
-    {6u, 0x6c000000u},
-    {6u, 0x70000000u},
-    {6u, 0x74000000u},
-    {6u, 0x78000000u},
-    {6u, 0x7c000000u},
-    {7u, 0xb8000000u},
-    {8u, 0xfb000000u},
-    {15u, 0xfff80000u},
-    {6u, 0x80000000u},
-    {12u, 0xffb00000u},
-    {10u, 0xff000000u},
-    {13u, 0xffd00000u},
-    {6u, 0x84000000u},
-    {7u, 0xba000000u},
-    {7u, 0xbc000000u},
-    {7u, 0xbe000000u},
-    {7u, 0xc0000000u},
-    {7u, 0xc2000000u},
-    {7u, 0xc4000000u},
-    {7u, 0xc6000000u},
-    {7u, 0xc8000000u},
-    {7u, 0xca000000u},
-    {7u, 0xcc000000u},
-    {7u, 0xce000000u},
-    {7u, 0xd0000000u},
-    {7u, 0xd2000000u},
-    {7u, 0xd4000000u},
-    {7u, 0xd6000000u},
-    {7u, 0xd8000000u},
-    {7u, 0xda000000u},
-    {7u, 0xdc000000u},
-    {7u, 0xde000000u},
-    {7u, 0xe0000000u},
-    {7u, 0xe2000000u},
-    {7u, 0xe4000000u},
-    {8u, 0xfc000000u},
-    {7u, 0xe6000000u},
-    {8u, 0xfd000000u},
-    {13u, 0xffd80000u},
-    {19u, 0xfffe0000u},
-    {13u, 0xffe00000u},
-    {14u, 0xfff00000u},
-    {6u, 0x88000000u},
-    {15u, 0xfffa0000u},
-    {5u, 0x18000000u},
-    {6u, 0x8c000000u},
-    {5u, 0x20000000u},
-    {6u, 0x90000000u},
-    {5u, 0x28000000u},
-    {6u, 0x94000000u},
-    {6u, 0x98000000u},
-    {6u, 0x9c000000u},
-    {5u, 0x30000000u},
-    {7u, 0xe8000000u},
-    {7u, 0xea000000u},
-    {6u, 0xa0000000u},
-    {6u, 0xa4000000u},
-    {6u, 0xa8000000u},
-    {5u, 0x38000000u},
-    {6u, 0xac000000u},
-    {7u, 0xec000000u},
-    {6u, 0xb0000000u},
-    {5u, 0x40000000u},
-    {5u, 0x48000000u},
-    {6u, 0xb4000000u},
-    {7u, 0xee000000u},
-    {7u, 0xf0000000u},
-    {7u, 0xf2000000u},
-    {7u, 0xf4000000u},
-    {7u, 0xf6000000u},
-    {15u, 0xfffc0000u},
-    {11u, 0xff800000u},
-    {14u, 0xfff40000u},
-    {13u, 0xffe80000u},
-    {28u, 0xffffffc0u},
-    {20u, 0xfffe6000u},
-    {22u, 0xffff4800u},
-    {20u, 0xfffe7000u},
-    {20u, 0xfffe8000u},
-    {22u, 0xffff4c00u},
-    {22u, 0xffff5000u},
-    {22u, 0xffff5400u},
-    {23u, 0xffffb200u},
-    {22u, 0xffff5800u},
-    {23u, 0xffffb400u},
-    {23u, 0xffffb600u},
-    {23u, 0xffffb800u},
-    {23u, 0xffffba00u},
-    {23u, 0xffffbc00u},
-    {24u, 0xffffeb00u},
-    {23u, 0xffffbe00u},
-    {24u, 0xffffec00u},
-    {24u, 0xffffed00u},
-    {22u, 0xffff5c00u},
-    {23u, 0xffffc000u},
-    {24u, 0xffffee00u},
-    {23u, 0xffffc200u},
-    {23u, 0xffffc400u},
-    {23u, 0xffffc600u},
-    {23u, 0xffffc800u},
-    {21u, 0xfffee000u},
-    {22u, 0xffff6000u},
-    {23u, 0xffffca00u},
-    {22u, 0xffff6400u},
-    {23u, 0xffffcc00u},
-    {23u, 0xffffce00u},
-    {24u, 0xffffef00u},
-    {22u, 0xffff6800u},
-    {21u, 0xfffee800u},
-    {20u, 0xfffe9000u},
-    {22u, 0xffff6c00u},
-    {22u, 0xffff7000u},
-    {23u, 0xffffd000u},
-    {23u, 0xffffd200u},
-    {21u, 0xfffef000u},
-    {23u, 0xffffd400u},
-    {22u, 0xffff7400u},
-    {22u, 0xffff7800u},
-    {24u, 0xfffff000u},
-    {21u, 0xfffef800u},
-    {22u, 0xffff7c00u},
-    {23u, 0xffffd600u},
-    {23u, 0xffffd800u},
-    {21u, 0xffff0000u},
-    {21u, 0xffff0800u},
-    {22u, 0xffff8000u},
-    {21u, 0xffff1000u},
-    {23u, 0xffffda00u},
-    {22u, 0xffff8400u},
-    {23u, 0xffffdc00u},
-    {23u, 0xffffde00u},
-    {20u, 0xfffea000u},
-    {22u, 0xffff8800u},
-    {22u, 0xffff8c00u},
-    {22u, 0xffff9000u},
-    {23u, 0xffffe000u},
-    {22u, 0xffff9400u},
-    {22u, 0xffff9800u},
-    {23u, 0xffffe200u},
-    {26u, 0xfffff800u},
-    {26u, 0xfffff840u},
-    {20u, 0xfffeb000u},
-    {19u, 0xfffe2000u},
-    {22u, 0xffff9c00u},
-    {23u, 0xffffe400u},
-    {22u, 0xffffa000u},
-    {25u, 0xfffff600u},
-    {26u, 0xfffff880u},
-    {26u, 0xfffff8c0u},
-    {26u, 0xfffff900u},
-    {27u, 0xfffffbc0u},
-    {27u, 0xfffffbe0u},
-    {26u, 0xfffff940u},
-    {24u, 0xfffff100u},
-    {25u, 0xfffff680u},
-    {19u, 0xfffe4000u},
-    {21u, 0xffff1800u},
-    {26u, 0xfffff980u},
-    {27u, 0xfffffc00u},
-    {27u, 0xfffffc20u},
-    {26u, 0xfffff9c0u},
-    {27u, 0xfffffc40u},
-    {24u, 0xfffff200u},
-    {21u, 0xffff2000u},
-    {21u, 0xffff2800u},
-    {26u, 0xfffffa00u},
-    {26u, 0xfffffa40u},
-    {28u, 0xffffffd0u},
-    {27u, 0xfffffc60u},
-    {27u, 0xfffffc80u},
-    {27u, 0xfffffca0u},
-    {20u, 0xfffec000u},
-    {24u, 0xfffff300u},
-    {20u, 0xfffed000u},
-    {21u, 0xffff3000u},
-    {22u, 0xffffa400u},
-    {21u, 0xffff3800u},
-    {21u, 0xffff4000u},
-    {23u, 0xffffe600u},
-    {22u, 0xffffa800u},
-    {22u, 0xffffac00u},
-    {25u, 0xfffff700u},
-    {25u, 0xfffff780u},
-    {24u, 0xfffff400u},
-    {24u, 0xfffff500u},
-    {26u, 0xfffffa80u},
-    {23u, 0xffffe800u},
-    {26u, 0xfffffac0u},
-    {27u, 0xfffffcc0u},
-    {26u, 0xfffffb00u},
-    {26u, 0xfffffb40u},
-    {27u, 0xfffffce0u},
-    {27u, 0xfffffd00u},
-    {27u, 0xfffffd20u},
-    {27u, 0xfffffd40u},
-    {27u, 0xfffffd60u},
-    {28u, 0xffffffe0u},
-    {27u, 0xfffffd80u},
-    {27u, 0xfffffda0u},
-    {27u, 0xfffffdc0u},
-    {27u, 0xfffffde0u},
-    {27u, 0xfffffe00u},
-    {26u, 0xfffffb80u},
+    {13u, 0xffc00000u}, {23u, 0xffffb000u}, {28u, 0xfffffe20u}, {28u, 0xfffffe30u},
+    {28u, 0xfffffe40u}, {28u, 0xfffffe50u}, {28u, 0xfffffe60u}, {28u, 0xfffffe70u},
+    {28u, 0xfffffe80u}, {24u, 0xffffea00u}, {30u, 0xfffffff0u}, {28u, 0xfffffe90u},
+    {28u, 0xfffffea0u}, {30u, 0xfffffff4u}, {28u, 0xfffffeb0u}, {28u, 0xfffffec0u},
+    {28u, 0xfffffed0u}, {28u, 0xfffffee0u}, {28u, 0xfffffef0u}, {28u, 0xffffff00u},
+    {28u, 0xffffff10u}, {28u, 0xffffff20u}, {30u, 0xfffffff8u}, {28u, 0xffffff30u},
+    {28u, 0xffffff40u}, {28u, 0xffffff50u}, {28u, 0xffffff60u}, {28u, 0xffffff70u},
+    {28u, 0xffffff80u}, {28u, 0xffffff90u}, {28u, 0xffffffa0u}, {28u, 0xffffffb0u},
+    {6u, 0x50000000u},  {10u, 0xfe000000u}, {10u, 0xfe400000u}, {12u, 0xffa00000u},
+    {13u, 0xffc80000u}, {6u, 0x54000000u},  {8u, 0xf8000000u},  {11u, 0xff400000u},
+    {10u, 0xfe800000u}, {10u, 0xfec00000u}, {8u, 0xf9000000u},  {11u, 0xff600000u},
+    {8u, 0xfa000000u},  {6u, 0x58000000u},  {6u, 0x5c000000u},  {6u, 0x60000000u},
+    {5u, 0x00000000u},  {5u, 0x08000000u},  {5u, 0x10000000u},  {6u, 0x64000000u},
+    {6u, 0x68000000u},  {6u, 0x6c000000u},  {6u, 0x70000000u},  {6u, 0x74000000u},
+    {6u, 0x78000000u},  {6u, 0x7c000000u},  {7u, 0xb8000000u},  {8u, 0xfb000000u},
+    {15u, 0xfff80000u}, {6u, 0x80000000u},  {12u, 0xffb00000u}, {10u, 0xff000000u},
+    {13u, 0xffd00000u}, {6u, 0x84000000u},  {7u, 0xba000000u},  {7u, 0xbc000000u},
+    {7u, 0xbe000000u},  {7u, 0xc0000000u},  {7u, 0xc2000000u},  {7u, 0xc4000000u},
+    {7u, 0xc6000000u},  {7u, 0xc8000000u},  {7u, 0xca000000u},  {7u, 0xcc000000u},
+    {7u, 0xce000000u},  {7u, 0xd0000000u},  {7u, 0xd2000000u},  {7u, 0xd4000000u},
+    {7u, 0xd6000000u},  {7u, 0xd8000000u},  {7u, 0xda000000u},  {7u, 0xdc000000u},
+    {7u, 0xde000000u},  {7u, 0xe0000000u},  {7u, 0xe2000000u},  {7u, 0xe4000000u},
+    {8u, 0xfc000000u},  {7u, 0xe6000000u},  {8u, 0xfd000000u},  {13u, 0xffd80000u},
+    {19u, 0xfffe0000u}, {13u, 0xffe00000u}, {14u, 0xfff00000u}, {6u, 0x88000000u},
+    {15u, 0xfffa0000u}, {5u, 0x18000000u},  {6u, 0x8c000000u},  {5u, 0x20000000u},
+    {6u, 0x90000000u},  {5u, 0x28000000u},  {6u, 0x94000000u},  {6u, 0x98000000u},
+    {6u, 0x9c000000u},  {5u, 0x30000000u},  {7u, 0xe8000000u},  {7u, 0xea000000u},
+    {6u, 0xa0000000u},  {6u, 0xa4000000u},  {6u, 0xa8000000u},  {5u, 0x38000000u},
+    {6u, 0xac000000u},  {7u, 0xec000000u},  {6u, 0xb0000000u},  {5u, 0x40000000u},
+    {5u, 0x48000000u},  {6u, 0xb4000000u},  {7u, 0xee000000u},  {7u, 0xf0000000u},
+    {7u, 0xf2000000u},  {7u, 0xf4000000u},  {7u, 0xf6000000u},  {15u, 0xfffc0000u},
+    {11u, 0xff800000u}, {14u, 0xfff40000u}, {13u, 0xffe80000u}, {28u, 0xffffffc0u},
+    {20u, 0xfffe6000u}, {22u, 0xffff4800u}, {20u, 0xfffe7000u}, {20u, 0xfffe8000u},
+    {22u, 0xffff4c00u}, {22u, 0xffff5000u}, {22u, 0xffff5400u}, {23u, 0xffffb200u},
+    {22u, 0xffff5800u}, {23u, 0xffffb400u}, {23u, 0xffffb600u}, {23u, 0xffffb800u},
+    {23u, 0xffffba00u}, {23u, 0xffffbc00u}, {24u, 0xffffeb00u}, {23u, 0xffffbe00u},
+    {24u, 0xffffec00u}, {24u, 0xffffed00u}, {22u, 0xffff5c00u}, {23u, 0xffffc000u},
+    {24u, 0xffffee00u}, {23u, 0xffffc200u}, {23u, 0xffffc400u}, {23u, 0xffffc600u},
+    {23u, 0xffffc800u}, {21u, 0xfffee000u}, {22u, 0xffff6000u}, {23u, 0xffffca00u},
+    {22u, 0xffff6400u}, {23u, 0xffffcc00u}, {23u, 0xffffce00u}, {24u, 0xffffef00u},
+    {22u, 0xffff6800u}, {21u, 0xfffee800u}, {20u, 0xfffe9000u}, {22u, 0xffff6c00u},
+    {22u, 0xffff7000u}, {23u, 0xffffd000u}, {23u, 0xffffd200u}, {21u, 0xfffef000u},
+    {23u, 0xffffd400u}, {22u, 0xffff7400u}, {22u, 0xffff7800u}, {24u, 0xfffff000u},
+    {21u, 0xfffef800u}, {22u, 0xffff7c00u}, {23u, 0xffffd600u}, {23u, 0xffffd800u},
+    {21u, 0xffff0000u}, {21u, 0xffff0800u}, {22u, 0xffff8000u}, {21u, 0xffff1000u},
+    {23u, 0xffffda00u}, {22u, 0xffff8400u}, {23u, 0xffffdc00u}, {23u, 0xffffde00u},
+    {20u, 0xfffea000u}, {22u, 0xffff8800u}, {22u, 0xffff8c00u}, {22u, 0xffff9000u},
+    {23u, 0xffffe000u}, {22u, 0xffff9400u}, {22u, 0xffff9800u}, {23u, 0xffffe200u},
+    {26u, 0xfffff800u}, {26u, 0xfffff840u}, {20u, 0xfffeb000u}, {19u, 0xfffe2000u},
+    {22u, 0xffff9c00u}, {23u, 0xffffe400u}, {22u, 0xffffa000u}, {25u, 0xfffff600u},
+    {26u, 0xfffff880u}, {26u, 0xfffff8c0u}, {26u, 0xfffff900u}, {27u, 0xfffffbc0u},
+    {27u, 0xfffffbe0u}, {26u, 0xfffff940u}, {24u, 0xfffff100u}, {25u, 0xfffff680u},
+    {19u, 0xfffe4000u}, {21u, 0xffff1800u}, {26u, 0xfffff980u}, {27u, 0xfffffc00u},
+    {27u, 0xfffffc20u}, {26u, 0xfffff9c0u}, {27u, 0xfffffc40u}, {24u, 0xfffff200u},
+    {21u, 0xffff2000u}, {21u, 0xffff2800u}, {26u, 0xfffffa00u}, {26u, 0xfffffa40u},
+    {28u, 0xffffffd0u}, {27u, 0xfffffc60u}, {27u, 0xfffffc80u}, {27u, 0xfffffca0u},
+    {20u, 0xfffec000u}, {24u, 0xfffff300u}, {20u, 0xfffed000u}, {21u, 0xffff3000u},
+    {22u, 0xffffa400u}, {21u, 0xffff3800u}, {21u, 0xffff4000u}, {23u, 0xffffe600u},
+    {22u, 0xffffa800u}, {22u, 0xffffac00u}, {25u, 0xfffff700u}, {25u, 0xfffff780u},
+    {24u, 0xfffff400u}, {24u, 0xfffff500u}, {26u, 0xfffffa80u}, {23u, 0xffffe800u},
+    {26u, 0xfffffac0u}, {27u, 0xfffffcc0u}, {26u, 0xfffffb00u}, {26u, 0xfffffb40u},
+    {27u, 0xfffffce0u}, {27u, 0xfffffd00u}, {27u, 0xfffffd20u}, {27u, 0xfffffd40u},
+    {27u, 0xfffffd60u}, {28u, 0xffffffe0u}, {27u, 0xfffffd80u}, {27u, 0xfffffda0u},
+    {27u, 0xfffffdc0u}, {27u, 0xfffffde0u}, {27u, 0xfffffe00u}, {26u, 0xfffffb80u},
     {30u, 0xfffffffcu},
 };
 
@@ -1019,11 +827,8 @@ static char *hpack_decode_huffman(const uint8_t *src, size_t src_len, size_t *de
     return (char *)out.data;
 }
 
-static int hpack_decode_string(const uint8_t *src,
-                               size_t src_len,
-                               char **out,
-                               size_t *value_len_out,
-                               size_t *consumed_out) {
+static int hpack_decode_string(
+    const uint8_t *src, size_t src_len, char **out, size_t *value_len_out, size_t *consumed_out) {
     size_t str_len = 0;
     size_t int_consumed = 0;
     int huffman = 0;
@@ -1187,11 +992,8 @@ static int hpack_decode_header_block(hpack_dyn_table_t *table,
             }
         } else {
             size_t name_consumed = 0;
-            if (!hpack_decode_string(block + pos,
-                                     block_len - pos,
-                                     &name,
-                                     &name_len,
-                                     &name_consumed)) {
+            if (!hpack_decode_string(
+                    block + pos, block_len - pos, &name, &name_len, &name_consumed)) {
                 rt_http2_headers_free(headers);
                 return 0;
             }
@@ -1200,11 +1002,8 @@ static int hpack_decode_header_block(hpack_dyn_table_t *table,
 
         {
             size_t value_consumed = 0;
-            if (!hpack_decode_string(block + pos,
-                                     block_len - pos,
-                                     &value,
-                                     &value_len,
-                                     &value_consumed)) {
+            if (!hpack_decode_string(
+                    block + pos, block_len - pos, &value, &value_len, &value_consumed)) {
                 free(name);
                 rt_http2_headers_free(headers);
                 return 0;
@@ -1507,7 +1306,8 @@ static int h2_decode_header_list(rt_http2_conn_t *conn,
     *decoded_out = NULL;
     if (!h2_collect_header_block(conn, first, &header_block, end_stream_out))
         return 0;
-    if (!hpack_decode_header_block(&conn->decode_table, header_block.data, header_block.len, decoded_out)) {
+    if (!hpack_decode_header_block(
+            &conn->decode_table, header_block.data, header_block.len, decoded_out)) {
         h2_buf_free(&header_block);
         return h2_conn_fail(conn, decode_error);
     }
@@ -1876,10 +1676,7 @@ static int h2_server_start(rt_http2_conn_t *conn) {
     return 1;
 }
 
-static int h2_append_body(h2_buf_t *body,
-                          size_t max_body_len,
-                          const uint8_t *src,
-                          size_t len) {
+static int h2_append_body(h2_buf_t *body, size_t max_body_len, const uint8_t *src, size_t len) {
     if (!body || (!src && len > 0))
         return 0;
     if (len == 0)
@@ -1944,7 +1741,8 @@ int rt_http2_client_roundtrip(rt_http2_conn_t *conn,
         if (frame.type == H2_FRAME_HEADERS && frame.stream_id == stream_id) {
             rt_http2_header_t *decoded = NULL;
             int end_stream = 0;
-            if (!h2_decode_header_list(conn, &frame, &decoded, &end_stream, "HTTP/2: invalid response headers")) {
+            if (!h2_decode_header_list(
+                    conn, &frame, &decoded, &end_stream, "HTTP/2: invalid response headers")) {
                 h2_frame_free(&frame);
                 h2_buf_free(&res_body);
                 rt_http2_response_free(out_res);
@@ -2052,9 +1850,8 @@ int rt_http2_client_roundtrip(rt_http2_conn_t *conn,
             }
             if (!h2_parse_data_payload(&frame, &data_ptr, &data_len, &end_stream) ||
                 !h2_append_body(&res_body, max_body_len, data_ptr, data_len) ||
-                (data_len > 0 &&
-                 (!h2_send_window_update(conn, 0, (uint32_t)data_len) ||
-                  !h2_send_window_update(conn, stream_id, (uint32_t)data_len)))) {
+                (data_len > 0 && (!h2_send_window_update(conn, 0, (uint32_t)data_len) ||
+                                  !h2_send_window_update(conn, stream_id, (uint32_t)data_len)))) {
                 h2_frame_free(&frame);
                 h2_buf_free(&res_body);
                 rt_http2_response_free(out_res);
@@ -2077,8 +1874,9 @@ int rt_http2_client_roundtrip(rt_http2_conn_t *conn,
     }
 }
 
-int rt_http2_server_receive_request(
-    rt_http2_conn_t *conn, size_t max_body_len, rt_http2_request_t *out_req) {
+int rt_http2_server_receive_request(rt_http2_conn_t *conn,
+                                    size_t max_body_len,
+                                    rt_http2_request_t *out_req) {
     h2_buf_t body = {0};
     uint32_t active_stream = 0;
     if (!conn || !out_req)
@@ -2107,7 +1905,8 @@ int rt_http2_server_receive_request(
                 h2_frame_free(&frame);
                 continue;
             }
-            if (frame.type != H2_FRAME_HEADERS || frame.stream_id == 0 || (frame.stream_id & 1u) == 0u) {
+            if (frame.type != H2_FRAME_HEADERS || frame.stream_id == 0 ||
+                (frame.stream_id & 1u) == 0u) {
                 h2_frame_free(&frame);
                 h2_buf_free(&body);
                 rt_http2_request_free(out_req);
@@ -2117,7 +1916,8 @@ int rt_http2_server_receive_request(
                 rt_http2_header_t *decoded = NULL;
                 int end_stream = 0;
                 int saw_regular = 0;
-                if (!h2_decode_header_list(conn, &frame, &decoded, &end_stream, "HTTP/2: invalid request headers")) {
+                if (!h2_decode_header_list(
+                        conn, &frame, &decoded, &end_stream, "HTTP/2: invalid request headers")) {
                     h2_frame_free(&frame);
                     h2_buf_free(&body);
                     rt_http2_request_free(out_req);
@@ -2194,8 +1994,7 @@ int rt_http2_server_receive_request(
                 continue;
             }
             if (frame.stream_id != active_stream) {
-                if (frame.stream_id != 0 &&
-                    (frame.stream_id & 1u) != 0u &&
+                if (frame.stream_id != 0 && (frame.stream_id & 1u) != 0u &&
                     (frame.type == H2_FRAME_HEADERS || frame.type == H2_FRAME_DATA)) {
                     if (!h2_refuse_concurrent_request_stream(conn, &frame)) {
                         h2_frame_free(&frame);
@@ -2214,7 +2013,8 @@ int rt_http2_server_receive_request(
             if (frame.type == H2_FRAME_HEADERS) {
                 rt_http2_header_t *decoded = NULL;
                 int end_stream = 0;
-                if (!h2_decode_header_list(conn, &frame, &decoded, &end_stream, "HTTP/2: invalid request trailers")) {
+                if (!h2_decode_header_list(
+                        conn, &frame, &decoded, &end_stream, "HTTP/2: invalid request trailers")) {
                     h2_frame_free(&frame);
                     h2_buf_free(&body);
                     rt_http2_request_free(out_req);

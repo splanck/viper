@@ -296,7 +296,8 @@ func start() {
     EXPECT_FALSE(result.succeeded());
     bool found = false;
     for (const auto &d : result.diagnostics.diagnostics()) {
-        if (d.code == "V-ZIA-UNDEFINED" && d.message.find("did you mean 'count'") != std::string::npos) {
+        if (d.code == "V-ZIA-UNDEFINED" &&
+            d.message.find("did you mean 'count'") != std::string::npos) {
             found = true;
             EXPECT_EQ(d.stage, "sema");
             EXPECT_FALSE(d.fixits.empty());

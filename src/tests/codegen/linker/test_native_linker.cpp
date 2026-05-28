@@ -329,8 +329,7 @@ int main() {
         const std::string exePath = tmpPath("pe_zerofill.exe");
         const std::unordered_map<std::string, uint32_t> noSlots;
         std::ostringstream err;
-        CHECK(writePeExe(
-            exePath, layout, LinkArch::AArch64, {}, noSlots, false, 0, err));
+        CHECK(writePeExe(exePath, layout, LinkArch::AArch64, {}, noSlots, false, 0, err));
         CHECK(err.str().empty());
 
         const std::vector<uint8_t> exe = readFile(exePath);
@@ -369,13 +368,8 @@ int main() {
 
         const std::string exePath = tmpPath("macho_zerofill");
         std::ostringstream err;
-        CHECK(writeMachOExe(exePath,
-                            layout,
-                            LinkArch::AArch64,
-                            {{"/usr/lib/libSystem.B.dylib"}},
-                            {},
-                            {},
-                            err));
+        CHECK(writeMachOExe(
+            exePath, layout, LinkArch::AArch64, {{"/usr/lib/libSystem.B.dylib"}}, {}, {}, err));
         CHECK(err.str().empty());
 
         const std::vector<uint8_t> exe = readFile(exePath);
@@ -405,13 +399,8 @@ int main() {
 
         const std::string exePath = tmpPath("macho_custom_entry");
         std::ostringstream err;
-        CHECK(writeMachOExe(exePath,
-                            layout,
-                            LinkArch::AArch64,
-                            {{"/usr/lib/libSystem.B.dylib"}},
-                            {},
-                            {},
-                            err));
+        CHECK(writeMachOExe(
+            exePath, layout, LinkArch::AArch64, {{"/usr/lib/libSystem.B.dylib"}}, {}, {}, err));
         CHECK(err.str().empty());
 
         const std::vector<uint8_t> exe = readFile(exePath);
@@ -448,13 +437,8 @@ int main() {
 
         const std::string exePath = tmpPath("macho_overlapping_text");
         std::ostringstream err;
-        CHECK(!writeMachOExe(exePath,
-                             layout,
-                             LinkArch::AArch64,
-                             {{"/usr/lib/libSystem.B.dylib"}},
-                             {},
-                             {},
-                             err));
+        CHECK(!writeMachOExe(
+            exePath, layout, LinkArch::AArch64, {{"/usr/lib/libSystem.B.dylib"}}, {}, {}, err));
         CHECK(err.str().find("overlaps previously written data") != std::string::npos);
     }
 
@@ -615,27 +599,51 @@ int main() {
         CHECK(std::filesystem::exists(exePath));
 
         const std::vector<uint8_t> exe = readFile(exePath);
-        CHECK(containsBytes(
-            exe,
-            {
-                0xE9, 0x03, 0x00, 0xAA, // mov x9, x0
-                0x82, 0x00, 0x00, 0xB4, // cbz x2, done
-                0x21, 0x15, 0x00, 0x38, // strb w1, [x9], #1
-            }));
-        CHECK(!containsBytes(
-            exe,
-            {
-                0xE8, 0x03, 0x00, 0xAA, // mov x8, x0
-                0x82, 0x00, 0x00, 0xB4,
-                0x01, 0x15, 0x00, 0x38, // strb w1, [x8], #1
-            }));
-        CHECK(!containsBytes(
-            exe,
-            {
-                0xE3, 0x03, 0x00, 0xAA, // mov x3, x0
-                0x82, 0x00, 0x00, 0xB4,
-                0x61, 0x14, 0x00, 0x38, // strb w1, [x3], #1
-            }));
+        CHECK(containsBytes(exe,
+                            {
+                                0xE9,
+                                0x03,
+                                0x00,
+                                0xAA, // mov x9, x0
+                                0x82,
+                                0x00,
+                                0x00,
+                                0xB4, // cbz x2, done
+                                0x21,
+                                0x15,
+                                0x00,
+                                0x38, // strb w1, [x9], #1
+                            }));
+        CHECK(!containsBytes(exe,
+                             {
+                                 0xE8,
+                                 0x03,
+                                 0x00,
+                                 0xAA, // mov x8, x0
+                                 0x82,
+                                 0x00,
+                                 0x00,
+                                 0xB4,
+                                 0x01,
+                                 0x15,
+                                 0x00,
+                                 0x38, // strb w1, [x8], #1
+                             }));
+        CHECK(!containsBytes(exe,
+                             {
+                                 0xE3,
+                                 0x03,
+                                 0x00,
+                                 0xAA, // mov x3, x0
+                                 0x82,
+                                 0x00,
+                                 0x00,
+                                 0xB4,
+                                 0x61,
+                                 0x14,
+                                 0x00,
+                                 0x38, // strb w1, [x3], #1
+                             }));
     }
 
     {
@@ -674,18 +682,28 @@ int main() {
         CHECK(std::filesystem::exists(exePath));
 
         const std::vector<uint8_t> exe = readFile(exePath);
-        CHECK(containsBytes(
-            exe,
-            {
-                0xFF, 0x43, 0x00, 0xD1, // sub sp, sp, #0x10
-                0xC0, 0x03, 0x5F, 0xD6, // ret
-            }));
-        CHECK(containsBytes(
-            exe,
-            {
-                0xFF, 0x43, 0x00, 0x91, // add sp, sp, #0x10
-                0xC0, 0x03, 0x5F, 0xD6, // ret
-            }));
+        CHECK(containsBytes(exe,
+                            {
+                                0xFF,
+                                0x43,
+                                0x00,
+                                0xD1, // sub sp, sp, #0x10
+                                0xC0,
+                                0x03,
+                                0x5F,
+                                0xD6, // ret
+                            }));
+        CHECK(containsBytes(exe,
+                            {
+                                0xFF,
+                                0x43,
+                                0x00,
+                                0x91, // add sp, sp, #0x10
+                                0xC0,
+                                0x03,
+                                0x5F,
+                                0xD6, // ret
+                            }));
     }
 
     {

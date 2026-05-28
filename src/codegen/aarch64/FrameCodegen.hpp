@@ -91,12 +91,14 @@ void iteratePrologue(const std::vector<PhysReg> &savedGPRs,
     s.movFpSp();
     if (localFrameSize > 0)
         s.subSp(localFrameSize);
-    forEachSaveReg(savedGPRs,
-                   [&](PhysReg a, PhysReg b) { s.stpGprPair(a, b); },
-                   [&](PhysReg a) { s.strGprSingle(a); });
-    forEachSaveReg(savedFPRs,
-                   [&](PhysReg a, PhysReg b) { s.stpFprPair(a, b); },
-                   [&](PhysReg a) { s.strFprSingle(a); });
+    forEachSaveReg(
+        savedGPRs,
+        [&](PhysReg a, PhysReg b) { s.stpGprPair(a, b); },
+        [&](PhysReg a) { s.strGprSingle(a); });
+    forEachSaveReg(
+        savedFPRs,
+        [&](PhysReg a, PhysReg b) { s.stpFprPair(a, b); },
+        [&](PhysReg a) { s.strFprSingle(a); });
 }
 
 /// @brief Walk the AArch64 epilogue step sequence (reverse of prologue).
@@ -109,12 +111,14 @@ void iterateEpilogue(const std::vector<PhysReg> &savedGPRs,
                      int localFrameSize,
                      bool needAutiasp,
                      const Steps &s) {
-    forEachRestoreReg(savedFPRs,
-                      [&](PhysReg a, PhysReg b) { s.ldpFprPair(a, b); },
-                      [&](PhysReg a) { s.ldrFprSingle(a); });
-    forEachRestoreReg(savedGPRs,
-                      [&](PhysReg a, PhysReg b) { s.ldpGprPair(a, b); },
-                      [&](PhysReg a) { s.ldrGprSingle(a); });
+    forEachRestoreReg(
+        savedFPRs,
+        [&](PhysReg a, PhysReg b) { s.ldpFprPair(a, b); },
+        [&](PhysReg a) { s.ldrFprSingle(a); });
+    forEachRestoreReg(
+        savedGPRs,
+        [&](PhysReg a, PhysReg b) { s.ldpGprPair(a, b); },
+        [&](PhysReg a) { s.ldrGprSingle(a); });
     if (localFrameSize > 0)
         s.addSp(localFrameSize);
     s.ldpFpLrPost();

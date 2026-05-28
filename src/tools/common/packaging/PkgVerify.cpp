@@ -53,8 +53,7 @@ uint32_t rdLE32(const uint8_t *p) {
 }
 
 uint16_t rdBE16(const uint8_t *p) {
-    return static_cast<uint16_t>((static_cast<uint16_t>(p[0]) << 8) |
-                                 static_cast<uint16_t>(p[1]));
+    return static_cast<uint16_t>((static_cast<uint16_t>(p[0]) << 8) | static_cast<uint16_t>(p[1]));
 }
 
 uint32_t rdBE32(const uint8_t *p) {
@@ -78,17 +77,16 @@ uint32_t rotr32(uint32_t value, unsigned bits) {
 
 std::string sha256Hex(const uint8_t *data, size_t len) {
     static constexpr std::array<uint32_t, 64> k = {
-        0x428a2f98u, 0x71374491u, 0xb5c0fbcfu, 0xe9b5dba5u, 0x3956c25bu, 0x59f111f1u,
-        0x923f82a4u, 0xab1c5ed5u, 0xd807aa98u, 0x12835b01u, 0x243185beu, 0x550c7dc3u,
-        0x72be5d74u, 0x80deb1feu, 0x9bdc06a7u, 0xc19bf174u, 0xe49b69c1u, 0xefbe4786u,
-        0x0fc19dc6u, 0x240ca1ccu, 0x2de92c6fu, 0x4a7484aau, 0x5cb0a9dcu, 0x76f988dau,
-        0x983e5152u, 0xa831c66du, 0xb00327c8u, 0xbf597fc7u, 0xc6e00bf3u, 0xd5a79147u,
-        0x06ca6351u, 0x14292967u, 0x27b70a85u, 0x2e1b2138u, 0x4d2c6dfcu, 0x53380d13u,
-        0x650a7354u, 0x766a0abbu, 0x81c2c92eu, 0x92722c85u, 0xa2bfe8a1u, 0xa81a664bu,
-        0xc24b8b70u, 0xc76c51a3u, 0xd192e819u, 0xd6990624u, 0xf40e3585u, 0x106aa070u,
-        0x19a4c116u, 0x1e376c08u, 0x2748774cu, 0x34b0bcb5u, 0x391c0cb3u, 0x4ed8aa4au,
-        0x5b9cca4fu, 0x682e6ff3u, 0x748f82eeu, 0x78a5636fu, 0x84c87814u, 0x8cc70208u,
-        0x90befffau, 0xa4506cebu, 0xbef9a3f7u, 0xc67178f2u};
+        0x428a2f98u, 0x71374491u, 0xb5c0fbcfu, 0xe9b5dba5u, 0x3956c25bu, 0x59f111f1u, 0x923f82a4u,
+        0xab1c5ed5u, 0xd807aa98u, 0x12835b01u, 0x243185beu, 0x550c7dc3u, 0x72be5d74u, 0x80deb1feu,
+        0x9bdc06a7u, 0xc19bf174u, 0xe49b69c1u, 0xefbe4786u, 0x0fc19dc6u, 0x240ca1ccu, 0x2de92c6fu,
+        0x4a7484aau, 0x5cb0a9dcu, 0x76f988dau, 0x983e5152u, 0xa831c66du, 0xb00327c8u, 0xbf597fc7u,
+        0xc6e00bf3u, 0xd5a79147u, 0x06ca6351u, 0x14292967u, 0x27b70a85u, 0x2e1b2138u, 0x4d2c6dfcu,
+        0x53380d13u, 0x650a7354u, 0x766a0abbu, 0x81c2c92eu, 0x92722c85u, 0xa2bfe8a1u, 0xa81a664bu,
+        0xc24b8b70u, 0xc76c51a3u, 0xd192e819u, 0xd6990624u, 0xf40e3585u, 0x106aa070u, 0x19a4c116u,
+        0x1e376c08u, 0x2748774cu, 0x34b0bcb5u, 0x391c0cb3u, 0x4ed8aa4au, 0x5b9cca4fu, 0x682e6ff3u,
+        0x748f82eeu, 0x78a5636fu, 0x84c87814u, 0x8cc70208u, 0x90befffau, 0xa4506cebu, 0xbef9a3f7u,
+        0xc67178f2u};
     uint32_t h[8] = {0x6a09e667u,
                      0xbb67ae85u,
                      0x3c6ef372u,
@@ -112,8 +110,7 @@ std::string sha256Hex(const uint8_t *data, size_t len) {
             const size_t p = off + i * 4u;
             w[i] = (static_cast<uint32_t>(msg[p]) << 24) |
                    (static_cast<uint32_t>(msg[p + 1]) << 16) |
-                   (static_cast<uint32_t>(msg[p + 2]) << 8) |
-                   static_cast<uint32_t>(msg[p + 3]);
+                   (static_cast<uint32_t>(msg[p + 2]) << 8) | static_cast<uint32_t>(msg[p + 3]);
         }
         for (size_t i = 16; i < 64; ++i) {
             const uint32_t s0 = rotr32(w[i - 15], 7) ^ rotr32(w[i - 15], 18) ^ (w[i - 15] >> 3);
@@ -155,8 +152,7 @@ std::string sha256Hex(const uint8_t *data, size_t len) {
 }
 
 bool isSha256Hex(const std::string &text) {
-    return text.size() == 64 &&
-           std::all_of(text.begin(), text.end(), [](unsigned char ch) {
+    return text.size() == 64 && std::all_of(text.begin(), text.end(), [](unsigned char ch) {
                return std::isxdigit(ch) != 0;
            });
 }
@@ -342,8 +338,8 @@ bool verifyTarBytes(const std::vector<uint8_t> &data,
                         c = '/';
                 }
                 if (target.front() == '/' ||
-                    (target.size() >= 2 &&
-                     std::isalpha(static_cast<unsigned char>(target[0])) && target[1] == ':')) {
+                    (target.size() >= 2 && std::isalpha(static_cast<unsigned char>(target[0])) &&
+                     target[1] == ':')) {
                     err << "TAR: absolute symlink target '" << target << "' at offset " << pos
                         << "\n";
                     return false;
@@ -407,8 +403,7 @@ bool parseFixedOctalField(const uint8_t *field, size_t width, uint64_t &out) {
         const unsigned char ch = field[i];
         if (ch < '0' || ch > '7')
             return false;
-        if (out > (std::numeric_limits<uint64_t>::max() - static_cast<uint64_t>(ch - '0')) /
-                      8u)
+        if (out > (std::numeric_limits<uint64_t>::max() - static_cast<uint64_t>(ch - '0')) / 8u)
             return false;
         out = (out << 3u) + static_cast<uint64_t>(ch - '0');
     }
@@ -423,9 +418,9 @@ bool hasAppleDoubleComponent(const std::string &path) {
     size_t pos = 0;
     while (pos <= path.size()) {
         const size_t next = path.find('/', pos);
-        const std::string_view component =
-            next == std::string::npos ? std::string_view(path).substr(pos)
-                                      : std::string_view(path).substr(pos, next - pos);
+        const std::string_view component = next == std::string::npos
+                                               ? std::string_view(path).substr(pos)
+                                               : std::string_view(path).substr(pos, next - pos);
         if (component.size() >= 2 && component[0] == '.' && component[1] == '_')
             return true;
         if (next == std::string::npos)
@@ -446,8 +441,7 @@ bool validateRelativeSymlinkTarget(const std::string &entryName,
     try {
         validateSingleLineField(target, kind);
     } catch (const std::exception &ex) {
-        err << kind << ": invalid symlink target for '" << entryName << "': " << ex.what()
-            << "\n";
+        err << kind << ": invalid symlink target for '" << entryName << "': " << ex.what() << "\n";
         return false;
     }
     for (char &ch : target) {
@@ -554,8 +548,7 @@ bool verifyCpioOdcBytes(const std::vector<uint8_t> &data,
             err << "CPIO: odc entry name is not NUL-terminated at offset " << pos << "\n";
             return false;
         }
-        const std::string name(reinterpret_cast<const char *>(data.data() + nameOff),
-                               nameSize - 1);
+        const std::string name(reinterpret_cast<const char *>(data.data() + nameOff), nameSize - 1);
         const size_t dataOff = nameOff + nameSize;
         if (name == "TRAILER!!!") {
             if (fileSize != 0) {
@@ -725,9 +718,7 @@ bool parseUnsignedDecimalText(const std::string &text, uint64_t &out) {
     return true;
 }
 
-bool extractXarFileChecksum(const std::string &block,
-                            const std::string &tag,
-                            std::string &out) {
+bool extractXarFileChecksum(const std::string &block, const std::string &tag, std::string &out) {
     const std::string open = "<" + tag;
     const size_t openPos = block.find(open);
     if (openPos == std::string::npos)
@@ -799,8 +790,8 @@ bool extractXarFilePayload(const std::string &block,
     const size_t dataLen = static_cast<size_t>(length);
     std::vector<uint8_t> archived(data.begin() + dataOff, data.begin() + dataOff + dataLen);
     std::vector<uint8_t> extracted;
-    const bool compressed = block.find("encoding style=\"application/x-gzip\"") !=
-                            std::string::npos;
+    const bool compressed =
+        block.find("encoding style=\"application/x-gzip\"") != std::string::npos;
     try {
         if (compressed) {
             extracted = zlibDecompress(archived.data(), archived.size(), static_cast<size_t>(size));
@@ -875,14 +866,8 @@ bool extractXarFileElements(const std::string &tocText,
                 err << "XAR: malformed directory element for '" << name << "'\n";
                 return false;
             }
-            if (!extractXarFileElements(tocText,
-                                        contentBegin + 1,
-                                        fileEnd - 7,
-                                        name,
-                                        data,
-                                        heapBase,
-                                        err,
-                                        out))
+            if (!extractXarFileElements(
+                    tocText, contentBegin + 1, fileEnd - 7, name, data, heapBase, err, out))
                 return false;
         } else if (type == "file") {
             if (!extractXarFilePayload(block, name, data, heapBase, err, out))
@@ -896,9 +881,7 @@ bool extractXarFileElements(const std::string &tocText,
     return true;
 }
 
-bool extractXarFiles(const std::vector<uint8_t> &data,
-                     std::ostream &err,
-                     XarFileData &out) {
+bool extractXarFiles(const std::vector<uint8_t> &data, std::ostream &err, XarFileData &out) {
     if (data.size() < 28 || std::memcmp(data.data(), "xar!", 4) != 0) {
         err << "XAR: missing xar header\n";
         return false;
@@ -1169,8 +1152,7 @@ bool verifyZipStructure(const std::vector<uint8_t> &data, std::ostream &err) {
             try {
                 clean = sanitizePackageRelativePath(entry.name, "zip entry path");
             } catch (const std::exception &ex) {
-                err << "ZIP: unsafe entry path '" << entry.name << "': " << ex.what()
-                    << "\n";
+                err << "ZIP: unsafe entry path '" << entry.name << "': " << ex.what() << "\n";
                 return false;
             }
             if (clean.empty()) {
@@ -1601,10 +1583,10 @@ bool verifyPE(const std::vector<uint8_t> &data, std::ostream &err) {
     // Check for overlap
     for (size_t i = 0; i < sections.size(); ++i) {
         for (size_t j = i + 1; j < sections.size(); ++j) {
-            uint64_t aEnd =
-                static_cast<uint64_t>(sections[i].rawOff) + static_cast<uint64_t>(sections[i].rawSize);
-            uint64_t bEnd =
-                static_cast<uint64_t>(sections[j].rawOff) + static_cast<uint64_t>(sections[j].rawSize);
+            uint64_t aEnd = static_cast<uint64_t>(sections[i].rawOff) +
+                            static_cast<uint64_t>(sections[i].rawSize);
+            uint64_t bEnd = static_cast<uint64_t>(sections[j].rawOff) +
+                            static_cast<uint64_t>(sections[j].rawSize);
             bool overlap = (sections[i].rawOff < bEnd && sections[j].rawOff < aEnd);
             if (overlap) {
                 err << "PE: sections " << i << " and " << j << " overlap\n";

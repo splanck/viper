@@ -379,8 +379,8 @@ typedef void (*smtp_line_callback_t)(const char *line, void *ctx);
 static int smtp_parse_response_code(const char *line) {
     if (!line || strlen(line) < 3)
         return -1;
-    if (line[0] < '0' || line[0] > '9' || line[1] < '0' || line[1] > '9' ||
-        line[2] < '0' || line[2] > '9')
+    if (line[0] < '0' || line[0] > '9' || line[1] < '0' || line[1] > '9' || line[2] < '0' ||
+        line[2] > '9')
         return -1;
     return (line[0] - '0') * 100 + (line[1] - '0') * 10 + (line[2] - '0');
 }
@@ -460,8 +460,7 @@ static int smtp_send_base64_line(rt_smtp_impl *s, const char *plain, int expecte
     }
     encoded_cstr = rt_string_cstr(encoded);
     encoded_len64 = rt_str_len(encoded);
-    if (!encoded_cstr || encoded_len64 < 0 ||
-        (uint64_t)encoded_len64 > (uint64_t)SIZE_MAX) {
+    if (!encoded_cstr || encoded_len64 < 0 || (uint64_t)encoded_len64 > (uint64_t)SIZE_MAX) {
         rt_string_unref(encoded);
         set_error(s, "SMTP: invalid base64 credential");
         return -1;
@@ -501,13 +500,14 @@ static void smtp_parse_ehlo_caps_line(const char *line, void *ctx) {
     while (*value == ' ' || *value == '\t')
         value++;
 
-    if (strncasecmp(value, "STARTTLS", 8) == 0 && (value[8] == '\0' || value[8] == ' ' ||
-                                                   value[8] == '\t')) {
+    if (strncasecmp(value, "STARTTLS", 8) == 0 &&
+        (value[8] == '\0' || value[8] == ' ' || value[8] == '\t')) {
         caps->supports_starttls = 1;
         return;
     }
 
-    if (strncasecmp(value, "AUTH", 4) == 0 && (value[4] == '\0' || value[4] == ' ' || value[4] == '\t')) {
+    if (strncasecmp(value, "AUTH", 4) == 0 &&
+        (value[4] == '\0' || value[4] == ' ' || value[4] == '\t')) {
         const char *token = value + 4;
         while (*token) {
             const char *start;
@@ -868,7 +868,8 @@ int8_t rt_smtp_send(void *obj, rt_string from, rt_string to, rt_string subject, 
 }
 
 /// @brief Identical to `rt_smtp_send` but the body is sent with `Content-Type: text/html`. Caller
-/// is responsible for any HTML escaping; the runtime only sanitizes header values, not body content.
+/// is responsible for any HTML escaping; the runtime only sanitizes header values, not body
+/// content.
 int8_t rt_smtp_send_html(
     void *obj, rt_string from, rt_string to, rt_string subject, rt_string html_body) {
     if (!obj)

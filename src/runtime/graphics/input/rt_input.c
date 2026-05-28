@@ -50,8 +50,8 @@
 #elif RT_PLATFORM_MACOS
 #include <ApplicationServices/ApplicationServices.h>
 #elif RT_PLATFORM_LINUX && defined(VIPER_ENABLE_GRAPHICS)
-#include <X11/Xlib.h>
 #include <X11/XKBlib.h>
+#include <X11/Xlib.h>
 #endif
 
 #include <stdbool.h>
@@ -132,8 +132,7 @@ static bool rt_keyboard_codepoint_is_text(int32_t ch) {
         return false;
     if (ch >= 0xD800 && ch <= 0xDFFF)
         return false;
-    if ((ch >= 0xE000 && ch <= 0xF8FF) ||
-        (ch >= 0xF0000 && ch <= 0xFFFFD) ||
+    if ((ch >= 0xE000 && ch <= 0xF8FF) || (ch >= 0xF0000 && ch <= 0xFFFFD) ||
         (ch >= 0x100000 && ch <= 0x10FFFD))
         return false;
     return true;

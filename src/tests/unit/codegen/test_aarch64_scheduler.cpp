@@ -314,9 +314,8 @@ TEST(AArch64Scheduler, IndependentStackSlotsDoNotSerializeLoadAfterStore) {
 
     MInstr add;
     add.opc = MOpcode::AddRRR;
-    add.ops = {MOperand::regOp(PhysReg::X2),
-               MOperand::regOp(PhysReg::X1),
-               MOperand::regOp(PhysReg::X3)};
+    add.ops = {
+        MOperand::regOp(PhysReg::X2), MOperand::regOp(PhysReg::X1), MOperand::regOp(PhysReg::X3)};
     bb.instrs.push_back(std::move(add));
 
     MInstr ret;
@@ -355,23 +354,18 @@ TEST(AArch64Scheduler, BaseRegisterMemoryMayAliasAcrossRegisters) {
 
     MInstr store;
     store.opc = MOpcode::StrRegBaseImm;
-    store.ops = {MOperand::regOp(PhysReg::X0),
-                 MOperand::regOp(PhysReg::X10),
-                 MOperand::immOp(0)};
+    store.ops = {MOperand::regOp(PhysReg::X0), MOperand::regOp(PhysReg::X10), MOperand::immOp(0)};
     bb.instrs.push_back(std::move(store));
 
     MInstr load;
     load.opc = MOpcode::LdrRegBaseImm;
-    load.ops = {MOperand::regOp(PhysReg::X1),
-                MOperand::regOp(PhysReg::X11),
-                MOperand::immOp(0)};
+    load.ops = {MOperand::regOp(PhysReg::X1), MOperand::regOp(PhysReg::X11), MOperand::immOp(0)};
     bb.instrs.push_back(std::move(load));
 
     MInstr add;
     add.opc = MOpcode::AddRRR;
-    add.ops = {MOperand::regOp(PhysReg::X2),
-               MOperand::regOp(PhysReg::X1),
-               MOperand::regOp(PhysReg::X3)};
+    add.ops = {
+        MOperand::regOp(PhysReg::X2), MOperand::regOp(PhysReg::X1), MOperand::regOp(PhysReg::X3)};
     bb.instrs.push_back(std::move(add));
 
     MInstr ret;
@@ -419,23 +413,18 @@ TEST(AArch64Scheduler, PointersLoadedFromDifferentFrameSlotsMayAlias) {
 
     MInstr store;
     store.opc = MOpcode::StrRegBaseImm;
-    store.ops = {MOperand::regOp(PhysReg::X0),
-                 MOperand::regOp(PhysReg::X10),
-                 MOperand::immOp(0)};
+    store.ops = {MOperand::regOp(PhysReg::X0), MOperand::regOp(PhysReg::X10), MOperand::immOp(0)};
     bb.instrs.push_back(std::move(store));
 
     MInstr load;
     load.opc = MOpcode::LdrRegBaseImm;
-    load.ops = {MOperand::regOp(PhysReg::X1),
-                MOperand::regOp(PhysReg::X11),
-                MOperand::immOp(0)};
+    load.ops = {MOperand::regOp(PhysReg::X1), MOperand::regOp(PhysReg::X11), MOperand::immOp(0)};
     bb.instrs.push_back(std::move(load));
 
     MInstr add;
     add.opc = MOpcode::AddRRR;
-    add.ops = {MOperand::regOp(PhysReg::X2),
-               MOperand::regOp(PhysReg::X1),
-               MOperand::regOp(PhysReg::X3)};
+    add.ops = {
+        MOperand::regOp(PhysReg::X2), MOperand::regOp(PhysReg::X1), MOperand::regOp(PhysReg::X3)};
     bb.instrs.push_back(std::move(add));
 
     MInstr ret;
@@ -519,8 +508,7 @@ TEST(AArch64Scheduler, TerminatorLast) {
                 continue;
             const MOpcode lastOpc = bb.instrs.back().opc;
             if (!isMirTerminator(lastOpc)) {
-                if (bb.name.rfind("Ltrap_ovf_", 0) == 0 ||
-                    bb.name.rfind("L.Ltrap_ovf_", 0) == 0 ||
+                if (bb.name.rfind("Ltrap_ovf_", 0) == 0 || bb.name.rfind("L.Ltrap_ovf_", 0) == 0 ||
                     bb.name.rfind(".Ltrap_ovf_", 0) == 0)
                     continue;
                 std::cerr << "Block '" << bb.name << "' does not end with a terminator.\n";

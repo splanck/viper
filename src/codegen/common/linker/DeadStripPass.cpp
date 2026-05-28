@@ -89,16 +89,13 @@ struct ObjectLivenessIndex {
     std::vector<std::vector<size_t>> coffUnwindByCodeSection;
 };
 
-static void addSectionEdge(std::vector<std::vector<size_t>> &edges,
-                           size_t fromSec,
-                           size_t toSec) {
+static void addSectionEdge(std::vector<std::vector<size_t>> &edges, size_t fromSec, size_t toSec) {
     if (fromSec == 0 || fromSec >= edges.size() || toSec == 0)
         return;
     edges[fromSec].push_back(toSec);
 }
 
-static std::vector<ObjectLivenessIndex>
-buildObjectLivenessIndexes(
+static std::vector<ObjectLivenessIndex> buildObjectLivenessIndexes(
     const std::vector<ObjFile> &allObjects,
     const std::unordered_map<std::string, GlobalSymEntry> &globalSyms,
     LinkPlatform platform) {
@@ -132,19 +129,15 @@ buildObjectLivenessIndexes(
                 if (rel.symIndex >= obj.symbols.size())
                     continue;
                 const auto &targetSym = obj.symbols[rel.symIndex];
-                if (targetSym.sectionIndex > 0 &&
-                    targetSym.sectionIndex < obj.sections.size()) {
-                    addSectionEdge(index.coffUnwindByCodeSection,
-                                   targetSym.sectionIndex,
-                                   unwindSi);
+                if (targetSym.sectionIndex > 0 && targetSym.sectionIndex < obj.sections.size()) {
+                    addSectionEdge(index.coffUnwindByCodeSection, targetSym.sectionIndex, unwindSi);
                 }
                 if (!targetSym.name.empty()) {
                     auto git = findWithPlatformFallback(globalSyms, targetSym.name, platform);
                     if (git != globalSyms.end() && git->second.objIndex == oi &&
                         git->second.secIndex > 0 && git->second.secIndex < obj.sections.size()) {
-                        addSectionEdge(index.coffUnwindByCodeSection,
-                                       git->second.secIndex,
-                                       unwindSi);
+                        addSectionEdge(
+                            index.coffUnwindByCodeSection, git->second.secIndex, unwindSi);
                     }
                 }
             }
@@ -233,14 +226,12 @@ void deadStrip(std::vector<ObjFile> &allObjects,
 
         if (sec.associativeSection > 0 && sec.associativeSection < obj.sections.size())
             markLive(oi, sec.associativeSection);
-        if (oi < livenessIndexes.size() &&
-            si < livenessIndexes[oi].associativeChildren.size()) {
+        if (oi < livenessIndexes.size() && si < livenessIndexes[oi].associativeChildren.size()) {
             for (size_t childSi : livenessIndexes[oi].associativeChildren[si])
                 markLive(oi, childSi);
         }
 
-        if (obj.format == ObjFileFormat::COFF && sec.executable &&
-            oi < livenessIndexes.size() &&
+        if (obj.format == ObjFileFormat::COFF && sec.executable && oi < livenessIndexes.size() &&
             si < livenessIndexes[oi].coffUnwindByCodeSection.size()) {
             for (size_t unwindSi : livenessIndexes[oi].coffUnwindByCodeSection[si])
                 markLive(oi, unwindSi);

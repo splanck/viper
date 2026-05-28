@@ -171,22 +171,8 @@ static void test_instbatch_sanitizes_nonfinite_matrices() {
     void *mat = rt_material3d_new_color(0.5, 0.5, 0.5);
     void *batch = rt_instbatch3d_new(mesh, mat);
     rt_instbatch3d_view *view = (rt_instbatch3d_view *)batch;
-    void *bad = rt_mat4_new(NAN,
-                            0.0,
-                            0.0,
-                            INFINITY,
-                            0.0,
-                            INFINITY,
-                            0.0,
-                            2.0,
-                            0.0,
-                            0.0,
-                            NAN,
-                            3.0,
-                            0.0,
-                            0.0,
-                            0.0,
-                            NAN);
+    void *bad = rt_mat4_new(
+        NAN, 0.0, 0.0, INFINITY, 0.0, INFINITY, 0.0, 2.0, 0.0, 0.0, NAN, 3.0, 0.0, 0.0, 0.0, NAN);
     rt_instbatch3d_add(batch, bad);
     EXPECT_TRUE(rt_instbatch3d_count(batch) == 1, "Batch accepts matrix after sanitizing it");
     EXPECT_NEAR(view->transforms[0], 1.0, 0.001, "NaN matrix diagonal falls back to identity");
@@ -194,7 +180,8 @@ static void test_instbatch_sanitizes_nonfinite_matrices() {
     EXPECT_NEAR(view->transforms[5], 1.0, 0.001, "Infinite matrix diagonal falls back to identity");
     EXPECT_NEAR(view->transforms[7], 2.0, 0.001, "Finite matrix component is preserved");
     EXPECT_NEAR(view->transforms[10], 1.0, 0.001, "NaN matrix diagonal falls back to identity");
-    EXPECT_NEAR(view->transforms[15], 1.0, 0.001, "NaN homogeneous component falls back to identity");
+    EXPECT_NEAR(
+        view->transforms[15], 1.0, 0.001, "NaN homogeneous component falls back to identity");
 }
 
 /*==========================================================================

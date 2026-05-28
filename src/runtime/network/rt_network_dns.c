@@ -82,9 +82,9 @@ static bool parse_ipv6(const char *addr) {
 }
 
 /// @brief Forward DNS lookup: resolve a hostname to a single IP string. Returns the FIRST address
-/// from getaddrinfo (which may be IPv4 or IPv6 depending on system preference / DNS response order).
-/// For deterministic IPv4 or IPv6 selection, use `_resolve4` / `_resolve6` instead. Traps via
-/// rt_trap_net on lookup failure with kind `Err_DnsError`.
+/// from getaddrinfo (which may be IPv4 or IPv6 depending on system preference / DNS response
+/// order). For deterministic IPv4 or IPv6 selection, use `_resolve4` / `_resolve6` instead. Traps
+/// via rt_trap_net on lookup failure with kind `Err_DnsError`.
 rt_string rt_dns_resolve(rt_string hostname) {
     rt_net_init_wsa();
 

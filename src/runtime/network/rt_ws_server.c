@@ -379,8 +379,8 @@ static int ws_server_handshake(void *tcp, const char *required_subprotocol) {
     }
 
     if (!ws_sec_key_is_valid(ws_key) || !ws_host_header_is_valid(host_header) || !saw_upgrade ||
-        !saw_connection ||
-        !saw_version || !ws_origin_matches_expected(origin_header, host_header, "http", 80)) {
+        !saw_connection || !saw_version ||
+        !ws_origin_matches_expected(origin_header, host_header, "http", 80)) {
         return 0;
     }
     if (protocol_header[0] != '\0' && !ws_protocol_header_is_valid(protocol_header))

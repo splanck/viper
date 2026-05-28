@@ -207,8 +207,8 @@ void dce(Module &M) {
                     if (I.op == Opcode::Alloca && I.result) {
                         allocaObserved[*I.result] = false;
                         if (traceEnabled())
-                            std::cerr << "[dce] tracking alloca %" << *I.result << " in "
-                                      << F.name << "\n";
+                            std::cerr << "[dce] tracking alloca %" << *I.result << " in " << F.name
+                                      << "\n";
                     }
                 }
 
@@ -310,8 +310,7 @@ void dce(Module &M) {
                         if (effects.canEliminateIfUnused()) {
                             if (traceEnabled())
                                 std::cerr << "[dce] removing pure call %" << *I.result << " = "
-                                          << I.callee << " in " << F.name << ":" << B.label
-                                          << "\n";
+                                          << I.callee << " in " << F.name << ":" << B.label << "\n";
                             B.instructions.erase(B.instructions.begin() + i);
                             removedInstruction = true;
                             continue;

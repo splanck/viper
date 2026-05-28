@@ -34,8 +34,8 @@
 #define WIN32_LEAN_AND_MEAN
 #define COBJMACROS
 #include <audioclient.h>
-#include <mmreg.h>
 #include <mmdeviceapi.h>
+#include <mmreg.h>
 #include <stdlib.h>
 #include <string.h>
 #include <windows.h>
@@ -102,10 +102,10 @@ typedef struct {
     UINT32 render_block_align;  ///< Bytes per rendered frame
     UINT32 render_bytes_sample; ///< Bytes per channel sample
     vaud_win32_sample_format render_sample_format; ///< Sample representation
-    volatile LONG running;      ///< Thread running flag
-    volatile LONG paused;       ///< Pause state
-    int com_initialized;        ///< This backend owns a COM apartment reference.
-    CRITICAL_SECTION pause_cs;  ///< Protects pause state
+    volatile LONG running;                         ///< Thread running flag
+    volatile LONG paused;                          ///< Pause state
+    int com_initialized;                           ///< This backend owns a COM apartment reference.
+    CRITICAL_SECTION pause_cs;                     ///< Protects pause state
 } vaud_win32_data;
 
 static int vaud_win32_guid_equal(const GUID *a, const GUID *b) {
@@ -209,8 +209,8 @@ static WAVEFORMATEX *vaud_win32_select_format(IAudioClient *client) {
 
     WAVEFORMATEX *closest = NULL;
     WAVEFORMATEX *selected = NULL;
-    HRESULT hr = IAudioClient_IsFormatSupported(
-        client, AUDCLNT_SHAREMODE_SHARED, &requested, &closest);
+    HRESULT hr =
+        IAudioClient_IsFormatSupported(client, AUDCLNT_SHAREMODE_SHARED, &requested, &closest);
     if (hr == S_OK) {
         selected = vaud_win32_copy_format(&requested);
     } else if (hr == S_FALSE && closest) {
@@ -243,8 +243,8 @@ static UINT32 vaud_win32_max_render_frames(const vaud_win32_data *plat) {
         return VAUD_BUFFER_FRAMES;
     if (plat->render_sample_rate >= VAUD_SAMPLE_RATE)
         return VAUD_BUFFER_FRAMES;
-    uint64_t frames = ((uint64_t)(VAUD_BUFFER_FRAMES - 2) * plat->render_sample_rate) /
-                      VAUD_SAMPLE_RATE;
+    uint64_t frames =
+        ((uint64_t)(VAUD_BUFFER_FRAMES - 2) * plat->render_sample_rate) / VAUD_SAMPLE_RATE;
     if (frames == 0)
         frames = 1;
     if (frames > VAUD_BUFFER_FRAMES)
@@ -252,11 +252,8 @@ static UINT32 vaud_win32_max_render_frames(const vaud_win32_data *plat) {
     return (UINT32)frames;
 }
 
-static int32_t vaud_win32_resampled_sample(const int16_t *mix,
-                                           UINT32 internal_frames,
-                                           UINT32 out_frame,
-                                           UINT32 out_rate,
-                                           UINT32 channel) {
+static int32_t vaud_win32_resampled_sample(
+    const int16_t *mix, UINT32 internal_frames, UINT32 out_frame, UINT32 out_rate, UINT32 channel) {
     if (!mix || internal_frames == 0 || out_rate == 0)
         return 0;
     if (out_rate == VAUD_SAMPLE_RATE) {
@@ -328,9 +325,8 @@ static void vaud_win32_render_to_buffer(vaud_context_t ctx,
 
     UINT32 internal_frames = frames;
     if (plat->render_sample_rate != VAUD_SAMPLE_RATE) {
-        uint64_t needed = ((uint64_t)(frames - 1u) * VAUD_SAMPLE_RATE) /
-                              plat->render_sample_rate +
-                          2u;
+        uint64_t needed =
+            ((uint64_t)(frames - 1u) * VAUD_SAMPLE_RATE) / plat->render_sample_rate + 2u;
         internal_frames = needed > VAUD_BUFFER_FRAMES ? VAUD_BUFFER_FRAMES : (UINT32)needed;
     }
     if (internal_frames == 0)
@@ -391,8 +387,7 @@ static DWORD WINAPI audio_thread_func(LPVOID arg) {
         /* Wait for buffer space or stop signal */
         DWORD wait_result = WaitForMultipleObjects(2, events, FALSE, 100);
 
-        if (!InterlockedCompareExchange(&plat->running, 0, 0) ||
-            wait_result == WAIT_OBJECT_0 + 1) {
+        if (!InterlockedCompareExchange(&plat->running, 0, 0) || wait_result == WAIT_OBJECT_0 + 1) {
             /* Stop event signaled */
             break;
         }
@@ -786,8 +781,7 @@ static BOOL CALLBACK vaud_qpc_init_once(PINIT_ONCE init_once, PVOID parameter, P
     (void)init_once;
     (void)parameter;
     (void)context;
-    if (!QueryPerformanceFrequency(&g_vaud_qpc_frequency) ||
-        g_vaud_qpc_frequency.QuadPart <= 0) {
+    if (!QueryPerformanceFrequency(&g_vaud_qpc_frequency) || g_vaud_qpc_frequency.QuadPart <= 0) {
         g_vaud_qpc_frequency.QuadPart = 1000;
         return FALSE;
     }

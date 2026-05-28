@@ -276,8 +276,8 @@ void validateEagerLogicalOperands(sem::ExprCheckContext &context,
 
     std::ostringstream oss;
     oss << "Logical operator " << logicalOpName(expr.op)
-        << " requires INTEGER or BOOLEAN operands, got "
-        << semanticTypeName(lhs) << " and " << semanticTypeName(rhs) << '.';
+        << " requires INTEGER or BOOLEAN operands, got " << semanticTypeName(lhs) << " and "
+        << semanticTypeName(rhs) << '.';
     sem::emitTypeMismatch(context.diagnostics(), std::string(diagId), expr.loc, 1, oss.str());
 }
 

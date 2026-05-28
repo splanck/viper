@@ -10,8 +10,8 @@
 //
 //===----------------------------------------------------------------------===//
 
-#include "rt_csv.h"
 #include "rt_box.h"
+#include "rt_csv.h"
 #include "rt_internal.h"
 #include "rt_seq.h"
 #include "rt_string.h"

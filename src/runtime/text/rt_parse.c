@@ -56,8 +56,7 @@ extern "C" {
 
 /// @brief Return true for the fixed ASCII whitespace set, independent of locale.
 static inline int is_ascii_space(unsigned char ch) {
-    return ch == ' ' || ch == '\t' || ch == '\n' || ch == '\r' || ch == '\f' ||
-           ch == '\v';
+    return ch == ' ' || ch == '\t' || ch == '\n' || ch == '\r' || ch == '\f' || ch == '\v';
 }
 
 /// @brief Advance a pointer past ASCII whitespace characters.

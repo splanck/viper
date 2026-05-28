@@ -90,9 +90,7 @@ uint32_t codeDirectorySize(size_t codeLimit, const std::string &identifier, size
 
 } // anonymous namespace
 
-size_t estimateCodeSignatureSize(size_t codeLimit,
-                                 const std::string &identifier,
-                                 size_t pageSize) {
+size_t estimateCodeSignatureSize(size_t codeLimit, const std::string &identifier, size_t pageSize) {
     return kSuperBlobHeaderSize + codeDirectorySize(codeLimit, identifier, pageSize) +
            kRequirementsSize + kBlobWrapperSize;
 }
@@ -121,7 +119,7 @@ std::vector<uint8_t> buildCodeSignature(const std::vector<uint8_t> &file,
     writeBE32(cd, cdSize);
     writeBE32(cd, CD_VERSION);
     writeBE32(cd, CS_ADHOC);
-    writeBE32(cd, hashOffset);   // hashOffset
+    writeBE32(cd, hashOffset);               // hashOffset
     writeBE32(cd, kCodeDirectoryHeaderSize); // identOffset
     writeBE32(cd, kSpecialSlots);
     writeBE32(cd, nCodeSlots);
@@ -172,8 +170,8 @@ std::vector<uint8_t> buildCodeSignature(const std::vector<uint8_t> &file,
     writeBE32(wrapper, kBlobWrapperSize);
 
     // --- Build SuperBlob ---
-    const uint32_t sbSize = kSuperBlobHeaderSize +
-                            static_cast<uint32_t>(cd.size() + req.size() + wrapper.size());
+    const uint32_t sbSize =
+        kSuperBlobHeaderSize + static_cast<uint32_t>(cd.size() + req.size() + wrapper.size());
 
     std::vector<uint8_t> sb;
     sb.reserve(sbSize);
@@ -191,9 +189,7 @@ std::vector<uint8_t> buildCodeSignature(const std::vector<uint8_t> &file,
 
     // Index entry 2: empty BlobWrapper (type = 0x10000)
     writeBE32(sb, CSSLOT_SIGNATURESLOT);
-    writeBE32(
-        sb,
-        kSuperBlobHeaderSize + static_cast<uint32_t>(cd.size() + req.size()));
+    writeBE32(sb, kSuperBlobHeaderSize + static_cast<uint32_t>(cd.size() + req.size()));
 
     sb.insert(sb.end(), cd.begin(), cd.end());
     sb.insert(sb.end(), req.begin(), req.end());

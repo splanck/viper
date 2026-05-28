@@ -443,11 +443,12 @@ static void outputpane_paint(vg_widget_t *widget, void *canvas) {
         float x = widget->x + 4; // Left padding
         float line_top = y;
 
-        if (pane->has_selection && (uint32_t)line_idx >= start_line && (uint32_t)line_idx <= end_line) {
+        if (pane->has_selection && (uint32_t)line_idx >= start_line &&
+            (uint32_t)line_idx <= end_line) {
             uint32_t line_start_col = (uint32_t)line_idx == start_line ? start_col : 0;
-            uint32_t line_end_col =
-                (uint32_t)line_idx == end_line && end_col != UINT32_MAX ? end_col
-                                                                         : (uint32_t)outputpane_line_length(line);
+            uint32_t line_end_col = (uint32_t)line_idx == end_line && end_col != UINT32_MAX
+                                        ? end_col
+                                        : (uint32_t)outputpane_line_length(line);
             float sel_x0 = widget->x + 4.0f + outputpane_prefix_width(pane, line, line_start_col);
             float sel_x1 = widget->x + 4.0f + outputpane_prefix_width(pane, line, line_end_col);
             if (sel_x1 < sel_x0) {
@@ -484,8 +485,13 @@ static void outputpane_paint(vg_widget_t *widget, void *canvas) {
             }
 
             // Draw text
-            vg_font_draw_text(
-                canvas, pane->font, pane->font_size, x, line_top + font_metrics.ascent, seg->text, seg->fg_color);
+            vg_font_draw_text(canvas,
+                              pane->font,
+                              pane->font_size,
+                              x,
+                              line_top + font_metrics.ascent,
+                              seg->text,
+                              seg->fg_color);
 
             // Advance X position
             x += metrics.width;

@@ -942,8 +942,8 @@ static int dt_days_in_month(int64_t year, int month) {
 ///          is in range. Note: leap seconds (`second == 60`) are not accepted.
 static int dt_is_valid_datetime(int year, int month, int day, int hour, int minute, int second) {
     int max_day = dt_days_in_month(year, month);
-    return max_day > 0 && day >= 1 && day <= max_day && hour >= 0 && hour <= 23 &&
-           minute >= 0 && minute <= 59 && second >= 0 && second <= 59;
+    return max_day > 0 && day >= 1 && day <= max_day && hour >= 0 && hour <= 23 && minute >= 0 &&
+           minute <= 59 && second >= 0 && second <= 59;
 }
 
 /// @brief Convert civil (year, month, day) UTC to days-since-Unix-epoch with overflow check.
@@ -983,8 +983,7 @@ static int dt_make_utc_timestamp(
         dt_checked_mul_i64(hour, 3600, &hour_seconds) ||
         dt_checked_add_i64(day_seconds, hour_seconds, &total) ||
         dt_checked_mul_i64(minute, 60, &minute_seconds) ||
-        dt_checked_add_i64(total, minute_seconds, &total) ||
-        dt_checked_add_i64(total, second, out))
+        dt_checked_add_i64(total, minute_seconds, &total) || dt_checked_add_i64(total, second, out))
         return 0;
     return 1;
 }
@@ -1010,9 +1009,8 @@ static int dt_make_local_timestamp(
     struct tm *check = rt_localtime_r(&t, &check_buf);
     if (!check)
         return 0;
-    if (check->tm_year != year - 1900 || check->tm_mon != month - 1 ||
-        check->tm_mday != day || check->tm_hour != hour || check->tm_min != minute ||
-        check->tm_sec != second)
+    if (check->tm_year != year - 1900 || check->tm_mon != month - 1 || check->tm_mday != day ||
+        check->tm_hour != hour || check->tm_min != minute || check->tm_sec != second)
         return 0;
 
     return dt_time_t_to_i64(t, out);

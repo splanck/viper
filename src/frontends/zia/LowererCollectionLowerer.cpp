@@ -100,7 +100,8 @@ LowerResult CollectionLowerer::lowerTuple(TupleExpr *expr) {
     for (size_t i = 0; i < expr->elements.size(); ++i) {
         auto &elem = expr->elements[i];
         auto result = lowerer_.lowerExpr(elem.get());
-        TypeRef elemType = i < elementTypes.size() ? elementTypes[i] : lowerer_.sema_.typeOf(elem.get());
+        TypeRef elemType =
+            i < elementTypes.size() ? elementTypes[i] : lowerer_.sema_.typeOf(elem.get());
         size_t offset = lowerer_.getTupleElementOffset(tupleType, i);
         Value elemPtr = emitTupleElementAddress(tuplePtr, offset);
         lowerer_.emitInlineValueStore(elemType, elemPtr, result.value, false);
@@ -122,11 +123,11 @@ LowerResult CollectionLowerer::lowerTupleIndex(TupleIndexExpr *expr) {
     TypeRef elemType = tupleType->tupleElementType(expr->index);
     Type ilType = lowerer_.mapType(elemType);
 
-    Value elemPtr =
-        emitTupleElementAddress(tupleResult.value, lowerer_.getTupleElementOffset(tupleType, expr->index));
-    if (elemType && (elemType->kind == TypeKindSem::Struct ||
-                     elemType->kind == TypeKindSem::FixedArray ||
-                     elemType->kind == TypeKindSem::Tuple))
+    Value elemPtr = emitTupleElementAddress(tupleResult.value,
+                                            lowerer_.getTupleElementOffset(tupleType, expr->index));
+    if (elemType &&
+        (elemType->kind == TypeKindSem::Struct || elemType->kind == TypeKindSem::FixedArray ||
+         elemType->kind == TypeKindSem::Tuple))
         return {elemPtr, Type(Type::Kind::Ptr)};
 
     Value elemVal = lowerer_.emitLoad(elemPtr, ilType);
@@ -194,10 +195,10 @@ LowerResult CollectionLowerer::lowerFixedArrayIndex(Value baseValue,
     TypeRef elemType = baseType->elementType();
     Type ilElemType = elemType ? lowerer_.mapType(elemType) : Type(Type::Kind::I64);
     size_t elemSize = lowerer_.getSemanticTypeSize(elemType);
-    Value checkedIndex = lowerer_.emitIndexCheck(
-        lowerer_.widenIntegralToI64(indexValue, indexType),
-        Value::constInt(0),
-        Value::constInt(static_cast<int64_t>(baseType->elementCount)));
+    Value checkedIndex =
+        lowerer_.emitIndexCheck(lowerer_.widenIntegralToI64(indexValue, indexType),
+                                Value::constInt(0),
+                                Value::constInt(static_cast<int64_t>(baseType->elementCount)));
 
     unsigned mulId = lowerer_.nextTempId();
     il::core::Instr mulInstr;
@@ -210,9 +211,9 @@ LowerResult CollectionLowerer::lowerFixedArrayIndex(Value baseValue,
     Value byteOffset = Value::temp(mulId);
 
     Value elemAddr = emitRuntimeOffsetAddress(baseValue, byteOffset);
-    if (elemType && (elemType->kind == TypeKindSem::Struct ||
-                     elemType->kind == TypeKindSem::FixedArray ||
-                     elemType->kind == TypeKindSem::Tuple))
+    if (elemType &&
+        (elemType->kind == TypeKindSem::Struct || elemType->kind == TypeKindSem::FixedArray ||
+         elemType->kind == TypeKindSem::Tuple))
         return {elemAddr, Type(Type::Kind::Ptr)};
 
     Value elemVal = lowerer_.emitLoad(elemAddr, ilElemType);

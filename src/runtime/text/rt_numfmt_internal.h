@@ -51,8 +51,10 @@ extern "C" {
 /// @param sep_len     Length of @p sep in bytes.
 /// @param group_size  Digits per group from the right (typically 3).
 void rt_numfmt_group_digits(rt_string_builder *sb,
-                            const char *digits, int dlen,
-                            const char *sep, size_t sep_len,
+                            const char *digits,
+                            int dlen,
+                            const char *sep,
+                            size_t sep_len,
                             int group_size);
 
 #ifdef __cplusplus

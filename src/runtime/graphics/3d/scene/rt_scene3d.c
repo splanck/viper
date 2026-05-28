@@ -32,8 +32,6 @@
 #ifdef VIPER_ENABLE_GRAPHICS
 
 #include "rt_scene3d.h"
-#include "rt_scene3d_internal.h"
-#include "rt_sound3d.h"
 #include "rt_animcontroller3d.h"
 #include "rt_box.h"
 #include "rt_canvas3d.h"
@@ -43,11 +41,13 @@
 #include "rt_mat4.h"
 #include "rt_morphtarget3d.h"
 #include "rt_object.h"
-#include "rt_pixels_internal.h"
 #include "rt_physics3d.h"
+#include "rt_pixels_internal.h"
 #include "rt_quat.h"
+#include "rt_scene3d_internal.h"
 #include "rt_seq.h"
 #include "rt_skeleton3d_internal.h"
+#include "rt_sound3d.h"
 #include "rt_string.h"
 #include "rt_trap.h"
 #include "rt_vec3.h"
@@ -97,7 +97,8 @@ static double scene3d_finite_or(double value, double fallback) {
     return isfinite(value) ? value : fallback;
 }
 
-/// @brief Clamp `value` into `[-SCENE3D_ABS_MAX, SCENE3D_ABS_MAX]`, substituting `fallback` when not finite.
+/// @brief Clamp `value` into `[-SCENE3D_ABS_MAX, SCENE3D_ABS_MAX]`, substituting `fallback` when
+/// not finite.
 static double scene3d_clamp_abs_or(double value, double fallback) {
     value = scene3d_finite_or(value, fallback);
     if (value > SCENE3D_ABS_MAX)
@@ -107,7 +108,8 @@ static double scene3d_clamp_abs_or(double value, double fallback) {
     return value;
 }
 
-/// @brief Narrow a double to float, returning 0.0f when non-finite or outside ±SCENE3D_FLOAT_ABS_MAX.
+/// @brief Narrow a double to float, returning 0.0f when non-finite or outside
+/// ±SCENE3D_FLOAT_ABS_MAX.
 static float scene3d_float_or_zero(double value) {
     if (!isfinite(value) || value < -SCENE3D_FLOAT_ABS_MAX || value > SCENE3D_FLOAT_ABS_MAX)
         return 0.0f;
@@ -169,8 +171,8 @@ static void rt_node_animation3d_finalize(void *obj) {
 ///          single-shot playback flip `looping` after construction.
 /// @return Opaque clip handle, or NULL and traps on allocation failure.
 void *rt_node_animation3d_new(rt_string name, double duration) {
-    rt_node_animation3d *anim =
-        (rt_node_animation3d *)rt_obj_new_i64(RT_G3D_NODEANIMATION3D_CLASS_ID, (int64_t)sizeof(rt_node_animation3d));
+    rt_node_animation3d *anim = (rt_node_animation3d *)rt_obj_new_i64(
+        RT_G3D_NODEANIMATION3D_CLASS_ID, (int64_t)sizeof(rt_node_animation3d));
     if (!anim) {
         rt_trap("NodeAnimation3D.New: allocation failed");
         return NULL;
@@ -209,8 +211,8 @@ static int node_animation_reserve_channels(rt_node_animation3d *anim, int32_t ne
         new_capacity = needed;
     if ((size_t)new_capacity > SIZE_MAX / sizeof(*anim->channels))
         return 0;
-    grown = (rt_node_anim_channel3d *)realloc(
-        anim->channels, (size_t)new_capacity * sizeof(*anim->channels));
+    grown = (rt_node_anim_channel3d *)realloc(anim->channels,
+                                              (size_t)new_capacity * sizeof(*anim->channels));
     if (!grown)
         return 0;
     memset(grown + anim->channel_capacity,
@@ -350,9 +352,9 @@ static int64_t node_animation_add_channel_impl(void *obj,
     if (interpolation == RT_NODE_ANIM_INTERP_CUBICSPLINE)
         channel->interpolation = RT_NODE_ANIM_INTERP_CUBICSPLINE;
     else
-        channel->interpolation =
-            interpolation == RT_NODE_ANIM_INTERP_STEP ? RT_NODE_ANIM_INTERP_STEP
-                                                      : RT_NODE_ANIM_INTERP_LINEAR;
+        channel->interpolation = interpolation == RT_NODE_ANIM_INTERP_STEP
+                                     ? RT_NODE_ANIM_INTERP_STEP
+                                     : RT_NODE_ANIM_INTERP_LINEAR;
     channel->key_count = (int32_t)key_count;
     channel->value_width = (int32_t)value_width;
     return anim->channel_count++;
@@ -380,16 +382,8 @@ int64_t rt_node_animation3d_add_channel(void *obj,
                                         int64_t value_width,
                                         const double *times,
                                         const float *values) {
-    return node_animation_add_channel_impl(obj,
-                                           target_name,
-                                           path,
-                                           interpolation,
-                                           key_count,
-                                           value_width,
-                                           times,
-                                           values,
-                                           NULL,
-                                           NULL);
+    return node_animation_add_channel_impl(
+        obj, target_name, path, interpolation, key_count, value_width, times, values, NULL, NULL);
 }
 
 /// @brief Add a CUBICSPLINE (Catmull-Rom / glTF cubic) channel to an animation clip.
@@ -468,7 +462,8 @@ void *rt_node_animator3d_new_from_clips(void **clips, int64_t clip_count) {
         if (!rt_g3d_has_class(clips[i], RT_G3D_NODEANIMATION3D_CLASS_ID))
             return NULL;
     }
-    animator = (rt_node_animator3d *)rt_obj_new_i64(RT_G3D_NODEANIMATOR3D_CLASS_ID, (int64_t)sizeof(rt_node_animator3d));
+    animator = (rt_node_animator3d *)rt_obj_new_i64(RT_G3D_NODEANIMATOR3D_CLASS_ID,
+                                                    (int64_t)sizeof(rt_node_animator3d));
     if (!animator) {
         rt_trap("NodeAnimator3D.New: allocation failed");
         return NULL;
@@ -575,8 +570,8 @@ static int mat4d_invert(const double *m, double *out) {
              m[8] * m[3] * m[13] - m[12] * m[1] * m[11] + m[12] * m[3] * m[9];
     inv[13] = m[0] * m[9] * m[14] - m[0] * m[10] * m[13] - m[8] * m[1] * m[14] +
               m[8] * m[2] * m[13] + m[12] * m[1] * m[10] - m[12] * m[2] * m[9];
-    inv[2] = m[1] * m[6] * m[15] - m[1] * m[7] * m[14] - m[5] * m[2] * m[15] +
-             m[5] * m[3] * m[14] + m[13] * m[2] * m[7] - m[13] * m[3] * m[6];
+    inv[2] = m[1] * m[6] * m[15] - m[1] * m[7] * m[14] - m[5] * m[2] * m[15] + m[5] * m[3] * m[14] +
+             m[13] * m[2] * m[7] - m[13] * m[3] * m[6];
     inv[6] = -m[0] * m[6] * m[15] + m[0] * m[7] * m[14] + m[4] * m[2] * m[15] -
              m[4] * m[3] * m[14] - m[12] * m[2] * m[7] + m[12] * m[3] * m[6];
     inv[10] = m[0] * m[5] * m[15] - m[0] * m[7] * m[13] - m[4] * m[1] * m[15] +
@@ -585,12 +580,12 @@ static int mat4d_invert(const double *m, double *out) {
               m[4] * m[2] * m[13] - m[12] * m[1] * m[6] + m[12] * m[2] * m[5];
     inv[3] = -m[1] * m[6] * m[11] + m[1] * m[7] * m[10] + m[5] * m[2] * m[11] -
              m[5] * m[3] * m[10] - m[9] * m[2] * m[7] + m[9] * m[3] * m[6];
-    inv[7] = m[0] * m[6] * m[11] - m[0] * m[7] * m[10] - m[4] * m[2] * m[11] +
-             m[4] * m[3] * m[10] + m[8] * m[2] * m[7] - m[8] * m[3] * m[6];
-    inv[11] = -m[0] * m[5] * m[11] + m[0] * m[7] * m[9] + m[4] * m[1] * m[11] -
-              m[4] * m[3] * m[9] - m[8] * m[1] * m[7] + m[8] * m[3] * m[5];
-    inv[15] = m[0] * m[5] * m[10] - m[0] * m[6] * m[9] - m[4] * m[1] * m[10] +
-              m[4] * m[2] * m[9] + m[8] * m[1] * m[6] - m[8] * m[2] * m[5];
+    inv[7] = m[0] * m[6] * m[11] - m[0] * m[7] * m[10] - m[4] * m[2] * m[11] + m[4] * m[3] * m[10] +
+             m[8] * m[2] * m[7] - m[8] * m[3] * m[6];
+    inv[11] = -m[0] * m[5] * m[11] + m[0] * m[7] * m[9] + m[4] * m[1] * m[11] - m[4] * m[3] * m[9] -
+              m[8] * m[1] * m[7] + m[8] * m[3] * m[5];
+    inv[15] = m[0] * m[5] * m[10] - m[0] * m[6] * m[9] - m[4] * m[1] * m[10] + m[4] * m[2] * m[9] +
+              m[8] * m[1] * m[6] - m[8] * m[2] * m[5];
 
     det = m[0] * inv[0] + m[1] * inv[4] + m[2] * inv[8] + m[3] * inv[12];
     if (!isfinite(det) || fabs(det) < 1e-12)
@@ -681,7 +676,8 @@ static void quat_from_matrix_rows(double m00,
     quat_normalize_local(out);
 }
 
-/// @brief Strip translation/scale and call `quat_from_matrix_rows` to recover the rotation quaternion.
+/// @brief Strip translation/scale and call `quat_from_matrix_rows` to recover the rotation
+/// quaternion.
 ///
 /// Used when reading back world-space orientation after a node's
 /// world matrix has been composed from parent transforms — we need
@@ -714,8 +710,8 @@ static int scene_extract_rotation_basis(const double *m, double basis[9]) {
     rlen = sqrt(rx * rx + ry * ry + rz * rz);
     ulen = sqrt(ux * ux + uy * uy + uz * uz);
     flen = sqrt(fx * fx + fy * fy + fz * fz);
-    if (!isfinite(rlen) || !isfinite(ulen) || !isfinite(flen) || rlen < 1e-12 ||
-        ulen < 1e-12 || flen < 1e-12)
+    if (!isfinite(rlen) || !isfinite(ulen) || !isfinite(flen) || rlen < 1e-12 || ulen < 1e-12 ||
+        flen < 1e-12)
         return 0;
     rx /= rlen;
     ry /= rlen;
@@ -726,8 +722,7 @@ static int scene_extract_rotation_basis(const double *m, double basis[9]) {
     fx /= flen;
     fy /= flen;
     fz /= flen;
-    det = rx * (uy * fz - uz * fy) - ux * (ry * fz - rz * fy) +
-          fx * (ry * uz - rz * uy);
+    det = rx * (uy * fz - uz * fy) - ux * (ry * fz - rz * fy) + fx * (ry * uz - rz * uy);
     if (!isfinite(det))
         return 0;
     if (det < 0.0) {
@@ -767,7 +762,16 @@ static void quat_from_world_matrix(const double *m, double *out) {
         quat_identity(out);
         return;
     }
-    quat_from_matrix_rows(basis[0], basis[1], basis[2], basis[3], basis[4], basis[5], basis[6], basis[7], basis[8], out);
+    quat_from_matrix_rows(basis[0],
+                          basis[1],
+                          basis[2],
+                          basis[3],
+                          basis[4],
+                          basis[5],
+                          basis[6],
+                          basis[7],
+                          basis[8],
+                          out);
 }
 
 /// @brief Decompose a row-major TRS matrix into translation, rotation, and scale.
@@ -819,8 +823,7 @@ static void decompose_trs_matrix(const double *m, double *pos, double *quat, dou
         fz /= sz_norm;
     }
 
-    det = rx * (uy * fz - uz * fy) - ux * (ry * fz - rz * fy) +
-          fx * (ry * uz - rz * uy);
+    det = rx * (uy * fz - uz * fy) - ux * (ry * fz - rz * fy) + fx * (ry * uz - rz * uy);
     if (det < 0.0) {
         if (sx >= sy && sx >= sz) {
             sx = -sx;
@@ -1071,8 +1074,9 @@ static void node_anim_sample_channel(const rt_node_anim_channel3d *channel,
     }
     t0 = channel->times[lo];
     t1 = channel->times[hi];
-    alpha = (t1 > t0 && channel->interpolation != RT_NODE_ANIM_INTERP_STEP) ? (time - t0) / (t1 - t0)
-                                                                            : 0.0;
+    alpha = (t1 > t0 && channel->interpolation != RT_NODE_ANIM_INTERP_STEP)
+                ? (time - t0) / (t1 - t0)
+                : 0.0;
     if (alpha < 0.0)
         alpha = 0.0;
     else if (alpha > 1.0)
@@ -1095,10 +1099,9 @@ static void node_anim_sample_channel(const rt_node_anim_channel3d *channel,
         for (int32_t i = 0; i < channel->value_width; i++) {
             size_t ai = (size_t)lo * (size_t)channel->value_width + (size_t)i;
             size_t bi = (size_t)hi * (size_t)channel->value_width + (size_t)i;
-            out_values[i] = (float)(h00 * channel->values[ai] +
-                                    h10 * dt * channel->out_tangents[ai] +
-                                    h01 * channel->values[bi] +
-                                    h11 * dt * channel->in_tangents[bi]);
+            out_values[i] =
+                (float)(h00 * channel->values[ai] + h10 * dt * channel->out_tangents[ai] +
+                        h01 * channel->values[bi] + h11 * dt * channel->in_tangents[bi]);
         }
         if (channel->path == RT_NODE_ANIM_PATH_ROTATION && channel->value_width >= 4)
             node_anim_normalize_quat(out_values);
@@ -1437,18 +1440,15 @@ static void scene_node_apply_root_motion(rt_scene_node3d *node) {
         scene3d_release_ref(&delta_rot);
         return;
     }
-    node->position[0] = scene3d_clamp_abs_or(
-        scene3d_clamp_abs_or(node->position[0], 0.0) +
-            scene3d_clamp_abs_or(rt_vec3_x(delta), 0.0),
-        0.0);
-    node->position[1] = scene3d_clamp_abs_or(
-        scene3d_clamp_abs_or(node->position[1], 0.0) +
-            scene3d_clamp_abs_or(rt_vec3_y(delta), 0.0),
-        0.0);
-    node->position[2] = scene3d_clamp_abs_or(
-        scene3d_clamp_abs_or(node->position[2], 0.0) +
-            scene3d_clamp_abs_or(rt_vec3_z(delta), 0.0),
-        0.0);
+    node->position[0] = scene3d_clamp_abs_or(scene3d_clamp_abs_or(node->position[0], 0.0) +
+                                                 scene3d_clamp_abs_or(rt_vec3_x(delta), 0.0),
+                                             0.0);
+    node->position[1] = scene3d_clamp_abs_or(scene3d_clamp_abs_or(node->position[1], 0.0) +
+                                                 scene3d_clamp_abs_or(rt_vec3_y(delta), 0.0),
+                                             0.0);
+    node->position[2] = scene3d_clamp_abs_or(scene3d_clamp_abs_or(node->position[2], 0.0) +
+                                                 scene3d_clamp_abs_or(rt_vec3_z(delta), 0.0),
+                                             0.0);
     if (delta_rot) {
         node_rot =
             rt_quat_new(node->rotation[0], node->rotation[1], node->rotation[2], node->rotation[3]);
@@ -1497,16 +1497,13 @@ static void scene_node_sync_recursive(rt_scene_node3d *node, double dt) {
             node_animator_update((rt_node_animator3d *)current->bound_node_animator, dt);
 
         mode = current->sync_mode;
-        body_is_kinematic =
-            current->bound_body ? rt_body3d_is_kinematic(current->bound_body) : 0;
-        pull_from_body =
-            current->bound_body &&
-            (mode == RT_SCENE_NODE3D_SYNC_NODE_FROM_BODY ||
-             (mode == RT_SCENE_NODE3D_SYNC_TWO_WAY_KINEMATIC && !body_is_kinematic));
-        push_to_body =
-            current->bound_body &&
-            (mode == RT_SCENE_NODE3D_SYNC_BODY_FROM_NODE ||
-             (mode == RT_SCENE_NODE3D_SYNC_TWO_WAY_KINEMATIC && body_is_kinematic));
+        body_is_kinematic = current->bound_body ? rt_body3d_is_kinematic(current->bound_body) : 0;
+        pull_from_body = current->bound_body &&
+                         (mode == RT_SCENE_NODE3D_SYNC_NODE_FROM_BODY ||
+                          (mode == RT_SCENE_NODE3D_SYNC_TWO_WAY_KINEMATIC && !body_is_kinematic));
+        push_to_body = current->bound_body &&
+                       (mode == RT_SCENE_NODE3D_SYNC_BODY_FROM_NODE ||
+                        (mode == RT_SCENE_NODE3D_SYNC_TWO_WAY_KINEMATIC && body_is_kinematic));
 
         if (pull_from_body) {
             double world_pos[3];
@@ -1524,19 +1521,16 @@ static void scene_node_sync_recursive(rt_scene_node3d *node, double dt) {
             scene3d_release_ref(&pos);
             scene3d_release_ref(&quat);
         } else if (current->bound_animator &&
-                   (mode == RT_SCENE_NODE3D_SYNC_NODE_FROM_ANIMATOR_ROOT_MOTION ||
-                    push_to_body)) {
+                   (mode == RT_SCENE_NODE3D_SYNC_NODE_FROM_ANIMATOR_ROOT_MOTION || push_to_body)) {
             scene_node_apply_root_motion(current);
         }
 
         if (push_to_body) {
             double world_pos[3];
             double world_quat[4];
-            scene_node_get_world_position(
-                current, &world_pos[0], &world_pos[1], &world_pos[2]);
+            scene_node_get_world_position(current, &world_pos[0], &world_pos[1], &world_pos[2]);
             scene_node_get_world_rotation(current, world_quat);
-            rt_body3d_set_position(
-                current->bound_body, world_pos[0], world_pos[1], world_pos[2]);
+            rt_body3d_set_position(current->bound_body, world_pos[0], world_pos[1], world_pos[2]);
             {
                 void *quat =
                     rt_quat_new(world_quat[0], world_quat[1], world_quat[2], world_quat[3]);
@@ -1641,7 +1635,10 @@ static void scene_world_point(const double *world_matrix, const float local[3], 
 /// @param fallback_x X component of the replacement direction on degenerate input.
 /// @param fallback_y Y component of the replacement direction on degenerate input.
 /// @param fallback_z Z component of the replacement direction on degenerate input.
-static void scene_normalize_f32_vec3(float v[3], float fallback_x, float fallback_y, float fallback_z) {
+static void scene_normalize_f32_vec3(float v[3],
+                                     float fallback_x,
+                                     float fallback_y,
+                                     float fallback_z) {
     float len;
     if (!v)
         return;
@@ -1658,7 +1655,9 @@ static void scene_normalize_f32_vec3(float v[3], float fallback_x, float fallbac
 }
 
 /// @brief Transform a node-attached light into world space for the current draw snapshot.
-static void scene_transform_node_light(rt_scene_node3d *node, const rt_light3d *src, rt_light3d *dst) {
+static void scene_transform_node_light(rt_scene_node3d *node,
+                                       const rt_light3d *src,
+                                       rt_light3d *dst) {
     float local_pos[3];
     float world_pos[3];
     float world_dir[3];
@@ -1729,7 +1728,8 @@ static void scene_collect_node_lights(rt_scene_node3d *node,
             continue;
         if (current->light) {
             int32_t index = *io_count;
-            scene_transform_node_light(current, (const rt_light3d *)current->light, &storage[index]);
+            scene_transform_node_light(
+                current, (const rt_light3d *)current->light, &storage[index]);
             out_lights[index] = &storage[index];
             *io_count = index + 1;
             if (*io_count >= VGFX3D_MAX_LIGHTS)
@@ -1761,7 +1761,9 @@ static void scene_bounds_reset(float out_min[3], float out_max[3]) {
 }
 
 /// @brief Expand @p bounds_min/@p bounds_max to include @p point.
-static void scene_bounds_include_point(float bounds_min[3], float bounds_max[3], const float point[3]) {
+static void scene_bounds_include_point(float bounds_min[3],
+                                       float bounds_max[3],
+                                       const float point[3]) {
     if (!bounds_min || !bounds_max || !point)
         return;
     for (int i = 0; i < 3; i++) {
@@ -1834,7 +1836,8 @@ static int scene_bounds_stack_push(scene_bounds_stack_item_t **stack,
 /// @brief Compute a node subtree's local-space AABB relative to the queried root node.
 ///
 /// @param node Current subtree node.
-/// @param node_to_root Row-major matrix mapping @p node local space into the queried root's local space.
+/// @param node_to_root Row-major matrix mapping @p node local space into the queried root's local
+/// space.
 /// @param out_min Running subtree minimum.
 /// @param out_max Running subtree maximum.
 /// @return 1 if the subtree contributed any mesh bounds, otherwise 0.
@@ -2019,7 +2022,8 @@ static void draw_node(rt_scene_node3d *node,
                 float cull_min[3] = {draw_min[0], draw_min[1], draw_min[2]};
                 float cull_max[3] = {draw_max[0], draw_max[1], draw_max[2]};
                 float world_min[3], world_max[3];
-                vgfx3d_transform_aabb(cull_min, cull_max, current->world_matrix, world_min, world_max);
+                vgfx3d_transform_aabb(
+                    cull_min, cull_max, current->world_matrix, world_min, world_max);
                 if (vgfx3d_frustum_test_aabb(frustum, world_min, world_max) == 0) {
                     draw_self = 0;
                     if (culled)
@@ -2035,11 +2039,10 @@ static void draw_node(rt_scene_node3d *node,
             int32_t mesh_bone_count = ((rt_mesh3d *)draw_mesh)->bone_count;
 
             if (effective_animator) {
-                anim_palette =
-                    rt_anim_controller3d_get_final_palette_data(effective_animator, &anim_bone_count);
-                anim_prev_palette =
-                    rt_anim_controller3d_get_previous_palette_data(effective_animator,
-                                                                   &anim_bone_count);
+                anim_palette = rt_anim_controller3d_get_final_palette_data(effective_animator,
+                                                                           &anim_bone_count);
+                anim_prev_palette = rt_anim_controller3d_get_previous_palette_data(
+                    effective_animator, &anim_bone_count);
             }
             if (anim_palette && anim_bone_count > 0 && mesh_bone_count > 0) {
                 int32_t draw_bone_count =
@@ -2081,7 +2084,8 @@ static void draw_node(rt_scene_node3d *node,
  * SceneNode3D — lifecycle
  *=========================================================================*/
 
-/// @brief GC finalizer for a SceneNode — release mesh/material/animator/body refs and the children array.
+/// @brief GC finalizer for a SceneNode — release mesh/material/animator/body refs and the children
+/// array.
 static void rt_scene_node3d_finalize(void *obj) {
     rt_scene_node3d *node = (rt_scene_node3d *)obj;
     if (!node)
@@ -2126,7 +2130,8 @@ static void rt_scene_node3d_finalize(void *obj) {
 
 /// @brief Create an empty SceneNode at the origin (identity rotation, scale 1).
 void *rt_scene_node3d_new(void) {
-    rt_scene_node3d *node = (rt_scene_node3d *)rt_obj_new_i64(RT_G3D_SCENENODE3D_CLASS_ID, (int64_t)sizeof(rt_scene_node3d));
+    rt_scene_node3d *node = (rt_scene_node3d *)rt_obj_new_i64(RT_G3D_SCENENODE3D_CLASS_ID,
+                                                              (int64_t)sizeof(rt_scene_node3d));
     if (!node) {
         rt_trap("SceneNode3D.New: memory allocation failed");
         return NULL;
@@ -2580,15 +2585,15 @@ void rt_scene_node3d_set_sync_mode(void *obj, int64_t sync_mode) {
     if (!node)
         return;
     switch (sync_mode) {
-    case RT_SCENE_NODE3D_SYNC_NODE_FROM_BODY:
-    case RT_SCENE_NODE3D_SYNC_BODY_FROM_NODE:
-    case RT_SCENE_NODE3D_SYNC_NODE_FROM_ANIMATOR_ROOT_MOTION:
-    case RT_SCENE_NODE3D_SYNC_TWO_WAY_KINEMATIC:
-        node->sync_mode = (int32_t)sync_mode;
-        break;
-    default:
-        node->sync_mode = RT_SCENE_NODE3D_SYNC_NODE_FROM_BODY;
-        break;
+        case RT_SCENE_NODE3D_SYNC_NODE_FROM_BODY:
+        case RT_SCENE_NODE3D_SYNC_BODY_FROM_NODE:
+        case RT_SCENE_NODE3D_SYNC_NODE_FROM_ANIMATOR_ROOT_MOTION:
+        case RT_SCENE_NODE3D_SYNC_TWO_WAY_KINEMATIC:
+            node->sync_mode = (int32_t)sync_mode;
+            break;
+        default:
+            node->sync_mode = RT_SCENE_NODE3D_SYNC_NODE_FROM_BODY;
+            break;
     }
 }
 
@@ -2678,7 +2683,8 @@ static void rt_scene3d_finalize(void *obj) {
 
 /// @brief Allocate a fresh Scene3D with an empty root node and no lights or skybox.
 void *rt_scene3d_new(void) {
-    rt_scene3d *s = (rt_scene3d *)rt_obj_new_i64(RT_G3D_SCENE3D_CLASS_ID, (int64_t)sizeof(rt_scene3d));
+    rt_scene3d *s =
+        (rt_scene3d *)rt_obj_new_i64(RT_G3D_SCENE3D_CLASS_ID, (int64_t)sizeof(rt_scene3d));
     if (!s) {
         rt_trap("Scene3D.New: memory allocation failed");
         return NULL;
@@ -2853,7 +2859,9 @@ void rt_scene3d_draw(void *obj, void *canvas3d, void *camera) {
     scene_collect_node_lights(s->root, scene_light_storage, scene_light_ptrs, &scene_light_count);
     canvas->scene_light_count = scene_light_count;
     memset(canvas->scene_lights, 0, sizeof(canvas->scene_lights));
-    memcpy(canvas->scene_lights, scene_light_ptrs, (size_t)scene_light_count * sizeof(scene_light_ptrs[0]));
+    memcpy(canvas->scene_lights,
+           scene_light_ptrs,
+           (size_t)scene_light_count * sizeof(scene_light_ptrs[0]));
     draw_node(s->root, canvas3d, &frustum, &culled, cam_pos, NULL);
     if (started_frame)
         rt_canvas3d_end(canvas3d);

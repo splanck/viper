@@ -247,13 +247,15 @@ vg_colorpicker_t *vg_colorpicker_create(vg_widget_t *parent) {
     return picker;
 }
 
-/// @brief VTable destroy: releases input capture if held; child swatch/slider/textinput widgets are freed by the base widget.
+/// @brief VTable destroy: releases input capture if held; child swatch/slider/textinput widgets are
+/// freed by the base widget.
 static void colorpicker_destroy(vg_widget_t *widget) {
     (void)widget;
     // Child widgets are destroyed automatically through widget hierarchy
 }
 
-/// @brief VTable measure: sizes the widget to accommodate the hue/saturation/value control area plus sliders and hex-input row.
+/// @brief VTable measure: sizes the widget to accommodate the hue/saturation/value control area
+/// plus sliders and hex-input row.
 static void colorpicker_measure(vg_widget_t *widget,
                                 float available_width,
                                 float available_height) {
@@ -298,7 +300,8 @@ static void colorpicker_measure(vg_widget_t *widget,
     }
 }
 
-/// @brief VTable arrange: positions all child sliders, swatch, and hex-input text box within the widget's allocated bounds.
+/// @brief VTable arrange: positions all child sliders, swatch, and hex-input text box within the
+/// widget's allocated bounds.
 static void colorpicker_arrange(vg_widget_t *widget, float x, float y, float width, float height) {
     vg_colorpicker_t *picker = (vg_colorpicker_t *)widget;
 
@@ -377,7 +380,8 @@ static void colorpicker_arrange(vg_widget_t *widget, float x, float y, float wid
     }
 }
 
-/// @brief VTable paint: renders the HSV gradient square, hue strip, alpha strip, and preview swatches.
+/// @brief VTable paint: renders the HSV gradient square, hue strip, alpha strip, and preview
+/// swatches.
 static void colorpicker_paint(vg_widget_t *widget, void *canvas) {
     vg_colorpicker_t *picker = (vg_colorpicker_t *)widget;
     (void)canvas;

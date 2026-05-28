@@ -50,11 +50,11 @@ extern "C" {
 
 /// @brief Collision/render layer bits used to build LayerMask filters.
 enum {
-    RT_GAME3D_LAYER_WORLD = 1,      ///< Static world geometry (ground, walls).
-    RT_GAME3D_LAYER_DYNAMIC = 2,    ///< Movable dynamic bodies (props, crates).
-    RT_GAME3D_LAYER_PLAYER = 4,     ///< Player-controlled entities.
-    RT_GAME3D_LAYER_TRIGGER = 8,    ///< Non-solid trigger volumes.
-    RT_GAME3D_LAYER_DEBRIS = 16,    ///< Short-lived debris/particles.
+    RT_GAME3D_LAYER_WORLD = 1,   ///< Static world geometry (ground, walls).
+    RT_GAME3D_LAYER_DYNAMIC = 2, ///< Movable dynamic bodies (props, crates).
+    RT_GAME3D_LAYER_PLAYER = 4,  ///< Player-controlled entities.
+    RT_GAME3D_LAYER_TRIGGER = 8, ///< Non-solid trigger volumes.
+    RT_GAME3D_LAYER_DEBRIS = 16, ///< Short-lived debris/particles.
 };
 
 /// @brief Rigid-body collision shape kinds selectable on a BodyDef.
@@ -835,8 +835,12 @@ void rt_game3d_follow_controller_late_update(void *controller, void *world, doub
 /// @brief Create a game world (window + default camera/scene/physics/etc.).
 void *rt_game3d_world_new(rt_string title, int64_t width, int64_t height);
 /// @brief Create a game world with explicit camera FOV and near/far clip planes.
-void *rt_game3d_world_new_with_camera(
-    rt_string title, int64_t width, int64_t height, double fov_deg, double near_plane, double far_plane);
+void *rt_game3d_world_new_with_camera(rt_string title,
+                                      int64_t width,
+                                      int64_t height,
+                                      double fov_deg,
+                                      double near_plane,
+                                      double far_plane);
 /// @brief Destroy the world and all owned subsystems, closing its window.
 void rt_game3d_world_destroy(void *world);
 /// @brief True if the world has been destroyed.
@@ -903,7 +907,10 @@ void rt_game3d_world_run_with_overlay(void *world, void *update, void *overlay);
 /// @brief Run a fixed-timestep game loop with the given step in seconds.
 void rt_game3d_world_run_fixed(void *world, double step_sec, void *update);
 /// @brief Run a fixed-timestep loop with an additional 2D overlay callback.
-void rt_game3d_world_run_fixed_with_overlay(void *world, double step_sec, void *update, void *overlay);
+void rt_game3d_world_run_fixed_with_overlay(void *world,
+                                            double step_sec,
+                                            void *update,
+                                            void *overlay);
 /// @brief Run a deterministic fixed number of frames at a fixed step (for tests/recording).
 void rt_game3d_world_run_frames(void *world, int64_t frame_count, double step_sec, void *update);
 /// @brief Run a fixed number of frames with no update callback (pure simulation/render).

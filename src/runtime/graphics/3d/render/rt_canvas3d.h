@@ -235,7 +235,8 @@ void rt_mesh3d_calc_tangents(void *obj);
 // Camera3D — perspective camera with view/projection matrices
 //=========================================================================
 
-/// @brief Create a perspective camera (FOV in degrees, aspect = width/height, near/far clip planes).
+/// @brief Create a perspective camera (FOV in degrees, aspect = width/height, near/far clip
+/// planes).
 void *rt_camera3d_new(double fov, double aspect, double near_val, double far_val);
 /// @brief Create an orthographic camera (vertical world-units, aspect, near/far).
 void *rt_camera3d_new_ortho(double size, double aspect, double near_val, double far_val);
@@ -281,7 +282,8 @@ void *rt_material3d_new(void);
 void *rt_material3d_new_color(double r, double g, double b);
 /// @brief Create a textured legacy material from a Pixels object (used as albedo).
 void *rt_material3d_new_textured(void *pixels);
-/// @brief Create a PBR-workflow material with the given base color (default metallic=0, roughness=0.5).
+/// @brief Create a PBR-workflow material with the given base color (default metallic=0,
+/// roughness=0.5).
 void *rt_material3d_new_pbr(double r, double g, double b);
 /// @brief Deep copy a material (independent storage and texture refs).
 void *rt_material3d_clone(void *obj);

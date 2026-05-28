@@ -65,7 +65,8 @@ static float slider_normalized_value(const vg_slider_t *slider) {
     return norm;
 }
 
-/// @brief Converts widget-local coordinates @p x/@p y to a normalised fraction [0, 1] along the track axis.
+/// @brief Converts widget-local coordinates @p x/@p y to a normalised fraction [0, 1] along the
+/// track axis.
 static float slider_normalized_from_point(const vg_slider_t *slider, float x, float y) {
     float thumb_r = slider->thumb_size > 0.0f ? slider->thumb_size * 0.5f : 8.0f;
     float norm = 0.0f;
@@ -83,7 +84,8 @@ static float slider_normalized_from_point(const vg_slider_t *slider, float x, fl
     return norm;
 }
 
-/// @brief VTable measure: sets a 100 px preferred length along the track axis and thumb_size along the cross axis.
+/// @brief VTable measure: sets a 100 px preferred length along the track axis and thumb_size along
+/// the cross axis.
 static void slider_measure(vg_widget_t *widget, float available_width, float available_height) {
     vg_slider_t *slider = (vg_slider_t *)widget;
     (void)available_width;
@@ -98,7 +100,8 @@ static void slider_measure(vg_widget_t *widget, float available_width, float ava
     vg_widget_apply_constraints(widget);
 }
 
-/// @brief VTable arrange: stores the assigned position and dimensions; the slider has no children to arrange.
+/// @brief VTable arrange: stores the assigned position and dimensions; the slider has no children
+/// to arrange.
 static void slider_arrange(vg_widget_t *widget, float x, float y, float w, float h) {
     widget->x = x;
     widget->y = y;
@@ -111,15 +114,18 @@ static bool slider_can_focus(vg_widget_t *widget) {
     return widget->enabled && widget->visible;
 }
 
-/// @brief VTable paint: draws the track background, filled portion, thumb circle with border and hover/drag tint, and focus rect.
+/// @brief VTable paint: draws the track background, filled portion, thumb circle with border and
+/// hover/drag tint, and focus rect.
 static void slider_paint(vg_widget_t *widget, void *canvas) {
     vg_slider_t *slider = (vg_slider_t *)widget;
     vg_theme_t *theme = vg_theme_get_current();
     vgfx_window_t win = (vgfx_window_t)canvas;
     float x = widget->x, y = widget->y, w = widget->width, h = widget->height;
     float norm = slider_normalized_value(slider);
-    uint32_t track_color = slider->track_color ? slider->track_color
-                                               : vg_color_blend(theme->colors.bg_secondary, theme->colors.bg_primary, 0.45f);
+    uint32_t track_color =
+        slider->track_color
+            ? slider->track_color
+            : vg_color_blend(theme->colors.bg_secondary, theme->colors.bg_primary, 0.45f);
     uint32_t fill_color = slider->fill_color ? slider->fill_color : theme->colors.accent_primary;
     uint32_t thumb_color = slider->thumb_color ? slider->thumb_color : theme->colors.bg_primary;
     if (slider->dragging) {
@@ -154,9 +160,14 @@ static void slider_paint(vg_widget_t *widget, void *canvas) {
         float thumb_cx = track_xf + norm * track_wf;
         float thumb_cy = y + h / 2.0f;
         int32_t thumb_ri = (int32_t)(slider->thumb_size / 2.0f);
-        vgfx_fill_circle(win, (int32_t)thumb_cx, (int32_t)thumb_cy, thumb_ri + 1, theme->colors.border_primary);
+        vgfx_fill_circle(
+            win, (int32_t)thumb_cx, (int32_t)thumb_cy, thumb_ri + 1, theme->colors.border_primary);
         vgfx_fill_circle(win, (int32_t)thumb_cx, (int32_t)thumb_cy, thumb_ri, thumb_color);
-        vgfx_circle(win, (int32_t)thumb_cx, (int32_t)thumb_cy, thumb_ri, vg_color_darken(thumb_color, 0.18f));
+        vgfx_circle(win,
+                    (int32_t)thumb_cx,
+                    (int32_t)thumb_cy,
+                    thumb_ri,
+                    vg_color_darken(thumb_color, 0.18f));
     } else {
         float track_th = slider->track_thickness > 0 ? slider->track_thickness : 4.0f;
         float thumb_rf = slider->thumb_size * 0.5f;
@@ -183,9 +194,14 @@ static void slider_paint(vg_widget_t *widget, void *canvas) {
         float thumb_cx = x + w / 2.0f;
         float thumb_cy = track_yf + track_hf - norm * track_hf;
         int32_t thumb_ri = (int32_t)(slider->thumb_size / 2.0f);
-        vgfx_fill_circle(win, (int32_t)thumb_cx, (int32_t)thumb_cy, thumb_ri + 1, theme->colors.border_primary);
+        vgfx_fill_circle(
+            win, (int32_t)thumb_cx, (int32_t)thumb_cy, thumb_ri + 1, theme->colors.border_primary);
         vgfx_fill_circle(win, (int32_t)thumb_cx, (int32_t)thumb_cy, thumb_ri, thumb_color);
-        vgfx_circle(win, (int32_t)thumb_cx, (int32_t)thumb_cy, thumb_ri, vg_color_darken(thumb_color, 0.18f));
+        vgfx_circle(win,
+                    (int32_t)thumb_cx,
+                    (int32_t)thumb_cy,
+                    thumb_ri,
+                    vg_color_darken(thumb_color, 0.18f));
     }
 
     if (widget->state & VG_STATE_FOCUSED) {
@@ -193,7 +209,8 @@ static void slider_paint(vg_widget_t *widget, void *canvas) {
     }
 }
 
-/// @brief VTable handle_event: handles thumb drag (mouse-down/move/up), track click-to-jump, leave unhover, and arrow/Home/End keyboard control.
+/// @brief VTable handle_event: handles thumb drag (mouse-down/move/up), track click-to-jump, leave
+/// unhover, and arrow/Home/End keyboard control.
 static bool slider_handle_event(vg_widget_t *widget, vg_event_t *event) {
     vg_slider_t *slider = (vg_slider_t *)widget;
     float w = widget->width, h = widget->height;
@@ -219,7 +236,8 @@ static bool slider_handle_event(vg_widget_t *widget, vg_event_t *event) {
             }
             if (event->mouse.x >= 0.0f && event->mouse.x <= w && event->mouse.y >= 0.0f &&
                 event->mouse.y <= h) {
-                float click_norm = slider_normalized_from_point(slider, event->mouse.x, event->mouse.y);
+                float click_norm =
+                    slider_normalized_from_point(slider, event->mouse.x, event->mouse.y);
                 float range = slider->max_value - slider->min_value;
                 vg_slider_set_value(slider, slider->min_value + click_norm * range);
                 slider->dragging = true;
@@ -344,8 +362,7 @@ vg_slider_t *vg_slider_create(vg_widget_t *parent, vg_slider_orientation_t orien
               : 0x003C3C3C;
     slider->fill_color = theme ? theme->colors.accent_primary : 0x000078D4;
     slider->thumb_color = theme ? theme->colors.bg_primary : 0x00FFFFFF;
-    slider->thumb_hover_color =
-        theme ? vg_color_lighten(slider->thumb_color, 0.12f) : 0x00E0E0E0;
+    slider->thumb_hover_color = theme ? vg_color_lighten(slider->thumb_color, 0.12f) : 0x00E0E0E0;
     slider->font_size = theme ? theme->typography.size_normal : 12.0f;
 
     if (parent) {

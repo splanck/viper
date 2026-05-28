@@ -603,8 +603,7 @@ static double videoplayer_clamp_seconds(const rt_videoplayer *vp, double seconds
 }
 
 static int32_t videoplayer_frame_index_at(const rt_videoplayer *vp, double seconds) {
-    if (!vp || vp->total_frames <= 0 || !isfinite(seconds) || !isfinite(vp->fps) ||
-        vp->fps <= 0.0)
+    if (!vp || vp->total_frames <= 0 || !isfinite(seconds) || !isfinite(vp->fps) || vp->fps <= 0.0)
         return -1;
     long double frame = (long double)seconds * (long double)vp->fps;
     if (frame < 0.0L)
@@ -871,7 +870,8 @@ static int ogv_decode_until_frame(rt_videoplayer *vp, int32_t target_frame) {
     return 1;
 }
 
-/// @brief GC finalizer for the videoplayer — releases the ogg reader, decoder, frame buffers, audio track.
+/// @brief GC finalizer for the videoplayer — releases the ogg reader, decoder, frame buffers, audio
+/// track.
 static void videoplayer_finalizer(void *obj) {
     rt_videoplayer *vp = videoplayer_checked(obj);
     if (!vp)
@@ -961,8 +961,8 @@ void *rt_videoplayer_open(rt_string path) {
     }
 
     /* Create VideoPlayer object */
-    rt_videoplayer *vp = (rt_videoplayer *)rt_obj_new_i64(RT_VIDEOPLAYER_CLASS_ID,
-                                                          (int64_t)sizeof(rt_videoplayer));
+    rt_videoplayer *vp =
+        (rt_videoplayer *)rt_obj_new_i64(RT_VIDEOPLAYER_CLASS_ID, (int64_t)sizeof(rt_videoplayer));
     if (!vp) {
         free(data);
         return NULL;

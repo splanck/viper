@@ -95,7 +95,8 @@ static void morphtarget_touch_payload(rt_morphtarget3d *mt) {
         mt->payload_generation++;
 }
 
-/// @brief Validate @p obj as a MorphTarget3D handle and return its typed pointer (NULL on mismatch).
+/// @brief Validate @p obj as a MorphTarget3D handle and return its typed pointer (NULL on
+/// mismatch).
 static rt_morphtarget3d *morphtarget_checked(void *obj) {
     return (rt_morphtarget3d *)rt_g3d_checked_or_null(obj, RT_G3D_MORPHTARGET3D_CLASS_ID);
 }
@@ -247,7 +248,9 @@ static int morphtarget_reserve_shapes(rt_morphtarget3d *mt, int32_t min_capacity
     if (mt->shape_count > 0) {
         memcpy(new_shapes, mt->shapes, (size_t)mt->shape_count * sizeof(*new_shapes));
         memcpy(new_weights, mt->weights, (size_t)mt->shape_count * sizeof(*new_weights));
-        memcpy(new_prev_weights, mt->prev_weights, (size_t)mt->shape_count * sizeof(*new_prev_weights));
+        memcpy(new_prev_weights,
+               mt->prev_weights,
+               (size_t)mt->shape_count * sizeof(*new_prev_weights));
         memcpy(new_motion_snapshot,
                mt->motion_weight_snapshot,
                (size_t)mt->shape_count * sizeof(*new_motion_snapshot));
@@ -336,7 +339,8 @@ void *rt_morphtarget3d_new(int64_t vertex_count) {
         rt_trap("MorphTarget3D.New: vertex_count out of range");
         return NULL;
     }
-    rt_morphtarget3d *mt = (rt_morphtarget3d *)rt_obj_new_i64(RT_G3D_MORPHTARGET3D_CLASS_ID, (int64_t)sizeof(rt_morphtarget3d));
+    rt_morphtarget3d *mt = (rt_morphtarget3d *)rt_obj_new_i64(RT_G3D_MORPHTARGET3D_CLASS_ID,
+                                                              (int64_t)sizeof(rt_morphtarget3d));
     if (!mt) {
         rt_trap("MorphTarget3D.New: memory allocation failed");
         return NULL;
@@ -765,7 +769,8 @@ static void morphtarget_draw_mesh_matrix(void *canvas,
         m->morph_weights = mt->weights;
         m->prev_morph_weights = prev_weights;
         m->morph_shape_count = mt->shape_count;
-        rt_canvas3d_draw_mesh_matrix_keyed(canvas, mesh, model_matrix, material, motion_key, NULL, prev_weights);
+        rt_canvas3d_draw_mesh_matrix_keyed(
+            canvas, mesh, model_matrix, material, motion_key, NULL, prev_weights);
         m->morph_targets_ref = saved_ref;
         m->morph_deltas = saved_deltas;
         m->morph_normal_deltas = saved_normal_deltas;

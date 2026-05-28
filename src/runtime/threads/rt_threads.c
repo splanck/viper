@@ -252,8 +252,7 @@ static void *rt_thread_start_impl_win(void *entry, void *arg, int8_t retain_arg)
     if (!ctx)
         ctx = rt_legacy_context();
 
-    RtThread *t =
-        (RtThread *)rt_obj_new_i64(RT_THREAD_CLASS_ID, (int64_t)sizeof(RtThread));
+    RtThread *t = (RtThread *)rt_obj_new_i64(RT_THREAD_CLASS_ID, (int64_t)sizeof(RtThread));
     if (!t)
         rt_trap("Thread.Start: failed to create thread");
     if (!t)
@@ -615,7 +614,8 @@ typedef struct {
     struct timespec deadline;
 } thread_deadline_t;
 
-/// @brief Read the current `timespec` from the monotonic or realtime clock based on `use_monotonic`.
+/// @brief Read the current `timespec` from the monotonic or realtime clock based on
+/// `use_monotonic`.
 static struct timespec thread_now_clock(int8_t use_monotonic) {
     struct timespec ts;
     memset(&ts, 0, sizeof(ts));
@@ -627,7 +627,8 @@ static struct timespec thread_now_clock(int8_t use_monotonic) {
     return ts;
 }
 
-/// @brief Compute an absolute deadline `ms` milliseconds from now (used by `pthread_cond_timedwait`).
+/// @brief Compute an absolute deadline `ms` milliseconds from now (used by
+/// `pthread_cond_timedwait`).
 static thread_deadline_t thread_deadline_from_now(int64_t ms, int8_t use_monotonic) {
     thread_deadline_t d;
     d.deadline = thread_now_clock(use_monotonic);
@@ -637,8 +638,7 @@ static thread_deadline_t thread_deadline_from_now(int64_t ms, int8_t use_monoton
     int64_t add_sec = ms / 1000;
     long add_nsec = (long)((ms % 1000) * 1000000L);
     int64_t sec_room = (int64_t)LONG_MAX - (int64_t)d.deadline.tv_sec;
-    if (add_sec > sec_room ||
-        (add_sec == sec_room && d.deadline.tv_nsec > 999999999L - add_nsec)) {
+    if (add_sec > sec_room || (add_sec == sec_room && d.deadline.tv_nsec > 999999999L - add_nsec)) {
         d.deadline.tv_sec = (time_t)LONG_MAX;
         d.deadline.tv_nsec = 999999999L;
         return d;
@@ -711,7 +711,8 @@ static void rt_thread_finalize(void *obj) {
     (void)pthread_cond_destroy(&t->cv);
 }
 
-/// @brief pthread entry function — installs the inherited runtime context, runs the user entry, then signals join-waiters.
+/// @brief pthread entry function — installs the inherited runtime context, runs the user entry,
+/// then signals join-waiters.
 ///
 /// All threads created by `rt_thread_start*` go through this
 /// shim so they automatically:
@@ -811,8 +812,7 @@ static void *rt_thread_start_impl(void *entry, void *arg, int8_t retain_arg) {
     if (!ctx)
         ctx = rt_legacy_context();
 
-    RtThread *t =
-        (RtThread *)rt_obj_new_i64(RT_THREAD_CLASS_ID, (int64_t)sizeof(RtThread));
+    RtThread *t = (RtThread *)rt_obj_new_i64(RT_THREAD_CLASS_ID, (int64_t)sizeof(RtThread));
     if (!t)
         rt_trap("Thread.Start: failed to create thread");
     if (!t)

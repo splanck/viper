@@ -30,7 +30,8 @@ extern "C" {
 void *rt_vegetation3d_new(void *blade_texture);
 /// @brief Bind a Pixels density map (R channel modulates per-tile blade count).
 void rt_vegetation3d_set_density_map(void *veg, void *pixels);
-/// @brief Configure wind animation parameters (speed = waving frequency, strength = max bend, turbulence = noise factor).
+/// @brief Configure wind animation parameters (speed = waving frequency, strength = max bend,
+/// turbulence = noise factor).
 void rt_vegetation3d_set_wind_params(void *veg, double speed, double strength, double turbulence);
 /// @brief Set near (full density) and far (cull) LOD distances in world units.
 void rt_vegetation3d_set_lod_distances(void *veg, double near_dist, double far_dist);

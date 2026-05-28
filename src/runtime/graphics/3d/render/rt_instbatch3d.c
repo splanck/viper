@@ -35,8 +35,8 @@
 #include "rt_object.h"
 #include "vgfx3d_backend.h"
 
-#include <math.h>
 #include <limits.h>
+#include <math.h>
 #include <stdint.h>
 #include <stdlib.h>
 #include <string.h>
@@ -98,7 +98,8 @@ static float instbatch_identity_at(int row, int col) {
     return row == col ? 1.0f : 0.0f;
 }
 
-/// @brief True if `value` is finite and within ±INSTBATCH3D_FLOAT_ABS_MAX (safe to narrow to float).
+/// @brief True if `value` is finite and within ±INSTBATCH3D_FLOAT_ABS_MAX (safe to narrow to
+/// float).
 static int instbatch_value_fits_float(double value) {
     return isfinite(value) && value >= -INSTBATCH3D_FLOAT_ABS_MAX &&
            value <= INSTBATCH3D_FLOAT_ABS_MAX;
@@ -218,7 +219,8 @@ void *rt_instbatch3d_new(void *mesh, void *material) {
     material = rt_g3d_checked_or_null(material, RT_G3D_MATERIAL3D_CLASS_ID);
     if (!mesh || !material)
         return NULL;
-    rt_instbatch3d *b = (rt_instbatch3d *)rt_obj_new_i64(RT_G3D_INSTANCEBATCH3D_CLASS_ID, (int64_t)sizeof(rt_instbatch3d));
+    rt_instbatch3d *b = (rt_instbatch3d *)rt_obj_new_i64(RT_G3D_INSTANCEBATCH3D_CLASS_ID,
+                                                         (int64_t)sizeof(rt_instbatch3d));
     if (!b) {
         rt_trap("InstanceBatch3D.New: allocation failed");
         return NULL;
@@ -416,7 +418,8 @@ void rt_canvas3d_draw_instanced(void *canvas_obj, void *batch_obj) {
             } else {
                 owned_prev = (float *)malloc((size_t)b->instance_count * 16u * sizeof(float));
                 if (owned_prev) {
-                    int32_t preserved = b->prev_count < b->instance_count ? b->prev_count : b->instance_count;
+                    int32_t preserved =
+                        b->prev_count < b->instance_count ? b->prev_count : b->instance_count;
                     if (preserved > 0) {
                         memcpy(owned_prev,
                                b->prev_transforms,
@@ -459,7 +462,8 @@ void rt_canvas3d_draw_instanced(void *canvas_obj, void *batch_obj) {
                     return;
                 }
                 if (visible_count < b->instance_count) {
-                    int visible_tracked = rt_canvas3d_add_temp_buffer(canvas_obj, visible_transforms);
+                    int visible_tracked =
+                        rt_canvas3d_add_temp_buffer(canvas_obj, visible_transforms);
                     int prev_tracked =
                         visible_prev ? rt_canvas3d_add_temp_buffer(canvas_obj, visible_prev) : 1;
                     if (!visible_tracked || !prev_tracked) {

@@ -117,8 +117,7 @@ static bool tree_node_stack_push(tree_node_stack_t *stack, vg_tree_node_t *node)
         size_t new_cap = stack->cap ? stack->cap * 2 : 64;
         if (new_cap < stack->cap || new_cap > SIZE_MAX / sizeof(*stack->items))
             return false;
-        vg_tree_node_t **items =
-            (vg_tree_node_t **)realloc(stack->items, new_cap * sizeof(*items));
+        vg_tree_node_t **items = (vg_tree_node_t **)realloc(stack->items, new_cap * sizeof(*items));
         if (!items)
             return false;
         stack->items = items;
@@ -208,7 +207,8 @@ static void mark_node_subtree_retired(vg_tree_node_t *node) {
     }
 }
 
-/// @brief Mark node and its subtree retired and prepend them to tree->retired_nodes for deferred free.
+/// @brief Mark node and its subtree retired and prepend them to tree->retired_nodes for deferred
+/// free.
 static void retire_node_subtree(vg_treeview_t *tree, vg_tree_node_t *node) {
     if (!tree || !node)
         return;
@@ -349,7 +349,8 @@ static bool node_in_subtree(const vg_tree_node_t *root, const vg_tree_node_t *ca
     return false;
 }
 
-/// @brief Clamp tree->scroll_y to [0, max_scroll] where max_scroll = visible_rows * row_height - height.
+/// @brief Clamp tree->scroll_y to [0, max_scroll] where max_scroll = visible_rows * row_height -
+/// height.
 static void treeview_clamp_scroll(vg_treeview_t *tree) {
     if (!tree)
         return;
@@ -407,7 +408,8 @@ static float treeview_text_baseline(vg_treeview_t *tree, float row_y) {
     return row_y + (tree->row_height + (float)metrics.ascent + (float)metrics.descent) / 2.0f;
 }
 
-/// @brief Return a heap-allocated copy of text, truncated with '...' if it exceeds max_width pixels.
+/// @brief Return a heap-allocated copy of text, truncated with '...' if it exceeds max_width
+/// pixels.
 static char *treeview_fit_text(vg_treeview_t *tree, const char *text, float max_width) {
     if (!text)
         return strdup("");
@@ -500,13 +502,14 @@ static void treeview_paint_icon(vg_treeview_t *tree,
         vg_font_metrics_t metrics = {0};
         treeview_encode_glyph(icon.data.glyph, glyph);
         vg_font_get_metrics(tree->font, tree->icon_size, &metrics);
-        vg_font_draw_text(canvas,
-                          tree->font,
-                          tree->icon_size,
-                          icon_x,
-                          row_y + (tree->row_height + (float)metrics.ascent + (float)metrics.descent) * 0.5f,
-                          glyph,
-                          color);
+        vg_font_draw_text(
+            canvas,
+            tree->font,
+            tree->icon_size,
+            icon_x,
+            row_y + (tree->row_height + (float)metrics.ascent + (float)metrics.descent) * 0.5f,
+            glyph,
+            color);
         return;
     }
 
@@ -601,7 +604,8 @@ static void treeview_destroy(vg_widget_t *widget) {
     free_retired_nodes(tree);
 }
 
-/// @brief vtable measure — measured_width fills available_width; measured_height is total content height.
+/// @brief vtable measure — measured_width fills available_width; measured_height is total content
+/// height.
 static void treeview_measure(vg_widget_t *widget, float available_width, float available_height) {
     vg_treeview_t *tree = (vg_treeview_t *)widget;
 
@@ -679,16 +683,12 @@ static void paint_node(
             if (child->has_children || child->first_child) {
                 int32_t ax = (int32_t)(arrow_slot_x + (tree->icon_size - arrow_size) * 0.5f);
                 int32_t ay = (int32_t)(display_y + (tree->row_height - arrow_size) / 2.0f);
-                uint32_t arrow_color =
-                    (child == tree->selected) ? theme->colors.fg_primary : theme->colors.fg_secondary;
+                uint32_t arrow_color = (child == tree->selected) ? theme->colors.fg_primary
+                                                                 : theme->colors.fg_secondary;
                 if (child->expanded) {
                     // ▼ downward triangle
-                    vgfx_line((vgfx_window_t)canvas,
-                              ax,
-                              ay,
-                              ax + (int32_t)arrow_size,
-                              ay,
-                              arrow_color);
+                    vgfx_line(
+                        (vgfx_window_t)canvas, ax, ay, ax + (int32_t)arrow_size, ay, arrow_color);
                     vgfx_line((vgfx_window_t)canvas,
                               ax,
                               ay,
@@ -703,12 +703,8 @@ static void paint_node(
                               arrow_color);
                 } else {
                     // ▶ rightward triangle
-                    vgfx_line((vgfx_window_t)canvas,
-                              ax,
-                              ay,
-                              ax,
-                              ay + (int32_t)arrow_size,
-                              arrow_color);
+                    vgfx_line(
+                        (vgfx_window_t)canvas, ax, ay, ax, ay + (int32_t)arrow_size, arrow_color);
                     vgfx_line((vgfx_window_t)canvas,
                               ax,
                               ay,
@@ -733,7 +729,8 @@ static void paint_node(
 
             // Draw text
             if (tree->font && child->text) {
-                float text_max_width = tree->base.width - (text_x - tree->base.x) - treeview_outer_padding();
+                float text_max_width =
+                    tree->base.width - (text_x - tree->base.x) - treeview_outer_padding();
                 if (text_max_width < 0.0f)
                     text_max_width = 0.0f;
                 char *fit = treeview_fit_text(tree, child->text, text_max_width);
@@ -756,9 +753,10 @@ static void paint_node(
                               (int32_t)tree->row_height - 4,
                               theme->colors.accent_primary);
                 } else {
-                    int32_t line_y = (int32_t)(display_y +
-                                               (tree->drop_position == VG_TREE_DROP_BEFORE ? 1.0f
-                                                                                           : tree->row_height - 2.0f));
+                    int32_t line_y =
+                        (int32_t)(display_y + (tree->drop_position == VG_TREE_DROP_BEFORE
+                                                   ? 1.0f
+                                                   : tree->row_height - 2.0f));
                     vgfx_fill_rect((vgfx_window_t)canvas,
                                    (int32_t)tree->base.x + 2,
                                    line_y,
@@ -841,8 +839,7 @@ vg_tree_node_t *vg_treeview_node_at(vg_treeview_t *tree, float x, float y) {
         return NULL;
 
     vg_widget_t *widget = &tree->base;
-    if (x < widget->x || y < widget->y ||
-        x >= widget->x + widget->width ||
+    if (x < widget->x || y < widget->y || x >= widget->x + widget->width ||
         y >= widget->y + widget->height) {
         return NULL;
     }
@@ -853,7 +850,8 @@ vg_tree_node_t *vg_treeview_node_at(vg_treeview_t *tree, float x, float y) {
     return find_node_at_y(tree, tree->root, target_y, &current_y);
 }
 
-/// @brief Return true if dropping source onto target at position is allowed by the can_drop callback.
+/// @brief Return true if dropping source onto target at position is allowed by the can_drop
+/// callback.
 static bool treeview_drop_is_valid(vg_treeview_t *tree,
                                    vg_tree_node_t *source,
                                    vg_tree_node_t *target,
@@ -867,7 +865,8 @@ static bool treeview_drop_is_valid(vg_treeview_t *tree,
     return true;
 }
 
-/// @brief Recompute drop_target and drop_position based on the cursor's local Y in a drag operation.
+/// @brief Recompute drop_target and drop_position based on the cursor's local Y in a drag
+/// operation.
 static void treeview_update_drop_target(vg_treeview_t *tree, float local_y) {
     if (!tree || !tree->is_dragging || !tree->drag_node) {
         if (tree) {
@@ -937,7 +936,8 @@ static bool treeview_handle_event(vg_widget_t *widget, vg_event_t *event) {
                 float scale = treeview_scale();
                 int dx = (int)event->mouse.x - tree->drag_start_x;
                 int dy = (int)event->mouse.y - tree->drag_start_y;
-                if (!tree->is_dragging && (dx * dx + dy * dy) >= (int)((6.0f * scale) * (6.0f * scale))) {
+                if (!tree->is_dragging &&
+                    (dx * dx + dy * dy) >= (int)((6.0f * scale) * (6.0f * scale))) {
                     tree->is_dragging = true;
                 }
                 if (tree->is_dragging) {
@@ -1481,7 +1481,8 @@ void vg_treeview_set_on_activate(vg_treeview_t *tree,
 // Icon Support
 //=============================================================================
 
-/// @brief Set the icon displayed when the node is collapsed (or always, if no expanded_icon is set).
+/// @brief Set the icon displayed when the node is collapsed (or always, if no expanded_icon is
+/// set).
 ///
 /// @param node The node to update; must be live.
 /// @param icon Icon value; VG_ICON_NONE removes the icon.
@@ -1519,7 +1520,8 @@ void vg_treeview_set_drag_enabled(vg_treeview_t *tree, bool enabled) {
 ///
 /// @param tree      The tree view to configure; may be NULL.
 /// @param can_drag  Predicate: return true if a node is draggable; NULL allows all.
-/// @param can_drop  Predicate: return true if (source, target, position) is a valid drop; NULL allows all.
+/// @param can_drop  Predicate: return true if (source, target, position) is a valid drop; NULL
+/// allows all.
 /// @param on_drop   Called when a drop is confirmed with (source, target, position, user_data).
 /// @param user_data Opaque pointer forwarded to all three callbacks.
 void vg_treeview_set_drag_callbacks(vg_treeview_t *tree,

@@ -64,8 +64,8 @@ void appendStringData(std::vector<uint8_t> &buf, const std::string &str) {
     }
 }
 
-/// @brief Convert `str` to a NUL-terminated ANSI byte sequence for LinkInfo's `LocalBasePath` field.
-/// Non-printable or high-byte characters are replaced with `'?'`.
+/// @brief Convert `str` to a NUL-terminated ANSI byte sequence for LinkInfo's `LocalBasePath`
+/// field. Non-printable or high-byte characters are replaced with `'?'`.
 std::vector<uint8_t> ansiPathFallback(const std::string &str) {
     std::vector<uint8_t> out;
     out.reserve(str.size() + 1);
@@ -96,7 +96,8 @@ void appendFixedAnsiPath(std::vector<uint8_t> &buf, const std::string &str) {
 }
 
 /// @brief Append a MAX_PATH (520-byte = 260 UTF-16 chars) zero-padded UTF-16LE path for the
-/// `EnvironmentVariableDataBlock` `TargetUnicode` field. Throws if `str` encodes to 260+ code units.
+/// `EnvironmentVariableDataBlock` `TargetUnicode` field. Throws if `str` encodes to 260+ code
+/// units.
 void appendFixedUtf16Path(std::vector<uint8_t> &buf, const std::string &str) {
     const auto units = utf8ToUtf16CodeUnits(str);
     if (units.size() >= 260)

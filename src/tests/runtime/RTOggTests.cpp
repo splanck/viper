@@ -55,7 +55,7 @@ std::vector<uint8_t> make_single_packet_page(uint32_t serial,
     page[2] = 'g';
     page[3] = 'S';
     page[4] = version; // stream structure version
-    page[5] = 0x02; // BOS
+    page[5] = 0x02;    // BOS
     for (int i = 0; i < 8; i++)
         page[6 + i] = 0xFFu;
     put_u32_le(page, 14, serial);

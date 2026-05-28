@@ -31,13 +31,13 @@ extern "C" void vm_trap(const char *msg) {
     abort();
 }
 
-#define EXPECT_TRAP(expr)                                                                         \
-    do {                                                                                          \
+#define EXPECT_TRAP(expr)                                                                          \
+    do {                                                                                           \
         g_expect_trap = 1;                                                                         \
-        if (setjmp(g_trap_env) == 0) {                                                            \
+        if (setjmp(g_trap_env) == 0) {                                                             \
             (void)(expr);                                                                          \
             g_expect_trap = 0;                                                                     \
-            assert(!"expected runtime trap");                                                     \
+            assert(!"expected runtime trap");                                                      \
         } else {                                                                                   \
             g_expect_trap = 0;                                                                     \
         }                                                                                          \
@@ -179,7 +179,8 @@ static void test_dateonly_extreme_conversions() {
     {
         void *d = rt_dateonly_from_days(INT64_MAX - 719468);
         test_result("Largest safe FromDays input returns date", d != nullptr);
-        test_result("Largest safe FromDays round-trips", rt_dateonly_to_days(d) == INT64_MAX - 719468);
+        test_result("Largest safe FromDays round-trips",
+                    rt_dateonly_to_days(d) == INT64_MAX - 719468);
     }
 
     {

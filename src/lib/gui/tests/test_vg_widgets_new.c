@@ -14,8 +14,8 @@
 // Tests slider vtable, progressbar vtable, listbox vtable,
 // breadcrumb max_items, commandpalette clear, menu management,
 // and codeeditor data fields.
-#include "vg_ide_widgets.h"
 #include "vg_event.h"
+#include "vg_ide_widgets.h"
 #include "vg_widget.h"
 #include "vg_widgets.h"
 #include "vgfx.h"

@@ -40,6 +40,7 @@
 #include "rt_vec3.h"
 #include "vgfx3d_backend.h"
 
+#include <limits.h>
 #include <math.h>
 #include <stdlib.h>
 #include <string.h>
@@ -79,12 +80,16 @@ static int world_to_screen(
     return 1;
 }
 
-/// @brief Resolve the active output surface's pixel size (RTT or window framebuffer).
-/// @details When a render target is bound, overlays must size to the
-///          RTT (so HUD text doesn't get drawn into pixels that won't
-///          be presented); otherwise they size to the live window
-///          framebuffer. Returns 0 (with zero-filled outputs) when no
-///          surface is available so callers can early-out cleanly.
+typedef struct {
+    int64_t w;
+    int64_t h;
+    uint32_t *data;
+} canvas3d_pixels_view_t;
+
+/// @brief Resolve the active output surface's public coordinate size.
+/// @details When a render target is bound, overlays size to the RTT. Otherwise
+///          they size to the Canvas3D logical dimensions, not the framebuffer
+///          backing size, so HiDPI windows keep stable public coordinates.
 static int overlay_output_size(const rt_canvas3d *c, int32_t *out_w, int32_t *out_h) {
     if (out_w)
         *out_w = 0;
@@ -99,16 +104,77 @@ static int overlay_output_size(const rt_canvas3d *c, int32_t *out_w, int32_t *ou
             *out_h = c->render_target->height;
         return c->render_target->width > 0 && c->render_target->height > 0;
     }
-    if (!c->gfx_win)
-        return 0;
-    vgfx_framebuffer_t fb;
-    if (!vgfx_get_framebuffer(c->gfx_win, &fb))
-        return 0;
     if (out_w)
-        *out_w = fb.width;
+        *out_w = c->width;
     if (out_h)
-        *out_h = fb.height;
-    return fb.width > 0 && fb.height > 0;
+        *out_h = c->height;
+    return c->width > 0 && c->height > 0;
+}
+
+/// @brief Pack an RGBA byte surface into `Pixels`, scaling to logical size when needed.
+static int canvas3d_pack_rgba_to_pixels(canvas3d_pixels_view_t *pv,
+                                        const uint8_t *src,
+                                        int32_t src_w,
+                                        int32_t src_h,
+                                        int32_t src_stride,
+                                        int32_t dst_w,
+                                        int32_t dst_h) {
+    if (!pv || !pv->data || !src || src_w <= 0 || src_h <= 0 || dst_w <= 0 || dst_h <= 0)
+        return 0;
+    if (src_stride < src_w * 4)
+        return 0;
+
+    if (src_w == dst_w && src_h == dst_h) {
+        for (int32_t y = 0; y < dst_h; y++) {
+            for (int32_t x = 0; x < dst_w; x++) {
+                const uint8_t *p = src + (size_t)y * (size_t)src_stride + (size_t)x * 4u;
+                pv->data[(size_t)y * (size_t)pv->w + (size_t)x] =
+                    ((uint32_t)p[0] << 24) | ((uint32_t)p[1] << 16) | ((uint32_t)p[2] << 8) |
+                    (uint32_t)p[3];
+            }
+        }
+        return 1;
+    }
+
+    for (int32_t y = 0; y < dst_h; y++) {
+        int32_t y0 = (int32_t)(((int64_t)y * src_h) / dst_h);
+        int32_t y1 = (int32_t)(((int64_t)(y + 1) * src_h) / dst_h);
+        if (y1 <= y0)
+            y1 = y0 + 1;
+        if (y1 > src_h)
+            y1 = src_h;
+        for (int32_t x = 0; x < dst_w; x++) {
+            int32_t x0 = (int32_t)(((int64_t)x * src_w) / dst_w);
+            int32_t x1 = (int32_t)(((int64_t)(x + 1) * src_w) / dst_w);
+            uint64_t r = 0;
+            uint64_t g = 0;
+            uint64_t b = 0;
+            uint64_t a = 0;
+            uint64_t count = 0;
+            if (x1 <= x0)
+                x1 = x0 + 1;
+            if (x1 > src_w)
+                x1 = src_w;
+            for (int32_t sy = y0; sy < y1; sy++) {
+                const uint8_t *row = src + (size_t)sy * (size_t)src_stride;
+                for (int32_t sx = x0; sx < x1; sx++) {
+                    const uint8_t *p = row + (size_t)sx * 4u;
+                    r += p[0];
+                    g += p[1];
+                    b += p[2];
+                    a += p[3];
+                    count++;
+                }
+            }
+            if (count == 0)
+                count = 1;
+            pv->data[(size_t)y * (size_t)pv->w + (size_t)x] =
+                ((uint32_t)((r + count / 2u) / count) << 24) |
+                ((uint32_t)((g + count / 2u) / count) << 16) |
+                ((uint32_t)((b + count / 2u) / count) << 8) | (uint32_t)((a + count / 2u) / count);
+        }
+    }
+    return 1;
 }
 
 /// @brief Drop one reference and free if zero. Safe on NULL.
@@ -297,7 +363,8 @@ int64_t rt_canvas3d_get_backend_capabilities(void *obj) {
     if (!backend)
         return 0;
 
-    if (backend == &vgfx3d_software_backend || (backend->name && strcmp(backend->name, "software") == 0))
+    if (backend == &vgfx3d_software_backend ||
+        (backend->name && strcmp(backend->name, "software") == 0))
         caps |= RT_CANVAS3D_BACKEND_CAP_SOFTWARE;
     else
         caps |= RT_CANVAS3D_BACKEND_CAP_GPU;
@@ -389,25 +456,21 @@ int8_t rt_canvas3d_backend_supports(void *obj, rt_string capability) {
 ///          to BMP/PNG via `Pixels.Save` without a swizzle pass.
 ///          Returns NULL on size = 0 or alloc failure.
 void *rt_canvas3d_screenshot(void *obj) {
-    typedef struct {
-        int64_t w;
-        int64_t h;
-        uint32_t *data;
-    } px_view;
-
     rt_canvas3d *c = rt_canvas3d_checked_or_stack(obj);
     if (!c)
         return NULL;
 
     const int32_t shot_w = c->render_target ? c->render_target->width : c->width;
     const int32_t shot_h = c->render_target ? c->render_target->height : c->height;
+    int32_t source_w = shot_w;
+    int32_t source_h = shot_h;
     if (shot_w <= 0 || shot_h <= 0)
         return NULL;
 
     void *pixels = rt_pixels_new((int64_t)shot_w, (int64_t)shot_h);
     if (!pixels)
         return NULL;
-    px_view *pv = (px_view *)pixels;
+    canvas3d_pixels_view_t *pv = (canvas3d_pixels_view_t *)pixels;
 
     if (c->render_target && vgfx3d_rendertarget_ensure_color(c->render_target)) {
         if (!vgfx3d_rendertarget_sync_color_if_needed(c->render_target)) {
@@ -415,27 +478,34 @@ void *rt_canvas3d_screenshot(void *obj) {
                 rt_obj_free(pixels);
             return NULL;
         }
-        for (int32_t y = 0; y < shot_h; y++)
-            for (int32_t x = 0; x < shot_w; x++) {
-                const uint8_t *src =
-                    &c->render_target->color_buf[y * c->render_target->stride + x * 4];
-                pv->data[y * pv->w + x] = ((uint32_t)src[0] << 24) | ((uint32_t)src[1] << 16) |
-                                          ((uint32_t)src[2] << 8) | (uint32_t)src[3];
-            }
+        canvas3d_pack_rgba_to_pixels(pv,
+                                     c->render_target->color_buf,
+                                     shot_w,
+                                     shot_h,
+                                     c->render_target->stride,
+                                     shot_w,
+                                     shot_h);
         return pixels;
     }
 
+    if (c->framebuffer_width > 0 && c->framebuffer_height > 0) {
+        source_w = c->framebuffer_width;
+        source_h = c->framebuffer_height;
+    }
+
     if (c->backend && c->backend != &vgfx3d_software_backend && c->backend->readback_rgba) {
-        const size_t row_bytes = (size_t)shot_w * 4u;
-        uint8_t *rgba = (uint8_t *)malloc((size_t)shot_h * row_bytes);
-        if (rgba &&
-            c->backend->readback_rgba(c->backend_ctx, rgba, shot_w, shot_h, (int32_t)row_bytes)) {
-            for (int32_t y = 0; y < shot_h; y++)
-                for (int32_t x = 0; x < shot_w; x++) {
-                    const uint8_t *src = &rgba[(size_t)y * row_bytes + (size_t)x * 4u];
-                    pv->data[y * pv->w + x] = ((uint32_t)src[0] << 24) | ((uint32_t)src[1] << 16) |
-                                              ((uint32_t)src[2] << 8) | (uint32_t)src[3];
-                }
+        const size_t row_bytes = (size_t)source_w * 4u;
+        uint8_t *rgba;
+        if ((size_t)source_w > SIZE_MAX / 4u || (size_t)source_h > SIZE_MAX / row_bytes) {
+            if (rt_obj_release_check0(pixels))
+                rt_obj_free(pixels);
+            return NULL;
+        }
+        rgba = (uint8_t *)malloc((size_t)source_h * row_bytes);
+        if (rgba && c->backend->readback_rgba(
+                        c->backend_ctx, rgba, source_w, source_h, (int32_t)row_bytes)) {
+            canvas3d_pack_rgba_to_pixels(
+                pv, rgba, source_w, source_h, (int32_t)row_bytes, shot_w, shot_h);
             free(rgba);
             return pixels;
         }
@@ -450,12 +520,7 @@ void *rt_canvas3d_screenshot(void *obj) {
                 rt_obj_free(pixels);
             return NULL;
         }
-        for (int32_t y = 0; y < fb.height && y < shot_h; y++)
-            for (int32_t x = 0; x < fb.width && x < shot_w; x++) {
-                const uint8_t *src = &fb.pixels[y * fb.stride + x * 4];
-                pv->data[y * pv->w + x] = ((uint32_t)src[0] << 24) | ((uint32_t)src[1] << 16) |
-                                          ((uint32_t)src[2] << 8) | (uint32_t)src[3];
-            }
+        canvas3d_pack_rgba_to_pixels(pv, fb.pixels, fb.width, fb.height, fb.stride, shot_w, shot_h);
     } else {
         if (rt_obj_release_check0(pixels))
             rt_obj_free(pixels);

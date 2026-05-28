@@ -16,8 +16,8 @@
 
 #include <assert.h>
 #include <math.h>
-#include <stdio.h>
 #include <stdint.h>
+#include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 #ifndef _WIN32
@@ -196,8 +196,7 @@ static void test_statusbar_click_is_edge_triggered(void) {
 
     vg_statusbar_t *statusbar = vg_statusbar_create(app.root);
     assert(statusbar);
-    vg_statusbar_item_t *item =
-        vg_statusbar_add_text(statusbar, VG_STATUSBAR_ZONE_LEFT, "ready");
+    vg_statusbar_item_t *item = vg_statusbar_add_text(statusbar, VG_STATUSBAR_ZONE_LEFT, "ready");
     assert(item);
     void *item_handle = rt_gui_wrap_statusbar_item(item);
 
@@ -1863,9 +1862,8 @@ static void test_breadcrumb_clicked_data_preserves_embedded_nuls(void) {
     void *crumb = rt_breadcrumb_new(&app);
     assert(crumb);
     const char payload[] = {'a', '\0', 'b'};
-    rt_breadcrumb_add_item(crumb,
-                           rt_const_cstr("node"),
-                           rt_string_from_bytes(payload, sizeof(payload)));
+    rt_breadcrumb_add_item(
+        crumb, rt_const_cstr("node"), rt_string_from_bytes(payload, sizeof(payload)));
 
     rt_breadcrumb_data_view_t *view = (rt_breadcrumb_data_view_t *)crumb;
     assert(view->breadcrumb && view->breadcrumb->item_count == 1);
@@ -1912,7 +1910,8 @@ static void test_shortcuts_reject_invalid_bindings_atomically(void) {
     rt_shortcuts_unregister(rt_string_from_bytes(bad_id, sizeof(bad_id)));
     assert(app.shortcut_count == 1);
 
-    rt_shortcuts_register(rt_const_cstr("save"), rt_const_cstr("Ctrl+NotAKey"), rt_const_cstr("bad"));
+    rt_shortcuts_register(
+        rt_const_cstr("save"), rt_const_cstr("Ctrl+NotAKey"), rt_const_cstr("bad"));
     assert(app.shortcut_count == 1);
     assert(strcmp(app.shortcuts[0].keys, "Ctrl+S") == 0);
     assert(app.shortcuts[0].parsed_key == 'S');

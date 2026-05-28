@@ -205,8 +205,7 @@ double rt_perlin_noise3d(void *obj, double x, double y, double z) {
     double xf = 0.0;
     double yf = 0.0;
     double zf = 0.0;
-    if (!perlin_cell(x, &xi, &xf) || !perlin_cell(y, &yi, &yf) ||
-        !perlin_cell(z, &zi, &zf))
+    if (!perlin_cell(x, &xi, &xf) || !perlin_cell(y, &yi, &yf) || !perlin_cell(z, &zi, &zf))
         return 0.0;
 
     double u = fade(xf);

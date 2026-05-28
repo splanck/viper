@@ -268,7 +268,8 @@ static void test_key_derivation() {
 
         void *full_key = rt_cipher_derive_key(full_password, salt);
         void *prefix_key = rt_cipher_derive_key(prefix_password, salt);
-        test_result("Embedded NUL password changes derived key", !bytes_equal(full_key, prefix_key));
+        test_result("Embedded NUL password changes derived key",
+                    !bytes_equal(full_key, prefix_key));
     }
 
     printf("\n");

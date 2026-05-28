@@ -162,8 +162,8 @@ uint64_t vgfx3d_get_cubemap_generation(const void *cubemap_ptr) {
     if (!cubemap)
         return 0;
 
-    signature ^= cubemap->cache_identity + 0x9e3779b97f4a7c15ull + (signature << 6) +
-                 (signature >> 2);
+    signature ^=
+        cubemap->cache_identity + 0x9e3779b97f4a7c15ull + (signature << 6) + (signature >> 2);
 
     for (int face = 0; face < 6; face++) {
         uint64_t generation = vgfx3d_get_pixels_generation(cubemap->faces[face]);
@@ -263,8 +263,7 @@ static int vgfx3d_copy_dims_are_valid(int32_t copy_w,
     src_required = (int64_t)copy_w * (int64_t)src_bytes_per_pixel;
     if (dst_required > INT32_MAX || src_required > INT32_MAX)
         return 0;
-    return (int64_t)dst_stride_units >= dst_required &&
-           (int64_t)src_stride_bytes >= src_required;
+    return (int64_t)dst_stride_units >= dst_required && (int64_t)src_stride_bytes >= src_required;
 }
 
 /// @brief Convert linear RGBA16F rows to displayable RGBA8.
@@ -275,12 +274,8 @@ void vgfx3d_copy_linear_rgba16f_to_rgba8(uint8_t *dst_rgba,
                                          const uint16_t *src_rgba16f,
                                          int32_t src_stride_bytes) {
     if (!dst_rgba || !src_rgba16f ||
-        !vgfx3d_copy_dims_are_valid(copy_w,
-                                    copy_h,
-                                    dst_stride,
-                                    src_stride_bytes,
-                                    4,
-                                    (int32_t)(sizeof(uint16_t) * 4u))) {
+        !vgfx3d_copy_dims_are_valid(
+            copy_w, copy_h, dst_stride, src_stride_bytes, 4, (int32_t)(sizeof(uint16_t) * 4u))) {
         return;
     }
 
@@ -337,12 +332,8 @@ void vgfx3d_copy_linear_rgba32f_to_rgba8(uint8_t *dst_rgba,
                                          const float *src_rgba32f,
                                          int32_t src_stride_bytes) {
     if (!dst_rgba || !src_rgba32f ||
-        !vgfx3d_copy_dims_are_valid(copy_w,
-                                    copy_h,
-                                    dst_stride,
-                                    src_stride_bytes,
-                                    4,
-                                    (int32_t)(sizeof(float) * 4u))) {
+        !vgfx3d_copy_dims_are_valid(
+            copy_w, copy_h, dst_stride, src_stride_bytes, 4, (int32_t)(sizeof(float) * 4u))) {
         return;
     }
 

@@ -185,8 +185,8 @@ static void sortedset_finalizer(void *obj) {
 /// search + O(n) shift; `_has` is O(log n). Use FrozenSet for read-only sets, regular Set for
 /// hash-based unordered storage.
 void *rt_sortedset_new(void) {
-    rt_sortedset set =
-        (rt_sortedset)rt_obj_new_i64(RT_SORTEDSET_CLASS_ID, (int64_t)sizeof(struct rt_sortedset_impl));
+    rt_sortedset set = (rt_sortedset)rt_obj_new_i64(RT_SORTEDSET_CLASS_ID,
+                                                    (int64_t)sizeof(struct rt_sortedset_impl));
     if (set)
         rt_obj_set_finalizer(set, sortedset_finalizer);
     return set;
@@ -496,7 +496,8 @@ void *rt_sortedset_skip(void *obj, int64_t n) {
 void *rt_sortedset_union(void *obj, void *other) {
     void *result = rt_sortedset_new();
     rt_sortedset a = obj ? as_sortedset(obj, "SortedSet.Union: invalid SortedSet object") : NULL;
-    rt_sortedset b = other ? as_sortedset(other, "SortedSet.Union: invalid SortedSet object") : NULL;
+    rt_sortedset b =
+        other ? as_sortedset(other, "SortedSet.Union: invalid SortedSet object") : NULL;
 
     if (a) {
         for (int64_t i = 0; i < a->len; i++) {
@@ -517,8 +518,10 @@ void *rt_sortedset_union(void *obj, void *other) {
 /// merge-style two-pointer walk over the sorted arrays for O(|a| + |b|) time.
 void *rt_sortedset_intersect(void *obj, void *other) {
     void *result = rt_sortedset_new();
-    rt_sortedset a = obj ? as_sortedset(obj, "SortedSet.Intersect: invalid SortedSet object") : NULL;
-    rt_sortedset b = other ? as_sortedset(other, "SortedSet.Intersect: invalid SortedSet object") : NULL;
+    rt_sortedset a =
+        obj ? as_sortedset(obj, "SortedSet.Intersect: invalid SortedSet object") : NULL;
+    rt_sortedset b =
+        other ? as_sortedset(other, "SortedSet.Intersect: invalid SortedSet object") : NULL;
 
     if (!a || !b)
         return result;

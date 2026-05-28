@@ -216,8 +216,8 @@ void addMemRegs(const OpMem &mem, InstrDeps &deps) {
 /// @param deps Per-instruction dependency descriptors.
 /// @param succs Dependency graph successor lists.
 /// @return Per-instruction critical-path height in cycles.
-[[nodiscard]] std::vector<unsigned> criticalHeights(const std::vector<InstrDeps> &deps,
-                                                    const std::vector<std::vector<std::size_t>> &succs) {
+[[nodiscard]] std::vector<unsigned> criticalHeights(
+    const std::vector<InstrDeps> &deps, const std::vector<std::vector<std::size_t>> &succs) {
     std::vector<unsigned> heights(deps.size(), 0);
     for (std::size_t i = deps.size(); i-- > 0;) {
         unsigned succHeight = 0;
@@ -273,10 +273,8 @@ void addMemRegs(const OpMem &mem, InstrDeps &deps) {
     order.reserve(n);
 
     while (!ready.empty()) {
-        auto best = std::max_element(
-            ready.begin(),
-            ready.end(),
-            [&](std::size_t lhs, std::size_t rhs) {
+        auto best =
+            std::max_element(ready.begin(), ready.end(), [&](std::size_t lhs, std::size_t rhs) {
                 if (heights[lhs] != heights[rhs])
                     return heights[lhs] < heights[rhs];
                 if (deps[lhs].latency != deps[rhs].latency)
@@ -324,7 +322,9 @@ void addMemRegs(const OpMem &mem, InstrDeps &deps) {
 ///          schedulable instructions whenever a boundary is hit. The
 ///          @p changedSegments counter is bumped only when the
 ///          reordering actually mutated the stream.
-void flushSegment(std::vector<MInstr> &out, std::vector<MInstr> &segment, std::size_t &changedSegments) {
+void flushSegment(std::vector<MInstr> &out,
+                  std::vector<MInstr> &segment,
+                  std::size_t &changedSegments) {
     if (segment.empty())
         return;
 

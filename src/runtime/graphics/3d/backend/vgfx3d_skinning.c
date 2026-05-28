@@ -15,8 +15,8 @@
 
 #ifdef VIPER_ENABLE_GRAPHICS
 
-#include "vgfx3d_backend_utils.h"
 #include "vgfx3d_skinning.h"
+#include "vgfx3d_backend_utils.h"
 
 #include <math.h>
 #include <string.h>
@@ -71,8 +71,7 @@ void vgfx3d_skin_vertices(const vgfx3d_vertex_t *src,
             for (int i = 0; i < 3; i++) {
                 pos[i] += w * (m[i * 4 + 0] * src[v].pos[0] + m[i * 4 + 1] * src[v].pos[1] +
                                m[i * 4 + 2] * src[v].pos[2] + m[i * 4 + 3]);
-                nrm[i] += w * (nm[i * 4 + 0] * src[v].normal[0] +
-                               nm[i * 4 + 1] * src[v].normal[1] +
+                nrm[i] += w * (nm[i * 4 + 0] * src[v].normal[0] + nm[i * 4 + 1] * src[v].normal[1] +
                                nm[i * 4 + 2] * src[v].normal[2]);
             }
             total_w += w;

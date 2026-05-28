@@ -101,9 +101,10 @@ extern int64_t rt_obj_class_id(void *p);
 #define RT_G3D_GAME3D_MODEL_TEMPLATE_CLASS_ID INT64_C(-0x60303E)
 #define RT_G3D_GAME3D_ANIMATOR3D_CLASS_ID INT64_C(-0x60303F)
 
-#if defined(RT_G3D_INTERNAL_ASSUME_STRUCT_HANDLE) && RT_G3D_INTERNAL_ASSUME_STRUCT_HANDLE && \
+#if defined(RT_G3D_INTERNAL_ASSUME_STRUCT_HANDLE) && RT_G3D_INTERNAL_ASSUME_STRUCT_HANDLE &&       \
     !defined(RT_G3D_TRUSTED_STRUCT_HANDLES)
-#error "RT_G3D_INTERNAL_ASSUME_STRUCT_HANDLE disables public Graphics3D class checks; define RT_G3D_TRUSTED_STRUCT_HANDLES only for private trusted fixtures."
+#error                                                                                             \
+    "RT_G3D_INTERNAL_ASSUME_STRUCT_HANDLE disables public Graphics3D class checks; define RT_G3D_TRUSTED_STRUCT_HANDLES only for private trusted fixtures."
 #endif
 
 /// @brief True if @p obj is a live object of runtime class @p class_id.

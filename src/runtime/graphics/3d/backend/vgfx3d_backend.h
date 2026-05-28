@@ -53,6 +53,7 @@ typedef struct {
     float shininess;             /* specular exponent */
     float alpha;                 /* opacity [0.0=invisible, 1.0=opaque] */
     int8_t unlit;                /* skip lighting if true */
+    int8_t disable_depth_test;   /* screen-space overlays bypass depth test/write */
     const void *texture;         /* Pixels object (diffuse, slot 0) or NULL */
     const void *normal_map;      /* Pixels (normal map, slot 1) or NULL */
     const void *specular_map;    /* Pixels (specular map, slot 2) or NULL */
@@ -78,8 +79,8 @@ typedef struct {
     float texture_slot_uv_transform[RT_MATERIAL3D_TEXTURE_SLOT_COUNT][6];
     const void *metallic_roughness_map; /* Pixels (glTF metallic/roughness map) or NULL */
     const void *ao_map;                 /* Pixels (ambient occlusion map) or NULL */
-    const void *env_map;         /* CubeMap3D (environment reflections) or NULL */
-    float reflectivity;          /* [0.0=no reflection, 1.0=mirror] */
+    const void *env_map;                /* CubeMap3D (environment reflections) or NULL */
+    float reflectivity;                 /* [0.0=no reflection, 1.0=mirror] */
     /* Terrain splat mapping (populated by terrain draw path, NULL otherwise) */
     const void *splat_map;       /* RGBA weight texture (NULL = not terrain) */
     const void *splat_layers[4]; /* Layer textures */
@@ -160,7 +161,7 @@ typedef struct {
 ///   optional shadow-map slot index, direction/position/color/intensity/attenuation, and
 ///   spot inner/outer cone cosines.
 typedef struct {
-    int32_t type; /* 0=directional, 1=point, 2=ambient, 3=spot */
+    int32_t type;         /* 0=directional, 1=point, 2=ambient, 3=spot */
     int32_t shadow_index; /* -1 = unshadowed, otherwise [0, VGFX3D_MAX_SHADOW_LIGHTS) */
     float direction[3];
     float position[3];
@@ -208,12 +209,8 @@ typedef struct vgfx3d_backend {
      * shadow_begin: initialize the indexed depth target and store that light VP.
      * shadow_draw: depth-only rasterize one mesh into the shadow map.
      * shadow_end: finalize that slot for lookup in the main pass. */
-    void (*shadow_begin)(void *ctx,
-                         int32_t slot,
-                         float *depth_buf,
-                         int32_t w,
-                         int32_t h,
-                         const float *light_vp);
+    void (*shadow_begin)(
+        void *ctx, int32_t slot, float *depth_buf, int32_t w, int32_t h, const float *light_vp);
     void (*shadow_draw)(void *ctx, const vgfx3d_draw_cmd_t *cmd);
     void (*shadow_end)(void *ctx, int32_t slot, float bias);
 

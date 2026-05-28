@@ -3,9 +3,9 @@
 // RTParticleTests.cpp - Unit tests for rt_particle
 //===----------------------------------------------------------------------===//
 
-#include "rt_particle.h"
 #include "rt_graphics.h"
 #include "rt_option.h"
+#include "rt_particle.h"
 #include "rt_pixels.h"
 #include <cassert>
 #include <cmath>

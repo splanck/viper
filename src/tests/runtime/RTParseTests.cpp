@@ -10,8 +10,8 @@
 //
 //===----------------------------------------------------------------------===//
 
-#include "rt_internal.h"
 #include "rt_fmt.h"
+#include "rt_internal.h"
 #include "rt_numeric.h"
 #include "rt_object.h"
 #include "rt_option.h"

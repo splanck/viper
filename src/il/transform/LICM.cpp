@@ -384,9 +384,9 @@ PreservedAnalyses LICM::run(Function &function, AnalysisManager &analysis) {
                     // observe or modify stack memory whose address never left
                     // the function.
                     if (loopHasMod) {
-                        allowLoads = !instr.operands.empty() &&
-                                     isDerivedFromNonEscapingAlloca(
-                                         function, aa, instr.operands[0]);
+                        allowLoads =
+                            !instr.operands.empty() &&
+                            isDerivedFromNonEscapingAlloca(function, aa, instr.operands[0]);
                     }
                     if (allowLoads && !instr.operands.empty()) {
                         auto loadSize = viper::analysis::BasicAA::typeSizeBytes(instr.type);

@@ -161,8 +161,7 @@ int32_t vgfx3d_metal_next_capacity(int32_t current_capacity,
 }
 
 /// @brief Clamp morph shape count to shader and index-range limits.
-int32_t vgfx3d_metal_clamp_morph_shape_count(uint32_t vertex_count,
-                                             int32_t requested_shape_count) {
+int32_t vgfx3d_metal_clamp_morph_shape_count(uint32_t vertex_count, int32_t requested_shape_count) {
     int32_t shape_count;
     uint32_t max_indexed_vertices;
     uint32_t max_shapes_by_index;
@@ -208,15 +207,14 @@ int8_t vgfx3d_metal_should_load_existing_color(vgfx3d_metal_target_kind_t target
 }
 
 /// @brief Pick the color format — HDR16F for the scene pass, UNORM8 elsewhere.
-vgfx3d_metal_color_format_t
-vgfx3d_metal_choose_color_format(vgfx3d_metal_target_kind_t target_kind) {
+vgfx3d_metal_color_format_t vgfx3d_metal_choose_color_format(
+    vgfx3d_metal_target_kind_t target_kind) {
     return target_kind == VGFX3D_METAL_TARGET_SCENE ? VGFX3D_METAL_COLOR_FORMAT_HDR16F
                                                     : VGFX3D_METAL_COLOR_FORMAT_UNORM8;
 }
 
 /// @brief Map a draw command to its required blend state (alpha vs opaque).
-vgfx3d_metal_blend_mode_t
-vgfx3d_metal_choose_blend_mode(const vgfx3d_draw_cmd_t *cmd) {
+vgfx3d_metal_blend_mode_t vgfx3d_metal_choose_blend_mode(const vgfx3d_draw_cmd_t *cmd) {
     if (cmd && cmd->additive_blend)
         return VGFX3D_METAL_BLEND_ADDITIVE;
     return vgfx3d_draw_cmd_uses_alpha_blend(cmd) ? VGFX3D_METAL_BLEND_ALPHA
@@ -230,16 +228,14 @@ int vgfx3d_metal_has_complete_splat(int8_t cmd_has_splat,
                                     int has_layer1,
                                     int has_layer2,
                                     int has_layer3) {
-    return cmd_has_splat && has_splat_map && has_layer0 && has_layer1 && has_layer2 &&
-           has_layer3;
+    return cmd_has_splat && has_splat_map && has_layer0 && has_layer1 && has_layer2 && has_layer3;
 }
 
 /// @brief Decide whether to attach a motion-vector buffer to the current pass.
 /// Only the scene pass with opaque draws gets a motion attachment; alpha-blended
 /// draws and non-scene targets drop motion (TAA can't disambiguate transparency).
-vgfx3d_metal_motion_attachment_mode_t
-vgfx3d_metal_choose_motion_attachment_mode(vgfx3d_metal_target_kind_t target_kind,
-                                           const vgfx3d_draw_cmd_t *cmd) {
+vgfx3d_metal_motion_attachment_mode_t vgfx3d_metal_choose_motion_attachment_mode(
+    vgfx3d_metal_target_kind_t target_kind, const vgfx3d_draw_cmd_t *cmd) {
     if (target_kind != VGFX3D_METAL_TARGET_SCENE)
         return VGFX3D_METAL_MOTION_ATTACHMENTS_COLOR_ONLY;
     return vgfx3d_metal_choose_blend_mode(cmd) == VGFX3D_METAL_BLEND_OPAQUE
@@ -284,8 +280,7 @@ int vgfx3d_metal_should_reuse_morph_cache(const void *cached_key,
         return 0;
     has_normal_deltas = cmd->morph_normal_deltas ? 1 : 0;
     return cached_key == cmd->morph_key && cached_revision == cmd->morph_revision &&
-           cached_shape_count == shape_count &&
-           cached_vertex_count == cmd->vertex_count &&
+           cached_shape_count == shape_count && cached_vertex_count == cmd->vertex_count &&
            cached_has_normal_deltas == has_normal_deltas;
 }
 

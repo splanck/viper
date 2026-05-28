@@ -677,8 +677,8 @@ static void test_move_existing_destination_traps() {
     mkdir_p(dst);
 
     EXPECT_TRAP(rt_dir_move(rt_const_cstr(src), rt_const_cstr(dst)));
-    test_result("move destination exists traps", rt_dir_exists(rt_const_cstr(src)) == 1 &&
-                                                     rt_dir_exists(rt_const_cstr(dst)) == 1);
+    test_result("move destination exists traps",
+                rt_dir_exists(rt_const_cstr(src)) == 1 && rt_dir_exists(rt_const_cstr(dst)) == 1);
 
     rmdir_p(src);
     rmdir_p(dst);

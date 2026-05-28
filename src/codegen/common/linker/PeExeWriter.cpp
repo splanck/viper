@@ -171,16 +171,18 @@ bool buildImportTables(const std::vector<DllImport> &imports,
         out = lhs + rhs;
         return true;
     };
-    auto checkedAlignLocal = [&](uint32_t value, uint32_t alignment, const char *what, uint32_t &out) {
-        size_t aligned = 0;
-        try {
-            aligned = alignUp(static_cast<size_t>(value), alignment);
-        } catch (const std::exception &ex) {
-            err << "error: PE import table " << what << " alignment failed: " << ex.what() << "\n";
-            return false;
-        }
-        return checkedLocalU32(aligned, what, out);
-    };
+    auto checkedAlignLocal =
+        [&](uint32_t value, uint32_t alignment, const char *what, uint32_t &out) {
+            size_t aligned = 0;
+            try {
+                aligned = alignUp(static_cast<size_t>(value), alignment);
+            } catch (const std::exception &ex) {
+                err << "error: PE import table " << what << " alignment failed: " << ex.what()
+                    << "\n";
+                return false;
+            }
+            return checkedLocalU32(aligned, what, out);
+        };
     auto checkedCountBytes = [&](size_t count, uint32_t elemSize, const char *what, uint32_t &out) {
         const uint64_t count64 = static_cast<uint64_t>(count);
         if (count64 > (std::numeric_limits<uint64_t>::max() / elemSize) - 1) {
@@ -260,7 +262,8 @@ bool buildImportTables(const std::vector<DllImport> &imports,
         const auto &imp = imports[i];
         uint32_t idtEntryDelta = 0;
         uint32_t idtEntryOff = 0;
-        if (!checkedLocalU32(static_cast<uint64_t>(i) * 20ULL, "directory entry offset", idtEntryDelta) ||
+        if (!checkedLocalU32(
+                static_cast<uint64_t>(i) * 20ULL, "directory entry offset", idtEntryDelta) ||
             !checkedAddLocal(idtOff, idtEntryDelta, "directory entry offset", idtEntryOff))
             return false;
         uint32_t firstThunkRva = 0;
@@ -290,8 +293,7 @@ bool buildImportTables(const std::vector<DllImport> &imports,
             result.data.data() + curDllNameOff, imp.dllName.c_str(), imp.dllName.size() + 1);
         uint32_t dllNameBytes = 0;
         if (!checkedLocalU32(imp.dllName.size() + 1, "DLL-name table cursor", dllNameBytes) ||
-            !checkedAddLocal(
-                curDllNameOff, dllNameBytes, "DLL-name table cursor", curDllNameOff))
+            !checkedAddLocal(curDllNameOff, dllNameBytes, "DLL-name table cursor", curDllNameOff))
             return false;
 
         for (const auto &fn : imp.functions) {
@@ -307,8 +309,7 @@ bool buildImportTables(const std::vector<DllImport> &imports,
             uint32_t rawHintSize = static_cast<uint32_t>(2 + importName.size() + 1);
             uint32_t alignedHintSize = 0;
             if (!checkedAlignLocal(rawHintSize, 2, "hint-name table cursor", alignedHintSize) ||
-                !checkedAddLocal(
-                    curHintOff, alignedHintSize, "hint-name table cursor", curHintOff))
+                !checkedAddLocal(curHintOff, alignedHintSize, "hint-name table cursor", curHintOff))
                 return false;
 
             putLE32(result.data, curIltOff, hintNameRva);
@@ -398,11 +399,7 @@ bool checkedSizeU32(size_t value, const char *what, std::ostream &err, uint32_t 
     return true;
 }
 
-bool checkedAddU32(uint32_t lhs,
-                   uint32_t rhs,
-                   const char *what,
-                   std::ostream &err,
-                   uint32_t &out) {
+bool checkedAddU32(uint32_t lhs, uint32_t rhs, const char *what, std::ostream &err, uint32_t &out) {
     if (lhs > std::numeric_limits<uint32_t>::max() - rhs) {
         err << "error: PE " << what << " overflows 32-bit file format limit\n";
         return false;
@@ -423,11 +420,8 @@ bool checkedRva(uint64_t imageBase,
     return checkedU32(virtualAddr - imageBase, "RVA", err, out);
 }
 
-bool checkedAlignUpU32(uint64_t value,
-                       uint32_t alignment,
-                       const char *what,
-                       std::ostream &err,
-                       uint32_t &out) {
+bool checkedAlignUpU32(
+    uint64_t value, uint32_t alignment, const char *what, std::ostream &err, uint32_t &out) {
     if (value > std::numeric_limits<size_t>::max()) {
         err << "error: PE " << what << " exceeds addressable size\n";
         return false;
@@ -684,8 +678,8 @@ std::vector<uint8_t> buildBaseRelocationBlocks(std::vector<uint32_t> rvas, bool 
         const uint32_t pageRva = rvas[i] & ~0xFFFu;
         std::vector<uint16_t> entries;
         while (i < rvas.size() && (rvas[i] & ~0xFFFu) == pageRva) {
-            entries.push_back(static_cast<uint16_t>((kImageRelBasedDir64 << 12) |
-                                                    (rvas[i] & 0x0FFFu)));
+            entries.push_back(
+                static_cast<uint16_t>((kImageRelBasedDir64 << 12) | (rvas[i] & 0x0FFFu)));
             ++i;
         }
         if ((entries.size() & 1u) != 0)
@@ -729,7 +723,7 @@ ResourceLayout buildDefaultManifestResource(uint32_t sectionRva) {
 
     std::vector<uint8_t> data(totalSize, 0);
     auto putDir = [&](uint32_t off, uint16_t idEntryCount) {
-        putLE16(data, off + 12, 0);           // NumberOfNamedEntries
+        putLE16(data, off + 12, 0);            // NumberOfNamedEntries
         putLE16(data, off + 14, idEntryCount); // NumberOfIdEntries
     };
 
@@ -817,11 +811,15 @@ bool writePeExe(const std::string &path,
 
         if (sec.alloc) {
             uint32_t alignedVirtualSize = 0;
-            if (!checkedAlignUpU32(
-                    ps.virtualSize, sectionAlignment, "section virtual size", err, alignedVirtualSize))
+            if (!checkedAlignUpU32(ps.virtualSize,
+                                   sectionAlignment,
+                                   "section virtual size",
+                                   err,
+                                   alignedVirtualSize))
                 return false;
             uint32_t end = 0;
-            if (!checkedAddU32(ps.virtualAddress, alignedVirtualSize, "section RVA range", err, end))
+            if (!checkedAddU32(
+                    ps.virtualAddress, alignedVirtualSize, "section RVA range", err, end))
                 return false;
             nextGeneratedRva = std::max(nextGeneratedRva, end);
         }
@@ -851,8 +849,7 @@ bool writePeExe(const std::string &path,
                 if (!sec.alloc || !sec.writable || sec.data == nullptr)
                     continue;
                 const uint64_t slotEnd = static_cast<uint64_t>(slotRva) + 8;
-                const uint64_t secEnd =
-                    static_cast<uint64_t>(sec.virtualAddress) + sec.virtualSize;
+                const uint64_t secEnd = static_cast<uint64_t>(sec.virtualAddress) + sec.virtualSize;
                 if (slotRva < sec.virtualAddress || slotEnd > secEnd)
                     continue;
                 auto *bytes = const_cast<std::vector<uint8_t> *>(sec.data);
@@ -1020,8 +1017,11 @@ bool writePeExe(const std::string &path,
                                "base relocation section size",
                                err,
                                alignedRelocSize) ||
-            !checkedAddU32(
-                relocRva, alignedRelocSize, "base relocation section RVA range", err, nextGeneratedRva))
+            !checkedAddU32(relocRva,
+                           alignedRelocSize,
+                           "base relocation section RVA range",
+                           err,
+                           nextGeneratedRva))
             return false;
     }
 
@@ -1036,8 +1036,10 @@ bool writePeExe(const std::string &path,
         resourceSec.name = ".rsrc";
         resourceSec.data = &generatedResourceData;
         resourceSec.virtualAddress = resourceRva;
-        if (!checkedSizeU32(
-                generatedResourceData.size(), "resource section size", err, resourceSec.virtualSize))
+        if (!checkedSizeU32(generatedResourceData.size(),
+                            "resource section size",
+                            err,
+                            resourceSec.virtualSize))
             return false;
         resourceSec.characteristics = sectionChars(false, false, true);
         sections.push_back(resourceSec);
@@ -1048,8 +1050,11 @@ bool writePeExe(const std::string &path,
                                "resource section size",
                                err,
                                alignedResourceSize) ||
-            !checkedAddU32(
-                resourceRva, alignedResourceSize, "resource section RVA range", err, nextGeneratedRva))
+            !checkedAddU32(resourceRva,
+                           alignedResourceSize,
+                           "resource section RVA range",
+                           err,
+                           nextGeneratedRva))
             return false;
     }
 
@@ -1096,13 +1101,15 @@ bool writePeExe(const std::string &path,
         }
         if (sec.zeroFill) {
             sec.sizeOfRawData = 0;
-        } else if (!checkedAlignUpU32(
-                       sec.virtualSize, fileAlignment, "section raw size", err, sec.sizeOfRawData)) {
+        } else if (!checkedAlignUpU32(sec.virtualSize,
+                                      fileAlignment,
+                                      "section raw size",
+                                      err,
+                                      sec.sizeOfRawData)) {
             return false;
         }
         sec.pointerToRawData = sec.sizeOfRawData == 0 ? 0 : currentFileOff;
-        if (!checkedAddU32(
-                currentFileOff, sec.sizeOfRawData, "file offset", err, currentFileOff))
+        if (!checkedAddU32(currentFileOff, sec.sizeOfRawData, "file offset", err, currentFileOff))
             return false;
 
         if (sec.alloc) {
@@ -1119,8 +1126,7 @@ bool writePeExe(const std::string &path,
                 return false;
             sizeOfImage = std::max(sizeOfImage, secEnd);
             if (sec.executable) {
-                if (!checkedAddU32(
-                        sizeOfCode, sec.sizeOfRawData, "SizeOfCode", err, sizeOfCode))
+                if (!checkedAddU32(sizeOfCode, sec.sizeOfRawData, "SizeOfCode", err, sizeOfCode))
                     return false;
                 if (baseOfCode == 0)
                     baseOfCode = sec.virtualAddress;
@@ -1132,8 +1138,11 @@ bool writePeExe(const std::string &path,
                                    sizeOfUninitData))
                     return false;
             } else {
-                if (!checkedAddU32(
-                        sizeOfInitData, sec.sizeOfRawData, "SizeOfInitializedData", err, sizeOfInitData))
+                if (!checkedAddU32(sizeOfInitData,
+                                   sec.sizeOfRawData,
+                                   "SizeOfInitializedData",
+                                   err,
+                                   sizeOfInitData))
                     return false;
             }
         }

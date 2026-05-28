@@ -330,8 +330,8 @@ static vpa_archive_t *vpa_open_file_impl(const char *path, int no_follow) {
 
     // Read TOC into memory
     if ((entry_count > 0 && toc_size == 0) || (entry_count == 0 && toc_size != 0) ||
-        toc_size > 64 * 1024 * 1024 || toc_size > (uint64_t)SIZE_MAX ||
-        toc_offset > file_size || toc_size > file_size - toc_offset) { // 64MB TOC limit
+        toc_size > 64 * 1024 * 1024 || toc_size > (uint64_t)SIZE_MAX || toc_offset > file_size ||
+        toc_size > file_size - toc_offset) { // 64MB TOC limit
         fclose(f);
         return NULL;
     }
@@ -457,7 +457,8 @@ uint8_t *vpa_read_entry(const vpa_archive_t *archive, const vpa_entry_t *entry, 
             memcpy(stored, archive->blob + entry->data_offset, stored_len);
     } else if (archive->file) {
         // File-backed: seek and read
-        if (entry->data_offset > archive->file_size || stored_len > archive->file_size - entry->data_offset)
+        if (entry->data_offset > archive->file_size ||
+            stored_len > archive->file_size - entry->data_offset)
             return NULL;
         stored = (uint8_t *)malloc(stored_len > 0 ? stored_len : 1);
         if (!stored)

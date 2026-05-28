@@ -13,8 +13,8 @@
 //
 //===----------------------------------------------------------------------===//
 
-#include "viper/runtime/rt.h"
 #include "tests/common/PlatformSkip.h"
+#include "viper/runtime/rt.h"
 
 #include <array>
 #include <cassert>

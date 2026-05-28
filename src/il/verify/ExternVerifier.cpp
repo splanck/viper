@@ -62,8 +62,7 @@ bool signaturesMatch(const Extern &decl, const il::runtime::RuntimeSignature &ru
 }
 
 bool isExternParamTypeSupported(Type::Kind kind) {
-    return kind != Type::Kind::Void && kind != Type::Kind::Error &&
-           kind != Type::Kind::ResumeTok;
+    return kind != Type::Kind::Void && kind != Type::Kind::Error && kind != Type::Kind::ResumeTok;
 }
 
 bool attrsCompatibleWithRuntime(const Extern &decl,
@@ -107,8 +106,8 @@ Expected<void> ExternVerifier::run(const Module &module, DiagSink &) {
         for (const Type &param : ext.params) {
             if (!isExternParamTypeSupported(param.kind)) {
                 return Expected<void>{makeError(
-                    {}, "extern @" + ext.name + " has unsupported parameter type " +
-                            param.toString())};
+                    {},
+                    "extern @" + ext.name + " has unsupported parameter type " + param.toString())};
             }
         }
 
@@ -127,9 +126,9 @@ Expected<void> ExternVerifier::run(const Module &module, DiagSink &) {
                 return Expected<void>{makeError({}, "extern @" + ext.name + " signature mismatch")};
             std::string why;
             if (!attrsCompatibleWithRuntime(ext, *runtimeSig, why)) {
-                return Expected<void>{makeError(
-                    {}, "extern @" + ext.name + " " + why +
-                            " attribute contradicts runtime metadata")};
+                return Expected<void>{makeError({},
+                                                "extern @" + ext.name + " " + why +
+                                                    " attribute contradicts runtime metadata")};
             }
         }
     }

@@ -11,7 +11,8 @@
 //   and AABB-AABB overlap/penetration tests.
 //
 // Key invariants:
-//   - All ray functions take Vec3 origin + direction; non-zero directions are normalized internally.
+//   - All ray functions take Vec3 origin + direction; non-zero directions are normalized
+//   internally.
 //   - Distance return: >= 0 = Euclidean hit distance, -1 = no hit.
 //   - IntersectMesh returns a RayHit3D object (or NULL) with hit point, normal, triangle index.
 //   - AABB functions take Vec3 min/max corners.

@@ -181,7 +181,8 @@ int runFrontBasic(const FrontBasicConfig &config,
 
     auto result = compileBasic(compilerInput, compilerOpts, sm);
     const bool shouldPrintDiagnostics =
-        !result.succeeded() || (config.shared.showWarnings && result.diagnostics.warningCount() != 0);
+        !result.succeeded() ||
+        (config.shared.showWarnings && result.diagnostics.warningCount() != 0);
     if (shouldPrintDiagnostics) {
         if (result.emitter) {
             if (config.shared.diagnosticFormat == ilc::DiagnosticFormat::Json) {
@@ -237,13 +238,14 @@ int runFrontBasic(const FrontBasicConfig &config,
 
             if (!pm.runPipeline(module, config.optLevel)) {
                 ilc::printDiagnostic(il::support::Diag{il::support::Severity::Error,
-                                                       "IL optimization pipeline '" + config.optLevel +
+                                                       "IL optimization pipeline '" +
+                                                           config.optLevel +
                                                            "' failed verification",
                                                        {},
                                                        "V-OPT-PIPELINE"},
-                                      std::cerr,
-                                      &sm,
-                                      config.shared.diagnosticFormat);
+                                     std::cerr,
+                                     &sm,
+                                     config.shared.diagnosticFormat);
                 return 1;
             }
 

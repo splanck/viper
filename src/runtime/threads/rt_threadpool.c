@@ -76,17 +76,17 @@ typedef struct pool_worker {
 
 /// @brief Thread pool implementation.
 typedef struct pool_impl {
-    void *monitor;         ///< Monitor for synchronization.
-    pool_task *queue_head; ///< Head of task queue.
-    pool_task *queue_tail; ///< Tail of task queue.
-    pool_worker *workers;  ///< Array of workers.
-    int64_t worker_count;  ///< Number of workers.
-    int64_t pending_count; ///< Number of tasks in queue.
-    int64_t active_count;  ///< Number of tasks running.
-    int64_t error_count;   ///< Number of worker task traps not yet observed.
-    char last_error[512];  ///< Last worker task trap message.
-    int8_t shutdown;       ///< Shutdown flag.
-    int8_t shutdown_now;   ///< Immediate shutdown flag.
+    void *monitor;            ///< Monitor for synchronization.
+    pool_task *queue_head;    ///< Head of task queue.
+    pool_task *queue_tail;    ///< Tail of task queue.
+    pool_worker *workers;     ///< Array of workers.
+    int64_t worker_count;     ///< Number of workers.
+    int64_t pending_count;    ///< Number of tasks in queue.
+    int64_t active_count;     ///< Number of tasks running.
+    int64_t error_count;      ///< Number of worker task traps not yet observed.
+    char last_error[512];     ///< Last worker task trap message.
+    int8_t shutdown;          ///< Shutdown flag.
+    int8_t shutdown_now;      ///< Immediate shutdown flag.
     int8_t cleanup_scheduled; ///< Deferred cleanup was scheduled from a worker finalizer.
 } pool_impl;
 
@@ -357,8 +357,7 @@ void *rt_threadpool_new(int64_t size) {
     if (size > 1024)
         size = 1024;
 
-    pool_impl *pool =
-        (pool_impl *)rt_obj_new_i64(RT_THREADPOOL_CLASS_ID, sizeof(pool_impl));
+    pool_impl *pool = (pool_impl *)rt_obj_new_i64(RT_THREADPOOL_CLASS_ID, sizeof(pool_impl));
     if (!pool)
         return NULL;
 
@@ -507,7 +506,9 @@ static void worker_entry(void *arg) {
         rt_monitor_enter(pool->monitor);
         if (trapped) {
             pool->error_count++;
-            strncpy(pool->last_error, task_error[0] ? task_error : "Pool.Wait: task trapped", sizeof(pool->last_error) - 1);
+            strncpy(pool->last_error,
+                    task_error[0] ? task_error : "Pool.Wait: task trapped",
+                    sizeof(pool->last_error) - 1);
             pool->last_error[sizeof(pool->last_error) - 1] = '\0';
         }
         pool->active_count--;

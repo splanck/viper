@@ -59,11 +59,11 @@ extern "C" {
 ///          the exact struct that follows the heap header. Do not copy these
 ///          bytes directly; always go through the accessor functions.
 typedef struct rt_locale {
-    char language[RT_LOCALE_LANG_CAP];   ///< lowercased primary subtag
-    char script[RT_LOCALE_SCRIPT_CAP];   ///< Title-case script or ""
-    char region[RT_LOCALE_REGION_CAP];   ///< UPPERCASE region or ""
-    char tag[RT_LOCALE_TAG_CAP];         ///< canonical BCP-47 tag
-    const rt_locale_data_t *data;        ///< non-owning; may be NULL
+    char language[RT_LOCALE_LANG_CAP]; ///< lowercased primary subtag
+    char script[RT_LOCALE_SCRIPT_CAP]; ///< Title-case script or ""
+    char region[RT_LOCALE_REGION_CAP]; ///< UPPERCASE region or ""
+    char tag[RT_LOCALE_TAG_CAP];       ///< canonical BCP-47 tag
+    const rt_locale_data_t *data;      ///< non-owning; may be NULL
 } rt_locale_t;
 
 //===----------------------------------------------------------------------===//

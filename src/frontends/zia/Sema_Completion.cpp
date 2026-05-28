@@ -104,34 +104,39 @@ const char *authoredRuntimeMemberDocumentation(const std::string &className,
         const char *memberName;
         const char *text;
     };
+
     static constexpr Doc docs[] = {
-        {"Viper.Terminal", "Say",
+        {"Viper.Terminal",
+         "Say",
          "Writes text followed by a newline to the terminal output stream."},
-        {"Viper.Terminal", "Print",
+        {"Viper.Terminal",
+         "Print",
          "Writes text to the terminal output stream without appending a newline."},
-        {"Viper.Terminal", "Ask",
+        {"Viper.Terminal",
+         "Ask",
          "Prompts the user and returns the entered text when input is available."},
-        {"Viper.IO.File", "ReadAllText",
-         "Reads an entire text file into a String."},
-        {"Viper.IO.File", "WriteAllText",
+        {"Viper.IO.File", "ReadAllText", "Reads an entire text file into a String."},
+        {"Viper.IO.File",
+         "WriteAllText",
          "Writes a String to a file, replacing the previous contents."},
-        {"Viper.IO.File", "Exists",
-         "Returns whether a file exists at the supplied path."},
-        {"Viper.IO.Path", "Join",
-         "Combines path fragments using the platform path separator."},
-        {"Viper.GUI.App", "Poll",
-         "Processes pending window and input events for the app."},
-        {"Viper.GUI.App", "Render",
+        {"Viper.IO.File", "Exists", "Returns whether a file exists at the supplied path."},
+        {"Viper.IO.Path", "Join", "Combines path fragments using the platform path separator."},
+        {"Viper.GUI.App", "Poll", "Processes pending window and input events for the app."},
+        {"Viper.GUI.App",
+         "Render",
          "Lays out and paints the current GUI frame when the app needs repainting."},
-        {"Viper.GUI.CodeEditor", "SetText",
+        {"Viper.GUI.CodeEditor",
+         "SetText",
          "Replaces the editor buffer text and refreshes editor state."},
-        {"Viper.GUI.CodeEditor", "GetText",
-         "Returns the current editor buffer text."},
-        {"Viper.GUI.CodeEditor", "Text",
+        {"Viper.GUI.CodeEditor", "GetText", "Returns the current editor buffer text."},
+        {"Viper.GUI.CodeEditor",
+         "Text",
          "Read-only property containing the current editor buffer text."},
-        {"Viper.GUI.CodeEditor", "Revision",
+        {"Viper.GUI.CodeEditor",
+         "Revision",
          "Read-only counter that changes when the editor buffer changes."},
-        {"Viper.GUI.App", "Root",
+        {"Viper.GUI.App",
+         "Root",
          "Root widget for the app window; add top-level layout containers here."},
     };
 
@@ -249,12 +254,12 @@ std::vector<Symbol> Sema::getVisibleSymbolsAtPosition(uint32_t fileId,
         candidates.push_back({ss.symbol, ss.loc, depth});
     }
 
-    std::stable_sort(candidates.begin(), candidates.end(), [](const Candidate &a,
-                                                              const Candidate &b) {
-        if (a.depth != b.depth)
-            return a.depth > b.depth;
-        return compareToolLoc(a.loc, b.loc) > 0;
-    });
+    std::stable_sort(
+        candidates.begin(), candidates.end(), [](const Candidate &a, const Candidate &b) {
+            if (a.depth != b.depth)
+                return a.depth > b.depth;
+            return compareToolLoc(a.loc, b.loc) > 0;
+        });
 
     std::vector<Symbol> result;
     std::unordered_set<std::string> seen;

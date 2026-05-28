@@ -64,7 +64,10 @@
 ///          deterministic decimal points regardless of the process's `LC_NUMERIC` setting.
 ///          Returns the number of bytes that would have been written (per `vsnprintf`
 ///          semantics), or -1 on locale-acquisition failure.
-static int rt_format_vsnprintf_c_locale(char *buffer, size_t capacity, const char *fmt, va_list args) {
+static int rt_format_vsnprintf_c_locale(char *buffer,
+                                        size_t capacity,
+                                        const char *fmt,
+                                        va_list args) {
 #if defined(_WIN32)
     _locale_t c_locale = _create_locale(LC_NUMERIC, "C");
     if (!c_locale)
@@ -249,8 +252,7 @@ void rt_format_f64_roundtrip(double value, char *buffer, size_t capacity) {
     char best[64];
     best[0] = '\0';
     for (int precision = 1; precision <= 17; ++precision) {
-        int n = rt_format_snprintf_c_locale(
-            candidate, sizeof(candidate), "%.*g", precision, value);
+        int n = rt_format_snprintf_c_locale(candidate, sizeof(candidate), "%.*g", precision, value);
         if (n < 0 || (size_t)n >= sizeof(candidate))
             continue;
         double reparsed = 0.0;

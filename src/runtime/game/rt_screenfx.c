@@ -160,9 +160,8 @@ static int64_t effect_progress_per_mille(const struct screenfx_effect *e) {
 /// XOR 0xDEADBEEF so each instance gets a unique deterministic sequence. Returns a GC-managed
 /// handle; NULL on allocation failure.
 rt_screenfx rt_screenfx_new(void) {
-    struct rt_screenfx_impl *fx =
-        (struct rt_screenfx_impl *)rt_obj_new_i64(RT_SCREENFX_CLASS_ID,
-                                                 (int64_t)sizeof(struct rt_screenfx_impl));
+    struct rt_screenfx_impl *fx = (struct rt_screenfx_impl *)rt_obj_new_i64(
+        RT_SCREENFX_CLASS_ID, (int64_t)sizeof(struct rt_screenfx_impl));
     if (!fx)
         return NULL;
 
@@ -430,8 +429,9 @@ void rt_screenfx_cancel_all(rt_screenfx fx) {
     fx->overlay_alpha = 0;
 }
 
-/// @brief Stop every effect of a single type (e.g. cancel all FADE_IN slots before issuing a new one).
-/// Composited state (shake/overlay) is NOT zeroed — they decay naturally on the next `update()`.
+/// @brief Stop every effect of a single type (e.g. cancel all FADE_IN slots before issuing a new
+/// one). Composited state (shake/overlay) is NOT zeroed — they decay naturally on the next
+/// `update()`.
 void rt_screenfx_cancel_type(rt_screenfx fx, int64_t type) {
     fx = checked_screenfx(fx, "ScreenFX.CancelType: expected Viper.Game.ScreenFX");
     if (!fx)
@@ -501,9 +501,9 @@ int64_t rt_screenfx_get_overlay_alpha(rt_screenfx fx) {
 // Transition Effects
 //=============================================================================
 
-/// @brief Trigger a directional wipe transition. `direction` ∈ {LEFT, RIGHT, UP, DOWN}; out-of-range
-/// values default to LEFT. The colored rectangle grows from one screen edge across the duration,
-/// rendered in `draw()`.
+/// @brief Trigger a directional wipe transition. `direction` ∈ {LEFT, RIGHT, UP, DOWN};
+/// out-of-range values default to LEFT. The colored rectangle grows from one screen edge across the
+/// duration, rendered in `draw()`.
 void rt_screenfx_wipe(rt_screenfx fx, int64_t direction, int64_t color, int64_t duration) {
     fx = checked_screenfx(fx, "ScreenFX.Wipe: expected Viper.Game.ScreenFX");
     if (!fx || duration <= 0)

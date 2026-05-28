@@ -114,9 +114,8 @@ static int64_t typewriter_utf8_char_count(const char *text, int64_t len) {
 ///          the classic RPG dialogue effect. Use say() to load text, update() each
 ///          frame, and get_visible_text() to read the partially-revealed string.
 rt_typewriter rt_typewriter_new(void) {
-    struct rt_typewriter_impl *t =
-        (struct rt_typewriter_impl *)rt_obj_new_i64(RT_TYPEWRITER_CLASS_ID,
-                                                    (int64_t)sizeof(struct rt_typewriter_impl));
+    struct rt_typewriter_impl *t = (struct rt_typewriter_impl *)rt_obj_new_i64(
+        RT_TYPEWRITER_CLASS_ID, (int64_t)sizeof(struct rt_typewriter_impl));
     if (!t)
         return NULL;
 

@@ -117,8 +117,7 @@ static void rt_gui_subhandle_finalize(void *obj) {
 
 /// @brief Safe-cast an opaque handle to a subhandle of the expected @p kind.
 /// @return The subhandle if it has the right object size, magic tag and kind; NULL otherwise.
-static rt_gui_subhandle_t *rt_gui_subhandle_checked(void *handle,
-                                                    rt_gui_subhandle_kind_t kind) {
+static rt_gui_subhandle_t *rt_gui_subhandle_checked(void *handle, rt_gui_subhandle_kind_t kind) {
     if (!rt_obj_is_instance(handle, 0, sizeof(rt_gui_subhandle_t)))
         return NULL;
     rt_gui_subhandle_t *sub = (rt_gui_subhandle_t *)handle;
@@ -212,21 +211,18 @@ static void *rt_gui_wrap_subhandle(rt_gui_subhandle_kind_t kind,
 }
 
 void *rt_gui_wrap_tree_node(vg_tree_node_t *node) {
-    return rt_gui_wrap_subhandle(RT_GUI_HANDLE_TREE_NODE,
-                                 node,
-                                 node && node->owner ? &node->owner->base : NULL);
+    return rt_gui_wrap_subhandle(
+        RT_GUI_HANDLE_TREE_NODE, node, node && node->owner ? &node->owner->base : NULL);
 }
 
 void *rt_gui_wrap_tab(vg_tab_t *tab) {
-    return rt_gui_wrap_subhandle(RT_GUI_HANDLE_TAB,
-                                 tab,
-                                 tab && tab->owner ? &tab->owner->base : NULL);
+    return rt_gui_wrap_subhandle(
+        RT_GUI_HANDLE_TAB, tab, tab && tab->owner ? &tab->owner->base : NULL);
 }
 
 void *rt_gui_wrap_listbox_item(vg_listbox_item_t *item) {
-    return rt_gui_wrap_subhandle(RT_GUI_HANDLE_LISTBOX_ITEM,
-                                 item,
-                                 item && item->owner ? &item->owner->base : NULL);
+    return rt_gui_wrap_subhandle(
+        RT_GUI_HANDLE_LISTBOX_ITEM, item, item && item->owner ? &item->owner->base : NULL);
 }
 
 void *rt_gui_wrap_menu(vg_menu_t *menu) {
@@ -234,27 +230,22 @@ void *rt_gui_wrap_menu(vg_menu_t *menu) {
 }
 
 void *rt_gui_wrap_menu_item(vg_menu_item_t *item) {
-    return rt_gui_wrap_subhandle(RT_GUI_HANDLE_MENU_ITEM,
-                                 item,
-                                 rt_gui_owner_widget_for_menu_item(item));
+    return rt_gui_wrap_subhandle(
+        RT_GUI_HANDLE_MENU_ITEM, item, rt_gui_owner_widget_for_menu_item(item));
 }
 
 void *rt_gui_wrap_contextmenu(vg_contextmenu_t *menu) {
-    return rt_gui_wrap_subhandle(RT_GUI_HANDLE_CONTEXTMENU,
-                                 menu,
-                                 menu ? &menu->base : NULL);
+    return rt_gui_wrap_subhandle(RT_GUI_HANDLE_CONTEXTMENU, menu, menu ? &menu->base : NULL);
 }
 
 void *rt_gui_wrap_statusbar_item(vg_statusbar_item_t *item) {
-    return rt_gui_wrap_subhandle(RT_GUI_HANDLE_STATUSBAR_ITEM,
-                                 item,
-                                 item && item->owner ? &item->owner->base : NULL);
+    return rt_gui_wrap_subhandle(
+        RT_GUI_HANDLE_STATUSBAR_ITEM, item, item && item->owner ? &item->owner->base : NULL);
 }
 
 void *rt_gui_wrap_toolbar_item(vg_toolbar_item_t *item) {
-    return rt_gui_wrap_subhandle(RT_GUI_HANDLE_TOOLBAR_ITEM,
-                                 item,
-                                 item && item->owner ? &item->owner->base : NULL);
+    return rt_gui_wrap_subhandle(
+        RT_GUI_HANDLE_TOOLBAR_ITEM, item, item && item->owner ? &item->owner->base : NULL);
 }
 
 vg_tree_node_t *rt_gui_tree_node_from_handle(void *handle) {
@@ -636,11 +627,10 @@ void rt_widget_set_preferred_size(void *widget, double width, double height) {
         rt_gui_app_t *app = rt_gui_app_from_widget(w);
         if (app && app->root == w)
             return;
-        vg_widget_set_preferred_size(w,
-                                     rt_gui_sanitize_nonnegative_float(
-                                         width, RT_GUI_MAX_LAYOUT_VALUE),
-                                     rt_gui_sanitize_nonnegative_float(
-                                         height, RT_GUI_MAX_LAYOUT_VALUE));
+        vg_widget_set_preferred_size(
+            w,
+            rt_gui_sanitize_nonnegative_float(width, RT_GUI_MAX_LAYOUT_VALUE),
+            rt_gui_sanitize_nonnegative_float(height, RT_GUI_MAX_LAYOUT_VALUE));
     }
 }
 
@@ -675,8 +665,7 @@ void rt_widget_set_flex(void *widget, double flex) {
     RT_ASSERT_MAIN_THREAD();
     vg_widget_t *w = rt_gui_widget_handle_checked(widget);
     if (w) {
-        vg_widget_set_flex(
-            w, rt_gui_sanitize_nonnegative_float(flex, RT_GUI_MAX_LAYOUT_VALUE));
+        vg_widget_set_flex(w, rt_gui_sanitize_nonnegative_float(flex, RT_GUI_MAX_LAYOUT_VALUE));
     }
 }
 
@@ -715,8 +704,7 @@ void rt_widget_set_margin(void *widget, int64_t margin) {
     vg_widget_t *w = rt_gui_widget_handle_checked(widget);
     if (w)
         vg_widget_set_margin(
-            w,
-            rt_gui_sanitize_nonnegative_float((double)margin, RT_GUI_MAX_LAYOUT_VALUE));
+            w, rt_gui_sanitize_nonnegative_float((double)margin, RT_GUI_MAX_LAYOUT_VALUE));
 }
 
 /// @brief Set the tab-order index for keyboard navigation.
@@ -729,8 +717,7 @@ void rt_widget_set_tab_index(void *widget, int64_t idx) {
     RT_ASSERT_MAIN_THREAD();
     vg_widget_t *w = rt_gui_widget_handle_checked(widget);
     if (w)
-        vg_widget_set_tab_index(
-            w, rt_gui_clamp_i64_to_i32(idx, -1, INT32_MAX));
+        vg_widget_set_tab_index(w, rt_gui_clamp_i64_to_i32(idx, -1, INT32_MAX));
 }
 
 /// @brief Check whether the widget is currently visible.

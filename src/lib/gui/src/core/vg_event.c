@@ -50,7 +50,8 @@ static void event_init_empty_runtime_state(vg_widget_runtime_state_t *state) {
     state->last_click_button = -1;
 }
 
-/// @brief Returns true if @p ancestor is equal to or is an ancestor of @p widget in the widget tree.
+/// @brief Returns true if @p ancestor is equal to or is an ancestor of @p widget in the widget
+/// tree.
 static bool event_widget_is_ancestor(const vg_widget_t *ancestor, const vg_widget_t *widget) {
     for (const vg_widget_t *current = widget; current; current = current->parent) {
         if (current == ancestor)
@@ -59,7 +60,8 @@ static bool event_widget_is_ancestor(const vg_widget_t *ancestor, const vg_widge
     return false;
 }
 
-/// @brief Nulls all per-root state references (hover, focus, capture, modal-root, click) that point into @p subtree.
+/// @brief Nulls all per-root state references (hover, focus, capture, modal-root, click) that point
+/// into @p subtree.
 static void event_clear_state_widget(vg_widget_runtime_state_t *state, vg_widget_t *subtree) {
     if (!state || !subtree)
         return;
@@ -97,7 +99,8 @@ static void event_clear_state_widget(vg_widget_runtime_state_t *state, vg_widget
     }
 }
 
-/// @brief Returns true if @p widget is live, its stored ID matches, and it is a descendant of @p root.
+/// @brief Returns true if @p widget is live, its stored ID matches, and it is a descendant of @p
+/// root.
 static bool event_state_ref_is_in_root(vg_widget_t *root, vg_widget_t *widget, uint64_t id) {
     if (!root || !widget || !vg_widget_is_live(widget))
         return false;
@@ -106,7 +109,8 @@ static bool event_state_ref_is_in_root(vg_widget_t *root, vg_widget_t *widget, u
     return event_widget_is_ancestor(root, widget);
 }
 
-/// @brief Strips any state references in @p state that are not within @p root's subtree, keeping only in-root refs.
+/// @brief Strips any state references in @p state that are not within @p root's subtree, keeping
+/// only in-root refs.
 static void event_filter_state_to_root(vg_widget_runtime_state_t *state, vg_widget_t *root) {
     if (!state)
         return;
@@ -144,7 +148,8 @@ static void event_filter_state_to_root(vg_widget_runtime_state_t *state, vg_widg
     }
 }
 
-/// @brief Scans all root-state slots and clears every reference pointing into the given subtree; called before subtree destruction.
+/// @brief Scans all root-state slots and clears every reference pointing into the given subtree;
+/// called before subtree destruction.
 void vg_event_forget_widget_subtree(vg_widget_t *widget) {
     if (!widget)
         return;
@@ -189,7 +194,8 @@ static void event_prune_dead_root_state_slots(void) {
     }
 }
 
-/// @brief Finds the per-root state slot for @p root; allocates a new one when @p create is true and no slot exists.
+/// @brief Finds the per-root state slot for @p root; allocates a new one when @p create is true and
+/// no slot exists.
 static vg_event_root_state_slot_t *event_find_root_state_slot(vg_widget_t *root, bool create) {
     if (!root)
         return NULL;
@@ -222,9 +228,8 @@ static vg_event_root_state_slot_t *event_find_root_state_slot(vg_widget_t *root,
     if (new_capacity > SIZE_MAX / sizeof(vg_event_root_state_slot_t))
         return NULL;
 
-    vg_event_root_state_slot_t *new_slots =
-        (vg_event_root_state_slot_t *)realloc(g_root_state_slots,
-                                              new_capacity * sizeof(*new_slots));
+    vg_event_root_state_slot_t *new_slots = (vg_event_root_state_slot_t *)realloc(
+        g_root_state_slots, new_capacity * sizeof(*new_slots));
     if (!new_slots)
         return NULL;
 
@@ -239,7 +244,8 @@ static vg_event_root_state_slot_t *event_find_root_state_slot(vg_widget_t *root,
     return &g_root_state_slots[old_capacity];
 }
 
-/// @brief Saves the current global event state into the previously-active root's slot, then restores state for @p root.
+/// @brief Saves the current global event state into the previously-active root's slot, then
+/// restores state for @p root.
 static void event_activate_root_state(vg_widget_t *root) {
     if (!vg_widget_is_live(root))
         return;
@@ -278,13 +284,13 @@ static void event_activate_root_state(vg_widget_t *root) {
     g_active_event_root_id = root->id;
 }
 
-/// @brief Returns true for event types that carry widget-local x/y; wheel events use their own screen coords instead.
+/// @brief Returns true for event types that carry widget-local x/y; wheel events use their own
+/// screen coords instead.
 static bool event_has_widget_local_mouse_coords(vg_event_type_t type) {
     // Wheel events carry their own screen coordinates. They do not have
     // widget-local x/y because those slots are the scroll deltas.
     return type == VG_EVENT_MOUSE_MOVE || type == VG_EVENT_MOUSE_DOWN ||
-           type == VG_EVENT_MOUSE_UP || type == VG_EVENT_CLICK ||
-           type == VG_EVENT_DOUBLE_CLICK;
+           type == VG_EVENT_MOUSE_UP || type == VG_EVENT_CLICK || type == VG_EVENT_DOUBLE_CLICK;
 }
 
 /// @brief Returns the screen-space X coordinate from a mouse or wheel event.
@@ -299,7 +305,8 @@ static float event_screen_y(const vg_event_t *event) {
                                                         : event->mouse.screen_y;
 }
 
-/// @brief Subtracts the widget's screen origin from the event's screen coordinates to produce widget-local mouse x/y.
+/// @brief Subtracts the widget's screen origin from the event's screen coordinates to produce
+/// widget-local mouse x/y.
 static void event_localize_mouse_to_widget(vg_widget_t *widget, vg_event_t *event) {
     if (!widget || !event || !event_has_widget_local_mouse_coords(event->type))
         return;
@@ -320,7 +327,8 @@ static bool event_widget_is_in_subtree(vg_widget_t *root, vg_widget_t *widget) {
     return false;
 }
 
-/// @brief Returns the captured widget only if it resides inside the active modal; releases and returns NULL if outside.
+/// @brief Returns the captured widget only if it resides inside the active modal; releases and
+/// returns NULL if outside.
 static vg_widget_t *event_modal_safe_capture(void) {
     vg_widget_t *capture = vg_widget_get_input_capture();
     if (capture && !vg_widget_is_live(capture)) {
@@ -355,7 +363,8 @@ static void set_hovered_widget(vg_widget_t *widget) {
     vg_widget_set_runtime_state(&state);
 }
 
-/// @brief Transitions hover from the previous widget to @p widget, firing MOUSE_LEAVE and MOUSE_ENTER events.
+/// @brief Transitions hover from the previous widget to @p widget, firing MOUSE_LEAVE and
+/// MOUSE_ENTER events.
 static void update_hovered_widget(vg_widget_t *widget) {
     vg_widget_t *previous = get_hovered_widget();
     if (previous == widget)
@@ -393,7 +402,8 @@ static void clear_last_click_state(void) {
     vg_widget_set_runtime_state(&state);
 }
 
-/// @brief Records a click on @p widget in the active root's runtime state for subsequent double-click detection.
+/// @brief Records a click on @p widget in the active root's runtime state for subsequent
+/// double-click detection.
 static void remember_click(vg_widget_t *widget, const vg_event_t *event) {
     if (!widget || !event)
         return;
@@ -409,15 +419,17 @@ static void remember_click(vg_widget_t *widget, const vg_event_t *event) {
     vg_widget_set_runtime_state(&state);
 }
 
-/// @brief Returns true if @p event qualifies as a double-click on @p widget — same button, within time and distance thresholds.
+/// @brief Returns true if @p event qualifies as a double-click on @p widget — same button, within
+/// time and distance thresholds.
 static bool is_double_click_for_widget(vg_widget_t *widget, const vg_event_t *event) {
     if (!widget || !event || event->timestamp <= 0)
         return false;
 
     vg_widget_runtime_state_t state = {0};
     vg_widget_get_runtime_state(&state);
-    if (state.last_click_widget != widget || state.last_click_button != (int32_t)event->mouse.button ||
-        state.last_click_time_ms <= 0 || event->timestamp < state.last_click_time_ms) {
+    if (state.last_click_widget != widget ||
+        state.last_click_button != (int32_t)event->mouse.button || state.last_click_time_ms <= 0 ||
+        event->timestamp < state.last_click_time_ms) {
         return false;
     }
 
@@ -434,7 +446,8 @@ static bool is_double_click_for_widget(vg_widget_t *widget, const vg_event_t *ev
 // Event Creation Helpers
 //=============================================================================
 
-/// @brief Constructs a mouse event value with screen and local coordinates, button, and modifiers pre-filled.
+/// @brief Constructs a mouse event value with screen and local coordinates, button, and modifiers
+/// pre-filled.
 vg_event_t vg_event_mouse(
     vg_event_type_t type, float x, float y, vg_mouse_button_t button, uint32_t modifiers) {
     vg_event_t event;
@@ -473,7 +486,8 @@ vg_event_t vg_event_key(vg_event_type_t type,
 // Platform Event Translation
 //=============================================================================
 
-/// @brief Translates a VGFX platform key code to vg_key_t; passes printable ASCII through directly and maps special keys via a switch table.
+/// @brief Translates a VGFX platform key code to vg_key_t; passes printable ASCII through directly
+/// and maps special keys via a switch table.
 vg_key_t vg_key_from_vgfx_key(int32_t vgfx_key) {
     if (vgfx_key <= 0)
         return VG_KEY_UNKNOWN;
@@ -530,7 +544,8 @@ static uint32_t translate_vgfx_modifiers(int vgfx_modifiers) {
     return modifiers;
 }
 
-/// @brief Converts a vgfx_event_t platform event to a vg_event_t, mapping keyboard, mouse, scroll, resize, and close events.
+/// @brief Converts a vgfx_event_t platform event to a vg_event_t, mapping keyboard, mouse, scroll,
+/// resize, and close events.
 vg_event_t vg_event_from_platform(void *platform_event) {
     vg_event_t event;
     memset(&event, 0, sizeof(event));
@@ -604,9 +619,10 @@ vg_event_t vg_event_from_platform(void *platform_event) {
         case VGFX_EVENT_RESIZE:
             event.type = VG_EVENT_RESIZE;
             event.resize.width = pe->data.resize.logical_width > 0 ? pe->data.resize.logical_width
-                                                                    : pe->data.resize.width;
-            event.resize.height = pe->data.resize.logical_height > 0 ? pe->data.resize.logical_height
-                                                                      : pe->data.resize.height;
+                                                                   : pe->data.resize.width;
+            event.resize.height = pe->data.resize.logical_height > 0
+                                      ? pe->data.resize.logical_height
+                                      : pe->data.resize.height;
             break;
 
         case VGFX_EVENT_CLOSE:
@@ -633,7 +649,8 @@ vg_event_t vg_event_from_platform(void *platform_event) {
 // Event Dispatch
 //=============================================================================
 
-/// @brief Routes an event from @p root to its target, applying hit-testing, input capture, modal restriction, hover updates, and keyboard focus routing.
+/// @brief Routes an event from @p root to its target, applying hit-testing, input capture, modal
+/// restriction, hover updates, and keyboard focus routing.
 bool vg_event_dispatch(vg_widget_t *root, vg_event_t *event) {
     if (!root || !event)
         return false;
@@ -665,7 +682,8 @@ bool vg_event_dispatch(vg_widget_t *root, vg_event_t *event) {
             if (event->type == VG_EVENT_MOUSE_UP) {
                 bool handled = vg_event_send(capture, event);
                 if (capture->type == VG_WIDGET_DROPDOWN &&
-                    vg_widget_get_input_capture() == capture && !vg_widget_contains_point(
+                    vg_widget_get_input_capture() == capture &&
+                    !vg_widget_contains_point(
                         capture, event_screen_x(event), event_screen_y(event))) {
                     vg_event_t click_event = *event;
                     click_event.type = VG_EVENT_CLICK;
@@ -785,7 +803,8 @@ bool vg_event_dispatch(vg_widget_t *root, vg_event_t *event) {
     return vg_event_send(root, event);
 }
 
-/// @brief Delivers an event to @p widget, bubbles it up the parent chain, and synthesizes CLICK/DOUBLE_CLICK events on MOUSE_UP.
+/// @brief Delivers an event to @p widget, bubbles it up the parent chain, and synthesizes
+/// CLICK/DOUBLE_CLICK events on MOUSE_UP.
 bool vg_event_send(vg_widget_t *widget, vg_event_t *event) {
     if (!widget || !event)
         return false;

@@ -155,12 +155,12 @@ static std::vector<uint8_t> makeElfRelocWithSecondSymtab() {
     const size_t shoff = obj.size();
     patchLE64(obj, 40, shoff);
     appendElfShdr(obj, 0, 0, 0, 0, 0, 0, 0, 0);
-    appendElfShdr(obj, 1, 0x6, textOff, 4, 0, 0, 4, 0);       // .text
-    appendElfShdr(obj, 3, 0, str1Off, 7, 0, 0, 1, 0);         // strtab 1
-    appendElfShdr(obj, 2, 0, sym1Off, 48, 2, 1, 8, 24);       // symtab 1
-    appendElfShdr(obj, 3, 0, str2Off, 7, 0, 0, 1, 0);         // strtab 2
-    appendElfShdr(obj, 2, 0, sym2Off, 48, 4, 1, 8, 24);       // symtab 2
-    appendElfShdr(obj, 4, 0, relaOff, 24, 5, 1, 8, 24);       // rela.text -> symtab 2
+    appendElfShdr(obj, 1, 0x6, textOff, 4, 0, 0, 4, 0); // .text
+    appendElfShdr(obj, 3, 0, str1Off, 7, 0, 0, 1, 0);   // strtab 1
+    appendElfShdr(obj, 2, 0, sym1Off, 48, 2, 1, 8, 24); // symtab 1
+    appendElfShdr(obj, 3, 0, str2Off, 7, 0, 0, 1, 0);   // strtab 2
+    appendElfShdr(obj, 2, 0, sym2Off, 48, 4, 1, 8, 24); // symtab 2
+    appendElfShdr(obj, 4, 0, relaOff, 24, 5, 1, 8, 24); // rela.text -> symtab 2
     return obj;
 }
 
@@ -264,11 +264,8 @@ static void appendMachHeader(std::vector<uint8_t> &obj,
     appendLE32(obj, 0);
 }
 
-static void appendMachSymtab(std::vector<uint8_t> &obj,
-                             uint32_t symoff,
-                             uint32_t nsyms,
-                             uint32_t stroff,
-                             uint32_t strsize) {
+static void appendMachSymtab(
+    std::vector<uint8_t> &obj, uint32_t symoff, uint32_t nsyms, uint32_t stroff, uint32_t strsize) {
     appendLE32(obj, 0x02);
     appendLE32(obj, 24);
     appendLE32(obj, symoff);

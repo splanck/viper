@@ -556,8 +556,7 @@ void Lowerer::lowerUsingStmt(const UsingStmt &stmt) {
         BasicBlock *contBlk = &func->blocks[contIdx];
 
         ctx.setCurrentByIndex(originIdx);
-        emitCBrWithArgs(
-            shouldDestroy, destroyBlk, {errArg, tokArg}, contBlk, {errArg, tokArg});
+        emitCBrWithArgs(shouldDestroy, destroyBlk, {errArg, tokArg}, contBlk, {errArg, tokArg});
 
         ctx.setCurrent(destroyBlk);
         curLoc = stmt.loc;

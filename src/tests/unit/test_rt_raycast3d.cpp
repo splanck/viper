@@ -227,10 +227,14 @@ static void test_ray_mesh_unnormalized_direction_reports_world_distance() {
     void *hit = rt_ray3d_intersect_mesh(origin, dir, box, rt_mat4_identity());
     EXPECT_TRUE(hit != nullptr, "Ray-mesh accepts unnormalized non-zero directions");
     if (hit) {
-        EXPECT_NEAR(rt_ray3d_hit_distance(hit), 4.0, 0.01,
+        EXPECT_NEAR(rt_ray3d_hit_distance(hit),
+                    4.0,
+                    0.01,
                     "Ray-mesh unnormalized direction reports Euclidean distance");
         void *pt = rt_ray3d_hit_point(hit);
-        EXPECT_NEAR(rt_vec3_z(pt), 1.0, 0.01,
+        EXPECT_NEAR(rt_vec3_z(pt),
+                    1.0,
+                    0.01,
                     "Ray-mesh unnormalized direction reports the correct hit point");
     }
 }
@@ -261,8 +265,8 @@ static void test_ray_mesh_and_hit_accessors_reject_wrong_handles() {
                 "Ray-mesh rejects non-Mat4 transform handles");
     EXPECT_TRUE(rt_ray3d_intersect_mesh(origin, dir, identity, identity) == nullptr,
                 "Ray-mesh rejects non-Mesh3D handles");
-    EXPECT_NEAR(rt_ray3d_hit_distance(box), -1.0, 0.01,
-                "RayHit3D.Distance rejects non-hit handles");
+    EXPECT_NEAR(
+        rt_ray3d_hit_distance(box), -1.0, 0.01, "RayHit3D.Distance rejects non-hit handles");
     EXPECT_TRUE(rt_ray3d_hit_triangle(box) == -1, "RayHit3D.Triangle rejects non-hit handles");
     pt = rt_ray3d_hit_point(box);
     EXPECT_NEAR(rt_vec3_x(pt), 0.0, 0.01, "RayHit3D.Point returns safe zero for bad handles");
@@ -299,9 +303,10 @@ static void test_aabb_canonicalizes_inverted_bounds() {
                 1.0,
                 0.01,
                 "AABB penetration canonicalizes inverted min/max bounds");
-    closest = rt_aabb3d_closest_point(rt_vec3_new(1, 1, 1), rt_vec3_new(-1, -1, -1), rt_vec3_new(3, 0, 0));
-    EXPECT_NEAR(rt_vec3_x(closest), 1.0, 0.01,
-                "AABB closest-point canonicalizes inverted min/max bounds");
+    closest = rt_aabb3d_closest_point(
+        rt_vec3_new(1, 1, 1), rt_vec3_new(-1, -1, -1), rt_vec3_new(3, 0, 0));
+    EXPECT_NEAR(
+        rt_vec3_x(closest), 1.0, 0.01, "AABB closest-point canonicalizes inverted min/max bounds");
     EXPECT_TRUE(rt_aabb3d_sphere_overlaps(a0, a1, rt_vec3_new(1, 1, 1), -1.0) == 0,
                 "AABB-sphere rejects negative radii");
 }

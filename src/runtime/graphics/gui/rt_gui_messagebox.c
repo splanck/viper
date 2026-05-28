@@ -381,8 +381,8 @@ static rt_messagebox_data_t *rt_messagebox_checked(void *box) {
 static void rt_messagebox_dispose(rt_messagebox_data_t *data) {
     if (!data)
         return;
-    rt_gui_app_t *app = rt_gui_is_app_handle(data->owner_app) ? data->owner_app
-                                                              : rt_messagebox_app();
+    rt_gui_app_t *app =
+        rt_gui_is_app_handle(data->owner_app) ? data->owner_app : rt_messagebox_app();
     for (size_t i = 0; i < data->custom_button_count; i++)
         free(data->custom_buttons[i].label);
     free(data->custom_buttons);
@@ -571,8 +571,8 @@ int64_t rt_messagebox_show(void *box) {
     rt_messagebox_data_t *data = rt_messagebox_checked(box);
     if (!data)
         return -1;
-    rt_gui_app_t *app = rt_gui_is_app_handle(data->owner_app) ? data->owner_app
-                                                              : rt_messagebox_app();
+    rt_gui_app_t *app =
+        rt_gui_is_app_handle(data->owner_app) ? data->owner_app : rt_messagebox_app();
     if (!app || !data->dialog)
         return -1;
 
@@ -580,9 +580,9 @@ int64_t rt_messagebox_show(void *box) {
     if (data->custom_button_count > 0) {
         for (size_t i = 0; i < data->custom_button_count; i++) {
             data->custom_buttons[i].result = (vg_dialog_result_t)(i + 1);
-            data->custom_buttons[i].is_default =
-                data->has_default_button && data->custom_button_ids &&
-                data->custom_button_ids[i] == data->default_button;
+            data->custom_buttons[i].is_default = data->has_default_button &&
+                                                 data->custom_button_ids &&
+                                                 data->custom_button_ids[i] == data->default_button;
         }
         vg_dialog_set_custom_buttons(data->dialog, data->custom_buttons, data->custom_button_count);
     }

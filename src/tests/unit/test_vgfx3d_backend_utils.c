@@ -209,9 +209,11 @@ static void test_hdr_readback_helpers(void) {
                 "RGBA16F conversion preserves alpha while tonemapping bright highlights");
     EXPECT_TRUE(memcmp(rgba8_from_16f, rgba8_from_32f, sizeof(rgba8_from_16f)) == 0,
                 "RGBA16F and RGBA32F conversion helpers produce matching display-space bytes");
-    EXPECT_NEAR(rgba32f_from_16f[0], 1.0f, 1e-6f,
-                "RGBA16F to RGBA32F conversion preserves linear red");
-    EXPECT_NEAR(rgba32f_from_16f[4], 4.0f, 1e-6f,
+    EXPECT_NEAR(
+        rgba32f_from_16f[0], 1.0f, 1e-6f, "RGBA16F to RGBA32F conversion preserves linear red");
+    EXPECT_NEAR(rgba32f_from_16f[4],
+                4.0f,
+                1e-6f,
                 "RGBA16F to RGBA32F conversion preserves HDR values before tonemapping");
 }
 
@@ -326,8 +328,8 @@ static void test_compute_normal_matrix_singular_fallback(void) {
     model[0] = NAN;
     vgfx3d_compute_normal_matrix4(model, normal);
     EXPECT_NEAR(normal[0], 1.0f, 1e-6f, "Non-finite normal matrix input falls back to identity");
-    EXPECT_NEAR(normal[10], 1.0f, 1e-6f,
-                "Non-finite normal matrix input avoids propagating NaN values");
+    EXPECT_NEAR(
+        normal[10], 1.0f, 1e-6f, "Non-finite normal matrix input avoids propagating NaN values");
 }
 
 static void test_invert_matrix4_success(void) {
@@ -465,14 +467,20 @@ static void test_skinning_normalizes_weights_and_copies_without_palette(void) {
 
     memset(dst, 0, sizeof(dst));
     vgfx3d_skin_vertices(src, dst, 1, palette, 2);
-    EXPECT_NEAR(dst[0].pos[0], 3.0f, 1e-6f,
+    EXPECT_NEAR(dst[0].pos[0],
+                3.0f,
+                1e-6f,
                 "CPU skinning normalizes non-unit bone weights before writing positions");
-    EXPECT_NEAR(dst[0].normal[0], 1.0f, 1e-6f,
+    EXPECT_NEAR(dst[0].normal[0],
+                1.0f,
+                1e-6f,
                 "CPU skinning preserves normalized normals after weight normalization");
 
     memset(dst, 0, sizeof(dst));
     vgfx3d_skin_vertices(src, dst, 1, NULL, 0);
-    EXPECT_NEAR(dst[0].pos[0], src[0].pos[0], 1e-6f,
+    EXPECT_NEAR(dst[0].pos[0],
+                src[0].pos[0],
+                1e-6f,
                 "CPU skinning copies vertices through when no palette is available");
 }
 
@@ -493,9 +501,13 @@ static void test_skinning_uses_inverse_transpose_normals(void) {
     memset(dst, 0, sizeof(dst));
     vgfx3d_skin_vertices(src, dst, 1, palette, 1);
 
-    EXPECT_NEAR(dst[0].normal[0], 0.24253564f, 1e-5f,
+    EXPECT_NEAR(dst[0].normal[0],
+                0.24253564f,
+                1e-5f,
                 "CPU skinning applies inverse-transpose X scale to normals");
-    EXPECT_NEAR(dst[0].normal[2], 0.97014254f, 1e-5f,
+    EXPECT_NEAR(dst[0].normal[2],
+                0.97014254f,
+                1e-5f,
                 "CPU skinning applies inverse-transpose Z scale to normals");
 }
 
@@ -524,17 +536,18 @@ static void test_frustum_and_mesh_aabb_reject_invalid_inputs_conservatively(void
     vertices[1].pos[1] = 3.0f;
     vertices[1].pos[2] = 4.0f;
     vgfx3d_compute_mesh_aabb(vertices, 2, sizeof(vertices[0]), out_min, out_max);
-    EXPECT_NEAR(out_min[0], -2.0f, 1e-6f,
+    EXPECT_NEAR(out_min[0],
+                -2.0f,
+                1e-6f,
                 "Mesh AABB skips non-finite positions while keeping valid vertices");
-    EXPECT_NEAR(out_max[2], 4.0f, 1e-6f,
-                "Mesh AABB keeps finite position bounds after invalid vertices");
+    EXPECT_NEAR(
+        out_max[2], 4.0f, 1e-6f, "Mesh AABB keeps finite position bounds after invalid vertices");
 
     out_min[0] = out_max[0] = 9.0f;
     vgfx3d_compute_mesh_aabb(vertices, 2, 1, out_min, out_max);
-    EXPECT_NEAR(out_min[0], 0.0f, 1e-6f,
-                "Mesh AABB rejects strides too small to contain positions");
-    EXPECT_NEAR(out_max[0], 0.0f, 1e-6f,
-                "Mesh AABB zeroes invalid stride outputs");
+    EXPECT_NEAR(
+        out_min[0], 0.0f, 1e-6f, "Mesh AABB rejects strides too small to contain positions");
+    EXPECT_NEAR(out_max[0], 0.0f, 1e-6f, "Mesh AABB zeroes invalid stride outputs");
 }
 
 static void test_transform_aabb_orders_inverted_extents(void) {

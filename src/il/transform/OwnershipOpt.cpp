@@ -36,9 +36,8 @@ enum class OwnershipCallKind { None, Retain, Release };
         return OwnershipCallKind::None;
 
     const std::string_view name = instr.callee;
-    if (name == "rt_str_retain" || name == "rt_str_retain_maybe" ||
-        name == "rt_arr_i32_retain" || name == "rt_arr_i64_retain" ||
-        name == "rt_arr_f64_retain") {
+    if (name == "rt_str_retain" || name == "rt_str_retain_maybe" || name == "rt_arr_i32_retain" ||
+        name == "rt_arr_i64_retain" || name == "rt_arr_f64_retain") {
         return OwnershipCallKind::Retain;
     }
 
@@ -181,9 +180,8 @@ PreservedAnalyses OwnershipOpt::run(Function &function, AnalysisManager & /*anal
 }
 
 void registerOwnershipOptPass(PassRegistry &registry) {
-    registry.registerFunctionPass("ownership-opt",
-                                  []() { return std::make_unique<OwnershipOpt>(); },
-                                  true);
+    registry.registerFunctionPass(
+        "ownership-opt", []() { return std::make_unique<OwnershipOpt>(); }, true);
 }
 
 } // namespace il::transform

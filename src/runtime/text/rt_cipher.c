@@ -327,11 +327,11 @@ void *rt_cipher_encrypt_aad(void *plaintext, rt_string password, void *aad) {
     uint8_t *plain_data = bytes_data(plaintext);
     int64_t plain_len = bytes_len(plaintext);
     int approved = rt_crypto_module_is_approved_mode();
-    int64_t out_len = cipher_checked_output_len(
-        plain_len,
-        CIPHER_PW_HEADER_SIZE + CIPHER_TAG_SIZE,
-        approved ? CIPHER_AES_GCM_MAX_BYTES : CIPHER_CHACHA20_MAX_BYTES,
-        "Cipher.Encrypt: plaintext length is invalid");
+    int64_t out_len =
+        cipher_checked_output_len(plain_len,
+                                  CIPHER_PW_HEADER_SIZE + CIPHER_TAG_SIZE,
+                                  approved ? CIPHER_AES_GCM_MAX_BYTES : CIPHER_CHACHA20_MAX_BYTES,
+                                  "Cipher.Encrypt: plaintext length is invalid");
 
     // Generate random salt and nonce
     uint8_t salt[CIPHER_SALT_SIZE];
@@ -346,9 +346,8 @@ void *rt_cipher_encrypt_aad(void *plaintext, rt_string password, void *aad) {
     void *result = rt_bytes_new(out_len);
     uint8_t *out_data = bytes_data(result);
 
-    memcpy(out_data,
-           approved ? CIPHER_PW_APPROVED_MAGIC : CIPHER_PW_MAGIC,
-           sizeof(CIPHER_PW_MAGIC));
+    memcpy(
+        out_data, approved ? CIPHER_PW_APPROVED_MAGIC : CIPHER_PW_MAGIC, sizeof(CIPHER_PW_MAGIC));
     write_be32(out_data + 4, CIPHER_PBKDF2_ITERATIONS);
     memcpy(out_data + 8, salt, CIPHER_SALT_SIZE);
     memcpy(out_data + 24, nonce, CIPHER_NONCE_SIZE);
@@ -357,21 +356,21 @@ void *rt_cipher_encrypt_aad(void *plaintext, rt_string password, void *aad) {
     size_t aad_len;
     uint8_t *aad_alloc = combine_aad(out_data, CIPHER_PW_HEADER_SIZE, aad, &aad_data, &aad_len);
 
-    size_t encrypted_len =
-        approved ? rt_aes256_gcm_encrypt(key,
-                                         nonce,
-                                         aad_data,
-                                         aad_len,
-                                         plain_data,
-                                         (size_t)plain_len,
-                                         out_data + CIPHER_PW_HEADER_SIZE)
-                 : rt_chacha20_poly1305_encrypt(key,
-                                                nonce,
-                                                aad_data,
-                                                aad_len,
-                                                plain_data,
-                                                (size_t)plain_len,
-                                                out_data + CIPHER_PW_HEADER_SIZE);
+    size_t encrypted_len = approved
+                               ? rt_aes256_gcm_encrypt(key,
+                                                       nonce,
+                                                       aad_data,
+                                                       aad_len,
+                                                       plain_data,
+                                                       (size_t)plain_len,
+                                                       out_data + CIPHER_PW_HEADER_SIZE)
+                               : rt_chacha20_poly1305_encrypt(key,
+                                                              nonce,
+                                                              aad_data,
+                                                              aad_len,
+                                                              plain_data,
+                                                              (size_t)plain_len,
+                                                              out_data + CIPHER_PW_HEADER_SIZE);
     if (aad_alloc)
         free(aad_alloc);
     if (encrypted_len == 0 && plain_len != 0) {
@@ -443,8 +442,7 @@ void *rt_cipher_decrypt_aad(void *ciphertext, rt_string password, void *aad) {
             return NULL;
         }
         uint32_t iterations = read_be32(ct_data + 4);
-        if (iterations < RT_PBKDF2_MIN_ITERATIONS ||
-            iterations > RT_PBKDF2_MAX_ITERATIONS) {
+        if (iterations < RT_PBKDF2_MIN_ITERATIONS || iterations > RT_PBKDF2_MAX_ITERATIONS) {
             rt_trap("Cipher.Decrypt: unsupported PBKDF2 iteration count");
             return NULL;
         }
@@ -468,24 +466,14 @@ void *rt_cipher_decrypt_aad(void *ciphertext, rt_string password, void *aad) {
         uint8_t *plain_data = bytes_data(result);
         const uint8_t *aad_data;
         size_t aad_len;
-        uint8_t *aad_alloc =
-            combine_aad(ct_data, CIPHER_PW_HEADER_SIZE, aad, &aad_data, &aad_len);
+        uint8_t *aad_alloc = combine_aad(ct_data, CIPHER_PW_HEADER_SIZE, aad, &aad_data, &aad_len);
 
         long decrypt_result =
-            approved_payload ? rt_aes256_gcm_decrypt(key,
-                                                     nonce,
-                                                     aad_data,
-                                                     aad_len,
-                                                     encrypted,
-                                                     (size_t)encrypted_len,
-                                                     plain_data)
-                             : rt_chacha20_poly1305_decrypt(key,
-                                                            nonce,
-                                                            aad_data,
-                                                            aad_len,
-                                                            encrypted,
-                                                            (size_t)encrypted_len,
-                                                            plain_data);
+            approved_payload
+                ? rt_aes256_gcm_decrypt(
+                      key, nonce, aad_data, aad_len, encrypted, (size_t)encrypted_len, plain_data)
+                : rt_chacha20_poly1305_decrypt(
+                      key, nonce, aad_data, aad_len, encrypted, (size_t)encrypted_len, plain_data);
         if (aad_alloc)
             free(aad_alloc);
         cipher_secure_zero(key, sizeof(key));
@@ -528,15 +516,15 @@ void *rt_cipher_decrypt_aad(void *ciphertext, rt_string password, void *aad) {
 
     uint8_t key[CIPHER_KEY_SIZE];
     derive_key_pbkdf2(pwd, pwd_len, salt, CIPHER_SALT_SIZE, key);
-    long decrypt_result =
-        rt_chacha20_poly1305_decrypt(key, nonce, NULL, 0, encrypted, (size_t)encrypted_len, plain_data);
+    long decrypt_result = rt_chacha20_poly1305_decrypt(
+        key, nonce, NULL, 0, encrypted, (size_t)encrypted_len, plain_data);
 
     if (decrypt_result < 0 || decrypt_result != plain_len) {
         if (plain_len > 0)
             cipher_secure_zero(plain_data, (size_t)plain_len);
         derive_key_legacy(pwd, pwd_len, salt, CIPHER_SALT_SIZE, key);
-        decrypt_result =
-            rt_chacha20_poly1305_decrypt(key, nonce, NULL, 0, encrypted, (size_t)encrypted_len, plain_data);
+        decrypt_result = rt_chacha20_poly1305_decrypt(
+            key, nonce, NULL, 0, encrypted, (size_t)encrypted_len, plain_data);
         if (decrypt_result < 0 || decrypt_result != plain_len) {
             cipher_secure_zero(key, sizeof(key));
             if (plain_len > 0)
@@ -596,11 +584,11 @@ void *rt_cipher_encrypt_with_key_aad(void *plaintext, void *key_bytes, void *aad
     int64_t plain_len = bytes_len(plaintext);
     const uint8_t *key = bytes_data(key_bytes);
     int approved = rt_crypto_module_is_approved_mode();
-    int64_t out_len = cipher_checked_output_len(
-        plain_len,
-        CIPHER_KEY_HEADER_SIZE + CIPHER_TAG_SIZE,
-        approved ? CIPHER_AES_GCM_MAX_BYTES : CIPHER_CHACHA20_MAX_BYTES,
-        "Cipher.EncryptWithKey: plaintext length is invalid");
+    int64_t out_len =
+        cipher_checked_output_len(plain_len,
+                                  CIPHER_KEY_HEADER_SIZE + CIPHER_TAG_SIZE,
+                                  approved ? CIPHER_AES_GCM_MAX_BYTES : CIPHER_CHACHA20_MAX_BYTES,
+                                  "Cipher.EncryptWithKey: plaintext length is invalid");
 
     // Generate random nonce
     uint8_t nonce[CIPHER_NONCE_SIZE];
@@ -616,24 +604,23 @@ void *rt_cipher_encrypt_with_key_aad(void *plaintext, void *key_bytes, void *aad
 
     const uint8_t *aad_data;
     size_t aad_len;
-    uint8_t *aad_alloc =
-        combine_aad(out_data, CIPHER_KEY_HEADER_SIZE, aad, &aad_data, &aad_len);
+    uint8_t *aad_alloc = combine_aad(out_data, CIPHER_KEY_HEADER_SIZE, aad, &aad_data, &aad_len);
 
-    size_t encrypted_len =
-        approved ? rt_aes256_gcm_encrypt(key,
-                                         nonce,
-                                         aad_data,
-                                         aad_len,
-                                         plain_data,
-                                         (size_t)plain_len,
-                                         out_data + CIPHER_KEY_HEADER_SIZE)
-                 : rt_chacha20_poly1305_encrypt(key,
-                                                nonce,
-                                                aad_data,
-                                                aad_len,
-                                                plain_data,
-                                                (size_t)plain_len,
-                                                out_data + CIPHER_KEY_HEADER_SIZE);
+    size_t encrypted_len = approved
+                               ? rt_aes256_gcm_encrypt(key,
+                                                       nonce,
+                                                       aad_data,
+                                                       aad_len,
+                                                       plain_data,
+                                                       (size_t)plain_len,
+                                                       out_data + CIPHER_KEY_HEADER_SIZE)
+                               : rt_chacha20_poly1305_encrypt(key,
+                                                              nonce,
+                                                              aad_data,
+                                                              aad_len,
+                                                              plain_data,
+                                                              (size_t)plain_len,
+                                                              out_data + CIPHER_KEY_HEADER_SIZE);
     if (aad_alloc)
         free(aad_alloc);
     if (encrypted_len == 0 && plain_len != 0) {
@@ -720,20 +707,11 @@ void *rt_cipher_decrypt_with_key_aad(void *ciphertext, void *key_bytes, void *aa
         aad_alloc = combine_aad(ct_data, CIPHER_KEY_HEADER_SIZE, aad, &aad_data, &aad_len);
 
     long decrypt_result =
-        approved_payload ? rt_aes256_gcm_decrypt(key,
-                                                 nonce,
-                                                 aad_data,
-                                                 aad_len,
-                                                 encrypted,
-                                                 (size_t)encrypted_len,
-                                                 plain_data)
-                         : rt_chacha20_poly1305_decrypt(key,
-                                                        nonce,
-                                                        aad_data,
-                                                        aad_len,
-                                                        encrypted,
-                                                        (size_t)encrypted_len,
-                                                        plain_data);
+        approved_payload
+            ? rt_aes256_gcm_decrypt(
+                  key, nonce, aad_data, aad_len, encrypted, (size_t)encrypted_len, plain_data)
+            : rt_chacha20_poly1305_decrypt(
+                  key, nonce, aad_data, aad_len, encrypted, (size_t)encrypted_len, plain_data);
     if (aad_alloc)
         free(aad_alloc);
 
@@ -781,7 +759,8 @@ void *rt_cipher_derive_key(rt_string password, void *salt_bytes) {
     }
 
     size_t pwd_len;
-    const char *pwd = cipher_password_bytes(password, &pwd_len, "Cipher.DeriveKey: password is null");
+    const char *pwd =
+        cipher_password_bytes(password, &pwd_len, "Cipher.DeriveKey: password is null");
     if (pwd_len == 0) {
         rt_trap("Cipher.DeriveKey: password is empty");
         return NULL;

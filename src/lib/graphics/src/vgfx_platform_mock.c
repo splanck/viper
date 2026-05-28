@@ -555,9 +555,10 @@ void vgfx_mock_inject_scroll(vgfx_window_t window, float dx, float dy, int32_t x
     if (!platform)
         return;
 
-    vgfx_event_t event = {.type = VGFX_EVENT_SCROLL,
-                          .time_ms = g_mock_time_ms,
-                          .data.scroll = {.delta_x = dx, .delta_y = dy, .x = x, .y = y, .modifiers = 0}};
+    vgfx_event_t event = {
+        .type = VGFX_EVENT_SCROLL,
+        .time_ms = g_mock_time_ms,
+        .data.scroll = {.delta_x = dx, .delta_y = dy, .x = x, .y = y, .modifiers = 0}};
     mock_pending_enqueue(platform, &event);
 }
 

@@ -45,10 +45,8 @@ int main() {
                 Type(Type::Kind::Ptr),
                 {Type(Type::Kind::Ptr), Type(Type::Kind::Ptr)});
     b.addExtern("Viper.Threads.Thread.Join", Type(Type::Kind::Void), {Type(Type::Kind::Ptr)});
-    b.addExtern(
-        "Viper.Threads.Thread.get_HasError", Type(Type::Kind::I1), {Type(Type::Kind::Ptr)});
-    b.addExtern(
-        "Viper.Threads.Thread.SafeJoin", Type(Type::Kind::Void), {Type(Type::Kind::Ptr)});
+    b.addExtern("Viper.Threads.Thread.get_HasError", Type(Type::Kind::I1), {Type(Type::Kind::Ptr)});
+    b.addExtern("Viper.Threads.Thread.SafeJoin", Type(Type::Kind::Void), {Type(Type::Kind::Ptr)});
     b.addExtern("Viper.Threads.Async.Run",
                 Type(Type::Kind::Ptr),
                 {Type(Type::Kind::Ptr), Type(Type::Kind::Ptr)});

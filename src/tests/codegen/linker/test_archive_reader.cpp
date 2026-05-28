@@ -161,7 +161,8 @@ static void appendZeros(std::vector<uint8_t> &buf, size_t count) {
 
 static void appendArField(std::vector<uint8_t> &buf, const std::string &value, size_t width) {
     for (size_t i = 0; i < width; ++i)
-        buf.push_back(i < value.size() ? static_cast<uint8_t>(value[i]) : static_cast<uint8_t>(' '));
+        buf.push_back(i < value.size() ? static_cast<uint8_t>(value[i])
+                                       : static_cast<uint8_t>(' '));
 }
 
 static void appendArHeader(std::vector<uint8_t> &buf,
@@ -191,7 +192,8 @@ static bool writeBinaryFile(const std::filesystem::path &path, const std::vector
     std::ofstream out(path, std::ios::binary);
     if (!out)
         return false;
-    out.write(reinterpret_cast<const char *>(data.data()), static_cast<std::streamsize>(data.size()));
+    out.write(reinterpret_cast<const char *>(data.data()),
+              static_cast<std::streamsize>(data.size()));
     return static_cast<bool>(out);
 }
 
@@ -256,9 +258,22 @@ static std::vector<uint8_t> makeSyntheticBigObj() {
     appendLE16(obj, 2);      // Version
     appendLE16(obj, kMachineAmd64);
     appendLE32(obj, 0); // TimeDateStamp
-    const uint8_t bigObjClassId[16] = {
-        0xC7, 0xA1, 0xBA, 0xD1, 0xEE, 0xBA, 0xA9, 0x4B,
-        0xAF, 0x20, 0xFA, 0xF6, 0x6A, 0xA4, 0xDC, 0xB8};
+    const uint8_t bigObjClassId[16] = {0xC7,
+                                       0xA1,
+                                       0xBA,
+                                       0xD1,
+                                       0xEE,
+                                       0xBA,
+                                       0xA9,
+                                       0x4B,
+                                       0xAF,
+                                       0x20,
+                                       0xFA,
+                                       0xF6,
+                                       0x6A,
+                                       0xA4,
+                                       0xDC,
+                                       0xB8};
     obj.insert(obj.end(), bigObjClassId, bigObjClassId + sizeof(bigObjClassId));
     appendLE32(obj, 0); // SizeOfData
     appendLE32(obj, 0); // Flags
@@ -531,7 +546,7 @@ static void runPortableArchiveReaderTests() {
         if (ar.symbolCandidates.count("dup") == 1) {
             CHECK(ar.symbolCandidates["dup"].size() == 2);
             CHECK(ar.symbolCandidates["dup"][0] == 0);
-        CHECK(ar.symbolCandidates["dup"][1] == 1);
+            CHECK(ar.symbolCandidates["dup"][1] == 1);
         }
         std::filesystem::remove(path);
     }
@@ -758,13 +773,16 @@ int main() {
     CHECK(iofs.symbolIndex.count("rt_file_channel_fd") == 1);
 
     {
-        const auto components = resolveRequiredComponents(std::vector<std::string>{"rt_uimenulist_new"});
-        CHECK(std::find(components.begin(), components.end(), RtComponent::Game) != components.end());
+        const auto components =
+            resolveRequiredComponents(std::vector<std::string>{"rt_uimenulist_new"});
+        CHECK(std::find(components.begin(), components.end(), RtComponent::Game) !=
+              components.end());
         CHECK(std::find(components.begin(), components.end(), RtComponent::Collections) !=
               components.end());
         CHECK(std::find(components.begin(), components.end(), RtComponent::Arrays) !=
               components.end());
-        CHECK(std::find(components.begin(), components.end(), RtComponent::Oop) != components.end());
+        CHECK(std::find(components.begin(), components.end(), RtComponent::Oop) !=
+              components.end());
         CHECK(std::find(components.begin(), components.end(), RtComponent::Threads) !=
               components.end());
     }

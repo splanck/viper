@@ -147,7 +147,8 @@ static void rt_list_traverse(void *obj, rt_gc_visitor_t visitor, void *ctx) {
 /// @see rt_list_finalize For cleanup behavior
 void *rt_list_new(void) {
     // Allocate object payload with header via object allocator to match object lifetime rules
-    rt_list_impl *list = (rt_list_impl *)rt_obj_new_i64(RT_LIST_CLASS_ID, (int64_t)sizeof(rt_list_impl));
+    rt_list_impl *list =
+        (rt_list_impl *)rt_obj_new_i64(RT_LIST_CLASS_ID, (int64_t)sizeof(rt_list_impl));
     if (!list)
         return NULL;
     list->vptr = NULL;

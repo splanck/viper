@@ -52,11 +52,8 @@ void *rt_gui_test_harness_find_by_type(void *harness, rt_string type);
 /// @brief Inject a key event (@p key plus a modifier bitmask) into the harness.
 void rt_gui_test_harness_send_key(void *harness, rt_string key, int64_t modifiers);
 /// @brief Inject a mouse event of @p event_type at (@p x, @p y) for the given button.
-void rt_gui_test_harness_send_mouse(void *harness,
-                                    rt_string event_type,
-                                    int64_t x,
-                                    int64_t y,
-                                    int64_t button);
+void rt_gui_test_harness_send_mouse(
+    void *harness, rt_string event_type, int64_t x, int64_t y, int64_t button);
 /// @brief Return the id of the currently focused widget (empty string if none).
 rt_string rt_gui_test_harness_get_focus(void *harness);
 /// @brief Return a sequence of widget ids in registration (focus-traversal) order.

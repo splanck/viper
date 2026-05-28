@@ -245,8 +245,7 @@ static void test_http_server_rejects_unsupported_transfer_encoding(void) {
                                   "\r\n"
                                   "0\r\n\r\n";
 
-    ASSERT(rt_http_server_test_parse_request(
-               gzip, sizeof(gzip) - 1, NULL, NULL, NULL, NULL) == 0);
+    ASSERT(rt_http_server_test_parse_request(gzip, sizeof(gzip) - 1, NULL, NULL, NULL, NULL) == 0);
     ASSERT(rt_http_server_test_parse_request(
                gzip_chunked, sizeof(gzip_chunked) - 1, NULL, NULL, NULL, NULL) == 0);
     ASSERT(rt_http_server_test_parse_request(
@@ -266,8 +265,8 @@ static void test_http_server_test_parse_preserves_nul_body(void) {
     char *body = NULL;
     size_t body_len = 0;
 
-    ASSERT(rt_http_server_test_parse_request(
-               raw, sizeof(raw) - 1, NULL, NULL, &body, &body_len) == 1);
+    ASSERT(rt_http_server_test_parse_request(raw, sizeof(raw) - 1, NULL, NULL, &body, &body_len) ==
+           1);
     ASSERT(body_len == sizeof(expected));
     ASSERT(body != NULL && memcmp(body, expected, sizeof(expected)) == 0);
     free(body);
@@ -507,11 +506,8 @@ static void test_http_parse_url_rejects_crlf_injection(void) {
     char *path = NULL;
     int port = 0;
     int use_tls = 0;
-    ASSERT(rt_http_parse_url_for_test("http://example.test/\r\nX-Evil: yes",
-                                      &host,
-                                      &port,
-                                      &path,
-                                      &use_tls) == 0);
+    ASSERT(rt_http_parse_url_for_test(
+               "http://example.test/\r\nX-Evil: yes", &host, &port, &path, &use_tls) == 0);
     free(host);
     free(path);
 }
@@ -555,14 +551,13 @@ static void test_http_parse_url_rejects_malformed_ipv6_authority(void) {
     int port = 0;
     int use_tls = 0;
 
-    ASSERT(rt_http_parse_url_for_test(
-               "http://[::1]junk/path", &host, &port, &path, &use_tls) == 0);
+    ASSERT(rt_http_parse_url_for_test("http://[::1]junk/path", &host, &port, &path, &use_tls) == 0);
     free(host);
     free(path);
     host = NULL;
     path = NULL;
-    ASSERT(rt_http_parse_url_for_test(
-               "http://example.test:/path", &host, &port, &path, &use_tls) == 0);
+    ASSERT(rt_http_parse_url_for_test("http://example.test:/path", &host, &port, &path, &use_tls) ==
+           0);
     free(host);
     free(path);
 }
@@ -602,8 +597,8 @@ static void test_ws_parse_url_rejects_bad_authorities(void) {
     host = NULL;
     path = NULL;
 
-    ASSERT(rt_ws_parse_url_for_test("ws://example.test:80junk/chat", &secure, &host, &port, &path) ==
-           0);
+    ASSERT(rt_ws_parse_url_for_test(
+               "ws://example.test:80junk/chat", &secure, &host, &port, &path) == 0);
     free(host);
     free(path);
     host = NULL;
@@ -636,11 +631,8 @@ static void test_ws_parse_url_rejects_request_injection(void) {
     char *host = NULL;
     char *path = NULL;
 
-    ASSERT(rt_ws_parse_url_for_test("ws://example.test/\r\nX-Evil: yes",
-                                    &secure,
-                                    &host,
-                                    &port,
-                                    &path) == 0);
+    ASSERT(rt_ws_parse_url_for_test(
+               "ws://example.test/\r\nX-Evil: yes", &secure, &host, &port, &path) == 0);
     free(host);
     free(path);
 }
@@ -791,13 +783,12 @@ static void test_retry_negative_delays_normalize_to_zero(void) {
 }
 
 static void test_tls_extract_cn_uses_subject_not_issuer(void) {
-    static const uint8_t cert[] = {
-        0x30, 0x3E, 0x30, 0x3C, 0xA0, 0x03, 0x02, 0x01, 0x02, 0x02, 0x01, 0x01,
-        0x30, 0x00, 0x30, 0x15, 0x31, 0x13, 0x30, 0x11, 0x06, 0x03, 0x55, 0x04,
-        0x03, 0x0C, 0x0A, 'i',  's',  's',  'u',  'e',  'r',  '.',  'c',  'o',
-        'm',  0x30, 0x00, 0x30, 0x17, 0x31, 0x15, 0x30, 0x13, 0x06, 0x03, 0x55,
-        0x04, 0x03, 0x0C, 0x0C, 's',  'u',  'b',  'j',  'e',  'c',  't',  '.',
-        't',  'e',  's',  't'};
+    static const uint8_t cert[] = {0x30, 0x3E, 0x30, 0x3C, 0xA0, 0x03, 0x02, 0x01, 0x02, 0x02, 0x01,
+                                   0x01, 0x30, 0x00, 0x30, 0x15, 0x31, 0x13, 0x30, 0x11, 0x06, 0x03,
+                                   0x55, 0x04, 0x03, 0x0C, 0x0A, 'i',  's',  's',  'u',  'e',  'r',
+                                   '.',  'c',  'o',  'm',  0x30, 0x00, 0x30, 0x17, 0x31, 0x15, 0x30,
+                                   0x13, 0x06, 0x03, 0x55, 0x04, 0x03, 0x0C, 0x0C, 's',  'u',  'b',
+                                   'j',  'e',  'c',  't',  '.',  't',  'e',  's',  't'};
     char cn[256] = {0};
     ASSERT(tls_extract_cn(cert, sizeof(cert), cn) == 1);
     ASSERT(strcmp(cn, "subject.test") == 0);

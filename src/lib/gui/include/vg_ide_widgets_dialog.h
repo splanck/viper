@@ -126,9 +126,9 @@ typedef struct vg_dialog {
     bool closing_in_progress;  ///< Re-entrancy guard for vg_dialog_close
 
     // Callbacks
-    void *user_data;                                                   ///< Legacy user data (= on_result_user_data; kept for ABI)
-    void *on_result_user_data;                                         ///< User data passed to on_result
-    void *on_close_user_data;                                          ///< User data passed to on_close
+    void *user_data;           ///< Legacy user data (= on_result_user_data; kept for ABI)
+    void *on_result_user_data; ///< User data passed to on_result
+    void *on_close_user_data;  ///< User data passed to on_close
     void (*on_result)(struct vg_dialog *, vg_dialog_result_t, void *); ///< Result callback
     void (*on_close)(struct vg_dialog *, void *);                      ///< Close callback
 } vg_dialog_t;
@@ -345,14 +345,14 @@ typedef struct vg_filedialog {
     char *default_extension; ///< Auto-add extension
 
     // Child widget state (widgets created during show)
-    void *path_input;      ///< Path text input
-    void *file_list;       ///< File listing
-    void *filename_input;  ///< Filename input (save mode)
-    void *filter_dropdown; ///< Filter selector
-    void *bookmark_list;   ///< Sidebar bookmarks
-    bool filename_active;  ///< True when the inline save-name field has focus
-    float file_scroll_y;   ///< Vertical scroll position for the file list
-    float bookmark_scroll_y; ///< Vertical scroll position for the bookmark list
+    void *path_input;           ///< Path text input
+    void *file_list;            ///< File listing
+    void *filename_input;       ///< Filename input (save mode)
+    void *filter_dropdown;      ///< Filter selector
+    void *bookmark_list;        ///< Sidebar bookmarks
+    bool filename_active;       ///< True when the inline save-name field has focus
+    float file_scroll_y;        ///< Vertical scroll position for the file list
+    float bookmark_scroll_y;    ///< Vertical scroll position for the bookmark list
     size_t filename_cursor_pos; ///< Byte offset cursor for inline save-name editing
 
     // Result

@@ -339,7 +339,8 @@ static void *material_clone_like(void *obj) {
 ///          are retained so they stay alive with the material.
 /// @return Opaque material handle, or NULL on allocation failure.
 void *rt_material3d_new(void) {
-    rt_material3d *mat = (rt_material3d *)rt_obj_new_i64(RT_G3D_MATERIAL3D_CLASS_ID, (int64_t)sizeof(rt_material3d));
+    rt_material3d *mat =
+        (rt_material3d *)rt_obj_new_i64(RT_G3D_MATERIAL3D_CLASS_ID, (int64_t)sizeof(rt_material3d));
     if (!mat) {
         rt_trap("Material3D.New: memory allocation failed");
         return NULL;
@@ -461,10 +462,7 @@ static int32_t material_sanitize_texture_slot(int64_t slot) {
 }
 
 /// @brief Internal importer hook: store glTF-style sampler state on the material.
-void rt_material3d_set_import_sampler(void *obj,
-                                      int64_t wrap_s,
-                                      int64_t wrap_t,
-                                      int64_t filter) {
+void rt_material3d_set_import_sampler(void *obj, int64_t wrap_s, int64_t wrap_t, int64_t filter) {
     rt_material3d *mat = material_checked(obj);
     if (!mat)
         return;
@@ -514,14 +512,10 @@ void rt_material3d_set_import_texture_slot(void *obj,
     mat->texture_slot_wrap_t[slot_index] = material_sanitize_wrap(wrap_t);
     mat->texture_slot_filter[slot_index] = material_sanitize_filter(filter);
     mat->texture_slot_uv_set[slot_index] = uv_set > 0 ? 1 : 0;
-    mat->texture_slot_uv_transform[slot_index][0] =
-        material_clamp_uv_transform(scale_u * c, 1.0);
-    mat->texture_slot_uv_transform[slot_index][1] =
-        material_clamp_uv_transform(-scale_v * s, 0.0);
-    mat->texture_slot_uv_transform[slot_index][2] =
-        material_clamp_uv_transform(scale_u * s, 0.0);
-    mat->texture_slot_uv_transform[slot_index][3] =
-        material_clamp_uv_transform(scale_v * c, 1.0);
+    mat->texture_slot_uv_transform[slot_index][0] = material_clamp_uv_transform(scale_u * c, 1.0);
+    mat->texture_slot_uv_transform[slot_index][1] = material_clamp_uv_transform(-scale_v * s, 0.0);
+    mat->texture_slot_uv_transform[slot_index][2] = material_clamp_uv_transform(scale_u * s, 0.0);
+    mat->texture_slot_uv_transform[slot_index][3] = material_clamp_uv_transform(scale_v * c, 1.0);
     mat->texture_slot_uv_transform[slot_index][4] = offset_u;
     mat->texture_slot_uv_transform[slot_index][5] = offset_v;
     if (slot_index == RT_MATERIAL3D_TEXTURE_SLOT_BASE_COLOR) {
@@ -677,8 +671,7 @@ void rt_material3d_set_emissive_intensity(void *obj, double value) {
     rt_material3d *mat = material_checked(obj);
     if (!mat)
         return;
-    mat->emissive_intensity =
-        clamp_range(value, 0.0, MATERIAL3D_EMISSIVE_INTENSITY_MAX);
+    mat->emissive_intensity = clamp_range(value, 0.0, MATERIAL3D_EMISSIVE_INTENSITY_MAX);
 }
 
 /// @brief Read the emissive intensity multiplier (default 1.0).

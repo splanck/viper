@@ -27,8 +27,8 @@
 
 #include "Liveness.hpp"
 
-#include "codegen/aarch64/Noreturn.hpp"
 #include "OperandRoles.hpp"
+#include "codegen/aarch64/Noreturn.hpp"
 #include "codegen/common/ra/DataflowLiveness.hpp"
 
 namespace viper::codegen::aarch64::ra {

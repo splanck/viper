@@ -55,12 +55,9 @@ static void test_compare_ascii() {
     void *c = en_col();
     rt_string a = S("apple");
     rt_string b = S("banana");
-    test_result("Compare(apple, banana) < 0",
-                rt_collator_compare(c, a, b) < 0);
-    test_result("Compare(banana, apple) > 0",
-                rt_collator_compare(c, b, a) > 0);
-    test_result("Compare(apple, apple) == 0",
-                rt_collator_compare(c, a, a) == 0);
+    test_result("Compare(apple, banana) < 0", rt_collator_compare(c, a, b) < 0);
+    test_result("Compare(banana, apple) > 0", rt_collator_compare(c, b, a) > 0);
+    test_result("Compare(apple, apple) == 0", rt_collator_compare(c, a, a) == 0);
     rt_string_unref(a);
     rt_string_unref(b);
 }
@@ -75,8 +72,7 @@ static void test_strength_tertiary_default() {
     rt_string lo = S("apple");
     rt_string up = S("Apple");
     // Default strength 3: case matters.
-    test_result("Strength=3: \"apple\" != \"Apple\"",
-                rt_collator_equals(c, lo, up) == 0);
+    test_result("Strength=3: \"apple\" != \"Apple\"", rt_collator_equals(c, lo, up) == 0);
     test_result("Strength=3: \"apple\" < \"Apple\" (lowercase first)",
                 rt_collator_compare(c, lo, up) < 0);
     rt_string_unref(lo);
@@ -89,8 +85,7 @@ static void test_strength_primary_case_folds() {
     rt_collator_set_strength(c, 1);
     rt_string a = S("apple");
     rt_string b = S("APPLE");
-    test_result("Strength=1: \"apple\" equals \"APPLE\"",
-                rt_collator_equals(c, a, b) == 1);
+    test_result("Strength=1: \"apple\" equals \"APPLE\"", rt_collator_equals(c, a, b) == 1);
     rt_string_unref(a);
     rt_string_unref(b);
 }
@@ -99,8 +94,7 @@ static void test_strength_clamps_to_3() {
     printf("Testing Strength 4 clamps to 3:\n");
     void *c = en_col();
     rt_collator_set_strength(c, 4);
-    test_result("Strength after set(4) is 3",
-                rt_collator_get_strength(c) == 3);
+    test_result("Strength after set(4) is 3", rt_collator_get_strength(c) == 3);
 }
 
 //=============================================================================
@@ -113,8 +107,7 @@ static void test_ignore_case() {
     rt_collator_set_ignore_case(c, 1);
     rt_string a = S("apple");
     rt_string b = S("Apple");
-    test_result("IgnoreCase: apple equals Apple",
-                rt_collator_equals(c, a, b) == 1);
+    test_result("IgnoreCase: apple equals Apple", rt_collator_equals(c, a, b) == 1);
     rt_string_unref(a);
     rt_string_unref(b);
 }
@@ -126,8 +119,7 @@ static void test_ignore_accents() {
     rt_string aa = S("naive");
     // "naïve" = 0x6E 0x61 0xC3 0xAF 0x76 0x65
     rt_string bb = S("na\xC3\xAFve");
-    test_result("IgnoreAccents: naive equals naïve",
-                rt_collator_equals(c, aa, bb) == 1);
+    test_result("IgnoreAccents: naive equals naïve", rt_collator_equals(c, aa, bb) == 1);
     rt_string_unref(aa);
     rt_string_unref(bb);
 }
@@ -142,8 +134,7 @@ static void test_diacritic_order_default() {
     // "a" comes before "á" when strength >= 2 (á has secondary weight > 0).
     rt_string a = S("a");
     rt_string a_acute = S("\xC3\xA1"); // á
-    test_result("Compare(a, á) < 0 at strength 3",
-                rt_collator_compare(c, a, a_acute) < 0);
+    test_result("Compare(a, á) < 0 at strength 3", rt_collator_compare(c, a, a_acute) < 0);
     rt_string_unref(a);
     rt_string_unref(a_acute);
 }
@@ -151,7 +142,7 @@ static void test_diacritic_order_default() {
 static void test_decomposed_combining_mark() {
     printf("Testing composed/decomposed accent equivalence:\n");
     void *c = en_col();
-    rt_string composed = S("\xC3\xA9");   // é
+    rt_string composed = S("\xC3\xA9");    // é
     rt_string decomposed = S("e\xCC\x81"); // e + U+0301
     test_result("é equals e + combining acute at strength 3",
                 rt_collator_equals(c, composed, decomposed) == 1);
@@ -167,8 +158,7 @@ static void test_malformed_utf8_is_replacement_weighted() {
     void *c = en_col();
     rt_string bad = S("\xC0\xAF");
     rt_string key = rt_collator_sort_key(c, bad);
-    test_result("SortKey(malformed UTF-8) returns deterministic key",
-                rt_str_len(key) > 0);
+    test_result("SortKey(malformed UTF-8) returns deterministic key", rt_str_len(key) > 0);
     rt_string_unref(bad);
     rt_string_unref(key);
 }
@@ -186,13 +176,11 @@ static void test_swedish_tailoring() {
 
     rt_string a_ring = S("\xC3\xA5"); // å
     rt_string z = S("z");
-    test_result("sv-SE: z < å",
-                rt_collator_compare(c, z, a_ring) < 0);
+    test_result("sv-SE: z < å", rt_collator_compare(c, z, a_ring) < 0);
 
     // But in en-US default, å sorts near a.
     void *en = en_col();
-    test_result("en-US: å < z (å is an accented a)",
-                rt_collator_compare(en, a_ring, z) < 0);
+    test_result("en-US: å < z (å is an accented a)", rt_collator_compare(en, a_ring, z) < 0);
 
     rt_string_unref(a_ring);
     rt_string_unref(z);
@@ -210,8 +198,7 @@ static void test_sort_key_determinism() {
     rt_string k2 = rt_collator_sort_key(c, s);
     const char *k1s = rt_string_cstr(k1);
     const char *k2s = rt_string_cstr(k2);
-    test_result("SortKey deterministic for same input",
-                k1s && k2s && strcmp(k1s, k2s) == 0);
+    test_result("SortKey deterministic for same input", k1s && k2s && strcmp(k1s, k2s) == 0);
     rt_string_unref(s);
     rt_string_unref(k1);
     rt_string_unref(k2);
@@ -229,8 +216,8 @@ static void test_sort_key_order() {
     int bytewise = strcmp(kas, kbs);
     int cmp = (int)rt_collator_compare(c, a, b);
     test_result("sign(strcmp(SortKey(a),SortKey(b))) matches Compare",
-                (bytewise < 0 && cmp < 0) || (bytewise > 0 && cmp > 0)
-                || (bytewise == 0 && cmp == 0));
+                (bytewise < 0 && cmp < 0) || (bytewise > 0 && cmp > 0) ||
+                    (bytewise == 0 && cmp == 0));
     rt_string_unref(a);
     rt_string_unref(b);
     rt_string_unref(ka);
@@ -255,8 +242,7 @@ static void test_sort_basic() {
     rt_string first = (rt_string)rt_list_get(sorted, 0);
     const char *fs = rt_string_cstr(first);
     // First element should be "apple" (lowercase beats uppercase at strength 3).
-    test_result("First after sort is \"apple\"",
-                fs && strcmp(fs, "apple") == 0);
+    test_result("First after sort is \"apple\"", fs && strcmp(fs, "apple") == 0);
 }
 
 static void test_sort_stress() {
@@ -269,8 +255,7 @@ static void test_sort_stress() {
         rt_list_push(list, S(buf));
     }
     void *sorted = rt_collator_sort(c, list);
-    test_result("Sort(500) returns 500 items",
-                rt_list_len(sorted) == 500);
+    test_result("Sort(500) returns 500 items", rt_list_len(sorted) == 500);
     // Spot-check: first element should have the smallest numeric prefix.
     rt_string first = (rt_string)rt_list_get(sorted, 0);
     const char *fs = rt_string_cstr(first);

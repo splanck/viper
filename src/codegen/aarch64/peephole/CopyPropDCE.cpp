@@ -23,8 +23,8 @@
 
 #include "CopyPropDCE.hpp"
 
-#include "codegen/aarch64/Noreturn.hpp"
 #include "PeepholeCommon.hpp"
+#include "codegen/aarch64/Noreturn.hpp"
 
 #include <algorithm>
 #include <cstdint>

@@ -48,8 +48,8 @@
 static int is_c_or_posix(const char *s) {
     if (!s || !*s)
         return 1;
-    return (strcmp(s, "C") == 0) || (strcmp(s, "POSIX") == 0) ||
-           (strcmp(s, "c") == 0) || (strcmp(s, "posix") == 0);
+    return (strcmp(s, "C") == 0) || (strcmp(s, "POSIX") == 0) || (strcmp(s, "c") == 0) ||
+           (strcmp(s, "posix") == 0);
 }
 
 /// @brief Strip encoding/modifier suffixes from a POSIX-style locale string and normalize.
@@ -118,7 +118,7 @@ int rt_locale_platform_detect_system(char *out, size_t cap) {
 
     // Fallback: MSYS/MinGW environments commonly set LANG. Reuse the POSIX
     // cleanup path for that case.
-    static const char *const kVars[] = { "LC_ALL", "LANG", "LC_MESSAGES", NULL };
+    static const char *const kVars[] = {"LC_ALL", "LANG", "LC_MESSAGES", NULL};
     for (size_t i = 0; kVars[i]; ++i) {
         const char *val = getenv(kVars[i]);
         if (is_c_or_posix(val))

@@ -188,9 +188,7 @@ RootMap computeAllocaRoots(const Function &F, const std::unordered_map<unsigned,
 }
 
 /// True if this alloca's address is passed to a call or stored elsewhere.
-bool allocaEscapes(const Function &F,
-                   unsigned allocaId,
-                   const RootMap &roots) {
+bool allocaEscapes(const Function &F, unsigned allocaId, const RootMap &roots) {
     auto containsAlloca = [&](const Value &value) {
         if (value.kind != Value::Kind::Temp)
             return false;
@@ -221,10 +219,9 @@ bool allocaEscapes(const Function &F,
 }
 
 /// Compute the set of non-escaping alloca ids in @p F.
-std::unordered_set<unsigned> nonEscapingAllocas(
-    const Function &F,
-    const std::unordered_map<unsigned, DefInfo> &defs,
-    const RootMap &roots) {
+std::unordered_set<unsigned> nonEscapingAllocas(const Function &F,
+                                                const std::unordered_map<unsigned, DefInfo> &defs,
+                                                const RootMap &roots) {
     std::unordered_set<unsigned> result;
     for (const auto &B : F.blocks) {
         for (const auto &I : B.instructions) {
@@ -327,11 +324,10 @@ MemorySSA computeMemorySSA(Function &F, BasicAA &AA) {
         return id;
     };
 
-    auto findLocalReachingDef =
-        [&](Block *block,
-            size_t beforeIdx,
-            const Value &ptr,
-            std::optional<unsigned> size) -> std::optional<uint32_t> {
+    auto findLocalReachingDef = [&](Block *block,
+                                    size_t beforeIdx,
+                                    const Value &ptr,
+                                    std::optional<unsigned> size) -> std::optional<uint32_t> {
         for (size_t j = beforeIdx; j-- > 0;) {
             const Instr &prev = block->instructions[j];
             if (prev.op == Opcode::Store && !prev.operands.empty()) {
@@ -412,171 +408,169 @@ MemorySSA computeMemorySSA(Function &F, BasicAA &AA) {
     for (std::size_t wi = 0; wi < worklist.size(); ++wi) {
         Block *B = worklist[wi];
         queued.erase(B);
-            // Determine the incoming def at the start of B.
-            uint32_t inDef = 0; // LiveOnEntry default
+        // Determine the incoming def at the start of B.
+        uint32_t inDef = 0; // LiveOnEntry default
 
-            const auto &predList = preds[B];
-            if (!predList.empty()) {
-                // Collect outDefs from all predecessors.
-                uint32_t first = outDef[predList[0]];
-                bool allSame = true;
-                for (size_t pi = 1; pi < predList.size(); ++pi) {
-                    if (outDef[predList[pi]] != first) {
-                        allSame = false;
-                        break;
-                    }
-                }
-
-                if (allSame) {
-                    inDef = first;
-                } else {
-                    // Need a Phi. Look for an existing Phi at the start of B.
-                    uint32_t phiId = 0;
-                    auto bit = mssa.instrToAccess_.find(B);
-                    if (bit != mssa.instrToAccess_.end()) {
-                        // Phi is stored at instrIdx = -1 (represented as SIZE_MAX).
-                        auto pit = bit->second.find(static_cast<size_t>(-1));
-                        if (pit != bit->second.end())
-                            phiId = pit->second;
-                    }
-
-                    if (phiId == 0) {
-                        // Create new Phi.
-                        phiId = nextId();
-                        std::vector<uint32_t> incoming;
-                        incoming.reserve(predList.size());
-                        for (Block *pred : predList)
-                            incoming.push_back(outDef[pred]);
-                        mssa.accesses_.push_back(MemoryAccess{
-                            MemAccessKind::Phi, phiId, B, -1, 0, std::move(incoming), {}});
-                        mssa.instrToAccess_[B][static_cast<size_t>(-1)] = phiId;
-                    } else {
-                        // Update existing Phi's incoming arms.
-                        MemoryAccess &phi = mssa.accesses_[phiId];
-                        for (size_t pi = 0; pi < predList.size(); ++pi) {
-                            uint32_t newArm = outDef[predList[pi]];
-                            if (pi >= phi.incoming.size()) {
-                                phi.incoming.push_back(newArm);
-                            } else if (phi.incoming[pi] != newArm) {
-                                phi.incoming[pi] = newArm;
-                            }
-                        }
-                    }
-                    inDef = phiId;
+        const auto &predList = preds[B];
+        if (!predList.empty()) {
+            // Collect outDefs from all predecessors.
+            uint32_t first = outDef[predList[0]];
+            bool allSame = true;
+            for (size_t pi = 1; pi < predList.size(); ++pi) {
+                if (outDef[predList[pi]] != first) {
+                    allSame = false;
+                    break;
                 }
             }
 
-            // Walk instructions in B, updating inDef as we encounter defs/uses.
-            uint32_t curDef = inDef;
-
-            for (size_t i = 0; i < B->instructions.size(); ++i) {
-                const Instr &I = B->instructions[i];
-
-                // Check if this instruction already has an access (from a prior iter).
-                uint32_t existingId = 0;
+            if (allSame) {
+                inDef = first;
+            } else {
+                // Need a Phi. Look for an existing Phi at the start of B.
+                uint32_t phiId = 0;
                 auto bit = mssa.instrToAccess_.find(B);
                 if (bit != mssa.instrToAccess_.end()) {
-                    auto iit = bit->second.find(i);
-                    if (iit != bit->second.end())
-                        existingId = iit->second;
+                    // Phi is stored at instrIdx = -1 (represented as SIZE_MAX).
+                    auto pit = bit->second.find(static_cast<size_t>(-1));
+                    if (pit != bit->second.end())
+                        phiId = pit->second;
                 }
 
-                // For calls touching non-escaping allocas: transparent (skip).
-                // We check this at the Use/Def determination step.
-
-                if (I.op == Opcode::Store) {
-                    const Value &ptr = I.operands.empty() ? Value{} : I.operands[0];
-                    bool nonEscaping = isNonEscapingAlloca(ptr, nonEsc, roots);
-                    auto storeSize = BasicAA::typeSizeBytes(I.type);
-                    uint32_t reachingDef =
-                        findLocalReachingDef(B, i, ptr, storeSize).value_or(curDef);
-
-                    // Create or update MemoryDef.
-                    if (existingId == 0) {
-                        uint32_t defId = makeAccess(MemAccessKind::Def, B, (int)i, reachingDef);
-                        // Link curDef's users to include this new def.
-                        if (reachingDef < mssa.accesses_.size()) {
-                            // Only link if the store potentially reads curDef
-                            // (i.e., reading first then writing). For stores we only
-                            // link as Def; use consumers are separate.
-                            (void)nonEscaping; // noted but not needed for linkage logic
+                if (phiId == 0) {
+                    // Create new Phi.
+                    phiId = nextId();
+                    std::vector<uint32_t> incoming;
+                    incoming.reserve(predList.size());
+                    for (Block *pred : predList)
+                        incoming.push_back(outDef[pred]);
+                    mssa.accesses_.push_back(
+                        MemoryAccess{MemAccessKind::Phi, phiId, B, -1, 0, std::move(incoming), {}});
+                    mssa.instrToAccess_[B][static_cast<size_t>(-1)] = phiId;
+                } else {
+                    // Update existing Phi's incoming arms.
+                    MemoryAccess &phi = mssa.accesses_[phiId];
+                    for (size_t pi = 0; pi < predList.size(); ++pi) {
+                        uint32_t newArm = outDef[predList[pi]];
+                        if (pi >= phi.incoming.size()) {
+                            phi.incoming.push_back(newArm);
+                        } else if (phi.incoming[pi] != newArm) {
+                            phi.incoming[pi] = newArm;
                         }
+                    }
+                }
+                inDef = phiId;
+            }
+        }
+
+        // Walk instructions in B, updating inDef as we encounter defs/uses.
+        uint32_t curDef = inDef;
+
+        for (size_t i = 0; i < B->instructions.size(); ++i) {
+            const Instr &I = B->instructions[i];
+
+            // Check if this instruction already has an access (from a prior iter).
+            uint32_t existingId = 0;
+            auto bit = mssa.instrToAccess_.find(B);
+            if (bit != mssa.instrToAccess_.end()) {
+                auto iit = bit->second.find(i);
+                if (iit != bit->second.end())
+                    existingId = iit->second;
+            }
+
+            // For calls touching non-escaping allocas: transparent (skip).
+            // We check this at the Use/Def determination step.
+
+            if (I.op == Opcode::Store) {
+                const Value &ptr = I.operands.empty() ? Value{} : I.operands[0];
+                bool nonEscaping = isNonEscapingAlloca(ptr, nonEsc, roots);
+                auto storeSize = BasicAA::typeSizeBytes(I.type);
+                uint32_t reachingDef = findLocalReachingDef(B, i, ptr, storeSize).value_or(curDef);
+
+                // Create or update MemoryDef.
+                if (existingId == 0) {
+                    uint32_t defId = makeAccess(MemAccessKind::Def, B, (int)i, reachingDef);
+                    // Link curDef's users to include this new def.
+                    if (reachingDef < mssa.accesses_.size()) {
+                        // Only link if the store potentially reads curDef
+                        // (i.e., reading first then writing). For stores we only
+                        // link as Def; use consumers are separate.
+                        (void)nonEscaping; // noted but not needed for linkage logic
+                    }
+                    curDef = defId;
+                } else {
+                    // Update definingAccess if it changed.
+                    MemoryAccess &acc = mssa.accesses_[existingId];
+                    acc.definingAccess = reachingDef;
+                    curDef = existingId;
+                }
+            } else if (I.op == Opcode::Load) {
+                const Value &ptr = I.operands.empty() ? Value{} : I.operands[0];
+                bool nonEscaping = isNonEscapingAlloca(ptr, nonEsc, roots);
+                (void)nonEscaping;
+                auto loadSize = BasicAA::typeSizeBytes(I.type);
+                uint32_t reachingDef = findLocalReachingDef(B, i, ptr, loadSize).value_or(curDef);
+
+                // Create or update MemoryUse.
+                if (existingId == 0) {
+                    uint32_t useId = makeAccess(MemAccessKind::Use, B, (int)i, reachingDef);
+                    // Register this use in the def's users list.
+                    if (reachingDef < mssa.accesses_.size()) {
+                        mssa.accesses_[reachingDef].users.push_back(useId);
+                    }
+                } else {
+                    MemoryAccess &acc = mssa.accesses_[existingId];
+                    if (acc.definingAccess != reachingDef) {
+                        // Remove from old def's users, add to new.
+                        uint32_t oldDef = acc.definingAccess;
+                        if (oldDef < mssa.accesses_.size()) {
+                            auto &users = mssa.accesses_[oldDef].users;
+                            users.erase(std::remove(users.begin(), users.end(), existingId),
+                                        users.end());
+                        }
+                        acc.definingAccess = reachingDef;
+                        if (reachingDef < mssa.accesses_.size()) {
+                            mssa.accesses_[reachingDef].users.push_back(existingId);
+                        }
+                    }
+                    // curDef unchanged by loads.
+                }
+            } else if (I.op == Opcode::Call || I.op == Opcode::CallIndirect) {
+                // Calls are transparent for non-escaping allocas.
+                // For the global memory state they may Def or Use.
+                // We model them as global Defs if they Mod, and Uses if they Ref.
+                // This is conservative for heap/global accesses.
+                auto mr = AA.modRef(I);
+                if (mr == ModRefResult::NoModRef)
+                    continue;
+
+                // Def: call modifies global memory.
+                if (mr == ModRefResult::Mod || mr == ModRefResult::ModRef) {
+                    if (existingId == 0) {
+                        uint32_t defId = makeAccess(MemAccessKind::Def, B, (int)i, curDef);
                         curDef = defId;
                     } else {
-                        // Update definingAccess if it changed.
                         MemoryAccess &acc = mssa.accesses_[existingId];
-                        acc.definingAccess = reachingDef;
+                        acc.definingAccess = curDef;
                         curDef = existingId;
                     }
-                } else if (I.op == Opcode::Load) {
-                    const Value &ptr = I.operands.empty() ? Value{} : I.operands[0];
-                    bool nonEscaping = isNonEscapingAlloca(ptr, nonEsc, roots);
-                    (void)nonEscaping;
-                    auto loadSize = BasicAA::typeSizeBytes(I.type);
-                    uint32_t reachingDef =
-                        findLocalReachingDef(B, i, ptr, loadSize).value_or(curDef);
-
-                    // Create or update MemoryUse.
-                    if (existingId == 0) {
-                        uint32_t useId = makeAccess(MemAccessKind::Use, B, (int)i, reachingDef);
-                        // Register this use in the def's users list.
-                        if (reachingDef < mssa.accesses_.size()) {
-                            mssa.accesses_[reachingDef].users.push_back(useId);
-                        }
-                    } else {
-                        MemoryAccess &acc = mssa.accesses_[existingId];
-                        if (acc.definingAccess != reachingDef) {
-                            // Remove from old def's users, add to new.
-                            uint32_t oldDef = acc.definingAccess;
-                            if (oldDef < mssa.accesses_.size()) {
-                                auto &users = mssa.accesses_[oldDef].users;
-                                users.erase(std::remove(users.begin(), users.end(), existingId),
-                                            users.end());
-                            }
-                            acc.definingAccess = reachingDef;
-                            if (reachingDef < mssa.accesses_.size()) {
-                                mssa.accesses_[reachingDef].users.push_back(existingId);
-                            }
-                        }
-                        // curDef unchanged by loads.
-                    }
-                } else if (I.op == Opcode::Call || I.op == Opcode::CallIndirect) {
-                    // Calls are transparent for non-escaping allocas.
-                    // For the global memory state they may Def or Use.
-                    // We model them as global Defs if they Mod, and Uses if they Ref.
-                    // This is conservative for heap/global accesses.
-                    auto mr = AA.modRef(I);
-                    if (mr == ModRefResult::NoModRef)
-                        continue;
-
-                    // Def: call modifies global memory.
-                    if (mr == ModRefResult::Mod || mr == ModRefResult::ModRef) {
-                        if (existingId == 0) {
-                            uint32_t defId = makeAccess(MemAccessKind::Def, B, (int)i, curDef);
-                            curDef = defId;
-                        } else {
-                            MemoryAccess &acc = mssa.accesses_[existingId];
-                            acc.definingAccess = curDef;
-                            curDef = existingId;
-                        }
-                    }
-                    // Use: call reads global memory (register use of curDef).
-                    if (mr == ModRefResult::Ref || mr == ModRefResult::ModRef) {
-                        // Register the call as a user of curDef.
-                        // For ModRef: the Def we just created reads the prior curDef.
-                        // We don't create a separate Use node; the Def implicitly reads.
-                    }
+                }
+                // Use: call reads global memory (register use of curDef).
+                if (mr == ModRefResult::Ref || mr == ModRefResult::ModRef) {
+                    // Register the call as a user of curDef.
+                    // For ModRef: the Def we just created reads the prior curDef.
+                    // We don't create a separate Use node; the Def implicitly reads.
                 }
             }
+        }
 
-            uint32_t newOutDef = curDef;
-            if (outDef[B] == newOutDef)
-                continue;
-            outDef[B] = newOutDef;
-            for (Block *succ : succs[B]) {
-                if (queued.insert(succ).second)
-                    worklist.push_back(succ);
-            }
+        uint32_t newOutDef = curDef;
+        if (outDef[B] == newOutDef)
+            continue;
+        outDef[B] = newOutDef;
+        for (Block *succ : succs[B]) {
+            if (queued.insert(succ).second)
+                worklist.push_back(succ);
+        }
     }
 
     // -----------------------------------------------------------------------

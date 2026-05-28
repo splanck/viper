@@ -448,9 +448,8 @@ static void spritebatch_finalize(void *obj) {
 /// back to 256. The batch starts inactive (no tint, alpha 255, depth-sort off). Use
 /// `_begin` / draw calls / `_end` to submit batched draws to a Canvas in one pass.
 void *rt_spritebatch_new(int64_t capacity) {
-    spritebatch_impl *batch =
-        (spritebatch_impl *)rt_obj_new_i64(RT_SPRITEBATCH_CLASS_ID,
-                                           (int64_t)sizeof(spritebatch_impl));
+    spritebatch_impl *batch = (spritebatch_impl *)rt_obj_new_i64(RT_SPRITEBATCH_CLASS_ID,
+                                                                 (int64_t)sizeof(spritebatch_impl));
     if (!batch)
         return NULL;
     memset(batch, 0, sizeof(spritebatch_impl));

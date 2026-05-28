@@ -174,7 +174,8 @@ int main() {
     expect_invalid_handle(call_gate_get_permits, RT_GATE_CLASS_ID, 1, "Gate: invalid object");
     expect_invalid_handle(call_promise_is_done, RT_PROMISE_CLASS_ID, 1, "Promise: invalid object");
     expect_invalid_handle(call_future_is_done, RT_FUTURE_CLASS_ID, 1, "Future: invalid object");
-    expect_invalid_handle(call_threadpool_get_size, RT_THREADPOOL_CLASS_ID, 1, "Pool: invalid object");
+    expect_invalid_handle(
+        call_threadpool_get_size, RT_THREADPOOL_CLASS_ID, 1, "Pool: invalid object");
     expect_invalid_handle(call_channel_get_len, RT_CHANNEL_CLASS_ID, 1, "Channel: invalid object");
     expect_invalid_handle(
         call_concqueue_len, RT_CONCQUEUE_CLASS_ID, 1, "ConcurrentQueue: invalid object");
@@ -182,25 +183,20 @@ int main() {
         call_concmap_len, RT_CONCMAP_CLASS_ID, 1, "ConcurrentMap: invalid object");
     expect_invalid_handle(
         call_cancellation_check, RT_CANCELLATION_CLASS_ID, 1, "CancelToken: invalid object");
-    expect_invalid_handle(call_debounce_get_delay,
-                          RT_DEBOUNCER_CLASS_ID,
-                          1,
-                          "Debouncer: invalid object");
-    expect_invalid_handle(call_throttle_get_interval,
-                          RT_THROTTLER_CLASS_ID,
-                          1,
-                          "Throttler: invalid object");
-    expect_invalid_handle(call_scheduler_pending, RT_SCHEDULER_CLASS_ID, 1, "Scheduler: invalid object");
+    expect_invalid_handle(
+        call_debounce_get_delay, RT_DEBOUNCER_CLASS_ID, 1, "Debouncer: invalid object");
+    expect_invalid_handle(
+        call_throttle_get_interval, RT_THROTTLER_CLASS_ID, 1, "Throttler: invalid object");
+    expect_invalid_handle(
+        call_scheduler_pending, RT_SCHEDULER_CLASS_ID, 1, "Scheduler: invalid object");
     expect_invalid_handle(
         call_weakref_get, RT_WEAKREF_CLASS_ID, 1, "invalid or freed weak reference");
     expect_invalid_handle(
         call_weakref_alive, RT_WEAKREF_CLASS_ID, 1, "invalid or freed weak reference");
     expect_invalid_handle(
         call_weakref_reset, RT_WEAKREF_CLASS_ID, 1, "invalid or freed weak reference");
-    expect_invalid_handle(call_msgbus_total_subscriptions,
-                          RT_MSGBUS_CLASS_ID,
-                          1,
-                          "invalid MessageBus object");
+    expect_invalid_handle(
+        call_msgbus_total_subscriptions, RT_MSGBUS_CLASS_ID, 1, "invalid MessageBus object");
     expect_invalid_handle(call_random_next, RT_RANDOM_CLASS_ID, 1, "Random: invalid Random object");
 
     std::printf("Handle validation tests: all passed\n");

@@ -6,8 +6,7 @@ static int game3d_world_grow_body_index(rt_game3d_world *world, int32_t need) {
         return 0;
     if (world->body_index_capacity >= need)
         return 1;
-    if (!game3d_compute_capacity(
-            world->body_index_capacity, need, 16, sizeof(void *), &new_cap))
+    if (!game3d_compute_capacity(world->body_index_capacity, need, 16, sizeof(void *), &new_cap))
         return 0;
     void **new_bodies = (void **)calloc((size_t)new_cap, sizeof(*new_bodies));
     rt_game3d_entity **new_entities =

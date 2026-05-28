@@ -269,9 +269,11 @@ static void navagent_set_node_world_position(void *node, const double world_pos[
         void *parent_world = rt_scene_node3d_get_world_matrix(parent);
         void *parent_inv = parent_world ? rt_mat4_inverse(parent_world) : NULL;
         void *world_vec = rt_vec3_new(world_pos[0], world_pos[1], world_pos[2]);
-        void *local = (parent_inv && world_vec) ? rt_mat4_transform_point(parent_inv, world_vec) : NULL;
+        void *local =
+            (parent_inv && world_vec) ? rt_mat4_transform_point(parent_inv, world_vec) : NULL;
         if (local) {
-            rt_scene_node3d_set_position(node, rt_vec3_x(local), rt_vec3_y(local), rt_vec3_z(local));
+            rt_scene_node3d_set_position(
+                node, rt_vec3_x(local), rt_vec3_y(local), rt_vec3_z(local));
         } else {
             rt_scene_node3d_set_position(node, world_pos[0], world_pos[1], world_pos[2]);
         }
@@ -331,7 +333,8 @@ static void navagent_refresh_path_index(rt_navagent3d *agent) {
         return;
     tolerance = navagent_corner_tolerance(agent);
     while (agent->path_index < agent->path_point_count - 1 &&
-           navagent_dist(agent->position, navagent_path_point(agent, agent->path_index)) <= tolerance) {
+           navagent_dist(agent->position, navagent_path_point(agent, agent->path_index)) <=
+               tolerance) {
         agent->path_index++;
     }
 }
@@ -353,7 +356,8 @@ static double navagent_compute_remaining_distance(rt_navagent3d *agent) {
         idx = agent->path_point_count - 1;
     remaining += navagent_dist(agent->position, navagent_path_point(agent, idx));
     for (int32_t i = idx; i < agent->path_point_count - 1; i++) {
-        remaining += navagent_dist(navagent_path_point(agent, i), navagent_path_point(agent, i + 1));
+        remaining +=
+            navagent_dist(navagent_path_point(agent, i), navagent_path_point(agent, i + 1));
     }
     return remaining;
 }
@@ -454,9 +458,10 @@ void rt_navagent3d_set_target(void *obj, void *position) {
     if (!agent || !rt_g3d_is_vec3(position))
         return;
     navagent_sync_position_from_bindings(agent);
-    navagent_sample_point(agent,
-                          (double[3]){rt_vec3_x(position), rt_vec3_y(position), rt_vec3_z(position)},
-                          agent->target);
+    navagent_sample_point(
+        agent,
+        (double[3]){rt_vec3_x(position), rt_vec3_y(position), rt_vec3_z(position)},
+        agent->target);
     agent->has_target = 1;
     navagent_rebuild_path(agent);
 }
@@ -534,12 +539,9 @@ void rt_navagent3d_update(void *obj, double dt) {
     }
 
     if (agent->bound_character) {
-        void *move_vec = rt_vec3_new(agent->desired_velocity[0],
-                                     agent->desired_velocity[1],
-                                     agent->desired_velocity[2]);
-        rt_character3d_move(agent->bound_character,
-                            move_vec,
-                            dt);
+        void *move_vec = rt_vec3_new(
+            agent->desired_velocity[0], agent->desired_velocity[1], agent->desired_velocity[2]);
+        rt_character3d_move(agent->bound_character, move_vec, dt);
         navagent_release_local(move_vec);
         navagent_sync_position_from_bindings(agent);
         if (agent->bound_node)

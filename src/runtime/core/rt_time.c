@@ -171,8 +171,7 @@ int64_t rt_timer_ms(void) {
 
     int64_t whole = counter.QuadPart / freq.QuadPart;
     int64_t remainder = counter.QuadPart % freq.QuadPart;
-    int64_t fraction =
-        (int64_t)(((long double)remainder * 1000.0L) / (long double)freq.QuadPart);
+    int64_t fraction = (int64_t)(((long double)remainder * 1000.0L) / (long double)freq.QuadPart);
     return rt_time_scale_seconds(whole, 1000LL, fraction);
 }
 
@@ -201,13 +200,11 @@ int64_t rt_clock_ticks_us(void) {
     LARGE_INTEGER freq, counter;
     if (!QueryPerformanceFrequency(&freq) || freq.QuadPart == 0) {
         // Fallback to GetTickCount64 (milliseconds) * 1000 for microseconds
-        return rt_time_scale_seconds(
-            rt_time_u64_to_i64((uint64_t)GetTickCount64()), 1000LL, 0);
+        return rt_time_scale_seconds(rt_time_u64_to_i64((uint64_t)GetTickCount64()), 1000LL, 0);
     }
 
     if (!QueryPerformanceCounter(&counter))
-        return rt_time_scale_seconds(
-            rt_time_u64_to_i64((uint64_t)GetTickCount64()), 1000LL, 0);
+        return rt_time_scale_seconds(rt_time_u64_to_i64((uint64_t)GetTickCount64()), 1000LL, 0);
 
     // Convert to microseconds using split division to avoid overflow:
     // (counter / freq) * 1000000 + (counter % freq) * 1000000 / freq
@@ -367,15 +364,13 @@ int64_t rt_clock_ticks_us(void) {
 #ifdef CLOCK_MONOTONIC
     if (clock_gettime(CLOCK_MONOTONIC, &ts) == 0) {
         // Convert to microseconds: seconds * 1000000 + nanoseconds / 1000
-        return rt_time_scale_seconds(
-            (int64_t)ts.tv_sec, 1000000LL, (int64_t)ts.tv_nsec / 1000LL);
+        return rt_time_scale_seconds((int64_t)ts.tv_sec, 1000000LL, (int64_t)ts.tv_nsec / 1000LL);
     }
 #endif
 
     // Fallback to CLOCK_REALTIME if CLOCK_MONOTONIC unavailable
     if (clock_gettime(CLOCK_REALTIME, &ts) == 0) {
-        return rt_time_scale_seconds(
-            (int64_t)ts.tv_sec, 1000000LL, (int64_t)ts.tv_nsec / 1000LL);
+        return rt_time_scale_seconds((int64_t)ts.tv_sec, 1000000LL, (int64_t)ts.tv_nsec / 1000LL);
     }
 
     // Last resort: return 0 if all clock sources fail

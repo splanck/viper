@@ -188,8 +188,7 @@ TEST(IL, testDSEPreservesMayAliasStores) {
     Module module;
     il::build::IRBuilder builder(module);
 
-    std::vector<Param> params{{"p", Type(Type::Kind::Ptr), 0},
-                              {"q", Type(Type::Kind::Ptr), 0}};
+    std::vector<Param> params{{"p", Type(Type::Kind::Ptr), 0}, {"q", Type(Type::Kind::Ptr), 0}};
     Function &fn = builder.startFunction("test_may_alias", Type(Type::Kind::Void), params);
     builder.createBlock(fn, "entry");
     BasicBlock &entry = fn.blocks[0];

@@ -67,7 +67,8 @@ void InstallerStubGen::emitModRM(uint8_t mod, uint8_t reg, uint8_t rm) {
 }
 
 /// @brief Emit ModRM + optional SIB + 32-bit displacement for [base + disp32] addressing.
-/// Handles the RSP/R12 SIB escape (baseBits==4) and the RBP/R13 forced-disp8 case (baseBits==5, disp==0).
+/// Handles the RSP/R12 SIB escape (baseBits==4) and the RBP/R13 forced-disp8 case (baseBits==5,
+/// disp==0).
 void InstallerStubGen::emitModRMDisp32(uint8_t reg, X64Reg base, int32_t disp) {
     uint8_t baseBits = regBits(base);
     if (baseBits == 4) {
@@ -194,11 +195,8 @@ void InstallerStubGen::movMemImm32(X64Reg base, int32_t disp, uint32_t imm) {
 
 /// @brief Emit mov word [base + index * scale + disp32], imm16 — 16-bit SIB store (66 C7 /0).
 /// Used to write individual UTF-16 code units into a stack-allocated string buffer.
-void InstallerStubGen::movMemIndexImm16(X64Reg base,
-                                        X64Reg index,
-                                        uint8_t scaleLog2,
-                                        int32_t disp,
-                                        uint16_t imm) {
+void InstallerStubGen::movMemIndexImm16(
+    X64Reg base, X64Reg index, uint8_t scaleLog2, int32_t disp, uint16_t imm) {
     if (scaleLog2 > 3)
         throw std::runtime_error("InstallerStubGen: invalid SIB scale");
     if (regBits(index) == 4)
@@ -219,13 +217,10 @@ void InstallerStubGen::movMemIndexImm16(X64Reg base,
     emit(static_cast<uint8_t>((imm >> 8) & 0xFF));
 }
 
-/// @brief Emit movzx dst, word [base + index * scale + disp32] — zero-extend 16-bit SIB load (0F B7 /r).
-/// Used to load individual UTF-16 code units from a string buffer into a 64-bit register.
-void InstallerStubGen::movzxRegMemIndex16(X64Reg dst,
-                                          X64Reg base,
-                                          X64Reg index,
-                                          uint8_t scaleLog2,
-                                          int32_t disp) {
+/// @brief Emit movzx dst, word [base + index * scale + disp32] — zero-extend 16-bit SIB load (0F B7
+/// /r). Used to load individual UTF-16 code units from a string buffer into a 64-bit register.
+void InstallerStubGen::movzxRegMemIndex16(
+    X64Reg dst, X64Reg base, X64Reg index, uint8_t scaleLog2, int32_t disp) {
     if (scaleLog2 > 3)
         throw std::runtime_error("InstallerStubGen: invalid SIB scale");
     if (regBits(index) == 4)
@@ -258,12 +253,10 @@ void InstallerStubGen::leaRegMem(X64Reg dst, X64Reg base, int32_t disp) {
     emitModRMDisp32(regBits(dst), base, disp);
 }
 
-/// @brief Emit lea dst, [base + index * scale + disp32] — SIB-form effective address (REX.W + 8D /r).
-void InstallerStubGen::leaRegMemIndex(X64Reg dst,
-                                      X64Reg base,
-                                      X64Reg index,
-                                      uint8_t scaleLog2,
-                                      int32_t disp) {
+/// @brief Emit lea dst, [base + index * scale + disp32] — SIB-form effective address (REX.W + 8D
+/// /r).
+void InstallerStubGen::leaRegMemIndex(
+    X64Reg dst, X64Reg base, X64Reg index, uint8_t scaleLog2, int32_t disp) {
     if (scaleLog2 > 3)
         throw std::runtime_error("InstallerStubGen: invalid SIB scale");
     if (regBits(index) == 4)
@@ -286,7 +279,8 @@ void InstallerStubGen::leaRegMemIndex(X64Reg dst,
 // Arithmetic
 // ============================================================================
 
-/// @brief Emit sub dst, imm32 — subtract sign-extended 32-bit immediate from 64-bit register (REX.W + 81 /5).
+/// @brief Emit sub dst, imm32 — subtract sign-extended 32-bit immediate from 64-bit register (REX.W
+/// + 81 /5).
 void InstallerStubGen::subRegImm32(X64Reg dst, uint32_t imm) {
     // REX.W + 81 /5 id
     emitREX(true, X64Reg::RAX, dst);
@@ -303,7 +297,8 @@ void InstallerStubGen::subRegReg(X64Reg dst, X64Reg src) {
     emitModRM(3, regBits(src), regBits(dst));
 }
 
-/// @brief Emit add dst, imm32 — add sign-extended 32-bit immediate to 64-bit register (REX.W + 81 /0).
+/// @brief Emit add dst, imm32 — add sign-extended 32-bit immediate to 64-bit register (REX.W + 81
+/// /0).
 void InstallerStubGen::addRegImm32(X64Reg dst, uint32_t imm) {
     // REX.W + 81 /0 id
     emitREX(true, X64Reg::RAX, dst);
@@ -320,7 +315,8 @@ void InstallerStubGen::addRegReg(X64Reg dst, X64Reg src) {
     emitModRM(3, regBits(src), regBits(dst));
 }
 
-/// @brief Emit xor dst, src — 64-bit XOR; dst==src is the canonical zero-register idiom (REX.W + 31 /r).
+/// @brief Emit xor dst, src — 64-bit XOR; dst==src is the canonical zero-register idiom (REX.W + 31
+/// /r).
 void InstallerStubGen::xorRegReg(X64Reg dst, X64Reg src) {
     // REX.W + 31 /r
     emitREX(true, src, dst);
@@ -340,7 +336,8 @@ void InstallerStubGen::testRegReg(X64Reg a, X64Reg b) {
     emitModRM(3, regBits(b), regBits(a));
 }
 
-/// @brief Emit cmp r, imm32 — compare register against sign-extended 32-bit immediate (REX.W + 81 /7).
+/// @brief Emit cmp r, imm32 — compare register against sign-extended 32-bit immediate (REX.W + 81
+/// /7).
 void InstallerStubGen::cmpRegImm32(X64Reg r, uint32_t imm) {
     // REX.W + 81 /7 id
     emitREX(true, X64Reg::RAX, r);
@@ -379,7 +376,8 @@ void InstallerStubGen::jnz(uint32_t labelId) {
     emit32(0); // placeholder
 }
 
-/// @brief Emit ja — 32-bit near jump if above (unsigned >, CF=0 and ZF=0) (0F 87 cd); records a Rel32 fixup.
+/// @brief Emit ja — 32-bit near jump if above (unsigned >, CF=0 and ZF=0) (0F 87 cd); records a
+/// Rel32 fixup.
 void InstallerStubGen::ja(uint32_t labelId) {
     // 0F 87 cd (ja rel32) — unsigned above.
     emit(0x0F);
@@ -410,8 +408,9 @@ void InstallerStubGen::callIATSlot(uint32_t flatIndex) {
     emit32(0); // placeholder — resolved in finishText()
 }
 
-/// @brief Emit lea dst, [rip + disp32] — load address of embedded .rdata string (REX.W + 8D /r, RIP-relative).
-/// Records a DataRel32 fixup so the displacement is resolved against dataBaseRVA in finishText().
+/// @brief Emit lea dst, [rip + disp32] — load address of embedded .rdata string (REX.W + 8D /r,
+/// RIP-relative). Records a DataRel32 fixup so the displacement is resolved against dataBaseRVA in
+/// finishText().
 void InstallerStubGen::leaRipData(X64Reg dst, uint32_t dataOffset) {
     // REX.W + 8D /r with ModRM(00, reg, 101) = RIP-relative addressing
     emitREX(true, dst, X64Reg::RBP); // RBP's regBits = 5 = 101b (RIP-relative encoding)
@@ -474,8 +473,8 @@ static void patchLE32(std::vector<uint8_t> &buf, uint32_t off, int32_t val) {
     buf[off + 3] = static_cast<uint8_t>((val >> 24) & 0xFF);
 }
 
-/// @brief Finalize the code section by resolving all recorded fixups and returning the patched bytes.
-/// Iterates over every Fixup entry and back-fills the 32-bit displacement placeholder:
+/// @brief Finalize the code section by resolving all recorded fixups and returning the patched
+/// bytes. Iterates over every Fixup entry and back-fills the 32-bit displacement placeholder:
 ///   - Rel32: code-relative label offset (target label codeOffset - fixup end).
 ///   - IATSlotIndex: RIP-relative displacement to the correct IAT slot RVA.
 ///   - DataRel32: RIP-relative displacement to the embedded data byte in .rdata.

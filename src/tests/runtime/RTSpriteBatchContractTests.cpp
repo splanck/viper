@@ -60,8 +60,8 @@ static ObjHeader *header_from_payload(void *obj) {
 }
 
 extern "C" void *rt_obj_new_i64(int64_t class_id, int64_t byte_size) {
-    auto *header =
-        static_cast<ObjHeader *>(std::calloc(1, sizeof(ObjHeader) + static_cast<size_t>(byte_size)));
+    auto *header = static_cast<ObjHeader *>(
+        std::calloc(1, sizeof(ObjHeader) + static_cast<size_t>(byte_size)));
     assert(header != nullptr);
     header->class_id = class_id;
     return header + 1;

@@ -13,8 +13,8 @@
 
 #include "tests/TestHarness.hpp"
 
-#include <cstdio>
 #include <cstdint>
+#include <cstdio>
 #include <cstdlib>
 #include <cstring>
 #include <filesystem>
@@ -48,7 +48,10 @@ static const char *write_vpa_temp(const char *name,
     return path;
 }
 
-static bool write_vpa_at(const char *path, const char *entry_name, const uint8_t *data, size_t len) {
+static bool write_vpa_at(const char *path,
+                         const char *entry_name,
+                         const uint8_t *data,
+                         size_t len) {
     viper::asset::VpaWriter writer;
     writer.addEntry(entry_name, data, len, false);
     std::string err;

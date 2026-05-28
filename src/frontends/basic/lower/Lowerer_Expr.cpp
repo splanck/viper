@@ -311,8 +311,7 @@ class LowererExprVisitor final : public lower::AstVisitor, public ExprVisitor {
                     declaringClass = resolved->qualifiedClass;
                     selectedMethod = resolved->method;
                 } else if (lowerer_.diagnosticEmitter()) {
-                    result_ =
-                        Lowerer::RVal{IlValue::constInt(0), IlType(IlType::Kind::I64)};
+                    result_ = Lowerer::RVal{IlValue::constInt(0), IlType(IlType::Kind::I64)};
                     return;
                 }
 

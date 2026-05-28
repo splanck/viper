@@ -309,8 +309,10 @@ static int32_t rt2d_is_instance_of_either(void *obj,
 static rt_rendertarget2d_impl *rendertarget2d_checked(void *target) {
     if (!target)
         return NULL;
-    if (!rt2d_is_instance_of_either(
-            target, RT2D_RENDERTARGET_CLASS_ID, RT2D_SURFACE_CLASS_ID, sizeof(rt_rendertarget2d_impl)))
+    if (!rt2d_is_instance_of_either(target,
+                                    RT2D_RENDERTARGET_CLASS_ID,
+                                    RT2D_SURFACE_CLASS_ID,
+                                    sizeof(rt_rendertarget2d_impl)))
         return NULL;
     rt_rendertarget2d_impl *impl = (rt_rendertarget2d_impl *)target;
     return impl->magic == RT2D_RENDERTARGET_MAGIC ? impl : NULL;
@@ -378,8 +380,10 @@ static int32_t rt2d_is_shader_like(void *shader) {
 
 /// @brief Safe-cast an opaque handle to rt_viewport2d_impl, or NULL.
 static rt_viewport2d_impl *viewport2d_checked(void *viewport) {
-    return rt2d_is_instance_of_either(
-               viewport, RT2D_VIEWPORT_CLASS_ID, RT2D_SCREENSCALER_CLASS_ID, sizeof(rt_viewport2d_impl))
+    return rt2d_is_instance_of_either(viewport,
+                                      RT2D_VIEWPORT_CLASS_ID,
+                                      RT2D_SCREENSCALER_CLASS_ID,
+                                      sizeof(rt_viewport2d_impl))
                ? (rt_viewport2d_impl *)viewport
                : NULL;
 }
@@ -891,11 +895,11 @@ static uint32_t sample_pixels_linear(void *src,
     long double ty = uy - (long double)base_y;
 
     int64_t x0 = sampler_region_coord_i64(sx, base_x, src_span_w, src_width, wrap);
-    int64_t x1 = sampler_region_coord_i64(
-        sx, saturating_add_i64(base_x, 1), src_span_w, src_width, wrap);
+    int64_t x1 =
+        sampler_region_coord_i64(sx, saturating_add_i64(base_x, 1), src_span_w, src_width, wrap);
     int64_t y0 = sampler_region_coord_i64(sy, base_y, src_span_h, src_height, wrap);
-    int64_t y1 = sampler_region_coord_i64(
-        sy, saturating_add_i64(base_y, 1), src_span_h, src_height, wrap);
+    int64_t y1 =
+        sampler_region_coord_i64(sy, saturating_add_i64(base_y, 1), src_span_h, src_height, wrap);
 
     uint32_t c00 = (uint32_t)rt_pixels_get(src, x0, y0);
     uint32_t c10 = (uint32_t)rt_pixels_get(src, x1, y0);
@@ -1241,8 +1245,8 @@ static void *rendertarget2d_new_with_class(int64_t width, int64_t height, int64_
         rt_trap("RenderTarget2D.New: invalid dimensions");
         return NULL;
     }
-    rt_rendertarget2d_impl *target = (rt_rendertarget2d_impl *)rt_obj_new_i64(
-        class_id, (int64_t)sizeof(rt_rendertarget2d_impl));
+    rt_rendertarget2d_impl *target =
+        (rt_rendertarget2d_impl *)rt_obj_new_i64(class_id, (int64_t)sizeof(rt_rendertarget2d_impl));
     if (!target)
         return NULL;
     target->magic = RT2D_RENDERTARGET_MAGIC;
@@ -1385,8 +1389,8 @@ static void *texture2d_new_with_class(void *pixels, int64_t class_id) {
     if (!rt_obj_is_instance(pixels, RT_PIXELS_CLASS_ID, sizeof(rt_pixels_impl)))
         return NULL;
     retain_ref(pixels);
-    rt_texture2d_impl *texture = (rt_texture2d_impl *)rt_obj_new_i64(
-        class_id, (int64_t)sizeof(rt_texture2d_impl));
+    rt_texture2d_impl *texture =
+        (rt_texture2d_impl *)rt_obj_new_i64(class_id, (int64_t)sizeof(rt_texture2d_impl));
     if (!texture) {
         void *owned_pixels = pixels;
         release_ref_slot(&owned_pixels);
@@ -2389,8 +2393,8 @@ static void *viewport2d_new_with_class(int64_t virtual_width,
                                        int64_t screen_width,
                                        int64_t screen_height,
                                        int64_t class_id) {
-    rt_viewport2d_impl *viewport = (rt_viewport2d_impl *)rt_obj_new_i64(
-        class_id, (int64_t)sizeof(rt_viewport2d_impl));
+    rt_viewport2d_impl *viewport =
+        (rt_viewport2d_impl *)rt_obj_new_i64(class_id, (int64_t)sizeof(rt_viewport2d_impl));
     if (!viewport)
         return NULL;
     viewport->virtual_width = normalized_dim(virtual_width);

@@ -37,7 +37,7 @@ struct DesktopEntryParams {
     bool terminal{false};   ///< Whether to run in a terminal
     std::string workingDir; ///< Working directory for asset resolution (Path= in .desktop)
     std::vector<FileAssoc> fileAssociations; ///< For MimeType= field
-    bool acceptsFileArgument{false};          ///< Append %f to Exec= for file opens.
+    bool acceptsFileArgument{false};         ///< Append %f to Exec= for file opens.
     bool noDisplay{false}; ///< Hide from menus while keeping MIME handler registration.
 };
 

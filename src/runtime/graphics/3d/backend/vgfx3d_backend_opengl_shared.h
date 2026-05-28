@@ -26,8 +26,8 @@
 
 #include "vgfx3d_backend.h"
 
-#include <stdint.h>
 #include <stddef.h>
+#include <stdint.h>
 
 #ifdef __cplusplus
 extern "C" {
@@ -104,17 +104,15 @@ int vgfx3d_opengl_validate_rgba8_destination(int32_t width,
                                              int32_t stride,
                                              size_t *out_bytes);
 /// @brief Clamp morph shapes so shader-side int indexing cannot overflow.
-int32_t vgfx3d_opengl_clamp_morph_shape_count(uint32_t vertex_count,
-                                              int32_t requested_shape_count);
+int32_t vgfx3d_opengl_clamp_morph_shape_count(uint32_t vertex_count, int32_t requested_shape_count);
 /// @brief Pick the right render-target classification for the OpenGL backend.
 vgfx3d_opengl_target_kind_t vgfx3d_opengl_choose_target_kind(int8_t rtt_active,
                                                              int8_t gpu_postfx_enabled);
 /// @brief Pick the color format — HDR16F for the scene pass, UNORM8 elsewhere.
-vgfx3d_opengl_color_format_t
-vgfx3d_opengl_choose_color_format(vgfx3d_opengl_target_kind_t target_kind);
+vgfx3d_opengl_color_format_t vgfx3d_opengl_choose_color_format(
+    vgfx3d_opengl_target_kind_t target_kind);
 /// @brief Map a draw command to its required blend state (alpha vs opaque).
-vgfx3d_opengl_blend_mode_t
-vgfx3d_opengl_choose_blend_mode(const vgfx3d_draw_cmd_t *cmd);
+vgfx3d_opengl_blend_mode_t vgfx3d_opengl_choose_blend_mode(const vgfx3d_draw_cmd_t *cmd);
 /// @brief Decide whether terrain splatting has every required texture bound.
 int vgfx3d_opengl_has_complete_splat(int8_t cmd_has_splat,
                                      int has_splat_map,
@@ -123,9 +121,8 @@ int vgfx3d_opengl_has_complete_splat(int8_t cmd_has_splat,
                                      int has_layer2,
                                      int has_layer3);
 /// @brief Decide whether to attach a motion-vector buffer (only for opaque scene draws).
-vgfx3d_opengl_motion_attachment_mode_t
-vgfx3d_opengl_choose_motion_attachment_mode(vgfx3d_opengl_target_kind_t target_kind,
-                                            const vgfx3d_draw_cmd_t *cmd);
+vgfx3d_opengl_motion_attachment_mode_t vgfx3d_opengl_choose_motion_attachment_mode(
+    vgfx3d_opengl_target_kind_t target_kind, const vgfx3d_draw_cmd_t *cmd);
 /// @brief Decide whether canvas readback should source the swapchain or postfx target.
 vgfx3d_opengl_readback_kind_t vgfx3d_opengl_choose_readback_kind(int8_t gpu_postfx_enabled);
 /// @brief Clamp light shadow indices to the currently completed contiguous shadow slots.
@@ -137,7 +134,8 @@ int vgfx3d_opengl_should_reuse_morph_cache(const void *cached_key,
                                            uint32_t cached_vertex_count,
                                            int8_t cached_has_normal_deltas,
                                            const vgfx3d_draw_cmd_t *cmd);
-/// @brief Decide whether a per-mesh GPU cache entry should be evicted (unused for > max_age frames).
+/// @brief Decide whether a per-mesh GPU cache entry should be evicted (unused for > max_age
+/// frames).
 int vgfx3d_opengl_should_prune_cache_entry(uint64_t current_frame,
                                            uint64_t last_used_frame,
                                            uint64_t max_age);

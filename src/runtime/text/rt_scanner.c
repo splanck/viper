@@ -148,8 +148,7 @@ int64_t rt_scanner_peek_at(void *obj, int64_t offset) {
     if (!obj)
         return -1;
     Scanner *s = (Scanner *)obj;
-    if ((offset > 0 && s->pos > INT64_MAX - offset) ||
-        (offset < 0 && s->pos < INT64_MIN - offset))
+    if ((offset > 0 && s->pos > INT64_MAX - offset) || (offset < 0 && s->pos < INT64_MIN - offset))
         return -1;
     int64_t idx = s->pos + offset;
     if (idx < 0 || idx >= s->len)

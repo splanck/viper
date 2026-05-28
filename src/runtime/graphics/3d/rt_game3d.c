@@ -46,13 +46,11 @@
 
 #include "rt_animcontroller3d.h"
 #include "rt_audio.h"
-#include "rt_sound3d.h"
-#include "rt_soundlistener3d.h"
-#include "rt_soundsource3d.h"
 #include "rt_canvas3d.h"
 #include "rt_canvas3d_internal.h"
 #include "rt_collider3d.h"
 #include "rt_decal3d.h"
+#include "rt_graphics3d_ids.h"
 #include "rt_input.h"
 #include "rt_mat4.h"
 #include "rt_model3d.h"
@@ -63,17 +61,19 @@
 #include "rt_postfx3d.h"
 #include "rt_quat.h"
 #include "rt_scene3d.h"
+#include "rt_sound3d.h"
+#include "rt_soundlistener3d.h"
+#include "rt_soundsource3d.h"
 #include "rt_string.h"
 #include "rt_trap.h"
 #include "rt_vec2.h"
 #include "rt_vec3.h"
-#include "rt_graphics3d_ids.h"
 
 #include <limits.h>
 #include <math.h>
+#include <stdarg.h>
 #include <stddef.h>
 #include <stdint.h>
-#include <stdarg.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -92,22 +92,22 @@
 
 // Default tuning constants applied when callers omit a value or pass a
 // non-finite one; chosen for a 60 Hz first-person feel with safe clip planes.
-#define RT_GAME3D_DEFAULT_FOV_DEG 60.0           ///< Default vertical camera FOV (degrees).
-#define RT_GAME3D_DEFAULT_NEAR 0.1               ///< Default near clip plane (world units).
-#define RT_GAME3D_DEFAULT_FAR 1000.0             ///< Default far clip plane (world units).
-#define RT_GAME3D_DEFAULT_DT (1.0 / 60.0)        ///< Fallback frame delta when timing is invalid.
-#define RT_GAME3D_MAX_DT 0.25                    ///< Per-frame delta cap (smooths post-stall spikes).
-#define RT_GAME3D_DEFAULT_MOVE_SPEED 6.0         ///< Default controller move speed (units/sec).
-#define RT_GAME3D_DEFAULT_LOOK_SENSITIVITY 0.01  ///< Default mouse-look degrees per pixel.
-#define RT_GAME3D_DEFAULT_JUMP_SPEED 5.5         ///< Default jump launch speed (units/sec).
-#define RT_GAME3D_DEFAULT_GRAVITY -20.0          ///< Default character gravity (units/sec²).
-#define RT_GAME3D_DEFAULT_FOLLOW_DAMPING 12.0    ///< Default follow-camera smoothing factor.
-#define RT_GAME3D_DEFAULT_AUDIO_REF_DISTANCE 1.0 ///< Default audio full-volume radius.
-#define RT_GAME3D_DEFAULT_AUDIO_MAX_DISTANCE 50.0///< Default audio silence radius.
-#define RT_GAME3D_DEFAULT_AUDIO_VOLUME 100       ///< Default master audio volume (0–100).
-#define RT_GAME3D_PI 3.14159265358979323846      ///< Pi (avoids relying on non-portable M_PI).
-#define RT_GAME3D_ANIM_EVENT_MAX 64              ///< Max animation events buffered per update.
-#define RT_GAME3D_MAX_FIXED_STEPS_PER_FRAME 8    ///< Fixed-loop spiral-of-death guard.
+#define RT_GAME3D_DEFAULT_FOV_DEG 60.0    ///< Default vertical camera FOV (degrees).
+#define RT_GAME3D_DEFAULT_NEAR 0.1        ///< Default near clip plane (world units).
+#define RT_GAME3D_DEFAULT_FAR 1000.0      ///< Default far clip plane (world units).
+#define RT_GAME3D_DEFAULT_DT (1.0 / 60.0) ///< Fallback frame delta when timing is invalid.
+#define RT_GAME3D_MAX_DT 0.25             ///< Per-frame delta cap (smooths post-stall spikes).
+#define RT_GAME3D_DEFAULT_MOVE_SPEED 6.0  ///< Default controller move speed (units/sec).
+#define RT_GAME3D_DEFAULT_LOOK_SENSITIVITY 0.01   ///< Default mouse-look degrees per pixel.
+#define RT_GAME3D_DEFAULT_JUMP_SPEED 5.5          ///< Default jump launch speed (units/sec).
+#define RT_GAME3D_DEFAULT_GRAVITY -20.0           ///< Default character gravity (units/sec²).
+#define RT_GAME3D_DEFAULT_FOLLOW_DAMPING 12.0     ///< Default follow-camera smoothing factor.
+#define RT_GAME3D_DEFAULT_AUDIO_REF_DISTANCE 1.0  ///< Default audio full-volume radius.
+#define RT_GAME3D_DEFAULT_AUDIO_MAX_DISTANCE 50.0 ///< Default audio silence radius.
+#define RT_GAME3D_DEFAULT_AUDIO_VOLUME 100        ///< Default master audio volume (0–100).
+#define RT_GAME3D_PI 3.14159265358979323846       ///< Pi (avoids relying on non-portable M_PI).
+#define RT_GAME3D_ANIM_EVENT_MAX 64               ///< Max animation events buffered per update.
+#define RT_GAME3D_MAX_FIXED_STEPS_PER_FRAME 8     ///< Fixed-loop spiral-of-death guard.
 
 /// @brief Internal effect-item discriminator stored in rt_game3d_effect_item.type.
 enum {
@@ -384,29 +384,36 @@ static int32_t g_game3d_model_cache_capacity = 0;
 #if defined(_WIN32)
 static INIT_ONCE g_game3d_model_cache_once = INIT_ONCE_STATIC_INIT;
 static CRITICAL_SECTION g_game3d_model_cache_lock;
+
 /// @brief One-time initializer (run via InitOnceExecuteOnce) for the cache critical section.
-static BOOL CALLBACK game3d_model_cache_init_once(PINIT_ONCE once, PVOID parameter, PVOID *context) {
+static BOOL CALLBACK game3d_model_cache_init_once(PINIT_ONCE once,
+                                                  PVOID parameter,
+                                                  PVOID *context) {
     (void)once;
     (void)parameter;
     (void)context;
     InitializeCriticalSection(&g_game3d_model_cache_lock);
     return TRUE;
 }
+
 /// @brief Lazily initialize then acquire the process-wide model-cache lock.
 static void game3d_model_cache_lock(void) {
     InitOnceExecuteOnce(&g_game3d_model_cache_once, game3d_model_cache_init_once, NULL, NULL);
     EnterCriticalSection(&g_game3d_model_cache_lock);
 }
+
 /// @brief Release the process-wide model-cache lock.
 static void game3d_model_cache_unlock(void) {
     LeaveCriticalSection(&g_game3d_model_cache_lock);
 }
 #else
 static pthread_mutex_t g_game3d_model_cache_lock = PTHREAD_MUTEX_INITIALIZER;
+
 /// @brief Acquire the process-wide model-cache lock (statically initialized mutex).
 static void game3d_model_cache_lock(void) {
     pthread_mutex_lock(&g_game3d_model_cache_lock);
 }
+
 /// @brief Release the process-wide model-cache lock.
 static void game3d_model_cache_unlock(void) {
     pthread_mutex_unlock(&g_game3d_model_cache_lock);
@@ -460,8 +467,8 @@ static int game3d_callback_pointer_is_native(void *callback) {
         unsigned long start = 0;
         unsigned long end = 0;
         char perms[5] = {0, 0, 0, 0, 0};
-        if (sscanf(line, "%lx-%lx %4s", &start, &end, perms) == 3 &&
-            needle >= (uintptr_t)start && needle < (uintptr_t)end) {
+        if (sscanf(line, "%lx-%lx %4s", &start, &end, perms) == 3 && needle >= (uintptr_t)start &&
+            needle < (uintptr_t)end) {
             fclose(maps);
             return strchr(perms, 'x') != NULL;
         }
@@ -606,11 +613,8 @@ static int8_t game3d_read_vec3(void *vec, double *out, const char *method) {
 
 /// @brief Compute a doubled int32 capacity for an array while guarding integer
 ///   and byte-size overflow before the caller reaches realloc().
-static int game3d_compute_capacity(int32_t current,
-                                   int32_t needed,
-                                   int32_t initial,
-                                   size_t elem_size,
-                                   int32_t *out_capacity) {
+static int game3d_compute_capacity(
+    int32_t current, int32_t needed, int32_t initial, size_t elem_size, int32_t *out_capacity) {
     int32_t capacity;
     if (!out_capacity || needed < 0 || initial <= 0 || elem_size == 0)
         return 0;
@@ -682,9 +686,8 @@ static int game3d_effects_reserve(rt_game3d_effects *effects, int32_t needed) {
         rt_trap("Game3D.EffectRegistry3D: too many effects");
         return 0;
     }
-    rt_game3d_effect_item *new_items =
-        (rt_game3d_effect_item *)realloc(effects->items,
-                                         (size_t)new_capacity * sizeof(rt_game3d_effect_item));
+    rt_game3d_effect_item *new_items = (rt_game3d_effect_item *)realloc(
+        effects->items, (size_t)new_capacity * sizeof(rt_game3d_effect_item));
     if (!new_items) {
         rt_trap("Game3D.EffectRegistry3D: effect list allocation failed");
         return 0;
@@ -814,9 +817,8 @@ static rt_game3d_body_def *game3d_body_def_checked(void *obj, const char *method
 
 /// @brief Validate `obj` as a Collision3DEvent handle, trapping `method` on mismatch.
 static rt_game3d_collision_event *game3d_collision_event_checked(void *obj, const char *method) {
-    rt_game3d_collision_event *event =
-        (rt_game3d_collision_event *)rt_g3d_checked_or_null(
-            obj, RT_G3D_GAME3D_COLLISION_EVENT_CLASS_ID);
+    rt_game3d_collision_event *event = (rt_game3d_collision_event *)rt_g3d_checked_or_null(
+        obj, RT_G3D_GAME3D_COLLISION_EVENT_CLASS_ID);
     if (!event)
         rt_trap(method);
     return event;
@@ -825,8 +827,7 @@ static rt_game3d_collision_event *game3d_collision_event_checked(void *obj, cons
 /// @brief Validate `obj` as an Animator3D handle, trapping `method` on mismatch.
 static rt_game3d_animator *game3d_animator_checked(void *obj, const char *method) {
     rt_game3d_animator *animator =
-        (rt_game3d_animator *)rt_g3d_checked_or_null(
-            obj, RT_G3D_GAME3D_ANIMATOR3D_CLASS_ID);
+        (rt_game3d_animator *)rt_g3d_checked_or_null(obj, RT_G3D_GAME3D_ANIMATOR3D_CLASS_ID);
     if (!animator)
         rt_trap(method);
     return animator;
@@ -834,9 +835,8 @@ static rt_game3d_animator *game3d_animator_checked(void *obj, const char *method
 
 /// @brief Validate `obj` as a ModelTemplate handle, trapping `method` on mismatch.
 static rt_game3d_model_template *game3d_model_template_checked(void *obj, const char *method) {
-    rt_game3d_model_template *model_template =
-        (rt_game3d_model_template *)rt_g3d_checked_or_null(
-            obj, RT_G3D_GAME3D_MODEL_TEMPLATE_CLASS_ID);
+    rt_game3d_model_template *model_template = (rt_game3d_model_template *)rt_g3d_checked_or_null(
+        obj, RT_G3D_GAME3D_MODEL_TEMPLATE_CLASS_ID);
     if (!model_template)
         rt_trap(method);
     return model_template;
@@ -862,8 +862,8 @@ static rt_game3d_world *game3d_world_checked(void *obj, const char *method) {
 }
 
 /// @brief Validate `obj` as a CharacterController3D handle, trapping `method` on mismatch.
-static rt_game3d_character_controller *game3d_character_controller_checked(
-    void *obj, const char *method) {
+static rt_game3d_character_controller *game3d_character_controller_checked(void *obj,
+                                                                           const char *method) {
     rt_game3d_character_controller *controller =
         (rt_game3d_character_controller *)rt_g3d_checked_or_null(
             obj, RT_G3D_GAME3D_CHARACTER_CONTROLLER_CLASS_ID);
@@ -884,33 +884,30 @@ static rt_game3d_first_person_controller *game3d_first_person_controller_checked
 }
 
 /// @brief Validate `obj` as a FreeFlyController handle, trapping `method` on mismatch.
-static rt_game3d_free_fly_controller *game3d_free_fly_controller_checked(
-    void *obj, const char *method) {
+static rt_game3d_free_fly_controller *game3d_free_fly_controller_checked(void *obj,
+                                                                         const char *method) {
     rt_game3d_free_fly_controller *controller =
-        (rt_game3d_free_fly_controller *)rt_g3d_checked_or_null(
-            obj, RT_G3D_GAME3D_FREEFLY_CLASS_ID);
+        (rt_game3d_free_fly_controller *)rt_g3d_checked_or_null(obj,
+                                                                RT_G3D_GAME3D_FREEFLY_CLASS_ID);
     if (!controller)
         rt_trap(method);
     return controller;
 }
 
 /// @brief Validate `obj` as an OrbitController handle, trapping `method` on mismatch.
-static rt_game3d_orbit_controller *game3d_orbit_controller_checked(
-    void *obj, const char *method) {
+static rt_game3d_orbit_controller *game3d_orbit_controller_checked(void *obj, const char *method) {
     rt_game3d_orbit_controller *controller =
-        (rt_game3d_orbit_controller *)rt_g3d_checked_or_null(
-            obj, RT_G3D_GAME3D_ORBIT_CLASS_ID);
+        (rt_game3d_orbit_controller *)rt_g3d_checked_or_null(obj, RT_G3D_GAME3D_ORBIT_CLASS_ID);
     if (!controller)
         rt_trap(method);
     return controller;
 }
 
 /// @brief Validate `obj` as a FollowController handle, trapping `method` on mismatch.
-static rt_game3d_follow_controller *game3d_follow_controller_checked(
-    void *obj, const char *method) {
+static rt_game3d_follow_controller *game3d_follow_controller_checked(void *obj,
+                                                                     const char *method) {
     rt_game3d_follow_controller *controller =
-        (rt_game3d_follow_controller *)rt_g3d_checked_or_null(
-            obj, RT_G3D_GAME3D_FOLLOW_CLASS_ID);
+        (rt_game3d_follow_controller *)rt_g3d_checked_or_null(obj, RT_G3D_GAME3D_FOLLOW_CLASS_ID);
     if (!controller)
         rt_trap(method);
     return controller;
@@ -919,8 +916,8 @@ static rt_game3d_follow_controller *game3d_follow_controller_checked(
 /// @brief Allocate a LayerMask handle initialized to the given (sanitized) bitfield;
 ///   traps on allocation failure.
 static void *game3d_layermask_new_bits(int64_t bits) {
-    rt_game3d_layermask *mask =
-        (rt_game3d_layermask *)rt_obj_new_i64(RT_G3D_GAME3D_LAYERMASK_CLASS_ID, (int64_t)sizeof(*mask));
+    rt_game3d_layermask *mask = (rt_game3d_layermask *)rt_obj_new_i64(
+        RT_G3D_GAME3D_LAYERMASK_CLASS_ID, (int64_t)sizeof(*mask));
     if (!mask) {
         rt_trap("Game3D.LayerMask.New: allocation failed");
         return NULL;
@@ -936,59 +933,185 @@ static void *game3d_layermask_new_bits(int64_t bits) {
 // Per-function semantics are documented on the declarations in rt_game3d.h.
 //=========================================================================
 
-int64_t rt_game3d_layers_world(void) { return RT_GAME3D_LAYER_WORLD; }
-int64_t rt_game3d_layers_dynamic(void) { return RT_GAME3D_LAYER_DYNAMIC; }
-int64_t rt_game3d_layers_player(void) { return RT_GAME3D_LAYER_PLAYER; }
-int64_t rt_game3d_layers_trigger(void) { return RT_GAME3D_LAYER_TRIGGER; }
-int64_t rt_game3d_layers_debris(void) { return RT_GAME3D_LAYER_DEBRIS; }
+int64_t rt_game3d_layers_world(void) {
+    return RT_GAME3D_LAYER_WORLD;
+}
 
-int64_t rt_game3d_body_shape_box(void) { return RT_GAME3D_BODY_SHAPE_BOX; }
-int64_t rt_game3d_body_shape_sphere(void) { return RT_GAME3D_BODY_SHAPE_SPHERE; }
-int64_t rt_game3d_body_shape_capsule(void) { return RT_GAME3D_BODY_SHAPE_CAPSULE; }
+int64_t rt_game3d_layers_dynamic(void) {
+    return RT_GAME3D_LAYER_DYNAMIC;
+}
 
-int64_t rt_game3d_sync_mode_node_from_body(void) { return RT_GAME3D_SYNC_NODE_FROM_BODY; }
-int64_t rt_game3d_sync_mode_body_from_node(void) { return RT_GAME3D_SYNC_BODY_FROM_NODE; }
-int64_t rt_game3d_sync_mode_node_from_anim_root_motion(void) { return RT_GAME3D_SYNC_NODE_FROM_ANIM_ROOT_MOTION; }
-int64_t rt_game3d_sync_mode_two_way_kinematic(void) { return RT_GAME3D_SYNC_TWO_WAY_KINEMATIC; }
+int64_t rt_game3d_layers_player(void) {
+    return RT_GAME3D_LAYER_PLAYER;
+}
 
-int64_t rt_game3d_alpha_mode_opaque(void) { return RT_GAME3D_ALPHA_OPAQUE; }
-int64_t rt_game3d_alpha_mode_mask(void) { return RT_GAME3D_ALPHA_MASK; }
-int64_t rt_game3d_alpha_mode_blend(void) { return RT_GAME3D_ALPHA_BLEND; }
+int64_t rt_game3d_layers_trigger(void) {
+    return RT_GAME3D_LAYER_TRIGGER;
+}
 
-int64_t rt_game3d_shading_model_phong(void) { return RT_GAME3D_SHADING_PHONG; }
-int64_t rt_game3d_shading_model_toon(void) { return RT_GAME3D_SHADING_TOON; }
-int64_t rt_game3d_shading_model_pbr(void) { return RT_GAME3D_SHADING_PBR; }
-int64_t rt_game3d_shading_model_fresnel(void) { return RT_GAME3D_SHADING_FRESNEL; }
-int64_t rt_game3d_shading_model_emissive(void) { return RT_GAME3D_SHADING_EMISSIVE; }
-int64_t rt_game3d_shading_model_unlit(void) { return RT_GAME3D_SHADING_UNLIT; }
+int64_t rt_game3d_layers_debris(void) {
+    return RT_GAME3D_LAYER_DEBRIS;
+}
 
-int64_t rt_game3d_quality_performance(void) { return RT_GAME3D_QUALITY_PERFORMANCE; }
-int64_t rt_game3d_quality_balanced(void) { return RT_GAME3D_QUALITY_BALANCED; }
-int64_t rt_game3d_quality_cinematic(void) { return RT_GAME3D_QUALITY_CINEMATIC; }
+int64_t rt_game3d_body_shape_box(void) {
+    return RT_GAME3D_BODY_SHAPE_BOX;
+}
 
-int64_t rt_game3d_collision_enter(void) { return RT_GAME3D_COLLISION_ENTER; }
-int64_t rt_game3d_collision_stay(void) { return RT_GAME3D_COLLISION_STAY; }
-int64_t rt_game3d_collision_exit(void) { return RT_GAME3D_COLLISION_EXIT; }
-int64_t rt_game3d_collision_any(void) { return RT_GAME3D_COLLISION_ANY; }
+int64_t rt_game3d_body_shape_sphere(void) {
+    return RT_GAME3D_BODY_SHAPE_SPHERE;
+}
 
-int64_t rt_game3d_key_w(void) { return rt_keyboard_key_w(); }
-int64_t rt_game3d_key_a(void) { return rt_keyboard_key_a(); }
-int64_t rt_game3d_key_s(void) { return rt_keyboard_key_s(); }
-int64_t rt_game3d_key_d(void) { return rt_keyboard_key_d(); }
-int64_t rt_game3d_key_space(void) { return rt_keyboard_key_space(); }
-int64_t rt_game3d_key_escape(void) { return rt_keyboard_key_escape(); }
-int64_t rt_game3d_key_shift(void) { return rt_keyboard_key_shift(); }
-int64_t rt_game3d_key_ctrl(void) { return rt_keyboard_key_ctrl(); }
-int64_t rt_game3d_key_up(void) { return rt_keyboard_key_up(); }
-int64_t rt_game3d_key_down(void) { return rt_keyboard_key_down(); }
-int64_t rt_game3d_key_left(void) { return rt_keyboard_key_left(); }
-int64_t rt_game3d_key_right(void) { return rt_keyboard_key_right(); }
+int64_t rt_game3d_body_shape_capsule(void) {
+    return RT_GAME3D_BODY_SHAPE_CAPSULE;
+}
 
-int64_t rt_game3d_mouse_left(void) { return rt_mouse_button_left(); }
-int64_t rt_game3d_mouse_right(void) { return rt_mouse_button_right(); }
-int64_t rt_game3d_mouse_middle(void) { return rt_mouse_button_middle(); }
-int64_t rt_game3d_mouse_x1(void) { return rt_mouse_button_x1(); }
-int64_t rt_game3d_mouse_x2(void) { return rt_mouse_button_x2(); }
+int64_t rt_game3d_sync_mode_node_from_body(void) {
+    return RT_GAME3D_SYNC_NODE_FROM_BODY;
+}
+
+int64_t rt_game3d_sync_mode_body_from_node(void) {
+    return RT_GAME3D_SYNC_BODY_FROM_NODE;
+}
+
+int64_t rt_game3d_sync_mode_node_from_anim_root_motion(void) {
+    return RT_GAME3D_SYNC_NODE_FROM_ANIM_ROOT_MOTION;
+}
+
+int64_t rt_game3d_sync_mode_two_way_kinematic(void) {
+    return RT_GAME3D_SYNC_TWO_WAY_KINEMATIC;
+}
+
+int64_t rt_game3d_alpha_mode_opaque(void) {
+    return RT_GAME3D_ALPHA_OPAQUE;
+}
+
+int64_t rt_game3d_alpha_mode_mask(void) {
+    return RT_GAME3D_ALPHA_MASK;
+}
+
+int64_t rt_game3d_alpha_mode_blend(void) {
+    return RT_GAME3D_ALPHA_BLEND;
+}
+
+int64_t rt_game3d_shading_model_phong(void) {
+    return RT_GAME3D_SHADING_PHONG;
+}
+
+int64_t rt_game3d_shading_model_toon(void) {
+    return RT_GAME3D_SHADING_TOON;
+}
+
+int64_t rt_game3d_shading_model_pbr(void) {
+    return RT_GAME3D_SHADING_PBR;
+}
+
+int64_t rt_game3d_shading_model_fresnel(void) {
+    return RT_GAME3D_SHADING_FRESNEL;
+}
+
+int64_t rt_game3d_shading_model_emissive(void) {
+    return RT_GAME3D_SHADING_EMISSIVE;
+}
+
+int64_t rt_game3d_shading_model_unlit(void) {
+    return RT_GAME3D_SHADING_UNLIT;
+}
+
+int64_t rt_game3d_quality_performance(void) {
+    return RT_GAME3D_QUALITY_PERFORMANCE;
+}
+
+int64_t rt_game3d_quality_balanced(void) {
+    return RT_GAME3D_QUALITY_BALANCED;
+}
+
+int64_t rt_game3d_quality_cinematic(void) {
+    return RT_GAME3D_QUALITY_CINEMATIC;
+}
+
+int64_t rt_game3d_collision_enter(void) {
+    return RT_GAME3D_COLLISION_ENTER;
+}
+
+int64_t rt_game3d_collision_stay(void) {
+    return RT_GAME3D_COLLISION_STAY;
+}
+
+int64_t rt_game3d_collision_exit(void) {
+    return RT_GAME3D_COLLISION_EXIT;
+}
+
+int64_t rt_game3d_collision_any(void) {
+    return RT_GAME3D_COLLISION_ANY;
+}
+
+int64_t rt_game3d_key_w(void) {
+    return rt_keyboard_key_w();
+}
+
+int64_t rt_game3d_key_a(void) {
+    return rt_keyboard_key_a();
+}
+
+int64_t rt_game3d_key_s(void) {
+    return rt_keyboard_key_s();
+}
+
+int64_t rt_game3d_key_d(void) {
+    return rt_keyboard_key_d();
+}
+
+int64_t rt_game3d_key_space(void) {
+    return rt_keyboard_key_space();
+}
+
+int64_t rt_game3d_key_escape(void) {
+    return rt_keyboard_key_escape();
+}
+
+int64_t rt_game3d_key_shift(void) {
+    return rt_keyboard_key_shift();
+}
+
+int64_t rt_game3d_key_ctrl(void) {
+    return rt_keyboard_key_ctrl();
+}
+
+int64_t rt_game3d_key_up(void) {
+    return rt_keyboard_key_up();
+}
+
+int64_t rt_game3d_key_down(void) {
+    return rt_keyboard_key_down();
+}
+
+int64_t rt_game3d_key_left(void) {
+    return rt_keyboard_key_left();
+}
+
+int64_t rt_game3d_key_right(void) {
+    return rt_keyboard_key_right();
+}
+
+int64_t rt_game3d_mouse_left(void) {
+    return rt_mouse_button_left();
+}
+
+int64_t rt_game3d_mouse_right(void) {
+    return rt_mouse_button_right();
+}
+
+int64_t rt_game3d_mouse_middle(void) {
+    return rt_mouse_button_middle();
+}
+
+int64_t rt_game3d_mouse_x1(void) {
+    return rt_mouse_button_x1();
+}
+
+int64_t rt_game3d_mouse_x2(void) {
+    return rt_mouse_button_x2();
+}
 
 //=========================================================================
 // Input snapshot accessors — each reads a per-frame captured snapshot when the
@@ -1047,9 +1170,14 @@ static double game3d_input_wheel_y_snapshot(const rt_game3d_input *input) {
 }
 
 /// @brief Create an empty layer mask (no bits set). See header.
-void *rt_game3d_layermask_none(void) { return game3d_layermask_new_bits(0); }
+void *rt_game3d_layermask_none(void) {
+    return game3d_layermask_new_bits(0);
+}
+
 /// @brief Create a layer mask with all bits set. See header.
-void *rt_game3d_layermask_all(void) { return game3d_layermask_new_bits(INT64_MAX); }
+void *rt_game3d_layermask_all(void) {
+    return game3d_layermask_new_bits(INT64_MAX);
+}
 
 /// @brief Create a mask holding exactly `layer`; traps if it is not a single bit.
 void *rt_game3d_layermask_of(int64_t layer) {
@@ -1130,13 +1258,13 @@ static void *game3d_body_def_alloc(const char *method) {
 ///   NODE_FROM_BODY.
 static int64_t game3d_valid_sync_or_default(int64_t sync_mode) {
     switch (sync_mode) {
-    case RT_GAME3D_SYNC_NODE_FROM_BODY:
-    case RT_GAME3D_SYNC_BODY_FROM_NODE:
-    case RT_GAME3D_SYNC_NODE_FROM_ANIM_ROOT_MOTION:
-    case RT_GAME3D_SYNC_TWO_WAY_KINEMATIC:
-        return sync_mode;
-    default:
-        return RT_GAME3D_SYNC_NODE_FROM_BODY;
+        case RT_GAME3D_SYNC_NODE_FROM_BODY:
+        case RT_GAME3D_SYNC_BODY_FROM_NODE:
+        case RT_GAME3D_SYNC_NODE_FROM_ANIM_ROOT_MOTION:
+        case RT_GAME3D_SYNC_TWO_WAY_KINEMATIC:
+            return sync_mode;
+        default:
+            return RT_GAME3D_SYNC_NODE_FROM_BODY;
     }
 }
 
@@ -1207,8 +1335,7 @@ void *rt_game3d_body_def_static_box(double half_x, double half_y, double half_z)
 /// @brief Build a thin static floor box of the given footprint size; see header.
 void *rt_game3d_body_def_static_plane(double size) {
     double half = game3d_bodydef_extent_or(size, 1.0) * 0.5;
-    rt_game3d_body_def *def =
-        (rt_game3d_body_def *)rt_game3d_body_def_static_box(half, 0.05, half);
+    rt_game3d_body_def *def = (rt_game3d_body_def *)rt_game3d_body_def_static_box(half, 0.05, half);
     return def;
 }
 
@@ -1226,14 +1353,14 @@ void rt_game3d_body_def_set_shape(void *obj, int64_t shape) {
     if (!def)
         return;
     switch (shape) {
-    case RT_GAME3D_BODY_SHAPE_BOX:
-    case RT_GAME3D_BODY_SHAPE_SPHERE:
-    case RT_GAME3D_BODY_SHAPE_CAPSULE:
-        def->shape = shape;
-        break;
-    default:
-        rt_trap("Game3D.BodyDef.set_shape: invalid BodyShape");
-        break;
+        case RT_GAME3D_BODY_SHAPE_BOX:
+        case RT_GAME3D_BODY_SHAPE_SPHERE:
+        case RT_GAME3D_BODY_SHAPE_CAPSULE:
+            def->shape = shape;
+            break;
+        default:
+            rt_trap("Game3D.BodyDef.set_shape: invalid BodyShape");
+            break;
     }
 }
 
@@ -1438,18 +1565,20 @@ static void *game3d_body_def_create_body(rt_game3d_body_def *def) {
     if (!def)
         return NULL;
     switch (def->shape) {
-    case RT_GAME3D_BODY_SHAPE_SPHERE:
-        body = rt_body3d_new_sphere(def->radius, def->is_static ? 0.0 : def->mass);
-        break;
-    case RT_GAME3D_BODY_SHAPE_CAPSULE:
-        body = rt_body3d_new_capsule(def->radius, def->height, def->is_static ? 0.0 : def->mass);
-        break;
-    case RT_GAME3D_BODY_SHAPE_BOX:
-    default:
-        body = rt_body3d_new_aabb(
-            def->half_extents[0], def->half_extents[1], def->half_extents[2],
-            def->is_static ? 0.0 : def->mass);
-        break;
+        case RT_GAME3D_BODY_SHAPE_SPHERE:
+            body = rt_body3d_new_sphere(def->radius, def->is_static ? 0.0 : def->mass);
+            break;
+        case RT_GAME3D_BODY_SHAPE_CAPSULE:
+            body =
+                rt_body3d_new_capsule(def->radius, def->height, def->is_static ? 0.0 : def->mass);
+            break;
+        case RT_GAME3D_BODY_SHAPE_BOX:
+        default:
+            body = rt_body3d_new_aabb(def->half_extents[0],
+                                      def->half_extents[1],
+                                      def->half_extents[2],
+                                      def->is_static ? 0.0 : def->mass);
+            break;
     }
     if (!body)
         return NULL;
@@ -1550,7 +1679,8 @@ int8_t rt_game3d_input_mouse_button(void *obj, int64_t button) {
 
 /// @brief True on the frame mouse `button` transitions to down.
 int8_t rt_game3d_input_mouse_pressed(void *obj, int64_t button) {
-    rt_game3d_input *input = game3d_input_checked(obj, "Game3D.Input3D.mousePressed: invalid input");
+    rt_game3d_input *input =
+        game3d_input_checked(obj, "Game3D.Input3D.mousePressed: invalid input");
     return game3d_input_mouse_pressed_snapshot(input, button);
 }
 
@@ -1590,8 +1720,7 @@ void *rt_game3d_input_move_axis(void *obj) {
 
 /// @brief Build the mouse-look axis as a Vec2 (mouse delta scaled by sensitivity).
 void *rt_game3d_input_look_axis(void *obj) {
-    rt_game3d_input *input =
-        game3d_input_checked(obj, "Game3D.Input3D.lookAxis: invalid input");
+    rt_game3d_input *input = game3d_input_checked(obj, "Game3D.Input3D.lookAxis: invalid input");
     double s = input ? input->look_sensitivity : 0.01;
     return rt_vec2_new((double)game3d_input_mouse_dx(input) * s,
                        (double)game3d_input_mouse_dy(input) * s);
@@ -1758,13 +1887,15 @@ int64_t rt_game3d_entity_get_id(void *obj) {
 
 /// @brief Get the entity's scene node (NULL if invalid).
 void *rt_game3d_entity_get_node(void *obj) {
-    rt_game3d_entity *entity = game3d_entity_checked(obj, "Game3D.Entity3D.get_Node: invalid entity");
+    rt_game3d_entity *entity =
+        game3d_entity_checked(obj, "Game3D.Entity3D.get_Node: invalid entity");
     return entity ? entity->node : NULL;
 }
 
 /// @brief Get the entity's mesh (NULL if none/invalid).
 void *rt_game3d_entity_get_mesh(void *obj) {
-    rt_game3d_entity *entity = game3d_entity_checked(obj, "Game3D.Entity3D.get_Mesh: invalid entity");
+    rt_game3d_entity *entity =
+        game3d_entity_checked(obj, "Game3D.Entity3D.get_Mesh: invalid entity");
     return entity ? entity->mesh : NULL;
 }
 
@@ -1775,7 +1906,8 @@ void rt_game3d_entity_set_mesh_prop(void *obj, void *mesh) {
 
 /// @brief Get the entity's material (NULL if none/invalid).
 void *rt_game3d_entity_get_material(void *obj) {
-    rt_game3d_entity *entity = game3d_entity_checked(obj, "Game3D.Entity3D.get_Material: invalid entity");
+    rt_game3d_entity *entity =
+        game3d_entity_checked(obj, "Game3D.Entity3D.get_Material: invalid entity");
     return entity ? entity->material : NULL;
 }
 
@@ -1786,19 +1918,22 @@ void rt_game3d_entity_set_material_prop(void *obj, void *material) {
 
 /// @brief Get the entity's physics body (NULL if unattached/invalid).
 void *rt_game3d_entity_get_body(void *obj) {
-    rt_game3d_entity *entity = game3d_entity_checked(obj, "Game3D.Entity3D.get_Body: invalid entity");
+    rt_game3d_entity *entity =
+        game3d_entity_checked(obj, "Game3D.Entity3D.get_Body: invalid entity");
     return entity ? entity->body : NULL;
 }
 
 /// @brief Get the entity's animator (NULL if none/invalid).
 void *rt_game3d_entity_get_anim(void *obj) {
-    rt_game3d_entity *entity = game3d_entity_checked(obj, "Game3D.Entity3D.get_Anim: invalid entity");
+    rt_game3d_entity *entity =
+        game3d_entity_checked(obj, "Game3D.Entity3D.get_Anim: invalid entity");
     return entity ? entity->anim : NULL;
 }
 
 /// @brief Get the entity's collision layer (0 if invalid).
 int64_t rt_game3d_entity_get_layer(void *obj) {
-    rt_game3d_entity *entity = game3d_entity_checked(obj, "Game3D.Entity3D.get_Layer: invalid entity");
+    rt_game3d_entity *entity =
+        game3d_entity_checked(obj, "Game3D.Entity3D.get_Layer: invalid entity");
     return entity ? entity->layer : 0;
 }
 
@@ -1821,7 +1956,8 @@ void rt_game3d_entity_set_collision_mask_prop(void *obj, void *mask) {
 
 /// @brief Get the entity's name, or "" if unset/invalid.
 rt_string rt_game3d_entity_get_name(void *obj) {
-    rt_game3d_entity *entity = game3d_entity_checked(obj, "Game3D.Entity3D.get_Name: invalid entity");
+    rt_game3d_entity *entity =
+        game3d_entity_checked(obj, "Game3D.Entity3D.get_Name: invalid entity");
     if (!entity || !entity->name)
         return rt_const_cstr("");
     return entity->name;
@@ -1835,7 +1971,8 @@ void rt_game3d_entity_set_name_prop(void *obj, rt_string name) {
 /// @brief Fluent: set local position (updating the node and any attached body) and
 ///   return the entity.
 void *rt_game3d_entity_set_position(void *obj, double x, double y, double z) {
-    rt_game3d_entity *entity = game3d_entity_checked(obj, "Game3D.Entity3D.setPosition: invalid entity");
+    rt_game3d_entity *entity =
+        game3d_entity_checked(obj, "Game3D.Entity3D.setPosition: invalid entity");
     if (entity && entity->node)
         rt_scene_node3d_set_position(entity->node, x, y, z);
     if (entity && entity->body)
@@ -1858,7 +1995,8 @@ void *rt_game3d_entity_set_scale(void *obj, double scale) {
 
 /// @brief Fluent: set a non-uniform XYZ scale on the node and return the entity.
 void *rt_game3d_entity_set_scale_xyz(void *obj, double x, double y, double z) {
-    rt_game3d_entity *entity = game3d_entity_checked(obj, "Game3D.Entity3D.setScaleXYZ: invalid entity");
+    rt_game3d_entity *entity =
+        game3d_entity_checked(obj, "Game3D.Entity3D.setScaleXYZ: invalid entity");
     if (entity && entity->node)
         rt_scene_node3d_set_scale(entity->node, x, y, z);
     return obj;
@@ -1881,7 +2019,8 @@ void *rt_game3d_entity_set_rotation_euler(void *obj, double x_deg, double y_deg,
 /// @brief Fluent: assign the mesh (validated as Mesh3D), mirror it onto the node, and
 ///   return the entity.
 void *rt_game3d_entity_set_mesh(void *obj, void *mesh) {
-    rt_game3d_entity *entity = game3d_entity_checked(obj, "Game3D.Entity3D.setMesh: invalid entity");
+    rt_game3d_entity *entity =
+        game3d_entity_checked(obj, "Game3D.Entity3D.setMesh: invalid entity");
     if (mesh && !rt_g3d_has_class(mesh, RT_G3D_MESH3D_CLASS_ID))
         rt_trap("Game3D.Entity3D.setMesh: mesh must be Mesh3D");
     if (entity) {
@@ -1895,7 +2034,8 @@ void *rt_game3d_entity_set_mesh(void *obj, void *mesh) {
 /// @brief Fluent: assign the material (validated as Material3D), mirror it onto the
 ///   node, and return the entity.
 void *rt_game3d_entity_set_material(void *obj, void *material) {
-    rt_game3d_entity *entity = game3d_entity_checked(obj, "Game3D.Entity3D.setMaterial: invalid entity");
+    rt_game3d_entity *entity =
+        game3d_entity_checked(obj, "Game3D.Entity3D.setMaterial: invalid entity");
     if (material && !rt_g3d_has_class(material, RT_G3D_MATERIAL3D_CLASS_ID))
         rt_trap("Game3D.Entity3D.setMaterial: material must be Material3D");
     if (entity) {
@@ -1909,7 +2049,8 @@ void *rt_game3d_entity_set_material(void *obj, void *material) {
 /// @brief Fluent: parent `child_obj` under this entity (retaining it and linking the
 ///   nodes), mark this entity a group, and return it.
 void *rt_game3d_entity_add_child(void *obj, void *child_obj) {
-    rt_game3d_entity *entity = game3d_entity_checked(obj, "Game3D.Entity3D.addChild: invalid entity");
+    rt_game3d_entity *entity =
+        game3d_entity_checked(obj, "Game3D.Entity3D.addChild: invalid entity");
     rt_game3d_entity *child =
         game3d_entity_checked(child_obj, "Game3D.Entity3D.addChild: child must be Entity3D");
     if (!entity || !child)
@@ -1933,10 +2074,12 @@ void *rt_game3d_entity_add_child(void *obj, void *child_obj) {
         return obj;
     }
     if (!entity->spawned && child->spawned) {
-        rt_trap("Game3D.Entity3D.addChild: spawned child cannot be parented under an unspawned entity");
+        rt_trap(
+            "Game3D.Entity3D.addChild: spawned child cannot be parented under an unspawned entity");
         return obj;
     }
-    if (entity->child_count == INT32_MAX || !game3d_entity_grow_children(entity, entity->child_count + 1)) {
+    if (entity->child_count == INT32_MAX ||
+        !game3d_entity_grow_children(entity, entity->child_count + 1)) {
         rt_trap("Game3D.Entity3D.addChild: allocation failed");
         return obj;
     }
@@ -1966,14 +2109,16 @@ void *rt_game3d_entity_add_child(void *obj, void *child_obj) {
 
 /// @brief True if the entity is a group (explicitly flagged or has children).
 int8_t rt_game3d_entity_is_group(void *obj) {
-    rt_game3d_entity *entity = game3d_entity_checked(obj, "Game3D.Entity3D.isGroup: invalid entity");
+    rt_game3d_entity *entity =
+        game3d_entity_checked(obj, "Game3D.Entity3D.isGroup: invalid entity");
     return entity && (entity->group || entity->child_count > 0) ? 1 : 0;
 }
 
 /// @brief Fluent: assign the display name (NULL becomes ""), mirror it onto the node,
 ///   and return the entity.
 void *rt_game3d_entity_set_name(void *obj, rt_string name) {
-    rt_game3d_entity *entity = game3d_entity_checked(obj, "Game3D.Entity3D.setName: invalid entity");
+    rt_game3d_entity *entity =
+        game3d_entity_checked(obj, "Game3D.Entity3D.setName: invalid entity");
     if (!name)
         name = rt_const_cstr("");
     if (entity) {
@@ -1989,7 +2134,8 @@ void *rt_game3d_entity_set_name(void *obj, rt_string name) {
 /// @brief Fluent: set the collision layer (must be a single bit), propagate to the
 ///   body if any, and return the entity.
 void *rt_game3d_entity_set_layer(void *obj, int64_t layer) {
-    rt_game3d_entity *entity = game3d_entity_checked(obj, "Game3D.Entity3D.setLayer: invalid entity");
+    rt_game3d_entity *entity =
+        game3d_entity_checked(obj, "Game3D.Entity3D.setLayer: invalid entity");
     if (!game3d_valid_layer(layer))
         rt_trap("Game3D.Entity3D.setLayer: layer must be a single positive bit");
     if (entity) {
@@ -2023,7 +2169,8 @@ void *rt_game3d_entity_set_collision_mask(void *obj, void *mask_obj) {
 ///   the physics world when the entity is already spawned. Passing NULL clears the body
 ///   binding. Traps if `body_or_def` is neither a Physics3DBody nor a BodyDef.
 void *rt_game3d_entity_attach_body(void *obj, void *body_or_def) {
-    rt_game3d_entity *entity = game3d_entity_checked(obj, "Game3D.Entity3D.attachBody: invalid entity");
+    rt_game3d_entity *entity =
+        game3d_entity_checked(obj, "Game3D.Entity3D.attachBody: invalid entity");
     void *body = body_or_def;
     void *created_body = NULL;
     rt_game3d_body_def *def =
@@ -2050,11 +2197,10 @@ void *rt_game3d_entity_attach_body(void *obj, void *body_or_def) {
             rt_body3d_set_collision_mask(body, entity->collision_mask_bits);
             if (entity->node) {
                 void *pos = rt_scene_node3d_get_world_position(entity->node);
-                rt_body3d_set_position(
-                    body,
-                    pos ? rt_vec3_x(pos) : 0.0,
-                    pos ? rt_vec3_y(pos) : 0.0,
-                    pos ? rt_vec3_z(pos) : 0.0);
+                rt_body3d_set_position(body,
+                                       pos ? rt_vec3_x(pos) : 0.0,
+                                       pos ? rt_vec3_y(pos) : 0.0,
+                                       pos ? rt_vec3_z(pos) : 0.0);
                 game3d_release_ref(&pos);
                 if (def)
                     rt_scene_node3d_set_sync_mode(entity->node, def->sync_mode);
@@ -2075,7 +2221,8 @@ void *rt_game3d_entity_attach_body(void *obj, void *body_or_def) {
 
 /// @brief Apply a linear impulse to the entity's body; traps if it has no body.
 void rt_game3d_entity_apply_impulse(void *obj, double x, double y, double z) {
-    rt_game3d_entity *entity = game3d_entity_checked(obj, "Game3D.Entity3D.applyImpulse: invalid entity");
+    rt_game3d_entity *entity =
+        game3d_entity_checked(obj, "Game3D.Entity3D.applyImpulse: invalid entity");
     if (!entity || !entity->body)
         rt_trap("Game3D.Entity3D.applyImpulse: entity has no body");
     rt_body3d_apply_impulse(entity->body, x, y, z);
@@ -2083,7 +2230,8 @@ void rt_game3d_entity_apply_impulse(void *obj, double x, double y, double z) {
 
 /// @brief Set the entity body's linear velocity; traps if it has no body.
 void rt_game3d_entity_set_velocity(void *obj, double x, double y, double z) {
-    rt_game3d_entity *entity = game3d_entity_checked(obj, "Game3D.Entity3D.setVelocity: invalid entity");
+    rt_game3d_entity *entity =
+        game3d_entity_checked(obj, "Game3D.Entity3D.setVelocity: invalid entity");
     if (!entity || !entity->body)
         rt_trap("Game3D.Entity3D.setVelocity: entity has no body");
     rt_body3d_set_velocity(entity->body, x, y, z);
@@ -2091,8 +2239,10 @@ void rt_game3d_entity_set_velocity(void *obj, double x, double y, double z) {
 
 /// @brief Get the entity's local position as a Vec3 (origin if no node).
 void *rt_game3d_entity_position(void *obj) {
-    rt_game3d_entity *entity = game3d_entity_checked(obj, "Game3D.Entity3D.position: invalid entity");
-    return entity && entity->node ? rt_scene_node3d_get_position(entity->node) : rt_vec3_new(0, 0, 0);
+    rt_game3d_entity *entity =
+        game3d_entity_checked(obj, "Game3D.Entity3D.position: invalid entity");
+    return entity && entity->node ? rt_scene_node3d_get_position(entity->node)
+                                  : rt_vec3_new(0, 0, 0);
 }
 
 /// @brief Get the entity's world-space position as a Vec3 (origin if no node).
@@ -2160,8 +2310,8 @@ void *rt_game3d_animator_new(void *controller) {
         rt_trap("Game3D.Animator3D.New: controller must be AnimController3D");
         return NULL;
     }
-    animator = (rt_game3d_animator *)rt_obj_new_i64(
-        RT_G3D_GAME3D_ANIMATOR3D_CLASS_ID, (int64_t)sizeof(*animator));
+    animator = (rt_game3d_animator *)rt_obj_new_i64(RT_G3D_GAME3D_ANIMATOR3D_CLASS_ID,
+                                                    (int64_t)sizeof(*animator));
     if (!animator) {
         rt_trap("Game3D.Animator3D.New: allocation failed");
         return NULL;
@@ -2287,8 +2437,8 @@ void *rt_game3d_entity_attach_animator(void *obj, void *animator_or_controller) 
         game3d_assign_ref(&entity->anim, animator);
         if (entity->node) {
             if (animator) {
-                rt_game3d_animator *game_animator =
-                    game3d_animator_checked(animator, "Game3D.Entity3D.attachAnimator: invalid animator");
+                rt_game3d_animator *game_animator = game3d_animator_checked(
+                    animator, "Game3D.Entity3D.attachAnimator: invalid animator");
                 rt_scene_node3d_bind_animator(entity->node,
                                               game_animator ? game_animator->controller : NULL);
             } else {
@@ -2342,7 +2492,8 @@ static void *game3d_audio_new(void *camera) {
 
 /// @brief Get the listener (ears) object (NULL if invalid).
 void *rt_game3d_audio_get_listener(void *obj) {
-    rt_game3d_audio *audio = game3d_audio_checked(obj, "Game3D.Sound3D.get_Listener: invalid audio");
+    rt_game3d_audio *audio =
+        game3d_audio_checked(obj, "Game3D.Sound3D.get_Listener: invalid audio");
     return audio ? audio->listener : NULL;
 }
 
@@ -2369,8 +2520,7 @@ double rt_game3d_audio_get_max_distance(void *obj) {
 
 /// @brief Get the master output volume (0–100).
 int64_t rt_game3d_audio_get_volume(void *obj) {
-    rt_game3d_audio *audio =
-        game3d_audio_checked(obj, "Game3D.Sound3D.get_volume: invalid audio");
+    rt_game3d_audio *audio = game3d_audio_checked(obj, "Game3D.Sound3D.get_volume: invalid audio");
     return audio ? audio->volume : 0;
 }
 
@@ -2422,10 +2572,12 @@ void rt_game3d_audio_set_attenuation(void *obj, double ref_distance, double max_
         game3d_audio_checked(obj, "Game3D.Sound3D.setAttenuation: invalid audio");
     if (!audio)
         return;
-    audio->ref_distance =
-        (isfinite(ref_distance) && ref_distance > 0.0) ? ref_distance : RT_GAME3D_DEFAULT_AUDIO_REF_DISTANCE;
-    audio->max_distance =
-        (isfinite(max_distance) && max_distance > 0.0) ? max_distance : RT_GAME3D_DEFAULT_AUDIO_MAX_DISTANCE;
+    audio->ref_distance = (isfinite(ref_distance) && ref_distance > 0.0)
+                              ? ref_distance
+                              : RT_GAME3D_DEFAULT_AUDIO_REF_DISTANCE;
+    audio->max_distance = (isfinite(max_distance) && max_distance > 0.0)
+                              ? max_distance
+                              : RT_GAME3D_DEFAULT_AUDIO_MAX_DISTANCE;
     if (audio->max_distance < audio->ref_distance)
         audio->max_distance = audio->ref_distance;
     for (int32_t i = 0; i < audio->source_count; ++i) {
@@ -2436,8 +2588,7 @@ void rt_game3d_audio_set_attenuation(void *obj, double ref_distance, double max_
 
 /// @brief Set the master output volume, clamped to [0, 100].
 void rt_game3d_audio_set_volume(void *obj, int64_t volume) {
-    rt_game3d_audio *audio =
-        game3d_audio_checked(obj, "Game3D.Sound3D.set_volume: invalid audio");
+    rt_game3d_audio *audio = game3d_audio_checked(obj, "Game3D.Sound3D.set_volume: invalid audio");
     if (audio)
         audio->volume = game3d_clamp_i64(volume, 0, 100);
 }
@@ -2457,8 +2608,7 @@ void *rt_game3d_audio_load_asset(void *obj, rt_string asset_path) {
 /// @brief Play a clip as a one-shot at a fixed world position, applying the subsystem's
 ///   attenuation/volume; tracks and returns the new source. Traps on bad clip/position.
 void *rt_game3d_audio_play_at(void *obj, void *clip, void *position) {
-    rt_game3d_audio *audio =
-        game3d_audio_checked(obj, "Game3D.Sound3D.playAt: invalid audio");
+    rt_game3d_audio *audio = game3d_audio_checked(obj, "Game3D.Sound3D.playAt: invalid audio");
     if (!audio || !clip)
         return NULL;
     if (!rt_sound_is_handle(clip)) {
@@ -2515,8 +2665,7 @@ void *rt_game3d_audio_play_attached(void *obj, void *clip, void *entity_obj) {
 /// @brief Play a clip as non-spatial 2D audio at the master volume; returns a positive
 ///   voice id, or 0 on failure. Traps on a bad clip.
 int64_t rt_game3d_audio_play2d(void *obj, void *clip) {
-    rt_game3d_audio *audio =
-        game3d_audio_checked(obj, "Game3D.Sound3D.play2D: invalid audio");
+    rt_game3d_audio *audio = game3d_audio_checked(obj, "Game3D.Sound3D.play2D: invalid audio");
     if (!audio || !clip)
         return 0;
     if (!rt_sound_is_handle(clip)) {
@@ -2559,8 +2708,8 @@ static void game3d_effects_finalize(void *obj) {
 /// @brief Allocate an effect registry, building a quality-scaled post-FX stack and
 ///   wiring it into the canvas; traps on OOM.
 static void *game3d_effects_new(void *canvas, int64_t quality) {
-    rt_game3d_effects *effects =
-        (rt_game3d_effects *)rt_obj_new_i64(RT_G3D_GAME3D_EFFECTS_CLASS_ID, (int64_t)sizeof(*effects));
+    rt_game3d_effects *effects = (rt_game3d_effects *)rt_obj_new_i64(RT_G3D_GAME3D_EFFECTS_CLASS_ID,
+                                                                     (int64_t)sizeof(*effects));
     if (!effects) {
         rt_trap("Game3D.EffectRegistry3D.New: allocation failed");
         return NULL;
@@ -2742,7 +2891,9 @@ static rt_game3d_effects *game3d_world_effects_checked(void *world_obj, const ch
 
 /// @brief Set a particle system's emitter position from a Vec3 (NaN-scrubbed); returns
 ///   0 (after trapping `method`) if `position` is not a Vec3.
-static int8_t game3d_particles_set_position_from_vec(void *particles, void *position, const char *method) {
+static int8_t game3d_particles_set_position_from_vec(void *particles,
+                                                     void *position,
+                                                     const char *method) {
     double pos[3];
     if (!game3d_read_vec3(position, pos, method))
         return 0;
@@ -2875,7 +3026,8 @@ static void *game3d_effects_make_impact_texture(void) {
             if (dist <= 7.0) {
                 double edge = 1.0 - game3d_clamp(dist / 7.0, 0.0, 1.0);
                 int64_t alpha = (int64_t)(edge * 210.0);
-                rt_pixels_set(pixels, x, y, (0x24180FFF & 0xFFFFFF00) | game3d_clamp_i64(alpha, 0, 255));
+                rt_pixels_set(
+                    pixels, x, y, (0x24180FFF & 0xFFFFFF00) | game3d_clamp_i64(alpha, 0, 255));
             }
         }
     }
@@ -2904,8 +3056,7 @@ void *rt_game3d_effects3d_impact_decal(void *world_obj, void *position, void *no
 }
 
 /// @brief Store the world's background clear color, each channel clamped to [0, 1].
-static void game3d_world_set_clear_color(
-    rt_game3d_world *world, double r, double g, double b) {
+static void game3d_world_set_clear_color(rt_game3d_world *world, double r, double g, double b) {
     if (!world)
         return;
     world->clear_r = game3d_clamp(r, 0.0, 1.0);
@@ -3185,10 +3336,10 @@ void rt_game3d_quality_apply(void *obj, int64_t quality) {
     }
 
     if (rt_canvas3d_backend_supports(world->canvas, rt_const_cstr("shadows"))) {
-        rt_canvas3d_enable_shadows(
-            world->canvas, quality == RT_GAME3D_QUALITY_CINEMATIC ? 2048 : 1024);
-        rt_canvas3d_set_shadow_bias(
-            world->canvas, quality == RT_GAME3D_QUALITY_CINEMATIC ? 0.003 : 0.005);
+        rt_canvas3d_enable_shadows(world->canvas,
+                                   quality == RT_GAME3D_QUALITY_CINEMATIC ? 2048 : 1024);
+        rt_canvas3d_set_shadow_bias(world->canvas,
+                                    quality == RT_GAME3D_QUALITY_CINEMATIC ? 0.003 : 0.005);
     } else {
         rt_canvas3d_disable_shadows(world->canvas);
     }
@@ -3282,20 +3433,16 @@ static int game3d_model_cache_grow(int32_t need) {
     int32_t new_cap;
     if (g_game3d_model_cache_capacity >= need)
         return 1;
-    if (!game3d_compute_capacity(g_game3d_model_cache_capacity,
-                                 need,
-                                 8,
-                                 sizeof(rt_game3d_model_cache_entry),
-                                 &new_cap))
+    if (!game3d_compute_capacity(
+            g_game3d_model_cache_capacity, need, 8, sizeof(rt_game3d_model_cache_entry), &new_cap))
         return 0;
     rt_game3d_model_cache_entry *grown = (rt_game3d_model_cache_entry *)realloc(
         g_game3d_model_cache, (size_t)new_cap * sizeof(*grown));
     if (!grown)
         return 0;
-    memset(
-        grown + g_game3d_model_cache_capacity,
-        0,
-        (size_t)(new_cap - g_game3d_model_cache_capacity) * sizeof(*grown));
+    memset(grown + g_game3d_model_cache_capacity,
+           0,
+           (size_t)(new_cap - g_game3d_model_cache_capacity) * sizeof(*grown));
     g_game3d_model_cache = grown;
     g_game3d_model_cache_capacity = new_cap;
     return 1;
@@ -3319,10 +3466,11 @@ static rt_game3d_model_template *game3d_model_cache_find(rt_string path, int8_t 
 }
 
 /// @brief Allocate a ModelTemplate retaining the path and loaded model; traps on OOM.
-static rt_game3d_model_template *game3d_model_template_new(rt_string path, int8_t asset_path, void *model) {
-    rt_game3d_model_template *model_template =
-        (rt_game3d_model_template *)rt_obj_new_i64(
-            RT_G3D_GAME3D_MODEL_TEMPLATE_CLASS_ID, (int64_t)sizeof(*model_template));
+static rt_game3d_model_template *game3d_model_template_new(rt_string path,
+                                                           int8_t asset_path,
+                                                           void *model) {
+    rt_game3d_model_template *model_template = (rt_game3d_model_template *)rt_obj_new_i64(
+        RT_G3D_GAME3D_MODEL_TEMPLATE_CLASS_ID, (int64_t)sizeof(*model_template));
     if (!model_template) {
         rt_trap("Game3D.ModelTemplate: allocation failed");
         return NULL;
@@ -3337,8 +3485,9 @@ static rt_game3d_model_template *game3d_model_template_new(rt_string path, int8_
 
 /// @brief Load a model from disk/asset and wrap it in a new ModelTemplate, bypassing the
 ///   cache; traps `method` if the model fails to load.
-static rt_game3d_model_template *game3d_assets_load_template_uncached(
-    rt_string path, int8_t asset_path, const char *method) {
+static rt_game3d_model_template *game3d_assets_load_template_uncached(rt_string path,
+                                                                      int8_t asset_path,
+                                                                      const char *method) {
     void *model = asset_path ? rt_model3d_load_asset(path) : rt_model3d_load(path);
     rt_game3d_model_template *model_template;
     if (!model) {
@@ -3352,8 +3501,9 @@ static rt_game3d_model_template *game3d_assets_load_template_uncached(
 
 /// @brief Return the cached ModelTemplate for (path, asset_path), loading and inserting
 ///   it on a miss; returns a retained template. Traps on load or cache-grow failure.
-static rt_game3d_model_template *game3d_assets_load_template_cached(
-    rt_string path, int8_t asset_path, const char *method) {
+static rt_game3d_model_template *game3d_assets_load_template_cached(rt_string path,
+                                                                    int8_t asset_path,
+                                                                    const char *method) {
     rt_game3d_model_template *model_template;
     game3d_model_cache_lock();
     rt_game3d_model_template *cached = game3d_model_cache_find(path, asset_path);
@@ -3443,8 +3593,8 @@ void *rt_game3d_model_template_instantiate(void *obj) {
 
 /// @brief Load a filesystem model (uncached) and return a ready entity. See header.
 void *rt_game3d_assets_load_model(rt_string path) {
-    rt_game3d_model_template *model_template =
-        game3d_assets_load_template_uncached(path, 0, "Game3D.Assets3D.LoadModel: failed to load model");
+    rt_game3d_model_template *model_template = game3d_assets_load_template_uncached(
+        path, 0, "Game3D.Assets3D.LoadModel: failed to load model");
     if (!model_template)
         return NULL;
     void *entity = rt_game3d_model_template_instantiate(model_template);
@@ -3455,8 +3605,8 @@ void *rt_game3d_assets_load_model(rt_string path) {
 
 /// @brief Load a packed-asset model (uncached) and return a ready entity. See header.
 void *rt_game3d_assets_load_model_asset(rt_string path) {
-    rt_game3d_model_template *model_template =
-        game3d_assets_load_template_uncached(path, 1, "Game3D.Assets3D.LoadModelAsset: failed to load model asset");
+    rt_game3d_model_template *model_template = game3d_assets_load_template_uncached(
+        path, 1, "Game3D.Assets3D.LoadModelAsset: failed to load model asset");
     if (!model_template)
         return NULL;
     void *entity = rt_game3d_model_template_instantiate(model_template);
@@ -3506,8 +3656,8 @@ static void game3d_env_handle_finalize(void *obj) {
 
 /// @brief Allocate an EnvHandle bound to `world`; traps on OOM.
 static void *game3d_env_handle_new(rt_game3d_world *world) {
-    rt_game3d_env_handle *env =
-        (rt_game3d_env_handle *)rt_obj_new_i64(RT_G3D_GAME3D_ENV_HANDLE_CLASS_ID, (int64_t)sizeof(*env));
+    rt_game3d_env_handle *env = (rt_game3d_env_handle *)rt_obj_new_i64(
+        RT_G3D_GAME3D_ENV_HANDLE_CLASS_ID, (int64_t)sizeof(*env));
     if (!env) {
         rt_trap("Game3D.Environment: allocation failed");
         return NULL;
@@ -3594,13 +3744,12 @@ void *rt_game3d_env_handle_with_fog(void *obj, double near_plane, double far_pla
         game3d_env_handle_checked(obj, "Game3D.EnvHandle.withFog: invalid environment");
     rt_game3d_world *world = game3d_env_world(env, "Game3D.EnvHandle.withFog: invalid world");
     if (world && world->canvas)
-        rt_canvas3d_set_fog(
-            world->canvas,
-            game3d_nonnegative_or(near_plane, 18.0),
-            game3d_positive_or(far_plane, 120.0),
-            world->clear_r,
-            world->clear_g,
-            world->clear_b);
+        rt_canvas3d_set_fog(world->canvas,
+                            game3d_nonnegative_or(near_plane, 18.0),
+                            game3d_positive_or(far_plane, 120.0),
+                            world->clear_r,
+                            world->clear_g,
+                            world->clear_b);
     return obj;
 }
 
@@ -3635,7 +3784,8 @@ void *rt_game3d_environment_sunset(void *obj) {
 
 /// @brief Build a flat, diffuse overcast environment and return its handle. See header.
 void *rt_game3d_environment_overcast(void *obj) {
-    rt_game3d_world *world = game3d_world_checked(obj, "Game3D.Environment.Overcast: invalid world");
+    rt_game3d_world *world =
+        game3d_world_checked(obj, "Game3D.Environment.Overcast: invalid world");
     void *env = game3d_env_handle_new(world);
     rt_game3d_lighting_clear(world);
     if (world && world->canvas) {
@@ -3694,14 +3844,16 @@ void rt_game3d_debug_draw_physics(void *obj, int8_t enabled) {
 
 /// @brief Toggle the on-screen camera info readout. See header.
 void rt_game3d_debug_draw_camera_info(void *obj, int8_t enabled) {
-    rt_game3d_world *world = game3d_world_checked(obj, "Game3D.Debug3D.DrawCameraInfo: invalid world");
+    rt_game3d_world *world =
+        game3d_world_checked(obj, "Game3D.Debug3D.DrawCameraInfo: invalid world");
     if (world)
         world->debug_camera_enabled = enabled ? 1 : 0;
 }
 
 /// @brief Toggle the backend-capabilities readout overlay. See header.
 void rt_game3d_debug_draw_capabilities(void *obj, int8_t enabled) {
-    rt_game3d_world *world = game3d_world_checked(obj, "Game3D.Debug3D.DrawCapabilities: invalid world");
+    rt_game3d_world *world =
+        game3d_world_checked(obj, "Game3D.Debug3D.DrawCapabilities: invalid world");
     if (world)
         world->debug_caps_enabled = enabled ? 1 : 0;
 }
@@ -3722,8 +3874,7 @@ static void game3d_character_controller_sync_entity(rt_game3d_character_controll
     rt_game3d_entity *entity = (rt_game3d_entity *)controller->entity;
     void *pos = rt_character3d_get_position(controller->character);
     if (entity->node && pos) {
-        rt_scene_node3d_set_position(
-            entity->node, rt_vec3_x(pos), rt_vec3_y(pos), rt_vec3_z(pos));
+        rt_scene_node3d_set_position(entity->node, rt_vec3_x(pos), rt_vec3_y(pos), rt_vec3_z(pos));
     }
     game3d_release_ref(&pos);
 }
@@ -3735,8 +3886,8 @@ void *rt_game3d_character_controller_new(
     void *world_obj, void *entity_obj, double radius, double height, double mass) {
     rt_game3d_world *world =
         game3d_world_checked(world_obj, "Game3D.CharacterController3D.New: invalid world");
-    rt_game3d_entity *entity =
-        game3d_entity_checked(entity_obj, "Game3D.CharacterController3D.New: entity must be Entity3D");
+    rt_game3d_entity *entity = game3d_entity_checked(
+        entity_obj, "Game3D.CharacterController3D.New: entity must be Entity3D");
     if (!world || !entity)
         return NULL;
 
@@ -3744,9 +3895,8 @@ void *rt_game3d_character_controller_new(
     height = game3d_positive_or(height, 1.8);
     mass = game3d_nonnegative_or(mass, 70.0);
 
-    rt_game3d_character_controller *controller =
-        (rt_game3d_character_controller *)rt_obj_new_i64(
-            RT_G3D_GAME3D_CHARACTER_CONTROLLER_CLASS_ID, (int64_t)sizeof(*controller));
+    rt_game3d_character_controller *controller = (rt_game3d_character_controller *)rt_obj_new_i64(
+        RT_G3D_GAME3D_CHARACTER_CONTROLLER_CLASS_ID, (int64_t)sizeof(*controller));
     if (!controller) {
         rt_trap("Game3D.CharacterController3D.New: allocation failed");
         return NULL;
@@ -3781,59 +3931,59 @@ void *rt_game3d_character_controller_new(
 
 /// @brief Get the underlying Character3D object (NULL if invalid).
 void *rt_game3d_character_controller_get_character(void *obj) {
-    rt_game3d_character_controller *controller =
-        game3d_character_controller_checked(obj, "Game3D.CharacterController3D.get_character: invalid controller");
+    rt_game3d_character_controller *controller = game3d_character_controller_checked(
+        obj, "Game3D.CharacterController3D.get_character: invalid controller");
     return controller ? controller->character : NULL;
 }
 
 /// @brief Get the entity driven by this controller (NULL if invalid).
 void *rt_game3d_character_controller_get_entity(void *obj) {
-    rt_game3d_character_controller *controller =
-        game3d_character_controller_checked(obj, "Game3D.CharacterController3D.get_entity: invalid controller");
+    rt_game3d_character_controller *controller = game3d_character_controller_checked(
+        obj, "Game3D.CharacterController3D.get_entity: invalid controller");
     return controller ? controller->entity : NULL;
 }
 
 /// @brief Get the horizontal move speed in units/sec.
 double rt_game3d_character_controller_get_speed(void *obj) {
-    rt_game3d_character_controller *controller =
-        game3d_character_controller_checked(obj, "Game3D.CharacterController3D.get_speed: invalid controller");
+    rt_game3d_character_controller *controller = game3d_character_controller_checked(
+        obj, "Game3D.CharacterController3D.get_speed: invalid controller");
     return controller ? controller->speed : 0.0;
 }
 
 /// @brief Set the horizontal move speed (negatives reset to the default).
 void rt_game3d_character_controller_set_speed(void *obj, double speed) {
-    rt_game3d_character_controller *controller =
-        game3d_character_controller_checked(obj, "Game3D.CharacterController3D.set_speed: invalid controller");
+    rt_game3d_character_controller *controller = game3d_character_controller_checked(
+        obj, "Game3D.CharacterController3D.set_speed: invalid controller");
     if (controller)
         controller->speed = game3d_nonnegative_or(speed, RT_GAME3D_DEFAULT_MOVE_SPEED);
 }
 
 /// @brief Get the jump launch speed in units/sec.
 double rt_game3d_character_controller_get_jump_speed(void *obj) {
-    rt_game3d_character_controller *controller =
-        game3d_character_controller_checked(obj, "Game3D.CharacterController3D.get_jumpSpeed: invalid controller");
+    rt_game3d_character_controller *controller = game3d_character_controller_checked(
+        obj, "Game3D.CharacterController3D.get_jumpSpeed: invalid controller");
     return controller ? controller->jump_speed : 0.0;
 }
 
 /// @brief Set the jump launch speed (negatives reset to the default).
 void rt_game3d_character_controller_set_jump_speed(void *obj, double jump_speed) {
-    rt_game3d_character_controller *controller =
-        game3d_character_controller_checked(obj, "Game3D.CharacterController3D.set_jumpSpeed: invalid controller");
+    rt_game3d_character_controller *controller = game3d_character_controller_checked(
+        obj, "Game3D.CharacterController3D.set_jumpSpeed: invalid controller");
     if (controller)
         controller->jump_speed = game3d_nonnegative_or(jump_speed, RT_GAME3D_DEFAULT_JUMP_SPEED);
 }
 
 /// @brief Get the gravity acceleration in units/sec².
 double rt_game3d_character_controller_get_gravity(void *obj) {
-    rt_game3d_character_controller *controller =
-        game3d_character_controller_checked(obj, "Game3D.CharacterController3D.get_gravity: invalid controller");
+    rt_game3d_character_controller *controller = game3d_character_controller_checked(
+        obj, "Game3D.CharacterController3D.get_gravity: invalid controller");
     return controller ? controller->gravity : 0.0;
 }
 
 /// @brief Set the gravity acceleration (non-finite resets to the default).
 void rt_game3d_character_controller_set_gravity(void *obj, double gravity) {
-    rt_game3d_character_controller *controller =
-        game3d_character_controller_checked(obj, "Game3D.CharacterController3D.set_gravity: invalid controller");
+    rt_game3d_character_controller *controller = game3d_character_controller_checked(
+        obj, "Game3D.CharacterController3D.set_gravity: invalid controller");
     if (controller)
         controller->gravity = game3d_finite_or(gravity, RT_GAME3D_DEFAULT_GRAVITY);
 }
@@ -3844,8 +3994,8 @@ void rt_game3d_character_controller_set_gravity(void *obj, double gravity) {
 ///   by `dt` (itself clamped), and syncs the result back onto the entity. Traps on
 ///   invalid input or a non-Camera3D camera.
 void rt_game3d_character_controller_update(void *obj, void *input_obj, void *camera, double dt) {
-    rt_game3d_character_controller *controller =
-        game3d_character_controller_checked(obj, "Game3D.CharacterController3D.update: invalid controller");
+    rt_game3d_character_controller *controller = game3d_character_controller_checked(
+        obj, "Game3D.CharacterController3D.update: invalid controller");
     (void)game3d_input_checked(input_obj, "Game3D.CharacterController3D.update: invalid input");
     if (!rt_g3d_has_class(camera, RT_G3D_CAMERA3D_CLASS_ID))
         rt_trap("Game3D.CharacterController3D.update: camera must be Camera3D");
@@ -3902,24 +4052,24 @@ void rt_game3d_character_controller_update(void *obj, void *input_obj, void *cam
 /// @brief Teleport the character to an absolute position (NaN-scrubbed), clearing
 ///   vertical velocity, and sync the entity. See header.
 void rt_game3d_character_controller_teleport(void *obj, double x, double y, double z) {
-    rt_game3d_character_controller *controller =
-        game3d_character_controller_checked(obj, "Game3D.CharacterController3D.teleport: invalid controller");
+    rt_game3d_character_controller *controller = game3d_character_controller_checked(
+        obj, "Game3D.CharacterController3D.teleport: invalid controller");
     if (!controller || !controller->character)
         return;
     controller->vertical_velocity = 0.0;
-    rt_character3d_set_position(
-        controller->character,
-        game3d_finite_or(x, 0.0),
-        game3d_finite_or(y, 0.0),
-        game3d_finite_or(z, 0.0));
+    rt_character3d_set_position(controller->character,
+                                game3d_finite_or(x, 0.0),
+                                game3d_finite_or(y, 0.0),
+                                game3d_finite_or(z, 0.0));
     game3d_character_controller_sync_entity(controller);
 }
 
 /// @brief True if the character is currently standing on ground. See header.
 int8_t rt_game3d_character_controller_grounded(void *obj) {
-    rt_game3d_character_controller *controller =
-        game3d_character_controller_checked(obj, "Game3D.CharacterController3D.grounded: invalid controller");
-    return controller && controller->character ? rt_character3d_is_grounded(controller->character) : 0;
+    rt_game3d_character_controller *controller = game3d_character_controller_checked(
+        obj, "Game3D.CharacterController3D.grounded: invalid controller");
+    return controller && controller->character ? rt_character3d_is_grounded(controller->character)
+                                               : 0;
 }
 
 /// @brief True if `controller` is NULL or one of the four Game3D camera-controller
@@ -3928,10 +4078,8 @@ static int game3d_camera_controller_is_valid(void *controller) {
     if (!controller)
         return 1;
     int64_t cid = rt_obj_class_id(controller);
-    return cid == RT_G3D_GAME3D_FIRSTPERSON_CLASS_ID ||
-           cid == RT_G3D_GAME3D_FREEFLY_CLASS_ID ||
-           cid == RT_G3D_GAME3D_ORBIT_CLASS_ID ||
-           cid == RT_G3D_GAME3D_FOLLOW_CLASS_ID;
+    return cid == RT_G3D_GAME3D_FIRSTPERSON_CLASS_ID || cid == RT_G3D_GAME3D_FREEFLY_CLASS_ID ||
+           cid == RT_G3D_GAME3D_ORBIT_CLASS_ID || cid == RT_G3D_GAME3D_FOLLOW_CLASS_ID;
 }
 
 /// @brief GC finalizer for the FPS controller: release its character controller.
@@ -3948,8 +4096,8 @@ void *rt_game3d_first_person_controller_new(void *world_obj) {
     if (!world)
         return NULL;
     rt_game3d_first_person_controller *controller =
-        (rt_game3d_first_person_controller *)rt_obj_new_i64(
-            RT_G3D_GAME3D_FIRSTPERSON_CLASS_ID, (int64_t)sizeof(*controller));
+        (rt_game3d_first_person_controller *)rt_obj_new_i64(RT_G3D_GAME3D_FIRSTPERSON_CLASS_ID,
+                                                            (int64_t)sizeof(*controller));
     if (!controller) {
         rt_trap("Game3D.FirstPersonController.New: allocation failed");
         return NULL;
@@ -3967,15 +4115,15 @@ void *rt_game3d_first_person_controller_new(void *world_obj) {
 
 /// @brief Get the character controller driving movement (NULL if none/invalid).
 void *rt_game3d_first_person_controller_get_character(void *obj) {
-    rt_game3d_first_person_controller *controller =
-        game3d_first_person_controller_checked(obj, "Game3D.FirstPersonController.get_character: invalid controller");
+    rt_game3d_first_person_controller *controller = game3d_first_person_controller_checked(
+        obj, "Game3D.FirstPersonController.get_character: invalid controller");
     return controller ? controller->character_controller : NULL;
 }
 
 /// @brief Set the character controller driving movement; traps on a non-CharacterController3D.
 void rt_game3d_first_person_controller_set_character(void *obj, void *character_controller) {
-    rt_game3d_first_person_controller *controller =
-        game3d_first_person_controller_checked(obj, "Game3D.FirstPersonController.set_character: invalid controller");
+    rt_game3d_first_person_controller *controller = game3d_first_person_controller_checked(
+        obj, "Game3D.FirstPersonController.set_character: invalid controller");
     if (character_controller &&
         !rt_g3d_has_class(character_controller, RT_G3D_GAME3D_CHARACTER_CONTROLLER_CLASS_ID))
         rt_trap("Game3D.FirstPersonController.set_character: value must be CharacterController3D");
@@ -3985,38 +4133,39 @@ void rt_game3d_first_person_controller_set_character(void *obj, void *character_
 
 /// @brief Get the move speed in units/sec.
 double rt_game3d_first_person_controller_get_speed(void *obj) {
-    rt_game3d_first_person_controller *controller =
-        game3d_first_person_controller_checked(obj, "Game3D.FirstPersonController.get_speed: invalid controller");
+    rt_game3d_first_person_controller *controller = game3d_first_person_controller_checked(
+        obj, "Game3D.FirstPersonController.get_speed: invalid controller");
     return controller ? controller->speed : 0.0;
 }
 
 /// @brief Set the move speed (negatives reset to the default).
 void rt_game3d_first_person_controller_set_speed(void *obj, double speed) {
-    rt_game3d_first_person_controller *controller =
-        game3d_first_person_controller_checked(obj, "Game3D.FirstPersonController.set_speed: invalid controller");
+    rt_game3d_first_person_controller *controller = game3d_first_person_controller_checked(
+        obj, "Game3D.FirstPersonController.set_speed: invalid controller");
     if (controller)
         controller->speed = game3d_nonnegative_or(speed, RT_GAME3D_DEFAULT_MOVE_SPEED);
 }
 
 /// @brief Get the mouse-look sensitivity.
 double rt_game3d_first_person_controller_get_look_sensitivity(void *obj) {
-    rt_game3d_first_person_controller *controller =
-        game3d_first_person_controller_checked(obj, "Game3D.FirstPersonController.get_lookSensitivity: invalid controller");
+    rt_game3d_first_person_controller *controller = game3d_first_person_controller_checked(
+        obj, "Game3D.FirstPersonController.get_lookSensitivity: invalid controller");
     return controller ? controller->look_sensitivity : 0.0;
 }
 
 /// @brief Set the mouse-look sensitivity (negatives reset to the default).
 void rt_game3d_first_person_controller_set_look_sensitivity(void *obj, double sensitivity) {
-    rt_game3d_first_person_controller *controller =
-        game3d_first_person_controller_checked(obj, "Game3D.FirstPersonController.set_lookSensitivity: invalid controller");
+    rt_game3d_first_person_controller *controller = game3d_first_person_controller_checked(
+        obj, "Game3D.FirstPersonController.set_lookSensitivity: invalid controller");
     if (controller)
-        controller->look_sensitivity = game3d_nonnegative_or(sensitivity, RT_GAME3D_DEFAULT_LOOK_SENSITIVITY);
+        controller->look_sensitivity =
+            game3d_nonnegative_or(sensitivity, RT_GAME3D_DEFAULT_LOOK_SENSITIVITY);
 }
 
 /// @brief Capture and hide the cursor and remember the captured state.
 void rt_game3d_first_person_controller_capture_mouse(void *obj) {
-    rt_game3d_first_person_controller *controller =
-        game3d_first_person_controller_checked(obj, "Game3D.FirstPersonController.captureMouse: invalid controller");
+    rt_game3d_first_person_controller *controller = game3d_first_person_controller_checked(
+        obj, "Game3D.FirstPersonController.captureMouse: invalid controller");
     if (controller) {
         controller->capture_mouse = 1;
         rt_mouse_capture();
@@ -4025,8 +4174,8 @@ void rt_game3d_first_person_controller_capture_mouse(void *obj) {
 
 /// @brief Release the cursor and clear the captured state.
 void rt_game3d_first_person_controller_release_mouse(void *obj) {
-    rt_game3d_first_person_controller *controller =
-        game3d_first_person_controller_checked(obj, "Game3D.FirstPersonController.releaseMouse: invalid controller");
+    rt_game3d_first_person_controller *controller = game3d_first_person_controller_checked(
+        obj, "Game3D.FirstPersonController.releaseMouse: invalid controller");
     if (controller) {
         controller->capture_mouse = 0;
         rt_mouse_release();
@@ -4038,8 +4187,8 @@ void rt_game3d_first_person_controller_release_mouse(void *obj) {
 ///   drives ground movement through it, otherwise it free-walks the camera directly.
 ///   Re-captures the cursor each frame when capture is enabled.
 void rt_game3d_first_person_controller_update(void *obj, void *world_obj, double dt) {
-    rt_game3d_first_person_controller *controller =
-        game3d_first_person_controller_checked(obj, "Game3D.FirstPersonController.update: invalid controller");
+    rt_game3d_first_person_controller *controller = game3d_first_person_controller_checked(
+        obj, "Game3D.FirstPersonController.update: invalid controller");
     rt_game3d_world *world =
         game3d_world_checked(world_obj, "Game3D.FirstPersonController.update: invalid world");
     if (!controller || !world || !world->camera || !world->input)
@@ -4053,7 +4202,8 @@ void rt_game3d_first_person_controller_update(void *obj, void *world_obj, double
                              controller->look_sensitivity;
     if (controller->character_controller) {
         rt_camera3d_fps_update(world->camera, yaw, pitch, 0.0, 0.0, 0.0, 0.0, dt);
-        rt_game3d_character_controller_set_speed(controller->character_controller, controller->speed);
+        rt_game3d_character_controller_set_speed(controller->character_controller,
+                                                 controller->speed);
         rt_game3d_character_controller_update(
             controller->character_controller, world->input, world->camera, dt);
     } else {
@@ -4071,20 +4221,21 @@ void rt_game3d_first_person_controller_update(void *obj, void *world_obj, double
 ///   character controller is attached). See header.
 void rt_game3d_first_person_controller_late_update(void *obj, void *world_obj, double dt) {
     (void)dt;
-    rt_game3d_first_person_controller *controller =
-        game3d_first_person_controller_checked(obj, "Game3D.FirstPersonController.lateUpdate: invalid controller");
+    rt_game3d_first_person_controller *controller = game3d_first_person_controller_checked(
+        obj, "Game3D.FirstPersonController.lateUpdate: invalid controller");
     rt_game3d_world *world =
         game3d_world_checked(world_obj, "Game3D.FirstPersonController.lateUpdate: invalid world");
     if (!controller || !world || !world->camera || !controller->character_controller)
         return;
-    rt_game3d_character_controller *character =
-        game3d_character_controller_checked(controller->character_controller,
-                                            "Game3D.FirstPersonController.lateUpdate: invalid character");
+    rt_game3d_character_controller *character = game3d_character_controller_checked(
+        controller->character_controller,
+        "Game3D.FirstPersonController.lateUpdate: invalid character");
     if (!character || !character->character)
         return;
     void *pos = rt_character3d_get_position(character->character);
     if (pos) {
-        void *eye = rt_vec3_new(rt_vec3_x(pos), rt_vec3_y(pos) + character->eye_height, rt_vec3_z(pos));
+        void *eye =
+            rt_vec3_new(rt_vec3_x(pos), rt_vec3_y(pos) + character->eye_height, rt_vec3_z(pos));
         rt_camera3d_set_position(world->camera, eye);
         game3d_release_ref(&eye);
     }
@@ -4097,9 +4248,8 @@ void *rt_game3d_free_fly_controller_new(void *world_obj) {
         game3d_world_checked(world_obj, "Game3D.FreeFlyController.New: invalid world");
     if (!world)
         return NULL;
-    rt_game3d_free_fly_controller *controller =
-        (rt_game3d_free_fly_controller *)rt_obj_new_i64(
-            RT_G3D_GAME3D_FREEFLY_CLASS_ID, (int64_t)sizeof(*controller));
+    rt_game3d_free_fly_controller *controller = (rt_game3d_free_fly_controller *)rt_obj_new_i64(
+        RT_G3D_GAME3D_FREEFLY_CLASS_ID, (int64_t)sizeof(*controller));
     if (!controller) {
         rt_trap("Game3D.FreeFlyController.New: allocation failed");
         return NULL;
@@ -4116,38 +4266,39 @@ void *rt_game3d_free_fly_controller_new(void *world_obj) {
 
 /// @brief Get the fly speed in units/sec.
 double rt_game3d_free_fly_controller_get_speed(void *obj) {
-    rt_game3d_free_fly_controller *controller =
-        game3d_free_fly_controller_checked(obj, "Game3D.FreeFlyController.get_speed: invalid controller");
+    rt_game3d_free_fly_controller *controller = game3d_free_fly_controller_checked(
+        obj, "Game3D.FreeFlyController.get_speed: invalid controller");
     return controller ? controller->speed : 0.0;
 }
 
 /// @brief Set the fly speed (negatives reset to the default).
 void rt_game3d_free_fly_controller_set_speed(void *obj, double speed) {
-    rt_game3d_free_fly_controller *controller =
-        game3d_free_fly_controller_checked(obj, "Game3D.FreeFlyController.set_speed: invalid controller");
+    rt_game3d_free_fly_controller *controller = game3d_free_fly_controller_checked(
+        obj, "Game3D.FreeFlyController.set_speed: invalid controller");
     if (controller)
         controller->speed = game3d_nonnegative_or(speed, RT_GAME3D_DEFAULT_MOVE_SPEED);
 }
 
 /// @brief Get the mouse-look sensitivity.
 double rt_game3d_free_fly_controller_get_look_sensitivity(void *obj) {
-    rt_game3d_free_fly_controller *controller =
-        game3d_free_fly_controller_checked(obj, "Game3D.FreeFlyController.get_lookSensitivity: invalid controller");
+    rt_game3d_free_fly_controller *controller = game3d_free_fly_controller_checked(
+        obj, "Game3D.FreeFlyController.get_lookSensitivity: invalid controller");
     return controller ? controller->look_sensitivity : 0.0;
 }
 
 /// @brief Set the mouse-look sensitivity (negatives reset to the default).
 void rt_game3d_free_fly_controller_set_look_sensitivity(void *obj, double sensitivity) {
-    rt_game3d_free_fly_controller *controller =
-        game3d_free_fly_controller_checked(obj, "Game3D.FreeFlyController.set_lookSensitivity: invalid controller");
+    rt_game3d_free_fly_controller *controller = game3d_free_fly_controller_checked(
+        obj, "Game3D.FreeFlyController.set_lookSensitivity: invalid controller");
     if (controller)
-        controller->look_sensitivity = game3d_nonnegative_or(sensitivity, RT_GAME3D_DEFAULT_LOOK_SENSITIVITY);
+        controller->look_sensitivity =
+            game3d_nonnegative_or(sensitivity, RT_GAME3D_DEFAULT_LOOK_SENSITIVITY);
 }
 
 /// @brief Capture and hide the cursor and remember the captured state.
 void rt_game3d_free_fly_controller_capture_mouse(void *obj) {
-    rt_game3d_free_fly_controller *controller =
-        game3d_free_fly_controller_checked(obj, "Game3D.FreeFlyController.captureMouse: invalid controller");
+    rt_game3d_free_fly_controller *controller = game3d_free_fly_controller_checked(
+        obj, "Game3D.FreeFlyController.captureMouse: invalid controller");
     if (controller) {
         controller->capture_mouse = 1;
         rt_mouse_capture();
@@ -4156,8 +4307,8 @@ void rt_game3d_free_fly_controller_capture_mouse(void *obj) {
 
 /// @brief Release the cursor and clear the captured state.
 void rt_game3d_free_fly_controller_release_mouse(void *obj) {
-    rt_game3d_free_fly_controller *controller =
-        game3d_free_fly_controller_checked(obj, "Game3D.FreeFlyController.releaseMouse: invalid controller");
+    rt_game3d_free_fly_controller *controller = game3d_free_fly_controller_checked(
+        obj, "Game3D.FreeFlyController.releaseMouse: invalid controller");
     if (controller) {
         controller->capture_mouse = 0;
         rt_mouse_release();
@@ -4167,8 +4318,8 @@ void rt_game3d_free_fly_controller_release_mouse(void *obj) {
 /// @brief Update free-fly look and 6-DOF movement (including vertical) from input for
 ///   the frame; re-captures the cursor when capture is enabled.
 void rt_game3d_free_fly_controller_update(void *obj, void *world_obj, double dt) {
-    rt_game3d_free_fly_controller *controller =
-        game3d_free_fly_controller_checked(obj, "Game3D.FreeFlyController.update: invalid controller");
+    rt_game3d_free_fly_controller *controller = game3d_free_fly_controller_checked(
+        obj, "Game3D.FreeFlyController.update: invalid controller");
     rt_game3d_world *world =
         game3d_world_checked(world_obj, "Game3D.FreeFlyController.update: invalid world");
     if (!controller || !world || !world->camera || !world->input)
@@ -4181,22 +4332,22 @@ void rt_game3d_free_fly_controller_update(void *obj, void *world_obj, double dt)
                  controller->look_sensitivity;
     double pitch = 0.0 - (double)game3d_input_mouse_dy((rt_game3d_input *)world->input) *
                              controller->look_sensitivity;
-    rt_camera3d_fps_update(
-        world->camera,
-        yaw,
-        pitch,
-        move ? rt_vec3_z(move) : 0.0,
-        move ? rt_vec3_x(move) : 0.0,
-        move ? rt_vec3_y(move) : 0.0,
-        controller->speed,
-        dt);
+    rt_camera3d_fps_update(world->camera,
+                           yaw,
+                           pitch,
+                           move ? rt_vec3_z(move) : 0.0,
+                           move ? rt_vec3_x(move) : 0.0,
+                           move ? rt_vec3_y(move) : 0.0,
+                           controller->speed,
+                           dt);
     game3d_release_ref(&move);
 }
 
 /// @brief No-op late update (free-fly needs no post-physics pass); validates handles. See header.
 void rt_game3d_free_fly_controller_late_update(void *obj, void *world_obj, double dt) {
     (void)dt;
-    (void)game3d_free_fly_controller_checked(obj, "Game3D.FreeFlyController.lateUpdate: invalid controller");
+    (void)game3d_free_fly_controller_checked(
+        obj, "Game3D.FreeFlyController.lateUpdate: invalid controller");
     (void)game3d_world_checked(world_obj, "Game3D.FreeFlyController.lateUpdate: invalid world");
 }
 
@@ -4212,14 +4363,12 @@ static void game3d_orbit_controller_finalize(void *obj) {
 void *rt_game3d_orbit_controller_new(void *world_obj, void *target) {
     rt_game3d_world *world =
         game3d_world_checked(world_obj, "Game3D.OrbitController.New: invalid world");
-    if (!rt_g3d_is_vec3(target) &&
-        !rt_g3d_has_class(target, RT_G3D_GAME3D_ENTITY_CLASS_ID))
+    if (!rt_g3d_is_vec3(target) && !rt_g3d_has_class(target, RT_G3D_GAME3D_ENTITY_CLASS_ID))
         rt_trap("Game3D.OrbitController.New: target must be Vec3 or Entity3D");
     if (!world)
         return NULL;
-    rt_game3d_orbit_controller *controller =
-        (rt_game3d_orbit_controller *)rt_obj_new_i64(
-            RT_G3D_GAME3D_ORBIT_CLASS_ID, (int64_t)sizeof(*controller));
+    rt_game3d_orbit_controller *controller = (rt_game3d_orbit_controller *)rt_obj_new_i64(
+        RT_G3D_GAME3D_ORBIT_CLASS_ID, (int64_t)sizeof(*controller));
     if (!controller) {
         rt_trap("Game3D.OrbitController.New: allocation failed");
         return NULL;
@@ -4239,17 +4388,16 @@ void *rt_game3d_orbit_controller_new(void *world_obj, void *target) {
 
 /// @brief Get the orbit target Vec3 (NULL if invalid).
 void *rt_game3d_orbit_controller_get_target(void *obj) {
-    rt_game3d_orbit_controller *controller =
-        game3d_orbit_controller_checked(obj, "Game3D.OrbitController.get_target: invalid controller");
+    rt_game3d_orbit_controller *controller = game3d_orbit_controller_checked(
+        obj, "Game3D.OrbitController.get_target: invalid controller");
     return controller ? controller->target : NULL;
 }
 
 /// @brief Set the orbit target; traps on a non-Vec3/non-Entity3D.
 void rt_game3d_orbit_controller_set_target(void *obj, void *target) {
-    rt_game3d_orbit_controller *controller =
-        game3d_orbit_controller_checked(obj, "Game3D.OrbitController.set_target: invalid controller");
-    if (!rt_g3d_is_vec3(target) &&
-        !rt_g3d_has_class(target, RT_G3D_GAME3D_ENTITY_CLASS_ID))
+    rt_game3d_orbit_controller *controller = game3d_orbit_controller_checked(
+        obj, "Game3D.OrbitController.set_target: invalid controller");
+    if (!rt_g3d_is_vec3(target) && !rt_g3d_has_class(target, RT_G3D_GAME3D_ENTITY_CLASS_ID))
         rt_trap("Game3D.OrbitController.set_target: target must be Vec3 or Entity3D");
     if (controller)
         game3d_assign_ref(&controller->target, target);
@@ -4257,17 +4405,18 @@ void rt_game3d_orbit_controller_set_target(void *obj, void *target) {
 
 /// @brief Get the orbit distance (radius) in world units.
 double rt_game3d_orbit_controller_get_distance(void *obj) {
-    rt_game3d_orbit_controller *controller =
-        game3d_orbit_controller_checked(obj, "Game3D.OrbitController.get_distance: invalid controller");
+    rt_game3d_orbit_controller *controller = game3d_orbit_controller_checked(
+        obj, "Game3D.OrbitController.get_distance: invalid controller");
     return controller ? controller->distance : 0.0;
 }
 
 /// @brief Set the orbit distance, clamped to the controller's min/max range.
 void rt_game3d_orbit_controller_set_distance(void *obj, double distance) {
-    rt_game3d_orbit_controller *controller =
-        game3d_orbit_controller_checked(obj, "Game3D.OrbitController.set_distance: invalid controller");
+    rt_game3d_orbit_controller *controller = game3d_orbit_controller_checked(
+        obj, "Game3D.OrbitController.set_distance: invalid controller");
     if (controller)
-        controller->distance = game3d_clamp(distance, controller->min_distance, controller->max_distance);
+        controller->distance =
+            game3d_clamp(distance, controller->min_distance, controller->max_distance);
 }
 
 /// @brief Get the horizontal orbit angle (yaw) in degrees.
@@ -4287,15 +4436,15 @@ void rt_game3d_orbit_controller_set_yaw(void *obj, double yaw) {
 
 /// @brief Get the vertical orbit angle (pitch) in degrees.
 double rt_game3d_orbit_controller_get_pitch(void *obj) {
-    rt_game3d_orbit_controller *controller =
-        game3d_orbit_controller_checked(obj, "Game3D.OrbitController.get_pitch: invalid controller");
+    rt_game3d_orbit_controller *controller = game3d_orbit_controller_checked(
+        obj, "Game3D.OrbitController.get_pitch: invalid controller");
     return controller ? controller->pitch : 0.0;
 }
 
 /// @brief Set the pitch angle in degrees, clamped to [-85, 85] to avoid gimbal flip.
 void rt_game3d_orbit_controller_set_pitch(void *obj, double pitch) {
-    rt_game3d_orbit_controller *controller =
-        game3d_orbit_controller_checked(obj, "Game3D.OrbitController.set_pitch: invalid controller");
+    rt_game3d_orbit_controller *controller = game3d_orbit_controller_checked(
+        obj, "Game3D.OrbitController.set_pitch: invalid controller");
     if (controller)
         controller->pitch = game3d_clamp(pitch, -85.0, 85.0);
 }
@@ -4317,8 +4466,8 @@ void rt_game3d_orbit_controller_update(void *obj, void *world_obj, double dt) {
                              controller->orbit_sensitivity;
         controller->pitch = game3d_clamp(controller->pitch, -85.0, 85.0);
     }
-    controller->distance -=
-        game3d_input_wheel_y_snapshot((rt_game3d_input *)world->input) * controller->zoom_sensitivity;
+    controller->distance -= game3d_input_wheel_y_snapshot((rt_game3d_input *)world->input) *
+                            controller->zoom_sensitivity;
     controller->distance =
         game3d_clamp(controller->distance, controller->min_distance, controller->max_distance);
 }
@@ -4326,8 +4475,8 @@ void rt_game3d_orbit_controller_update(void *obj, void *world_obj, double dt) {
 /// @brief After physics, reposition the camera on the orbit sphere around the target. See header.
 void rt_game3d_orbit_controller_late_update(void *obj, void *world_obj, double dt) {
     (void)dt;
-    rt_game3d_orbit_controller *controller =
-        game3d_orbit_controller_checked(obj, "Game3D.OrbitController.lateUpdate: invalid controller");
+    rt_game3d_orbit_controller *controller = game3d_orbit_controller_checked(
+        obj, "Game3D.OrbitController.lateUpdate: invalid controller");
     rt_game3d_world *world =
         game3d_world_checked(world_obj, "Game3D.OrbitController.lateUpdate: invalid world");
     if (controller && world && world->camera && controller->target) {
@@ -4338,8 +4487,11 @@ void rt_game3d_orbit_controller_late_update(void *obj, void *world_obj, double d
             release_target = 1;
         }
         if (rt_g3d_is_vec3(target_pos))
-            rt_camera3d_orbit(
-                world->camera, target_pos, controller->distance, controller->yaw, controller->pitch);
+            rt_camera3d_orbit(world->camera,
+                              target_pos,
+                              controller->distance,
+                              controller->yaw,
+                              controller->pitch);
         if (release_target)
             game3d_release_ref(&target_pos);
     }
@@ -4359,14 +4511,14 @@ static void game3d_follow_controller_finalize(void *obj) {
 void *rt_game3d_follow_controller_new(void *world_obj, void *target_entity, void *offset) {
     rt_game3d_world *world =
         game3d_world_checked(world_obj, "Game3D.FollowController.New: invalid world");
-    (void)game3d_entity_checked(target_entity, "Game3D.FollowController.New: target must be Entity3D");
+    (void)game3d_entity_checked(target_entity,
+                                "Game3D.FollowController.New: target must be Entity3D");
     if (!rt_g3d_is_vec3(offset))
         rt_trap("Game3D.FollowController.New: offset must be Vec3");
     if (!world)
         return NULL;
-    rt_game3d_follow_controller *controller =
-        (rt_game3d_follow_controller *)rt_obj_new_i64(
-            RT_G3D_GAME3D_FOLLOW_CLASS_ID, (int64_t)sizeof(*controller));
+    rt_game3d_follow_controller *controller = (rt_game3d_follow_controller *)rt_obj_new_i64(
+        RT_G3D_GAME3D_FOLLOW_CLASS_ID, (int64_t)sizeof(*controller));
     if (!controller) {
         rt_trap("Game3D.FollowController.New: allocation failed");
         return NULL;
@@ -4382,32 +4534,33 @@ void *rt_game3d_follow_controller_new(void *world_obj, void *target_entity, void
 
 /// @brief Get the followed entity (NULL if none/invalid).
 void *rt_game3d_follow_controller_get_target(void *obj) {
-    rt_game3d_follow_controller *controller =
-        game3d_follow_controller_checked(obj, "Game3D.FollowController.get_target: invalid controller");
+    rt_game3d_follow_controller *controller = game3d_follow_controller_checked(
+        obj, "Game3D.FollowController.get_target: invalid controller");
     return controller ? controller->target_entity : NULL;
 }
 
 /// @brief Set the followed entity (validated when non-NULL).
 void rt_game3d_follow_controller_set_target(void *obj, void *target_entity) {
-    rt_game3d_follow_controller *controller =
-        game3d_follow_controller_checked(obj, "Game3D.FollowController.set_target: invalid controller");
+    rt_game3d_follow_controller *controller = game3d_follow_controller_checked(
+        obj, "Game3D.FollowController.set_target: invalid controller");
     if (target_entity)
-        (void)game3d_entity_checked(target_entity, "Game3D.FollowController.set_target: target must be Entity3D");
+        (void)game3d_entity_checked(target_entity,
+                                    "Game3D.FollowController.set_target: target must be Entity3D");
     if (controller)
         game3d_assign_ref(&controller->target_entity, target_entity);
 }
 
 /// @brief Get the follow offset Vec3 (NULL if invalid).
 void *rt_game3d_follow_controller_get_offset(void *obj) {
-    rt_game3d_follow_controller *controller =
-        game3d_follow_controller_checked(obj, "Game3D.FollowController.get_offset: invalid controller");
+    rt_game3d_follow_controller *controller = game3d_follow_controller_checked(
+        obj, "Game3D.FollowController.get_offset: invalid controller");
     return controller ? controller->offset : NULL;
 }
 
 /// @brief Set the follow offset; traps on a non-Vec3.
 void rt_game3d_follow_controller_set_offset(void *obj, void *offset) {
-    rt_game3d_follow_controller *controller =
-        game3d_follow_controller_checked(obj, "Game3D.FollowController.set_offset: invalid controller");
+    rt_game3d_follow_controller *controller = game3d_follow_controller_checked(
+        obj, "Game3D.FollowController.set_offset: invalid controller");
     if (!rt_g3d_is_vec3(offset))
         rt_trap("Game3D.FollowController.set_offset: offset must be Vec3");
     if (controller)
@@ -4416,15 +4569,15 @@ void rt_game3d_follow_controller_set_offset(void *obj, void *offset) {
 
 /// @brief Get the position-smoothing damping factor.
 double rt_game3d_follow_controller_get_damping(void *obj) {
-    rt_game3d_follow_controller *controller =
-        game3d_follow_controller_checked(obj, "Game3D.FollowController.get_damping: invalid controller");
+    rt_game3d_follow_controller *controller = game3d_follow_controller_checked(
+        obj, "Game3D.FollowController.get_damping: invalid controller");
     return controller ? controller->damping : 0.0;
 }
 
 /// @brief Set the damping factor (negatives reset to the default).
 void rt_game3d_follow_controller_set_damping(void *obj, double damping) {
-    rt_game3d_follow_controller *controller =
-        game3d_follow_controller_checked(obj, "Game3D.FollowController.set_damping: invalid controller");
+    rt_game3d_follow_controller *controller = game3d_follow_controller_checked(
+        obj, "Game3D.FollowController.set_damping: invalid controller");
     if (controller)
         controller->damping = game3d_nonnegative_or(damping, RT_GAME3D_DEFAULT_FOLLOW_DAMPING);
 }
@@ -4432,18 +4585,21 @@ void rt_game3d_follow_controller_set_damping(void *obj, double damping) {
 /// @brief No-op pre-physics update (follow runs in late update); validates handles. See header.
 void rt_game3d_follow_controller_update(void *obj, void *world_obj, double dt) {
     (void)dt;
-    (void)game3d_follow_controller_checked(obj, "Game3D.FollowController.update: invalid controller");
+    (void)game3d_follow_controller_checked(obj,
+                                           "Game3D.FollowController.update: invalid controller");
     (void)game3d_world_checked(world_obj, "Game3D.FollowController.update: invalid world");
 }
 
 /// @brief After physics, exponentially damp the camera toward target+offset and look at
-///   the target. The damping uses a frame-rate-independent `1 - exp(-damping·dt)` blend. See header.
+///   the target. The damping uses a frame-rate-independent `1 - exp(-damping·dt)` blend. See
+///   header.
 void rt_game3d_follow_controller_late_update(void *obj, void *world_obj, double dt) {
-    rt_game3d_follow_controller *controller =
-        game3d_follow_controller_checked(obj, "Game3D.FollowController.lateUpdate: invalid controller");
+    rt_game3d_follow_controller *controller = game3d_follow_controller_checked(
+        obj, "Game3D.FollowController.lateUpdate: invalid controller");
     rt_game3d_world *world =
         game3d_world_checked(world_obj, "Game3D.FollowController.lateUpdate: invalid world");
-    if (!controller || !world || !world->camera || !controller->target_entity || !controller->offset)
+    if (!controller || !world || !world->camera || !controller->target_entity ||
+        !controller->offset)
         return;
 
     dt = game3d_clamp_dt(dt);
@@ -4462,7 +4618,8 @@ void rt_game3d_follow_controller_late_update(void *obj, void *world_obj, double 
     double y = current ? rt_vec3_y(current) + (target_y - rt_vec3_y(current)) * alpha : target_y;
     double z = current ? rt_vec3_z(current) + (target_z - rt_vec3_z(current)) * alpha : target_z;
     void *eye = rt_vec3_new(x, y, z);
-    void *look_target = rt_vec3_new(rt_vec3_x(target_pos), rt_vec3_y(target_pos), rt_vec3_z(target_pos));
+    void *look_target =
+        rt_vec3_new(rt_vec3_x(target_pos), rt_vec3_y(target_pos), rt_vec3_z(target_pos));
     void *up = rt_vec3_new(0.0, 1.0, 0.0);
     rt_camera3d_look_at(world->camera, eye, look_target, up);
     game3d_release_ref(&up);
@@ -4478,20 +4635,20 @@ static void game3d_world_update_controller(rt_game3d_world *world, double dt) {
     if (!world || !world->camera_controller)
         return;
     switch (rt_obj_class_id(world->camera_controller)) {
-    case RT_G3D_GAME3D_FIRSTPERSON_CLASS_ID:
-        rt_game3d_first_person_controller_update(world->camera_controller, world, dt);
-        break;
-    case RT_G3D_GAME3D_FREEFLY_CLASS_ID:
-        rt_game3d_free_fly_controller_update(world->camera_controller, world, dt);
-        break;
-    case RT_G3D_GAME3D_ORBIT_CLASS_ID:
-        rt_game3d_orbit_controller_update(world->camera_controller, world, dt);
-        break;
-    case RT_G3D_GAME3D_FOLLOW_CLASS_ID:
-        rt_game3d_follow_controller_update(world->camera_controller, world, dt);
-        break;
-    default:
-        rt_trap("Game3D.World3D: camera controller must be a Game3D camera controller");
+        case RT_G3D_GAME3D_FIRSTPERSON_CLASS_ID:
+            rt_game3d_first_person_controller_update(world->camera_controller, world, dt);
+            break;
+        case RT_G3D_GAME3D_FREEFLY_CLASS_ID:
+            rt_game3d_free_fly_controller_update(world->camera_controller, world, dt);
+            break;
+        case RT_G3D_GAME3D_ORBIT_CLASS_ID:
+            rt_game3d_orbit_controller_update(world->camera_controller, world, dt);
+            break;
+        case RT_G3D_GAME3D_FOLLOW_CLASS_ID:
+            rt_game3d_follow_controller_update(world->camera_controller, world, dt);
+            break;
+        default:
+            rt_trap("Game3D.World3D: camera controller must be a Game3D camera controller");
     }
 }
 
@@ -4514,20 +4671,20 @@ static void game3d_world_late_update_controller(rt_game3d_world *world, double d
     if (!world || !world->camera_controller)
         return;
     switch (rt_obj_class_id(world->camera_controller)) {
-    case RT_G3D_GAME3D_FIRSTPERSON_CLASS_ID:
-        rt_game3d_first_person_controller_late_update(world->camera_controller, world, dt);
-        break;
-    case RT_G3D_GAME3D_FREEFLY_CLASS_ID:
-        rt_game3d_free_fly_controller_late_update(world->camera_controller, world, dt);
-        break;
-    case RT_G3D_GAME3D_ORBIT_CLASS_ID:
-        rt_game3d_orbit_controller_late_update(world->camera_controller, world, dt);
-        break;
-    case RT_G3D_GAME3D_FOLLOW_CLASS_ID:
-        rt_game3d_follow_controller_late_update(world->camera_controller, world, dt);
-        break;
-    default:
-        rt_trap("Game3D.World3D: camera controller must be a Game3D camera controller");
+        case RT_G3D_GAME3D_FIRSTPERSON_CLASS_ID:
+            rt_game3d_first_person_controller_late_update(world->camera_controller, world, dt);
+            break;
+        case RT_G3D_GAME3D_FREEFLY_CLASS_ID:
+            rt_game3d_free_fly_controller_late_update(world->camera_controller, world, dt);
+            break;
+        case RT_G3D_GAME3D_ORBIT_CLASS_ID:
+            rt_game3d_orbit_controller_late_update(world->camera_controller, world, dt);
+            break;
+        case RT_G3D_GAME3D_FOLLOW_CLASS_ID:
+            rt_game3d_follow_controller_late_update(world->camera_controller, world, dt);
+            break;
+        default:
+            rt_trap("Game3D.World3D: camera controller must be a Game3D camera controller");
     }
 }
 
@@ -4607,7 +4764,9 @@ static void game3d_entity_detach_node(rt_game3d_world *world, rt_game3d_entity *
 /// @brief Recursively despawn an entity and its children: remove bodies from physics,
 ///   detach the root node, clear spawned/world state, and drop registry references.
 ///   Only the root detaches its node (`detach_root`); children stay parented under it.
-static void game3d_world_despawn_entity_tree(rt_game3d_world *world, rt_game3d_entity *entity, int detach_root) {
+static void game3d_world_despawn_entity_tree(rt_game3d_world *world,
+                                             rt_game3d_entity *entity,
+                                             int detach_root) {
     if (!world || !entity || !entity->spawned)
         return;
     for (int32_t i = 0; i < entity->child_count; ++i)
@@ -4639,7 +4798,8 @@ static void game3d_world_spawn_entity_tree(rt_game3d_world *world,
         return;
     if (entity->spawned || (entity->world && entity->world != world))
         rt_trap("Game3D.World3D.spawn: entity already belongs to a world");
-    if (world->entity_count == INT32_MAX || !game3d_world_grow_entities(world, world->entity_count + 1)) {
+    if (world->entity_count == INT32_MAX ||
+        !game3d_world_grow_entities(world, world->entity_count + 1)) {
         rt_trap("Game3D.World3D.spawn: registry allocation failed");
         return;
     }
@@ -4731,15 +4891,23 @@ static void game3d_world_install_default_camera(rt_game3d_world *world) {
 
 /// @brief Create a world with default camera parameters. See header.
 void *rt_game3d_world_new(rt_string title, int64_t width, int64_t height) {
-    return rt_game3d_world_new_with_camera(
-        title, width, height, RT_GAME3D_DEFAULT_FOV_DEG, RT_GAME3D_DEFAULT_NEAR, RT_GAME3D_DEFAULT_FAR);
+    return rt_game3d_world_new_with_camera(title,
+                                           width,
+                                           height,
+                                           RT_GAME3D_DEFAULT_FOV_DEG,
+                                           RT_GAME3D_DEFAULT_NEAR,
+                                           RT_GAME3D_DEFAULT_FAR);
 }
 
 /// @brief Create a world: open the canvas window and build the scene, camera, physics,
 ///   input, audio, and effects subsystems, then apply default lighting/quality/ambient.
 ///   Traps on non-positive dimensions or any component allocation failure. See header.
-void *rt_game3d_world_new_with_camera(
-    rt_string title, int64_t width, int64_t height, double fov_deg, double near_plane, double far_plane) {
+void *rt_game3d_world_new_with_camera(rt_string title,
+                                      int64_t width,
+                                      int64_t height,
+                                      double fov_deg,
+                                      double near_plane,
+                                      double far_plane) {
     if (width <= 0 || height <= 0)
         rt_trap("Game3D.World3D.New: dimensions must be positive");
     rt_game3d_world *world =
@@ -4761,15 +4929,14 @@ void *rt_game3d_world_new_with_camera(
 
     world->canvas = rt_canvas3d_new(title, width, height);
     world->scene = rt_scene3d_new();
-    world->camera =
-        rt_camera3d_new(fov_deg, (double)width / (double)height, near_plane, far_plane);
+    world->camera = rt_camera3d_new(fov_deg, (double)width / (double)height, near_plane, far_plane);
     world->physics = rt_world3d_new(0.0, -9.81, 0.0);
     world->input = rt_game3d_input_new();
     world->audio = game3d_audio_new(world->camera);
     world->effects = game3d_effects_new(world->canvas, RT_GAME3D_QUALITY_BALANCED);
 
-    if (!world->canvas || !world->scene || !world->camera || !world->physics ||
-        !world->input || !world->audio || !world->effects) {
+    if (!world->canvas || !world->scene || !world->camera || !world->physics || !world->input ||
+        !world->audio || !world->effects) {
         game3d_world_release_runtime(world, 0);
         if (rt_obj_release_check0(world))
             rt_obj_free(world);
@@ -4879,7 +5046,8 @@ void *rt_game3d_world_spawn(void *world_obj, void *entity_obj) {
 /// @brief Despawn an entity (and its child tree); traps if it is not spawned in this
 ///   world. See header.
 void rt_game3d_world_despawn(void *world_obj, void *entity_obj) {
-    rt_game3d_world *world = game3d_world_checked(world_obj, "Game3D.World3D.despawn: invalid world");
+    rt_game3d_world *world =
+        game3d_world_checked(world_obj, "Game3D.World3D.despawn: invalid world");
     rt_game3d_entity *entity =
         game3d_entity_checked(entity_obj, "Game3D.World3D.despawn: entity must be Entity3D");
     if (!world || !entity)
@@ -4919,7 +5087,8 @@ void rt_game3d_world_set_camera_controller(void *obj, void *controller) {
     rt_game3d_world *world =
         game3d_world_checked(obj, "Game3D.World3D.setCameraController: invalid world");
     if (!game3d_camera_controller_is_valid(controller))
-        rt_trap("Game3D.World3D.setCameraController: controller must be a built-in Game3D camera controller");
+        rt_trap("Game3D.World3D.setCameraController: controller must be a built-in Game3D camera "
+                "controller");
     if (world)
         game3d_assign_ref(&world->camera_controller, controller);
 }
@@ -5022,17 +5191,17 @@ int64_t rt_game3d_world_collision_event_count(void *obj, int64_t phase) {
     if (!world || !world->physics)
         return 0;
     switch (phase) {
-    case RT_GAME3D_COLLISION_ENTER:
-        return rt_world3d_get_enter_event_count(world->physics);
-    case RT_GAME3D_COLLISION_STAY:
-        return rt_world3d_get_stay_event_count(world->physics);
-    case RT_GAME3D_COLLISION_EXIT:
-        return rt_world3d_get_exit_event_count(world->physics);
-    case RT_GAME3D_COLLISION_ANY:
-    default:
-        return rt_world3d_get_enter_event_count(world->physics) +
-               rt_world3d_get_stay_event_count(world->physics) +
-               rt_world3d_get_exit_event_count(world->physics);
+        case RT_GAME3D_COLLISION_ENTER:
+            return rt_world3d_get_enter_event_count(world->physics);
+        case RT_GAME3D_COLLISION_STAY:
+            return rt_world3d_get_stay_event_count(world->physics);
+        case RT_GAME3D_COLLISION_EXIT:
+            return rt_world3d_get_exit_event_count(world->physics);
+        case RT_GAME3D_COLLISION_ANY:
+        default:
+            return rt_world3d_get_enter_event_count(world->physics) +
+                   rt_world3d_get_stay_event_count(world->physics) +
+                   rt_world3d_get_exit_event_count(world->physics);
     }
 }
 
@@ -5052,8 +5221,8 @@ static void *game3d_collision_event_wrap(rt_game3d_world *world, int64_t phase, 
     rt_game3d_collision_event *event;
     if (!raw_event)
         return NULL;
-    event = (rt_game3d_collision_event *)rt_obj_new_i64(
-        RT_G3D_GAME3D_COLLISION_EVENT_CLASS_ID, (int64_t)sizeof(*event));
+    event = (rt_game3d_collision_event *)rt_obj_new_i64(RT_G3D_GAME3D_COLLISION_EVENT_CLASS_ID,
+                                                        (int64_t)sizeof(*event));
     if (!event) {
         game3d_release_ref(&raw_event);
         rt_trap("Game3D.Collision3DEvent: allocation failed");
@@ -5072,39 +5241,41 @@ static void *game3d_collision_event_wrap(rt_game3d_world *world, int64_t phase, 
 
 /// @brief Fetch the raw physics collision event for (phase, index); for the ANY phase it
 ///   walks enter→stay→exit ranges and reports the resolved phase via `actual_phase`.
-static void *game3d_world_raw_collision_event(
-    rt_game3d_world *world, int64_t phase, int64_t index, int64_t *actual_phase) {
+static void *game3d_world_raw_collision_event(rt_game3d_world *world,
+                                              int64_t phase,
+                                              int64_t index,
+                                              int64_t *actual_phase) {
     if (!world || !world->physics || index < 0)
         return NULL;
     if (actual_phase)
         *actual_phase = phase;
     switch (phase) {
-    case RT_GAME3D_COLLISION_ENTER:
-        return rt_world3d_get_enter_event(world->physics, index);
-    case RT_GAME3D_COLLISION_STAY:
-        return rt_world3d_get_stay_event(world->physics, index);
-    case RT_GAME3D_COLLISION_EXIT:
-        return rt_world3d_get_exit_event(world->physics, index);
-    case RT_GAME3D_COLLISION_ANY:
-    default: {
-        int64_t enter_count = rt_world3d_get_enter_event_count(world->physics);
-        if (index < enter_count) {
-            if (actual_phase)
-                *actual_phase = RT_GAME3D_COLLISION_ENTER;
+        case RT_GAME3D_COLLISION_ENTER:
             return rt_world3d_get_enter_event(world->physics, index);
-        }
-        index -= enter_count;
-        int64_t stay_count = rt_world3d_get_stay_event_count(world->physics);
-        if (index < stay_count) {
-            if (actual_phase)
-                *actual_phase = RT_GAME3D_COLLISION_STAY;
+        case RT_GAME3D_COLLISION_STAY:
             return rt_world3d_get_stay_event(world->physics, index);
+        case RT_GAME3D_COLLISION_EXIT:
+            return rt_world3d_get_exit_event(world->physics, index);
+        case RT_GAME3D_COLLISION_ANY:
+        default: {
+            int64_t enter_count = rt_world3d_get_enter_event_count(world->physics);
+            if (index < enter_count) {
+                if (actual_phase)
+                    *actual_phase = RT_GAME3D_COLLISION_ENTER;
+                return rt_world3d_get_enter_event(world->physics, index);
+            }
+            index -= enter_count;
+            int64_t stay_count = rt_world3d_get_stay_event_count(world->physics);
+            if (index < stay_count) {
+                if (actual_phase)
+                    *actual_phase = RT_GAME3D_COLLISION_STAY;
+                return rt_world3d_get_stay_event(world->physics, index);
+            }
+            index -= stay_count;
+            if (actual_phase)
+                *actual_phase = RT_GAME3D_COLLISION_EXIT;
+            return rt_world3d_get_exit_event(world->physics, index);
         }
-        index -= stay_count;
-        if (actual_phase)
-            *actual_phase = RT_GAME3D_COLLISION_EXIT;
-        return rt_world3d_get_exit_event(world->physics, index);
-    }
     }
 }
 
@@ -5164,15 +5335,15 @@ int8_t rt_game3d_collision_event_get_is_trigger(void *obj) {
 
 /// @brief Get the relative approach speed at contact (0 if invalid). See header.
 double rt_game3d_collision_event_get_relative_speed(void *obj) {
-    rt_game3d_collision_event *event =
-        game3d_collision_event_checked(obj, "Game3D.Collision3DEvent.get_relativeSpeed: invalid event");
+    rt_game3d_collision_event *event = game3d_collision_event_checked(
+        obj, "Game3D.Collision3DEvent.get_relativeSpeed: invalid event");
     return event && event->raw ? rt_collision_event3d_get_relative_speed(event->raw) : 0.0;
 }
 
 /// @brief Get the resolution normal impulse magnitude (0 if invalid). See header.
 double rt_game3d_collision_event_get_normal_impulse(void *obj) {
-    rt_game3d_collision_event *event =
-        game3d_collision_event_checked(obj, "Game3D.Collision3DEvent.get_normalImpulse: invalid event");
+    rt_game3d_collision_event *event = game3d_collision_event_checked(
+        obj, "Game3D.Collision3DEvent.get_normalImpulse: invalid event");
     return event && event->raw ? rt_collision_event3d_get_normal_impulse(event->raw) : 0.0;
 }
 
@@ -5297,12 +5468,8 @@ static void game3d_world_debug_text(
 #endif
 
 static void game3d_world_debug_textf(
-    rt_game3d_world *world,
-    int64_t x,
-    int64_t y,
-    int64_t color,
-    const char *fmt,
-    ...) RT_GAME3D_PRINTF(5, 6);
+    rt_game3d_world *world, int64_t x, int64_t y, int64_t color, const char *fmt, ...)
+    RT_GAME3D_PRINTF(5, 6);
 
 /// @brief printf-style overlay text helper: format into a fixed 192-byte buffer (always
 ///   NUL-terminated) and draw it via game3d_world_debug_text.
@@ -5324,13 +5491,13 @@ static void game3d_world_debug_textf(
 /// @brief Map a quality preset id to its lowercase display name (defaults to "balanced").
 static const char *game3d_quality_name(int64_t quality) {
     switch (quality) {
-    case RT_GAME3D_QUALITY_PERFORMANCE:
-        return "performance";
-    case RT_GAME3D_QUALITY_CINEMATIC:
-        return "cinematic";
-    case RT_GAME3D_QUALITY_BALANCED:
-    default:
-        return "balanced";
+        case RT_GAME3D_QUALITY_PERFORMANCE:
+            return "performance";
+        case RT_GAME3D_QUALITY_CINEMATIC:
+            return "cinematic";
+        case RT_GAME3D_QUALITY_BALANCED:
+        default:
+            return "balanced";
     }
 }
 
@@ -5344,23 +5511,21 @@ static void game3d_world_draw_debug_overlay(rt_game3d_world *world) {
     game3d_world_debug_text(world, 14, 14, "Game3D Debug", 0xFFFFFF);
     rt_string backend = rt_canvas3d_get_backend(world->canvas);
     const char *backend_cs = backend ? rt_string_cstr(backend) : "unknown";
-    game3d_world_debug_textf(
-        world,
-        14,
-        28,
-        0xD7E7FF,
-        "backend %s fps %lld",
-        backend_cs ? backend_cs : "unknown",
-        (long long)rt_canvas3d_get_fps(world->canvas));
-    game3d_world_debug_textf(
-        world,
-        14,
-        42,
-        0xD7E7FF,
-        "quality %s active %s%s",
-        game3d_quality_name(rt_canvas3d_get_quality_requested(world->canvas)),
-        game3d_quality_name(rt_canvas3d_get_quality_active(world->canvas)),
-        rt_canvas3d_get_quality_fallback(world->canvas) ? " fallback" : "");
+    game3d_world_debug_textf(world,
+                             14,
+                             28,
+                             0xD7E7FF,
+                             "backend %s fps %lld",
+                             backend_cs ? backend_cs : "unknown",
+                             (long long)rt_canvas3d_get_fps(world->canvas));
+    game3d_world_debug_textf(world,
+                             14,
+                             42,
+                             0xD7E7FF,
+                             "quality %s active %s%s",
+                             game3d_quality_name(rt_canvas3d_get_quality_requested(world->canvas)),
+                             game3d_quality_name(rt_canvas3d_get_quality_active(world->canvas)),
+                             rt_canvas3d_get_quality_fallback(world->canvas) ? " fallback" : "");
     game3d_world_debug_textf(
         world,
         14,
@@ -5372,15 +5537,14 @@ static void game3d_world_draw_debug_overlay(rt_game3d_world *world) {
         (long long)(world->physics ? rt_world3d_body_count(world->physics) : 0));
     if (world->debug_camera_enabled && world->camera) {
         void *pos = rt_camera3d_get_position(world->camera);
-        game3d_world_debug_textf(
-            world,
-            14,
-            70,
-            0xCDEECC,
-            "camera %.2f %.2f %.2f",
-            pos ? rt_vec3_x(pos) : 0.0,
-            pos ? rt_vec3_y(pos) : 0.0,
-            pos ? rt_vec3_z(pos) : 0.0);
+        game3d_world_debug_textf(world,
+                                 14,
+                                 70,
+                                 0xCDEECC,
+                                 "camera %.2f %.2f %.2f",
+                                 pos ? rt_vec3_x(pos) : 0.0,
+                                 pos ? rt_vec3_y(pos) : 0.0,
+                                 pos ? rt_vec3_z(pos) : 0.0);
         game3d_release_ref(&pos);
     }
     if (world->debug_caps_enabled) {
@@ -5437,7 +5601,8 @@ void rt_game3d_world_draw_overlay(void *obj, void *overlay) {
     rt_game3d_world *world = game3d_world_checked(obj, "Game3D.World3D.drawOverlay: invalid world");
     rt_game3d_overlay_fn fn = game3d_overlay_callback_checked(
         overlay,
-        "Game3D.World3D.drawOverlay: callback must be a native function pointer; use manual overlay calls from interpreted Zia");
+        "Game3D.World3D.drawOverlay: callback must be a native function pointer; use manual "
+        "overlay calls from interpreted Zia");
     if (!world || !world->canvas)
         return;
     rt_canvas3d_begin_overlay(world->canvas);
@@ -5489,7 +5654,8 @@ void rt_game3d_world_run(void *obj, void *update) {
     rt_game3d_world *world = game3d_world_checked(obj, "Game3D.World3D.run: invalid world");
     rt_game3d_update_fn fn = game3d_update_callback_checked(
         update,
-        "Game3D.World3D.run: callback must be a native function pointer; use tick/step/manual frame APIs from interpreted Zia");
+        "Game3D.World3D.run: callback must be a native function pointer; use tick/step/manual "
+        "frame APIs from interpreted Zia");
     while (world && rt_game3d_world_tick(world)) {
         if (fn)
             fn(world->dt);
@@ -5501,13 +5667,16 @@ void rt_game3d_world_run(void *obj, void *update) {
 /// @brief Variable-timestep loop with an extra native 2D overlay callback drawn each
 ///   frame. See header.
 void rt_game3d_world_run_with_overlay(void *obj, void *update, void *overlay) {
-    rt_game3d_world *world = game3d_world_checked(obj, "Game3D.World3D.runWithOverlay: invalid world");
+    rt_game3d_world *world =
+        game3d_world_checked(obj, "Game3D.World3D.runWithOverlay: invalid world");
     rt_game3d_update_fn fn = game3d_update_callback_checked(
         update,
-        "Game3D.World3D.runWithOverlay: update callback must be a native function pointer; use tick/step/manual frame APIs from interpreted Zia");
+        "Game3D.World3D.runWithOverlay: update callback must be a native function pointer; use "
+        "tick/step/manual frame APIs from interpreted Zia");
     rt_game3d_overlay_fn overlay_fn = game3d_overlay_callback_checked(
         overlay,
-        "Game3D.World3D.runWithOverlay: overlay callback must be a native function pointer; use manual overlay calls from interpreted Zia");
+        "Game3D.World3D.runWithOverlay: overlay callback must be a native function pointer; use "
+        "manual overlay calls from interpreted Zia");
     while (world && rt_game3d_world_tick(world)) {
         if (fn)
             fn(world->dt);
@@ -5524,15 +5693,20 @@ void rt_game3d_world_run_fixed(void *obj, double step_sec, void *update) {
 /// @brief Fixed-timestep game loop: accumulate real frame time and run `update` + a
 ///   physics step in fixed `step_sec` increments, rendering once per displayed frame
 ///   (with an optional overlay). Decouples simulation rate from frame rate. See header.
-void rt_game3d_world_run_fixed_with_overlay(void *obj, double step_sec, void *update, void *overlay) {
+void rt_game3d_world_run_fixed_with_overlay(void *obj,
+                                            double step_sec,
+                                            void *update,
+                                            void *overlay) {
     rt_game3d_world *world =
         game3d_world_checked(obj, "Game3D.World3D.runFixedWithOverlay: invalid world");
     rt_game3d_update_fn fn = game3d_update_callback_checked(
         update,
-        "Game3D.World3D.runFixedWithOverlay: update callback must be a native function pointer; use tick/step/manual frame APIs from interpreted Zia");
+        "Game3D.World3D.runFixedWithOverlay: update callback must be a native function pointer; "
+        "use tick/step/manual frame APIs from interpreted Zia");
     rt_game3d_overlay_fn overlay_fn = game3d_overlay_callback_checked(
         overlay,
-        "Game3D.World3D.runFixedWithOverlay: overlay callback must be a native function pointer; use manual overlay calls from interpreted Zia");
+        "Game3D.World3D.runFixedWithOverlay: overlay callback must be a native function pointer; "
+        "use manual overlay calls from interpreted Zia");
     double fixed = game3d_clamp_dt(step_sec);
     double accumulator = 0.0;
     while (world && rt_game3d_world_tick(world)) {
@@ -5559,7 +5733,8 @@ void rt_game3d_world_run_frames(void *obj, int64_t frame_count, double step_sec,
     rt_game3d_world *world = game3d_world_checked(obj, "Game3D.World3D.runFrames: invalid world");
     rt_game3d_update_fn fn = game3d_update_callback_checked(
         update,
-        "Game3D.World3D.runFrames: callback must be a native function pointer; use runFramesOnly/manual frame APIs from interpreted Zia");
+        "Game3D.World3D.runFrames: callback must be a native function pointer; use "
+        "runFramesOnly/manual frame APIs from interpreted Zia");
     double fixed = game3d_clamp_dt(step_sec);
     rt_canvas3d *canvas = NULL;
     int32_t previous_input_source = 0;

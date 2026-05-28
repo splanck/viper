@@ -149,7 +149,8 @@ double rt_collision_rect_center_y(rt_collision_rect rect) {
 
 /// @brief Move the rectangle to a new top-left position.
 void rt_collision_rect_set_position(rt_collision_rect rect, double x, double y) {
-    rect = checked_collision_rect(rect, "CollisionRect.SetPosition: expected Viper.Game.CollisionRect");
+    rect = checked_collision_rect(rect,
+                                  "CollisionRect.SetPosition: expected Viper.Game.CollisionRect");
     if (!rect)
         return;
     rect->x = finite_or_zero(x);
@@ -182,7 +183,8 @@ void rt_collision_rect_set(
 /// @brief Reposition the rectangle so its center is at (cx, cy).
 /// @details Computes new top-left from center minus half-dimensions.
 void rt_collision_rect_set_center(rt_collision_rect rect, double cx, double cy) {
-    rect = checked_collision_rect(rect, "CollisionRect.SetCenter: expected Viper.Game.CollisionRect");
+    rect =
+        checked_collision_rect(rect, "CollisionRect.SetCenter: expected Viper.Game.CollisionRect");
     if (!rect || !isfinite(cx) || !isfinite(cy))
         return;
     rect->x = cx - rect->width * 0.5;
@@ -205,7 +207,8 @@ void rt_collision_rect_move(rt_collision_rect rect, double dx, double dy) {
 /// @brief Test whether a point (px, py) lies inside the collision rectangle.
 /// @details Inclusive on left/top edges, exclusive on right/bottom edges.
 int8_t rt_collision_rect_contains_point(rt_collision_rect rect, double px, double py) {
-    rect = checked_collision_rect(rect, "CollisionRect.ContainsPoint: expected Viper.Game.CollisionRect");
+    rect = checked_collision_rect(rect,
+                                  "CollisionRect.ContainsPoint: expected Viper.Game.CollisionRect");
     if (!rect)
         return 0;
     return px >= rect->x && px < rect->x + rect->width && py >= rect->y &&
@@ -216,8 +219,10 @@ int8_t rt_collision_rect_contains_point(rt_collision_rect rect, double px, doubl
 /// @details Uses the separating-axis theorem on both X and Y axes. Returns 1
 ///          if the rectangles share any interior area, 0 if separated.
 int8_t rt_collision_rect_overlaps(rt_collision_rect rect, rt_collision_rect other) {
-    rect = checked_collision_rect(rect, "CollisionRect.Overlaps: expected Viper.Game.CollisionRect");
-    other = checked_collision_rect(other, "CollisionRect.Overlaps: expected other Viper.Game.CollisionRect");
+    rect =
+        checked_collision_rect(rect, "CollisionRect.Overlaps: expected Viper.Game.CollisionRect");
+    other = checked_collision_rect(
+        other, "CollisionRect.Overlaps: expected other Viper.Game.CollisionRect");
     if (!rect || !other)
         return 0;
     return rt_collision_rect_overlaps_rect(rect, other->x, other->y, other->width, other->height);
@@ -225,7 +230,8 @@ int8_t rt_collision_rect_overlaps(rt_collision_rect rect, rt_collision_rect othe
 
 int8_t rt_collision_rect_overlaps_rect(
     rt_collision_rect rect, double ox, double oy, double ow, double oh) {
-    rect = checked_collision_rect(rect, "CollisionRect.OverlapsRect: expected Viper.Game.CollisionRect");
+    rect = checked_collision_rect(rect,
+                                  "CollisionRect.OverlapsRect: expected Viper.Game.CollisionRect");
     if (!rect)
         return 0;
     if (!isfinite(ox) || !isfinite(oy) || !isfinite(ow) || !isfinite(oh))
@@ -253,8 +259,10 @@ int8_t rt_collision_rect_overlaps_rect(
 /// @brief Compute the overlap distance along the X axis between two rectangles.
 /// @details Returns 0.0 if the rectangles do not overlap on the X axis.
 double rt_collision_rect_overlap_x(rt_collision_rect rect, rt_collision_rect other) {
-    rect = checked_collision_rect(rect, "CollisionRect.OverlapX: expected Viper.Game.CollisionRect");
-    other = checked_collision_rect(other, "CollisionRect.OverlapX: expected other Viper.Game.CollisionRect");
+    rect =
+        checked_collision_rect(rect, "CollisionRect.OverlapX: expected Viper.Game.CollisionRect");
+    other = checked_collision_rect(
+        other, "CollisionRect.OverlapX: expected other Viper.Game.CollisionRect");
     if (!rect || !other)
         return 0.0;
 
@@ -277,8 +285,10 @@ double rt_collision_rect_overlap_x(rt_collision_rect rect, rt_collision_rect oth
 /// @brief Compute the overlap distance along the Y axis between two rectangles.
 /// @details Returns 0.0 if the rectangles do not overlap on the Y axis.
 double rt_collision_rect_overlap_y(rt_collision_rect rect, rt_collision_rect other) {
-    rect = checked_collision_rect(rect, "CollisionRect.OverlapY: expected Viper.Game.CollisionRect");
-    other = checked_collision_rect(other, "CollisionRect.OverlapY: expected other Viper.Game.CollisionRect");
+    rect =
+        checked_collision_rect(rect, "CollisionRect.OverlapY: expected Viper.Game.CollisionRect");
+    other = checked_collision_rect(
+        other, "CollisionRect.OverlapY: expected other Viper.Game.CollisionRect");
     if (!rect || !other)
         return 0.0;
 
@@ -321,8 +331,10 @@ void rt_collision_rect_expand(rt_collision_rect rect, double margin) {
 /// @details Returns 1 if the other rectangle is entirely within the bounds
 ///          of this one (inclusive on all edges).
 int8_t rt_collision_rect_contains_rect(rt_collision_rect rect, rt_collision_rect other) {
-    rect = checked_collision_rect(rect, "CollisionRect.ContainsRect: expected Viper.Game.CollisionRect");
-    other = checked_collision_rect(other, "CollisionRect.ContainsRect: expected other Viper.Game.CollisionRect");
+    rect = checked_collision_rect(rect,
+                                  "CollisionRect.ContainsRect: expected Viper.Game.CollisionRect");
+    other = checked_collision_rect(
+        other, "CollisionRect.ContainsRect: expected other Viper.Game.CollisionRect");
     if (!rect || !other)
         return 0;
 
@@ -338,8 +350,8 @@ int8_t rt_collision_rect_contains_rect(rt_collision_rect rect, rt_collision_rect
 int8_t rt_collision_rects_overlap(
     double x1, double y1, double w1, double h1, double x2, double y2, double w2, double h2) {
     if (!isfinite(x1) || !isfinite(y1) || !isfinite(w1) || !isfinite(h1) || !isfinite(x2) ||
-        !isfinite(y2) || !isfinite(w2) || !isfinite(h2) || w1 <= 0.0 || h1 <= 0.0 ||
-        w2 <= 0.0 || h2 <= 0.0)
+        !isfinite(y2) || !isfinite(w2) || !isfinite(h2) || w1 <= 0.0 || h1 <= 0.0 || w2 <= 0.0 ||
+        h2 <= 0.0)
         return 0;
     if (x1 + w1 <= x2 || x2 + w2 <= x1 || y1 + h1 <= y2 || y2 + h2 <= y1) {
         return 0;

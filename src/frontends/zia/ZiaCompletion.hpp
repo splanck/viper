@@ -87,11 +87,11 @@ struct CompletionItem {
     std::string label;      ///< Text shown in the popup list
     std::string insertText; ///< Text inserted into the editor buffer
     CompletionKind kind{CompletionKind::Variable};
-    std::string detail;    ///< Type/signature shown right-aligned in popup
-    std::string documentation; ///< Optional documentation text.
-    std::string source;        ///< Source provider, e.g. "scope", "runtime", "keyword".
+    std::string detail;           ///< Type/signature shown right-aligned in popup
+    std::string documentation;    ///< Optional documentation text.
+    std::string source;           ///< Source provider, e.g. "scope", "runtime", "keyword".
     std::string commitCharacters; ///< Characters that can explicitly commit the item.
-    int sortPriority{100}; ///< Lower = ranked higher
+    int sortPriority{100};        ///< Lower = ranked higher
     int replacementStartLine{1};
     int replacementStartColumn{0};
     int replacementEndLine{1};
@@ -200,11 +200,8 @@ class CompletionEngine {
     /// @brief Completion items for code snippets/templates matching @p prefix.
     std::vector<CompletionItem> provideSnippets(const std::string &prefix) const;
 
-    std::vector<CompletionItem> provideScopeSymbols(const Sema &sema,
-                                                    const std::string &prefix,
-                                                    uint32_t fileId,
-                                                    int line,
-                                                    int col) const;
+    std::vector<CompletionItem> provideScopeSymbols(
+        const Sema &sema, const std::string &prefix, uint32_t fileId, int line, int col) const;
 
     std::vector<CompletionItem> provideMemberCompletions(const Sema &sema,
                                                          const Context &ctx) const;

@@ -105,7 +105,8 @@ static void camera_release_ref(void **slot) {
     *slot = NULL;
 }
 
-/// @brief Round a long double to the nearest int64, saturating at INT64_MIN/MAX instead of overflowing.
+/// @brief Round a long double to the nearest int64, saturating at INT64_MIN/MAX instead of
+/// overflowing.
 static int64_t camera_ld_to_i64_sat(long double value) {
     if (value >= (long double)INT64_MAX)
         return INT64_MAX;
@@ -132,7 +133,8 @@ static int64_t camera_clamp_i64(int64_t value, int64_t min_value, int64_t max_va
     return value;
 }
 
-/// @brief Subtract two int64 values with saturation at INT64_MIN/MAX (delegates through long double).
+/// @brief Subtract two int64 values with saturation at INT64_MIN/MAX (delegates through long
+/// double).
 static int64_t camera_sub_saturating(int64_t a, int64_t b) {
     return camera_ld_to_i64_sat((long double)a - (long double)b);
 }
@@ -505,8 +507,8 @@ int64_t rt_camera_get_x(void *camera_ptr) {
     return camera->x;
 }
 
-/// @brief Set the camera viewport's world-space left edge (clamped to active bounds, if any). Marks the
-/// view-transform dirty so the next render recomputes derived state.
+/// @brief Set the camera viewport's world-space left edge (clamped to active bounds, if any). Marks
+/// the view-transform dirty so the next render recomputes derived state.
 void rt_camera_set_x(void *camera_ptr, int64_t x) {
     rt_camera_impl *camera = camera_checked_or_null(camera_ptr);
     if (!camera) {

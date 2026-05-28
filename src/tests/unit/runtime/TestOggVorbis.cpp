@@ -20,8 +20,8 @@
 #include "tests/TestHarness.hpp"
 #include "tests/common/PosixCompat.h"
 
-#include <cstdio>
 #include <cstdint>
+#include <cstdio>
 #include <cstdlib>
 #include <cstring>
 #include <string>

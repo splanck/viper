@@ -218,8 +218,10 @@ static int64_t to_days_since_epoch(int64_t year, int64_t month, int64_t day) {
 ///          reverses the Gregorian era/month transform to recover year, month,
 ///          and day. The constants come from Gregorian cycle lengths: 400-year
 ///          cycle = 146097 days, and 5-month group = 153 days.
-static int from_days_since_epoch_checked(
-    int64_t days, int64_t *year, int64_t *month, int64_t *day) {
+static int from_days_since_epoch_checked(int64_t days,
+                                         int64_t *year,
+                                         int64_t *month,
+                                         int64_t *day) {
     int64_t z;
     if (date_checked_add_i64(days, 719468, &z))
         return 0;
@@ -227,8 +229,7 @@ static int from_days_since_epoch_checked(
     int64_t era = date_floor_div(z, 146097);
     int64_t era_days;
     int64_t doe;
-    if (date_checked_mul_i64(era, 146097, &era_days) ||
-        date_checked_sub_i64(z, era_days, &doe))
+    if (date_checked_mul_i64(era, 146097, &era_days) || date_checked_sub_i64(z, era_days, &doe))
         return 0;
 
     int64_t yoe = (doe - doe / 1460 + doe / 36524 - doe / 146096) / 365;
@@ -240,8 +241,7 @@ static int from_days_since_epoch_checked(
 
     int64_t era_years;
     int64_t y;
-    if (date_checked_mul_i64(era, 400, &era_years) ||
-        date_checked_add_i64(yoe, era_years, &y) ||
+    if (date_checked_mul_i64(era, 400, &era_years) || date_checked_add_i64(yoe, era_years, &y) ||
         (m <= 2 && date_checked_add_i64(y, 1, &y)))
         return 0;
 

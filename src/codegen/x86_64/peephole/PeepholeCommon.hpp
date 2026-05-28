@@ -21,8 +21,8 @@
 #pragma once
 
 #include "../MachineIR.hpp"
-#include "codegen/x86_64/OperandRoles.hpp"
 #include "codegen/common/PeepholeUtil.hpp"
+#include "codegen/x86_64/OperandRoles.hpp"
 
 #include <array>
 #include <optional>

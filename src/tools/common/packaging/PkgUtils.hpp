@@ -104,8 +104,8 @@ inline std::string normalizeDebName(const std::string &name) {
         else if (std::isalnum(uc) || c == '+' || c == '-' || c == '.')
             result.push_back(static_cast<char>(std::tolower(uc)));
         else
-            throw std::runtime_error("Debian package name contains an invalid character: '" +
-                                     name + "'");
+            throw std::runtime_error("Debian package name contains an invalid character: '" + name +
+                                     "'");
     }
     if (result.size() < 2 || !std::isalnum(static_cast<unsigned char>(result.front())))
         throw std::runtime_error("Debian package name must start with an alphanumeric character "
@@ -161,7 +161,8 @@ inline void validateSingleLineField(const std::string &value, const char *fieldN
     rejectControlChars(value, fieldName);
 }
 
-/// @brief Validate that arch is one of the two supported Viper target architectures ("x64", "arm64").
+/// @brief Validate that arch is one of the two supported Viper target architectures ("x64",
+/// "arm64").
 inline void validateToolchainArchitecture(const std::string &arch,
                                           const char *fieldName = "toolchain architecture") {
     validateSingleLineField(arch, fieldName);
@@ -174,8 +175,8 @@ inline void validateToolchainPlatform(const std::string &platform,
                                       const char *fieldName = "toolchain platform") {
     validateSingleLineField(platform, fieldName);
     if (platform != "windows" && platform != "macos" && platform != "linux") {
-        throw std::runtime_error(std::string(fieldName) +
-                                 " must be windows, macos, or linux: '" + platform + "'");
+        throw std::runtime_error(std::string(fieldName) + " must be windows, macos, or linux: '" +
+                                 platform + "'");
     }
 }
 
@@ -257,8 +258,8 @@ inline std::vector<uint32_t> parseDottedNumericVersionParts(const std::string &v
             sawDigit = true;
             const uint32_t digit = static_cast<uint32_t>(c - '0');
             if (current > (65535u - digit) / 10u)
-                throw std::runtime_error(std::string(fieldName) +
-                                         " component exceeds 65535: '" + version + "'");
+                throw std::runtime_error(std::string(fieldName) + " component exceeds 65535: '" +
+                                         version + "'");
             current = current * 10u + digit;
             continue;
         }
@@ -268,12 +269,12 @@ inline std::vector<uint32_t> parseDottedNumericVersionParts(const std::string &v
             sawDigit = false;
             continue;
         }
-        throw std::runtime_error(std::string(fieldName) +
-                                 " must be a dotted numeric version: '" + version + "'");
+        throw std::runtime_error(std::string(fieldName) + " must be a dotted numeric version: '" +
+                                 version + "'");
     }
     if (!sawDigit)
-        throw std::runtime_error(std::string(fieldName) +
-                                 " must be a dotted numeric version: '" + version + "'");
+        throw std::runtime_error(std::string(fieldName) + " must be a dotted numeric version: '" +
+                                 version + "'");
     parts.push_back(current);
     return parts;
 }
@@ -309,16 +310,16 @@ inline void validateDebDependency(const std::string &dependency) {
     };
     auto parseName = [&](size_t &pos) {
         const size_t start = pos;
-        if (pos >= dep.size() ||
-            (!std::islower(static_cast<unsigned char>(dep[pos])) &&
-             !std::isdigit(static_cast<unsigned char>(dep[pos]))))
+        if (pos >= dep.size() || (!std::islower(static_cast<unsigned char>(dep[pos])) &&
+                                  !std::isdigit(static_cast<unsigned char>(dep[pos]))))
             throw std::runtime_error("package dependency has invalid package name: '" + dep + "'");
         while (pos < dep.size() && isPkgChar(dep[pos]))
             ++pos;
         if (pos - start < 2)
             throw std::runtime_error("package dependency package name is too short: '" + dep + "'");
         if (dep[pos - 1] == '-' || dep[pos - 1] == '.')
-            throw std::runtime_error("package dependency package name has invalid suffix: '" + dep + "'");
+            throw std::runtime_error("package dependency package name has invalid suffix: '" + dep +
+                                     "'");
     };
     auto parseArchQualifier = [&](size_t &pos) {
         if (pos >= dep.size() || dep[pos] != ':')
@@ -328,8 +329,8 @@ inline void validateDebDependency(const std::string &dependency) {
         while (pos < dep.size() && isArchChar(dep[pos]))
             ++pos;
         if (start == pos)
-            throw std::runtime_error("package dependency has empty architecture qualifier: '" + dep +
-                                     "'");
+            throw std::runtime_error("package dependency has empty architecture qualifier: '" +
+                                     dep + "'");
     };
     auto parseVersionConstraint = [&](size_t &pos) {
         skipSpaces(pos);
@@ -348,7 +349,8 @@ inline void validateDebDependency(const std::string &dependency) {
             }
         }
         if (!matched)
-            throw std::runtime_error("package dependency has invalid version relation: '" + dep + "'");
+            throw std::runtime_error("package dependency has invalid version relation: '" + dep +
+                                     "'");
         skipSpaces(pos);
         const size_t versionStart = pos;
         while (pos < dep.size() && dep[pos] != ')') {
@@ -378,8 +380,8 @@ inline void validateDebDependency(const std::string &dependency) {
                 ++pos;
                 continue;
             }
-            throw std::runtime_error(std::string("package dependency has invalid ") + what +
-                                     ": '" + dep + "'");
+            throw std::runtime_error(std::string("package dependency has invalid ") + what + ": '" +
+                                     dep + "'");
         }
         if (!sawToken || pos >= dep.size() || dep[pos] != close)
             throw std::runtime_error(std::string("package dependency has unterminated ") + what +
@@ -409,8 +411,8 @@ inline void validateDebDependency(const std::string &dependency) {
         expectAlternative = false;
         skipSpaces(pos);
         if (pos < dep.size() && dep[pos] != '|')
-            throw std::runtime_error("package dependency contains trailing invalid syntax: '" + dep +
-                                     "'");
+            throw std::runtime_error("package dependency contains trailing invalid syntax: '" +
+                                     dep + "'");
     }
     if (expectAlternative)
         throw std::runtime_error("package dependency has empty alternative: '" + dep + "'");
@@ -420,31 +422,143 @@ inline void validateDebDependency(const std::string &dependency) {
 /// Used by normalizeDesktopCategories to reject unknown tokens before writing
 /// the .desktop Categories= field.
 inline bool isKnownDesktopCategory(std::string_view category) {
-    static constexpr std::string_view known[] = {
-        "AudioVideo", "Audio", "Video", "Development", "Education", "Game", "Graphics",
-        "Network", "Office", "Science", "Settings", "System", "Utility", "Building",
-        "Debugger", "IDE", "GUIDesigner", "Profiling", "RevisionControl", "Translation",
-        "Calendar", "ContactManagement", "Database", "Dictionary", "Chart", "Email",
-        "Finance", "FlowChart", "PDA", "ProjectManagement", "Presentation", "Spreadsheet",
-        "WordProcessor", "2DGraphics", "VectorGraphics", "RasterGraphics", "3DGraphics",
-        "Scanning", "OCR", "Photography", "Publishing", "Viewer", "TextTools",
-        "DesktopSettings", "HardwareSettings", "Printing", "PackageManager", "Dialup",
-        "InstantMessaging", "Chat", "IRCClient", "Feed", "FileTransfer", "HamRadio",
-        "News", "P2P", "RemoteAccess", "Telephony", "TelephonyTools", "VideoConference",
-        "WebBrowser", "WebDevelopment", "Midi", "Mixer", "Sequencer", "Tuner", "TV",
-        "AudioVideoEditing", "Player", "Recorder", "DiscBurning", "ActionGame",
-        "AdventureGame", "ArcadeGame", "BoardGame", "BlocksGame", "CardGame", "KidsGame",
-        "LogicGame", "RolePlaying", "Shooter", "Simulation", "SportsGame",
-        "StrategyGame", "Art", "Construction", "Music", "Languages",
-        "ArtificialIntelligence", "Astronomy", "Biology", "Chemistry", "ComputerScience",
-        "DataVisualization", "Economy", "Electricity", "Geography", "Geology",
-        "Geoscience", "History", "Humanities", "ImageProcessing", "Literature", "Maps",
-        "Math", "NumericalAnalysis", "MedicalSoftware", "Physics", "Robotics",
-        "Spirituality", "Sports", "ParallelComputing", "Amusement", "Archiving",
-        "Compression", "Electronics", "Emulator", "Engineering", "FileTools",
-        "FileManager", "TerminalEmulator", "Filesystem", "Monitor", "Security",
-        "Accessibility", "Calculator", "Clock", "TextEditor", "Documentation", "Adult",
-        "Core", "KDE", "GNOME", "XFCE", "GTK", "Qt", "ConsoleOnly"};
+    static constexpr std::string_view known[] = {"AudioVideo",
+                                                 "Audio",
+                                                 "Video",
+                                                 "Development",
+                                                 "Education",
+                                                 "Game",
+                                                 "Graphics",
+                                                 "Network",
+                                                 "Office",
+                                                 "Science",
+                                                 "Settings",
+                                                 "System",
+                                                 "Utility",
+                                                 "Building",
+                                                 "Debugger",
+                                                 "IDE",
+                                                 "GUIDesigner",
+                                                 "Profiling",
+                                                 "RevisionControl",
+                                                 "Translation",
+                                                 "Calendar",
+                                                 "ContactManagement",
+                                                 "Database",
+                                                 "Dictionary",
+                                                 "Chart",
+                                                 "Email",
+                                                 "Finance",
+                                                 "FlowChart",
+                                                 "PDA",
+                                                 "ProjectManagement",
+                                                 "Presentation",
+                                                 "Spreadsheet",
+                                                 "WordProcessor",
+                                                 "2DGraphics",
+                                                 "VectorGraphics",
+                                                 "RasterGraphics",
+                                                 "3DGraphics",
+                                                 "Scanning",
+                                                 "OCR",
+                                                 "Photography",
+                                                 "Publishing",
+                                                 "Viewer",
+                                                 "TextTools",
+                                                 "DesktopSettings",
+                                                 "HardwareSettings",
+                                                 "Printing",
+                                                 "PackageManager",
+                                                 "Dialup",
+                                                 "InstantMessaging",
+                                                 "Chat",
+                                                 "IRCClient",
+                                                 "Feed",
+                                                 "FileTransfer",
+                                                 "HamRadio",
+                                                 "News",
+                                                 "P2P",
+                                                 "RemoteAccess",
+                                                 "Telephony",
+                                                 "TelephonyTools",
+                                                 "VideoConference",
+                                                 "WebBrowser",
+                                                 "WebDevelopment",
+                                                 "Midi",
+                                                 "Mixer",
+                                                 "Sequencer",
+                                                 "Tuner",
+                                                 "TV",
+                                                 "AudioVideoEditing",
+                                                 "Player",
+                                                 "Recorder",
+                                                 "DiscBurning",
+                                                 "ActionGame",
+                                                 "AdventureGame",
+                                                 "ArcadeGame",
+                                                 "BoardGame",
+                                                 "BlocksGame",
+                                                 "CardGame",
+                                                 "KidsGame",
+                                                 "LogicGame",
+                                                 "RolePlaying",
+                                                 "Shooter",
+                                                 "Simulation",
+                                                 "SportsGame",
+                                                 "StrategyGame",
+                                                 "Art",
+                                                 "Construction",
+                                                 "Music",
+                                                 "Languages",
+                                                 "ArtificialIntelligence",
+                                                 "Astronomy",
+                                                 "Biology",
+                                                 "Chemistry",
+                                                 "ComputerScience",
+                                                 "DataVisualization",
+                                                 "Economy",
+                                                 "Electricity",
+                                                 "Geography",
+                                                 "Geology",
+                                                 "Geoscience",
+                                                 "History",
+                                                 "Humanities",
+                                                 "ImageProcessing",
+                                                 "Literature",
+                                                 "Maps",
+                                                 "Math",
+                                                 "NumericalAnalysis",
+                                                 "MedicalSoftware",
+                                                 "Physics",
+                                                 "Robotics",
+                                                 "Spirituality",
+                                                 "Sports",
+                                                 "ParallelComputing",
+                                                 "Amusement",
+                                                 "Archiving",
+                                                 "Compression",
+                                                 "Electronics",
+                                                 "Emulator",
+                                                 "Engineering",
+                                                 "FileTools",
+                                                 "FileManager",
+                                                 "TerminalEmulator",
+                                                 "Filesystem",
+                                                 "Monitor",
+                                                 "Security",
+                                                 "Accessibility",
+                                                 "Calculator",
+                                                 "Clock",
+                                                 "TextEditor",
+                                                 "Documentation",
+                                                 "Adult",
+                                                 "Core",
+                                                 "KDE",
+                                                 "GNOME",
+                                                 "XFCE",
+                                                 "GTK",
+                                                 "Qt",
+                                                 "ConsoleOnly"};
     for (std::string_view item : known) {
         if (item == category)
             return true;
@@ -463,8 +577,9 @@ inline std::string normalizeDesktopCategories(const std::string &categories) {
     size_t pos = 0;
     while (pos <= categories.size()) {
         const size_t next = categories.find(';', pos);
-        std::string token = trimAsciiWhitespace(
-            next == std::string::npos ? categories.substr(pos) : categories.substr(pos, next - pos));
+        std::string token =
+            trimAsciiWhitespace(next == std::string::npos ? categories.substr(pos)
+                                                          : categories.substr(pos, next - pos));
         if (!token.empty()) {
             for (char c : token) {
                 unsigned char uc = static_cast<unsigned char>(c);
@@ -499,8 +614,8 @@ inline void validateRpmVersion(const std::string &version, const char *fieldName
         unsigned char uc = static_cast<unsigned char>(c);
         if (!std::isalnum(uc) && c != '.' && c != '_' && c != '+' && c != '~' && c != '^') {
             throw std::runtime_error(std::string(fieldName) +
-                                     " contains a character invalid for RPM versions: '" +
-                                     version + "'");
+                                     " contains a character invalid for RPM versions: '" + version +
+                                     "'");
         }
     }
 }
@@ -526,7 +641,8 @@ inline void validatePackageIdentifier(const std::string &identifier,
             throw std::runtime_error(std::string(fieldName) + " has an empty component: '" +
                                      identifier + "'");
         if (len > 63)
-            throw std::runtime_error(std::string(fieldName) + " has a component longer than 63 "
+            throw std::runtime_error(std::string(fieldName) +
+                                     " has a component longer than 63 "
                                      "characters: '" +
                                      identifier + "'");
         const char first = identifier[componentStart];
@@ -541,9 +657,9 @@ inline void validatePackageIdentifier(const std::string &identifier,
             const char c = identifier[j];
             unsigned char uc = static_cast<unsigned char>(c);
             if (!std::isalnum(uc) && c != '-')
-                throw std::runtime_error(std::string(fieldName) +
-                                         " components may contain only letters, digits, and '-': '" +
-                                         identifier + "'");
+                throw std::runtime_error(
+                    std::string(fieldName) +
+                    " components may contain only letters, digits, and '-': '" + identifier + "'");
         }
         if (i < identifier.size()) {
             sawDot = true;
@@ -584,8 +700,8 @@ inline void validateWindowsProgIdBase(const std::string &identifier,
             lastWasDot = true;
             continue;
         }
-        throw std::runtime_error(std::string(fieldName) +
-                                 " is not a valid Windows ProgID base: '" + identifier + "'");
+        throw std::runtime_error(std::string(fieldName) + " is not a valid Windows ProgID base: '" +
+                                 identifier + "'");
     }
     if (!sawDot || lastWasDot)
         throw std::runtime_error(std::string(fieldName) +
@@ -650,8 +766,8 @@ inline void validateFileAssociation(const std::string &extension,
                                  extension + "'");
     const std::size_t slash = mimeType.find('/');
     if (slash == std::string::npos || slash == 0 || slash + 1 >= mimeType.size())
-        throw std::runtime_error("file association MIME type must be type/subtype: '" +
-                                 mimeType + "'");
+        throw std::runtime_error("file association MIME type must be type/subtype: '" + mimeType +
+                                 "'");
     if (mimeType.find('/', slash + 1) != std::string::npos)
         throw std::runtime_error("file association MIME type must contain only one '/': '" +
                                  mimeType + "'");
@@ -772,8 +888,8 @@ inline void validatePackageUrl(const std::string &url, const char *fieldName) {
     validateSingleLineField(url, fieldName);
     for (char c : url) {
         if (std::isspace(static_cast<unsigned char>(c)))
-            throw std::runtime_error(std::string(fieldName) +
-                                     " must not contain whitespace: '" + url + "'");
+            throw std::runtime_error(std::string(fieldName) + " must not contain whitespace: '" +
+                                     url + "'");
     }
     const auto schemePos = url.find("://");
     if (schemePos == std::string::npos || schemePos == 0 || schemePos + 3 >= url.size())
@@ -786,30 +902,29 @@ inline void validatePackageUrl(const std::string &url, const char *fieldName) {
         unsigned char uc = static_cast<unsigned char>(url[i]);
         if (!std::isalpha(uc) && !std::isdigit(uc) && url[i] != '+' && url[i] != '-' &&
             url[i] != '.')
-            throw std::runtime_error(std::string(fieldName) +
-                                     " contains an invalid URL scheme: '" + url + "'");
+            throw std::runtime_error(std::string(fieldName) + " contains an invalid URL scheme: '" +
+                                     url + "'");
     }
 
     const std::size_t authorityStart = schemePos + 3;
     const std::size_t authorityEnd = url.find_first_of("/?#", authorityStart);
-    const std::string authority =
-        authorityEnd == std::string::npos
-            ? url.substr(authorityStart)
-            : url.substr(authorityStart, authorityEnd - authorityStart);
+    const std::string authority = authorityEnd == std::string::npos
+                                      ? url.substr(authorityStart)
+                                      : url.substr(authorityStart, authorityEnd - authorityStart);
     if (authority.empty())
         throw std::runtime_error(std::string(fieldName) + " URL host must not be empty: '" + url +
                                  "'");
     if (authority.find('@') != std::string::npos)
-        throw std::runtime_error(std::string(fieldName) +
-                                 " URL userinfo is not supported: '" + url + "'");
+        throw std::runtime_error(std::string(fieldName) + " URL userinfo is not supported: '" +
+                                 url + "'");
 
     std::string host;
     std::string port;
     if (!authority.empty() && authority.front() == '[') {
         const std::size_t close = authority.find(']');
         if (close == std::string::npos || close == 1)
-            throw std::runtime_error(std::string(fieldName) +
-                                     " URL IPv6 host is malformed: '" + url + "'");
+            throw std::runtime_error(std::string(fieldName) + " URL IPv6 host is malformed: '" +
+                                     url + "'");
         host = authority.substr(1, close - 1);
         if (close + 1 < authority.size()) {
             if (authority[close + 1] != ':')
@@ -841,8 +956,8 @@ inline void validatePackageUrl(const std::string &url, const char *fieldName) {
         }
         if (host.empty() || host.front() == '.' || host.back() == '.' || host.front() == '-' ||
             host.back() == '-')
-            throw std::runtime_error(std::string(fieldName) +
-                                     " URL host is malformed: '" + url + "'");
+            throw std::runtime_error(std::string(fieldName) + " URL host is malformed: '" + url +
+                                     "'");
         bool sawHostChar = false;
         bool lastWasDot = false;
         for (char c : host) {
@@ -873,8 +988,8 @@ inline void validatePackageUrl(const std::string &url, const char *fieldName) {
     if (!port.empty()) {
         for (char c : port) {
             if (!std::isdigit(static_cast<unsigned char>(c)))
-                throw std::runtime_error(std::string(fieldName) +
-                                         " URL port must be numeric: '" + url + "'");
+                throw std::runtime_error(std::string(fieldName) + " URL port must be numeric: '" +
+                                         url + "'");
         }
     } else if (!authority.empty() && authority.back() == ':') {
         throw std::runtime_error(std::string(fieldName) + " URL port must not be empty: '" + url +
@@ -906,13 +1021,11 @@ inline void validateWindowsFileName(const std::string &name, const char *fieldNa
         lower.push_back(static_cast<char>(std::tolower(static_cast<unsigned char>(c))));
     const std::string stem = lower.substr(0, lower.find('.'));
     for (std::string_view reserved :
-         {"con", "prn", "aux", "nul", "com1", "com2", "com3", "com4", "com5", "com6",
-          "com7", "com8", "com9", "lpt1", "lpt2", "lpt3", "lpt4", "lpt5", "lpt6",
-          "lpt7", "lpt8", "lpt9"}) {
+         {"con",  "prn",  "aux",  "nul",  "com1", "com2", "com3", "com4", "com5", "com6", "com7",
+          "com8", "com9", "lpt1", "lpt2", "lpt3", "lpt4", "lpt5", "lpt6", "lpt7", "lpt8", "lpt9"}) {
         if (stem == reserved)
             throw std::runtime_error(std::string(fieldName) +
-                                     " must not be a Windows reserved device name: '" + name +
-                                     "'");
+                                     " must not be a Windows reserved device name: '" + name + "'");
     }
 }
 
@@ -1095,8 +1208,7 @@ inline std::vector<uint16_t> utf8ToUtf16CodeUnits(const std::string &text) {
             cp = (cp << 6) | (cc & 0x3F);
         }
         if ((extra == 1 && cp < 0x80) || (extra == 2 && cp < 0x800) ||
-            (extra == 3 && cp < 0x10000) || cp > 0x10FFFF ||
-            (cp >= 0xD800 && cp <= 0xDFFF)) {
+            (extra == 3 && cp < 0x10000) || cp > 0x10FFFF || (cp >= 0xD800 && cp <= 0xDFFF)) {
             throw std::runtime_error("invalid UTF-8 code point");
         }
         if (cp <= 0xFFFF) {
@@ -1176,75 +1288,73 @@ inline void safeDirectoryIterateResolved(
     std::set<fs::path> visitedDirectories;
     visitedDirectories.insert(canonicalIterRoot);
 
-    std::function<void(const fs::path &, const fs::path &)> walk =
-        [&](const fs::path &physicalDir, const fs::path &logicalDir) {
-            auto it = fs::directory_iterator(physicalDir, ec);
-            if (ec) {
-                throw std::runtime_error("cannot access package asset directory '" +
-                                         logicalDir.string() + "': " + ec.message());
-            }
-            const auto end = fs::directory_iterator();
-            while (it != end) {
-                const fs::path entryPath = logicalDir / it->path().filename();
-                bool skipEntry = false;
-                bool isDirectory = false;
-                bool isRegularFile = false;
-                bool hasResolvedSymlink = false;
-                fs::path resolvedSymlink;
+    std::function<void(const fs::path &, const fs::path &)> walk = [&](const fs::path &physicalDir,
+                                                                       const fs::path &logicalDir) {
+        auto it = fs::directory_iterator(physicalDir, ec);
+        if (ec) {
+            throw std::runtime_error("cannot access package asset directory '" +
+                                     logicalDir.string() + "': " + ec.message());
+        }
+        const auto end = fs::directory_iterator();
+        while (it != end) {
+            const fs::path entryPath = logicalDir / it->path().filename();
+            bool skipEntry = false;
+            bool isDirectory = false;
+            bool isRegularFile = false;
+            bool hasResolvedSymlink = false;
+            fs::path resolvedSymlink;
 
-                std::error_code entryEc;
-                if (fs::is_symlink(fs::symlink_status(entryPath, entryEc))) {
-                    fs::path resolved = fs::canonical(entryPath, entryEc);
-                    if (entryEc) {
-                        throw std::runtime_error("cannot resolve package asset symlink '" +
-                                                 entryPath.string() + "': " +
-                                                 entryEc.message());
-                    } else if (!isPathWithin(canonicalRoot, resolved)) {
-                        throw std::runtime_error("package asset symlink escapes the project root: '" +
-                                                 entryPath.string() + "'");
-                    } else {
-                        resolvedSymlink = resolved;
-                        hasResolvedSymlink = true;
-                    }
-                }
-
-                entryEc.clear();
-                const fs::path resolvedPath = hasResolvedSymlink ? resolvedSymlink : entryPath;
-                if (!skipEntry) {
-                    const fs::file_status status = fs::status(resolvedPath, entryEc);
-                    if (!entryEc) {
-                        isDirectory = fs::is_directory(status);
-                        isRegularFile = fs::is_regular_file(status);
-                    }
-                }
+            std::error_code entryEc;
+            if (fs::is_symlink(fs::symlink_status(entryPath, entryEc))) {
+                fs::path resolved = fs::canonical(entryPath, entryEc);
                 if (entryEc) {
-                    throw std::runtime_error("cannot stat package asset entry '" +
+                    throw std::runtime_error("cannot resolve package asset symlink '" +
                                              entryPath.string() + "': " + entryEc.message());
-                }
-
-                if (!skipEntry)
-                    callback(SafeDirectoryEntry{
-                        entryPath, resolvedPath, isDirectory, isRegularFile, hasResolvedSymlink});
-
-                if (!skipEntry && isDirectory) {
-                    fs::path resolvedDir =
-                        hasResolvedSymlink ? resolvedSymlink : fs::canonical(entryPath, entryEc);
-                    if (entryEc) {
-                        throw std::runtime_error("cannot resolve package asset directory '" +
-                                                 entryPath.string() + "': " +
-                                                 entryEc.message());
-                    } else if (visitedDirectories.insert(resolvedDir).second) {
-                        walk(resolvedDir, entryPath);
-                    }
-                }
-
-                it.increment(ec);
-                if (ec) {
-                    throw std::runtime_error("cannot advance package asset directory iterator from '" +
-                                             entryPath.string() + "': " + ec.message());
+                } else if (!isPathWithin(canonicalRoot, resolved)) {
+                    throw std::runtime_error("package asset symlink escapes the project root: '" +
+                                             entryPath.string() + "'");
+                } else {
+                    resolvedSymlink = resolved;
+                    hasResolvedSymlink = true;
                 }
             }
-        };
+
+            entryEc.clear();
+            const fs::path resolvedPath = hasResolvedSymlink ? resolvedSymlink : entryPath;
+            if (!skipEntry) {
+                const fs::file_status status = fs::status(resolvedPath, entryEc);
+                if (!entryEc) {
+                    isDirectory = fs::is_directory(status);
+                    isRegularFile = fs::is_regular_file(status);
+                }
+            }
+            if (entryEc) {
+                throw std::runtime_error("cannot stat package asset entry '" + entryPath.string() +
+                                         "': " + entryEc.message());
+            }
+
+            if (!skipEntry)
+                callback(SafeDirectoryEntry{
+                    entryPath, resolvedPath, isDirectory, isRegularFile, hasResolvedSymlink});
+
+            if (!skipEntry && isDirectory) {
+                fs::path resolvedDir =
+                    hasResolvedSymlink ? resolvedSymlink : fs::canonical(entryPath, entryEc);
+                if (entryEc) {
+                    throw std::runtime_error("cannot resolve package asset directory '" +
+                                             entryPath.string() + "': " + entryEc.message());
+                } else if (visitedDirectories.insert(resolvedDir).second) {
+                    walk(resolvedDir, entryPath);
+                }
+            }
+
+            it.increment(ec);
+            if (ec) {
+                throw std::runtime_error("cannot advance package asset directory iterator from '" +
+                                         entryPath.string() + "': " + ec.message());
+            }
+        }
+    };
     walk(canonicalIterRoot, root);
 }
 

@@ -49,8 +49,10 @@ extern void rt_mesh3d_add_vertex(
     void *m, double x, double y, double z, double nx, double ny, double nz, double u, double v);
 extern void rt_mesh3d_add_triangle(void *m, int64_t v0, int64_t v1, int64_t v2);
 extern void rt_canvas3d_draw_mesh(void *canvas, void *mesh, void *transform, void *material);
-extern void rt_canvas3d_draw_mesh_matrix(
-    void *canvas, void *mesh, const double *transform, void *material);
+extern void rt_canvas3d_draw_mesh_matrix(void *canvas,
+                                         void *mesh,
+                                         const double *transform,
+                                         void *material);
 extern void *rt_material3d_new_color(double r, double g, double b);
 extern void rt_material3d_set_alpha(void *m, double a);
 extern void rt_material3d_set_shininess(void *m, double s);
@@ -138,7 +140,8 @@ static double water3d_clamp01(double value) {
     return value;
 }
 
-/// @brief Clamp a strictly-positive parameter to `(0, max_value]`; non-finite or ≤0 maps to `fallback`.
+/// @brief Clamp a strictly-positive parameter to `(0, max_value]`; non-finite or ≤0 maps to
+/// `fallback`.
 static double water3d_clamp_positive_or(double value, double fallback, double max_value) {
     if (!isfinite(value) || value <= 0.0)
         return fallback;
@@ -496,8 +499,22 @@ void rt_canvas3d_draw_water(void *canvas, void *obj, void *camera) {
     /* Draw with backface culling disabled (water visible from both sides) */
     extern void rt_canvas3d_set_backface_cull(void *canvas, int8_t enabled);
     static const double identity[16] = {
-        1.0, 0.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0,
-        0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 0.0, 1.0,
+        1.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        1.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        1.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        1.0,
     };
     int8_t restore_backface_cull = c->backface_cull;
     rt_canvas3d_set_backface_cull(c, 0);

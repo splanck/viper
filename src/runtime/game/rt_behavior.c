@@ -36,11 +36,8 @@
 
 /// @brief True if the target is within (0, @p range] of the entity (squared
 ///        distance compare; coincident points return 0).
-static int8_t behavior_target_in_chase_range(int64_t entity_x,
-                                             int64_t entity_y,
-                                             int64_t target_x,
-                                             int64_t target_y,
-                                             int64_t range) {
+static int8_t behavior_target_in_chase_range(
+    int64_t entity_x, int64_t entity_y, int64_t target_x, int64_t target_y, int64_t range) {
     if (range <= 0)
         return 0;
     long double dx = (long double)target_x - (long double)entity_x;
@@ -214,8 +211,7 @@ void rt_behavior_add_shoot(void *bhv, int64_t cooldown_ms) {
 
 /// @brief Add sine-wave floating behavior (vertical oscillation for hovering enemies).
 void rt_behavior_add_sine_float(void *bhv, int64_t amplitude, int64_t speed) {
-    behavior_impl *b =
-        checked_behavior(bhv, "Behavior.AddSineFloat: expected Viper.Game.Behavior");
+    behavior_impl *b = checked_behavior(bhv, "Behavior.AddSineFloat: expected Viper.Game.Behavior");
     if (!b)
         return;
     b->flags |= BHV_SINE_FLOAT;
@@ -225,8 +221,7 @@ void rt_behavior_add_sine_float(void *bhv, int64_t amplitude, int64_t speed) {
 
 /// @brief Add frame-based animation loop (cycles through frames at the given interval).
 void rt_behavior_add_anim_loop(void *bhv, int64_t frame_count, int64_t ms_per_frame) {
-    behavior_impl *b =
-        checked_behavior(bhv, "Behavior.AddAnimLoop: expected Viper.Game.Behavior");
+    behavior_impl *b = checked_behavior(bhv, "Behavior.AddAnimLoop: expected Viper.Game.Behavior");
     if (!b)
         return;
     b->flags |= BHV_ANIM_LOOP;
@@ -252,8 +247,7 @@ void rt_behavior_update(
     // 2. Patrol: set vx based on direction
     if (f & BHV_PATROL) {
         int64_t dir = rt_entity_get_dir(entity);
-        rt_entity_set_vx(entity,
-                         dir > 0 ? b->patrol_speed : behavior_neg_sat_i64(b->patrol_speed));
+        rt_entity_set_vx(entity, dir > 0 ? b->patrol_speed : behavior_neg_sat_i64(b->patrol_speed));
     }
 
     // 3. Chase: override vx if target is in range

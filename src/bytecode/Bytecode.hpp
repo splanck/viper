@@ -252,8 +252,8 @@ inline constexpr bool isKnownOpcode(uint8_t byte) {
 #include "bytecode/Bytecode.def"
 #undef BC_OPCODE
         return true;
-    default:
-        return false;
+        default:
+            return false;
     }
 }
 

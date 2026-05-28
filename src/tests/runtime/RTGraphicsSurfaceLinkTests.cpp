@@ -11,12 +11,9 @@
 //
 //===----------------------------------------------------------------------===//
 
-#include "rt_audio.h"
-#include "rt_sound3d.h"
 #include "rt_animcontroller3d.h"
+#include "rt_audio.h"
 #include "rt_canvas3d.h"
-#include "rt_soundlistener3d.h"
-#include "rt_soundsource3d.h"
 #include "rt_collider3d.h"
 #include "rt_fbx_loader.h"
 #include "rt_gltf.h"
@@ -26,6 +23,9 @@
 #include "rt_navagent3d.h"
 #include "rt_physics3d.h"
 #include "rt_scene3d.h"
+#include "rt_sound3d.h"
+#include "rt_soundlistener3d.h"
+#include "rt_soundsource3d.h"
 #include "rt_terrain3d.h"
 
 #include <cassert>

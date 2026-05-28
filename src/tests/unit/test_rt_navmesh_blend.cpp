@@ -18,8 +18,8 @@
 #include "rt_path3d.h"
 #include "rt_skeleton3d.h"
 #include <cassert>
-#include <csetjmp>
 #include <cmath>
+#include <csetjmp>
 #include <cstdio>
 #include <cstdlib>
 #include <cstring>
@@ -58,8 +58,7 @@ extern "C" void vm_trap(const char *msg) {
     std::abort();
 }
 
-template <typename Fn>
-static bool expect_trap_contains(Fn &&fn, const char *needle) {
+template <typename Fn> static bool expect_trap_contains(Fn &&fn, const char *needle) {
     last_trap = nullptr;
     expect_trap = true;
     if (setjmp(trap_jmp) == 0) {
@@ -196,9 +195,9 @@ static void test_navmesh_rejects_non_manifold_edges() {
     rt_mesh3d_add_triangle(mesh, 1, 0, 3);
     rt_mesh3d_add_triangle(mesh, 0, 1, 4);
 
-    EXPECT_TRUE(expect_trap_contains([&] { (void)rt_navmesh3d_build(mesh, 0.4, 1.8); },
-                                     "non-manifold"),
-                "NavMesh rejects non-manifold edge ownership");
+    EXPECT_TRUE(
+        expect_trap_contains([&] { (void)rt_navmesh3d_build(mesh, 0.4, 1.8); }, "non-manifold"),
+        "NavMesh rejects non-manifold edge ownership");
 }
 
 static void test_navmesh_large_mesh() {
@@ -260,16 +259,22 @@ static void test_blend_weight_sanitizes_inputs() {
     rt_anim_blend3d_add_state(blend, rt_const_cstr("walk"), anim);
 
     rt_anim_blend3d_set_weight(blend, 0, -2.0);
-    EXPECT_NEAR(rt_anim_blend3d_get_weight(blend, 0), 0.0, 0.01,
+    EXPECT_NEAR(rt_anim_blend3d_get_weight(blend, 0),
+                0.0,
+                0.01,
                 "AnimBlend3D clamps negative weights to zero");
     rt_anim_blend3d_set_weight(blend, 0, 2.0);
-    EXPECT_NEAR(rt_anim_blend3d_get_weight(blend, 0), 1.0, 0.01,
-                "AnimBlend3D clamps high weights to one");
+    EXPECT_NEAR(
+        rt_anim_blend3d_get_weight(blend, 0), 1.0, 0.01, "AnimBlend3D clamps high weights to one");
     rt_anim_blend3d_set_weight(blend, 0, NAN);
-    EXPECT_NEAR(rt_anim_blend3d_get_weight(blend, 0), 0.0, 0.01,
+    EXPECT_NEAR(rt_anim_blend3d_get_weight(blend, 0),
+                0.0,
+                0.01,
                 "AnimBlend3D converts NaN weights to zero");
     rt_anim_blend3d_set_weight_by_name(blend, rt_const_cstr("walk"), 0.25);
-    EXPECT_NEAR(rt_anim_blend3d_get_weight(blend, 0), 0.25, 0.01,
+    EXPECT_NEAR(rt_anim_blend3d_get_weight(blend, 0),
+                0.25,
+                0.01,
                 "AnimBlend3D clamps named weights through the same path");
     EXPECT_TRUE(rt_anim_blend3d_state_count(skel) == 0,
                 "AnimBlend3D accessors reject non-blender handles");

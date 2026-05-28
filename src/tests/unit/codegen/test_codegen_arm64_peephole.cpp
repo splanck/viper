@@ -255,23 +255,20 @@ TEST(AArch64Peephole, JoinForwardingBlocksClobberedLatestPairStoreOffset) {
     fn.blocks.push_back(MBasicBlock{"join", {}});
 
     auto &pred = fn.blocks[0];
-    pred.instrs.push_back(MInstr{MOpcode::StpRegFpImm,
-                                 {MOperand::regOp(PhysReg::X20),
-                                  MOperand::regOp(PhysReg::X21),
-                                  MOperand::immOp(-16)}});
-    pred.instrs.push_back(MInstr{MOpcode::StpRegFpImm,
-                                 {MOperand::regOp(PhysReg::X19),
-                                  MOperand::regOp(PhysReg::X22),
-                                  MOperand::immOp(-16)}});
+    pred.instrs.push_back(MInstr{
+        MOpcode::StpRegFpImm,
+        {MOperand::regOp(PhysReg::X20), MOperand::regOp(PhysReg::X21), MOperand::immOp(-16)}});
+    pred.instrs.push_back(MInstr{
+        MOpcode::StpRegFpImm,
+        {MOperand::regOp(PhysReg::X19), MOperand::regOp(PhysReg::X22), MOperand::immOp(-16)}});
     pred.instrs.push_back(
         MInstr{MOpcode::MovRR, {MOperand::regOp(PhysReg::X19), MOperand::regOp(PhysReg::X4)}});
     pred.instrs.push_back(MInstr{MOpcode::Br, {MOperand::labelOp("join")}});
 
     auto &join = fn.blocks[1];
-    join.instrs.push_back(MInstr{MOpcode::LdpRegFpImm,
-                                 {MOperand::regOp(PhysReg::X10),
-                                  MOperand::regOp(PhysReg::X11),
-                                  MOperand::immOp(-16)}});
+    join.instrs.push_back(MInstr{
+        MOpcode::LdpRegFpImm,
+        {MOperand::regOp(PhysReg::X10), MOperand::regOp(PhysReg::X11), MOperand::immOp(-16)}});
     join.instrs.push_back(MInstr{MOpcode::Ret, {}});
 
     (void)runPeephole(fn);

@@ -145,11 +145,8 @@ static void remove_entry_at(rt_connpool_impl *pool, int index) {
 ///          @p key into heap storage so the caller's buffer can be
 ///          stack-allocated.
 /// @return True when the entry was appended; false on capacity or OOM.
-static bool track_connection(rt_connpool_impl *pool,
-                             void *tcp,
-                             const char *key,
-                             bool in_use,
-                             time_t last_used) {
+static bool track_connection(
+    rt_connpool_impl *pool, void *tcp, const char *key, bool in_use, time_t last_used) {
     if (!pool || !tcp || !key || pool->count >= pool->max_size)
         return false;
 

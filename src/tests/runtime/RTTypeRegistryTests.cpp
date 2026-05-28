@@ -15,8 +15,8 @@
 //
 //===----------------------------------------------------------------------===//
 
-#include "rt_oop.h"
 #include "rt_object.h"
+#include "rt_oop.h"
 #include <assert.h>
 #include <csetjmp>
 #include <limits>

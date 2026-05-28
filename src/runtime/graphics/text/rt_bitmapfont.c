@@ -293,8 +293,10 @@ static int bf_copy_glyph_to_codepoint(rt_bitmapfont_impl *font, int source_index
 ///          combining-character sequence, which we skip — Viper's bitmap font
 ///          renderer does not compose). Each codepoint between separators is
 ///          aliased to the current glyph index via bf_copy_glyph_to_codepoint.
-static void bf_apply_psf2_unicode_table(
-    rt_bitmapfont_impl *font, int glyph_count, const uint8_t *table, size_t table_len) {
+static void bf_apply_psf2_unicode_table(rt_bitmapfont_impl *font,
+                                        int glyph_count,
+                                        const uint8_t *table,
+                                        size_t table_len) {
     if (!font || !table || table_len == 0)
         return;
     int glyph_index = 0;
@@ -335,8 +337,10 @@ static void bf_apply_psf2_unicode_table(
 ///          0xFFFF as the end-of-glyph separator and 0xFFFE marking the
 ///          start of a skipped combining sequence. Otherwise mirrors the
 ///          PSF v2 table semantics implemented by bf_apply_psf2_unicode_table.
-static void bf_apply_psf1_unicode_table(
-    rt_bitmapfont_impl *font, int glyph_count, const uint8_t *table, size_t table_len) {
+static void bf_apply_psf1_unicode_table(rt_bitmapfont_impl *font,
+                                        int glyph_count,
+                                        const uint8_t *table,
+                                        size_t table_len) {
     if (!font || !table || table_len < 2)
         return;
     int glyph_index = 0;
@@ -919,14 +923,13 @@ static void bf_draw_glyph_scaled(vgfx_window_t win,
             int byte_idx = col / 8;
             int bit_idx = 7 - (col % 8);
             if (g->bitmap[row * rb + byte_idx] & (1 << bit_idx)) {
-                vgfx_fill_rect(win,
-                               rtg_clamp_i64_to_i32(
-                                   rtg_add_sat64(draw_x, rtg_mul_sat64(col, scale))),
-                               rtg_clamp_i64_to_i32(
-                                   rtg_add_sat64(draw_y, rtg_mul_sat64(row, scale))),
-                               rtg_clamp_i64_to_i32(scale),
-                               rtg_clamp_i64_to_i32(scale),
-                               color);
+                vgfx_fill_rect(
+                    win,
+                    rtg_clamp_i64_to_i32(rtg_add_sat64(draw_x, rtg_mul_sat64(col, scale))),
+                    rtg_clamp_i64_to_i32(rtg_add_sat64(draw_y, rtg_mul_sat64(row, scale))),
+                    rtg_clamp_i64_to_i32(scale),
+                    rtg_clamp_i64_to_i32(scale),
+                    color);
             }
         }
     }
@@ -957,13 +960,12 @@ static void bf_draw_glyph_bg(vgfx_window_t win,
             bg_right = glyph_right;
 
         if (bg_right > bg_left) {
-            vgfx_fill_rect(
-                win,
-                rtg_clamp_i64_to_i32(bg_left),
-                rtg_clamp_i64_to_i32(py),
-                rtg_clamp_i64_to_i32(bg_right - bg_left),
-                rtg_clamp_i64_to_i32(line_h),
-                bg);
+            vgfx_fill_rect(win,
+                           rtg_clamp_i64_to_i32(bg_left),
+                           rtg_clamp_i64_to_i32(py),
+                           rtg_clamp_i64_to_i32(bg_right - bg_left),
+                           rtg_clamp_i64_to_i32(line_h),
+                           bg);
         }
 
         int rb = bf_row_bytes(g->width);
@@ -981,13 +983,12 @@ static void bf_draw_glyph_bg(vgfx_window_t win,
             }
         }
     } else if (bg_right > bg_left) {
-        vgfx_fill_rect(
-            win,
-            rtg_clamp_i64_to_i32(bg_left),
-            rtg_clamp_i64_to_i32(py),
-            rtg_clamp_i64_to_i32(bg_right - bg_left),
-            rtg_clamp_i64_to_i32(line_h),
-            bg);
+        vgfx_fill_rect(win,
+                       rtg_clamp_i64_to_i32(bg_left),
+                       rtg_clamp_i64_to_i32(py),
+                       rtg_clamp_i64_to_i32(bg_right - bg_left),
+                       rtg_clamp_i64_to_i32(line_h),
+                       bg);
     }
 }
 
@@ -1165,12 +1166,14 @@ void rt_canvas_text_font_right(
 
 #else // !VIPER_ENABLE_GRAPHICS — stubs
 
-/// @brief Stub used when graphics are not compiled in; raises an InvalidOperation trap with the given message.
+/// @brief Stub used when graphics are not compiled in; raises an InvalidOperation trap with the
+/// given message.
 static void rt_bitmapfont_canvas_unavailable_(const char *msg) {
     rt_trap_raise_kind(RT_TRAP_KIND_INVALID_OPERATION, Err_InvalidOperation, 0, msg);
 }
 
-/// @brief Stub for Canvas.TextFont when VIPER_ENABLE_GRAPHICS is undefined; raises an InvalidOperation trap.
+/// @brief Stub for Canvas.TextFont when VIPER_ENABLE_GRAPHICS is undefined; raises an
+/// InvalidOperation trap.
 void rt_canvas_text_font(
     void *canvas, int64_t x, int64_t y, rt_string text, void *font, int64_t color) {
     (void)canvas;
@@ -1182,7 +1185,8 @@ void rt_canvas_text_font(
     rt_bitmapfont_canvas_unavailable_("Canvas.TextFont: graphics support not compiled in");
 }
 
-/// @brief Stub for Canvas.TextFontBg when VIPER_ENABLE_GRAPHICS is undefined; raises an InvalidOperation trap.
+/// @brief Stub for Canvas.TextFontBg when VIPER_ENABLE_GRAPHICS is undefined; raises an
+/// InvalidOperation trap.
 void rt_canvas_text_font_bg(
     void *canvas, int64_t x, int64_t y, rt_string text, void *font, int64_t fg, int64_t bg) {
     (void)canvas;
@@ -1195,7 +1199,8 @@ void rt_canvas_text_font_bg(
     rt_bitmapfont_canvas_unavailable_("Canvas.TextFontBg: graphics support not compiled in");
 }
 
-/// @brief Stub for Canvas.TextFontScaled when VIPER_ENABLE_GRAPHICS is undefined; raises an InvalidOperation trap.
+/// @brief Stub for Canvas.TextFontScaled when VIPER_ENABLE_GRAPHICS is undefined; raises an
+/// InvalidOperation trap.
 void rt_canvas_text_font_scaled(
     void *canvas, int64_t x, int64_t y, rt_string text, void *font, int64_t scale, int64_t color) {
     (void)canvas;
@@ -1208,7 +1213,8 @@ void rt_canvas_text_font_scaled(
     rt_bitmapfont_canvas_unavailable_("Canvas.TextFontScaled: graphics support not compiled in");
 }
 
-/// @brief Stub for Canvas.TextFontCentered when VIPER_ENABLE_GRAPHICS is undefined; raises an InvalidOperation trap.
+/// @brief Stub for Canvas.TextFontCentered when VIPER_ENABLE_GRAPHICS is undefined; raises an
+/// InvalidOperation trap.
 void rt_canvas_text_font_centered(
     void *canvas, int64_t y, rt_string text, void *font, int64_t color) {
     (void)canvas;
@@ -1219,7 +1225,8 @@ void rt_canvas_text_font_centered(
     rt_bitmapfont_canvas_unavailable_("Canvas.TextFontCentered: graphics support not compiled in");
 }
 
-/// @brief Stub for Canvas.TextFontRight when VIPER_ENABLE_GRAPHICS is undefined; raises an InvalidOperation trap.
+/// @brief Stub for Canvas.TextFontRight when VIPER_ENABLE_GRAPHICS is undefined; raises an
+/// InvalidOperation trap.
 void rt_canvas_text_font_right(
     void *canvas, int64_t margin, int64_t y, rt_string text, void *font, int64_t color) {
     (void)canvas;

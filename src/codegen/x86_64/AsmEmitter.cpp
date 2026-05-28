@@ -52,13 +52,39 @@ namespace {
 ///          beyond index 15 are unused (XMM regs are not aliased like GPRs).
 constexpr std::array<std::array<const char *, 16>, 2> kGprAliasNames = {{
     // 8-bit  (lo byte): RAX..RSP then R8..R15
-    {"%al",  "%bl",  "%cl",   "%dl",   "%sil",  "%dil",
-     "%r8b", "%r9b", "%r10b", "%r11b", "%r12b", "%r13b",
-     "%r14b","%r15b","%bpl",  "%spl"},
+    {"%al",
+     "%bl",
+     "%cl",
+     "%dl",
+     "%sil",
+     "%dil",
+     "%r8b",
+     "%r9b",
+     "%r10b",
+     "%r11b",
+     "%r12b",
+     "%r13b",
+     "%r14b",
+     "%r15b",
+     "%bpl",
+     "%spl"},
     // 32-bit (dword)
-    {"%eax", "%ebx", "%ecx",  "%edx",  "%esi",  "%edi",
-     "%r8d", "%r9d", "%r10d", "%r11d", "%r12d", "%r13d",
-     "%r14d","%r15d","%ebp",  "%esp"},
+    {"%eax",
+     "%ebx",
+     "%ecx",
+     "%edx",
+     "%esi",
+     "%edi",
+     "%r8d",
+     "%r9d",
+     "%r10d",
+     "%r11d",
+     "%r12d",
+     "%r13d",
+     "%r14d",
+     "%r15d",
+     "%ebp",
+     "%esp"},
 }};
 
 /// @brief Build an @ref OperandPattern from up to three operand kind slots.
@@ -238,9 +264,8 @@ const OpFmt *getFmt(MOpcode opc) noexcept {
 ///          known prefixes such as @c L./@c Ltmp/@c LBB. Local symbols are
 ///          not given the standard underscore prefix when formatted.
 [[nodiscard]] bool isDarwinLocalSymbol(std::string_view name) noexcept {
-    return !name.empty() &&
-           (name.front() == '.' || name.rfind("L.", 0) == 0 || name.rfind("Ltmp", 0) == 0 ||
-            name.rfind("LBB", 0) == 0);
+    return !name.empty() && (name.front() == '.' || name.rfind("L.", 0) == 0 ||
+                             name.rfind("Ltmp", 0) == 0 || name.rfind("LBB", 0) == 0);
 }
 
 /// @brief Format a symbol reference, applying Mach-O underscore prefixing.
@@ -279,23 +304,22 @@ void emitOperand(const Operand &operand,
                  objfile::ObjFormat format) {
     static_cast<void>(target);
     std::visit(
-        Overload{[&](const OpReg &reg) { out << asmfmt::fmt_reg(encodeRegister(reg)); },
-                 [&](const OpImm &imm) { out << asmfmt::format_imm(imm.val); },
-                 [&](const OpMem &mem) {
-                     asmfmt::MemAddr addr{};
-                     addr.base = encodeRegister(mem.base);
-                     addr.disp = mem.disp;
-                     if (mem.hasIndex) {
-                         addr.index = encodeRegister(mem.index);
-                         addr.scale = mem.scale;
-                         addr.has_index = true;
-                     }
-                     out << asmfmt::format_mem(addr);
-                 },
-                 [&](const OpLabel &label) { out << formatSymbolReference(label.name, format); },
-                 [&](const OpRipLabel &label) {
-                     out << formatRipSymbolReference(label.name, format);
-                 }},
+        Overload{
+            [&](const OpReg &reg) { out << asmfmt::fmt_reg(encodeRegister(reg)); },
+            [&](const OpImm &imm) { out << asmfmt::format_imm(imm.val); },
+            [&](const OpMem &mem) {
+                asmfmt::MemAddr addr{};
+                addr.base = encodeRegister(mem.base);
+                addr.disp = mem.disp;
+                if (mem.hasIndex) {
+                    addr.index = encodeRegister(mem.index);
+                    addr.scale = mem.scale;
+                    addr.has_index = true;
+                }
+                out << asmfmt::format_mem(addr);
+            },
+            [&](const OpLabel &label) { out << formatSymbolReference(label.name, format); },
+            [&](const OpRipLabel &label) { out << formatRipSymbolReference(label.name, format); }},
         operand);
 }
 
@@ -497,7 +521,8 @@ void AsmEmitter::emitFunction(std::ostream &os,
                               const MFunction &func,
                               const TargetInfo &target) const {
     os << ".text\n";
-    const std::string linkName = formatSymbolReference(viper::common::MangleLink(func.name), format_);
+    const std::string linkName =
+        formatSymbolReference(viper::common::MangleLink(func.name), format_);
     os << ".globl " << linkName << "\n";
     if (format_ == objfile::ObjFormat::ELF) {
         os << ".type " << linkName << ", @function\n";

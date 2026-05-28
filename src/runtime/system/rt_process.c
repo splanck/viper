@@ -152,7 +152,9 @@ static void buffer_free(process_buffer *buf) {
     buf->cap = 0;
 }
 
-static process_string_vector build_string_vector(const char *first, void *items, int include_first) {
+static process_string_vector build_string_vector(const char *first,
+                                                 void *items,
+                                                 int include_first) {
     process_string_vector vector;
     memset(&vector, 0, sizeof(vector));
 
@@ -397,7 +399,10 @@ static void process_poll_internal(rt_process_impl *proc, int wait) {
     }
 }
 
-static rt_process_impl *process_start_impl(rt_string program, void *args, rt_string cwd, void *env) {
+static rt_process_impl *process_start_impl(rt_string program,
+                                           void *args,
+                                           rt_string cwd,
+                                           void *env) {
     if (!program || rt_str_len(program) == 0)
         return NULL;
 
@@ -441,16 +446,8 @@ static rt_process_impl *process_start_impl(rt_string program, void *args, rt_str
     si.hStdOutput = stdout_write;
     si.hStdError = stderr_write;
 
-    BOOL ok = CreateProcessA(program_text,
-                             cmdline,
-                             NULL,
-                             NULL,
-                             TRUE,
-                             CREATE_NO_WINDOW,
-                             env_block,
-                             cwd_text,
-                             &si,
-                             &pi);
+    BOOL ok = CreateProcessA(
+        program_text, cmdline, NULL, NULL, TRUE, CREATE_NO_WINDOW, env_block, cwd_text, &si, &pi);
 
     close_handle(&stdout_write);
     close_handle(&stderr_write);
@@ -484,7 +481,10 @@ static void process_poll_internal(rt_process_impl *proc, int wait) {
     (void)wait;
 }
 
-static rt_process_impl *process_start_impl(rt_string program, void *args, rt_string cwd, void *env) {
+static rt_process_impl *process_start_impl(rt_string program,
+                                           void *args,
+                                           rt_string cwd,
+                                           void *env) {
     (void)program;
     (void)args;
     (void)cwd;
@@ -572,7 +572,10 @@ static void process_poll_internal(rt_process_impl *proc, int wait) {
     }
 }
 
-static rt_process_impl *process_start_impl(rt_string program, void *args, rt_string cwd, void *env) {
+static rt_process_impl *process_start_impl(rt_string program,
+                                           void *args,
+                                           rt_string cwd,
+                                           void *env) {
     if (!program || rt_str_len(program) == 0)
         return NULL;
 

@@ -51,23 +51,14 @@ static void tooltip_destroy(vg_widget_t *widget);
 static void tooltip_measure(vg_widget_t *widget, float available_width, float available_height);
 static void tooltip_paint(vg_widget_t *widget, void *canvas);
 static uint32_t tooltip_apply_alpha(uint32_t color, uint32_t backdrop);
-static void tooltip_fill_round_rect(vgfx_window_t win,
-                                    int32_t x,
-                                    int32_t y,
-                                    int32_t w,
-                                    int32_t h,
-                                    int32_t radius,
-                                    uint32_t color);
-static void tooltip_stroke_round_rect(vgfx_window_t win,
-                                      int32_t x,
-                                      int32_t y,
-                                      int32_t w,
-                                      int32_t h,
-                                      int32_t radius,
-                                      uint32_t color);
+static void tooltip_fill_round_rect(
+    vgfx_window_t win, int32_t x, int32_t y, int32_t w, int32_t h, int32_t radius, uint32_t color);
+static void tooltip_stroke_round_rect(
+    vgfx_window_t win, int32_t x, int32_t y, int32_t w, int32_t h, int32_t radius, uint32_t color);
 
 /// @brief Return true if widget is ancestor itself or any descendant by walking the parent chain.
-static bool tooltip_widget_is_descendant_of(const vg_widget_t *widget, const vg_widget_t *ancestor) {
+static bool tooltip_widget_is_descendant_of(const vg_widget_t *widget,
+                                            const vg_widget_t *ancestor) {
     for (const vg_widget_t *current = widget; current; current = current->parent) {
         if (current == ancestor)
             return true;
@@ -85,7 +76,8 @@ static char *tooltip_dup_range(const char *text, size_t len) {
     return copy;
 }
 
-/// @brief Word-wrap tooltip->text to tooltip->max_width; returns line count and optionally allocates out_lines[].
+/// @brief Word-wrap tooltip->text to tooltip->max_width; returns line count and optionally
+/// allocates out_lines[].
 static int tooltip_wrap_text(vg_tooltip_t *tooltip, char ***out_lines, float *out_max_width) {
     if (out_lines)
         *out_lines = NULL;
@@ -226,7 +218,8 @@ static int tooltip_wrap_text(vg_tooltip_t *tooltip, char ***out_lines, float *ou
     return count > 0 ? count : 1;
 }
 
-/// @brief Composite color's stored alpha channel against backdrop, returning a fully-opaque 24-bit RGB result.
+/// @brief Composite color's stored alpha channel against backdrop, returning a fully-opaque 24-bit
+/// RGB result.
 static uint32_t tooltip_apply_alpha(uint32_t color, uint32_t backdrop) {
     uint8_t alpha = (uint8_t)(color >> 24);
     uint32_t rgb = color & 0x00FFFFFFu;
@@ -236,13 +229,8 @@ static uint32_t tooltip_apply_alpha(uint32_t color, uint32_t backdrop) {
 }
 
 /// @brief Fill a rounded rectangle, falling back to a plain rect when radius is zero or too large.
-static void tooltip_fill_round_rect(vgfx_window_t win,
-                                    int32_t x,
-                                    int32_t y,
-                                    int32_t w,
-                                    int32_t h,
-                                    int32_t radius,
-                                    uint32_t color) {
+static void tooltip_fill_round_rect(
+    vgfx_window_t win, int32_t x, int32_t y, int32_t w, int32_t h, int32_t radius, uint32_t color) {
     if (w <= 0 || h <= 0)
         return;
     int32_t max_radius = w < h ? w / 2 : h / 2;
@@ -261,14 +249,10 @@ static void tooltip_fill_round_rect(vgfx_window_t win,
     vgfx_fill_circle(win, x + w - radius - 1, y + h - radius - 1, radius, color);
 }
 
-/// @brief Stroke the border of a rounded rectangle, falling back to a plain rect when radius is zero or too large.
-static void tooltip_stroke_round_rect(vgfx_window_t win,
-                                      int32_t x,
-                                      int32_t y,
-                                      int32_t w,
-                                      int32_t h,
-                                      int32_t radius,
-                                      uint32_t color) {
+/// @brief Stroke the border of a rounded rectangle, falling back to a plain rect when radius is
+/// zero or too large.
+static void tooltip_stroke_round_rect(
+    vgfx_window_t win, int32_t x, int32_t y, int32_t w, int32_t h, int32_t radius, uint32_t color) {
     if (w <= 1 || h <= 1)
         return;
     int32_t max_radius = w < h ? w / 2 : h / 2;
@@ -306,7 +290,8 @@ static vg_widget_vtable_t g_tooltip_vtable = {.destroy = tooltip_destroy,
 
 static vg_tooltip_manager_t g_tooltip_manager = {0};
 
-/// @brief Return the current wall-clock time in milliseconds (monotonic on POSIX, GetTickCount64 on Windows).
+/// @brief Return the current wall-clock time in milliseconds (monotonic on POSIX, GetTickCount64 on
+/// Windows).
 static uint64_t tooltip_now_ms(void) {
 #ifdef _WIN32
     return (uint64_t)GetTickCount64();
@@ -326,7 +311,8 @@ vg_tooltip_manager_t *vg_tooltip_manager_get(void) {
 // Tooltip Implementation
 //=============================================================================
 
-/// @brief Create a tooltip widget with theme-derived defaults (500 ms show delay, cursor-follow mode).
+/// @brief Create a tooltip widget with theme-derived defaults (500 ms show delay, cursor-follow
+/// mode).
 ///
 /// @return Newly allocated invisible tooltip, or NULL on allocation failure.
 vg_tooltip_t *vg_tooltip_create(void) {
@@ -416,9 +402,10 @@ static void tooltip_paint(vg_widget_t *widget, void *canvas) {
     int32_t w = (int32_t)widget->measured_width;
     int32_t h = (int32_t)widget->measured_height;
     int32_t radius = (int32_t)tooltip->corner_radius;
-    uint32_t bg = tooltip_apply_alpha(tooltip->bg_color, theme ? theme->colors.bg_primary : 0x00202020u);
-    uint32_t border =
-        tooltip_apply_alpha(tooltip->border_color, theme ? theme->colors.border_primary : 0x00555555u);
+    uint32_t bg =
+        tooltip_apply_alpha(tooltip->bg_color, theme ? theme->colors.bg_primary : 0x00202020u);
+    uint32_t border = tooltip_apply_alpha(tooltip->border_color,
+                                          theme ? theme->colors.border_primary : 0x00555555u);
 
     tooltip_fill_round_rect(win, x + 3, y + 4, w, h, radius, vg_color_darken(bg, 0.68f));
     tooltip_fill_round_rect(win, x, y, w, h, radius, bg);
@@ -727,7 +714,8 @@ void vg_tooltip_manager_widget_destroyed(vg_widget_t *widget) {
     }
 }
 
-/// @brief Hide the active tooltip when a widget subtree containing the hovered or anchored widget is hidden.
+/// @brief Hide the active tooltip when a widget subtree containing the hovered or anchored widget
+/// is hidden.
 ///
 /// @param widget Root of the subtree being hidden; may be NULL (no-op).
 void vg_tooltip_manager_widget_hidden(vg_widget_t *widget) {

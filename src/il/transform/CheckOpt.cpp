@@ -131,9 +131,8 @@ IntRange exactRange(int64_t value) {
     return IntRange{value, value};
 }
 
-std::optional<IntRange> rangeForValue(
-    const Value &value,
-    const std::unordered_map<unsigned, IntRange> &ranges) {
+std::optional<IntRange> rangeForValue(const Value &value,
+                                      const std::unordered_map<unsigned, IntRange> &ranges) {
     if (value.kind == Value::Kind::ConstInt)
         return exactRange(value.i64);
     if (value.kind != Value::Kind::Temp)
@@ -419,8 +418,7 @@ std::unordered_map<unsigned, IntRange> collectIncomingRanges(const Function &fun
 }
 
 std::optional<IntRange> computeInstructionRange(
-    const Instr &instr,
-    const std::unordered_map<unsigned, IntRange> &ranges) {
+    const Instr &instr, const std::unordered_map<unsigned, IntRange> &ranges) {
     if (instr.operands.size() >= 2) {
         auto lhs = rangeForValue(instr.operands[0], ranges);
         auto rhs = rangeForValue(instr.operands[1], ranges);
@@ -441,19 +439,17 @@ std::optional<IntRange> computeInstructionRange(
                     return mulRanges(*lhs, *rhs);
                 break;
             case Opcode::And: {
-                if (instr.operands[1].kind == Value::Kind::ConstInt &&
-                    instr.operands[1].i64 >= 0) {
+                if (instr.operands[1].kind == Value::Kind::ConstInt && instr.operands[1].i64 >= 0) {
                     return IntRange{0, instr.operands[1].i64};
                 }
-                if (instr.operands[0].kind == Value::Kind::ConstInt &&
-                    instr.operands[0].i64 >= 0) {
+                if (instr.operands[0].kind == Value::Kind::ConstInt && instr.operands[0].i64 >= 0) {
                     return IntRange{0, instr.operands[0].i64};
                 }
                 break;
             }
             case Opcode::LShr:
-                if (instr.operands[1].kind == Value::Kind::ConstInt &&
-                    instr.operands[1].i64 > 0 && instr.operands[1].i64 < 64) {
+                if (instr.operands[1].kind == Value::Kind::ConstInt && instr.operands[1].i64 > 0 &&
+                    instr.operands[1].i64 < 64) {
                     return IntRange{0, std::numeric_limits<int64_t>::max()};
                 }
                 break;
@@ -520,9 +516,8 @@ bool tryDemoteCheckedDivRem(Instr &instr) {
             // sdiv.chk0 also traps on INT_MIN / -1. A constant divisor other than
             // -1 proves the overflow case impossible; divisor -1 needs a known
             // non-minimum numerator.
-            if (divisor == -1 &&
-                (lhs.kind != Value::Kind::ConstInt ||
-                 lhs.i64 == std::numeric_limits<int64_t>::min())) {
+            if (divisor == -1 && (lhs.kind != Value::Kind::ConstInt ||
+                                  lhs.i64 == std::numeric_limits<int64_t>::min())) {
                 return false;
             }
             instr.op = Opcode::SDiv;
@@ -537,9 +532,8 @@ bool tryDemoteCheckedDivRem(Instr &instr) {
             // but the plain opcode may lower through a native signed divide path.
             // Like sdiv, demotion to the plain form needs a known non-minimum
             // numerator when the divisor is -1.
-            if (divisor == -1 &&
-                (lhs.kind != Value::Kind::ConstInt ||
-                 lhs.i64 == std::numeric_limits<int64_t>::min())) {
+            if (divisor == -1 && (lhs.kind != Value::Kind::ConstInt ||
+                                  lhs.i64 == std::numeric_limits<int64_t>::min())) {
                 return false;
             }
             instr.op = Opcode::SRem;

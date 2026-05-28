@@ -427,8 +427,7 @@ std::optional<std::vector<size_t>> mapEntryParamsToCallArgs(const Function &call
         }
 
         if (!mappedIndex && entryParams.size() == callee.params.size() &&
-            epIdx < callee.params.size() &&
-            callee.params[epIdx].type.kind == ep.type.kind) {
+            epIdx < callee.params.size() && callee.params[epIdx].type.kind == ep.type.kind) {
             mappedIndex = epIdx;
         }
 

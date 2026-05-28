@@ -23,8 +23,8 @@
 #include "il/core/Opcode.hpp"
 #include "il/core/Type.hpp"
 #include "il/core/Value.hpp"
-#include "il/transform/AnalysisManager.hpp"
 #include "il/transform/AnalysisIDs.hpp"
+#include "il/transform/AnalysisManager.hpp"
 #include "tests/TestHarness.hpp"
 
 using namespace il::core;

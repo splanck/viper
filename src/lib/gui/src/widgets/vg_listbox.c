@@ -84,7 +84,8 @@ static vg_widget_vtable_t g_listbox_vtable = {
 // VTable Implementations
 //=============================================================================
 
-/// @brief Frees the text strings inside each cached visible row slot without releasing the cache array itself.
+/// @brief Frees the text strings inside each cached visible row slot without releasing the cache
+/// array itself.
 static void listbox_free_virtual_cache(vg_listbox_t *lb) {
     if (!lb->visible_cache)
         return;
@@ -106,7 +107,8 @@ static vg_listbox_item_t *listbox_item_at_index_nonvirtual(vg_listbox_t *lb, siz
     return item;
 }
 
-/// @brief Returns the zero-based index of @p target in the non-virtual list, or SIZE_MAX if not found.
+/// @brief Returns the zero-based index of @p target in the non-virtual list, or SIZE_MAX if not
+/// found.
 static size_t listbox_index_of_item(vg_listbox_t *lb, vg_listbox_item_t *target) {
     if (!lb || !vg_listbox_item_is_live(target) || target->owner != lb)
         return SIZE_MAX;
@@ -118,7 +120,8 @@ static size_t listbox_index_of_item(vg_listbox_t *lb, vg_listbox_item_t *target)
     return SIZE_MAX;
 }
 
-/// @brief Returns true if @p item is non-NULL, has the correct magic value, and still belongs to a listbox.
+/// @brief Returns true if @p item is non-NULL, has the correct magic value, and still belongs to a
+/// listbox.
 bool vg_listbox_item_is_live(const vg_listbox_item_t *item) {
     return item && item->magic == VG_LISTBOX_ITEM_MAGIC && item->owner != NULL;
 }
@@ -132,7 +135,8 @@ void vg_listbox_item_set_text_color(vg_listbox_item_t *item, uint32_t color) {
     item->owner->base.needs_paint = true;
 }
 
-/// @brief Frees the text string inside @p item and zeroes its length, leaving the item struct itself intact.
+/// @brief Frees the text string inside @p item and zeroes its length, leaving the item struct
+/// itself intact.
 static void listbox_free_item_payload(vg_listbox_item_t *item) {
     if (!item)
         return;
@@ -155,7 +159,8 @@ static void listbox_free_item(vg_listbox_item_t *item) {
     free(item);
 }
 
-/// @brief Detaches @p item from the live list and moves it onto @p lb->retired_items for deferred freeing.
+/// @brief Detaches @p item from the live list and moves it onto @p lb->retired_items for deferred
+/// freeing.
 static void listbox_retire_item(vg_listbox_t *lb, vg_listbox_item_t *item) {
     if (!lb || !item)
         return;
@@ -221,7 +226,8 @@ static void listbox_ensure_virtual_cache(vg_listbox_t *lb, size_t needed) {
     lb->cache_capacity = needed;
 }
 
-/// @brief Re-fetches text and selection state for the visible-cache slot at @p cache_index via the data provider.
+/// @brief Re-fetches text and selection state for the visible-cache slot at @p cache_index via the
+/// data provider.
 static void listbox_refresh_virtual_cache_entry(vg_listbox_t *lb, size_t cache_index) {
     if (!lb || !lb->visible_cache || cache_index >= lb->visible_count ||
         cache_index >= lb->cache_capacity)
@@ -240,7 +246,8 @@ static void listbox_refresh_virtual_cache_entry(vg_listbox_t *lb, size_t cache_i
     lb->visible_cache[cache_index].text = copy;
 }
 
-/// @brief Updates the virtual visible-row cache to match the current scroll position, re-fetching changed rows.
+/// @brief Updates the virtual visible-row cache to match the current scroll position, re-fetching
+/// changed rows.
 static void listbox_sync_virtual_cache(vg_listbox_t *lb, float viewport_height) {
     if (!lb || !lb->virtual_mode)
         return;
@@ -293,11 +300,9 @@ static void listbox_sync_virtual_cache(vg_listbox_t *lb, float viewport_height) 
     }
 }
 
-/// @brief Converts @p local_y (relative to the viewport top) to an item index accounting for scroll; false if out of range.
-static bool listbox_item_at_y(vg_listbox_t *lb,
-                              vg_widget_t *widget,
-                              float local_y,
-                              size_t *index) {
+/// @brief Converts @p local_y (relative to the viewport top) to an item index accounting for
+/// scroll; false if out of range.
+static bool listbox_item_at_y(vg_listbox_t *lb, vg_widget_t *widget, float local_y, size_t *index) {
     if (!lb || !widget || !index || lb->item_height <= 0.0f)
         return false;
 
@@ -344,8 +349,7 @@ static bool listbox_has_nonvirtual_selection(vg_listbox_t *lb) {
     return false;
 }
 
-static bool listbox_has_nonvirtual_selection_except(vg_listbox_t *lb,
-                                                    vg_listbox_item_t *except) {
+static bool listbox_has_nonvirtual_selection_except(vg_listbox_t *lb, vg_listbox_item_t *except) {
     if (!lb)
         return false;
     for (vg_listbox_item_t *item = lb->first_item; item; item = item->next) {
@@ -381,7 +385,8 @@ static vg_listbox_item_t *listbox_first_selected_nonvirtual(vg_listbox_t *lb) {
     return NULL;
 }
 
-/// @brief Returns the index of the first selected row in the bitmap, or SIZE_MAX if nothing is selected.
+/// @brief Returns the index of the first selected row in the bitmap, or SIZE_MAX if nothing is
+/// selected.
 static size_t listbox_first_selected_virtual(vg_listbox_t *lb) {
     if (!lb || !lb->selection_bitmap)
         return SIZE_MAX;
@@ -392,7 +397,8 @@ static size_t listbox_first_selected_virtual(vg_listbox_t *lb) {
     return SIZE_MAX;
 }
 
-/// @brief Applies Ctrl/Shift selection semantics for @p item in non-virtual mode: range, toggle, or replace.
+/// @brief Applies Ctrl/Shift selection semantics for @p item in non-virtual mode: range, toggle, or
+/// replace.
 static void listbox_select_nonvirtual_with_modifiers(vg_listbox_t *lb,
                                                      vg_listbox_item_t *item,
                                                      bool toggle,
@@ -453,7 +459,8 @@ static void listbox_select_nonvirtual_with_modifiers(vg_listbox_t *lb,
         listbox_note_selection_changed(lb);
 }
 
-/// @brief Applies Ctrl/Shift selection semantics for row @p index in virtual mode using the selection bitmap.
+/// @brief Applies Ctrl/Shift selection semantics for row @p index in virtual mode using the
+/// selection bitmap.
 static void listbox_select_virtual_with_modifiers(vg_listbox_t *lb,
                                                   size_t index,
                                                   bool toggle,
@@ -464,9 +471,8 @@ static void listbox_select_virtual_with_modifiers(vg_listbox_t *lb,
 
     if (!lb->multi_select || (!toggle && !range)) {
         bool changed = listbox_clear_virtual_selection(lb);
-        changed = changed || lb->selected_index != index ||
-                  !lb->selection_bitmap || index >= lb->selection_bitmap_size ||
-                  !lb->selection_bitmap[index];
+        changed = changed || lb->selected_index != index || !lb->selection_bitmap ||
+                  index >= lb->selection_bitmap_size || !lb->selection_bitmap[index];
         lb->selected_index = index;
         if (lb->selection_bitmap && index < lb->selection_bitmap_size)
             lb->selection_bitmap[index] = true;
@@ -512,7 +518,8 @@ static void listbox_select_virtual_with_modifiers(vg_listbox_t *lb,
         listbox_note_selection_changed(lb);
 }
 
-/// @brief VTable destroy: clears all items, frees the virtual cache, selection bitmap, and retired-item list.
+/// @brief VTable destroy: clears all items, frees the virtual cache, selection bitmap, and
+/// retired-item list.
 static void listbox_destroy(vg_widget_t *widget) {
     vg_listbox_t *lb = (vg_listbox_t *)widget;
     vg_listbox_clear(lb);
@@ -527,7 +534,8 @@ static void listbox_destroy(vg_widget_t *widget) {
     listbox_free_retired_items(lb);
 }
 
-/// @brief Computes the default row height from the theme input height and font metrics, taking the larger value.
+/// @brief Computes the default row height from the theme input height and font metrics, taking the
+/// larger value.
 static float listbox_default_item_height(vg_listbox_t *lb) {
     vg_theme_t *theme = vg_theme_get_current();
     float scale = theme && theme->ui_scale > 0.0f ? theme->ui_scale : 1.0f;
@@ -554,7 +562,8 @@ static float listbox_text_baseline(vg_listbox_t *lb, float item_y, float item_h)
     return item_y + (item_h + (float)metrics.ascent + (float)metrics.descent) / 2.0f;
 }
 
-/// @brief VTable measure: sizes to the widest item text (up to avail_w) and up to 5 visible rows tall.
+/// @brief VTable measure: sizes to the widest item text (up to avail_w) and up to 5 visible rows
+/// tall.
 static void listbox_measure(vg_widget_t *widget, float avail_w, float avail_h) {
     vg_listbox_t *lb = (vg_listbox_t *)widget;
     (void)avail_h;
@@ -591,7 +600,8 @@ static void listbox_arrange(vg_widget_t *widget, float x, float y, float w, floa
     widget->height = h;
 }
 
-/// @brief VTable paint: draws background, selection highlights, row text, scrollbar thumb, and focus border.
+/// @brief VTable paint: draws background, selection highlights, row text, scrollbar thumb, and
+/// focus border.
 static void listbox_paint(vg_widget_t *widget, void *canvas) {
     vg_listbox_t *lb = (vg_listbox_t *)widget;
     vg_theme_t *theme = vg_theme_get_current();
@@ -629,12 +639,10 @@ static void listbox_paint(vg_widget_t *widget, void *canvas) {
             if (item_y >= widget->y + widget->height)
                 break;
 
-            uint32_t bg =
-                ((index & 1u) == 0u)
-                    ? lb->item_bg
-                    : vg_color_blend(lb->item_bg, theme->colors.bg_secondary, 0.35f);
-            bool is_selected =
-                index < lb->selection_bitmap_size && lb->selection_bitmap[index];
+            uint32_t bg = ((index & 1u) == 0u)
+                              ? lb->item_bg
+                              : vg_color_blend(lb->item_bg, theme->colors.bg_secondary, 0.35f);
+            bool is_selected = index < lb->selection_bitmap_size && lb->selection_bitmap[index];
             if (is_selected)
                 bg = lb->selected_bg;
             else if (index == lb->hovered_index)
@@ -681,8 +689,9 @@ static void listbox_paint(vg_widget_t *widget, void *canvas) {
             else if (item == lb->hovered)
                 bg = lb->hover_bg;
             else
-                bg = (row_index & 1) == 0 ? lb->item_bg
-                                          : vg_color_blend(lb->item_bg, theme->colors.bg_secondary, 0.35f);
+                bg = (row_index & 1) == 0
+                         ? lb->item_bg
+                         : vg_color_blend(lb->item_bg, theme->colors.bg_secondary, 0.35f);
 
             int32_t iy = (int32_t)item_y;
             int32_t ih32 = (int32_t)ih;
@@ -804,7 +813,8 @@ static bool listbox_handle_event(vg_widget_t *widget, vg_event_t *event) {
 
         case VG_EVENT_DOUBLE_CLICK: {
             if (lb->virtual_mode) {
-                if (lb->selected_index != SIZE_MAX && lb->selected_index < lb->selection_bitmap_size &&
+                if (lb->selected_index != SIZE_MAX &&
+                    lb->selected_index < lb->selection_bitmap_size &&
                     lb->selection_bitmap[lb->selected_index] && lb->on_activate) {
                     lb->on_activate(widget, NULL, lb->on_activate_data);
                     event->handled = true;
@@ -849,7 +859,8 @@ static bool listbox_handle_event(vg_widget_t *widget, vg_event_t *event) {
                     new_idx = total - 1;
                     break;
                 case VG_KEY_PAGE_UP:
-                    new_idx = has_current && current_idx > page_items ? current_idx - page_items : 0;
+                    new_idx =
+                        has_current && current_idx > page_items ? current_idx - page_items : 0;
                     break;
                 case VG_KEY_PAGE_DOWN:
                     if (!has_current)
@@ -1032,8 +1043,8 @@ void vg_listbox_clear(vg_listbox_t *listbox) {
 
     bool had_selection = listbox_has_nonvirtual_selection(listbox);
     bool had_virtual_selection =
-        listbox->virtual_mode &&
-        (listbox->selected_index != SIZE_MAX || listbox_first_selected_virtual(listbox) != SIZE_MAX);
+        listbox->virtual_mode && (listbox->selected_index != SIZE_MAX ||
+                                  listbox_first_selected_virtual(listbox) != SIZE_MAX);
     vg_listbox_item_t *item = listbox->first_item;
     while (item) {
         vg_listbox_item_t *next = item->next;
@@ -1154,7 +1165,8 @@ void vg_listbox_set_on_select(vg_listbox_t *listbox,
 // Virtual Scrolling
 //=============================================================================
 
-/// @brief Enables or disables virtual-scroll mode, allocating a selection bitmap and visible-row cache for @p total_count items.
+/// @brief Enables or disables virtual-scroll mode, allocating a selection bitmap and visible-row
+/// cache for @p total_count items.
 void vg_listbox_set_virtual_mode(vg_listbox_t *listbox,
                                  bool enabled,
                                  size_t total_count,

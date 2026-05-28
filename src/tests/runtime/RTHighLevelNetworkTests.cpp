@@ -10,13 +10,13 @@
 //
 //===----------------------------------------------------------------------===//
 
-#include "rt_netutils.h"
 #include "rt_bytes.h"
-#include "rt_http_server.h"
-#include "rt_https_server.h"
 #include "rt_http2.h"
 #include "rt_http_client.h"
+#include "rt_http_server.h"
+#include "rt_https_server.h"
 #include "rt_map.h"
+#include "rt_netutils.h"
 #include "rt_network.h"
 #include "rt_object.h"
 #include "rt_smtp.h"
@@ -29,8 +29,8 @@
 #include <atomic>
 #include <cassert>
 #include <chrono>
-#include <cstdlib>
 #include <cstdio>
+#include <cstdlib>
 #include <cstring>
 #include <filesystem>
 #include <fstream>
@@ -179,10 +179,8 @@ struct temp_tls_files_t {
     temp_tls_files_t &operator=(const temp_tls_files_t &) = delete;
 
     temp_tls_files_t(temp_tls_files_t &&other) noexcept
-        : cert_path(std::move(other.cert_path)),
-          key_path(std::move(other.key_path)),
-          ca_path(std::move(other.ca_path)),
-          valid(other.valid) {
+        : cert_path(std::move(other.cert_path)), key_path(std::move(other.key_path)),
+          ca_path(std::move(other.ca_path)), valid(other.valid) {
         other.cert_path.clear();
         other.key_path.clear();
         other.ca_path.clear();
@@ -249,7 +247,8 @@ static void http_server_keepalive_handler(void *req_obj, void *res_obj) {
 static void http_redirect_source_handler(void *req_obj, void *res_obj) {
     (void)req_obj;
     rt_server_res_status(res_obj, 302);
-    rt_server_res_header(res_obj, rt_const_cstr("Location"), rt_const_cstr(redirect_source_location.c_str()));
+    rt_server_res_header(
+        res_obj, rt_const_cstr("Location"), rt_const_cstr(redirect_source_location.c_str()));
     rt_server_res_send(res_obj, rt_const_cstr(""));
 }
 
@@ -331,10 +330,12 @@ static temp_tls_files_t create_temp_tls_files_with_contents(const char *cert_pem
         return files;
 
     const unsigned id = ++tls_fixture_counter;
-    files.cert_path = (temp_dir / ("viper_tls_fixture_" + std::to_string(id) + "_cert.pem")).string();
+    files.cert_path =
+        (temp_dir / ("viper_tls_fixture_" + std::to_string(id) + "_cert.pem")).string();
     files.key_path = (temp_dir / ("viper_tls_fixture_" + std::to_string(id) + "_key.pem")).string();
     if (ca_pem)
-        files.ca_path = (temp_dir / ("viper_tls_fixture_" + std::to_string(id) + "_ca.pem")).string();
+        files.ca_path =
+            (temp_dir / ("viper_tls_fixture_" + std::to_string(id) + "_ca.pem")).string();
     if (!write_text_file(files.cert_path, cert_pem) || !write_text_file(files.key_path, key_pem) ||
         (ca_pem && !write_text_file(files.ca_path, ca_pem))) {
         std::error_code cleanup_ec;
@@ -434,7 +435,8 @@ static std::string tls_recv_line(rt_tls_session_t *tls) {
     return line;
 }
 
-static std::vector<std::pair<std::string, std::string>> tls_read_http_headers(rt_tls_session_t *tls) {
+static std::vector<std::pair<std::string, std::string>> tls_read_http_headers(
+    rt_tls_session_t *tls) {
     std::vector<std::pair<std::string, std::string>> headers;
     while (true) {
         const std::string line = tls_recv_line(tls);
@@ -456,8 +458,8 @@ static std::vector<std::pair<std::string, std::string>> tls_read_http_headers(rt
     return headers;
 }
 
-static std::string tls_find_http_header(const std::vector<std::pair<std::string, std::string>> &headers,
-                                        const char *name) {
+static std::string tls_find_http_header(
+    const std::vector<std::pair<std::string, std::string>> &headers, const char *name) {
     std::string key(name ? name : "");
     for (char &ch : key) {
         if (ch >= 'A' && ch <= 'Z')
@@ -535,7 +537,9 @@ static int tls_http2_write_cb(void *ctx, const uint8_t *buf, size_t len) {
     return rt_tls_send((rt_tls_session_t *)ctx, buf, len) == (long)len;
 }
 
-static bool tls_recv_ws_frame(rt_tls_session_t *tls, uint8_t *opcode_out, std::vector<uint8_t> *payload_out) {
+static bool tls_recv_ws_frame(rt_tls_session_t *tls,
+                              uint8_t *opcode_out,
+                              std::vector<uint8_t> *payload_out) {
     uint8_t header[2] = {0, 0};
     if (!tls_recv_exact(tls, header, sizeof(header)))
         return false;
@@ -901,7 +905,9 @@ static void http_keepalive_server_thread(int port) {
     rt_tcp_server_close(server);
 }
 
-static void http_informational_server_thread(int port, std::atomic<bool> *ready, std::atomic<bool> *failed) {
+static void http_informational_server_thread(int port,
+                                             std::atomic<bool> *ready,
+                                             std::atomic<bool> *failed) {
     void *server = rt_tcp_server_listen(port);
     if (!server) {
         if (failed)
@@ -1079,10 +1085,12 @@ static void test_sse_redirect_to_stream() {
         redirect_server, rt_const_cstr("redirect"), (void *)&http_redirect_source_handler);
     rt_http_server_start(redirect_server);
 
-    const bool redirect_ready = wait_for_condition([&]() {
-        return rt_http_server_is_running(redirect_server) == 1 &&
-               rt_http_server_port(redirect_server) > 0;
-    }, 2000);
+    const bool redirect_ready = wait_for_condition(
+        [&]() {
+            return rt_http_server_is_running(redirect_server) == 1 &&
+                   rt_http_server_port(redirect_server) > 0;
+        },
+        2000);
     if (!redirect_ready) {
         rt_http_server_stop(redirect_server);
         target_server.join();
@@ -1105,7 +1113,8 @@ static void test_sse_redirect_to_stream() {
     rt_string data = rt_sse_recv(sse);
     test_result("SSE redirected payload matches", strcmp(rt_string_cstr(data), "hello") == 0);
     rt_string event_type = rt_sse_last_event_type(sse);
-    test_result("SSE redirected event type captured", strcmp(rt_string_cstr(event_type), "greet") == 0);
+    test_result("SSE redirected event type captured",
+                strcmp(rt_string_cstr(event_type), "greet") == 0);
 
     rt_sse_close(sse);
     rt_http_server_stop(redirect_server);
@@ -1301,8 +1310,10 @@ static void test_http_client_manual_cookie_is_host_only() {
 
     char url_buf[128];
     void *client = rt_http_client_new();
-    rt_http_client_set_cookie(
-        client, rt_const_cstr("localhost"), rt_const_cstr("manualToken"), rt_const_cstr("hostonly"));
+    rt_http_client_set_cookie(client,
+                              rt_const_cstr("localhost"),
+                              rt_const_cstr("manualToken"),
+                              rt_const_cstr("hostonly"));
 
     snprintf(url_buf, sizeof(url_buf), "http://localhost:%d/set", port);
     void *res1 = rt_http_client_get(client, rt_const_cstr(url_buf));
@@ -1341,7 +1352,8 @@ static void test_http_client_cross_origin_redirect_strips_sensitive_headers() {
     void *target_server = rt_http_server_new(target_port);
     void *redirect_server = rt_http_server_new(redirect_port);
     rt_http_server_get(target_server, rt_const_cstr("/final"), rt_const_cstr("target"));
-    rt_http_server_bind_handler(target_server, rt_const_cstr("target"), (void *)&http_redirect_target_handler);
+    rt_http_server_bind_handler(
+        target_server, rt_const_cstr("target"), (void *)&http_redirect_target_handler);
     rt_http_server_get(redirect_server, rt_const_cstr("/redirect"), rt_const_cstr("redirect"));
     rt_http_server_bind_handler(
         redirect_server, rt_const_cstr("redirect"), (void *)&http_redirect_source_handler);
@@ -1349,11 +1361,14 @@ static void test_http_client_cross_origin_redirect_strips_sensitive_headers() {
     rt_http_server_start(target_server);
     rt_http_server_start(redirect_server);
 
-    const bool ready = wait_for_condition([&]() {
-        return rt_http_server_is_running(target_server) == 1 &&
-               rt_http_server_is_running(redirect_server) == 1 &&
-               rt_http_server_port(target_server) > 0 && rt_http_server_port(redirect_server) > 0;
-    }, 2000);
+    const bool ready = wait_for_condition(
+        [&]() {
+            return rt_http_server_is_running(target_server) == 1 &&
+                   rt_http_server_is_running(redirect_server) == 1 &&
+                   rt_http_server_port(target_server) > 0 &&
+                   rt_http_server_port(redirect_server) > 0;
+        },
+        2000);
     if (!ready) {
         rt_http_server_stop(redirect_server);
         rt_http_server_stop(target_server);
@@ -1378,7 +1393,8 @@ static void test_http_client_cross_origin_redirect_strips_sensitive_headers() {
              (long long)rt_http_server_port(redirect_server));
 
     void *client = rt_http_client_new();
-    rt_http_client_set_header(client, rt_const_cstr("Authorization"), rt_const_cstr("Bearer secret"));
+    rt_http_client_set_header(
+        client, rt_const_cstr("Authorization"), rt_const_cstr("Bearer secret"));
     rt_http_client_set_header(client, rt_const_cstr("X-API-Key"), rt_const_cstr("top-secret"));
 
     void *res = rt_http_client_get(client, rt_const_cstr(url_buf));
@@ -1414,10 +1430,10 @@ static void test_http_client_consumes_informational_responses() {
     snprintf(url_buf, sizeof(url_buf), "http://127.0.0.1:%d/hints", port);
     void *client = rt_http_client_new();
     void *res = rt_http_client_get(client, rt_const_cstr(url_buf));
-    test_result("HttpClient returns the final response after 103",
-                rt_http_res_status(res) == 200);
+    test_result("HttpClient returns the final response after 103", rt_http_res_status(res) == 200);
     rt_string body = rt_http_res_body_str(res);
-    test_result("HttpClient preserves the final response body", strcmp(rt_string_cstr(body), "hello") == 0);
+    test_result("HttpClient preserves the final response body",
+                strcmp(rt_string_cstr(body), "hello") == 0);
     rt_string_unref(body);
 
     server.join();
@@ -1476,7 +1492,8 @@ static void test_http_server_keepalive_response() {
 
     void *server = rt_http_server_new(port);
     rt_http_server_get(server, rt_const_cstr("/ping"), rt_const_cstr("ping"));
-    rt_http_server_bind_handler(server, rt_const_cstr("ping"), (void *)&http_server_keepalive_handler);
+    rt_http_server_bind_handler(
+        server, rt_const_cstr("ping"), (void *)&http_server_keepalive_handler);
     rt_http_server_start(server);
     if (!wait_for_condition([&]() { return rt_http_server_is_running(server) == 1; }, 1000)) {
         rt_http_server_stop(server);
@@ -1499,7 +1516,8 @@ static void test_http_server_keepalive_response() {
     rt_string body1_bytes = nullptr;
     void *body1 = rt_tcp_recv_exact(client, 2);
     body1_bytes = rt_bytes_to_str(body1);
-    test_result("HttpServer first response body matches", strcmp(rt_string_cstr(body1_bytes), "ok") == 0);
+    test_result("HttpServer first response body matches",
+                strcmp(rt_string_cstr(body1_bytes), "ok") == 0);
     rt_string_unref(body1_bytes);
 
     send_text(client,
@@ -1514,7 +1532,8 @@ static void test_http_server_keepalive_response() {
     std::string connection2 = read_http_header_value(client, "Connection");
     void *body2 = rt_tcp_recv_exact(client, 2);
     rt_string body2_str = rt_bytes_to_str(body2);
-    test_result("HttpServer second response body matches", strcmp(rt_string_cstr(body2_str), "ok") == 0);
+    test_result("HttpServer second response body matches",
+                strcmp(rt_string_cstr(body2_str), "ok") == 0);
     rt_string_unref(body2_str);
 
     rt_http_server_stop(server);
@@ -1537,7 +1556,8 @@ static void test_http_server_pipelined_keepalive_requests() {
 
     void *server = rt_http_server_new(port);
     rt_http_server_get(server, rt_const_cstr("/ping"), rt_const_cstr("ping"));
-    rt_http_server_bind_handler(server, rt_const_cstr("ping"), (void *)&http_server_keepalive_handler);
+    rt_http_server_bind_handler(
+        server, rt_const_cstr("ping"), (void *)&http_server_keepalive_handler);
     rt_http_server_start(server);
     if (!wait_for_condition([&]() { return rt_http_server_is_running(server) == 1; }, 1000)) {
         rt_http_server_stop(server);
@@ -1602,10 +1622,12 @@ static void test_https_server_roundtrip() {
         return;
     }
 
-    void *server =
-        rt_https_server_new(port, rt_const_cstr(tls_files.cert_path.c_str()), rt_const_cstr(tls_files.key_path.c_str()));
+    void *server = rt_https_server_new(port,
+                                       rt_const_cstr(tls_files.cert_path.c_str()),
+                                       rt_const_cstr(tls_files.key_path.c_str()));
     rt_https_server_get(server, rt_const_cstr("/secure"), rt_const_cstr("secure"));
-    rt_https_server_bind_handler(server, rt_const_cstr("secure"), (void *)&https_server_secure_handler);
+    rt_https_server_bind_handler(
+        server, rt_const_cstr("secure"), (void *)&https_server_secure_handler);
     rt_https_server_start(server);
     if (!wait_for_condition([&]() { return rt_https_server_is_running(server) == 1; }, 1000)) {
         rt_https_server_stop(server);
@@ -1658,12 +1680,12 @@ static void test_https_server_roundtrip() {
         return;
     }
 
-    const char *request1 =
-        "GET /secure HTTP/1.1\r\n"
-        "Host: 127.0.0.1\r\n"
-        "Connection: keep-alive\r\n"
-        "\r\n";
-    test_result("HttpsServer accepts first HTTPS request", tls_send_all(tls, request1, strlen(request1)));
+    const char *request1 = "GET /secure HTTP/1.1\r\n"
+                           "Host: 127.0.0.1\r\n"
+                           "Connection: keep-alive\r\n"
+                           "\r\n";
+    test_result("HttpsServer accepts first HTTPS request",
+                tls_send_all(tls, request1, strlen(request1)));
     const std::string status1 = tls_recv_line(tls);
     test_result("HttpsServer first raw status is 200", status1 == "HTTP/1.1 200 OK");
     const auto headers1 = tls_read_http_headers(tls);
@@ -1672,12 +1694,12 @@ static void test_https_server_roundtrip() {
     const std::string body1 = tls_recv_string(tls, (size_t)strtoull(length1.c_str(), nullptr, 10));
     test_result("HttpsServer first raw body matches", body1 == "secure-ok");
 
-    const char *request2 =
-        "GET /secure HTTP/1.1\r\n"
-        "Host: 127.0.0.1\r\n"
-        "Connection: close\r\n"
-        "\r\n";
-    test_result("HttpsServer accepts second HTTPS request", tls_send_all(tls, request2, strlen(request2)));
+    const char *request2 = "GET /secure HTTP/1.1\r\n"
+                           "Host: 127.0.0.1\r\n"
+                           "Connection: close\r\n"
+                           "\r\n";
+    test_result("HttpsServer accepts second HTTPS request",
+                tls_send_all(tls, request2, strlen(request2)));
     const std::string status2 = tls_recv_line(tls);
     test_result("HttpsServer second raw status is 200", status2 == "HTTP/1.1 200 OK");
     const auto headers2 = tls_read_http_headers(tls);
@@ -1685,8 +1707,10 @@ static void test_https_server_roundtrip() {
     const std::string length2 = tls_find_http_header(headers2, "Content-Length");
     const std::string body2 = tls_recv_string(tls, (size_t)strtoull(length2.c_str(), nullptr, 10));
     test_result("HttpsServer second raw body matches", body2 == "secure-ok");
-    test_result("HttpsServer keeps the first TLS response alive", connection1.find("keep-alive") != std::string::npos);
-    test_result("HttpsServer closes the second TLS response", connection2.find("close") != std::string::npos);
+    test_result("HttpsServer keeps the first TLS response alive",
+                connection1.find("keep-alive") != std::string::npos);
+    test_result("HttpsServer closes the second TLS response",
+                connection2.find("close") != std::string::npos);
 
     rt_tls_close(tls);
     rt_https_server_stop(server);
@@ -1707,10 +1731,12 @@ static void test_https_server_http2_roundtrip() {
         return;
     }
 
-    void *server =
-        rt_https_server_new(port, rt_const_cstr(tls_files.cert_path.c_str()), rt_const_cstr(tls_files.key_path.c_str()));
+    void *server = rt_https_server_new(port,
+                                       rt_const_cstr(tls_files.cert_path.c_str()),
+                                       rt_const_cstr(tls_files.key_path.c_str()));
     rt_https_server_get(server, rt_const_cstr("/secure"), rt_const_cstr("secure"));
-    rt_https_server_bind_handler(server, rt_const_cstr("secure"), (void *)&https_server_secure_handler);
+    rt_https_server_bind_handler(
+        server, rt_const_cstr("secure"), (void *)&https_server_secure_handler);
     rt_https_server_start(server);
     if (!wait_for_condition([&]() { return rt_https_server_is_running(server) == 1; }, 1000)) {
         rt_https_server_stop(server);
@@ -1744,10 +1770,11 @@ static void test_https_server_http2_roundtrip() {
 
     rt_http2_response_t first{};
     rt_http2_response_t second{};
-    bool ok = rt_http2_client_roundtrip(
-                  h2, "GET", "https", "127.0.0.1", "/secure", nullptr, nullptr, 0, 1024, &first) == 1 &&
-              rt_http2_client_roundtrip(
-                  h2, "GET", "https", "127.0.0.1", "/secure", nullptr, nullptr, 0, 1024, &second) == 1;
+    bool ok =
+        rt_http2_client_roundtrip(
+            h2, "GET", "https", "127.0.0.1", "/secure", nullptr, nullptr, 0, 1024, &first) == 1 &&
+        rt_http2_client_roundtrip(
+            h2, "GET", "https", "127.0.0.1", "/secure", nullptr, nullptr, 0, 1024, &second) == 1;
     test_result("HTTP/2 client completes two requests on one TLS connection", ok);
     test_result("HTTP/2 first response status is 200", first.status == 200);
     test_result("HTTP/2 second response status is 200", second.status == 200);
@@ -1755,8 +1782,7 @@ static void test_https_server_http2_roundtrip() {
                 first.body_len == 9 && std::memcmp(first.body, "secure-ok", 9) == 0);
     test_result("HTTP/2 second response body matches",
                 second.body_len == 9 && std::memcmp(second.body, "secure-ok", 9) == 0);
-    test_result("HTTP/2 second stream id advances",
-                first.stream_id == 1 && second.stream_id == 3);
+    test_result("HTTP/2 second stream id advances", first.stream_id == 1 && second.stream_id == 3);
 
     rt_http2_response_free(&first);
     rt_http2_response_free(&second);
@@ -1781,10 +1807,12 @@ static void test_https_server_rsa_roundtrip_with_verification() {
         return;
     }
 
-    void *server =
-        rt_https_server_new(port, rt_const_cstr(tls_files.cert_path.c_str()), rt_const_cstr(tls_files.key_path.c_str()));
+    void *server = rt_https_server_new(port,
+                                       rt_const_cstr(tls_files.cert_path.c_str()),
+                                       rt_const_cstr(tls_files.key_path.c_str()));
     rt_https_server_get(server, rt_const_cstr("/secure"), rt_const_cstr("secure"));
-    rt_https_server_bind_handler(server, rt_const_cstr("secure"), (void *)&https_server_secure_handler);
+    rt_https_server_bind_handler(
+        server, rt_const_cstr("secure"), (void *)&https_server_secure_handler);
     rt_https_server_start(server);
     if (!wait_for_condition([&]() { return rt_https_server_is_running(server) == 1; }, 1000)) {
         rt_https_server_stop(server);
@@ -1794,8 +1822,8 @@ static void test_https_server_rsa_roundtrip_with_verification() {
 
     test_result("HttpsServer RSA fixture reports running", rt_https_server_is_running(server) == 1);
 
-    rt_tls_session_t *tls =
-        connect_local_tls_server_verified(port, "127.0.0.1", "localhost", tls_files.ca_path.c_str());
+    rt_tls_session_t *tls = connect_local_tls_server_verified(
+        port, "127.0.0.1", "localhost", tls_files.ca_path.c_str());
     if (!tls) {
         fprintf(stderr,
                 "RSA verified TLS connect failed: %s\n",
@@ -1807,11 +1835,10 @@ static void test_https_server_rsa_roundtrip_with_verification() {
         return;
     }
 
-    const char *request =
-        "GET /secure HTTP/1.1\r\n"
-        "Host: localhost\r\n"
-        "Connection: close\r\n"
-        "\r\n";
+    const char *request = "GET /secure HTTP/1.1\r\n"
+                          "Host: localhost\r\n"
+                          "Connection: close\r\n"
+                          "\r\n";
     test_result("RSA HttpsServer accepts the verified HTTPS request",
                 tls_send_all(tls, request, strlen(request)));
     const std::string status = tls_recv_line(tls);
@@ -1840,8 +1867,9 @@ static void test_wss_server_broadcast() {
         return;
     }
 
-    void *server =
-        rt_wss_server_new(port, rt_const_cstr(tls_files.cert_path.c_str()), rt_const_cstr(tls_files.key_path.c_str()));
+    void *server = rt_wss_server_new(port,
+                                     rt_const_cstr(tls_files.cert_path.c_str()),
+                                     rt_const_cstr(tls_files.key_path.c_str()));
     rt_wss_server_start(server);
     if (!wait_for_condition([&]() { return rt_wss_server_is_running(server) == 1; }, 1000)) {
         rt_wss_server_stop(server);
@@ -1876,9 +1904,11 @@ static void test_wss_server_broadcast() {
              "\r\n",
              port,
              ws_key);
-    test_result("WssServer accepts TLS WebSocket upgrade request", tls_send_all(tls, request, strlen(request)));
+    test_result("WssServer accepts TLS WebSocket upgrade request",
+                tls_send_all(tls, request, strlen(request)));
     const std::string status = tls_recv_line(tls);
-    test_result("WssServer returns 101 Switching Protocols", status == "HTTP/1.1 101 Switching Protocols");
+    test_result("WssServer returns 101 Switching Protocols",
+                status == "HTTP/1.1 101 Switching Protocols");
     const auto headers = tls_read_http_headers(tls);
     const std::string accept = tls_find_http_header(headers, "Sec-WebSocket-Accept");
     char *expected_accept = rt_ws_compute_accept_key(ws_key);
@@ -1886,8 +1916,9 @@ static void test_wss_server_broadcast() {
                 expected_accept != nullptr && accept == expected_accept);
     free(expected_accept);
 
-    test_result("WssServer tracks the connected client",
-                wait_for_condition([&]() { return rt_wss_server_client_count(server) == 1; }, 1000));
+    test_result(
+        "WssServer tracks the connected client",
+        wait_for_condition([&]() { return rt_wss_server_client_count(server) == 1; }, 1000));
 
     rt_wss_server_broadcast(server, rt_const_cstr("broadcast"));
     uint8_t opcode = 0;
@@ -1895,7 +1926,8 @@ static void test_wss_server_broadcast() {
     test_result("WssServer sends a text frame", tls_recv_ws_frame(tls, &opcode, &payload));
     test_result("WssServer text frame opcode is correct", opcode == 0x01);
     test_result("WssServer text frame payload matches",
-                std::string(reinterpret_cast<const char *>(payload.data()), payload.size()) == "broadcast");
+                std::string(reinterpret_cast<const char *>(payload.data()), payload.size()) ==
+                    "broadcast");
 
     void *binary = rt_bytes_from_str(rt_const_cstr("bin"));
     rt_wss_server_broadcast_bytes(server, binary);
@@ -1903,7 +1935,8 @@ static void test_wss_server_broadcast() {
     test_result("WssServer sends a binary frame", tls_recv_ws_frame(tls, &opcode, &payload));
     test_result("WssServer binary frame opcode is correct", opcode == 0x02);
     test_result("WssServer binary frame payload matches",
-                std::string(reinterpret_cast<const char *>(payload.data()), payload.size()) == "bin");
+                std::string(reinterpret_cast<const char *>(payload.data()), payload.size()) ==
+                    "bin");
 
     test_result("WssServer accepts a client close frame", tls_send_ws_client_close(tls));
     payload.clear();
@@ -1911,8 +1944,9 @@ static void test_wss_server_broadcast() {
     test_result("WssServer close frame opcode is correct", opcode == 0x08);
 
     rt_tls_close(tls);
-    test_result("WssServer removes the closed client",
-                wait_for_condition([&]() { return rt_wss_server_client_count(server) == 0; }, 1000));
+    test_result(
+        "WssServer removes the closed client",
+        wait_for_condition([&]() { return rt_wss_server_client_count(server) == 0; }, 1000));
     rt_wss_server_stop(server);
 }
 
@@ -1931,8 +1965,9 @@ static void test_wss_server_rejects_invalid_sec_websocket_key() {
         return;
     }
 
-    void *server =
-        rt_wss_server_new(port, rt_const_cstr(tls_files.cert_path.c_str()), rt_const_cstr(tls_files.key_path.c_str()));
+    void *server = rt_wss_server_new(port,
+                                     rt_const_cstr(tls_files.cert_path.c_str()),
+                                     rt_const_cstr(tls_files.key_path.c_str()));
     rt_wss_server_start(server);
     if (!wait_for_condition([&]() { return rt_wss_server_is_running(server) == 1; }, 1000)) {
         rt_wss_server_stop(server);
@@ -1958,7 +1993,8 @@ static void test_wss_server_rejects_invalid_sec_websocket_key() {
              "Sec-WebSocket-Version: 13\r\n"
              "\r\n",
              port);
-    test_result("Malformed WSS handshake request is sent", tls_send_all(tls, request, strlen(request)));
+    test_result("Malformed WSS handshake request is sent",
+                tls_send_all(tls, request, strlen(request)));
 
     const std::string status = tls_recv_line(tls);
     test_result("WssServer does not upgrade malformed handshake", status.empty());
@@ -1984,8 +2020,9 @@ static void test_wss_server_rejects_invalid_host_header() {
         return;
     }
 
-    void *server =
-        rt_wss_server_new(port, rt_const_cstr(tls_files.cert_path.c_str()), rt_const_cstr(tls_files.key_path.c_str()));
+    void *server = rt_wss_server_new(port,
+                                     rt_const_cstr(tls_files.cert_path.c_str()),
+                                     rt_const_cstr(tls_files.key_path.c_str()));
     rt_wss_server_start(server);
     if (!wait_for_condition([&]() { return rt_wss_server_is_running(server) == 1; }, 1000)) {
         rt_wss_server_stop(server);
@@ -2000,15 +2037,15 @@ static void test_wss_server_rejects_invalid_host_header() {
         return;
     }
 
-    const char *request =
-        "GET /chat HTTP/1.1\r\n"
-        "Host: ::1\r\n"
-        "Upgrade: websocket\r\n"
-        "Connection: Upgrade\r\n"
-        "Sec-WebSocket-Key: dGhlIHNhbXBsZSBub25jZQ==\r\n"
-        "Sec-WebSocket-Version: 13\r\n"
-        "\r\n";
-    test_result("Malformed Host handshake request is sent", tls_send_all(tls, request, strlen(request)));
+    const char *request = "GET /chat HTTP/1.1\r\n"
+                          "Host: ::1\r\n"
+                          "Upgrade: websocket\r\n"
+                          "Connection: Upgrade\r\n"
+                          "Sec-WebSocket-Key: dGhlIHNhbXBsZSBub25jZQ==\r\n"
+                          "Sec-WebSocket-Version: 13\r\n"
+                          "\r\n";
+    test_result("Malformed Host handshake request is sent",
+                tls_send_all(tls, request, strlen(request)));
 
     const std::string status = tls_recv_line(tls);
     test_result("WssServer does not upgrade malformed Host handshake", status.empty());
@@ -2034,8 +2071,9 @@ static void test_wss_server_subprotocol_negotiation() {
         return;
     }
 
-    void *server =
-        rt_wss_server_new(port, rt_const_cstr(tls_files.cert_path.c_str()), rt_const_cstr(tls_files.key_path.c_str()));
+    void *server = rt_wss_server_new(port,
+                                     rt_const_cstr(tls_files.cert_path.c_str()),
+                                     rt_const_cstr(tls_files.key_path.c_str()));
     rt_wss_server_set_subprotocol(server, rt_const_cstr("chat.v1"));
     rt_wss_server_start(server);
     if (!wait_for_condition([&]() { return rt_wss_server_is_running(server) == 1; }, 1000)) {
@@ -2063,15 +2101,18 @@ static void test_wss_server_subprotocol_negotiation() {
              "Sec-WebSocket-Protocol: other, chat.v1\r\n"
              "\r\n",
              port);
-    test_result("Matching subprotocol handshake request is sent", tls_send_all(tls, request, strlen(request)));
+    test_result("Matching subprotocol handshake request is sent",
+                tls_send_all(tls, request, strlen(request)));
     const std::string status = tls_recv_line(tls);
-    test_result("WssServer upgrades matching subprotocol handshake", status == "HTTP/1.1 101 Switching Protocols");
+    test_result("WssServer upgrades matching subprotocol handshake",
+                status == "HTTP/1.1 101 Switching Protocols");
     const auto headers = tls_read_http_headers(tls);
     test_result("WssServer returns negotiated subprotocol",
                 tls_find_http_header(headers, "Sec-WebSocket-Protocol") == "chat.v1");
     rt_tls_close(tls);
-    test_result("WssServer removes the negotiated client",
-                wait_for_condition([&]() { return rt_wss_server_client_count(server) == 0; }, 1000));
+    test_result(
+        "WssServer removes the negotiated client",
+        wait_for_condition([&]() { return rt_wss_server_client_count(server) == 0; }, 1000));
 
     tls = connect_local_tls_server(port);
     test_result("Second raw TLS client connects to WssServer", tls != nullptr);
@@ -2091,7 +2132,8 @@ static void test_wss_server_subprotocol_negotiation() {
              "Sec-WebSocket-Protocol: other\r\n"
              "\r\n",
              port);
-    test_result("Mismatched subprotocol handshake request is sent", tls_send_all(tls, request, strlen(request)));
+    test_result("Mismatched subprotocol handshake request is sent",
+                tls_send_all(tls, request, strlen(request)));
     test_result("WssServer rejects missing required subprotocol", tls_recv_line(tls).empty());
     test_result("WssServer keeps zero connected clients after rejection",
                 wait_for_condition([&]() { return rt_wss_server_client_count(server) == 0; }, 250));

@@ -28,9 +28,7 @@ struct HelperEffects {
                             bool readonlyIn = false,
                             bool pureIn = false,
                             bool knownIn = false)
-        : nothrow(nothrowIn),
-          readonly(readonlyIn),
-          pure(pureIn),
+        : nothrow(nothrowIn), readonly(readonlyIn), pure(pureIn),
           known(knownIn || nothrowIn || readonlyIn || pureIn) {}
 
     bool nothrow = false;  ///< Helper cannot throw or trap under defined behaviour.

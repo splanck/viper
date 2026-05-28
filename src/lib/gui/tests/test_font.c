@@ -110,7 +110,8 @@ static void test_utf8_decode_3byte(void) {
     PASS();
 }
 
-/// @brief Verify that vg_utf8_decode correctly decodes a 4-byte UTF-8 sequence (U+10000+, e.g. emoji).
+/// @brief Verify that vg_utf8_decode correctly decodes a 4-byte UTF-8 sequence (U+10000+, e.g.
+/// emoji).
 static void test_utf8_decode_4byte(void) {
     TEST(utf8_decode_4byte);
 
@@ -189,7 +190,8 @@ static void test_font_destroy_null(void) {
 //=============================================================================
 
 #ifdef TEST_FONT_PATH
-/// @brief Full integration test: load a real font file and exercise metrics, glyph lookup, hit-test, and cursor-x.
+/// @brief Full integration test: load a real font file and exercise metrics, glyph lookup,
+/// hit-test, and cursor-x.
 static void test_font_load_file(void) {
     TEST(font_load_file);
 

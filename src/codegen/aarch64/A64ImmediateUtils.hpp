@@ -38,8 +38,8 @@ namespace viper::codegen::aarch64 {
 /// @details AArch64 ADD/SUB accept a 12-bit unsigned immediate with an optional
 ///          logical left-shift of 12 bits, covering values 0–0xFFF and 0x1000–0xFFF000.
 struct AddSubImmEncoding {
-    uint32_t imm12;  ///< The 12-bit immediate value (before any shift is applied).
-    bool shift12;    ///< True if the immediate is shifted left 12 bits in the encoding.
+    uint32_t imm12; ///< The 12-bit immediate value (before any shift is applied).
+    bool shift12;   ///< True if the immediate is shifted left 12 bits in the encoding.
 };
 
 /// @brief AArch64 MOVE-WIDE instruction variants for materializing 64-bit constants.

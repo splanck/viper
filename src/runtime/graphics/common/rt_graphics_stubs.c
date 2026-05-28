@@ -25,7 +25,6 @@
 //
 //===----------------------------------------------------------------------===//
 
-#include "rt_sound3d.h"
 #include "rt_canvas3d.h"
 #include "rt_collider3d.h"
 #include "rt_decal3d.h"
@@ -46,6 +45,7 @@
 #include "rt_raycast3d.h"
 #include "rt_scene3d.h"
 #include "rt_skeleton3d.h"
+#include "rt_sound3d.h"
 #include "rt_sprite3d.h"
 #include "rt_terrain3d.h"
 #include "rt_texatlas3d.h"
@@ -2271,7 +2271,8 @@ void rt_canvas3d_push_synthetic_key(void *o, int64_t key, int8_t down) {
     (void)down;
 }
 
-void rt_canvas3d_push_synthetic_mouse(void *o, double dx, double dy, int64_t buttons, double wheel) {
+void rt_canvas3d_push_synthetic_mouse(
+    void *o, double dx, double dy, int64_t buttons, double wheel) {
     (void)o;
     (void)dx;
     (void)dy;
@@ -6266,15 +6267,8 @@ void rt_sound3d_compute_voice_params(const rt_sound3d_listener_state *listener,
                                      int64_t base_volume,
                                      int64_t *out_volume,
                                      int64_t *out_pan) {
-    rt_sound3d_compute_voice_params_ex(listener,
-                                       source_position,
-                                       NULL,
-                                       0.0,
-                                       max_distance,
-                                       base_volume,
-                                       out_volume,
-                                       out_pan,
-                                       NULL);
+    rt_sound3d_compute_voice_params_ex(
+        listener, source_position, NULL, 0.0, max_distance, base_volume, out_volume, out_pan, NULL);
 }
 
 void rt_sound3d_register_voice_ex(int64_t v, double rd, double md, int64_t bv) {
@@ -7071,7 +7065,8 @@ void rt_world3d_clear_collision_events(void *w) {
 /// @param mask         Layer-bitmask filter (ignored).
 ///
 /// @return `NULL`.
-void *rt_world3d_raycast(void *w, void *origin, void *direction, double max_distance, int64_t mask) {
+void *rt_world3d_raycast(
+    void *w, void *origin, void *direction, double max_distance, int64_t mask) {
     (void)w;
     (void)origin;
     (void)direction;
@@ -7996,11 +7991,8 @@ void *rt_collider3d_get_child_raw(void *collider, int64_t index) {
 /// @param rotation_out  `double[4]` receives local rotation quaternion `(x,y,z,w)`;
 ///                      defaults to identity `(0, 0, 0, 1)`.
 /// @param scale_out     `double[3]` receives local scale; defaults to `(1, 1, 1)`.
-void rt_collider3d_get_child_transform_raw(void *compound,
-                                           int64_t index,
-                                           double *position_out,
-                                           double *rotation_out,
-                                           double *scale_out) {
+void rt_collider3d_get_child_transform_raw(
+    void *compound, int64_t index, double *position_out, double *rotation_out, double *scale_out) {
     (void)compound;
     (void)index;
     if (position_out) {
@@ -8030,11 +8022,8 @@ void rt_collider3d_get_child_transform_raw(void *compound,
 /// @param normal_out `double[3]` receives surface normal (defaults to +Y).
 ///
 /// @return `0` (sample missed / outside heightfield bounds).
-int8_t rt_collider3d_sample_heightfield_raw(void *collider,
-                                            double local_x,
-                                            double local_z,
-                                            double *height_out,
-                                            double *normal_out) {
+int8_t rt_collider3d_sample_heightfield_raw(
+    void *collider, double local_x, double local_z, double *height_out, double *normal_out) {
     (void)collider;
     (void)local_x;
     (void)local_z;

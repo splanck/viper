@@ -336,12 +336,14 @@ class ExprTypeScanner final : public BasicAstWalker<ExprTypeScanner> {
         ExprType result = ExprType::I64;
         if (expr.base) {
             std::string className = lowerer_.resolveObjectClass(*expr.base);
-            std::string runtimeClass = className.empty() ? std::string{} : lowerer_.qualify(className);
+            std::string runtimeClass =
+                className.empty() ? std::string{} : lowerer_.qualify(className);
             if (runtimeClass.empty() && baseType == ExprType::Str)
                 runtimeClass = std::string(il::runtime::RTCLASS_STRING);
 
             if (!runtimeClass.empty() && il::runtime::findRuntimeClassByQName(runtimeClass)) {
-                if (auto info = runtimeMethodIndex().find(runtimeClass, expr.method, runtimeArgTypes))
+                if (auto info =
+                        runtimeMethodIndex().find(runtimeClass, expr.method, runtimeArgTypes))
                     result = exprTypeFromBasicType(info->ret);
             }
 

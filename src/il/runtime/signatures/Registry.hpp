@@ -18,8 +18,8 @@
 
 #pragma once
 
-#include <cstdint>
 #include <cstddef>
+#include <cstdint>
 #include <initializer_list>
 #include <string>
 #include <utility>
@@ -43,12 +43,12 @@ struct SigParam {
 
 /// @brief Capture the expected signature shape for a runtime helper.
 struct Signature {
-    std::string name;             ///< Canonical runtime symbol name.
-    std::vector<SigParam> params; ///< Parameter type sequence.
-    std::vector<SigParam> rets;   ///< Result type sequence (empty for void).
-    bool nothrow = false;         ///< Helper is guaranteed not to throw.
-    bool readonly = false;        ///< Helper may read memory but performs no writes.
-    bool pure = false;            ///< Helper is free of side effects and memory access.
+    std::string name;                  ///< Canonical runtime symbol name.
+    std::vector<SigParam> params;      ///< Parameter type sequence.
+    std::vector<SigParam> rets;        ///< Result type sequence (empty for void).
+    bool nothrow = false;              ///< Helper is guaranteed not to throw.
+    bool readonly = false;             ///< Helper may read memory but performs no writes.
+    bool pure = false;                 ///< Helper is free of side effects and memory access.
     std::uint64_t consumedArgMask = 0; ///< IL-visible args whose ownership is consumed.
     std::uint64_t retainedArgMask = 0; ///< IL-visible args whose reference count is retained.
     std::uint64_t ownedOutArgMask = 0; ///< Pointer args that receive an owned reference.

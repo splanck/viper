@@ -10,8 +10,8 @@
 //          codegen review. Each test covers a specific fix to prevent regression.
 //
 //===----------------------------------------------------------------------===//
-#include "codegen/aarch64/TargetAArch64.hpp"
 #include "codegen/aarch64/MachineIR.hpp"
+#include "codegen/aarch64/TargetAArch64.hpp"
 #include "codegen/aarch64/ra/Liveness.hpp"
 #include "codegen/aarch64/ra/OpcodeClassify.hpp"
 #include "codegen/aarch64/ra/RegPools.hpp"

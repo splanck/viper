@@ -59,9 +59,9 @@
 #include <algorithm>
 #include <chrono>
 #include <condition_variable>
+#include <cstdint>
 #include <cstdio>
 #include <cstdlib>
-#include <cstdint>
 #include <deque>
 #include <limits>
 #include <mutex>
@@ -103,16 +103,14 @@ struct RtGate {
     GateState *state = nullptr;
 };
 
-template <typename T, typename... Args>
-static T *allocateState(Args &&...args) {
+template <typename T, typename... Args> static T *allocateState(Args &&...args) {
     void *mem = std::malloc(sizeof(T));
     if (!mem)
         return nullptr;
     return ::new (mem) T(std::forward<Args>(args)...);
 }
 
-template <typename T>
-static void destroyState(T *state) {
+template <typename T> static void destroyState(T *state) {
     if (!state)
         return;
     state->~T();
@@ -136,7 +134,8 @@ static void releaseRuntimeObject(void *obj) {
         rt_obj_free(obj);
 }
 
-/// @brief Validate-and-cast an opaque object pointer to its concrete impl type, trapping on mismatch.
+/// @brief Validate-and-cast an opaque object pointer to its concrete impl type, trapping on
+/// mismatch.
 /// @details Generic helper used by every public Gate / Barrier / RwLock
 ///          entry point. Traps on NULL with @p what (or a generic
 ///          "<typeName>: null object" if @p what is NULL); traps on
@@ -365,7 +364,8 @@ static void rwlock_finalizer(void *obj) {
             waiter->cancelled = true;
             waiter->cv.notify_one();
         }
-        can_delete = state->active_readers == 0 && !state->writer_active && state->waiting_writers.empty();
+        can_delete =
+            state->active_readers == 0 && !state->writer_active && state->waiting_writers.empty();
     }
 
     rw->state = nullptr;
@@ -391,8 +391,7 @@ void *rt_gate_new(int64_t permits) {
         return nullptr;
     }
 
-    auto *gate =
-        static_cast<RtGate *>(rt_obj_new_i64(RT_GATE_CLASS_ID, (int64_t)sizeof(RtGate)));
+    auto *gate = static_cast<RtGate *>(rt_obj_new_i64(RT_GATE_CLASS_ID, (int64_t)sizeof(RtGate)));
     if (!gate) {
         rt_trap("Gate.New: alloc failed");
         return nullptr; // Unreachable, but silences compiler warnings
@@ -634,8 +633,7 @@ void *rt_barrier_new(int64_t parties) {
     }
 
     auto *barrier =
-        static_cast<RtBarrier *>(
-            rt_obj_new_i64(RT_BARRIER_CLASS_ID, (int64_t)sizeof(RtBarrier)));
+        static_cast<RtBarrier *>(rt_obj_new_i64(RT_BARRIER_CLASS_ID, (int64_t)sizeof(RtBarrier)));
     if (!barrier) {
         rt_trap("Barrier.New: alloc failed");
         return nullptr; // Unreachable, but silences compiler warnings

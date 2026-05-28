@@ -53,14 +53,12 @@ std::string stripLeadingUnderscores(const std::string &name) {
 
 bool isLinuxMathSymbol(const std::string &name) {
     static const std::unordered_set<std::string> kMath = {
-        "acos",  "acosf",  "asin",      "asinf",      "atan",   "atan2", "atan2f", "atanf",
-        "cbrt",  "cbrtf",  "ceil",      "ceilf",      "copysign","copysignf","cos", "cosf",
-        "cosh",  "exp",
-        "expf",  "fabs",   "fabsf",     "floor",      "floorf", "fmax",  "fmaxf",  "fmin",
-        "fmaxl", "fminf", "fminl",      "fmod",       "fmodf",  "hypot", "ldexp",  "log",
-        "log10", "log2",
-        "logf",  "nan",    "pow",       "powf",       "round",  "roundf","sin",    "sinf",
-        "sinh",  "sqrt",   "sqrtf",     "tan",        "tanf",   "tanh",  "trunc",  "truncf",
+        "acos",  "acosf", "asin",  "asinf",    "atan",      "atan2",  "atan2f", "atanf", "cbrt",
+        "cbrtf", "ceil",  "ceilf", "copysign", "copysignf", "cos",    "cosf",   "cosh",  "exp",
+        "expf",  "fabs",  "fabsf", "floor",    "floorf",    "fmax",   "fmaxf",  "fmin",  "fmaxl",
+        "fminf", "fminl", "fmod",  "fmodf",    "hypot",     "ldexp",  "log",    "log10", "log2",
+        "logf",  "nan",   "pow",   "powf",     "round",     "roundf", "sin",    "sinf",  "sinh",
+        "sqrt",  "sqrtf", "tan",   "tanf",     "tanh",      "trunc",  "truncf",
     };
     return kMath.count(name) != 0;
 }
@@ -70,10 +68,9 @@ bool hasPrefixEither(const std::string &name, const std::string &stripped, const
 }
 
 bool isWindowsStaticCompilerRuntimeSymbol(const std::string &name, const std::string &stripped) {
-    return name == "__RTC_memset" || stripped == "RTC_memset" ||
-           name == "__security_pop_cookie" || stripped == "security_pop_cookie" ||
-           name == "__security_push_cookie" || stripped == "security_push_cookie" ||
-           hasPrefixEither(name, stripped, "_Interlocked") ||
+    return name == "__RTC_memset" || stripped == "RTC_memset" || name == "__security_pop_cookie" ||
+           stripped == "security_pop_cookie" || name == "__security_push_cookie" ||
+           stripped == "security_push_cookie" || hasPrefixEither(name, stripped, "_Interlocked") ||
            hasPrefixEither(name, stripped, "Interlocked");
 }
 
@@ -81,171 +78,565 @@ bool dllForImport(const std::string &name, bool debugRuntime, std::string &dllNa
     const std::string stripped = stripLeadingUnderscores(name);
 
     static const std::unordered_set<std::string> kernel32 = {
-        "ExitProcess","FreeLibrary","GetCurrentProcessId","GetCurrentThreadId","GetEnvironmentVariableA",
+        "ExitProcess",
+        "FreeLibrary",
+        "GetCurrentProcessId",
+        "GetCurrentThreadId",
+        "GetEnvironmentVariableA",
         "GetEnvironmentVariableW",
-        "GetLastError","GetCommandLineW","GetComputerNameA","GetComputerNameW","GetCurrentDirectoryW","GetFullPathNameA","GetModuleHandleW",
-        "GetModuleFileNameA","GetProcAddress","GetProcessHeap","GetStartupInfoW","GetStdHandle",
-        "GetSystemInfo","GetSystemTimeAsFileTime","GetTempPathA","HeapAlloc","HeapFree",
-        "IsDebuggerPresent","InitOnceExecuteOnce","InitializeCriticalSection","InitializeSListHead",
-        "LeaveCriticalSection","DeleteCriticalSection","EnterCriticalSection","TryEnterCriticalSection","MultiByteToWideChar",
-        "OutputDebugStringA","RaiseException","SetEnvironmentVariableA","SetEnvironmentVariableW","SetLastError",
+        "GetLastError",
+        "GetCommandLineW",
+        "GetComputerNameA",
+        "GetComputerNameW",
+        "GetCurrentDirectoryW",
+        "GetFullPathNameA",
+        "GetModuleHandleW",
+        "GetModuleFileNameA",
+        "GetProcAddress",
+        "GetProcessHeap",
+        "GetStartupInfoW",
+        "GetStdHandle",
+        "GetSystemInfo",
+        "GetSystemTimeAsFileTime",
+        "GetTempPathA",
+        "HeapAlloc",
+        "HeapFree",
+        "IsDebuggerPresent",
+        "InitOnceExecuteOnce",
+        "InitializeCriticalSection",
+        "InitializeSListHead",
+        "LeaveCriticalSection",
+        "DeleteCriticalSection",
+        "EnterCriticalSection",
+        "TryEnterCriticalSection",
+        "MultiByteToWideChar",
+        "OutputDebugStringA",
+        "RaiseException",
+        "SetEnvironmentVariableA",
+        "SetEnvironmentVariableW",
+        "SetLastError",
         "SetUnhandledExceptionFilter",
-        "SetErrorMode","SetCurrentDirectoryW","SwitchToThread","WriteFile","GetTickCount",
-        "GetTickCount64","AddVectoredExceptionHandler","GlobalAlloc","GlobalFree","GlobalLock",
-        "GlobalUnlock","InitializeSRWLock","AcquireSRWLockExclusive","AcquireSRWLockShared",
-        "ReleaseSRWLockExclusive","ReleaseSRWLockShared","QueryPerformanceCounter","VirtualQuery",
-        "WideCharToMultiByte","Beep","CloseHandle","CancelIo","CreateEventA","CreateFileA","CreateFileW",
+        "SetErrorMode",
+        "SetCurrentDirectoryW",
+        "SwitchToThread",
+        "WriteFile",
+        "GetTickCount",
+        "GetTickCount64",
+        "AddVectoredExceptionHandler",
+        "GlobalAlloc",
+        "GlobalFree",
+        "GlobalLock",
+        "GlobalUnlock",
+        "InitializeSRWLock",
+        "AcquireSRWLockExclusive",
+        "AcquireSRWLockShared",
+        "ReleaseSRWLockExclusive",
+        "ReleaseSRWLockShared",
+        "QueryPerformanceCounter",
+        "VirtualQuery",
+        "WideCharToMultiByte",
+        "Beep",
+        "CloseHandle",
+        "CancelIo",
+        "CreateEventA",
+        "CreateFileA",
+        "CreateFileW",
         "CreateWaitableTimerExW",
-        "CreateDirectoryW","CreatePipe","CreateProcessA","CreateThread","DeleteFileW","FindClose",
-        "FindFirstFileA","FindFirstFileW","FindNextFileA","FindNextFileW","GetFileAttributesA",
-        "GetFileAttributesW","GetFileAttributesExW","GetFileSizeEx","GetConsoleMode",
-        "GetExitCodeProcess","GetFileInformationByHandle","GetFullPathNameW",
-        "GetOverlappedResult","GetUserDefaultLocaleName","GetVersionExA","GetVersionExW",
-        "GlobalMemoryStatusEx","FlushFileBuffers","LocalFree",
-        "InitializeConditionVariable","QueryPerformanceFrequency","ReadDirectoryChangesW","ReadFile",
-        "MoveFileExA","MoveFileExW","RemoveDirectoryW","SetConsoleCP","SetConsoleMode",
-        "SetConsoleOutputCP","ResetEvent","SetEvent","SetHandleInformation","SetWaitableTimer","Sleep",
-        "SleepConditionVariableCS","WaitForMultipleObjects","WaitForSingleObject",
-        "WakeAllConditionVariable","WakeConditionVariable","GetTempPathW",
+        "CreateDirectoryW",
+        "CreatePipe",
+        "CreateProcessA",
+        "CreateThread",
+        "DeleteFileW",
+        "FindClose",
+        "FindFirstFileA",
+        "FindFirstFileW",
+        "FindNextFileA",
+        "FindNextFileW",
+        "GetFileAttributesA",
+        "GetFileAttributesW",
+        "GetFileAttributesExW",
+        "GetFileSizeEx",
+        "GetConsoleMode",
+        "GetExitCodeProcess",
+        "GetFileInformationByHandle",
+        "GetFullPathNameW",
+        "GetOverlappedResult",
+        "GetUserDefaultLocaleName",
+        "GetVersionExA",
+        "GetVersionExW",
+        "GlobalMemoryStatusEx",
+        "FlushFileBuffers",
+        "LocalFree",
+        "InitializeConditionVariable",
+        "QueryPerformanceFrequency",
+        "ReadDirectoryChangesW",
+        "ReadFile",
+        "MoveFileExA",
+        "MoveFileExW",
+        "RemoveDirectoryW",
+        "SetConsoleCP",
+        "SetConsoleMode",
+        "SetConsoleOutputCP",
+        "ResetEvent",
+        "SetEvent",
+        "SetHandleInformation",
+        "SetWaitableTimer",
+        "Sleep",
+        "SleepConditionVariableCS",
+        "WaitForMultipleObjects",
+        "WaitForSingleObject",
+        "WakeAllConditionVariable",
+        "WakeConditionVariable",
+        "GetTempPathW",
     };
     static const std::unordered_set<std::string> user32 = {
-        "AdjustWindowRect","AdjustWindowRectEx","BeginPaint","ClientToScreen","CloseClipboard","CreateWindowExW",
-        "DefWindowProcW","DestroyWindow","DispatchMessageW","EmptyClipboard","EndPaint",
-        "GetClipboardData","GetClientRect","GetDC","GetKeyState","GetMonitorInfoA","GetSystemMetrics",
-        "GetWindowLongA","GetWindowLongPtrA","GetWindowRect","IsClipboardFormatAvailable","IsIconic",
-        "IsZoomed","LoadCursorA","MonitorFromPoint","MonitorFromWindow","OpenClipboard","PeekMessageW","RegisterClassExW",
-        "RegisterClipboardFormatW","ReleaseDC","SetClipboardData","SetCursor","SetCursorPos",
-        "ScreenToClient","SetForegroundWindow","SetWindowLongA","SetWindowLongPtrW","SetWindowPos","SetWindowTextW",
-        "ShowCursor","ShowWindow","TranslateMessage","UpdateWindow",
+        "AdjustWindowRect",
+        "AdjustWindowRectEx",
+        "BeginPaint",
+        "ClientToScreen",
+        "CloseClipboard",
+        "CreateWindowExW",
+        "DefWindowProcW",
+        "DestroyWindow",
+        "DispatchMessageW",
+        "EmptyClipboard",
+        "EndPaint",
+        "GetClipboardData",
+        "GetClientRect",
+        "GetDC",
+        "GetKeyState",
+        "GetMonitorInfoA",
+        "GetSystemMetrics",
+        "GetWindowLongA",
+        "GetWindowLongPtrA",
+        "GetWindowRect",
+        "IsClipboardFormatAvailable",
+        "IsIconic",
+        "IsZoomed",
+        "LoadCursorA",
+        "MonitorFromPoint",
+        "MonitorFromWindow",
+        "OpenClipboard",
+        "PeekMessageW",
+        "RegisterClassExW",
+        "RegisterClipboardFormatW",
+        "ReleaseDC",
+        "SetClipboardData",
+        "SetCursor",
+        "SetCursorPos",
+        "ScreenToClient",
+        "SetForegroundWindow",
+        "SetWindowLongA",
+        "SetWindowLongPtrW",
+        "SetWindowPos",
+        "SetWindowTextW",
+        "ShowCursor",
+        "ShowWindow",
+        "TranslateMessage",
+        "UpdateWindow",
     };
     static const std::unordered_set<std::string> gdi32 = {
-        "CreateCompatibleDC","CreateDIBSection","DeleteDC","DeleteObject","GetDeviceCaps",
-        "GetStockObject","SelectObject","StretchBlt",
+        "CreateCompatibleDC",
+        "CreateDIBSection",
+        "DeleteDC",
+        "DeleteObject",
+        "GetDeviceCaps",
+        "GetStockObject",
+        "SelectObject",
+        "StretchBlt",
     };
     static const std::unordered_set<std::string> shell32 = {
-        "CommandLineToArgvW","DragAcceptFiles","DragFinish","DragQueryFileA","DragQueryFileW"};
-    static const std::unordered_set<std::string> ole32 = {"CoCreateInstance","CoInitializeEx","CoTaskMemFree","CoUninitialize"};
-    static const std::unordered_set<std::string> xinput = {"XInputGetState","XInputSetState"};
+        "CommandLineToArgvW", "DragAcceptFiles", "DragFinish", "DragQueryFileA", "DragQueryFileW"};
+    static const std::unordered_set<std::string> ole32 = {
+        "CoCreateInstance", "CoInitializeEx", "CoTaskMemFree", "CoUninitialize"};
+    static const std::unordered_set<std::string> xinput = {"XInputGetState", "XInputSetState"};
     static const std::unordered_set<std::string> advapi32 = {
-        "CryptAcquireContextA","CryptAcquireContextW","CryptAcquireContext","CryptGenRandom","CryptCreateHash",
-        "CryptDestroyHash","CryptDestroyKey","CryptImportPublicKeyInfo","CryptReleaseContext",
-        "CryptSetHashParam","CryptVerifySignature","CryptVerifySignatureA","GetUserNameA","GetUserNameW",
+        "CryptAcquireContextA",
+        "CryptAcquireContextW",
+        "CryptAcquireContext",
+        "CryptGenRandom",
+        "CryptCreateHash",
+        "CryptDestroyHash",
+        "CryptDestroyKey",
+        "CryptImportPublicKeyInfo",
+        "CryptReleaseContext",
+        "CryptSetHashParam",
+        "CryptVerifySignature",
+        "CryptVerifySignatureA",
+        "GetUserNameA",
+        "GetUserNameW",
     };
     static const std::unordered_set<std::string> bcrypt = {
-        "BCryptDestroyKey","BCryptGenRandom","BCryptVerifySignature",
+        "BCryptDestroyKey",
+        "BCryptGenRandom",
+        "BCryptVerifySignature",
     };
     static const std::unordered_set<std::string> ws2_32 = {
-        "WSACleanup","WSAStartup","WSAGetLastError","accept","bind","closesocket","connect","freeaddrinfo",
-        "getaddrinfo","gethostname","getnameinfo","getsockname","htonl","htons","inet_ntop","inet_pton","ioctlsocket",
-        "getsockopt","listen","ntohl","ntohs","recv","recvfrom","select","send","sendto","setsockopt",
-        "shutdown","socket",
+        "WSACleanup",  "WSAStartup",  "WSAGetLastError", "accept",      "bind",
+        "closesocket", "connect",     "freeaddrinfo",    "getaddrinfo", "gethostname",
+        "getnameinfo", "getsockname", "htonl",           "htons",       "inet_ntop",
+        "inet_pton",   "ioctlsocket", "getsockopt",      "listen",      "ntohl",
+        "ntohs",       "recv",        "recvfrom",        "select",      "send",
+        "sendto",      "setsockopt",  "shutdown",        "socket",
     };
     static const std::unordered_set<std::string> iphlpapi = {"GetAdaptersAddresses"};
     static const std::unordered_set<std::string> crypt32 = {
-        "CertAddEncodedCertificateToStore","CertCloseStore","CertCreateCertificateContext",
-        "CertCreateCertificateChainEngine","CertFreeCertificateChain","CertFreeCertificateChainEngine",
-        "CertFreeCertificateContext","CertGetCertificateChain","CertOpenStore",
-        "CertVerifyCertificateChainPolicy","CryptAcquireCertificatePrivateKey",
-        "CryptImportPublicKeyInfoEx2","CryptStringToBinaryA",
+        "CertAddEncodedCertificateToStore",
+        "CertCloseStore",
+        "CertCreateCertificateContext",
+        "CertCreateCertificateChainEngine",
+        "CertFreeCertificateChain",
+        "CertFreeCertificateChainEngine",
+        "CertFreeCertificateContext",
+        "CertGetCertificateChain",
+        "CertOpenStore",
+        "CertVerifyCertificateChainPolicy",
+        "CryptAcquireCertificatePrivateKey",
+        "CryptImportPublicKeyInfoEx2",
+        "CryptStringToBinaryA",
     };
-    static const std::unordered_set<std::string> d3d11 = {"D3D11CreateDevice","D3D11CreateDeviceAndSwapChain"};
-    static const std::unordered_set<std::string> d3dcompiler = {"D3DCompile","D3DCompile2","D3DCompileFromFile","D3DReflect"};
+    static const std::unordered_set<std::string> d3d11 = {"D3D11CreateDevice",
+                                                          "D3D11CreateDeviceAndSwapChain"};
+    static const std::unordered_set<std::string> d3dcompiler = {
+        "D3DCompile", "D3DCompile2", "D3DCompileFromFile", "D3DReflect"};
     static const std::unordered_set<std::string> ucrt = {
-        "_Exit","_exit","__acrt_iob_func","acrt_iob_func","__local_stdio_printf_options",
-        "__local_stdio_scanf_options","__stdio_common_vfprintf","stdio_common_vfprintf",
-        "__stdio_common_vsprintf","stdio_common_vsprintf","__stdio_common_vsscanf","stdio_common_vsscanf",
-        "_vfprintf_l","_vsscanf_l","abort","access","abs","aligned_free","aligned_malloc",
-        "aligned_alloc","atexit","atof","atoi","atol","atoll","beginthreadex","_beginthreadex",
-        "bsearch","calloc_dbg","calloc","cbrt","cbrtf",
-        "ceil","ceilf",
-        "clearerr","clock","close","commit","_commit","cos","cosf","create_locale","dclass","difftime64",
-        "_difftime64","dsign","dtest","_dtest","fdsign","ldsign","dup","dup2","errno","exit",
-        "fabs","fabsf","fdclass","fclose","fcntl","ferror","feof","fflush","fgetc","fgets","fileno","fmax",
-        "fdopen","_fdopen","fgetpos","fmaxf","fmaxl","fmin","fminf","fminl","floor","floorf","fmod","fmodf","fopen","fprintf","fputc","fputs","fread",
-        "free","free_locale","freopen","fseek","fsetpos","fstat64i32","ftell","fwrite","getc","getcwd","getenv","getch",
-        "get_stream_buffer_pointers","_get_stream_buffer_pointers",
-        "getpid","hypot","isalnum","isalpha","isdigit","islower","isspace","isupper","isxdigit","isatty","kbhit",
-        "llround","localeconv","lock_file","_lock_file","log","log10","log2","logf","longjmp","lseek","malloc","memchr","memcmp","memcpy",
-        "memmove","memset","modf","nan","nearbyint","open","perror","pclose","posix_memalign","popen","pow","powf",
-        "printf","putc","puts","qsort","raise","read","realloc","remove","rename","rewind","rint","round","roundf",
-        "setbuf","setenv","setjmp","setvbuf","sin","sinf","snprintf","sprintf","sqrt","sqrtf","sscanf","strcat",
-        "strcat_s","strchr","strcmp","strcpy","strcpy_s","strdup","strerror","stricmp","strlen","strnlen","strncat",
-        "strnicmp","strncmp","strncpy","strstr","strtod","strtod_l","strtol","strtoll","strtok_s","strtoul",
-        "strrchr","strftime","system","tan","tanf","time","time64","tmpfile","tmpnam","tolower","toupper","trunc",
-        "truncf","ungetc","unlink","unlock_file","_unlock_file","utime64","_wutime64","vfprintf","wcscmp","wcscpy","wcslen","wcsncmp","wcscpy_s","write",
-        "_wfopen","wfopen","_wmakepath_s","_wmkdir","wmkdir","_open_osfhandle","open_osfhandle","_wopen","wopen","_wremove","wremove",
-        "_wsplitpath_s","_wunlink","wunlink","fseeki64","ftelli64","gmtime64_s","localtime64_s","lseeki64","mktime64",
-        "rand_s","set_abort_behavior","stat64i32","_stat64i32","wstat64i32","_wstat64i32",
-        "wassert","_byteswap_uint64","byteswap_uint64","_wcsnicmp","wcsnicmp",
-        "_wchmod","wchmod",
+        "_Exit",
+        "_exit",
+        "__acrt_iob_func",
+        "acrt_iob_func",
+        "__local_stdio_printf_options",
+        "__local_stdio_scanf_options",
+        "__stdio_common_vfprintf",
+        "stdio_common_vfprintf",
+        "__stdio_common_vsprintf",
+        "stdio_common_vsprintf",
+        "__stdio_common_vsscanf",
+        "stdio_common_vsscanf",
+        "_vfprintf_l",
+        "_vsscanf_l",
+        "abort",
+        "access",
+        "abs",
+        "aligned_free",
+        "aligned_malloc",
+        "aligned_alloc",
+        "atexit",
+        "atof",
+        "atoi",
+        "atol",
+        "atoll",
+        "beginthreadex",
+        "_beginthreadex",
+        "bsearch",
+        "calloc_dbg",
+        "calloc",
+        "cbrt",
+        "cbrtf",
+        "ceil",
+        "ceilf",
+        "clearerr",
+        "clock",
+        "close",
+        "commit",
+        "_commit",
+        "cos",
+        "cosf",
+        "create_locale",
+        "dclass",
+        "difftime64",
+        "_difftime64",
+        "dsign",
+        "dtest",
+        "_dtest",
+        "fdsign",
+        "ldsign",
+        "dup",
+        "dup2",
+        "errno",
+        "exit",
+        "fabs",
+        "fabsf",
+        "fdclass",
+        "fclose",
+        "fcntl",
+        "ferror",
+        "feof",
+        "fflush",
+        "fgetc",
+        "fgets",
+        "fileno",
+        "fmax",
+        "fdopen",
+        "_fdopen",
+        "fgetpos",
+        "fmaxf",
+        "fmaxl",
+        "fmin",
+        "fminf",
+        "fminl",
+        "floor",
+        "floorf",
+        "fmod",
+        "fmodf",
+        "fopen",
+        "fprintf",
+        "fputc",
+        "fputs",
+        "fread",
+        "free",
+        "free_locale",
+        "freopen",
+        "fseek",
+        "fsetpos",
+        "fstat64i32",
+        "ftell",
+        "fwrite",
+        "getc",
+        "getcwd",
+        "getenv",
+        "getch",
+        "get_stream_buffer_pointers",
+        "_get_stream_buffer_pointers",
+        "getpid",
+        "hypot",
+        "isalnum",
+        "isalpha",
+        "isdigit",
+        "islower",
+        "isspace",
+        "isupper",
+        "isxdigit",
+        "isatty",
+        "kbhit",
+        "llround",
+        "localeconv",
+        "lock_file",
+        "_lock_file",
+        "log",
+        "log10",
+        "log2",
+        "logf",
+        "longjmp",
+        "lseek",
+        "malloc",
+        "memchr",
+        "memcmp",
+        "memcpy",
+        "memmove",
+        "memset",
+        "modf",
+        "nan",
+        "nearbyint",
+        "open",
+        "perror",
+        "pclose",
+        "posix_memalign",
+        "popen",
+        "pow",
+        "powf",
+        "printf",
+        "putc",
+        "puts",
+        "qsort",
+        "raise",
+        "read",
+        "realloc",
+        "remove",
+        "rename",
+        "rewind",
+        "rint",
+        "round",
+        "roundf",
+        "setbuf",
+        "setenv",
+        "setjmp",
+        "setvbuf",
+        "sin",
+        "sinf",
+        "snprintf",
+        "sprintf",
+        "sqrt",
+        "sqrtf",
+        "sscanf",
+        "strcat",
+        "strcat_s",
+        "strchr",
+        "strcmp",
+        "strcpy",
+        "strcpy_s",
+        "strdup",
+        "strerror",
+        "stricmp",
+        "strlen",
+        "strnlen",
+        "strncat",
+        "strnicmp",
+        "strncmp",
+        "strncpy",
+        "strstr",
+        "strtod",
+        "strtod_l",
+        "strtol",
+        "strtoll",
+        "strtok_s",
+        "strtoul",
+        "strrchr",
+        "strftime",
+        "system",
+        "tan",
+        "tanf",
+        "time",
+        "time64",
+        "tmpfile",
+        "tmpnam",
+        "tolower",
+        "toupper",
+        "trunc",
+        "truncf",
+        "ungetc",
+        "unlink",
+        "unlock_file",
+        "_unlock_file",
+        "utime64",
+        "_wutime64",
+        "vfprintf",
+        "wcscmp",
+        "wcscpy",
+        "wcslen",
+        "wcsncmp",
+        "wcscpy_s",
+        "write",
+        "_wfopen",
+        "wfopen",
+        "_wmakepath_s",
+        "_wmkdir",
+        "wmkdir",
+        "_open_osfhandle",
+        "open_osfhandle",
+        "_wopen",
+        "wopen",
+        "_wremove",
+        "wremove",
+        "_wsplitpath_s",
+        "_wunlink",
+        "wunlink",
+        "fseeki64",
+        "ftelli64",
+        "gmtime64_s",
+        "localtime64_s",
+        "lseeki64",
+        "mktime64",
+        "rand_s",
+        "set_abort_behavior",
+        "stat64i32",
+        "_stat64i32",
+        "wstat64i32",
+        "_wstat64i32",
+        "wassert",
+        "_byteswap_uint64",
+        "byteswap_uint64",
+        "_wcsnicmp",
+        "wcsnicmp",
+        "_wchmod",
+        "wchmod",
     };
-    static const std::unordered_set<std::string> debugOnlyUcrt = {"_CrtDbgReport","_CrtDbgReportW","CrtDbgReport"};
-    static const std::unordered_set<std::string> msvcrt = {"_setjmpex","setjmpex"};
+    static const std::unordered_set<std::string> debugOnlyUcrt = {
+        "_CrtDbgReport", "_CrtDbgReportW", "CrtDbgReport"};
+    static const std::unordered_set<std::string> msvcrt = {"_setjmpex", "setjmpex"};
 
-    if (kernel32.count(name) || kernel32.count(stripped)) { dllName = "kernel32.dll"; return true; }
-    if (user32.count(name) || user32.count(stripped)) { dllName = "user32.dll"; return true; }
-    if (gdi32.count(name) || gdi32.count(stripped)) { dllName = "gdi32.dll"; return true; }
-    if (shell32.count(name) || shell32.count(stripped)) { dllName = "shell32.dll"; return true; }
-    if (ole32.count(name) || ole32.count(stripped)) { dllName = "ole32.dll"; return true; }
-    if (xinput.count(name) || xinput.count(stripped)) { dllName = "xinput1_4.dll"; return true; }
-    if (advapi32.count(name) || advapi32.count(stripped)) { dllName = "advapi32.dll"; return true; }
-    if (bcrypt.count(name) || bcrypt.count(stripped)) { dllName = "bcrypt.dll"; return true; }
-    if (ws2_32.count(name) || ws2_32.count(stripped)) { dllName = "ws2_32.dll"; return true; }
-    if (iphlpapi.count(name) || iphlpapi.count(stripped)) { dllName = "iphlpapi.dll"; return true; }
-    if (crypt32.count(name) || crypt32.count(stripped)) { dllName = "crypt32.dll"; return true; }
-    if (d3d11.count(name) || d3d11.count(stripped)) { dllName = "d3d11.dll"; return true; }
-    if (d3dcompiler.count(name) || d3dcompiler.count(stripped)) { dllName = "d3dcompiler_47.dll"; return true; }
+    if (kernel32.count(name) || kernel32.count(stripped)) {
+        dllName = "kernel32.dll";
+        return true;
+    }
+    if (user32.count(name) || user32.count(stripped)) {
+        dllName = "user32.dll";
+        return true;
+    }
+    if (gdi32.count(name) || gdi32.count(stripped)) {
+        dllName = "gdi32.dll";
+        return true;
+    }
+    if (shell32.count(name) || shell32.count(stripped)) {
+        dllName = "shell32.dll";
+        return true;
+    }
+    if (ole32.count(name) || ole32.count(stripped)) {
+        dllName = "ole32.dll";
+        return true;
+    }
+    if (xinput.count(name) || xinput.count(stripped)) {
+        dllName = "xinput1_4.dll";
+        return true;
+    }
+    if (advapi32.count(name) || advapi32.count(stripped)) {
+        dllName = "advapi32.dll";
+        return true;
+    }
+    if (bcrypt.count(name) || bcrypt.count(stripped)) {
+        dllName = "bcrypt.dll";
+        return true;
+    }
+    if (ws2_32.count(name) || ws2_32.count(stripped)) {
+        dllName = "ws2_32.dll";
+        return true;
+    }
+    if (iphlpapi.count(name) || iphlpapi.count(stripped)) {
+        dllName = "iphlpapi.dll";
+        return true;
+    }
+    if (crypt32.count(name) || crypt32.count(stripped)) {
+        dllName = "crypt32.dll";
+        return true;
+    }
+    if (d3d11.count(name) || d3d11.count(stripped)) {
+        dllName = "d3d11.dll";
+        return true;
+    }
+    if (d3dcompiler.count(name) || d3dcompiler.count(stripped)) {
+        dllName = "d3dcompiler_47.dll";
+        return true;
+    }
 
     if (name == "__C_specific_handler" || name == "__C_specific_handler_noexcept" ||
         name == "__current_exception" || name == "__current_exception_context" ||
-        name == "__RTDynamicCast" ||
-        name == "_CxxThrowException" || name == "__CxxFrameHandler3" ||
-        name == "__CxxFrameHandler4" ||
-        name == "__std_exception_copy" || name == "__std_exception_destroy" ||
-        name == "__std_type_info_compare" ||
-        name == "_purecall" ||
-        name == "terminate" ||
-        stripped == "__C_specific_handler" || stripped == "__C_specific_handler_noexcept" ||
-        stripped == "__current_exception" || stripped == "__current_exception_context" ||
-        stripped == "RTDynamicCast" ||
+        name == "__RTDynamicCast" || name == "_CxxThrowException" || name == "__CxxFrameHandler3" ||
+        name == "__CxxFrameHandler4" || name == "__std_exception_copy" ||
+        name == "__std_exception_destroy" || name == "__std_type_info_compare" ||
+        name == "_purecall" || name == "terminate" || stripped == "__C_specific_handler" ||
+        stripped == "__C_specific_handler_noexcept" || stripped == "__current_exception" ||
+        stripped == "__current_exception_context" || stripped == "RTDynamicCast" ||
         stripped == "CxxThrowException" || stripped == "CxxFrameHandler3" ||
-        stripped == "CxxFrameHandler4" ||
-        stripped == "std_exception_copy" || stripped == "std_exception_destroy" ||
-        stripped == "std_type_info_compare" ||
-        stripped == "purecall" ||
-        stripped == "terminate" ||
+        stripped == "CxxFrameHandler4" || stripped == "std_exception_copy" ||
+        stripped == "std_exception_destroy" || stripped == "std_type_info_compare" ||
+        stripped == "purecall" || stripped == "terminate" ||
         hasPrefixEither(name, stripped, "_Init_thread_") ||
-        hasPrefixEither(name, stripped, "Init_thread_") ||
-        name.rfind("__vcrt_", 0) == 0 || stripped.rfind("__vcrt_", 0) == 0) {
+        hasPrefixEither(name, stripped, "Init_thread_") || name.rfind("__vcrt_", 0) == 0 ||
+        stripped.rfind("__vcrt_", 0) == 0) {
         dllName = debugRuntime ? "VCRUNTIME140D.dll" : "VCRUNTIME140.dll";
         return true;
     }
 
     if (name == "_Avx2WmemEnabled" || stripped == "Avx2WmemEnabled" ||
-        hasPrefixEither(name, stripped, "_Cnd_") ||
-        hasPrefixEither(name, stripped, "Cnd_") ||
-        hasPrefixEither(name, stripped, "_Mtx_") ||
-        hasPrefixEither(name, stripped, "Mtx_") ||
+        hasPrefixEither(name, stripped, "_Cnd_") || hasPrefixEither(name, stripped, "Cnd_") ||
+        hasPrefixEither(name, stripped, "_Mtx_") || hasPrefixEither(name, stripped, "Mtx_") ||
         hasPrefixEither(name, stripped, "_Query_perf_") ||
         hasPrefixEither(name, stripped, "Query_perf_") ||
-        hasPrefixEither(name, stripped, "_Smtx_") ||
-        hasPrefixEither(name, stripped, "Smtx_") ||
-        hasPrefixEither(name, stripped, "_Thrd_") ||
-        hasPrefixEither(name, stripped, "Thrd_") ||
-        hasPrefixEither(name, stripped, "__std_") ||
-        hasPrefixEither(name, stripped, "std_")) {
+        hasPrefixEither(name, stripped, "_Smtx_") || hasPrefixEither(name, stripped, "Smtx_") ||
+        hasPrefixEither(name, stripped, "_Thrd_") || hasPrefixEither(name, stripped, "Thrd_") ||
+        hasPrefixEither(name, stripped, "__std_") || hasPrefixEither(name, stripped, "std_")) {
         dllName = debugRuntime ? "MSVCP140D.dll" : "MSVCP140.dll";
         return true;
     }
 
     if (name.find("@std@@") != std::string::npos || stripped.find("@std@@") != std::string::npos ||
-        name.rfind("??", 0) == 0 || stripped.rfind("??", 0) == 0 ||
-        name.rfind("?_", 0) == 0 || stripped.rfind("?_", 0) == 0) {
+        name.rfind("??", 0) == 0 || stripped.rfind("??", 0) == 0 || name.rfind("?_", 0) == 0 ||
+        stripped.rfind("?_", 0) == 0) {
         dllName = debugRuntime ? "MSVCP140D.dll" : "MSVCP140.dll";
         return true;
     }
 
-    if (isLinuxMathSymbol(name) || isLinuxMathSymbol(stripped) || ucrt.count(name) || ucrt.count(stripped)) {
+    if (isLinuxMathSymbol(name) || isLinuxMathSymbol(stripped) || ucrt.count(name) ||
+        ucrt.count(stripped)) {
         dllName = debugRuntime ? "ucrtbased.dll" : "ucrtbase.dll";
         return true;
     }
@@ -368,8 +759,9 @@ bool generateWindowsImports(LinkArch arch,
 
             const size_t stubOff = textSec.data.size();
             if (arch == LinkArch::AArch64) {
-                textSec.data.insert(textSec.data.end(),
-                                    {0x10, 0x00, 0x00, 0x90, 0x10, 0x02, 0x40, 0xF9, 0x00, 0x02, 0x1F, 0xD6});
+                textSec.data.insert(
+                    textSec.data.end(),
+                    {0x10, 0x00, 0x00, 0x90, 0x10, 0x02, 0x40, 0xF9, 0x00, 0x02, 0x1F, 0xD6});
             } else {
                 textSec.data.insert(textSec.data.end(), {0xFF, 0x25, 0x00, 0x00, 0x00, 0x00});
             }

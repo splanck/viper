@@ -51,11 +51,11 @@
 
 /// @brief Internal representation of a Stream handle.
 typedef struct {
-    int64_t type;  ///< RT_STREAM_TYPE_BINFILE or RT_STREAM_TYPE_MEMSTREAM
-    void *wrapped; ///< The wrapped BinFile or MemStream
-    int8_t owns;   ///< Whether this Stream holds a reference on the wrapped object
+    int64_t type;          ///< RT_STREAM_TYPE_BINFILE or RT_STREAM_TYPE_MEMSTREAM
+    void *wrapped;         ///< The wrapped BinFile or MemStream
+    int8_t owns;           ///< Whether this Stream holds a reference on the wrapped object
     int8_t closes_wrapped; ///< Whether Close should close the wrapped object first.
-    int8_t closed; ///< Set to 1 once Close has been called
+    int8_t closed;         ///< Set to 1 once Close has been called
 } stream_impl;
 
 static int stream_is_handle(void *obj) {
@@ -91,7 +91,8 @@ static void stream_release_wrapped(stream_impl *s) {
         stream_release_object(wrapped);
 }
 
-/// @brief Release a Bytes object returned from a BinFile read, freeing it when no longer referenced.
+/// @brief Release a Bytes object returned from a BinFile read, freeing it when no longer
+/// referenced.
 static void stream_dispose_bytes(void *bytes) {
     if (bytes && rt_obj_release_check0(bytes))
         rt_obj_free(bytes);

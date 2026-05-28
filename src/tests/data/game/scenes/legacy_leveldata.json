@@ -12,7 +12,12 @@
     {
       "name": "tiles",
       "type": "tiles",
-      "data": [1, 0, 0, 2]
+      "data": [
+        1,
+        0,
+        0,
+        2
+      ]
     }
   ],
   "objects": [

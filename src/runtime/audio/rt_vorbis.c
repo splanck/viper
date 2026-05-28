@@ -130,7 +130,8 @@ typedef struct {
     int sorted_count;
 } vorbis_codebook_t;
 
-/// @brief Decode the Vorbis-specific 32-bit float layout (sign + 10-bit exponent + 21-bit mantissa).
+/// @brief Decode the Vorbis-specific 32-bit float layout (sign + 10-bit exponent + 21-bit
+/// mantissa).
 ///
 /// Used to unpack scalar lookup-table values from the codebook
 /// section of the setup header.
@@ -616,7 +617,8 @@ static int decode_comment(vorbis_decoder_t *dec, const uint8_t *data, size_t len
     return 0;
 }
 
-/// @brief Parse the Vorbis setup header — codebooks, floor configurations, residue, mappings, modes.
+/// @brief Parse the Vorbis setup header — codebooks, floor configurations, residue, mappings,
+/// modes.
 ///
 /// The largest of the three setup packets. Allocates the
 /// codebook array (one per declared codebook), expands each
@@ -716,7 +718,8 @@ static int decode_setup(vorbis_decoder_t *dec, const uint8_t *data, size_t len) 
                 multiplicands[j] = (uint16_t)bits_read(&bits, value_bits);
 
             // Expand VQ table
-            if ((size_t)cb->entries > (size_t)VORBIS_MAX_CODEBOOK_VQ_VALUES / (size_t)cb->dimensions) {
+            if ((size_t)cb->entries >
+                (size_t)VORBIS_MAX_CODEBOOK_VQ_VALUES / (size_t)cb->dimensions) {
                 free(multiplicands);
                 return -1;
             }
@@ -1141,8 +1144,7 @@ floor_decode_error:
     free(no_residue);
     return -1;
 
-floor_decode_done:
-    ;
+floor_decode_done:;
 
     // --- Residue decode ---
     float **residue_buf = (float **)calloc((size_t)dec->channels, sizeof(float *));

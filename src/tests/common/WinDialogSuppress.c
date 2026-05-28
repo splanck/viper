@@ -51,8 +51,8 @@ typedef int (*_viper_crt_init_fn)(void);
 #else
 #define VIPER_CRT_SECTION_USED
 #endif
-__declspec(allocate(".CRT$XIB")) static _viper_crt_init_fn viper_suppress_init_
-    VIPER_CRT_SECTION_USED =
+__declspec(allocate(
+    ".CRT$XIB")) static _viper_crt_init_fn viper_suppress_init_ VIPER_CRT_SECTION_USED =
     viper_suppress_win_dialogs;
 #undef VIPER_CRT_SECTION_USED
 

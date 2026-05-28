@@ -67,10 +67,9 @@ bool sameDiagnostic(const Diag &lhs, const Diag &rhs) {
 /// @return @c Expected success on clean modules; otherwise an aggregated error diagnostic.
 Expected<void> Verifier::verify(const Module &m) {
     auto diagnostics = verifyAll(m, 50);
-    auto primaryIt =
-        std::find_if(diagnostics.begin(), diagnostics.end(), [](const Diag &diag) {
-            return diag.severity == il::support::Severity::Error;
-        });
+    auto primaryIt = std::find_if(diagnostics.begin(), diagnostics.end(), [](const Diag &diag) {
+        return diag.severity == il::support::Severity::Error;
+    });
     if (primaryIt == diagnostics.end())
         return {};
 

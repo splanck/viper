@@ -15,8 +15,8 @@ namespace viper::bytecode {
 ///         trace/diagnostic output, so the names are part of the debug ABI.
 const char *opcodeName(BCOpcode op) {
     switch (op) {
-#define BC_OPCODE(name, value) \
-    case BCOpcode::name:       \
+#define BC_OPCODE(name, value)                                                                     \
+    case BCOpcode::name:                                                                           \
         return #name;
 #include "bytecode/Bytecode.def"
 #undef BC_OPCODE

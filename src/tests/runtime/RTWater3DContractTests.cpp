@@ -13,10 +13,10 @@ extern "C" {
 
 #include <cassert>
 #include <cmath>
-#include <cstring>
 #include <cstdint>
 #include <cstdio>
 #include <cstdlib>
+#include <cstring>
 
 namespace {
 
@@ -173,8 +173,8 @@ extern "C" void rt_material3d_set_color(void *, double, double, double) {}
 extern "C" void rt_canvas3d_set_backface_cull(void *canvas, int8_t enabled) {
     if (canvas)
         static_cast<rt_canvas3d *>(canvas)->backface_cull = enabled;
-    if (g_backface_cull_call_count < (int)(sizeof(g_backface_cull_values) /
-                                           sizeof(g_backface_cull_values[0]))) {
+    if (g_backface_cull_call_count <
+        (int)(sizeof(g_backface_cull_values) / sizeof(g_backface_cull_values[0]))) {
         g_backface_cull_values[g_backface_cull_call_count] = enabled ? 1 : 0;
     }
     g_backface_cull_call_count++;

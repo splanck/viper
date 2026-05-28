@@ -32,10 +32,10 @@
 #include "Peephole.hpp"
 #include "RegAllocLinear.hpp"
 #include "Scheduler.hpp"
-#include "peephole/PeepholeCommon.hpp"
 #include "TargetX64.hpp"
 #include "binenc/X64BinaryEncoder.hpp"
 #include "codegen/common/objfile/DebugLineTable.hpp"
+#include "peephole/PeepholeCommon.hpp"
 
 #include <algorithm>
 #include <atomic>
@@ -432,10 +432,9 @@ bool allocateModuleMIR(std::vector<MFunction> &mir,
         }
     };
 
-    const std::size_t workerCount =
-        std::min(mir.size(),
-                 std::max<std::size_t>(
-                     1, static_cast<std::size_t>(std::thread::hardware_concurrency())));
+    const std::size_t workerCount = std::min(
+        mir.size(),
+        std::max<std::size_t>(1, static_cast<std::size_t>(std::thread::hardware_concurrency())));
     if (workerCount <= 1) {
         for (std::size_t i = 0; i < mir.size(); ++i)
             allocateOne(i);
@@ -446,8 +445,7 @@ bool allocateModuleMIR(std::vector<MFunction> &mir,
         for (std::size_t worker = 0; worker < workerCount; ++worker) {
             workers.emplace_back([&]() {
                 for (;;) {
-                    const std::size_t index =
-                        nextIndex.fetch_add(1, std::memory_order_relaxed);
+                    const std::size_t index = nextIndex.fetch_add(1, std::memory_order_relaxed);
                     if (index >= mir.size())
                         break;
                     allocateOne(index);
@@ -470,13 +468,13 @@ bool allocateModuleMIR(std::vector<MFunction> &mir,
     for (auto &fn : mir) {
         for (auto &block : fn.blocks) {
             auto &instrs = block.instructions;
-            instrs.erase(
-                std::remove_if(instrs.begin(), instrs.end(),
-                               [](const MInstr &instr) {
-                                   return peephole::isIdentityMovRR(instr) ||
-                                          peephole::isIdentityMovSDRR(instr);
-                               }),
-                instrs.end());
+            instrs.erase(std::remove_if(instrs.begin(),
+                                        instrs.end(),
+                                        [](const MInstr &instr) {
+                                            return peephole::isIdentityMovRR(instr) ||
+                                                   peephole::isIdentityMovSDRR(instr);
+                                        }),
+                         instrs.end());
         }
     }
 
@@ -514,10 +512,9 @@ bool optimizeModuleMIR(std::vector<MFunction> &mir,
         }
     };
 
-    const std::size_t workerCount =
-        std::min(mir.size(),
-                 std::max<std::size_t>(
-                     1, static_cast<std::size_t>(std::thread::hardware_concurrency())));
+    const std::size_t workerCount = std::min(
+        mir.size(),
+        std::max<std::size_t>(1, static_cast<std::size_t>(std::thread::hardware_concurrency())));
     if (workerCount <= 1) {
         for (std::size_t index = 0; index < mir.size(); ++index)
             optimizeOne(index);
@@ -528,8 +525,7 @@ bool optimizeModuleMIR(std::vector<MFunction> &mir,
         for (std::size_t worker = 0; worker < workerCount; ++worker) {
             workers.emplace_back([&]() {
                 for (;;) {
-                    const std::size_t index =
-                        nextIndex.fetch_add(1, std::memory_order_relaxed);
+                    const std::size_t index = nextIndex.fetch_add(1, std::memory_order_relaxed);
                     if (index >= mir.size())
                         break;
                     optimizeOne(index);
@@ -702,22 +698,19 @@ BinaryEmitResult emitMIRToBinary(const std::vector<MFunction> &mir,
                       << " instrs=" << mirInstructionCount(mir[i]) << "\n";
         }
         try {
-            funcEncoder.encodeFunction(
-                mir[i],
-                funcText,
-                result.rodata,
-                format == objfile::ObjFormat::MachO,
-                &frames[i],
-                emitWin64Unwind);
+            funcEncoder.encodeFunction(mir[i],
+                                       funcText,
+                                       result.rodata,
+                                       format == objfile::ObjFormat::MachO,
+                                       &frames[i],
+                                       emitWin64Unwind);
         } catch (const std::exception &ex) {
-            return "x86-64 binary emission failed for function '" + mir[i].name +
-                   "': " + ex.what();
+            return "x86-64 binary emission failed for function '" + mir[i].name + "': " + ex.what();
         }
         if (traceX64BinaryEmit()) {
             const auto elapsed = std::chrono::duration_cast<std::chrono::milliseconds>(
                 std::chrono::steady_clock::now() - traceStart);
-            std::cerr << "[x64-binary] done " << mir[i].name
-                      << " ms=" << elapsed.count()
+            std::cerr << "[x64-binary] done " << mir[i].name << " ms=" << elapsed.count()
                       << " bytes=" << funcText.bytes().size()
                       << " relocs=" << funcText.relocations().size() << "\n";
         }

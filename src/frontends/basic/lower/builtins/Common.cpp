@@ -391,8 +391,7 @@ Lowerer::RVal &BuiltinLowerContext::ensureArgument(const BuiltinLoweringRule::Ar
                 value = {Value::constFloat(def.f64), IlType(IlKind::F64)};
                 break;
             case Lowerer::ExprType::Str:
-                value = {lowerer_->emitConstStr(
-                             lowerer_->getStringLabel(std::string(def.str))),
+                value = {lowerer_->emitConstStr(lowerer_->getStringLabel(std::string(def.str))),
                          IlType(IlKind::Str)};
                 break;
             case Lowerer::ExprType::Bool:

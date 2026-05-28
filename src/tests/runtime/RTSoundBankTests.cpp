@@ -17,10 +17,10 @@
 //
 //===----------------------------------------------------------------------===//
 
-#include "rt_soundbank.h"
-#include "rt_synth.h"
 #include "rt_audio.h"
 #include "rt_object.h"
+#include "rt_soundbank.h"
+#include "rt_synth.h"
 
 #include <cassert>
 #include <cstdio>

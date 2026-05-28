@@ -761,7 +761,8 @@ static void test_rotation_and_scaled_tilemap_edge_inputs() {
 
     void *tilemap = rt_tilemap_new(2, 2, 16, 16);
     assert(tilemap != nullptr);
-    void *hit = rt_tilemap_hit_test_scaled(tilemap, INT64_MIN, INT64_MAX, INT64_MAX, INT64_MIN, INT64_MAX);
+    void *hit =
+        rt_tilemap_hit_test_scaled(tilemap, INT64_MIN, INT64_MAX, INT64_MAX, INT64_MIN, INT64_MAX);
     assert(hit != nullptr);
 
     if (rt_obj_release_check0(hit))

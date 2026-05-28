@@ -75,7 +75,7 @@ static int tests_failed = 0;
         }                                                                                          \
     } while (0)
 
-#define ASSERT_BYTES_EQ(expected, actual, len)                                                      \
+#define ASSERT_BYTES_EQ(expected, actual, len)                                                     \
     do {                                                                                           \
         if (memcmp((expected), (actual), (len)) != 0) {                                            \
             printf("\n    FAILED: Byte buffers differ at line %d\n", __LINE__);                    \

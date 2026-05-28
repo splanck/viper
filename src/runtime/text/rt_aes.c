@@ -989,21 +989,21 @@ void *rt_aes_encrypt_auth(void *data, void *key, void *aad) {
     const uint8_t *aad_data;
     size_t aad_len;
     uint8_t *aad_alloc = aes_combine_aad(out, AES_AUTH_HEADER_LEN, aad, &aad_data, &aad_len);
-    size_t encrypted_len =
-        key_len == 16 ? rt_aes128_gcm_encrypt(key_raw,
-                                              out + 4,
-                                              aad_data,
-                                              aad_len,
-                                              data_raw ? data_raw : (const uint8_t *)"",
-                                              data_len,
-                                              out + AES_AUTH_HEADER_LEN)
-                      : rt_aes256_gcm_encrypt(key_raw,
-                                              out + 4,
-                                              aad_data,
-                                              aad_len,
-                                              data_raw ? data_raw : (const uint8_t *)"",
-                                              data_len,
-                                              out + AES_AUTH_HEADER_LEN);
+    size_t encrypted_len = key_len == 16
+                               ? rt_aes128_gcm_encrypt(key_raw,
+                                                       out + 4,
+                                                       aad_data,
+                                                       aad_len,
+                                                       data_raw ? data_raw : (const uint8_t *)"",
+                                                       data_len,
+                                                       out + AES_AUTH_HEADER_LEN)
+                               : rt_aes256_gcm_encrypt(key_raw,
+                                                       out + 4,
+                                                       aad_data,
+                                                       aad_len,
+                                                       data_raw ? data_raw : (const uint8_t *)"",
+                                                       data_len,
+                                                       out + AES_AUTH_HEADER_LEN);
     if (aad_alloc)
         free(aad_alloc);
     if (encrypted_len != data_len + 16) {
@@ -1071,21 +1071,20 @@ void *rt_aes_decrypt_auth(void *data, void *key, void *aad) {
     const uint8_t *aad_data;
     size_t aad_len;
     uint8_t *aad_alloc = aes_combine_aad(encoded, AES_AUTH_HEADER_LEN, aad, &aad_data, &aad_len);
-    long plain_len =
-        key_len == 16 ? rt_aes128_gcm_decrypt(key_raw,
-                                              encoded + 4,
-                                              aad_data,
-                                              aad_len,
-                                              encoded + AES_AUTH_HEADER_LEN,
-                                              cipher_len,
-                                              plain)
-                      : rt_aes256_gcm_decrypt(key_raw,
-                                              encoded + 4,
-                                              aad_data,
-                                              aad_len,
-                                              encoded + AES_AUTH_HEADER_LEN,
-                                              cipher_len,
-                                              plain);
+    long plain_len = key_len == 16 ? rt_aes128_gcm_decrypt(key_raw,
+                                                           encoded + 4,
+                                                           aad_data,
+                                                           aad_len,
+                                                           encoded + AES_AUTH_HEADER_LEN,
+                                                           cipher_len,
+                                                           plain)
+                                   : rt_aes256_gcm_decrypt(key_raw,
+                                                           encoded + 4,
+                                                           aad_data,
+                                                           aad_len,
+                                                           encoded + AES_AUTH_HEADER_LEN,
+                                                           cipher_len,
+                                                           plain);
     if (aad_alloc)
         free(aad_alloc);
     aes_secure_zero(key_raw, key_len);
@@ -1174,8 +1173,13 @@ static void derive_key_pbkdf2(const uint8_t *password,
                               size_t salt_len,
                               uint32_t iterations,
                               uint8_t key[16]) {
-    rt_keyderive_pbkdf2_sha256_raw(
-        password ? password : (const uint8_t *)"", password_len, salt, salt_len, iterations, key, 16);
+    rt_keyderive_pbkdf2_sha256_raw(password ? password : (const uint8_t *)"",
+                                   password_len,
+                                   salt,
+                                   salt_len,
+                                   iterations,
+                                   key,
+                                   16);
 }
 
 /// @brief Fill `buf` with `len` cryptographically secure random bytes (delegates to the OS RNG).
@@ -1310,8 +1314,7 @@ rt_string rt_aes_decrypt_str(void *data, rt_string password) {
         long plain_len;
         rt_string result;
 
-        if (iterations < RT_PBKDF2_MIN_ITERATIONS ||
-            iterations > RT_PBKDF2_MAX_ITERATIONS) {
+        if (iterations < RT_PBKDF2_MIN_ITERATIONS || iterations > RT_PBKDF2_MAX_ITERATIONS) {
             aes_secure_zero(encoded, (size_t)total_len);
             free(encoded);
             rt_trap("AES: encrypted data uses an unsupported PBKDF2 iteration count");
@@ -1333,8 +1336,8 @@ rt_string rt_aes_decrypt_str(void *data, rt_string password) {
             rt_trap("AES: memory allocation failed");
         }
 
-        plain_len =
-            rt_aes128_gcm_decrypt(key, nonce, encoded, AES_STR_HEADER_LEN, cipher, cipher_len, plain);
+        plain_len = rt_aes128_gcm_decrypt(
+            key, nonce, encoded, AES_STR_HEADER_LEN, cipher, cipher_len, plain);
         aes_secure_zero(key, sizeof(key));
         aes_secure_zero(encoded, (size_t)total_len);
         free(encoded);

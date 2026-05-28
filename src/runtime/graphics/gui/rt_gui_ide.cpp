@@ -224,8 +224,8 @@ void collectVisible(VirtualTreeState &state, const std::string &id, int64_t dept
     mapSetStr(map, "parentId", node.parent);
     rt_map_set_int(map, rt_const_cstr("depth"), depth);
     rt_map_set_bool(map, rt_const_cstr("expanded"), node.expanded ? 1 : 0);
-    rt_map_set_bool(map, rt_const_cstr("needsPopulate"),
-                    (!node.loaded && node.children.empty()) ? 1 : 0);
+    rt_map_set_bool(
+        map, rt_const_cstr("needsPopulate"), (!node.loaded && node.children.empty()) ? 1 : 0);
     rt_seq_push(rows, map);
     releaseObject(map);
     if (!node.expanded)
@@ -241,8 +241,7 @@ double channelLuminance(int64_t c) {
 
 double luminance(int64_t rgb) {
     return 0.2126 * channelLuminance((rgb >> 16) & 0xff) +
-           0.7152 * channelLuminance((rgb >> 8) & 0xff) +
-           0.0722 * channelLuminance(rgb & 0xff);
+           0.7152 * channelLuminance((rgb >> 8) & 0xff) + 0.0722 * channelLuminance(rgb & 0xff);
 }
 
 } // namespace
@@ -282,7 +281,8 @@ void rt_gui_test_harness_register_widget(void *harness,
                                          int64_t hgt) {
     auto *h = requireHarness(harness);
     WidgetRecord rec{toStd(id), toStd(type), toStd(name), x, y, w, hgt};
-    auto it = std::find_if(h->state->widgets.begin(), h->state->widgets.end(),
+    auto it = std::find_if(h->state->widgets.begin(),
+                           h->state->widgets.end(),
                            [&](const WidgetRecord &wrec) { return wrec.id == rec.id; });
     if (it == h->state->widgets.end())
         h->state->widgets.push_back(rec);
@@ -293,7 +293,8 @@ void rt_gui_test_harness_register_widget(void *harness,
 void *rt_gui_test_harness_find_by_id(void *harness, rt_string id) {
     auto *h = requireHarness(harness);
     std::string key = toStd(id);
-    auto it = std::find_if(h->state->widgets.begin(), h->state->widgets.end(),
+    auto it = std::find_if(h->state->widgets.begin(),
+                           h->state->widgets.end(),
                            [&](const WidgetRecord &w) { return w.id == key; });
     return widgetToMap(it == h->state->widgets.end() ? nullptr : &*it);
 }
@@ -301,7 +302,8 @@ void *rt_gui_test_harness_find_by_id(void *harness, rt_string id) {
 void *rt_gui_test_harness_find_by_name(void *harness, rt_string name) {
     auto *h = requireHarness(harness);
     std::string key = toStd(name);
-    auto it = std::find_if(h->state->widgets.begin(), h->state->widgets.end(),
+    auto it = std::find_if(h->state->widgets.begin(),
+                           h->state->widgets.end(),
                            [&](const WidgetRecord &w) { return w.name == key; });
     return widgetToMap(it == h->state->widgets.end() ? nullptr : &*it);
 }
@@ -309,7 +311,8 @@ void *rt_gui_test_harness_find_by_name(void *harness, rt_string name) {
 void *rt_gui_test_harness_find_by_type(void *harness, rt_string type) {
     auto *h = requireHarness(harness);
     std::string key = toStd(type);
-    auto it = std::find_if(h->state->widgets.begin(), h->state->widgets.end(),
+    auto it = std::find_if(h->state->widgets.begin(),
+                           h->state->widgets.end(),
                            [&](const WidgetRecord &w) { return w.type == key; });
     return widgetToMap(it == h->state->widgets.end() ? nullptr : &*it);
 }
@@ -319,11 +322,8 @@ void rt_gui_test_harness_send_key(void *harness, rt_string key, int64_t modifier
     h->state->events.push_back({"key", toStd(key), 0, 0, 0, modifiers, h->state->frame});
 }
 
-void rt_gui_test_harness_send_mouse(void *harness,
-                                    rt_string event_type,
-                                    int64_t x,
-                                    int64_t y,
-                                    int64_t button) {
+void rt_gui_test_harness_send_mouse(
+    void *harness, rt_string event_type, int64_t x, int64_t y, int64_t button) {
     auto *h = requireHarness(harness);
     h->state->events.push_back({toStd(event_type), "", x, y, button, 0, h->state->frame});
     for (auto it = h->state->widgets.rbegin(); it != h->state->widgets.rend(); ++it) {
@@ -350,11 +350,8 @@ void *rt_gui_test_harness_focus_order(void *harness) {
     return seq;
 }
 
-void *rt_gui_test_harness_capture_region(void *harness,
-                                         int64_t x,
-                                         int64_t y,
-                                         int64_t w,
-                                         int64_t hgt) {
+void *rt_gui_test_harness_capture_region(
+    void *harness, int64_t x, int64_t y, int64_t w, int64_t hgt) {
     auto *h = requireHarness(harness);
     void *snapshot = rt_map_new();
     rt_map_set_int(snapshot, rt_const_cstr("x"), x);
@@ -471,7 +468,8 @@ void *rt_virtual_tree_expand(void *tree, rt_string id_s) {
     it->second.expanded = true;
     rt_map_set_bool(map, rt_const_cstr("found"), 1);
     rt_map_set_bool(map, rt_const_cstr("expanded"), 1);
-    rt_map_set_bool(map, rt_const_cstr("needsPopulate"),
+    rt_map_set_bool(map,
+                    rt_const_cstr("needsPopulate"),
                     (!it->second.loaded && it->second.children.empty()) ? 1 : 0);
     return map;
 }

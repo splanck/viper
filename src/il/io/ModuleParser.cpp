@@ -101,8 +101,7 @@ std::string stripDeclarationComment(std::string text) {
     std::size_t comment = std::string::npos;
     for (std::size_t candidate : {text.find('#'), text.find("//"), text.find(';')}) {
         if (candidate != std::string::npos &&
-            (candidate == 0 ||
-             std::isspace(static_cast<unsigned char>(text[candidate - 1])))) {
+            (candidate == 0 || std::isspace(static_cast<unsigned char>(text[candidate - 1])))) {
             comment = std::min(comment, candidate);
         }
     }
@@ -308,8 +307,8 @@ Expected<void> parseGlobal_E(const std::string &line, ParserState &st) {
             (*nonWs == ';' ||
              (*nonWs == '/' && std::next(nonWs) != trailingEnd && *std::next(nonWs) == '/'));
         if (nonWs != trailingEnd && !trailingIsComment) {
-            return Expected<void>{
-                il::io::makeLineErrorDiag({}, st.lineNo, "unexpected characters after closing '\"'")};
+            return Expected<void>{il::io::makeLineErrorDiag(
+                {}, st.lineNo, "unexpected characters after closing '\"'")};
         }
         std::string errMsg;
         if (!il::io::decodeEscapedString(init, decoded, &errMsg)) {

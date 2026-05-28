@@ -115,8 +115,7 @@ void addOperandMemRegs(RegMask &mask, const Operand &op) noexcept {
            regBit(static_cast<uint16_t>(PhysReg::RSI)) |
            regBit(static_cast<uint16_t>(PhysReg::RDX)) |
            regBit(static_cast<uint16_t>(PhysReg::RCX)) |
-           regBit(static_cast<uint16_t>(PhysReg::R8)) |
-           regBit(static_cast<uint16_t>(PhysReg::R9));
+           regBit(static_cast<uint16_t>(PhysReg::R8)) | regBit(static_cast<uint16_t>(PhysReg::R9));
 }
 
 [[nodiscard]] RegMask regOperandBit(const Operand &op) noexcept {
@@ -213,8 +212,7 @@ std::size_t foldConsecutiveMoves(std::vector<MInstr> &instrs, PeepholeStats &sta
         MInstr &second = instrs[idx + 1];
 
         const bool firstIsMovRR = (first.opcode == MOpcode::MOVrr && first.operands.size() == 2);
-        const bool secondIsMovRR =
-            (second.opcode == MOpcode::MOVrr && second.operands.size() == 2);
+        const bool secondIsMovRR = (second.opcode == MOpcode::MOVrr && second.operands.size() == 2);
         if (!firstIsMovRR || !secondIsMovRR)
             continue;
         if (!samePhysReg(second.operands[1], first.operands[0]))

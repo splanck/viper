@@ -32,12 +32,9 @@ std::string forbiddenValueTypeName(TypeRef type) {
 ///        (Seq/Queue/Stack/…) that supports element-typed for-iteration.
 bool isTypedRuntimeSequence(TypeRef type) {
     return type && type->kind == TypeKindSem::Ptr && type->elementType() &&
-           (type->name == "Viper.Collections.Seq" ||
-            type->name == "Viper.Collections.Queue" ||
-            type->name == "Viper.Collections.Stack" ||
-            type->name == "Viper.Collections.Deque" ||
-            type->name == "Viper.Collections.List" ||
-            type->name == "Viper.Collections.Ring" ||
+           (type->name == "Viper.Collections.Seq" || type->name == "Viper.Collections.Queue" ||
+            type->name == "Viper.Collections.Stack" || type->name == "Viper.Collections.Deque" ||
+            type->name == "Viper.Collections.List" || type->name == "Viper.Collections.Ring" ||
             type->name == "Viper.Collections.Heap");
 }
 
@@ -641,8 +638,7 @@ void Sema::analyzeForInStmt(ForInStmt *stmt) {
         if (iterableType->kind == TypeKindSem::Map) {
             // Map iteration binds (key, value)
         } else if (iterableType->kind == TypeKindSem::List ||
-                   iterableType->kind == TypeKindSem::Set ||
-                   isTypedRuntimeSequence(iterableType)) {
+                   iterableType->kind == TypeKindSem::Set || isTypedRuntimeSequence(iterableType)) {
             // List/Set iteration with tuple binding: (index, element)
             secondType = elementType;       // Element goes to second variable
             elementType = types::integer(); // Index goes to first variable

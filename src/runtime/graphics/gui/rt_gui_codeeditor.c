@@ -82,7 +82,8 @@ static vg_codeeditor_t *rt_codeeditor_handle_checked(void *editor) {
 static void rt_codeeditor_invalidate_syntax_cache(vg_codeeditor_t *ce) {
     if (!ce)
         return;
-    ce->highlight_generation = ce->highlight_generation == UINT64_MAX ? 1 : ce->highlight_generation + 1;
+    ce->highlight_generation =
+        ce->highlight_generation == UINT64_MAX ? 1 : ce->highlight_generation + 1;
     for (int i = 0; i < ce->line_count; i++) {
         ce->lines[i].highlight_generation = 0;
         ce->lines[i].syntax_state_generation = 0;
@@ -186,10 +187,9 @@ static int rt_codeeditor_compare_positions(int lhs_line, int lhs_col, int rhs_li
 static void rt_codeeditor_normalize_selection(vg_selection_t *selection) {
     if (!selection)
         return;
-    if (rt_codeeditor_compare_positions(selection->start_line,
-                                        selection->start_col,
-                                        selection->end_line,
-                                        selection->end_col) <= 0)
+    if (rt_codeeditor_compare_positions(
+            selection->start_line, selection->start_col, selection->end_line, selection->end_col) <=
+        0)
         return;
     int line = selection->start_line;
     int col = selection->start_col;
@@ -707,8 +707,7 @@ void rt_codeeditor_set_custom_keywords(void *editor, rt_string keywords) {
 
         if (*token) {
             if (new_count >= cap) {
-                if (cap > INT_MAX / 2 ||
-                    (size_t)cap * 2 > SIZE_MAX / sizeof(*new_keywords)) {
+                if (cap > INT_MAX / 2 || (size_t)cap * 2 > SIZE_MAX / sizeof(*new_keywords)) {
                     ok = 0;
                     break;
                 }
@@ -824,11 +823,8 @@ void rt_codeeditor_refresh_highlights(void *editor) {
 }
 
 /// @brief `CodeEditor.AddInlayHint(line, col, text, color)` — add ghost annotation text.
-void rt_codeeditor_add_inlay_hint(void *editor,
-                                  int64_t line,
-                                  int64_t col,
-                                  rt_string text,
-                                  int64_t color) {
+void rt_codeeditor_add_inlay_hint(
+    void *editor, int64_t line, int64_t col, rt_string text, int64_t color) {
     vg_codeeditor_t *ce = rt_codeeditor_handle_checked(editor);
     if (!ce)
         return;
@@ -909,8 +905,7 @@ static vg_icon_t rt_codeeditor_icon_from_pixels(void *pixels) {
     const uint32_t *raw = rt_pixels_raw_buffer(pixels);
     if (width <= 0 || height <= 0 || !raw)
         return icon;
-    if ((uintmax_t)width > (uintmax_t)SIZE_MAX ||
-        (uintmax_t)height > (uintmax_t)SIZE_MAX)
+    if ((uintmax_t)width > (uintmax_t)SIZE_MAX || (uintmax_t)height > (uintmax_t)SIZE_MAX)
         rt_trap_raise_kind(
             RT_TRAP_KIND_OVERFLOW, Err_Overflow, -1, "CodeEditor.SetGutterIcon: icon too large");
 
@@ -2416,11 +2411,8 @@ void rt_codeeditor_refresh_highlights(void *editor) {
 }
 
 /// @brief Stub: `CodeEditor.AddInlayHint` is a no-op without graphics.
-void rt_codeeditor_add_inlay_hint(void *editor,
-                                  int64_t line,
-                                  int64_t col,
-                                  rt_string text,
-                                  int64_t color) {
+void rt_codeeditor_add_inlay_hint(
+    void *editor, int64_t line, int64_t col, rt_string text, int64_t color) {
     (void)editor;
     (void)line;
     (void)col;

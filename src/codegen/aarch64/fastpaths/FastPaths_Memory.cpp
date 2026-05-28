@@ -117,13 +117,12 @@ std::optional<MFunction> tryMemoryFastPaths(FastPathContext &ctx) {
                             isF64 ? MOpcode::StrFprFpImm
                                   : gprStoreOpcodeForType(storeI->type.kind,
                                                           /*frameRelative=*/true);
-                        const MOpcode loadOpc =
-                            isF64 ? MOpcode::LdrFprFpImm
-                                  : gprLoadOpcodeForType(loadI->type.kind,
-                                                         /*frameRelative=*/true);
+                        const MOpcode loadOpc = isF64
+                                                    ? MOpcode::LdrFprFpImm
+                                                    : gprLoadOpcodeForType(loadI->type.kind,
+                                                                           /*frameRelative=*/true);
                         bbMir.instrs.push_back(
-                            MInstr{storeOpc,
-                                   {MOperand::regOp(*srcReg), MOperand::immOp(offset)}});
+                            MInstr{storeOpc, {MOperand::regOp(*srcReg), MOperand::immOp(offset)}});
                         const PhysReg retReg = isF64 ? PhysReg::V0 : PhysReg::X0;
                         bbMir.instrs.push_back(
                             MInstr{loadOpc, {MOperand::regOp(retReg), MOperand::immOp(offset)}});

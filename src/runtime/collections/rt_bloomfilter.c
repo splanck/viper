@@ -95,7 +95,8 @@ static uint64_t bloom_hash(const char *data, size_t len, uint64_t seed) {
 
 /// @brief GC finalizer: free the BloomFilter's bit array.
 static void bloomfilter_finalizer(void *obj) {
-    rt_bloomfilter_impl *bf = obj ? as_bloomfilter(obj, "BloomFilter: invalid BloomFilter object") : NULL;
+    rt_bloomfilter_impl *bf =
+        obj ? as_bloomfilter(obj, "BloomFilter: invalid BloomFilter object") : NULL;
     if (!bf)
         return;
     if (bf->bits) {
@@ -193,7 +194,8 @@ void rt_bloomfilter_add(void *filter, rt_string item) {
 int64_t rt_bloomfilter_might_contain(void *filter, rt_string item) {
     if (!filter || !item)
         return 0;
-    rt_bloomfilter_impl *bf = as_bloomfilter(filter, "BloomFilter.MightContain: invalid BloomFilter object");
+    rt_bloomfilter_impl *bf =
+        as_bloomfilter(filter, "BloomFilter.MightContain: invalid BloomFilter object");
 
     size_t len = (size_t)rt_str_len(item);
     const char *data = item->data;
@@ -248,7 +250,8 @@ double rt_bloomfilter_fpr(void *filter) {
 void rt_bloomfilter_clear(void *filter) {
     if (!filter)
         return;
-    rt_bloomfilter_impl *bf = as_bloomfilter(filter, "BloomFilter.Clear: invalid BloomFilter object");
+    rt_bloomfilter_impl *bf =
+        as_bloomfilter(filter, "BloomFilter.Clear: invalid BloomFilter object");
     int64_t byte_count = (bf->bit_count + 7) / 8;
     memset(bf->bits, 0, (size_t)byte_count);
     bf->item_count = 0;
@@ -260,7 +263,8 @@ void rt_bloomfilter_clear(void *filter) {
 int64_t rt_bloomfilter_merge(void *filter, void *other) {
     if (!filter || !other)
         return 0;
-    rt_bloomfilter_impl *a = as_bloomfilter(filter, "BloomFilter.Merge: invalid BloomFilter object");
+    rt_bloomfilter_impl *a =
+        as_bloomfilter(filter, "BloomFilter.Merge: invalid BloomFilter object");
     rt_bloomfilter_impl *b = as_bloomfilter(other, "BloomFilter.Merge: invalid BloomFilter object");
     if (filter == other)
         return 1;

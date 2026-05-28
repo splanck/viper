@@ -26,8 +26,8 @@
 
 #include "vgfx3d_backend.h"
 
-#include <stdint.h>
 #include <stddef.h>
+#include <stdint.h>
 
 #ifdef __cplusplus
 extern "C" {
@@ -145,14 +145,16 @@ void vgfx3d_d3d11_fill_instance_data(vgfx3d_d3d11_instance_data_t *dst,
                                      const float *instance_matrices,
                                      const float *prev_instance_matrices,
                                      int8_t has_prev_instance_matrices);
-/// @brief Roll per-frame VP/inv-VP/cam-pos history forward by one frame (scene + overlay tracked separately).
+/// @brief Roll per-frame VP/inv-VP/cam-pos history forward by one frame (scene + overlay tracked
+/// separately).
 void vgfx3d_d3d11_update_frame_history(vgfx3d_d3d11_frame_history_t *history,
                                        const float *vp,
                                        const float *inv_vp,
                                        const float *cam_pos,
                                        int8_t is_overlay_pass,
                                        int8_t uses_separate_overlay_target);
-/// @brief Reconcile bone-buffer upload outcome into per-object draw flags (clears skinning on failure).
+/// @brief Reconcile bone-buffer upload outcome into per-object draw flags (clears skinning on
+/// failure).
 void vgfx3d_d3d11_resolve_bone_upload_status(vgfx3d_d3d11_per_object_t *object_data,
                                              int current_upload_ok,
                                              int prev_upload_ok);
@@ -169,9 +171,7 @@ int32_t vgfx3d_d3d11_next_capacity(int32_t current_capacity,
                                    int32_t needed,
                                    int32_t minimum_capacity);
 /// @brief Overflow-safe row byte computation for tightly packed readback rows.
-int vgfx3d_d3d11_compute_row_bytes(int32_t width,
-                                   int32_t bytes_per_pixel,
-                                   size_t *out_bytes);
+int vgfx3d_d3d11_compute_row_bytes(int32_t width, int32_t bytes_per_pixel, size_t *out_bytes);
 /// @brief Compute a D3D11 vertex-buffer upload span for per-instance data.
 int vgfx3d_d3d11_compute_instance_upload_bytes(int32_t instance_count,
                                                size_t instance_stride,
@@ -190,8 +190,7 @@ int vgfx3d_d3d11_is_valid_texture2d_extent(int32_t width, int32_t height);
 /// @brief Check a square cubemap face dimension against D3D11 limits.
 int vgfx3d_d3d11_is_valid_cubemap_extent(int32_t face_size);
 /// @brief Clamp morph shapes so shader-side int indexing cannot overflow.
-int32_t vgfx3d_d3d11_clamp_morph_shape_count(uint32_t vertex_count,
-                                             int32_t requested_shape_count);
+int32_t vgfx3d_d3d11_clamp_morph_shape_count(uint32_t vertex_count, int32_t requested_shape_count);
 /// @brief Decide whether an aged cache entry can be pruned without dropping below the floor.
 int vgfx3d_d3d11_should_prune_cache_entry(int32_t total_count,
                                           int32_t kept_count,
@@ -204,11 +203,11 @@ vgfx3d_d3d11_target_kind_t vgfx3d_d3d11_choose_target_kind(int8_t rtt_active,
                                                            int8_t gpu_postfx_enabled,
                                                            int8_t load_existing_color);
 /// @brief Downgrade an intended target when allocation failed or the resource is unavailable.
-vgfx3d_d3d11_target_kind_t
-vgfx3d_d3d11_resolve_available_target(vgfx3d_d3d11_target_kind_t requested,
-                                      int scene_available,
-                                      int overlay_available,
-                                      int rtt_available);
+vgfx3d_d3d11_target_kind_t vgfx3d_d3d11_resolve_available_target(
+    vgfx3d_d3d11_target_kind_t requested,
+    int scene_available,
+    int overlay_available,
+    int rtt_available);
 /// @brief Decide whether a cached morph payload still matches a draw command.
 int vgfx3d_d3d11_should_reuse_morph_cache(const void *cached_key,
                                           uint64_t cached_revision,
@@ -217,8 +216,7 @@ int vgfx3d_d3d11_should_reuse_morph_cache(const void *cached_key,
                                           int8_t cached_has_normal_deltas,
                                           const vgfx3d_draw_cmd_t *cmd);
 /// @brief Count the contiguous complete shadow slots that are safe to advertise to HLSL.
-int32_t vgfx3d_d3d11_compute_shadow_count(int32_t slot_count,
-                                          const int *slot_complete);
+int32_t vgfx3d_d3d11_compute_shadow_count(int32_t slot_count, const int *slot_complete);
 /// @brief Clamp or disable a light's shadow slot against the advertised slot range.
 int32_t vgfx3d_d3d11_sanitize_shadow_index(int32_t requested_shadow_index,
                                            int32_t advertised_shadow_count);
@@ -231,19 +229,17 @@ int vgfx3d_d3d11_should_mark_rtt_dirty(int8_t rtt_active,
                                        int has_depth_dsv,
                                        int has_staging);
 /// @brief Map a draw command to its required blend state (alpha vs opaque).
-vgfx3d_d3d11_blend_mode_t
-vgfx3d_d3d11_choose_blend_mode(const vgfx3d_draw_cmd_t *cmd);
+vgfx3d_d3d11_blend_mode_t vgfx3d_d3d11_choose_blend_mode(const vgfx3d_draw_cmd_t *cmd);
 /// @brief Pick the color format — HDR16F for the scene pass, UNORM8 elsewhere.
-vgfx3d_d3d11_color_format_t
-vgfx3d_d3d11_choose_color_format(vgfx3d_d3d11_target_kind_t target_kind);
+vgfx3d_d3d11_color_format_t vgfx3d_d3d11_choose_color_format(
+    vgfx3d_d3d11_target_kind_t target_kind);
 /// @brief Decide whether the next pass should preserve existing color contents.
 int8_t vgfx3d_d3d11_should_load_existing_color(vgfx3d_d3d11_target_kind_t target_kind,
                                                int8_t requested_load_existing_color,
                                                int8_t overlay_used_this_frame);
 /// @brief Decide whether to attach the motion-vector target.
-vgfx3d_d3d11_motion_attachment_mode_t
-vgfx3d_d3d11_choose_motion_attachment_mode(vgfx3d_d3d11_target_kind_t target_kind,
-                                           const vgfx3d_draw_cmd_t *cmd);
+vgfx3d_d3d11_motion_attachment_mode_t vgfx3d_d3d11_choose_motion_attachment_mode(
+    vgfx3d_d3d11_target_kind_t target_kind, const vgfx3d_draw_cmd_t *cmd);
 /// @brief Decide whether terrain splatting has all required textures bound.
 int vgfx3d_d3d11_has_complete_splat(int8_t cmd_has_splat,
                                     int has_splat_map,

@@ -121,8 +121,8 @@ int main() {
 
         std::vector<ObjFile> objs = {obj1, obj2};
         std::unordered_map<std::string, GlobalSymEntry> globalSyms;
-        globalSyms["__viper_dedup_str_1"] =
-            {"__viper_dedup_str_1", GlobalSymEntry::Global, 0, 1, 0, 0};
+        globalSyms["__viper_dedup_str_1"] = {
+            "__viper_dedup_str_1", GlobalSymEntry::Global, 0, 1, 0, 0};
 
         size_t eliminated = deduplicateStrings(objs, globalSyms);
 

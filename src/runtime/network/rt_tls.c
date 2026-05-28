@@ -112,22 +112,23 @@ enum {
 
 static void tls_set_server_last_error_msg(const char *msg);
 static char *tls_read_text_file(const char *path, size_t *len_out);
-static size_t tls_pem_base64_decode(
-    const char *pem_b64, size_t b64_len, uint8_t *out_der, size_t max_der);
+static size_t tls_pem_base64_decode(const char *pem_b64,
+                                    size_t b64_len,
+                                    uint8_t *out_der,
+                                    size_t max_der);
 static int tls_find_pem_block(const char *pem,
                               const char *begin_marker,
                               const char *end_marker,
                               const char **body_out,
                               size_t *body_len_out,
                               const char **next_out);
-static int tls_parse_sec1_ec_private_key(
-    const uint8_t *der, size_t der_len, uint8_t out_priv[32]);
-static int tls_parse_pkcs8_ec_private_key(
-    const uint8_t *der, size_t der_len, uint8_t out_priv[32]);
-static int tls_extract_cert_ec_pubkey(
-    const uint8_t *cert_der, size_t cert_len, uint8_t x_out[32], uint8_t y_out[32]);
-static int tls_extract_cert_rsa_pubkey(
-    const uint8_t *cert_der, size_t cert_len, rt_rsa_key_t *out);
+static int tls_parse_sec1_ec_private_key(const uint8_t *der, size_t der_len, uint8_t out_priv[32]);
+static int tls_parse_pkcs8_ec_private_key(const uint8_t *der, size_t der_len, uint8_t out_priv[32]);
+static int tls_extract_cert_ec_pubkey(const uint8_t *cert_der,
+                                      size_t cert_len,
+                                      uint8_t x_out[32],
+                                      uint8_t y_out[32]);
+static int tls_extract_cert_rsa_pubkey(const uint8_t *cert_der, size_t cert_len, rt_rsa_key_t *out);
 static int tls_extract_cert_key_type(const uint8_t *cert_der, size_t cert_len);
 static int tls_hostname_is_ip_literal(const char *hostname);
 static int tls_parse_client_sni(rt_tls_session_t *session, const uint8_t *data, size_t len);
@@ -138,8 +139,10 @@ static int tls_alpn_list_next_token(const char *list,
                                     size_t *token_len_out);
 static int tls_alpn_list_contains(const char *list, const uint8_t *wanted, size_t wanted_len);
 static int tls_alpn_list_wire_len(const char *list, size_t *wire_len_out);
-static int tls_alpn_write_wire_list(
-    uint8_t *dst, size_t dst_cap, const char *list, size_t *wire_len_out);
+static int tls_alpn_write_wire_list(uint8_t *dst,
+                                    size_t dst_cap,
+                                    const char *list,
+                                    size_t *wire_len_out);
 static int tls_select_alpn_from_wire_list(const char *preferred_list,
                                           const uint8_t *wire_list,
                                           size_t wire_list_len,
@@ -275,8 +278,10 @@ static void tls_release_dynamic_state(rt_tls_session_t *session) {
 ///        bytes and a 2-byte zero extension field (TLS 1.3 CertificateEntry format).
 ///        If is_leaf is non-zero, a copy is also stored in ctx->leaf_cert_der for later
 ///        hostname and signature verification.
-static int tls_server_ctx_append_cert(
-    rt_tls_server_ctx_t *ctx, const uint8_t *der, size_t der_len, int is_leaf) {
+static int tls_server_ctx_append_cert(rt_tls_server_ctx_t *ctx,
+                                      const uint8_t *der,
+                                      size_t der_len,
+                                      int is_leaf) {
     size_t entry_len = 0;
     uint8_t *grown = NULL;
     uint8_t *leaf_copy = NULL;
@@ -382,8 +387,12 @@ rt_tls_server_ctx_t *rt_tls_server_ctx_new(const rt_tls_server_config_t *config)
     }
 
     cursor = cert_pem;
-    while (tls_find_pem_block(
-        cursor, "-----BEGIN CERTIFICATE-----", "-----END CERTIFICATE-----", &body, &body_len, &next)) {
+    while (tls_find_pem_block(cursor,
+                              "-----BEGIN CERTIFICATE-----",
+                              "-----END CERTIFICATE-----",
+                              &body,
+                              &body_len,
+                              &next)) {
         size_t max_der = body_len;
         uint8_t *der = (uint8_t *)malloc(max_der);
         size_t der_len = 0;
@@ -403,7 +412,8 @@ rt_tls_server_ctx_t *rt_tls_server_ctx_new(const rt_tls_server_config_t *config)
     }
 
     if (cert_count == 0) {
-        tls_set_server_last_error_msg("TLS server: certificate file does not contain a PEM certificate");
+        tls_set_server_last_error_msg(
+            "TLS server: certificate file does not contain a PEM certificate");
         goto fail;
     }
 
@@ -421,8 +431,12 @@ rt_tls_server_ctx_t *rt_tls_server_ctx_new(const rt_tls_server_config_t *config)
     }
 
     if (parsed_key_type == TLS_SERVER_KEY_ECDSA_P256) {
-        if (tls_find_pem_block(
-                key_pem, "-----BEGIN PRIVATE KEY-----", "-----END PRIVATE KEY-----", &body, &body_len, NULL)) {
+        if (tls_find_pem_block(key_pem,
+                               "-----BEGIN PRIVATE KEY-----",
+                               "-----END PRIVATE KEY-----",
+                               &body,
+                               &body_len,
+                               NULL)) {
             uint8_t *der = (uint8_t *)malloc(body_len);
             size_t der_len = 0;
             if (!der) {
@@ -453,10 +467,8 @@ rt_tls_server_ctx_t *rt_tls_server_ctx_new(const rt_tls_server_config_t *config)
     }
 
     if (parsed_key_type == TLS_SERVER_KEY_ECDSA_P256 && raw_key_loaded) {
-        if (!tls_extract_cert_ec_pubkey(ctx->leaf_cert_der,
-                                        ctx->leaf_cert_der_len,
-                                        cert_pub_x,
-                                        cert_pub_y)) {
+        if (!tls_extract_cert_ec_pubkey(
+                ctx->leaf_cert_der, ctx->leaf_cert_der_len, cert_pub_x, cert_pub_y)) {
             tls_set_server_last_error_msg(
                 "TLS server: leaf certificate must use a P-256 ECDSA public key");
             goto fail;
@@ -476,8 +488,12 @@ rt_tls_server_ctx_t *rt_tls_server_ctx_new(const rt_tls_server_config_t *config)
         rt_rsa_key_t private_rsa_key;
         rt_rsa_key_init(&private_rsa_key);
 
-        if (tls_find_pem_block(
-                key_pem, "-----BEGIN PRIVATE KEY-----", "-----END PRIVATE KEY-----", &body, &body_len, NULL)) {
+        if (tls_find_pem_block(key_pem,
+                               "-----BEGIN PRIVATE KEY-----",
+                               "-----END PRIVATE KEY-----",
+                               &body,
+                               &body_len,
+                               NULL)) {
             uint8_t *der = (uint8_t *)malloc(body_len);
             size_t der_len = 0;
             if (!der) {
@@ -509,7 +525,8 @@ rt_tls_server_ctx_t *rt_tls_server_ctx_new(const rt_tls_server_config_t *config)
         }
 
         if (raw_key_loaded &&
-            tls_extract_cert_rsa_pubkey(ctx->leaf_cert_der, ctx->leaf_cert_der_len, &cert_rsa_key) &&
+            tls_extract_cert_rsa_pubkey(
+                ctx->leaf_cert_der, ctx->leaf_cert_der_len, &cert_rsa_key) &&
             rt_rsa_public_equals(&cert_rsa_key, &private_rsa_key)) {
             ctx->rsa_key = private_rsa_key;
             rt_rsa_key_init(&private_rsa_key);
@@ -527,15 +544,15 @@ rt_tls_server_ctx_t *rt_tls_server_ctx_new(const rt_tls_server_config_t *config)
         if (raw_key_loaded) {
             tls_set_server_last_error_msg("TLS server: certificate and private key do not match");
         } else {
-            tls_set_server_last_error_msg(
-                "TLS server: unsupported ECDSA private key format; expected an unencrypted P-256 PEM");
+            tls_set_server_last_error_msg("TLS server: unsupported ECDSA private key format; "
+                                          "expected an unencrypted P-256 PEM");
         }
     } else {
         if (raw_key_loaded)
             tls_set_server_last_error_msg("TLS server: certificate and private key do not match");
         else
-            tls_set_server_last_error_msg(
-                "TLS server: unsupported RSA private key format; expected an unencrypted PKCS#1 or PKCS#8 PEM");
+            tls_set_server_last_error_msg("TLS server: unsupported RSA private key format; "
+                                          "expected an unencrypted PKCS#1 or PKCS#8 PEM");
     }
     goto fail;
 
@@ -653,13 +670,13 @@ static int tls_der_read_tlv(
 }
 
 /// @brief Return 1 if buf contains exactly the given DER-encoded OID bytes, 0 otherwise.
-static int tls_oid_matches(
-    const uint8_t *buf, size_t buf_len, const uint8_t *oid, size_t oid_len) {
+static int tls_oid_matches(const uint8_t *buf, size_t buf_len, const uint8_t *oid, size_t oid_len) {
     return buf_len == oid_len && memcmp(buf, oid, oid_len) == 0;
 }
 
 /// @brief Return 1 if hostname is a numeric IPv4 or IPv6 literal, 0 otherwise.
-///        IP-literal hostnames skip DNS-name SAN matching and are verified by IP SAN or exact match.
+///        IP-literal hostnames skip DNS-name SAN matching and are verified by IP SAN or exact
+///        match.
 static int tls_hostname_is_ip_literal(const char *hostname) {
     struct in_addr ipv4;
     struct in6_addr ipv6;
@@ -803,8 +820,10 @@ fail:
 /// @brief Decode the Base64 body of a PEM block into a DER byte buffer.
 ///        Skips whitespace and stops at '=' padding characters or non-Base64 bytes.
 ///        Returns the number of DER bytes written; returns 0 if out_der overflows max_der.
-static size_t tls_pem_base64_decode(
-    const char *pem_b64, size_t b64_len, uint8_t *out_der, size_t max_der) {
+static size_t tls_pem_base64_decode(const char *pem_b64,
+                                    size_t b64_len,
+                                    uint8_t *out_der,
+                                    size_t max_der) {
     static const int8_t b64tab[256] = {
         -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1,
         -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, 62,
@@ -877,8 +896,7 @@ static int tls_find_pem_block(const char *pem,
 /// @brief Copy up to 32 DER integer bytes into a right-aligned 32-byte big-endian buffer.
 ///        Strips leading zero padding bytes (required for DER positive-integer encoding).
 ///        Returns 1 on success; 0 if the remaining value exceeds 32 bytes.
-static int tls_copy_der_octets(
-    const uint8_t *data, size_t len, uint8_t out[32], size_t *out_len) {
+static int tls_copy_der_octets(const uint8_t *data, size_t len, uint8_t out[32], size_t *out_len) {
     size_t skip = 0;
     if (len == 0 || !out || !out_len)
         return 0;
@@ -897,9 +915,7 @@ static int tls_copy_der_octets(
 /// @brief Extract the 32-byte scalar from a SEC 1 (RFC 5915) DER-encoded EC private key.
 ///        SEC 1 structure: SEQUENCE { INTEGER (version), OCTET STRING (key), ... }.
 ///        Returns 1 on success, 0 on parse failure or key too long.
-static int tls_parse_sec1_ec_private_key(const uint8_t *der,
-                                         size_t der_len,
-                                         uint8_t out_priv[32]) {
+static int tls_parse_sec1_ec_private_key(const uint8_t *der, size_t der_len, uint8_t out_priv[32]) {
     uint8_t tag;
     size_t vl, hl;
     const uint8_t *p = der;
@@ -927,8 +943,7 @@ static int tls_parse_pkcs8_ec_private_key(const uint8_t *der,
                                           size_t der_len,
                                           uint8_t out_priv[32]) {
     static const uint8_t OID_EC_PUBLIC_KEY[] = {0x2A, 0x86, 0x48, 0xCE, 0x3D, 0x02, 0x01};
-    static const uint8_t OID_PRIME256V1[] = {
-        0x2A, 0x86, 0x48, 0xCE, 0x3D, 0x03, 0x01, 0x07};
+    static const uint8_t OID_PRIME256V1[] = {0x2A, 0x86, 0x48, 0xCE, 0x3D, 0x03, 0x01, 0x07};
     uint8_t tag;
     size_t vl, hl;
     const uint8_t *p = der;
@@ -976,8 +991,7 @@ static int tls_extract_cert_ec_pubkey(const uint8_t *cert_der,
                                       uint8_t x_out[32],
                                       uint8_t y_out[32]) {
     static const uint8_t OID_EC_PUBLIC_KEY[] = {0x2A, 0x86, 0x48, 0xCE, 0x3D, 0x02, 0x01};
-    static const uint8_t OID_PRIME256V1[] = {
-        0x2A, 0x86, 0x48, 0xCE, 0x3D, 0x03, 0x01, 0x07};
+    static const uint8_t OID_PRIME256V1[] = {0x2A, 0x86, 0x48, 0xCE, 0x3D, 0x03, 0x01, 0x07};
     uint8_t tag;
     size_t vl, hl;
     const uint8_t *p = cert_der;
@@ -1050,8 +1064,9 @@ static int tls_extract_cert_ec_pubkey(const uint8_t *cert_der,
 ///        Navigates TBSCertificate → SubjectPublicKeyInfo, verifies the rsaEncryption OID,
 ///        then parses the RSAPublicKey (modulus + exponent) via rt_rsa_key_from_der.
 ///        Returns 1 on success, 0 on parse failure or wrong key type.
-static int tls_extract_cert_rsa_pubkey(
-    const uint8_t *cert_der, size_t cert_len, rt_rsa_key_t *out) {
+static int tls_extract_cert_rsa_pubkey(const uint8_t *cert_der,
+                                       size_t cert_len,
+                                       rt_rsa_key_t *out) {
     static const uint8_t OID_RSA_ENCRYPTION[] = {
         0x2A, 0x86, 0x48, 0x86, 0xF7, 0x0D, 0x01, 0x01, 0x01};
     uint8_t tag;
@@ -1121,8 +1136,7 @@ static int tls_extract_cert_rsa_pubkey(
 ///        Returns TLS_SERVER_KEY_NONE if the key type is not recognised.
 static int tls_extract_cert_key_type(const uint8_t *cert_der, size_t cert_len) {
     static const uint8_t OID_EC_PUBLIC_KEY[] = {0x2A, 0x86, 0x48, 0xCE, 0x3D, 0x02, 0x01};
-    static const uint8_t OID_PRIME256V1[] = {
-        0x2A, 0x86, 0x48, 0xCE, 0x3D, 0x03, 0x01, 0x07};
+    static const uint8_t OID_PRIME256V1[] = {0x2A, 0x86, 0x48, 0xCE, 0x3D, 0x03, 0x01, 0x07};
     static const uint8_t OID_RSA_ENCRYPTION[] = {
         0x2A, 0x86, 0x48, 0x86, 0xF7, 0x0D, 0x01, 0x01, 0x01};
     uint8_t tag;
@@ -1314,8 +1328,8 @@ static void derive_handshake_keys(rt_tls_session_t *session, const uint8_t share
 /// @brief Server-side mirror of derive_handshake_keys: derives TLS 1.3 handshake secrets
 ///        and installs read keys from the client traffic secret and write keys from the
 ///        server traffic secret (reversed direction relative to the client path).
-static void derive_handshake_keys_server(
-    rt_tls_session_t *session, const uint8_t shared_secret[32]) {
+static void derive_handshake_keys_server(rt_tls_session_t *session,
+                                         const uint8_t shared_secret[32]) {
     uint8_t zero_key[32] = {0};
     uint8_t early_secret[32];
     uint8_t derived[32];
@@ -1396,33 +1410,38 @@ static void derive_application_secrets(rt_tls_session_t *session) {
 /// @brief Expand a 32-byte TLS 1.3 traffic secret into a AEAD key and 12-byte IV.
 ///        Key length is 16 for AES-128-GCM or 32 for ChaCha20-Poly1305.
 ///        Resets the per-direction sequence counter to 0 (RFC 8446 §5.3).
-static void install_traffic_keys_from_secret(
-    const uint8_t secret[32], traffic_keys_t *keys, uint16_t cipher_suite) {
+static void install_traffic_keys_from_secret(const uint8_t secret[32],
+                                             traffic_keys_t *keys,
+                                             uint16_t cipher_suite) {
     int key_len = (cipher_suite == TLS_AES_128_GCM_SHA256) ? 16 : 32;
     rt_hkdf_expand_label(secret, "key", NULL, 0, keys->key, key_len);
     rt_hkdf_expand_label(secret, "iv", NULL, 0, keys->iv, 12);
     keys->seq_num = 0;
 }
 
-/// @brief Install client read keys from server_application_traffic_secret (client reads from server).
+/// @brief Install client read keys from server_application_traffic_secret (client reads from
+/// server).
 static void install_client_application_read_keys(rt_tls_session_t *session) {
     install_traffic_keys_from_secret(
         session->server_application_traffic_secret, &session->read_keys, session->cipher_suite);
 }
 
-/// @brief Install client write keys from client_application_traffic_secret (client writes to server).
+/// @brief Install client write keys from client_application_traffic_secret (client writes to
+/// server).
 static void install_client_application_write_keys(rt_tls_session_t *session) {
     install_traffic_keys_from_secret(
         session->client_application_traffic_secret, &session->write_keys, session->cipher_suite);
 }
 
-/// @brief Install server read keys from client_application_traffic_secret (server reads from client).
+/// @brief Install server read keys from client_application_traffic_secret (server reads from
+/// client).
 static void install_server_application_read_keys(rt_tls_session_t *session) {
     install_traffic_keys_from_secret(
         session->client_application_traffic_secret, &session->read_keys, session->cipher_suite);
 }
 
-/// @brief Install server write keys from server_application_traffic_secret (server writes to client).
+/// @brief Install server write keys from server_application_traffic_secret (server writes to
+/// client).
 static void install_server_application_write_keys(rt_tls_session_t *session) {
     install_traffic_keys_from_secret(
         session->server_application_traffic_secret, &session->write_keys, session->cipher_suite);
@@ -1459,11 +1478,13 @@ static void update_read_application_keys(rt_tls_session_t *session) {
 /// @brief Ratchet the outbound application traffic keys before sending a KeyUpdate.
 static void update_write_application_keys(rt_tls_session_t *session) {
     if (session->is_server) {
-        update_application_secret_and_keys(
-            session->server_application_traffic_secret, &session->write_keys, session->cipher_suite);
+        update_application_secret_and_keys(session->server_application_traffic_secret,
+                                           &session->write_keys,
+                                           session->cipher_suite);
     } else {
-        update_application_secret_and_keys(
-            session->client_application_traffic_secret, &session->write_keys, session->cipher_suite);
+        update_application_secret_and_keys(session->client_application_traffic_secret,
+                                           &session->write_keys,
+                                           session->cipher_suite);
     }
 }
 
@@ -1756,8 +1777,8 @@ static int recv_record(rt_tls_session_t *session,
 /// the null compression method, and the following extensions:
 ///   - `server_name` (when `session->hostname` is set, RFC 6066)
 ///   - `supported_versions` (TLS 1.3 only)
-    ///   - `alpn` (optional single protocol, e.g. `http/1.1`)
-    ///   - `supported_groups` (X25519 only — see RFC 7748)
+///   - `alpn` (optional single protocol, e.g. `http/1.1`)
+///   - `supported_groups` (X25519 only — see RFC 7748)
 ///   - `signature_algorithms` (ECDSA P-256, RSA-PSS SHA-256/384/512)
 ///   - `cookie` (only when echoing back a HelloRetryRequest)
 ///   - `key_share` with a freshly generated X25519 public key
@@ -1841,7 +1862,8 @@ static int send_client_hello(rt_tls_session_t *session) {
         pos += 2;
         write_u16(msg + pos, (uint16_t)wire_len);
         pos += 2;
-        if (!tls_alpn_write_wire_list(msg + pos, sizeof(msg) - pos, session->alpn_protocols, &wire_len)) {
+        if (!tls_alpn_write_wire_list(
+                msg + pos, sizeof(msg) - pos, session->alpn_protocols, &wire_len)) {
             session->error = "ClientHello: failed to encode ALPN list";
             return RT_TLS_ERROR;
         }
@@ -2150,7 +2172,9 @@ static int process_server_hello(rt_tls_session_t *session,
 /// @brief Process the server EncryptedExtensions message (RFC 8446 §4.3.1).
 ///        Currently handles the ALPN extension: records the negotiated protocol name in
 ///        session->negotiated_alpn. Ignores unrecognised extensions.
-static int process_encrypted_extensions(rt_tls_session_t *session, const uint8_t *data, size_t len) {
+static int process_encrypted_extensions(rt_tls_session_t *session,
+                                        const uint8_t *data,
+                                        size_t len) {
     if (len < 2) {
         session->error = "EncryptedExtensions too short";
         return RT_TLS_ERROR_HANDSHAKE;
@@ -2190,8 +2214,8 @@ static int process_encrypted_extensions(rt_tls_session_t *session, const uint8_t
             }
             if (session->alpn_protocols[0] != '\0' &&
                 !tls_alpn_list_contains(session->alpn_protocols, p + 3, proto_len)) {
-                    session->error = "EncryptedExtensions ALPN mismatch";
-                    return RT_TLS_ERROR_HANDSHAKE;
+                session->error = "EncryptedExtensions ALPN mismatch";
+                return RT_TLS_ERROR_HANDSHAKE;
             }
             if (proto_len >= sizeof(session->negotiated_alpn)) {
                 session->error = "EncryptedExtensions ALPN protocol too long";
@@ -2252,8 +2276,7 @@ static int process_post_handshake_message(rt_tls_session_t *session,
 /// transcript hash with HMAC-SHA256, and emits a Finished record.
 /// The transcript is updated *before* sending so the application
 /// keys derived afterwards mix in this message (RFC 8446 §4.4.4).
-static int send_finished_with_secret(
-    rt_tls_session_t *session, const uint8_t base_secret[32]) {
+static int send_finished_with_secret(rt_tls_session_t *session, const uint8_t base_secret[32]) {
     uint8_t finished_key[32];
     rt_hkdf_expand_label(base_secret, "finished", NULL, 0, finished_key, 32);
 
@@ -2306,8 +2329,10 @@ static int ct_memcmp(const uint8_t *a, const uint8_t *b, size_t n) {
 /// has been tampered with or the server doesn't share our key
 /// schedule.
 /// @return RT_TLS_OK on match, RT_TLS_ERROR_HANDSHAKE on failure.
-static int verify_finished_with_secret(
-    rt_tls_session_t *session, const uint8_t base_secret[32], const uint8_t *data, size_t len) {
+static int verify_finished_with_secret(rt_tls_session_t *session,
+                                       const uint8_t base_secret[32],
+                                       const uint8_t *data,
+                                       size_t len) {
     if (len != 32) {
         session->error = "invalid Finished length";
         return RT_TLS_ERROR_HANDSHAKE;
@@ -2329,18 +2354,21 @@ static int verify_finished_with_secret(
 
 /// @brief Client-side Finished verification — checks against server_handshake_traffic_secret.
 static int verify_finished(rt_tls_session_t *session, const uint8_t *data, size_t len) {
-    return verify_finished_with_secret(session, session->server_handshake_traffic_secret, data, len);
+    return verify_finished_with_secret(
+        session, session->server_handshake_traffic_secret, data, len);
 }
 
 /// @brief Server-side Finished verification — checks against client_handshake_traffic_secret.
 static int verify_finished_server(rt_tls_session_t *session, const uint8_t *data, size_t len) {
-    return verify_finished_with_secret(session, session->client_handshake_traffic_secret, data, len);
+    return verify_finished_with_secret(
+        session, session->client_handshake_traffic_secret, data, len);
 }
 
 /// @brief Return 1 if the ClientHello signature_algorithms extension list contains wanted_scheme.
 ///        list points to the wire-format list body (pairs of uint16 scheme codes).
-static int clienthello_offers_sig_scheme(
-    const uint8_t *list, size_t list_len, uint16_t wanted_scheme) {
+static int clienthello_offers_sig_scheme(const uint8_t *list,
+                                         size_t list_len,
+                                         uint16_t wanted_scheme) {
     if (list_len < 2 || (list_len & 1) != 0)
         return 0;
     for (size_t i = 0; i + 1 < list_len; i += 2) {
@@ -2390,7 +2418,8 @@ static int tls_alpn_list_next_token(const char *list,
     return end > start;
 }
 
-/// @brief Test whether the ClientHello's wire-format ALPN list contains `wanted_protocol[0..wanted_len)`.
+/// @brief Test whether the ClientHello's wire-format ALPN list contains
+/// `wanted_protocol[0..wanted_len)`.
 /// @details Takes an explicit (ptr, len) pair for the wanted token
 ///          because the caller (`tls_select_alpn_from_wire_list`)
 ///          passes a substring pointer into a larger comma-separated
@@ -2462,8 +2491,10 @@ static int tls_alpn_list_wire_len(const char *list, size_t *wire_len_out) {
 /// @brief Encode a comma-separated ALPN list into TLS wire format in dst.
 ///        Each token is written as a 1-byte length prefix followed by the protocol name.
 ///        Returns 1 on success; 0 if the output would exceed dst_cap.
-static int tls_alpn_write_wire_list(
-    uint8_t *dst, size_t dst_cap, const char *list, size_t *wire_len_out) {
+static int tls_alpn_write_wire_list(uint8_t *dst,
+                                    size_t dst_cap,
+                                    const char *list,
+                                    size_t *wire_len_out) {
     size_t offset = 0;
     const char *token = NULL;
     size_t token_len = 0;
@@ -2661,10 +2692,12 @@ static int parse_client_hello(rt_tls_session_t *session, const uint8_t *data, si
                         else if (clienthello_offers_sig_scheme(data + pos + 2, list_len, 0x0804))
                             session->server_sig_scheme = 0x0804;
                         else {
-                            session->error = "ClientHello does not offer an RSA-PSS signature algorithm";
+                            session->error =
+                                "ClientHello does not offer an RSA-PSS signature algorithm";
                             return RT_TLS_ERROR_HANDSHAKE;
                         }
-                    } else if (clienthello_offers_sig_scheme(data + pos + 2, list_len, wanted_sig_scheme)) {
+                    } else if (clienthello_offers_sig_scheme(
+                                   data + pos + 2, list_len, wanted_sig_scheme)) {
                         session->server_sig_scheme = wanted_sig_scheme;
                     } else {
                         session->error = "ClientHello does not offer ecdsa_secp256r1_sha256";
@@ -2886,9 +2919,8 @@ static int send_certificate_server(rt_tls_session_t *session) {
     write_u24(hs + 1, (uint32_t)body_len);
     hs[4] = 0;
     write_u24(hs + 5, (uint32_t)session->server_ctx->cert_list_entries_len);
-    memcpy(hs + 8,
-           session->server_ctx->cert_list_entries,
-           session->server_ctx->cert_list_entries_len);
+    memcpy(
+        hs + 8, session->server_ctx->cert_list_entries, session->server_ctx->cert_list_entries_len);
 
     if (transcript_update(session, hs, 4 + body_len) != 0) {
         free(hs);
@@ -2905,8 +2937,9 @@ static int send_certificate_server(rt_tls_session_t *session) {
 /// @brief DER-encode an ECDSA P-256 signature (r, s) into out.
 ///        Each of r and s is wrapped in an INTEGER TLV with a leading 0x00 byte when the
 ///        high bit is set (DER positive-integer rule). Returns the total byte count written.
-static size_t encode_ecdsa_signature_der(
-    const uint8_t r[32], const uint8_t s[32], uint8_t out[80]) {
+static size_t encode_ecdsa_signature_der(const uint8_t r[32],
+                                         const uint8_t s[32],
+                                         uint8_t out[80]) {
     const uint8_t *r_ptr = r;
     const uint8_t *s_ptr = s;
     size_t r_len = 32;
@@ -2946,9 +2979,10 @@ static size_t encode_ecdsa_signature_der(
 }
 
 /// @brief Construct the 130-byte content buffer signed in CertificateVerify (RFC 8446 §4.4.3).
-///        Format: 64 × 0x20 | context string "TLS 1.3, server CertificateVerify" | 0x00 | transcript_hash.
-static void build_server_cert_verify_message(
-    const uint8_t transcript_hash[32], uint8_t out_content[130]) {
+///        Format: 64 × 0x20 | context string "TLS 1.3, server CertificateVerify" | 0x00 |
+///        transcript_hash.
+static void build_server_cert_verify_message(const uint8_t transcript_hash[32],
+                                             uint8_t out_content[130]) {
     static const char context_str[] = "TLS 1.3, server CertificateVerify";
     memset(out_content, 0x20, 64);
     memcpy(out_content + 64, context_str, 33);
@@ -3007,13 +3041,12 @@ static int send_certificate_verify_server(rt_tls_session_t *session) {
                 break;
         }
         sig_der_len = sizeof(sig_buf);
-        if (!rt_rsa_pss_sign(
-                &session->server_ctx->rsa_key,
-                hash_id,
-                hashed_content,
-                hash_len,
-                sig_buf,
-                &sig_der_len)) {
+        if (!rt_rsa_pss_sign(&session->server_ctx->rsa_key,
+                             hash_id,
+                             hashed_content,
+                             hash_len,
+                             sig_buf,
+                             &sig_der_len)) {
             session->error = "TLS: failed to sign CertificateVerify";
             return RT_TLS_ERROR_HANDSHAKE;
         }
@@ -3094,7 +3127,8 @@ rt_tls_session_t *rt_tls_server_accept_socket(int socket_fd, const rt_tls_server
             if (transcript_update(session, data + pos, 4 + hs_len) != 0)
                 goto fail;
 
-            if (send_server_hello(session) != RT_TLS_OK || send_encrypted_extensions_server(session) != RT_TLS_OK ||
+            if (send_server_hello(session) != RT_TLS_OK ||
+                send_encrypted_extensions_server(session) != RT_TLS_OK ||
                 send_certificate_server(session) != RT_TLS_OK ||
                 send_certificate_verify_server(session) != RT_TLS_OK ||
                 send_finished_server(session) != RT_TLS_OK) {
@@ -3197,7 +3231,8 @@ rt_tls_session_t *rt_tls_new(int socket_fd, const rt_tls_config_t *config) {
             session->state = TLS_STATE_ERROR;
             return session;
         }
-        strncpy(session->alpn_protocols, config->alpn_protocol, sizeof(session->alpn_protocols) - 1);
+        strncpy(
+            session->alpn_protocols, config->alpn_protocol, sizeof(session->alpn_protocols) - 1);
     }
     if (config && config->ca_file) {
         strncpy(session->ca_file, config->ca_file, sizeof(session->ca_file) - 1);
@@ -3773,11 +3808,8 @@ static rt_viper_tls_t *rt_viper_tls_require(void *obj) {
     return (rt_viper_tls_t *)obj;
 }
 
-static int rt_viper_tls_string_arg(rt_string value,
-                                   const char **out,
-                                   size_t *out_len,
-                                   int allow_empty,
-                                   size_t max_len) {
+static int rt_viper_tls_string_arg(
+    rt_string value, const char **out, size_t *out_len, int allow_empty, size_t max_len) {
     if (!out || !out_len)
         return 0;
     *out = "";
@@ -3841,11 +3873,14 @@ static void *rt_viper_tls_connect_impl(rt_string host,
     size_t host_len = 0;
     size_t ca_len = 0;
     size_t alpn_len = 0;
-    if (!rt_viper_tls_string_arg(host, &host_cstr, &host_len, 0, sizeof(((rt_tls_session_t *)0)->hostname)))
+    if (!rt_viper_tls_string_arg(
+            host, &host_cstr, &host_len, 0, sizeof(((rt_tls_session_t *)0)->hostname)))
         return NULL;
-    if (!rt_viper_tls_string_arg(ca_file, &ca_cstr, &ca_len, 1, sizeof(((rt_tls_session_t *)0)->ca_file)))
+    if (!rt_viper_tls_string_arg(
+            ca_file, &ca_cstr, &ca_len, 1, sizeof(((rt_tls_session_t *)0)->ca_file)))
         return NULL;
-    if (!rt_viper_tls_string_arg(alpn, &alpn_cstr, &alpn_len, 1, sizeof(((rt_tls_session_t *)0)->alpn_protocols)))
+    if (!rt_viper_tls_string_arg(
+            alpn, &alpn_cstr, &alpn_len, 1, sizeof(((rt_tls_session_t *)0)->alpn_protocols)))
         return NULL;
 
     rt_tls_config_t config;

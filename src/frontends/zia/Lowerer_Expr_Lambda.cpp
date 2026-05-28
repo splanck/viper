@@ -459,10 +459,10 @@ LowerResult Lowerer::lowerAs(AsExpr *expr) {
         (sourceType->kind == TypeKindSem::Class || sourceType->kind == TypeKindSem::Interface) &&
         targetType->kind == TypeKindSem::Class) {
         if (const ClassTypeInfo *targetInfo = getOrCreateClassTypeInfo(targetType->name)) {
-            Value casted = emitCallRet(Type(Type::Kind::Ptr),
-                                       "rt_cast_as",
-                                       {source.value,
-                                        Value::constInt(static_cast<int64_t>(targetInfo->classId))});
+            Value casted = emitCallRet(
+                Type(Type::Kind::Ptr),
+                "rt_cast_as",
+                {source.value, Value::constInt(static_cast<int64_t>(targetInfo->classId))});
             emitTrapIfNull(casted, Type(Type::Kind::Ptr), "as.cast");
             return {casted, ilTargetType};
         }
@@ -473,11 +473,10 @@ LowerResult Lowerer::lowerAs(AsExpr *expr) {
         targetType->kind == TypeKindSem::Interface) {
         auto ifaceIt = interfaceTypes_.find(targetType->name);
         if (ifaceIt != interfaceTypes_.end()) {
-            Value casted =
-                emitCallRet(Type(Type::Kind::Ptr),
-                            "rt_cast_as_iface",
-                            {source.value,
-                             Value::constInt(static_cast<int64_t>(ifaceIt->second.ifaceId))});
+            Value casted = emitCallRet(
+                Type(Type::Kind::Ptr),
+                "rt_cast_as_iface",
+                {source.value, Value::constInt(static_cast<int64_t>(ifaceIt->second.ifaceId))});
             emitTrapIfNull(casted, Type(Type::Kind::Ptr), "as.iface");
             return {casted, ilTargetType};
         }

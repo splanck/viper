@@ -156,7 +156,7 @@ struct vaud_music {
     int stream_loop_pending;                        ///< Mixer requested a loop rewind.
     int refill_in_progress;                         ///< Non-realtime thread is mutating buffers.
     int buffer_refilling[VAUD_MUSIC_BUFFER_COUNT];  ///< Per-buffer refill ownership flags.
-    int64_t stream_output_generated;                ///< Output frames decoded since last reset/seek.
+    int64_t stream_output_generated; ///< Output frames decoded since last reset/seek.
 
     // Resampling support (allocated when sample_rate != VAUD_SAMPLE_RATE)
     int16_t *resample_buf; ///< Temp buffer for raw frames before resampling
@@ -208,7 +208,7 @@ struct vaud_context {
     int32_t accum_buf[VAUD_BUFFER_FRAMES * VAUD_CHANNELS]; ///< 32-bit mix accumulator (RT-safe)
 
     // Thread synchronization
-    vaud_mutex_t mutex; ///< Protects voice and music state
+    vaud_mutex_t mutex;      ///< Protects voice and music state
     volatile int running;    ///< Audio thread running flag
     volatile int paused;     ///< Global pause flag
     volatile int destroying; ///< Context teardown is in progress.

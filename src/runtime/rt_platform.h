@@ -259,14 +259,11 @@ static inline int rt_atomic_compare_exchange_size(
     (void)success_order;
     (void)fail_order;
 #if defined(_M_X64) || defined(_M_ARM64)
-    size_t old =
-        (size_t)_InterlockedCompareExchange64((volatile long long *)ptr,
-                                              (long long)desired,
-                                              (long long)*expected);
+    size_t old = (size_t)_InterlockedCompareExchange64(
+        (volatile long long *)ptr, (long long)desired, (long long)*expected);
 #else
-    size_t old = (size_t)_InterlockedCompareExchange((volatile long *)ptr,
-                                                     (long)desired,
-                                                     (long)*expected);
+    size_t old =
+        (size_t)_InterlockedCompareExchange((volatile long *)ptr, (long)desired, (long)*expected);
 #endif
     if (old == *expected) {
         return 1;
@@ -382,8 +379,7 @@ static inline int rt_atomic_compare_exchange_ptr(
         volatile size_t *: rt_atomic_compare_exchange_size,                                        \
         size_t *: rt_atomic_compare_exchange_size,                                                 \
         void *volatile *: rt_atomic_compare_exchange_ptr,                                          \
-        void **: rt_atomic_compare_exchange_ptr)(                                                  \
-            (ptr), (expected), (desired), (success), (fail))
+        void **: rt_atomic_compare_exchange_ptr)((ptr), (expected), (desired), (success), (fail))
 
 #define __atomic_fetch_add(ptr, val, order)                                                        \
     _Generic((ptr),                                                                                \

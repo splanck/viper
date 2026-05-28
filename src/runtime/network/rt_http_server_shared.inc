@@ -204,8 +204,10 @@ static bool parse_size_decimal(const char *text, size_t len, size_t *out) {
 }
 
 /// @brief Return true if a comma-separated header value contains @p token.
-static bool header_value_contains_token(
-    const char *value, size_t value_len, const char *token, size_t token_len) {
+static bool header_value_contains_token(const char *value,
+                                        size_t value_len,
+                                        const char *token,
+                                        size_t token_len) {
     const char *p = value;
     const char *end = value + value_len;
 
@@ -288,7 +290,8 @@ static chunk_parse_status_t decode_chunked_body(const char *encoded,
             free(decoded);
             return CHUNK_PARSE_INCOMPLETE;
         }
-        if (!parse_chunk_size_line(encoded + pos, (size_t)(line_end - (encoded + pos)), &chunk_size)) {
+        if (!parse_chunk_size_line(
+                encoded + pos, (size_t)(line_end - (encoded + pos)), &chunk_size)) {
             free(decoded);
             return CHUNK_PARSE_INVALID;
         }
@@ -454,8 +457,7 @@ static bool parse_transfer_encoding_value_strict(const char *value,
         if (token_end == token_start)
             return false;
         token_is_chunked =
-            (size_t)(token_end - token_start) == 7 &&
-            strncasecmp(token_start, "chunked", 7) == 0;
+            (size_t)(token_end - token_start) == 7 && strncasecmp(token_start, "chunked", 7) == 0;
         if (!token_is_chunked)
             return false;
         if (saw_chunked)
@@ -644,7 +646,8 @@ static bool parse_http_request(const char *raw, size_t raw_len, server_req_t *re
         size_t consumed_len = 0;
         char *decoded_body = NULL;
         if (decode_chunked_body(
-                body_start, available, &decoded_body, &req->body_len, &consumed_len) != CHUNK_PARSE_OK)
+                body_start, available, &decoded_body, &req->body_len, &consumed_len) !=
+            CHUNK_PARSE_OK)
             goto fail;
         req->body = decoded_body;
     } else if (content_length > HTTP_REQ_MAX_BODY) {
@@ -680,8 +683,7 @@ static const char *map_get_lower_header_cstr(void *headers, const char *lower_na
 }
 
 static int request_allows_keep_alive(const server_req_t *req) {
-    const char *connection =
-        req ? map_get_lower_header_cstr(req->headers, "connection") : NULL;
+    const char *connection = req ? map_get_lower_header_cstr(req->headers, "connection") : NULL;
     if (!req)
         return 0;
     if (req->http_major > 1 || (req->http_major == 1 && req->http_minor >= 1)) {
@@ -695,8 +697,7 @@ static int request_allows_keep_alive(const server_req_t *req) {
 }
 
 static int response_forces_close(const server_res_t *res) {
-    const char *connection =
-        res ? map_get_lower_header_cstr(res->headers, "connection") : NULL;
+    const char *connection = res ? map_get_lower_header_cstr(res->headers, "connection") : NULL;
     if (!connection)
         return 0;
     return header_value_contains_token(connection, strlen(connection), "close", 5);

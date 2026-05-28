@@ -165,9 +165,8 @@ static uint32_t lcg_next(uint32_t *state) {
 /// Defaults: 0.4×1.2 blades with 30% size variation, wind speed 2.0 / strength 0.15 / turbulence
 /// 0.5, LOD near=40 / far=100 world units. Traps on allocation failure.
 void *rt_vegetation3d_new(void *blade_texture) {
-    rt_vegetation3d *v =
-        (rt_vegetation3d *)rt_obj_new_i64(RT_G3D_VEGETATION3D_CLASS_ID,
-                                          (int64_t)sizeof(rt_vegetation3d));
+    rt_vegetation3d *v = (rt_vegetation3d *)rt_obj_new_i64(RT_G3D_VEGETATION3D_CLASS_ID,
+                                                           (int64_t)sizeof(rt_vegetation3d));
     if (!v) {
         rt_trap("Vegetation3D.New: allocation failed");
         return NULL;
@@ -353,8 +352,7 @@ void rt_vegetation3d_populate(void *obj, void *terrain, int64_t count) {
         double scale[3];
     } terrain_view;
 
-    terrain_view *tv =
-        (terrain_view *)rt_g3d_checked_or_null(terrain, RT_G3D_TERRAIN3D_CLASS_ID);
+    terrain_view *tv = (terrain_view *)rt_g3d_checked_or_null(terrain, RT_G3D_TERRAIN3D_CLASS_ID);
     if (!tv || tv->width <= 0 || tv->depth <= 0)
         return;
 

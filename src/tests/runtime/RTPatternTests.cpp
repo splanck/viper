@@ -207,7 +207,8 @@ static void test_find_from() {
     rt_string embedded = rt_string_from_bytes(embedded_bytes, sizeof(embedded_bytes));
     result = rt_pattern_find_from(embedded, rt_const_cstr("."), 1);
     const char nul_only[] = {'\0'};
-    test_result("FindFrom can match embedded NUL byte", bytes_eq(result, nul_only, sizeof(nul_only)));
+    test_result("FindFrom can match embedded NUL byte",
+                bytes_eq(result, nul_only, sizeof(nul_only)));
 
     printf("\n");
 }
@@ -298,7 +299,8 @@ static void test_replace() {
                 strcmp(rt_string_cstr(result), "helloworldtest") == 0);
 
     result = rt_pattern_replace(rt_const_cstr("a1b2"), rt_const_cstr("\\d"), NULL);
-    test_result("Replace with NULL replacement deletes matches", strcmp(rt_string_cstr(result), "ab") == 0);
+    test_result("Replace with NULL replacement deletes matches",
+                strcmp(rt_string_cstr(result), "ab") == 0);
 
     printf("\n");
 }

@@ -448,10 +448,8 @@ static rt_heap_hdr_t *rt_heap_checked_header_(void *payload, const char *fn_name
     rt_heap_hdr_t *hdr = NULL;
     if (!rt_heap_try_get_header(payload, &hdr) || !hdr) {
         char buf[160];
-        snprintf(buf,
-                 sizeof(buf),
-                 "%s: invalid or freed heap payload",
-                 fn_name ? fn_name : "rt_heap");
+        snprintf(
+            buf, sizeof(buf), "%s: invalid or freed heap payload", fn_name ? fn_name : "rt_heap");
         rt_trap(buf);
         return NULL;
     }

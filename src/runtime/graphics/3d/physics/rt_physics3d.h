@@ -86,13 +86,13 @@ void rt_world3d_clear_collision_events(void *world);
 
 /* World queries */
 /// @brief Cast a ray; returns the closest PhysicsHit3D within @p max_distance, or NULL if none.
-void *rt_world3d_raycast(void *world, void *origin, void *direction, double max_distance, int64_t mask);
+void *rt_world3d_raycast(
+    void *world, void *origin, void *direction, double max_distance, int64_t mask);
 /// @brief Cast a ray and return all hits as a PhysicsHitList3D, sorted by distance.
 void *rt_world3d_raycast_all(
     void *world, void *origin, void *direction, double max_distance, int64_t mask);
 /// @brief Sweep a sphere along @p delta; returns the first PhysicsHit3D or NULL.
-void *rt_world3d_sweep_sphere(
-    void *world, void *center, double radius, void *delta, int64_t mask);
+void *rt_world3d_sweep_sphere(void *world, void *center, double radius, void *delta, int64_t mask);
 /// @brief Sweep a capsule (segment between @p a and @p b, radius @p radius) along @p delta.
 void *rt_world3d_sweep_capsule(
     void *world, void *a, void *b, double radius, void *delta, int64_t mask);

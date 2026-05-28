@@ -125,17 +125,16 @@ static void test_asset_resolver_and_manifest() {
     assert(rt_map_get_bool(missing, rt_const_cstr("found")) == 0);
     assert(get_str(missing, "diagnostic").find("missing.png") != std::string::npos);
 
-    rt_string manifest_text = rt_const_cstr(
-        "project Demo\n"
-        "lang zia\n"
-        "entry src/main.zia\n"
-        "sources src\n"
-        "exclude build\n"
-        "asset-root assets\n"
-        "default-scene scenes/level.json\n"
-        "[run.play]\n"
-        "entry src/main.zia\n"
-        "args --dev, --scene=one\n");
+    rt_string manifest_text = rt_const_cstr("project Demo\n"
+                                            "lang zia\n"
+                                            "entry src/main.zia\n"
+                                            "sources src\n"
+                                            "exclude build\n"
+                                            "asset-root assets\n"
+                                            "default-scene scenes/level.json\n"
+                                            "[run.play]\n"
+                                            "entry src/main.zia\n"
+                                            "args --dev, --scene=one\n");
     void *manifest = rt_project_manifest_parse_text(manifest_text);
     assert(rt_map_get_bool(manifest, rt_const_cstr("valid")) == 1);
     assert(get_str(manifest, "name") == "Demo");

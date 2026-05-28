@@ -28,7 +28,8 @@
 extern "C" {
 #endif
 
-/// @brief Create a particle emitter pre-allocated for at most @p max_particles concurrent particles.
+/// @brief Create a particle emitter pre-allocated for at most @p max_particles concurrent
+/// particles.
 void *rt_particles3d_new(int64_t max_particles);
 /// @brief Set the emitter origin in world space.
 void rt_particles3d_set_position(void *obj, double x, double y, double z);

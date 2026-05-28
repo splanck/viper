@@ -45,8 +45,8 @@
 #include <string.h>
 
 #ifdef _WIN32
-#include <windows.h>
 #include <shellapi.h>
+#include <windows.h>
 #elif defined(__APPLE__)
 #include <crt_externs.h>
 #endif
@@ -55,8 +55,9 @@ static int g_legacy_args_host_init_state = 0; // 0 = no, 1 = initializing, 2 = d
 static int rt_args_grow_if_needed(RtArgsState *state, size_t new_size);
 
 #ifdef _WIN32
-static rt_string rt_env_wide_to_string_or_trap(
-    const wchar_t *wide, int wide_len, const char *context);
+static rt_string rt_env_wide_to_string_or_trap(const wchar_t *wide,
+                                               int wide_len,
+                                               const char *context);
 #endif
 
 /// @brief Get the argument store from the active context (or legacy fallback).
@@ -303,8 +304,9 @@ static wchar_t *rt_env_utf8_to_wide_or_trap(const char *utf8, const char *contex
 ///          output, second fills it. Traps on conversion failure
 ///          rather than returning empty so callers don't silently
 ///          lose data on weird input from the OS.
-static rt_string rt_env_wide_to_string_or_trap(
-    const wchar_t *wide, int wide_len, const char *context) {
+static rt_string rt_env_wide_to_string_or_trap(const wchar_t *wide,
+                                               int wide_len,
+                                               const char *context) {
     if (!wide || wide_len <= 0)
         return rt_str_empty();
     int needed = WideCharToMultiByte(CP_UTF8, 0, wide, wide_len, NULL, 0, NULL, NULL);

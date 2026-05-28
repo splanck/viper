@@ -153,8 +153,12 @@ int main() {
     }
     TempFile invalidOut{".invalid.out.il"};
     {
-        std::vector<std::string> args{invalid.path.string(), "-o", invalidOut.path.string(),
-                                      "--passes", "simplify-cfg", "-verify-each"};
+        std::vector<std::string> args{invalid.path.string(),
+                                      "-o",
+                                      invalidOut.path.string(),
+                                      "--passes",
+                                      "simplify-cfg",
+                                      "-verify-each"};
         std::vector<char *> argv;
         for (auto &a : args)
             argv.push_back(a.data());

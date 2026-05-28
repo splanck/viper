@@ -33,7 +33,8 @@ int main() {
     void *session = rt_debug_protocol_session_new();
     rt_debug_protocol_set_breakpoint(session, rt_const_cstr("main.zia"), 2);
     void *event = rt_debug_protocol_launch(
-        session, rt_const_cstr("main.zia"),
+        session,
+        rt_const_cstr("main.zia"),
         rt_const_cstr("var before = 1;\nvar answer = 42;\nvar after = answer;\n"));
     assert(get_str(event, "type") == "stopped");
     assert(get_str(event, "reason") == "breakpoint");

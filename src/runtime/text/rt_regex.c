@@ -124,11 +124,8 @@ static const char *pattern_required(rt_string pattern) {
     return rt_string_cstr(pattern);
 }
 
-static void ensure_result_capacity(char **result,
-                                   size_t *result_cap,
-                                   size_t result_len,
-                                   size_t add,
-                                   const char *trap_msg) {
+static void ensure_result_capacity(
+    char **result, size_t *result_cap, size_t result_len, size_t add, const char *trap_msg) {
     if (add > SIZE_MAX - result_len)
         rt_trap(trap_msg);
     size_t needed = result_len + add;
@@ -1545,8 +1542,11 @@ rt_string rt_pattern_replace(rt_string text, rt_string pattern, rt_string replac
         if (!find_match(cp, txt_str, text_len, pos, &match_start, &match_end)) {
             // Copy rest of text
             size_t remaining = text_len - pos;
-            ensure_result_capacity(
-                &result, &result_cap, result_len, remaining, "Pattern: replacement length overflow");
+            ensure_result_capacity(&result,
+                                   &result_cap,
+                                   result_len,
+                                   remaining,
+                                   "Pattern: replacement length overflow");
             memcpy(result + result_len, txt_str + pos, remaining);
             result_len += remaining;
             break;

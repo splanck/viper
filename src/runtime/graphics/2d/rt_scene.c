@@ -750,8 +750,7 @@ void rt_scene_node_add_child(void *node_ptr, void *child_ptr) {
     }
     int64_t before = rt_seq_len(node->children);
     rt_seq_push(node->children, child);
-    if (rt_seq_len(node->children) != before + 1 ||
-        rt_seq_get(node->children, before) != child) {
+    if (rt_seq_len(node->children) != before + 1 || rt_seq_get(node->children, before) != child) {
         if (rt_obj_release_check0(child))
             rt_obj_free(child);
         return;

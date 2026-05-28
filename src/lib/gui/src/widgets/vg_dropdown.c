@@ -50,7 +50,9 @@ static float dropdown_panel_width(vg_dropdown_t *dd, float trigger_width);
 static int dropdown_find_typeahead_index(vg_dropdown_t *dd, uint32_t codepoint, int start_index);
 static void dropdown_emit_change(vg_dropdown_t *dd, int old_index);
 
-static float dropdown_scrollbar_thumb_size(float track_size, float content_size, float viewport_size);
+static float dropdown_scrollbar_thumb_size(float track_size,
+                                           float content_size,
+                                           float viewport_size);
 static float dropdown_scrollbar_thumb_offset(float scroll_pos,
                                              float scroll_range,
                                              float track_size,
@@ -70,7 +72,8 @@ static vg_widget_vtable_t g_dropdown_vtable = {.destroy = dropdown_destroy,
                                                .can_focus = dropdown_can_focus,
                                                .on_focus = NULL};
 
-/// @brief VTable destroy: releases input capture if held, frees all item strings, placeholder, and item array.
+/// @brief VTable destroy: releases input capture if held, frees all item strings, placeholder, and
+/// item array.
 static void dropdown_destroy(vg_widget_t *widget) {
     vg_dropdown_t *dd = (vg_dropdown_t *)widget;
     if (vg_widget_get_input_capture() == widget)
@@ -84,7 +87,8 @@ static void dropdown_destroy(vg_widget_t *widget) {
     dd->item_capacity = 0;
 }
 
-/// @brief VTable measure: sizes the trigger button to the preferred content width and one item height.
+/// @brief VTable measure: sizes the trigger button to the preferred content width and one item
+/// height.
 static void dropdown_measure(vg_widget_t *widget, float avail_w, float avail_h) {
     (void)avail_h;
 
@@ -98,7 +102,8 @@ static void dropdown_measure(vg_widget_t *widget, float avail_w, float avail_h) 
     vg_widget_apply_constraints(widget);
 }
 
-/// @brief Returns the height of one item row: the larger of theme input height and font line_height+8.
+/// @brief Returns the height of one item row: the larger of theme input height and font
+/// line_height+8.
 static float dropdown_item_height(vg_dropdown_t *dd) {
     vg_theme_t *theme = vg_theme_get_current();
     float scale = theme && theme->ui_scale > 0.0f ? theme->ui_scale : 1.0f;
@@ -153,7 +158,8 @@ static float dropdown_preferred_width(vg_dropdown_t *dd) {
     return text_width + padding * 2.0f + gutter;
 }
 
-/// @brief Returns the open panel's width: the larger of preferred content width and @p trigger_width.
+/// @brief Returns the open panel's width: the larger of preferred content width and @p
+/// trigger_width.
 static float dropdown_panel_width(vg_dropdown_t *dd, float trigger_width) {
     float panel_width = dropdown_preferred_width(dd);
     if (panel_width < trigger_width)
@@ -161,7 +167,8 @@ static float dropdown_panel_width(vg_dropdown_t *dd, float trigger_width) {
     return panel_width;
 }
 
-/// @brief Finds the next item whose first character matches @p codepoint (case-insensitive), wrapping around from @p start_index.
+/// @brief Finds the next item whose first character matches @p codepoint (case-insensitive),
+/// wrapping around from @p start_index.
 static int dropdown_find_typeahead_index(vg_dropdown_t *dd, uint32_t codepoint, int start_index) {
     if (!dd || dd->item_count <= 0)
         return -1;
@@ -190,26 +197,23 @@ static void dropdown_emit_change(vg_dropdown_t *dd, int old_index) {
     if (!dd)
         return;
     if (old_index != dd->selected_index && dd->on_change) {
-        dd->on_change(&dd->base,
-                      dd->selected_index,
-                      vg_dropdown_get_selected_text(dd),
-                      dd->on_change_data);
+        dd->on_change(
+            &dd->base, dd->selected_index, vg_dropdown_get_selected_text(dd), dd->on_change_data);
     }
 }
 
-/// @brief Retrieves the screen bounds of the root ancestor widget, used as the usable viewport for panel placement.
-static void dropdown_get_viewport_bounds(vg_dropdown_t *dd,
-                                         float *out_x,
-                                         float *out_y,
-                                         float *out_w,
-                                         float *out_h) {
+/// @brief Retrieves the screen bounds of the root ancestor widget, used as the usable viewport for
+/// panel placement.
+static void dropdown_get_viewport_bounds(
+    vg_dropdown_t *dd, float *out_x, float *out_y, float *out_w, float *out_h) {
     vg_widget_t *root = &dd->base;
     while (root->parent)
         root = root->parent;
     vg_widget_get_screen_bounds(root, out_x, out_y, out_w, out_h);
 }
 
-/// @brief Resolves the absolute panel top and height, flipping above the trigger when insufficient space exists below.
+/// @brief Resolves the absolute panel top and height, flipping above the trigger when insufficient
+/// space exists below.
 static void dropdown_resolve_panel_rect(vg_dropdown_t *dd,
                                         float abs_widget_x,
                                         float abs_widget_y,
@@ -244,7 +248,8 @@ static void dropdown_resolve_panel_rect(vg_dropdown_t *dd,
         *out_panel_h = panel_h;
 }
 
-/// @brief Returns true if @p screen_x/screen_y falls within the open panel, writing the hit item index into @p index (-1 if no item).
+/// @brief Returns true if @p screen_x/screen_y falls within the open panel, writing the hit item
+/// index into @p index (-1 if no item).
 static bool dropdown_panel_hit(vg_dropdown_t *dd, float screen_x, float screen_y, int *index) {
     float sx = 0.0f;
     float sy = 0.0f;
@@ -289,8 +294,11 @@ static void dropdown_clamp_scroll(vg_dropdown_t *dd, float panel_h) {
         dd->scroll_y = max_scroll;
 }
 
-/// @brief Computes the scrollbar thumb length proportional to visible/total content, clamped to a minimum of 18 px.
-static float dropdown_scrollbar_thumb_size(float track_size, float content_size, float viewport_size) {
+/// @brief Computes the scrollbar thumb length proportional to visible/total content, clamped to a
+/// minimum of 18 px.
+static float dropdown_scrollbar_thumb_size(float track_size,
+                                           float content_size,
+                                           float viewport_size) {
     if (track_size <= 0.0f || content_size <= 0.0f || viewport_size <= 0.0f)
         return track_size;
 
@@ -302,7 +310,8 @@ static float dropdown_scrollbar_thumb_size(float track_size, float content_size,
     return thumb_size;
 }
 
-/// @brief Computes the thumb's position within the track from the current scroll position and scroll range.
+/// @brief Computes the thumb's position within the track from the current scroll position and
+/// scroll range.
 static float dropdown_scrollbar_thumb_offset(float scroll_pos,
                                              float scroll_range,
                                              float track_size,
@@ -336,7 +345,8 @@ static void dropdown_scroll_to_index(vg_dropdown_t *dd, int index) {
     dropdown_clamp_scroll(dd, panel_h);
 }
 
-/// @brief Opens the dropdown panel, initialises hover to @p preferred_hover (or selection), and acquires input capture.
+/// @brief Opens the dropdown panel, initialises hover to @p preferred_hover (or selection), and
+/// acquires input capture.
 static void dropdown_open(vg_widget_t *widget, vg_dropdown_t *dd, int preferred_hover) {
     if (!dd || dd->open)
         return;
@@ -367,7 +377,8 @@ static void dropdown_close(vg_widget_t *widget, vg_dropdown_t *dd) {
     widget->needs_paint = true;
 }
 
-/// @brief VTable paint: renders the trigger button with background, selected-text/placeholder, border accents, and chevron arrow.
+/// @brief VTable paint: renders the trigger button with background, selected-text/placeholder,
+/// border accents, and chevron arrow.
 static void dropdown_paint(vg_widget_t *widget, void *canvas) {
     vg_dropdown_t *dd = (vg_dropdown_t *)widget;
     vg_theme_t *theme = vg_theme_get_current();
@@ -415,8 +426,7 @@ static void dropdown_paint(vg_widget_t *widget, void *canvas) {
                        y + h - 2,
                        w - 2,
                        2,
-                       dd->open ? theme->colors.accent_primary
-                                : vg_color_darken(border, 0.15f));
+                       dd->open ? theme->colors.accent_primary : vg_color_darken(border, 0.15f));
 
     // Selected text or placeholder
     const char *label = (dd->selected_index >= 0 && dd->selected_index < dd->item_count)
@@ -458,7 +468,8 @@ static void dropdown_paint(vg_widget_t *widget, void *canvas) {
               text);
 }
 
-/// @brief VTable paint overlay: draws the floating item-list panel with row highlights, text, accent bar, and scrollbar above all other widgets.
+/// @brief VTable paint overlay: draws the floating item-list panel with row highlights, text,
+/// accent bar, and scrollbar above all other widgets.
 static void dropdown_paint_overlay(vg_widget_t *widget, void *canvas) {
     vg_dropdown_t *dd = (vg_dropdown_t *)widget;
     vg_theme_t *theme = vg_theme_get_current();
@@ -509,28 +520,29 @@ static void dropdown_paint_overlay(vg_widget_t *widget, void *canvas) {
     for (int i = start_item; i < dd->item_count && i < start_item + visible_count + 1; i++) {
         float iy = (float)py - scroll_offset + (float)(i - start_item) * ih;
         int32_t iy32 = (int32_t)iy;
-        uint32_t row_bg =
-            (i == dd->hovered_index)
-                ? dd->hover_bg
-                : ((i == dd->selected_index)
-                       ? dd->selected_bg
-                       : (((i & 1) == 0) ? dd->dropdown_bg
-                                         : vg_color_blend(dd->dropdown_bg, theme->colors.bg_secondary, 0.35f)));
+        uint32_t row_bg = (i == dd->hovered_index)
+                              ? dd->hover_bg
+                              : ((i == dd->selected_index)
+                                     ? dd->selected_bg
+                                     : (((i & 1) == 0) ? dd->dropdown_bg
+                                                       : vg_color_blend(dd->dropdown_bg,
+                                                                        theme->colors.bg_secondary,
+                                                                        0.35f)));
 
         vgfx_fill_rect(win, px + 1, iy32, pw - 2, (int32_t)ih, row_bg);
         if (i == dd->selected_index)
             vgfx_fill_rect(win, px + 1, iy32, 3, (int32_t)ih, theme->colors.accent_primary);
-        vgfx_fill_rect(win, px + 1, iy32 + (int32_t)ih - 1, pw - 2, 1, theme->colors.border_secondary);
+        vgfx_fill_rect(
+            win, px + 1, iy32 + (int32_t)ih - 1, pw - 2, 1, theme->colors.border_secondary);
 
         if (dd->items[i] && dd->font) {
-            vg_font_draw_text(
-                canvas,
-                dd->font,
-                dd->font_size,
-                (float)px + theme->input.padding_h,
-                dropdown_text_baseline(dd, iy, ih),
-                dd->items[i],
-                dd->text_color);
+            vg_font_draw_text(canvas,
+                              dd->font,
+                              dd->font_size,
+                              (float)px + theme->input.padding_h,
+                              dropdown_text_baseline(dd, iy, ih),
+                              dd->items[i],
+                              dd->text_color);
         }
     }
 
@@ -543,8 +555,8 @@ static void dropdown_paint_overlay(vg_widget_t *widget, void *canvas) {
         float track_h = panel_h - 6.0f;
         float thumb_h = dropdown_scrollbar_thumb_size(track_h, dd->item_count * ih, panel_h);
         float scroll_range = dd->item_count * ih - panel_h;
-        float thumb_y = track_y +
-                        dropdown_scrollbar_thumb_offset(dd->scroll_y, scroll_range, track_h, thumb_h);
+        float thumb_y =
+            track_y + dropdown_scrollbar_thumb_offset(dd->scroll_y, scroll_range, track_h, thumb_h);
         vgfx_fill_rect(win,
                        (int32_t)track_x,
                        (int32_t)track_y,
@@ -560,7 +572,8 @@ static void dropdown_paint_overlay(vg_widget_t *widget, void *canvas) {
     }
 }
 
-/// @brief VTable handle_event: routes click, mouse-move, wheel, key-down, and key-char events to open/close/select/scroll/typeahead logic.
+/// @brief VTable handle_event: routes click, mouse-move, wheel, key-down, and key-char events to
+/// open/close/select/scroll/typeahead logic.
 static bool dropdown_handle_event(vg_widget_t *widget, vg_event_t *event) {
     vg_dropdown_t *dd = (vg_dropdown_t *)widget;
 
@@ -691,8 +704,8 @@ static bool dropdown_handle_event(vg_widget_t *widget, vg_event_t *event) {
             return false;
 
         case VG_EVENT_KEY_CHAR: {
-            int start = dd->open && dd->hovered_index >= 0 ? dd->hovered_index + 1
-                                                           : dd->selected_index + 1;
+            int start =
+                dd->open && dd->hovered_index >= 0 ? dd->hovered_index + 1 : dd->selected_index + 1;
             if (start < 0)
                 start = 0;
             int found = dropdown_find_typeahead_index(dd, event->key.codepoint, start);

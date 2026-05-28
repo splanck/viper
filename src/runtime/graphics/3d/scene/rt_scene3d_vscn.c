@@ -111,7 +111,8 @@ static int32_t scene3d_count_subtree(const rt_scene_node3d *node) {
                     free(stack);
                     return INT32_MAX;
                 }
-                grown = (const rt_scene_node3d **)realloc((void *)stack, new_capacity * sizeof(*stack));
+                grown =
+                    (const rt_scene_node3d **)realloc((void *)stack, new_capacity * sizeof(*stack));
                 if (!grown) {
                     free(stack);
                     return 0;
@@ -126,6 +127,7 @@ static int32_t scene3d_count_subtree(const rt_scene_node3d *node) {
     free(stack);
     return total;
 }
+
 // Scene save/load (.vscn JSON format)
 //=============================================================================
 
@@ -667,8 +669,7 @@ static int vscn_append_raw(char **buf, size_t *len, size_t *cap, const char *src
 #if defined(__GNUC__) || defined(__clang__)
 __attribute__((format(printf, 4, 5)))
 #endif
-static int vscn_append(
-    char **buf, size_t *len, size_t *cap, const char *fmt, ...) {
+static int vscn_append(char **buf, size_t *len, size_t *cap, const char *fmt, ...) {
     if (!buf || !len || !cap || !fmt)
         return 0;
     for (;;) {
@@ -755,7 +756,8 @@ static int vscn_append_json_string(char **buf, size_t *len, size_t *cap, const c
     return vscn_append_raw(buf, len, cap, "\"", 1);
 }
 
-/// @brief First pass: register every texture / cubemap referenced by `material` in the dedupe tables.
+/// @brief First pass: register every texture / cubemap referenced by `material` in the dedupe
+/// tables.
 ///
 /// The save algorithm runs collection over the whole scene before
 /// any serialisation so each shared asset gets a stable index
@@ -765,7 +767,8 @@ static int vscn_collect_material_assets(rt_material3d *material, vscn_save_conte
         return 1;
     if (material->texture && vscn_ptr_table_index_or_add(&ctx->textures, material->texture) < 0)
         return 0;
-    if (material->normal_map && vscn_ptr_table_index_or_add(&ctx->textures, material->normal_map) < 0)
+    if (material->normal_map &&
+        vscn_ptr_table_index_or_add(&ctx->textures, material->normal_map) < 0)
         return 0;
     if (material->specular_map &&
         vscn_ptr_table_index_or_add(&ctx->textures, material->specular_map) < 0)
@@ -958,54 +961,55 @@ static int vscn_serialize_material(rt_material3d *material,
     if (!vscn_append(buf,
                      len,
                      cap,
-	                     "%s{\"diffuse\": [%.17g, %.17g, %.17g, %.17g], ",
-	                     indent,
-	                     vscn_clamp_or(material->diffuse[0], 1.0, 0.0, 1.0),
-	                     vscn_clamp_or(material->diffuse[1], 1.0, 0.0, 1.0),
-	                     vscn_clamp_or(material->diffuse[2], 1.0, 0.0, 1.0),
-	                     vscn_clamp_or(material->diffuse[3], 1.0, 0.0, 1.0)) ||
-        !vscn_append(buf,
-                     len,
-                     cap,
-                     "\"specular\": [%.17g, %.17g, %.17g], \"shininess\": %.17g, "
-                     "\"workflow\": %d, ",
-	                     vscn_clamp_or(material->specular[0], 1.0, 0.0, VSCN_ABS_MAX),
-	                     vscn_clamp_or(material->specular[1], 1.0, 0.0, VSCN_ABS_MAX),
-	                     vscn_clamp_or(material->specular[2], 1.0, 0.0, VSCN_ABS_MAX),
-	                     vscn_nonnegative_or(material->shininess, 32.0),
-	                     vscn_material_workflow_or(material->workflow, RT_MATERIAL3D_WORKFLOW_LEGACY)) ||
+                     "%s{\"diffuse\": [%.17g, %.17g, %.17g, %.17g], ",
+                     indent,
+                     vscn_clamp_or(material->diffuse[0], 1.0, 0.0, 1.0),
+                     vscn_clamp_or(material->diffuse[1], 1.0, 0.0, 1.0),
+                     vscn_clamp_or(material->diffuse[2], 1.0, 0.0, 1.0),
+                     vscn_clamp_or(material->diffuse[3], 1.0, 0.0, 1.0)) ||
+        !vscn_append(
+            buf,
+            len,
+            cap,
+            "\"specular\": [%.17g, %.17g, %.17g], \"shininess\": %.17g, "
+            "\"workflow\": %d, ",
+            vscn_clamp_or(material->specular[0], 1.0, 0.0, VSCN_ABS_MAX),
+            vscn_clamp_or(material->specular[1], 1.0, 0.0, VSCN_ABS_MAX),
+            vscn_clamp_or(material->specular[2], 1.0, 0.0, VSCN_ABS_MAX),
+            vscn_nonnegative_or(material->shininess, 32.0),
+            vscn_material_workflow_or(material->workflow, RT_MATERIAL3D_WORKFLOW_LEGACY)) ||
         !vscn_append(buf,
                      len,
                      cap,
                      "\"emissive\": [%.17g, %.17g, %.17g], \"metallic\": %.17g, "
                      "\"roughness\": %.17g, \"ao\": %.17g, ",
-	                     vscn_clamp_or(material->emissive[0], 0.0, 0.0, VSCN_ABS_MAX),
-	                     vscn_clamp_or(material->emissive[1], 0.0, 0.0, VSCN_ABS_MAX),
-	                     vscn_clamp_or(material->emissive[2], 0.0, 0.0, VSCN_ABS_MAX),
-	                     vscn_clamp_or(material->metallic, 0.0, 0.0, 1.0),
-	                     vscn_clamp_or(material->roughness, 0.5, 0.0, 1.0),
-	                     vscn_clamp_or(material->ao, 1.0, 0.0, 1.0)) ||
+                     vscn_clamp_or(material->emissive[0], 0.0, 0.0, VSCN_ABS_MAX),
+                     vscn_clamp_or(material->emissive[1], 0.0, 0.0, VSCN_ABS_MAX),
+                     vscn_clamp_or(material->emissive[2], 0.0, 0.0, VSCN_ABS_MAX),
+                     vscn_clamp_or(material->metallic, 0.0, 0.0, 1.0),
+                     vscn_clamp_or(material->roughness, 0.5, 0.0, 1.0),
+                     vscn_clamp_or(material->ao, 1.0, 0.0, 1.0)) ||
         !vscn_append(buf,
                      len,
                      cap,
                      "\"emissiveIntensity\": %.17g, \"normalScale\": %.17g, "
                      "\"alpha\": %.17g, \"alphaMode\": %d, \"alphaCutoff\": %.17g, ",
-	                     vscn_nonnegative_or(material->emissive_intensity, 1.0),
-	                     vscn_nonnegative_or(material->normal_scale, 1.0),
-	                     vscn_clamp_or(material->alpha, 1.0, 0.0, 1.0),
-	                     vscn_alpha_mode_or(material->alpha_mode, RT_MATERIAL3D_ALPHA_MODE_OPAQUE),
-	                     vscn_clamp_or(material->alpha_cutoff, 0.5, 0.0, 1.0)) ||
+                     vscn_nonnegative_or(material->emissive_intensity, 1.0),
+                     vscn_nonnegative_or(material->normal_scale, 1.0),
+                     vscn_clamp_or(material->alpha, 1.0, 0.0, 1.0),
+                     vscn_alpha_mode_or(material->alpha_mode, RT_MATERIAL3D_ALPHA_MODE_OPAQUE),
+                     vscn_clamp_or(material->alpha_cutoff, 0.5, 0.0, 1.0)) ||
         !vscn_append(buf,
                      len,
                      cap,
                      "\"doubleSided\": %s, \"reflectivity\": %.17g, \"unlit\": %s, "
                      "\"shadingModel\": %d, ",
                      material->double_sided ? "true" : "false",
-	                     vscn_clamp_or(material->reflectivity, 0.0, 0.0, 1.0),
+                     vscn_clamp_or(material->reflectivity, 0.0, 0.0, 1.0),
                      material->unlit ? "true" : "false",
-	                     (material->shading_model >= 0 && material->shading_model <= 5)
-	                         ? material->shading_model
-	                         : 0) ||
+                     (material->shading_model >= 0 && material->shading_model <= 5)
+                         ? material->shading_model
+                         : 0) ||
         !vscn_append(buf,
                      len,
                      cap,
@@ -1023,13 +1027,12 @@ static int vscn_serialize_material(rt_material3d *material,
     }
 
     for (int i = 0; i < 8; i++) {
-        if (!vscn_append(
-                buf,
-                len,
-                cap,
-                "%s%.17g",
-                i == 0 ? "" : ", ",
-                vscn_clamp_abs_or(material->custom_params[i], 0.0))) {
+        if (!vscn_append(buf,
+                         len,
+                         cap,
+                         "%s%.17g",
+                         i == 0 ? "" : ", ",
+                         vscn_clamp_abs_or(material->custom_params[i], 0.0))) {
             return 0;
         }
     }
@@ -1037,25 +1040,24 @@ static int vscn_serialize_material(rt_material3d *material,
         return 0;
     for (int i = 0; i < RT_MATERIAL3D_TEXTURE_SLOT_COUNT; i++) {
         const double *uvm = material->texture_slot_uv_transform[i];
-        if (!vscn_append(buf,
-                         len,
-                         cap,
-                         "%s{\"uvSet\": %d, \"wrapS\": %d, \"wrapT\": %d, "
-                         "\"filter\": %d, \"uvTransform\": [%.17g, %.17g, %.17g, %.17g, %.17g, %.17g]}",
-                         i == 0 ? "" : ", ",
-	                         material->texture_slot_uv_set[i] > 0 ? 1 : 0,
-	                         vscn_wrap_or(material->texture_slot_wrap_s[i],
-	                                      RT_MATERIAL3D_TEXTURE_WRAP_REPEAT),
-	                         vscn_wrap_or(material->texture_slot_wrap_t[i],
-	                                      RT_MATERIAL3D_TEXTURE_WRAP_REPEAT),
-	                         vscn_filter_or(material->texture_slot_filter[i],
-	                                        RT_MATERIAL3D_TEXTURE_FILTER_LINEAR),
-	                         vscn_clamp_abs_or(uvm[0], 1.0),
-	                         vscn_clamp_abs_or(uvm[1], 0.0),
-	                         vscn_clamp_abs_or(uvm[2], 0.0),
-	                         vscn_clamp_abs_or(uvm[3], 1.0),
-	                         vscn_clamp_abs_or(uvm[4], 0.0),
-	                         vscn_clamp_abs_or(uvm[5], 0.0))) {
+        if (!vscn_append(
+                buf,
+                len,
+                cap,
+                "%s{\"uvSet\": %d, \"wrapS\": %d, \"wrapT\": %d, "
+                "\"filter\": %d, \"uvTransform\": [%.17g, %.17g, %.17g, %.17g, %.17g, %.17g]}",
+                i == 0 ? "" : ", ",
+                material->texture_slot_uv_set[i] > 0 ? 1 : 0,
+                vscn_wrap_or(material->texture_slot_wrap_s[i], RT_MATERIAL3D_TEXTURE_WRAP_REPEAT),
+                vscn_wrap_or(material->texture_slot_wrap_t[i], RT_MATERIAL3D_TEXTURE_WRAP_REPEAT),
+                vscn_filter_or(material->texture_slot_filter[i],
+                               RT_MATERIAL3D_TEXTURE_FILTER_LINEAR),
+                vscn_clamp_abs_or(uvm[0], 1.0),
+                vscn_clamp_abs_or(uvm[1], 0.0),
+                vscn_clamp_abs_or(uvm[2], 0.0),
+                vscn_clamp_abs_or(uvm[3], 1.0),
+                vscn_clamp_abs_or(uvm[4], 0.0),
+                vscn_clamp_abs_or(uvm[5], 0.0))) {
             return 0;
         }
     }
@@ -1134,7 +1136,8 @@ static int vscn_serialize_node(rt_scene_node3d *node,
     const char *name = node->name ? rt_string_cstr(node->name) : "node";
     if (!name)
         name = "node";
-    double rotation[4] = {node->rotation[0], node->rotation[1], node->rotation[2], node->rotation[3]};
+    double rotation[4] = {
+        node->rotation[0], node->rotation[1], node->rotation[2], node->rotation[3]};
     vscn_normalize_quat(rotation);
     int mesh_index = node->mesh ? vscn_ptr_table_index_or_add(&ctx->meshes, node->mesh) : -1;
     int material_index =
@@ -1146,30 +1149,30 @@ static int vscn_serialize_node(rt_scene_node3d *node,
         !vscn_append(buf, len, cap, "%s  \"name\": ", indent) ||
         !vscn_append_json_string(buf, len, cap, name) ||
         !vscn_append(buf,
-	                     len,
-	                     cap,
-	                     ",\n%s  \"position\": [%.17g, %.17g, %.17g],\n",
-	                     indent,
-	                     vscn_clamp_abs_or(node->position[0], 0.0),
-	                     vscn_clamp_abs_or(node->position[1], 0.0),
-	                     vscn_clamp_abs_or(node->position[2], 0.0)) ||
-	        !vscn_append(buf,
-	                     len,
-	                     cap,
-	                     "%s  \"rotation\": [%.17g, %.17g, %.17g, %.17g],\n",
-	                     indent,
-	                     rotation[0],
-	                     rotation[1],
-	                     rotation[2],
-	                     rotation[3]) ||
-	        !vscn_append(buf,
-	                     len,
-	                     cap,
-	                     "%s  \"scale\": [%.17g, %.17g, %.17g],\n",
-	                     indent,
-	                     vscn_clamp_abs_or(node->scale_xyz[0], 1.0),
-	                     vscn_clamp_abs_or(node->scale_xyz[1], 1.0),
-	                     vscn_clamp_abs_or(node->scale_xyz[2], 1.0)) ||
+                     len,
+                     cap,
+                     ",\n%s  \"position\": [%.17g, %.17g, %.17g],\n",
+                     indent,
+                     vscn_clamp_abs_or(node->position[0], 0.0),
+                     vscn_clamp_abs_or(node->position[1], 0.0),
+                     vscn_clamp_abs_or(node->position[2], 0.0)) ||
+        !vscn_append(buf,
+                     len,
+                     cap,
+                     "%s  \"rotation\": [%.17g, %.17g, %.17g, %.17g],\n",
+                     indent,
+                     rotation[0],
+                     rotation[1],
+                     rotation[2],
+                     rotation[3]) ||
+        !vscn_append(buf,
+                     len,
+                     cap,
+                     "%s  \"scale\": [%.17g, %.17g, %.17g],\n",
+                     indent,
+                     vscn_clamp_abs_or(node->scale_xyz[0], 1.0),
+                     vscn_clamp_abs_or(node->scale_xyz[1], 1.0),
+                     vscn_clamp_abs_or(node->scale_xyz[2], 1.0)) ||
         !vscn_append(
             buf, len, cap, "%s  \"visible\": %s,\n", indent, node->visible ? "true" : "false") ||
         !vscn_append(
@@ -1182,12 +1185,12 @@ static int vscn_serialize_node(rt_scene_node3d *node,
                      node->material ? "true" : "false") ||
         !vscn_append(buf,
                      len,
-	                     cap,
-	                     "%s  \"mesh\": %d,\n%s  \"material\": %d",
-	                     indent,
-	                     mesh_index,
-	                     indent,
-	                     material_index)) {
+                     cap,
+                     "%s  \"mesh\": %d,\n%s  \"material\": %d",
+                     indent,
+                     mesh_index,
+                     indent,
+                     material_index)) {
         return 0;
     }
 
@@ -1198,29 +1201,29 @@ static int vscn_serialize_node(rt_scene_node3d *node,
                                vscn_clamp_abs_or(light->direction[2], -1.0)};
         vscn_normalize_vec3(light_dir, 0.0, 0.0, -1.0);
         if (!vscn_append(buf,
-	                         len,
-	                         cap,
-	                         ",\n%s  \"light\": {\"type\": %d, "
-	                         "\"direction\": [%.17g, %.17g, %.17g], "
-	                         "\"position\": [%.17g, %.17g, %.17g], "
-	                         "\"color\": [%.17g, %.17g, %.17g], "
-	                         "\"intensity\": %.17g, \"attenuation\": %.17g, "
-	                         "\"innerCos\": %.17g, \"outerCos\": %.17g}",
-	                         indent,
-	                         (light->type >= 0 && light->type <= 3) ? light->type : 1,
-	                         light_dir[0],
-	                         light_dir[1],
-	                         light_dir[2],
-	                         vscn_clamp_abs_or(light->position[0], 0.0),
-	                         vscn_clamp_abs_or(light->position[1], 0.0),
-	                         vscn_clamp_abs_or(light->position[2], 0.0),
-	                         vscn_clamp_or(light->color[0], 1.0, 0.0, VSCN_ABS_MAX),
-	                         vscn_clamp_or(light->color[1], 1.0, 0.0, VSCN_ABS_MAX),
-	                         vscn_clamp_or(light->color[2], 1.0, 0.0, VSCN_ABS_MAX),
-	                         vscn_nonnegative_or(light->intensity, 1.0),
-	                         vscn_nonnegative_or(light->attenuation, 0.0),
-	                         vscn_clamp_or(light->inner_cos, 1.0, 0.0, 1.0),
-	                         vscn_clamp_or(light->outer_cos, 0.7071067811865476, 0.0, 1.0))) {
+                         len,
+                         cap,
+                         ",\n%s  \"light\": {\"type\": %d, "
+                         "\"direction\": [%.17g, %.17g, %.17g], "
+                         "\"position\": [%.17g, %.17g, %.17g], "
+                         "\"color\": [%.17g, %.17g, %.17g], "
+                         "\"intensity\": %.17g, \"attenuation\": %.17g, "
+                         "\"innerCos\": %.17g, \"outerCos\": %.17g}",
+                         indent,
+                         (light->type >= 0 && light->type <= 3) ? light->type : 1,
+                         light_dir[0],
+                         light_dir[1],
+                         light_dir[2],
+                         vscn_clamp_abs_or(light->position[0], 0.0),
+                         vscn_clamp_abs_or(light->position[1], 0.0),
+                         vscn_clamp_abs_or(light->position[2], 0.0),
+                         vscn_clamp_or(light->color[0], 1.0, 0.0, VSCN_ABS_MAX),
+                         vscn_clamp_or(light->color[1], 1.0, 0.0, VSCN_ABS_MAX),
+                         vscn_clamp_or(light->color[2], 1.0, 0.0, VSCN_ABS_MAX),
+                         vscn_nonnegative_or(light->intensity, 1.0),
+                         vscn_nonnegative_or(light->attenuation, 0.0),
+                         vscn_clamp_or(light->inner_cos, 1.0, 0.0, 1.0),
+                         vscn_clamp_or(light->outer_cos, 0.7071067811865476, 0.0, 1.0))) {
             return 0;
         }
     }
@@ -1229,20 +1232,21 @@ static int vscn_serialize_node(rt_scene_node3d *node,
         if (!vscn_append(buf, len, cap, ",\n%s  \"lod\": [\n", indent))
             return 0;
         for (int32_t i = 0; i < node->lod_count; i++) {
-            int lod_mesh_index = node->lod_levels[i].mesh
-                                     ? vscn_ptr_table_index_or_add(&ctx->meshes, node->lod_levels[i].mesh)
-                                     : -1;
+            int lod_mesh_index =
+                node->lod_levels[i].mesh
+                    ? vscn_ptr_table_index_or_add(&ctx->meshes, node->lod_levels[i].mesh)
+                    : -1;
             if (node->lod_levels[i].mesh && lod_mesh_index < 0)
                 return 0;
             if (!vscn_append(buf,
-	                             len,
-	                             cap,
-	                             "%s    {\"distance\": %.17g, \"hasMesh\": %s, \"mesh\": %d}%s\n",
-	                             indent,
-	                             vscn_nonnegative_or(node->lod_levels[i].distance, 0.0),
-	                             node->lod_levels[i].mesh ? "true" : "false",
-	                             lod_mesh_index,
-	                             i + 1 < node->lod_count ? "," : "")) {
+                             len,
+                             cap,
+                             "%s    {\"distance\": %.17g, \"hasMesh\": %s, \"mesh\": %d}%s\n",
+                             indent,
+                             vscn_nonnegative_or(node->lod_levels[i].distance, 0.0),
+                             node->lod_levels[i].mesh ? "true" : "false",
+                             lod_mesh_index,
+                             i + 1 < node->lod_count ? "," : "")) {
                 return 0;
             }
         }
@@ -1357,50 +1361,78 @@ static rt_material3d *vscn_parse_material(void *material_obj,
 
     arr = vjson_get(material_obj, "diffuse");
     if (arr && vjson_len(arr) >= 4) {
-        material->diffuse[0] = vscn_clamp_or(vjson_arr_f64(arr, 0, material->diffuse[0]), material->diffuse[0], 0.0, 1.0);
-        material->diffuse[1] = vscn_clamp_or(vjson_arr_f64(arr, 1, material->diffuse[1]), material->diffuse[1], 0.0, 1.0);
-        material->diffuse[2] = vscn_clamp_or(vjson_arr_f64(arr, 2, material->diffuse[2]), material->diffuse[2], 0.0, 1.0);
-        material->diffuse[3] = vscn_clamp_or(vjson_arr_f64(arr, 3, material->diffuse[3]), material->diffuse[3], 0.0, 1.0);
+        material->diffuse[0] = vscn_clamp_or(
+            vjson_arr_f64(arr, 0, material->diffuse[0]), material->diffuse[0], 0.0, 1.0);
+        material->diffuse[1] = vscn_clamp_or(
+            vjson_arr_f64(arr, 1, material->diffuse[1]), material->diffuse[1], 0.0, 1.0);
+        material->diffuse[2] = vscn_clamp_or(
+            vjson_arr_f64(arr, 2, material->diffuse[2]), material->diffuse[2], 0.0, 1.0);
+        material->diffuse[3] = vscn_clamp_or(
+            vjson_arr_f64(arr, 3, material->diffuse[3]), material->diffuse[3], 0.0, 1.0);
     }
 
     arr = vjson_get(material_obj, "specular");
     if (arr && vjson_len(arr) >= 3) {
-        material->specular[0] = vscn_clamp_or(vjson_arr_f64(arr, 0, material->specular[0]), material->specular[0], 0.0, VSCN_ABS_MAX);
-        material->specular[1] = vscn_clamp_or(vjson_arr_f64(arr, 1, material->specular[1]), material->specular[1], 0.0, VSCN_ABS_MAX);
-        material->specular[2] = vscn_clamp_or(vjson_arr_f64(arr, 2, material->specular[2]), material->specular[2], 0.0, VSCN_ABS_MAX);
+        material->specular[0] = vscn_clamp_or(
+            vjson_arr_f64(arr, 0, material->specular[0]), material->specular[0], 0.0, VSCN_ABS_MAX);
+        material->specular[1] = vscn_clamp_or(
+            vjson_arr_f64(arr, 1, material->specular[1]), material->specular[1], 0.0, VSCN_ABS_MAX);
+        material->specular[2] = vscn_clamp_or(
+            vjson_arr_f64(arr, 2, material->specular[2]), material->specular[2], 0.0, VSCN_ABS_MAX);
     }
 
     arr = vjson_get(material_obj, "emissive");
     if (arr && vjson_len(arr) >= 3) {
-        material->emissive[0] = vscn_clamp_or(vjson_arr_f64(arr, 0, material->emissive[0]), material->emissive[0], 0.0, VSCN_ABS_MAX);
-        material->emissive[1] = vscn_clamp_or(vjson_arr_f64(arr, 1, material->emissive[1]), material->emissive[1], 0.0, VSCN_ABS_MAX);
-        material->emissive[2] = vscn_clamp_or(vjson_arr_f64(arr, 2, material->emissive[2]), material->emissive[2], 0.0, VSCN_ABS_MAX);
+        material->emissive[0] = vscn_clamp_or(
+            vjson_arr_f64(arr, 0, material->emissive[0]), material->emissive[0], 0.0, VSCN_ABS_MAX);
+        material->emissive[1] = vscn_clamp_or(
+            vjson_arr_f64(arr, 1, material->emissive[1]), material->emissive[1], 0.0, VSCN_ABS_MAX);
+        material->emissive[2] = vscn_clamp_or(
+            vjson_arr_f64(arr, 2, material->emissive[2]), material->emissive[2], 0.0, VSCN_ABS_MAX);
     }
 
-    material->shininess = vscn_nonnegative_or(vjson_f64(material_obj, "shininess", material->shininess), material->shininess);
-    material->workflow = vscn_material_workflow_or(vjson_i64(material_obj, "workflow", material->workflow), material->workflow);
-    material->alpha = vscn_clamp_or(vjson_f64(material_obj, "alpha", material->alpha), material->alpha, 0.0, 1.0);
-    material->metallic = vscn_clamp_or(vjson_f64(material_obj, "metallic", material->metallic), material->metallic, 0.0, 1.0);
-    material->roughness = vscn_clamp_or(vjson_f64(material_obj, "roughness", material->roughness), material->roughness, 0.0, 1.0);
-    material->ao = vscn_clamp_or(vjson_f64(material_obj, "ao", material->ao), material->ao, 0.0, 1.0);
-    material->emissive_intensity =
-        vscn_nonnegative_or(vjson_f64(material_obj, "emissiveIntensity", material->emissive_intensity), material->emissive_intensity);
-    material->normal_scale = vscn_nonnegative_or(vjson_f64(material_obj, "normalScale", material->normal_scale), material->normal_scale);
-    material->alpha_mode = vscn_alpha_mode_or(vjson_i64(material_obj, "alphaMode", material->alpha_mode), material->alpha_mode);
-    material->alpha_cutoff = vscn_clamp_or(vjson_f64(material_obj, "alphaCutoff", material->alpha_cutoff), material->alpha_cutoff, 0.0, 1.0);
-    material->double_sided = (int8_t)vjson_bool(material_obj, "doubleSided", material->double_sided);
-    material->reflectivity = vscn_clamp_or(vjson_f64(material_obj, "reflectivity", material->reflectivity), material->reflectivity, 0.0, 1.0);
+    material->shininess = vscn_nonnegative_or(
+        vjson_f64(material_obj, "shininess", material->shininess), material->shininess);
+    material->workflow = vscn_material_workflow_or(
+        vjson_i64(material_obj, "workflow", material->workflow), material->workflow);
+    material->alpha =
+        vscn_clamp_or(vjson_f64(material_obj, "alpha", material->alpha), material->alpha, 0.0, 1.0);
+    material->metallic = vscn_clamp_or(
+        vjson_f64(material_obj, "metallic", material->metallic), material->metallic, 0.0, 1.0);
+    material->roughness = vscn_clamp_or(
+        vjson_f64(material_obj, "roughness", material->roughness), material->roughness, 0.0, 1.0);
+    material->ao =
+        vscn_clamp_or(vjson_f64(material_obj, "ao", material->ao), material->ao, 0.0, 1.0);
+    material->emissive_intensity = vscn_nonnegative_or(
+        vjson_f64(material_obj, "emissiveIntensity", material->emissive_intensity),
+        material->emissive_intensity);
+    material->normal_scale = vscn_nonnegative_or(
+        vjson_f64(material_obj, "normalScale", material->normal_scale), material->normal_scale);
+    material->alpha_mode = vscn_alpha_mode_or(
+        vjson_i64(material_obj, "alphaMode", material->alpha_mode), material->alpha_mode);
+    material->alpha_cutoff =
+        vscn_clamp_or(vjson_f64(material_obj, "alphaCutoff", material->alpha_cutoff),
+                      material->alpha_cutoff,
+                      0.0,
+                      1.0);
+    material->double_sided =
+        (int8_t)vjson_bool(material_obj, "doubleSided", material->double_sided);
+    material->reflectivity =
+        vscn_clamp_or(vjson_f64(material_obj, "reflectivity", material->reflectivity),
+                      material->reflectivity,
+                      0.0,
+                      1.0);
     material->unlit = vjson_bool(material_obj, "unlit", material->unlit);
-    material->shading_model = (int32_t)vjson_i64(material_obj, "shadingModel", material->shading_model);
+    material->shading_model =
+        (int32_t)vjson_i64(material_obj, "shadingModel", material->shading_model);
     if (material->shading_model < 0 || material->shading_model > 5)
         material->shading_model = 0;
 
     arr = vjson_get(material_obj, "customParams");
     for (int i = 0; i < 8; i++) {
         if (arr && i < vjson_len(arr))
-            material->custom_params[i] =
-                vscn_clamp_abs_or(vjson_arr_f64(arr, i, material->custom_params[i]),
-                                  material->custom_params[i]);
+            material->custom_params[i] = vscn_clamp_abs_or(
+                vjson_arr_f64(arr, i, material->custom_params[i]), material->custom_params[i]);
     }
 
     arr = vjson_get(material_obj, "textureSlots");
@@ -1423,9 +1455,9 @@ static rt_material3d *vscn_parse_material(void *material_obj,
                                material->texture_slot_filter[i]);
             for (int j = 0; j < 6; j++) {
                 if (uv_arr && j < vjson_len(uv_arr))
-                    material->texture_slot_uv_transform[i][j] =
-                        vscn_clamp_abs_or(vjson_arr_f64(uv_arr, j, material->texture_slot_uv_transform[i][j]),
-                                          material->texture_slot_uv_transform[i][j]);
+                    material->texture_slot_uv_transform[i][j] = vscn_clamp_abs_or(
+                        vjson_arr_f64(uv_arr, j, material->texture_slot_uv_transform[i][j]),
+                        material->texture_slot_uv_transform[i][j]);
             }
         }
         material->texture_wrap_s =
@@ -1535,16 +1567,15 @@ static rt_mesh3d *vscn_parse_mesh(void *mesh_obj) {
 
     vertex_count_i64 = vjson_i64(mesh_obj, "vertexCount", 0);
     index_count_i64 = vjson_i64(mesh_obj, "indexCount", 0);
-    if (vertex_count_i64 < 0 || index_count_i64 < 0 ||
-        vertex_count_i64 > UINT32_MAX || index_count_i64 > UINT32_MAX)
+    if (vertex_count_i64 < 0 || index_count_i64 < 0 || vertex_count_i64 > UINT32_MAX ||
+        index_count_i64 > UINT32_MAX)
         return NULL;
     vertex_count = (uint32_t)vertex_count_i64;
     index_count = (uint32_t)index_count_i64;
     if (index_count % 3u != 0)
         return NULL;
     if ((size_t)vertex_count > SIZE_MAX / sizeof(vgfx3d_vertex_t) ||
-        (size_t)vertex_count > SIZE_MAX / 84u ||
-        (size_t)index_count > SIZE_MAX / sizeof(uint32_t))
+        (size_t)vertex_count > SIZE_MAX / 84u || (size_t)index_count > SIZE_MAX / sizeof(uint32_t))
         return NULL;
     vertices_b64 = vjson_cstr(mesh_obj, "verticesBase64");
     indices_b64 = vjson_cstr(mesh_obj, "indicesBase64");
@@ -1596,8 +1627,8 @@ static rt_mesh3d *vscn_parse_mesh(void *mesh_obj) {
                 uint8_t bone_indices[4];
                 float bone_weights[4];
             } vgfx3d_vertex_legacy84_t;
-            const vgfx3d_vertex_legacy84_t *legacy =
-                (const vgfx3d_vertex_legacy84_t *)vertices_raw;
+
+            const vgfx3d_vertex_legacy84_t *legacy = (const vgfx3d_vertex_legacy84_t *)vertices_raw;
             for (uint32_t vi = 0; vi < vertex_count; vi++) {
                 memset(&vertices[vi], 0, sizeof(vertices[vi]));
                 memcpy(vertices[vi].pos, legacy[vi].pos, sizeof(vertices[vi].pos));
@@ -1719,9 +1750,12 @@ static rt_light3d *vscn_parse_light(void *light_obj) {
     }
     arr = vjson_get(light_obj, "color");
     if (arr && vjson_len(arr) >= 3) {
-        light->color[0] = vscn_clamp_or(vjson_arr_f64(arr, 0, light->color[0]), 1.0, 0.0, VSCN_ABS_MAX);
-        light->color[1] = vscn_clamp_or(vjson_arr_f64(arr, 1, light->color[1]), 1.0, 0.0, VSCN_ABS_MAX);
-        light->color[2] = vscn_clamp_or(vjson_arr_f64(arr, 2, light->color[2]), 1.0, 0.0, VSCN_ABS_MAX);
+        light->color[0] =
+            vscn_clamp_or(vjson_arr_f64(arr, 0, light->color[0]), 1.0, 0.0, VSCN_ABS_MAX);
+        light->color[1] =
+            vscn_clamp_or(vjson_arr_f64(arr, 1, light->color[1]), 1.0, 0.0, VSCN_ABS_MAX);
+        light->color[2] =
+            vscn_clamp_or(vjson_arr_f64(arr, 2, light->color[2]), 1.0, 0.0, VSCN_ABS_MAX);
     }
     return light;
 }
@@ -1852,14 +1886,13 @@ static rt_scene_node3d *vscn_parse_node(void *node_obj,
     arr = vjson_get(node_obj, "children");
     if (arr) {
         for (int64_t i = 0; i < vjson_len(arr); i++) {
-            rt_scene_node3d *child =
-                vscn_parse_node(rt_seq_get(arr, i),
-                                meshes,
-                                mesh_count,
-                                materials,
-                                material_count,
-                                io_error,
-                                depth + 1);
+            rt_scene_node3d *child = vscn_parse_node(rt_seq_get(arr, i),
+                                                     meshes,
+                                                     mesh_count,
+                                                     materials,
+                                                     material_count,
+                                                     io_error,
+                                                     depth + 1);
             if (io_error && *io_error) {
                 scene3d_release_ref((void **)&node);
                 return NULL;
@@ -2185,8 +2218,7 @@ void *rt_scene3d_load(rt_string path) {
         if ((textures_arr && !vjson_is_seq(textures_arr)) ||
             (cubemaps_arr && !vjson_is_seq(cubemaps_arr)) ||
             (materials_arr && !vjson_is_seq(materials_arr)) ||
-            (meshes_arr && !vjson_is_seq(meshes_arr)) ||
-            (nodes_arr && !vjson_is_seq(nodes_arr)))
+            (meshes_arr && !vjson_is_seq(meshes_arr)) || (nodes_arr && !vjson_is_seq(nodes_arr)))
             goto fail;
     }
 
@@ -2245,8 +2277,13 @@ void *rt_scene3d_load(rt_string path) {
     if (nodes_arr) {
         for (int64_t i = 0; i < vjson_len(nodes_arr); i++) {
             int parse_error = 0;
-            rt_scene_node3d *node = vscn_parse_node(
-                rt_seq_get(nodes_arr, i), meshes, mesh_count, materials, material_count, &parse_error, 0);
+            rt_scene_node3d *node = vscn_parse_node(rt_seq_get(nodes_arr, i),
+                                                    meshes,
+                                                    mesh_count,
+                                                    materials,
+                                                    material_count,
+                                                    &parse_error,
+                                                    0);
             if (parse_error || !node) {
                 scene3d_release_ref((void **)&node);
                 goto fail;

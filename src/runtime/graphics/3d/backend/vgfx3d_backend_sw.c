@@ -81,7 +81,8 @@ static inline void sw_compute_view_vector(const sw_context_t *ctx,
 
 /// @brief Normalize the vector (*x,*y,*z) in place; on non-finite or near-zero length,
 ///   substitute the fallback vector and return 0, else return 1.
-static int sw_normalize3(float *x, float *y, float *z, float fallback_x, float fallback_y, float fallback_z) {
+static int sw_normalize3(
+    float *x, float *y, float *z, float fallback_x, float fallback_y, float fallback_z) {
     float len;
     if (!x || !y || !z || !isfinite(*x) || !isfinite(*y) || !isfinite(*z)) {
         if (x)
@@ -120,7 +121,8 @@ static void sw_recompute_shadow_count(sw_context_t *ctx) {
     ctx->shadow_count = count;
 }
 
-/// @brief Sample the shadow map for @p slot at a world-space position and return a visibility factor.
+/// @brief Sample the shadow map for @p slot at a world-space position and return a visibility
+/// factor.
 /// @details Transforms the world position into shadow NDC via the stored shadow VP matrix, then
 ///          samples the shadow depth map with a 3×3 percentage-closer filter (PCF) to soften
 ///          shadow edges. A slope-scaled depth bias (derived from the depth map gradient) is
@@ -128,11 +130,8 @@ static void sw_recompute_shadow_count(sw_context_t *ctx) {
 /// @return Visibility in [0, 1]: 1.0 = fully lit, ~0.15 = fully shadowed (with PCF blending).
 ///         Returns 1.0 (fully lit) when the slot is invalid, outside the shadow frustum, or the
 ///         context is null.
-static float sw_sample_shadow_visibility(const sw_context_t *ctx,
-                                         int32_t slot,
-                                         float wx,
-                                         float wy,
-                                         float wz) {
+static float sw_sample_shadow_visibility(
+    const sw_context_t *ctx, int32_t slot, float wx, float wy, float wz) {
     const float *svp;
     float lx;
     float ly;
@@ -169,8 +168,8 @@ static float sw_sample_shadow_visibility(const sw_context_t *ctx,
     su = (lx / lw) * 0.5f + 0.5f;
     sv = (1.0f - ly / lw) * 0.5f;
     sd = (lz / lw) * 0.5f + 0.5f;
-    if (!isfinite(su) || !isfinite(sv) || !isfinite(sd) || su < 0.0f || su >= 1.0f ||
-        sv < 0.0f || sv >= 1.0f || sd < 0.0f || sd > 1.0f)
+    if (!isfinite(su) || !isfinite(sv) || !isfinite(sd) || su < 0.0f || su >= 1.0f || sv < 0.0f ||
+        sv >= 1.0f || sd < 0.0f || sd > 1.0f)
         return 1.0f;
 
     shadow_w = ctx->shadow_w[slot];
@@ -614,8 +613,8 @@ static int setup_pixels_view(const void *pixels_obj, sw_pixels_view *out) {
         return 0;
     const sw_pixels_view *pv = (const sw_pixels_view *)pixels_obj;
     *out = *pv;
-    if (out->width <= 0 || out->height <= 0 || out->width > INT32_MAX ||
-        out->height > INT32_MAX || !out->data)
+    if (out->width <= 0 || out->height <= 0 || out->width > INT32_MAX || out->height > INT32_MAX ||
+        !out->data)
         return 0;
     if (out->width > INT32_MAX / out->height)
         return 0;
@@ -719,9 +718,8 @@ static void sample_texture_ex(const sw_pixels_view *tex,
                               float *a) {
     if (!r || !g || !b || !a)
         return;
-    if (!tex || !tex->data || tex->width <= 0 || tex->height <= 0 ||
-        tex->width > INT32_MAX || tex->height > INT32_MAX ||
-        tex->width > INT32_MAX / tex->height) {
+    if (!tex || !tex->data || tex->width <= 0 || tex->height <= 0 || tex->width > INT32_MAX ||
+        tex->height > INT32_MAX || tex->width > INT32_MAX / tex->height) {
         *r = *g = *b = 1.0f;
         *a = 1.0f;
         return;
@@ -845,26 +843,29 @@ typedef struct screen_vert_t {
     float r, g, b, a;
     float u_over_w, v_over_w, inv_w;
     float u1_over_w, v1_over_w;
-    float wx, wy, wz; /* world position (for fog distance computation) */
-    float nx, ny, nz; /* world normal (for per-pixel lighting with normal maps) */
+    float wx, wy, wz;     /* world position (for fog distance computation) */
+    float nx, ny, nz;     /* world normal (for per-pixel lighting with normal maps) */
     float tx, ty, tz, tw; /* world tangent plus handedness sign (for TBN construction) */
 } screen_vert_t;
 
-/// @brief Return the S-axis wrap mode for a specific texture slot, falling back to the primary wrap when out of range.
+/// @brief Return the S-axis wrap mode for a specific texture slot, falling back to the primary wrap
+/// when out of range.
 static int32_t sw_cmd_slot_wrap_s(const vgfx3d_draw_cmd_t *cmd, int32_t slot) {
     if (!cmd || slot < 0 || slot >= RT_MATERIAL3D_TEXTURE_SLOT_COUNT)
         return sw_cmd_wrap_s(cmd);
     return cmd->texture_slot_wrap_s[slot];
 }
 
-/// @brief Return the T-axis wrap mode for a specific texture slot, falling back to the primary wrap when out of range.
+/// @brief Return the T-axis wrap mode for a specific texture slot, falling back to the primary wrap
+/// when out of range.
 static int32_t sw_cmd_slot_wrap_t(const vgfx3d_draw_cmd_t *cmd, int32_t slot) {
     if (!cmd || slot < 0 || slot >= RT_MATERIAL3D_TEXTURE_SLOT_COUNT)
         return sw_cmd_wrap_t(cmd);
     return cmd->texture_slot_wrap_t[slot];
 }
 
-/// @brief Return the filter mode for a specific texture slot, falling back to the primary filter when out of range.
+/// @brief Return the filter mode for a specific texture slot, falling back to the primary filter
+/// when out of range.
 static int32_t sw_cmd_slot_filter(const vgfx3d_draw_cmd_t *cmd, int32_t slot) {
     if (!cmd || slot < 0 || slot >= RT_MATERIAL3D_TEXTURE_SLOT_COUNT)
         return sw_cmd_filter(cmd);
@@ -887,7 +888,8 @@ static int32_t sw_cmd_slot_filter(const vgfx3d_draw_cmd_t *cmd, int32_t slot) {
 ///   (`u1_over_w` / `v1_over_w`) is used instead of the primary, matching the glTF
 ///   `TEXCOORD_1` convention for lightmap or detail textures.
 /// @param cmd     Draw command containing per-slot UV-set and transform state.
-/// @param slot    Material texture slot index; negative or out-of-range disables per-slot overrides.
+/// @param slot    Material texture slot index; negative or out-of-range disables per-slot
+/// overrides.
 /// @param b0,b1,b2  Barycentric weights for vertices v0, v1, v2 (must sum to 1).
 /// @param v0,v1,v2  Screen-space vertices holding `u_over_w`, `v_over_w`, `inv_w`, etc.
 /// @param out_u   Receives the perspective-corrected, transformed U coordinate.
@@ -1168,7 +1170,8 @@ static void sw_apply_environment_reflection(const vgfx3d_draw_cmd_t *cmd,
     float mr_u = 0.0f;
     float mr_v = 0.0f;
 
-    if (!cmd || !ctx || !inout_r || !inout_g || !inout_b || !cmd->env_map || cmd->reflectivity <= 0.0001f)
+    if (!cmd || !ctx || !inout_r || !inout_g || !inout_b || !cmd->env_map ||
+        cmd->reflectivity <= 0.0001f)
         return;
 
     wx = b0 * v0->wx + b1 * v1->wx + b2 * v2->wx;
@@ -1179,26 +1182,10 @@ static void sw_apply_environment_reflection(const vgfx3d_draw_cmd_t *cmd,
     pnz = b0 * v0->nz + b1 * v1->nz + b2 * v2->nz;
     normalize3f(&pnx, &pny, &pnz);
 
-    sw_interpolate_uv_for_slot(cmd,
-                               RT_MATERIAL3D_TEXTURE_SLOT_NORMAL,
-                               b0,
-                               b1,
-                               b2,
-                               v0,
-                               v1,
-                               v2,
-                               &normal_u,
-                               &normal_v);
-    sw_interpolate_uv_for_slot(cmd,
-                               RT_MATERIAL3D_TEXTURE_SLOT_METALLIC_ROUGHNESS,
-                               b0,
-                               b1,
-                               b2,
-                               v0,
-                               v1,
-                               v2,
-                               &mr_u,
-                               &mr_v);
+    sw_interpolate_uv_for_slot(
+        cmd, RT_MATERIAL3D_TEXTURE_SLOT_NORMAL, b0, b1, b2, v0, v1, v2, &normal_u, &normal_v);
+    sw_interpolate_uv_for_slot(
+        cmd, RT_MATERIAL3D_TEXTURE_SLOT_METALLIC_ROUGHNESS, b0, b1, b2, v0, v1, v2, &mr_u, &mr_v);
 
     if (normal_map) {
         float ptx = b0 * v0->tx + b1 * v1->tx + b2 * v2->tx;
@@ -1318,8 +1305,7 @@ static inline float pbr_geometry_schlick_ggx(float ndv, float roughness) {
 
 /// @brief PBR G term: Smith geometry — combines view and light G1 contributions.
 static inline float pbr_geometry_smith(float ndv, float ndl, float roughness) {
-    return pbr_geometry_schlick_ggx(ndv, roughness) *
-           pbr_geometry_schlick_ggx(ndl, roughness);
+    return pbr_geometry_schlick_ggx(ndv, roughness) * pbr_geometry_schlick_ggx(ndl, roughness);
 }
 
 /// @brief Edge-function triangle rasterizer with PBR + Phong + shadow + fog support.
@@ -1356,6 +1342,7 @@ static void raster_triangle(uint8_t *pixels,
                             const sw_context_t *fog_ctx) {
     float area = (v1->sx - v0->sx) * (v2->sy - v0->sy) - (v2->sx - v0->sx) * (v1->sy - v0->sy);
     float original_area = area;
+    const int depth_disabled = cmd && cmd->disable_depth_test;
     int emit_debug = 0;
     int min_x = 0, max_x = 0, min_y = 0, max_y = 0;
     int inside_samples = 0;
@@ -1448,7 +1435,7 @@ static void raster_triangle(uint8_t *pixels,
                 float b0 = w0 * inv_area, b1 = w1 * inv_area, b2 = w2 * inv_area;
                 float z = b0 * v0->sz + b1 * v1->sz + b2 * v2->sz;
                 int idx = y * fb_w + x;
-                if (z < zbuf[idx]) {
+                if (depth_disabled || z < zbuf[idx]) {
                     depth_passes++;
                     float fr = b0 * v0->r + b1 * v1->r + b2 * v2->r;
                     float fg = b0 * v0->g + b1 * v1->g + b2 * v2->g;
@@ -1541,8 +1528,7 @@ static void raster_triangle(uint8_t *pixels,
 
                     /* Emissive map sampling (legacy path only; PBR handles it in the lighting
                      * branch so emissiveIntensity can scale both the color and the map.) */
-                    if (emissive_tex &&
-                        !(cmd && cmd->workflow == RT_MATERIAL3D_WORKFLOW_PBR)) {
+                    if (emissive_tex && !(cmd && cmd->workflow == RT_MATERIAL3D_WORKFLOW_PBR)) {
                         {
                             float u;
                             float vc;
@@ -1566,8 +1552,7 @@ static void raster_triangle(uint8_t *pixels,
                                                         &eg,
                                                         &eb,
                                                         &ea);
-                            float emissive_scale =
-                                (cmd ? cmd->emissive_intensity : 1.0f);
+                            float emissive_scale = (cmd ? cmd->emissive_intensity : 1.0f);
                             fr += er * emissive_color[0] * emissive_scale;
                             fg += eg * emissive_color[1] * emissive_scale;
                             fb_c += eb * emissive_color[2] * emissive_scale;
@@ -1620,16 +1605,17 @@ static void raster_triangle(uint8_t *pixels,
                                                        v2,
                                                        &emissive_u,
                                                        &emissive_v);
-                            sw_interpolate_uv_for_slot(cmd,
-                                                       RT_MATERIAL3D_TEXTURE_SLOT_METALLIC_ROUGHNESS,
-                                                       b0,
-                                                       b1,
-                                                       b2,
-                                                       v0,
-                                                       v1,
-                                                       v2,
-                                                       &mr_u,
-                                                       &mr_v);
+                            sw_interpolate_uv_for_slot(
+                                cmd,
+                                RT_MATERIAL3D_TEXTURE_SLOT_METALLIC_ROUGHNESS,
+                                b0,
+                                b1,
+                                b2,
+                                v0,
+                                v1,
+                                v2,
+                                &mr_u,
+                                &mr_v);
                             sw_interpolate_uv_for_slot(cmd,
                                                        RT_MATERIAL3D_TEXTURE_SLOT_AO,
                                                        b0,
@@ -1758,12 +1744,9 @@ static void raster_triangle(uint8_t *pixels,
                                 if (ndv < 0.001f)
                                     ndv = 0.001f;
 
-                                float lit_r =
-                                    (ambient ? ambient[0] : 0.0f) * base_r * ao;
-                                float lit_g =
-                                    (ambient ? ambient[1] : 0.0f) * base_g * ao;
-                                float lit_b =
-                                    (ambient ? ambient[2] : 0.0f) * base_b * ao;
+                                float lit_r = (ambient ? ambient[0] : 0.0f) * base_r * ao;
+                                float lit_g = (ambient ? ambient[1] : 0.0f) * base_g * ao;
+                                float lit_b = (ambient ? ambient[2] : 0.0f) * base_b * ao;
 
                                 for (int32_t li = 0; li < light_count; li++) {
                                     const vgfx3d_light_params_t *lt = &lights[li];
@@ -1865,12 +1848,9 @@ static void raster_triangle(uint8_t *pixels,
                                     lit_b += (diff_b + spec_b) * radiance_b * ndl;
                                 }
 
-                                float emissive_r =
-                                    cmd->emissive_color[0] * cmd->emissive_intensity;
-                                float emissive_g =
-                                    cmd->emissive_color[1] * cmd->emissive_intensity;
-                                float emissive_b =
-                                    cmd->emissive_color[2] * cmd->emissive_intensity;
+                                float emissive_r = cmd->emissive_color[0] * cmd->emissive_intensity;
+                                float emissive_g = cmd->emissive_color[1] * cmd->emissive_intensity;
+                                float emissive_b = cmd->emissive_color[2] * cmd->emissive_intensity;
                                 if (emissive_tex) {
                                     float er, eg, eb, ea;
                                     sample_texture_slot_srgb_ex(emissive_tex,
@@ -2094,8 +2074,9 @@ static void raster_triangle(uint8_t *pixels,
 
                     uint8_t *dst = &pixels[y * stride + x * 4];
                     if (!discard_fragment && fa >= 1.0f) {
-                        /* Opaque: overwrite pixel + update Z-buffer */
-                        zbuf[idx] = z;
+                        /* Opaque: overwrite pixel; screen-space overlays skip Z writes. */
+                        if (!depth_disabled)
+                            zbuf[idx] = z;
                         dst[0] = (uint8_t)(clamp01f(fr) * 255.0f);
                         dst[1] = (uint8_t)(clamp01f(fg) * 255.0f);
                         dst[2] = (uint8_t)(clamp01f(fb_c) * 255.0f);
@@ -2105,18 +2086,16 @@ static void raster_triangle(uint8_t *pixels,
                         /* Transparent: additive keeps the destination, alpha uses source-over.
                          * Both skip Z writes so they don't occlude later transparent draws. */
                         if (cmd && cmd->additive_blend) {
-                            dst[0] = (uint8_t)fminf(
-                                255.0f, clamp01f(fr) * 255.0f * fa + (float)dst[0]);
-                            dst[1] = (uint8_t)fminf(
-                                255.0f, clamp01f(fg) * 255.0f * fa + (float)dst[1]);
-                            dst[2] = (uint8_t)fminf(
-                                255.0f, clamp01f(fb_c) * 255.0f * fa + (float)dst[2]);
+                            dst[0] =
+                                (uint8_t)fminf(255.0f, clamp01f(fr) * 255.0f * fa + (float)dst[0]);
+                            dst[1] =
+                                (uint8_t)fminf(255.0f, clamp01f(fg) * 255.0f * fa + (float)dst[1]);
+                            dst[2] = (uint8_t)fminf(255.0f,
+                                                    clamp01f(fb_c) * 255.0f * fa + (float)dst[2]);
                         } else {
                             float inv_a = 1.0f - fa;
-                            dst[0] =
-                                (uint8_t)(clamp01f(fr) * 255.0f * fa + (float)dst[0] * inv_a);
-                            dst[1] =
-                                (uint8_t)(clamp01f(fg) * 255.0f * fa + (float)dst[1] * inv_a);
+                            dst[0] = (uint8_t)(clamp01f(fr) * 255.0f * fa + (float)dst[0] * inv_a);
+                            dst[1] = (uint8_t)(clamp01f(fg) * 255.0f * fa + (float)dst[1] * inv_a);
                             dst[2] =
                                 (uint8_t)(clamp01f(fb_c) * 255.0f * fa + (float)dst[2] * inv_a);
                         }
@@ -2301,9 +2280,9 @@ static void shadow_raster_tri(float *depth,
                             cmd->texture_slot_uv_transform[RT_MATERIAL3D_TEXTURE_SLOT_BASE_COLOR];
                         float base_u = use_uv1 ? (b0 * u1[0] + b1 * u1[1] + b2 * u1[2])
                                                : (b0 * u[0] + b1 * u[1] + b2 * u[2]);
-                        float base_v =
-                            use_uv1 ? (b0 * v1coord[0] + b1 * v1coord[1] + b2 * v1coord[2])
-                                    : (b0 * vcoord[0] + b1 * vcoord[1] + b2 * vcoord[2]);
+                        float base_v = use_uv1
+                                           ? (b0 * v1coord[0] + b1 * v1coord[1] + b2 * v1coord[2])
+                                           : (b0 * vcoord[0] + b1 * vcoord[1] + b2 * vcoord[2]);
                         float tex_u = base_u * m[0] + base_v * m[1] + m[4];
                         float tex_v = base_u * m[2] + base_v * m[3] + m[5];
                         sample_texture_slot_ex(alpha_tex,
@@ -2348,18 +2327,18 @@ typedef struct {
 ///   vertex falls on.
 static float shadow_clip_distance(const shadow_clip_vertex_t *v, int plane) {
     switch (plane) {
-    case 0:
-        return v->clip[0] + v->clip[3]; /* left */
-    case 1:
-        return v->clip[3] - v->clip[0]; /* right */
-    case 2:
-        return v->clip[1] + v->clip[3]; /* bottom */
-    case 3:
-        return v->clip[3] - v->clip[1]; /* top */
-    case 4:
-        return v->clip[2] + v->clip[3]; /* near */
-    default:
-        return v->clip[3] - v->clip[2]; /* far */
+        case 0:
+            return v->clip[0] + v->clip[3]; /* left */
+        case 1:
+            return v->clip[3] - v->clip[0]; /* right */
+        case 2:
+            return v->clip[1] + v->clip[3]; /* bottom */
+        case 3:
+            return v->clip[3] - v->clip[1]; /* top */
+        case 4:
+            return v->clip[2] + v->clip[3]; /* near */
+        default:
+            return v->clip[3] - v->clip[2]; /* far */
     }
 }
 
@@ -2692,6 +2671,20 @@ static void sw_begin_frame(void *ctx_ptr, const vgfx3d_camera_params_t *cam) {
     ctx->fog_color[0] = cam->fog_color[0];
     ctx->fog_color[1] = cam->fog_color[1];
     ctx->fog_color[2] = cam->fog_color[2];
+    if (!cam->load_existing_depth) {
+        if (ctx->render_target) {
+            vgfx3d_rendertarget_t *rt = ctx->render_target;
+            if (vgfx3d_rendertarget_ensure_depth(rt)) {
+                int32_t total = rt->width * rt->height;
+                for (int32_t i = 0; i < total; i++)
+                    rt->depth_buf[i] = FLT_MAX;
+            }
+        } else {
+            int32_t total = ctx->width * ctx->height;
+            for (int32_t i = 0; i < total; i++)
+                ctx->zbuf[i] = FLT_MAX;
+        }
+    }
     /* Reset shadow state — rebuilt if shadows are enabled this frame */
     ctx->shadow_pass_slot = -1;
     ctx->shadow_count = 0;
@@ -2865,8 +2858,7 @@ static void sw_submit_draw(void *ctx_ptr,
         dst->color[3] = src->color[3];
 
         /* Per-vertex lighting (Gouraud) — skipped when normal/PBR work is done per-pixel. */
-        if (!cmd->unlit &&
-            (cmd->workflow == RT_MATERIAL3D_WORKFLOW_PBR || cmd->normal_map)) {
+        if (!cmd->unlit && (cmd->workflow == RT_MATERIAL3D_WORKFLOW_PBR || cmd->normal_map)) {
             /* Store raw albedo: vertex_color * diffuse (lighting computed per-pixel) */
             dst->color[0] = cmd->diffuse_color[0] * dst->color[0];
             dst->color[1] = cmd->diffuse_color[1] * dst->color[1];
@@ -3045,7 +3037,6 @@ static void sw_submit_draw(void *ctx_ptr,
             }
         }
     }
-
 }
 
 /// @brief Backend `end_frame` op — no-op for software (frames write directly to fb).

@@ -115,7 +115,8 @@ struct Elf64_Rel {
 
 /// @brief Bounds-checked struct copy at @p offset within a byte buffer.
 /// @return nullopt when reading sizeof(T) bytes at @p offset would exceed @p size.
-template <typename T> static std::optional<T> readStruct(const uint8_t *data, size_t size, size_t offset) {
+template <typename T>
+static std::optional<T> readStruct(const uint8_t *data, size_t size, size_t offset) {
     if (offset > size || sizeof(T) > size - offset)
         return std::nullopt;
     T value{};
@@ -186,16 +187,12 @@ static bool extractRelAddend(uint16_t machine,
         return true;
     }
 
-    const bool needsInsn = relocType == elf_a64::kCall26 ||
-                           relocType == elf_a64::kJump26 ||
-                           relocType == elf_a64::kCondBr19 ||
-                           relocType == elf_a64::kAdrPrelPgHi21 ||
-                           relocType == elf_a64::kAdrGotPage ||
-                           relocType == elf_a64::kAddAbsLo12Nc ||
-                           relocType == elf_a64::kLdSt32Lo12Nc ||
-                           relocType == elf_a64::kLdSt64Lo12Nc ||
-                           relocType == elf_a64::kLd64GotLo12Nc ||
-                           relocType == elf_a64::kLdSt128Lo12Nc;
+    const bool needsInsn =
+        relocType == elf_a64::kCall26 || relocType == elf_a64::kJump26 ||
+        relocType == elf_a64::kCondBr19 || relocType == elf_a64::kAdrPrelPgHi21 ||
+        relocType == elf_a64::kAdrGotPage || relocType == elf_a64::kAddAbsLo12Nc ||
+        relocType == elf_a64::kLdSt32Lo12Nc || relocType == elf_a64::kLdSt64Lo12Nc ||
+        relocType == elf_a64::kLd64GotLo12Nc || relocType == elf_a64::kLdSt128Lo12Nc;
     if (!needsInsn)
         return false;
     if (!checkedRange(offset, 4, sectionData.size()))
@@ -251,8 +248,7 @@ static std::optional<std::string> readStringOpt(
     const void *nul = std::memchr(begin, '\0', static_cast<size_t>(end - begin));
     if (!nul)
         return std::nullopt;
-    return std::string(reinterpret_cast<const char *>(begin),
-                       static_cast<const char *>(nul));
+    return std::string(reinterpret_cast<const char *>(begin), static_cast<const char *>(nul));
 }
 
 bool readElfObj(
@@ -333,6 +329,7 @@ bool readElfObj(
         std::string signature;
         std::vector<uint32_t> members;
     };
+
     auto readSymbolNameFromTable = [&](uint32_t symtabIndex,
                                        uint32_t symIndex) -> std::optional<std::string> {
         if (symtabIndex >= shnum)
@@ -348,9 +345,11 @@ bool readElfObj(
                                                   static_cast<size_t>(symtab.sh_size),
                                                   size))
             return std::nullopt;
-        const auto sym = readStruct<elf::Elf64_Sym>(
-            data, size, static_cast<size_t>(symtab.sh_offset) +
-                            static_cast<size_t>(symIndex) * sizeof(elf::Elf64_Sym));
+        const auto sym =
+            readStruct<elf::Elf64_Sym>(data,
+                                       size,
+                                       static_cast<size_t>(symtab.sh_offset) +
+                                           static_cast<size_t>(symIndex) * sizeof(elf::Elf64_Sym));
         if (!sym)
             return std::nullopt;
         const auto &strtab = shdrs[symtab.sh_link];
@@ -367,9 +366,8 @@ bool readElfObj(
         if (sh->sh_type != elf::SHT_GROUP)
             continue;
         if (sh->sh_size < 4 || (sh->sh_size % 4) != 0 ||
-            !checkedRange(static_cast<size_t>(sh->sh_offset),
-                          static_cast<size_t>(sh->sh_size),
-                          size)) {
+            !checkedRange(
+                static_cast<size_t>(sh->sh_offset), static_cast<size_t>(sh->sh_size), size)) {
             err << "error: " << name << ": malformed ELF section group\n";
             return false;
         }
@@ -384,8 +382,7 @@ bool readElfObj(
         std::vector<uint32_t> members;
         const size_t count = static_cast<size_t>(sh->sh_size / 4);
         for (size_t entry = 1; entry < count; ++entry) {
-            const uint32_t member =
-                readLE32(data + static_cast<size_t>(sh->sh_offset) + entry * 4);
+            const uint32_t member = readLE32(data + static_cast<size_t>(sh->sh_offset) + entry * 4);
             if (member >= shnum) {
                 err << "error: " << name << ": ELF section group references invalid section "
                     << member << "\n";
@@ -438,9 +435,8 @@ bool readElfObj(
         constexpr uint32_t SHF_MERGE = 0x10;
         constexpr uint32_t SHF_STRINGS = 0x20;
         sec.isCStringSection =
-            sec.alloc &&
-            (((sh->sh_flags & SHF_MERGE) != 0 && (sh->sh_flags & SHF_STRINGS) != 0) ||
-             sec.name.rfind(".rodata.str", 0) == 0);
+            sec.alloc && (((sh->sh_flags & SHF_MERGE) != 0 && (sh->sh_flags & SHF_STRINGS) != 0) ||
+                          sec.name.rfind(".rodata.str", 0) == 0);
 
         if (sh->sh_type == elf::SHT_NOBITS) {
             sec.zeroFill = true;
@@ -449,10 +445,9 @@ bool readElfObj(
                 return false;
             }
             sec.memSize = static_cast<size_t>(sh->sh_size);
-        } else if (sh->sh_size > 0 &&
-                   checkedRange(static_cast<size_t>(sh->sh_offset),
-                                static_cast<size_t>(sh->sh_size),
-                                size)) {
+        } else if (sh->sh_size > 0 && checkedRange(static_cast<size_t>(sh->sh_offset),
+                                                   static_cast<size_t>(sh->sh_size),
+                                                   size)) {
             auto off = static_cast<size_t>(sh->sh_offset);
             auto sz = static_cast<size_t>(sh->sh_size);
             if (sz > kMaxObjSectionBytes) {
@@ -507,9 +502,8 @@ bool readElfObj(
             err << "error: " << name << ": ELF symbol table has invalid string table link\n";
             return false;
         }
-        if (!checkedRange(static_cast<size_t>(symSh->sh_offset),
-                          static_cast<size_t>(symSh->sh_size),
-                          size)) {
+        if (!checkedRange(
+                static_cast<size_t>(symSh->sh_offset), static_cast<size_t>(symSh->sh_size), size)) {
             err << "error: " << name << ": symbol table is out of bounds\n";
             return false;
         }
@@ -607,9 +601,8 @@ bool readElfObj(
                 os.absolute = true;
             } else if (effectiveShndx == elf::SHN_COMMON) {
                 const size_t alignment = static_cast<size_t>(sym->st_value);
-                if (alignment != 0 &&
-                    ((alignment & (alignment - 1)) != 0 ||
-                     alignment > std::numeric_limits<uint32_t>::max())) {
+                if (alignment != 0 && ((alignment & (alignment - 1)) != 0 ||
+                                       alignment > std::numeric_limits<uint32_t>::max())) {
                     err << "error: " << name << ": ELF common symbol has unsupported alignment\n";
                     return false;
                 }
@@ -671,8 +664,9 @@ bool readElfObj(
         // sh_info points to the section these relocs apply to.
         const uint32_t targetSecElf = shdrs[i].sh_info;
         if (targetSecElf >= shnum) {
-            err << "error: " << name << ": ELF relocation section references invalid target section "
-                << targetSecElf << "\n";
+            err << "error: " << name
+                << ": ELF relocation section references invalid target section " << targetSecElf
+                << "\n";
             return false;
         }
         if (secMap[targetSecElf] == 0) {
@@ -746,10 +740,10 @@ bool readElfObj(
                 return false;
             }
             rel.symIndex = symMap[elfSymIdx];
-            if (!isRela &&
-                !extractRelAddend(ehdr->e_machine, rel.type, targetSec.data, rel.offset, rel.addend)) {
-                err << "error: " << name << ": ELF REL relocation addend at offset "
-                    << rel.offset << " is out of bounds in section '" << targetSec.name << "'\n";
+            if (!isRela && !extractRelAddend(
+                               ehdr->e_machine, rel.type, targetSec.data, rel.offset, rel.addend)) {
+                err << "error: " << name << ": ELF REL relocation addend at offset " << rel.offset
+                    << " is out of bounds in section '" << targetSec.name << "'\n";
                 return false;
             }
 

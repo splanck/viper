@@ -101,17 +101,17 @@ static void test_controller_state_flow() {
 
     EXPECT_TRUE(rt_anim_controller3d_play(controller, rt_const_cstr("idle")) == 1,
                 "Play idle succeeds");
-    EXPECT_TRUE(strcmp(rt_string_cstr(rt_anim_controller3d_get_current_state(controller)), "idle") ==
-                    0,
-                "CurrentState = idle");
+    EXPECT_TRUE(
+        strcmp(rt_string_cstr(rt_anim_controller3d_get_current_state(controller)), "idle") == 0,
+        "CurrentState = idle");
 
     EXPECT_TRUE(rt_anim_controller3d_play(controller, rt_const_cstr("walk")) == 1,
                 "Play walk succeeds");
     EXPECT_TRUE(rt_anim_controller3d_get_is_transitioning(controller) == 1,
                 "Play walk uses default transition");
-    EXPECT_TRUE(strcmp(rt_string_cstr(rt_anim_controller3d_get_previous_state(controller)), "idle") ==
-                    0,
-                "PreviousState = idle");
+    EXPECT_TRUE(
+        strcmp(rt_string_cstr(rt_anim_controller3d_get_previous_state(controller)), "idle") == 0,
+        "PreviousState = idle");
 
     rt_anim_controller3d_set_root_motion_bone(controller, 0);
     rt_anim_controller3d_update(controller, 0.5);
@@ -181,7 +181,9 @@ static void test_controller_crossfade_preserves_source_speed() {
     rt_anim_controller3d_update(controller, 0.25);
 
     void *root_mat = rt_anim_controller3d_get_bone_matrix(controller, 0);
-    EXPECT_NEAR(rt_mat4_get(root_mat, 0, 3), 7.5, 0.2,
+    EXPECT_NEAR(rt_mat4_get(root_mat, 0, 3),
+                7.5,
+                0.2,
                 "Crossfade source clip continues with source state speed");
 }
 
@@ -216,7 +218,9 @@ static void test_controller_masked_layer() {
 
     EXPECT_NEAR(rt_mat4_get(root_mat, 0, 3), 5.0, 0.1, "Masked layer preserves base root x");
     EXPECT_NEAR(rt_mat4_get(root_mat, 1, 3), 0.0, 0.01, "Masked layer does not affect root y");
-    EXPECT_NEAR(rt_mat4_get(arm_mat, 0, 3), 5.0, 0.1,
+    EXPECT_NEAR(rt_mat4_get(arm_mat, 0, 3),
+                5.0,
+                0.1,
                 "Masked layer keeps base parent motion on child world matrix");
     EXPECT_NEAR(rt_mat4_get(arm_mat, 1, 3), 1.0, 0.1, "Masked layer drives arm y");
 
@@ -260,8 +264,9 @@ static void test_controller_events_cover_full_loops_and_reverse() {
     rt_anim_controller3d_set_state_speed(controller, rt_const_cstr("walk"), NAN);
     rt_anim_controller3d_play(controller, rt_const_cstr("walk"));
     rt_anim_controller3d_update(controller, 0.5);
-    EXPECT_TRUE(std::isfinite(rt_mat4_get(rt_anim_controller3d_get_bone_matrix(controller, 0), 0, 3)),
-                "AnimController3D sanitizes non-finite state speeds");
+    EXPECT_TRUE(
+        std::isfinite(rt_mat4_get(rt_anim_controller3d_get_bone_matrix(controller, 0), 0, 3)),
+        "AnimController3D sanitizes non-finite state speeds");
 }
 
 static void test_controller_rejects_wrong_animation_handles() {

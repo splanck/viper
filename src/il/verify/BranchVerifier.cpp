@@ -157,9 +157,9 @@ Expected<void> verifyCBr_E(const Function &fn,
                            const BlockMap &blockMap,
                            TypeInference &types) {
     bool missingCond = false;
-    const Type condType =
-        instr.operands.size() == 1 ? types.valueType(instr.operands[0], &missingCond)
-                                   : Type(Type::Kind::Void);
+    const Type condType = instr.operands.size() == 1
+                              ? types.valueType(instr.operands[0], &missingCond)
+                              : Type(Type::Kind::Void);
     if (missingCond) {
         return Expected<void>{
             makeError(instr.loc, formatInstrDiag(fn, bb, instr, "unknown branch condition"))};

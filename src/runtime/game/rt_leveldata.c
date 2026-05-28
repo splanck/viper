@@ -294,8 +294,7 @@ int64_t rt_leveldata_player_start_y(void *level) {
 
 /// @brief Get the theme name from the level properties (e.g., "forest", "cave").
 rt_string rt_leveldata_get_theme(void *level) {
-    leveldata_impl *ld =
-        checked_leveldata(level, "LevelData.Theme: expected Viper.Game.LevelData");
+    leveldata_impl *ld = checked_leveldata(level, "LevelData.Theme: expected Viper.Game.LevelData");
     if (!ld)
         return rt_const_cstr("");
     return rt_const_cstr(ld->theme);

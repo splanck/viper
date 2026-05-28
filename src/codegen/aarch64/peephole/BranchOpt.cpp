@@ -252,9 +252,8 @@ bool tryCsetBranchFusion(std::vector<MInstr> &instrs, std::size_t idx, PeepholeS
                 return false;
         }
 
-        if (next.opc == MOpcode::Br || next.opc == MOpcode::BCond ||
-            next.opc == MOpcode::Cbz || next.opc == MOpcode::Cbnz ||
-            next.opc == MOpcode::Ret)
+        if (next.opc == MOpcode::Br || next.opc == MOpcode::BCond || next.opc == MOpcode::Cbz ||
+            next.opc == MOpcode::Cbnz || next.opc == MOpcode::Ret)
             return false;
     }
     return false;

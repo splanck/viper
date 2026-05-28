@@ -115,12 +115,10 @@ bool isTempUsedOutsideBlock(const il::core::Function &function,
                             unsigned tempId);
 
 /// \brief Return true if any parameter of @p block is used outside the block.
-bool blockParamsUsedOutside(const il::core::Function &function,
-                            const il::core::BasicBlock &block);
+bool blockParamsUsedOutside(const il::core::Function &function, const il::core::BasicBlock &block);
 
 /// \brief Return true if any instruction result in @p block is used outside the block.
-bool blockResultsUsedOutside(const il::core::Function &function,
-                             const il::core::BasicBlock &block);
+bool blockResultsUsedOutside(const il::core::Function &function, const il::core::BasicBlock &block);
 
 /// \brief Resolve a basic block index from a label->index map.
 size_t lookupBlockIndex(const std::unordered_map<std::string, size_t> &labelToIndex,

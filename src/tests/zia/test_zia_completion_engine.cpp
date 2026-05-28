@@ -36,8 +36,8 @@
 #include <algorithm>
 #include <filesystem>
 #include <fstream>
-#include <utility>
 #include <string>
+#include <utility>
 
 using namespace il::frontends::zia;
 
@@ -355,12 +355,9 @@ func main() {
     auto items = engine.complete(source, line, col, "<test>", 0);
     const CompletionItem *say = findItem(items, "Say");
     ASSERT_NE(say, nullptr);
-    EXPECT_TRUE(say->documentation.find("Writes text followed by a newline") !=
-                std::string::npos);
-    EXPECT_TRUE(say->documentation.find("Runtime method Viper.Terminal.Say.") !=
-                std::string::npos);
-    EXPECT_TRUE(say->documentation.find("Signature: Say(s: String) -> Void") !=
-                std::string::npos);
+    EXPECT_TRUE(say->documentation.find("Writes text followed by a newline") != std::string::npos);
+    EXPECT_TRUE(say->documentation.find("Runtime method Viper.Terminal.Say.") != std::string::npos);
+    EXPECT_TRUE(say->documentation.find("Signature: Say(s: String) -> Void") != std::string::npos);
     EXPECT_TRUE(say->documentation.find("Target: Viper.Terminal.Say") != std::string::npos);
 }
 
@@ -384,11 +381,13 @@ func main() {
 
     CompletionEngine engine;
     auto [moduleLine, moduleCol] = lineColAfter(source, "var value = De");
-    auto modules = engine.complete(source, moduleLine, moduleCol, (tempRoot / "main.zia").string(), 0);
+    auto modules =
+        engine.complete(source, moduleLine, moduleCol, (tempRoot / "main.zia").string(), 0);
     EXPECT_TRUE(hasKind(modules, "Dep", CompletionKind::Module));
 
     auto [memberLine, memberCol] = lineColAfter(source, "Dep.exp");
-    auto members = engine.complete(source, memberLine, memberCol, (tempRoot / "main.zia").string(), 0);
+    auto members =
+        engine.complete(source, memberLine, memberCol, (tempRoot / "main.zia").string(), 0);
     EXPECT_TRUE(hasKind(members, "exportedThing", CompletionKind::Function));
     EXPECT_FALSE(hasLabel(members, "hiddenThing"));
     const CompletionItem *exported = findItem(members, "exportedThing");

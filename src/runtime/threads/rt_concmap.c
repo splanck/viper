@@ -180,7 +180,8 @@ static void free_entry_storage(cm_entry *e) {
     }
 }
 
-/// @brief Free a single entry — its key copy, its retained value (refcount-aware), and the entry itself.
+/// @brief Free a single entry — its key copy, its retained value (refcount-aware), and the entry
+/// itself.
 /// @details Used by Delete and bucket clear paths. The key is a freshly
 ///          malloc'd copy so we own it; the value carries a runtime ref
 ///          that we release. NULL @p e is a no-op.
@@ -257,9 +258,9 @@ static void cm_resize(rt_concmap_impl *cm) {
 ///          intermediate `capacity * NUM` doesn't overflow size_t for
 ///          large maps. Caller must hold the map mutex.
 static void maybe_resize(rt_concmap_impl *cm) {
-    size_t threshold = (cm->capacity / CM_LOAD_FACTOR_DEN) * CM_LOAD_FACTOR_NUM +
-                       ((cm->capacity % CM_LOAD_FACTOR_DEN) * CM_LOAD_FACTOR_NUM) /
-                           CM_LOAD_FACTOR_DEN;
+    size_t threshold =
+        (cm->capacity / CM_LOAD_FACTOR_DEN) * CM_LOAD_FACTOR_NUM +
+        ((cm->capacity % CM_LOAD_FACTOR_DEN) * CM_LOAD_FACTOR_NUM) / CM_LOAD_FACTOR_DEN;
     if (cm->count > threshold) {
         cm_resize(cm);
     }
@@ -688,8 +689,7 @@ void *rt_concmap_keys(void *obj) {
         return seq;
     }
 
-    if (snapshot_count > SIZE_MAX / sizeof(char *) ||
-        snapshot_count > SIZE_MAX / sizeof(size_t)) {
+    if (snapshot_count > SIZE_MAX / sizeof(char *) || snapshot_count > SIZE_MAX / sizeof(size_t)) {
         CM_UNLOCK(cm);
         concmap_release_object(obj);
         rt_trap("ConcurrentMap.Keys: allocation size overflow");

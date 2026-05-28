@@ -25,8 +25,8 @@
 #ifdef VIPER_ENABLE_GRAPHICS
 
 #include "rt_canvas3d.h"
-#include "rt_canvas3d_internal.h"
 #include "rt_action.h"
+#include "rt_canvas3d_internal.h"
 #include "rt_graphics_internal.h"
 #include "rt_heap.h"
 #include "rt_input.h"
@@ -98,8 +98,7 @@ static double canvas3d_accumulate_synthetic_mouse_delta(double current, double d
         current = 0.0;
     next = current + delta;
     if (!isfinite(next))
-        return delta > 0.0 ? CANVAS3D_SYNTHETIC_MOUSE_ABS_MAX
-                           : -CANVAS3D_SYNTHETIC_MOUSE_ABS_MAX;
+        return delta > 0.0 ? CANVAS3D_SYNTHETIC_MOUSE_ABS_MAX : -CANVAS3D_SYNTHETIC_MOUSE_ABS_MAX;
     if (next > CANVAS3D_SYNTHETIC_MOUSE_ABS_MAX)
         return CANVAS3D_SYNTHETIC_MOUSE_ABS_MAX;
     if (next < -CANVAS3D_SYNTHETIC_MOUSE_ABS_MAX)
@@ -237,8 +236,7 @@ static uint8_t canvas3d_clamp01_to_u8(float value) {
 /// @brief Check whether @p value is finite and within ±FLT_MAX.
 /// @details Pre-flight test for safe `double → float` narrowing.
 static int canvas3d_double_fits_float(double value) {
-    return isfinite(value) && value >= -CANVAS3D_FLOAT_ABS_MAX &&
-           value <= CANVAS3D_FLOAT_ABS_MAX;
+    return isfinite(value) && value >= -CANVAS3D_FLOAT_ABS_MAX && value <= CANVAS3D_FLOAT_ABS_MAX;
 }
 
 /// @brief Narrow a 16-entry double Mat4 to float, returning 0 if any entry is non-finite.
@@ -336,20 +334,65 @@ static void canvas3d_clear_pending_splat(rt_canvas3d *c) {
 
 #include "rt_canvas3d_frame_postfx.inc"
 
+/// @brief Estimate a physical backing size for a requested logical size.
+static int32_t canvas3d_scale_logical_size(rt_canvas3d *c, int32_t logical) {
+    float scale;
+
+    if (!c || logical <= 0)
+        return logical;
+    scale = c->gfx_win ? vgfx_window_get_scale(c->gfx_win) : 1.0f;
+    if (!isfinite(scale) || scale < 1.0f)
+        scale = 1.0f;
+    if ((double)logical > (double)INT32_MAX / (double)scale)
+        return logical;
+    return (int32_t)((double)logical * (double)scale + 0.5);
+}
+
+/// @brief Convert a physical framebuffer dimension back to the public logical space.
+static int32_t canvas3d_unscale_physical_size(rt_canvas3d *c, int32_t physical) {
+    float scale;
+
+    if (physical <= 0)
+        return physical;
+    scale = (c && c->gfx_win) ? vgfx_window_get_scale(c->gfx_win) : 1.0f;
+    if (!isfinite(scale) || scale < 1.0f)
+        scale = 1.0f;
+    return (int32_t)((double)physical / (double)scale + 0.5);
+}
+
 /// @brief Apply a window-size change to the canvas + active backend.
 ///
-/// Idempotent on identical size. Updates the canvas's cached width
-/// and height, then forwards to the backend's `resize` op so it can
-/// rebuild offscreen targets.
-static void rt_canvas3d_apply_resize(rt_canvas3d *c, int32_t w, int32_t h) {
-    if (!c || w <= 0 || h <= 0)
+/// `logical_*` is the public coordinate/capture size, while `physical_*`
+/// is the framebuffer/backing-pixel size used by native backends. Keeping
+/// both prevents Retina/HiDPI resize events from leaking 2x dimensions into
+/// Game3D and Canvas3D public APIs.
+static void rt_canvas3d_apply_resize(
+    rt_canvas3d *c, int32_t logical_w, int32_t logical_h, int32_t physical_w, int32_t physical_h) {
+    int size_changed;
+    int framebuffer_changed;
+
+    if (!c || logical_w <= 0 || logical_h <= 0)
         return;
-    if (c->width == w && c->height == h)
+    if (physical_w <= 0)
+        physical_w = canvas3d_scale_logical_size(c, logical_w);
+    if (physical_h <= 0)
+        physical_h = canvas3d_scale_logical_size(c, logical_h);
+    if (physical_w <= 0)
+        physical_w = logical_w;
+    if (physical_h <= 0)
+        physical_h = logical_h;
+
+    size_changed = (c->width != logical_w || c->height != logical_h);
+    framebuffer_changed =
+        (c->framebuffer_width != physical_w || c->framebuffer_height != physical_h);
+    if (!size_changed && !framebuffer_changed)
         return;
-    c->width = w;
-    c->height = h;
-    if (c->backend && c->backend->resize)
-        c->backend->resize(c->backend_ctx, w, h);
+    c->width = logical_w;
+    c->height = logical_h;
+    c->framebuffer_width = physical_w;
+    c->framebuffer_height = physical_h;
+    if (framebuffer_changed && c->backend && c->backend->resize)
+        c->backend->resize(c->backend_ctx, physical_w, physical_h);
 }
 
 /// @brief Public resize entry point mirroring window resize events.
@@ -357,7 +400,13 @@ void rt_canvas3d_resize(void *obj, int64_t w, int64_t h) {
     rt_canvas3d *c = rt_canvas3d_checked_or_stack(obj);
     if (!c || w <= 0 || h <= 0 || w > INT32_MAX || h > INT32_MAX)
         return;
-    rt_canvas3d_apply_resize(c, (int32_t)w, (int32_t)h);
+    if (c->gfx_win)
+        vgfx_set_window_size(c->gfx_win, (int32_t)w, (int32_t)h);
+    rt_canvas3d_apply_resize(c,
+                             (int32_t)w,
+                             (int32_t)h,
+                             canvas3d_scale_logical_size(c, (int32_t)w),
+                             canvas3d_scale_logical_size(c, (int32_t)h));
 }
 
 /// @brief Resolve the dimensions of the canvas's active render output.
@@ -390,7 +439,17 @@ static void canvas3d_active_output_size(const rt_canvas3d *c, int32_t *out_w, in
 /// Hooked into the underlying `vgfx_window_t`'s resize event so the
 /// canvas state stays in sync without requiring per-frame polling.
 static void rt_canvas3d_on_resize(void *userdata, int32_t w, int32_t h) {
-    rt_canvas3d_apply_resize((rt_canvas3d *)userdata, w, h);
+    rt_canvas3d *c = (rt_canvas3d *)userdata;
+    int32_t logical_w = 0;
+    int32_t logical_h = 0;
+
+    if (!c)
+        return;
+    if (!c->gfx_win || !vgfx_get_size(c->gfx_win, &logical_w, &logical_h))
+        logical_w = canvas3d_unscale_physical_size(c, w);
+    if (!c->gfx_win || logical_h <= 0)
+        logical_h = canvas3d_unscale_physical_size(c, h);
+    rt_canvas3d_apply_resize(c, logical_w, logical_h, w, h);
 }
 
 /// @brief Drop a GC-managed reference held in a `**slot` and zero the slot.
@@ -682,8 +741,7 @@ static void canvas3d_fill_material_cmd(const rt_material3d *mat, vgfx3d_draw_cmd
     cmd->metallic = canvas3d_clamp01_f64(mat->metallic);
     cmd->roughness = canvas3d_clamp01_f64(mat->roughness);
     cmd->ao = canvas3d_clamp01_f64(mat->ao);
-    cmd->emissive_intensity =
-        canvas3d_sanitize_nonnegative_f64(mat->emissive_intensity, 1.0f);
+    cmd->emissive_intensity = canvas3d_sanitize_nonnegative_f64(mat->emissive_intensity, 1.0f);
     cmd->normal_scale = canvas3d_clamp_f64_to_float(mat->normal_scale, -1000.0, 1000.0, 1.0f);
     cmd->additive_blend = mat->additive_blend ? 1 : 0;
     cmd->workflow = (mat->workflow == 1) ? 1 : 0;
@@ -693,18 +751,10 @@ static void canvas3d_fill_material_cmd(const rt_material3d *mat, vgfx3d_draw_cmd
     cmd->texture_wrap_s = mat->texture_wrap_s;
     cmd->texture_wrap_t = mat->texture_wrap_t;
     cmd->texture_filter = mat->texture_filter;
-    memcpy(cmd->texture_slot_wrap_s,
-           mat->texture_slot_wrap_s,
-           sizeof(cmd->texture_slot_wrap_s));
-    memcpy(cmd->texture_slot_wrap_t,
-           mat->texture_slot_wrap_t,
-           sizeof(cmd->texture_slot_wrap_t));
-    memcpy(cmd->texture_slot_filter,
-           mat->texture_slot_filter,
-           sizeof(cmd->texture_slot_filter));
-    memcpy(cmd->texture_slot_uv_set,
-           mat->texture_slot_uv_set,
-           sizeof(cmd->texture_slot_uv_set));
+    memcpy(cmd->texture_slot_wrap_s, mat->texture_slot_wrap_s, sizeof(cmd->texture_slot_wrap_s));
+    memcpy(cmd->texture_slot_wrap_t, mat->texture_slot_wrap_t, sizeof(cmd->texture_slot_wrap_t));
+    memcpy(cmd->texture_slot_filter, mat->texture_slot_filter, sizeof(cmd->texture_slot_filter));
+    memcpy(cmd->texture_slot_uv_set, mat->texture_slot_uv_set, sizeof(cmd->texture_slot_uv_set));
     for (int slot = 0; slot < RT_MATERIAL3D_TEXTURE_SLOT_COUNT; slot++) {
         for (int i = 0; i < 6; i++)
             cmd->texture_slot_uv_transform[slot][i] =
@@ -712,9 +762,10 @@ static void canvas3d_fill_material_cmd(const rt_material3d *mat, vgfx3d_draw_cmd
     }
     cmd->env_map = mat->env_map;
     cmd->reflectivity = canvas3d_clamp01_f64(mat->reflectivity);
-    cmd->shading_model = (mat->shading_model >= 0 && mat->shading_model <= 5 && mat->shading_model != 3)
-                             ? mat->shading_model
-                             : 0;
+    cmd->shading_model =
+        (mat->shading_model >= 0 && mat->shading_model <= 5 && mat->shading_model != 3)
+            ? mat->shading_model
+            : 0;
     for (int pi = 0; pi < 8; pi++)
         cmd->custom_params[pi] = canvas3d_sanitize_f64_to_float(mat->custom_params[pi], 0.0f);
 }
@@ -1007,8 +1058,7 @@ static int32_t canvas3d_select_shadow_directional_lights_from_draws(
     }
 
     for (int32_t ci = 0; ci < draw_count; ci++) {
-        if (cmds[ci].pass_kind != DEFERRED_PASS_MAIN ||
-            canvas3d_cmd_requires_blend(&cmds[ci].cmd))
+        if (cmds[ci].pass_kind != DEFERRED_PASS_MAIN || canvas3d_cmd_requires_blend(&cmds[ci].cmd))
             continue;
         for (int32_t li = 0; li < cmds[ci].light_count; li++) {
             const vgfx3d_light_params_t *light = &cmds[ci].lights[li];
@@ -1132,13 +1182,12 @@ static int canvas3d_track_final_overlay_temp_buffer(rt_canvas3d *c, void *buffer
     if (c->final_overlay_temp_buf_count >= c->final_overlay_temp_buf_capacity) {
         if (c->final_overlay_temp_buf_capacity > INT32_MAX / 2)
             return 0;
-        int32_t new_cap = c->final_overlay_temp_buf_capacity == 0
-                              ? 8
-                              : c->final_overlay_temp_buf_capacity * 2;
+        int32_t new_cap =
+            c->final_overlay_temp_buf_capacity == 0 ? 8 : c->final_overlay_temp_buf_capacity * 2;
         if ((size_t)new_cap > SIZE_MAX / sizeof(void *))
             return 0;
-        void **nb = (void **)realloc(c->final_overlay_temp_buffers,
-                                     (size_t)new_cap * sizeof(void *));
+        void **nb =
+            (void **)realloc(c->final_overlay_temp_buffers, (size_t)new_cap * sizeof(void *));
         if (!nb)
             return 0;
         c->final_overlay_temp_buffers = nb;
@@ -1398,7 +1447,8 @@ static float canvas3d_compute_instanced_batch_sort_key(const rt_canvas3d *c,
         float instance_max[3];
         for (int j = 0; j < 16; j++)
             world_matrix[j] = (double)instance_matrices[(size_t)i * 16u + (size_t)j];
-        vgfx3d_transform_aabb(local_bounds_min, local_bounds_max, world_matrix, instance_min, instance_max);
+        vgfx3d_transform_aabb(
+            local_bounds_min, local_bounds_max, world_matrix, instance_min, instance_max);
         if (!has_bounds) {
             memcpy(world_min, instance_min, sizeof(world_min));
             memcpy(world_max, instance_max, sizeof(world_max));
@@ -1520,11 +1570,10 @@ int canvas3d_begin_overlay_frame(rt_canvas3d *c, int8_t preserve_existing_color)
     c->frame_is_2d = 1;
     for (int r = 0; r < 4; r++)
         for (int col = 0; col < 4; col++)
-            c->cached_vp[r * 4 + col] =
-                params.projection[r * 4 + 0] * params.view[0 * 4 + col] +
-                params.projection[r * 4 + 1] * params.view[1 * 4 + col] +
-                params.projection[r * 4 + 2] * params.view[2 * 4 + col] +
-                params.projection[r * 4 + 3] * params.view[3 * 4 + col];
+            c->cached_vp[r * 4 + col] = params.projection[r * 4 + 0] * params.view[0 * 4 + col] +
+                                        params.projection[r * 4 + 1] * params.view[1 * 4 + col] +
+                                        params.projection[r * 4 + 2] * params.view[2 * 4 + col] +
+                                        params.projection[r * 4 + 3] * params.view[3 * 4 + col];
     c->backend->begin_frame(c->backend_ctx, &params);
     c->in_frame = 1;
     return 1;
@@ -2222,11 +2271,8 @@ static int canvas3d_float_array_close(const float *a, const float *b, int32_t co
 ///   backend can't render the skybox directly (e.g. the software renderer).
 /// @return 1 on success, 0 when the VP matrix is non-invertible or inputs
 ///   are otherwise malformed.
-static int canvas3d_render_skybox_cpu(rt_canvas3d *c,
-                                      uint8_t *dst_pixels,
-                                      int32_t dst_w,
-                                      int32_t dst_h,
-                                      int32_t dst_stride) {
+static int canvas3d_render_skybox_cpu(
+    rt_canvas3d *c, uint8_t *dst_pixels, int32_t dst_w, int32_t dst_h, int32_t dst_stride) {
     if (!c || !c->skybox || !dst_pixels || !canvas3d_rgba8_stride_valid(dst_w, dst_h, dst_stride))
         return 0;
 
@@ -2382,9 +2428,7 @@ static int canvas3d_ensure_skybox_cpu_cache(rt_canvas3d *c, int32_t w, int32_t h
     c->skybox_cpu_cache_is_ortho = c->cached_cam_is_ortho;
     memcpy(c->skybox_cpu_cache_vp, c->cached_vp, sizeof(c->skybox_cpu_cache_vp));
     memcpy(c->skybox_cpu_cache_cam_pos, c->cached_cam_pos, sizeof(c->skybox_cpu_cache_cam_pos));
-    memcpy(c->skybox_cpu_cache_forward,
-           c->cached_cam_forward,
-           sizeof(c->skybox_cpu_cache_forward));
+    memcpy(c->skybox_cpu_cache_forward, c->cached_cam_forward, sizeof(c->skybox_cpu_cache_forward));
     return 1;
 }
 
@@ -2394,11 +2438,8 @@ static int canvas3d_ensure_skybox_cpu_cache(rt_canvas3d *c, int32_t w, int32_t h
 ///   cache size doesn't match the destination, which is by design: the caller
 ///   uses it as a "try the fast path" hook before falling back to a full
 ///   CPU render.
-static void canvas3d_blit_skybox_cpu_cache(rt_canvas3d *c,
-                                           uint8_t *dst_pixels,
-                                           int32_t dst_w,
-                                           int32_t dst_h,
-                                           int32_t dst_stride) {
+static void canvas3d_blit_skybox_cpu_cache(
+    rt_canvas3d *c, uint8_t *dst_pixels, int32_t dst_w, int32_t dst_h, int32_t dst_stride) {
     int32_t src_stride;
 
     if (!c || !c->skybox_cpu_cache || !dst_pixels || dst_w <= 0 || dst_h <= 0 ||
@@ -2407,7 +2448,8 @@ static void canvas3d_blit_skybox_cpu_cache(rt_canvas3d *c,
         return;
     src_stride = (int32_t)((int64_t)dst_w * 4);
     for (int32_t y = 0; y < dst_h; y++)
-        memcpy(&dst_pixels[y * dst_stride], &c->skybox_cpu_cache[y * src_stride], (size_t)src_stride);
+        memcpy(
+            &dst_pixels[y * dst_stride], &c->skybox_cpu_cache[y * src_stride], (size_t)src_stride);
 }
 
 /*==========================================================================
@@ -2520,8 +2562,11 @@ void *rt_canvas3d_new(rt_string title, int64_t w, int64_t h) {
     }
     int32_t initial_width = (int32_t)w;
     int32_t initial_height = (int32_t)h;
+    int32_t initial_framebuffer_width = (int32_t)w;
+    int32_t initial_framebuffer_height = (int32_t)h;
 
-    rt_canvas3d *c = (rt_canvas3d *)rt_obj_new_i64(RT_G3D_CANVAS3D_CLASS_ID, (int64_t)sizeof(rt_canvas3d));
+    rt_canvas3d *c =
+        (rt_canvas3d *)rt_obj_new_i64(RT_G3D_CANVAS3D_CLASS_ID, (int64_t)sizeof(rt_canvas3d));
     if (!c) {
         rt_trap("Canvas3D.New: memory allocation failed");
         return NULL;
@@ -2546,12 +2591,18 @@ void *rt_canvas3d_new(rt_string title, int64_t w, int64_t h) {
 
     vgfx_set_coord_scale(c->gfx_win, vgfx_window_get_scale(c->gfx_win));
     if (vgfx_get_framebuffer(c->gfx_win, &fb) && fb.width > 0 && fb.height > 0) {
-        initial_width = fb.width;
-        initial_height = fb.height;
+        initial_framebuffer_width = fb.width;
+        initial_framebuffer_height = fb.height;
+        if (!vgfx_get_size(c->gfx_win, &initial_width, &initial_height)) {
+            initial_width = canvas3d_unscale_physical_size(c, fb.width);
+            initial_height = canvas3d_unscale_physical_size(c, fb.height);
+        }
     }
 
     c->width = initial_width;
     c->height = initial_height;
+    c->framebuffer_width = initial_framebuffer_width;
+    c->framebuffer_height = initial_framebuffer_height;
 
     /* Select and initialize the platform-default backend, with software fallback. */
     c->backend = vgfx3d_select_backend();
@@ -2563,11 +2614,13 @@ void *rt_canvas3d_new(rt_string title, int64_t w, int64_t h) {
         rt_trap("Canvas3D.New: no 3D backend is available");
         return NULL;
     }
-    c->backend_ctx = c->backend->create_ctx(c->gfx_win, initial_width, initial_height);
+    c->backend_ctx =
+        c->backend->create_ctx(c->gfx_win, initial_framebuffer_width, initial_framebuffer_height);
     if (!c->backend_ctx) {
         /* Selected backend failed — fall back to software. */
         c->backend = &vgfx3d_software_backend;
-        c->backend_ctx = c->backend->create_ctx(c->gfx_win, initial_width, initial_height);
+        c->backend_ctx = c->backend->create_ctx(
+            c->gfx_win, initial_framebuffer_width, initial_framebuffer_height);
         if (!c->backend_ctx) {
             if (rt_obj_release_check0(c))
                 rt_obj_free(c);
@@ -2651,8 +2704,8 @@ void rt_canvas3d_clear(void *obj, double r, double g, double b) {
      * stride-aligned rows instead of per-pixel loop (4x faster at 1080p). */
     if (c->backend != &vgfx3d_software_backend && !c->render_target) {
         vgfx_framebuffer_t fb;
-        if (vgfx_get_framebuffer(c->gfx_win, &fb) && fb.pixels && fb.width > 0 &&
-            fb.height > 0 && fb.stride >= fb.width * (int32_t)sizeof(uint32_t)) {
+        if (vgfx_get_framebuffer(c->gfx_win, &fb) && fb.pixels && fb.width > 0 && fb.height > 0 &&
+            fb.stride >= fb.width * (int32_t)sizeof(uint32_t)) {
             uint8_t r8 = canvas3d_clamp01_to_u8(cr);
             uint8_t g8 = canvas3d_clamp01_to_u8(cg);
             uint8_t b8 = canvas3d_clamp01_to_u8(cb);
@@ -2729,6 +2782,7 @@ static int canvas3d_queue_screen_geometry(rt_canvas3d *c,
     cmd.diffuse_color[3] = a;
     cmd.alpha = a;
     cmd.unlit = 1;
+    cmd.disable_depth_test = 1;
 
     if (c->final_overlay_recording) {
         if (!canvas3d_track_final_overlay_temp_buffer(c, block)) {
@@ -2788,15 +2842,15 @@ int canvas3d_queue_screen_rect(
 /// the quad is built by extruding by `width/2` perpendicular to
 /// the segment direction. Properly aligned for sub-pixel positions.
 int canvas3d_queue_screen_line(rt_canvas3d *c,
-                                      float x0,
-                                      float y0,
-                                      float x1,
-                                      float y1,
-                                      float thickness,
-                                      float r,
-                                      float g,
-                                      float b,
-                                      float a) {
+                               float x0,
+                               float y0,
+                               float x1,
+                               float y1,
+                               float thickness,
+                               float r,
+                               float g,
+                               float b,
+                               float a) {
     float dx;
     float dy;
     float len;
@@ -2930,11 +2984,10 @@ void rt_canvas3d_begin_overlay(void *obj) {
     c->frame_is_2d = 1;
     for (int r = 0; r < 4; r++)
         for (int col = 0; col < 4; col++)
-            c->cached_vp[r * 4 + col] =
-                params.projection[r * 4 + 0] * params.view[0 * 4 + col] +
-                params.projection[r * 4 + 1] * params.view[1 * 4 + col] +
-                params.projection[r * 4 + 2] * params.view[2 * 4 + col] +
-                params.projection[r * 4 + 3] * params.view[3 * 4 + col];
+            c->cached_vp[r * 4 + col] = params.projection[r * 4 + 0] * params.view[0 * 4 + col] +
+                                        params.projection[r * 4 + 1] * params.view[1 * 4 + col] +
+                                        params.projection[r * 4 + 2] * params.view[2 * 4 + col] +
+                                        params.projection[r * 4 + 3] * params.view[3 * 4 + col];
     c->final_overlay_recording = 1;
     c->in_frame = 1;
 }
@@ -3259,8 +3312,7 @@ void rt_canvas3d_draw_mesh_matrix_keyed(void *obj,
                                         const float *prev_bone_palette,
                                         const float *prev_morph_weights) {
     rt_canvas3d *c = rt_canvas3d_checked_or_stack(obj);
-    rt_mesh3d *mesh =
-        (rt_mesh3d *)rt_g3d_checked_or_null(mesh_obj, RT_G3D_MESH3D_CLASS_ID);
+    rt_mesh3d *mesh = (rt_mesh3d *)rt_g3d_checked_or_null(mesh_obj, RT_G3D_MESH3D_CLASS_ID);
     rt_material3d *mat =
         (rt_material3d *)rt_g3d_checked_or_null(material_obj, RT_G3D_MATERIAL3D_CLASS_ID);
     int8_t pending_has_splat = 0;
@@ -3413,7 +3465,8 @@ void rt_canvas3d_draw_mesh(void *obj, void *mesh_obj, void *transform_obj, void 
         obj, mesh_obj, transform->m, material_obj, (const void *)motion_key, NULL, NULL);
 }
 
-/// @brief Queue an instanced draw — render `instance_count` copies of `mesh` with per-instance transforms.
+/// @brief Queue an instanced draw — render `instance_count` copies of `mesh` with per-instance
+/// transforms.
 ///
 /// One draw call instead of `instance_count` separate calls.
 /// Used for foliage, debris, particle clouds, and any scene with
@@ -3473,8 +3526,8 @@ void rt_canvas3d_queue_instanced_batch(void *canvas_obj,
                                   ? rt_morphtarget3d_get_payload_generation(mesh->morph_targets_ref)
                                   : 0;
 
-    int use_fallback_instances = canvas3d_cmd_requires_blend(&base_cmd) ||
-                                 !c->backend->submit_draw_instanced;
+    int use_fallback_instances =
+        canvas3d_cmd_requires_blend(&base_cmd) || !c->backend->submit_draw_instanced;
     if (use_fallback_instances && instance_count > CANVAS3D_MAX_FALLBACK_INSTANCES) {
         rt_trap("Canvas3D.DrawMeshInstanced: fallback instance count exceeds limit");
         return;
@@ -3520,24 +3573,24 @@ void rt_canvas3d_queue_instanced_batch(void *canvas_obj,
             }
             per_instance.prev_instance_matrices = NULL;
             per_instance.has_prev_instance_matrices = 0;
-            if (!canvas3d_enqueue_draw(c,
-                                       &per_instance,
-                                       DEFERRED_DRAW_MESH,
-                                       DEFERRED_PASS_MAIN,
-                                       NULL,
-                                       0,
-                                       1,
-                                       c->wireframe,
-                                       canvas3d_material_backface_cull(c, mat),
-                                       canvas3d_compute_sort_key(
-                                           c,
-                                           per_instance.model_matrix,
-                                           mesh->aabb_min,
-                                           mesh->aabb_max,
-                                           1,
-                                           canvas3d_cmd_requires_blend(&per_instance)),
-                                       mesh->aabb_min,
-                                       mesh->aabb_max)) {
+            if (!canvas3d_enqueue_draw(
+                    c,
+                    &per_instance,
+                    DEFERRED_DRAW_MESH,
+                    DEFERRED_PASS_MAIN,
+                    NULL,
+                    0,
+                    1,
+                    c->wireframe,
+                    canvas3d_material_backface_cull(c, mat),
+                    canvas3d_compute_sort_key(c,
+                                              per_instance.model_matrix,
+                                              mesh->aabb_min,
+                                              mesh->aabb_max,
+                                              1,
+                                              canvas3d_cmd_requires_blend(&per_instance)),
+                    mesh->aabb_min,
+                    mesh->aabb_max)) {
                 rt_trap("Canvas3D.DrawMeshInstanced: deferred draw queue allocation failed");
                 return;
             }
@@ -3586,13 +3639,14 @@ void rt_canvas3d_queue_instanced_batch(void *canvas_obj,
     for (int32_t i = 0; i < instance_count; ++i) {
         int8_t has_prev = 0;
         float ignored_prev[16];
-        float *dst_prev = needs_motion_vectors ? &queued_prev_instance_matrices[(size_t)i * 16u]
-                                               : ignored_prev;
+        float *dst_prev =
+            needs_motion_vectors ? &queued_prev_instance_matrices[(size_t)i * 16u] : ignored_prev;
         const float *current = &instance_matrices[(size_t)i * 16u];
         if (needs_motion_vectors && has_prev_instance_matrices && prev_instance_matrices) {
             canvas3d_resolve_previous_model(
                 c,
-                canvas3d_instance_motion_key(mesh_obj, material_obj, instance_matrices, instance_count, i),
+                canvas3d_instance_motion_key(
+                    mesh_obj, material_obj, instance_matrices, instance_count, i),
                 current,
                 ignored_prev,
                 &has_prev);
@@ -3600,7 +3654,8 @@ void rt_canvas3d_queue_instanced_batch(void *canvas_obj,
         }
         canvas3d_resolve_previous_model(
             c,
-            canvas3d_instance_motion_key(mesh_obj, material_obj, instance_matrices, instance_count, i),
+            canvas3d_instance_motion_key(
+                mesh_obj, material_obj, instance_matrices, instance_count, i),
             current,
             dst_prev,
             &has_prev);
@@ -3610,22 +3665,20 @@ void rt_canvas3d_queue_instanced_batch(void *canvas_obj,
 
     base_cmd.prev_instance_matrices = queued_prev_instance_matrices;
     base_cmd.has_prev_instance_matrices = queued_prev_instance_matrices ? 1 : 0;
-    if (!canvas3d_enqueue_draw(c,
-                               &base_cmd,
-                               DEFERRED_DRAW_INSTANCED,
-                               DEFERRED_PASS_MAIN,
-                               queued_instance_matrices,
-                               instance_count,
-                               1,
-                               c->wireframe,
-                               canvas3d_material_backface_cull(c, mat),
-                               canvas3d_compute_instanced_batch_sort_key(c,
-                                                                         queued_instance_matrices,
-                                                                         instance_count,
-                                                                         mesh->aabb_min,
-                                                                         mesh->aabb_max),
-                               mesh->aabb_min,
-                               mesh->aabb_max)) {
+    if (!canvas3d_enqueue_draw(
+            c,
+            &base_cmd,
+            DEFERRED_DRAW_INSTANCED,
+            DEFERRED_PASS_MAIN,
+            queued_instance_matrices,
+            instance_count,
+            1,
+            c->wireframe,
+            canvas3d_material_backface_cull(c, mat),
+            canvas3d_compute_instanced_batch_sort_key(
+                c, queued_instance_matrices, instance_count, mesh->aabb_min, mesh->aabb_max),
+            mesh->aabb_min,
+            mesh->aabb_max)) {
         rt_trap("Canvas3D.DrawMeshInstanced: deferred draw queue allocation failed");
         canvas3d_release_tracked_temp_buffer(c, queued_prev_instance_matrices);
         canvas3d_release_tracked_temp_buffer(c, queued_instance_matrices);
@@ -3746,8 +3799,7 @@ void rt_canvas3d_end(void *obj) {
                 shadow_rt = c->shadow_rts[c->shadow_count];
                 if (!shadow_rt || !shadow_rt->depth_buf)
                     continue;
-                if (!canvas3d_build_shadow_light_vp(
-                        cmds, c->draw_count, &selected_light, light_vp))
+                if (!canvas3d_build_shadow_light_vp(cmds, c->draw_count, &selected_light, light_vp))
                     continue;
 
                 memcpy(c->shadow_light_vps[c->shadow_count], light_vp, sizeof(light_vp));
@@ -3981,7 +4033,8 @@ void rt_canvas3d_flip(void *obj) {
         canvas3d_close_window(c);
 }
 
-/// @brief Translate physical pixel coordinates to logical (HiDPI-scaled) and notify the mouse subsystem.
+/// @brief Translate physical pixel coordinates to logical (HiDPI-scaled) and notify the mouse
+/// subsystem.
 /// @details All public Canvas drawing uses logical pixels; vgfx mouse
 ///          events arrive in physical pixels (2× larger on Retina/HiDPI).
 ///          Dividing by the per-window scale factor keeps `Mouse.X/Y`
@@ -3990,11 +4043,11 @@ static void rt_canvas3d_update_mouse_from_physical(vgfx_window_t gfx_win, int32_
     float scale = vgfx_window_get_scale(gfx_win);
     if (scale < 0.001f)
         scale = 1.0f;
-    rt_mouse_update_pos((int64_t)((double)x / (double)scale),
-                        (int64_t)((double)y / (double)scale));
+    rt_mouse_update_pos((int64_t)((double)x / (double)scale), (int64_t)((double)y / (double)scale));
 }
 
-/// @brief Pump platform events, advance per-frame input state, and return whether the window is still open.
+/// @brief Pump platform events, advance per-frame input state, and return whether the window is
+/// still open.
 ///
 /// Called once per game-loop iteration. Drives keyboard/mouse/
 /// gamepad/action input subsystems, updates the wall-clock dt
@@ -4072,7 +4125,11 @@ int64_t rt_canvas3d_poll(void *obj) {
                     c->gfx_win, evt.data.mouse_button.x, evt.data.mouse_button.y);
                 rt_mouse_button_up((int64_t)evt.data.mouse_button.button);
             } else if (evt.type == VGFX_EVENT_RESIZE) {
-                rt_canvas3d_apply_resize(c, evt.data.resize.width, evt.data.resize.height);
+                rt_canvas3d_apply_resize(c,
+                                         evt.data.resize.logical_width,
+                                         evt.data.resize.logical_height,
+                                         evt.data.resize.width,
+                                         evt.data.resize.height);
             } else if (evt.type == VGFX_EVENT_SCROLL) {
                 rt_canvas3d_update_mouse_from_physical(
                     c->gfx_win, evt.data.scroll.x, evt.data.scroll.y);
@@ -4219,8 +4276,7 @@ double rt_canvas3d_get_delta_time_sec(void *obj) {
     if (c->delta_time_us > 0) {
         int64_t dt_us = c->delta_time_us;
         if (c->dt_max_ms > 0) {
-            int64_t max_us =
-                c->dt_max_ms <= INT64_MAX / 1000 ? c->dt_max_ms * 1000 : INT64_MAX;
+            int64_t max_us = c->dt_max_ms <= INT64_MAX / 1000 ? c->dt_max_ms * 1000 : INT64_MAX;
             if (dt_us > max_us)
                 dt_us = max_us;
         }

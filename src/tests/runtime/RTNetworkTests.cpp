@@ -592,14 +592,16 @@ static void test_connection_pool_clamps_max_size_and_closes_overflow() {
     test_result("Clamped pool still returns first connection", conn1 != nullptr);
     test_result("Overflow acquire still returns second connection", conn2 != nullptr);
     test_result("Zero maxSize clamps to a single tracked slot", rt_connpool_size(pool) == 1);
-    test_result("Tracked slot stays unavailable while checked out", rt_connpool_available(pool) == 0);
+    test_result("Tracked slot stays unavailable while checked out",
+                rt_connpool_available(pool) == 0);
 
     rt_connpool_release(pool, conn2);
     test_result("Overflow release does not grow the tracked pool", rt_connpool_size(pool) == 1);
     test_result("Overflow release does not create an idle entry", rt_connpool_available(pool) == 0);
 
     rt_connpool_release(pool, conn1);
-    test_result("Tracked connection becomes available after release", rt_connpool_available(pool) == 1);
+    test_result("Tracked connection becomes available after release",
+                rt_connpool_available(pool) == 1);
 
     rt_connpool_clear(pool);
     server_thread.join();
@@ -836,7 +838,8 @@ static void test_udp_bind() {
 
     rt_string addr = rt_udp_address(sock);
     test_result("UDP address is wildcard",
-                strcmp(rt_string_cstr(addr), "0.0.0.0") == 0 || strcmp(rt_string_cstr(addr), "::") == 0);
+                strcmp(rt_string_cstr(addr), "0.0.0.0") == 0 ||
+                    strcmp(rt_string_cstr(addr), "::") == 0);
 
     rt_udp_close(sock);
 }
@@ -2090,9 +2093,9 @@ static void test_url_encode_decode_query() {
                        "New York") == 0);
 
     void *plus_map = rt_url_decode_query(rt_const_cstr("q=hello+world"));
-    test_result("DecodeQuery plus as space",
-                strcmp(rt_string_cstr(rt_map_get_str(plus_map, rt_const_cstr("q"))),
-                       "hello world") == 0);
+    test_result(
+        "DecodeQuery plus as space",
+        strcmp(rt_string_cstr(rt_map_get_str(plus_map, rt_const_cstr("q"))), "hello world") == 0);
 }
 
 /// @brief Test URL validation.

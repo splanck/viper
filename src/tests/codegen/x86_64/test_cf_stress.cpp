@@ -181,21 +181,48 @@ namespace {
 /// are correct; this helper accepts either.
 [[nodiscard]] bool hasAnyConditionalJump(const std::string &text) {
     static const char *jcc[] = {
-        "je ", "jne ", "jl ", "jle ", "jg ", "jge ",
-        "jb ", "jbe ", "ja ", "jae ", "js ", "jns ",
-        "jo ", "jno ", "jp ", "jnp ",
+        "je ",
+        "jne ",
+        "jl ",
+        "jle ",
+        "jg ",
+        "jge ",
+        "jb ",
+        "jbe ",
+        "ja ",
+        "jae ",
+        "js ",
+        "jns ",
+        "jo ",
+        "jno ",
+        "jp ",
+        "jnp ",
     };
     for (auto p : jcc)
-        if (text.find(p) != std::string::npos) return true;
+        if (text.find(p) != std::string::npos)
+            return true;
     return false;
 }
 
 /// Count total conditional jump instructions in the text.
 [[nodiscard]] std::size_t countConditionalJumps(const std::string &text) {
     static const char *jcc[] = {
-        "je ", "jne ", "jl ", "jle ", "jg ", "jge ",
-        "jb ", "jbe ", "ja ", "jae ", "js ", "jns ",
-        "jo ", "jno ", "jp ", "jnp ",
+        "je ",
+        "jne ",
+        "jl ",
+        "jle ",
+        "jg ",
+        "jge ",
+        "jb ",
+        "jbe ",
+        "ja ",
+        "jae ",
+        "js ",
+        "jns ",
+        "jo ",
+        "jno ",
+        "jp ",
+        "jnp ",
     };
     std::size_t total = 0;
     for (auto p : jcc)
@@ -205,8 +232,7 @@ namespace {
 
 /// Check whether the text contains any flag-setting comparison (testq or cmpq).
 [[nodiscard]] bool hasAnyComparison(const std::string &text) {
-    return text.find("testq") != std::string::npos ||
-           text.find("cmpq") != std::string::npos;
+    return text.find("testq") != std::string::npos || text.find("cmpq") != std::string::npos;
 }
 
 // ===----------------------------------------------------------------------===

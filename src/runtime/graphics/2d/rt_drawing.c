@@ -589,7 +589,8 @@ static void rt_canvas_disc_clipped_safe(rt_canvas *canvas,
             x1 = clip_x1;
         int64_t span = rt_canvas_span_width_sat(x0, x1);
         if (span > 0)
-            rt_canvas_fill_rect_clipped(canvas, x0, py, span, 1, color, clip_x, clip_y, clip_w, clip_h);
+            rt_canvas_fill_rect_clipped(
+                canvas, x0, py, span, 1, color, clip_x, clip_y, clip_w, clip_h);
         if (py == INT64_MAX)
             break;
     }
@@ -1005,8 +1006,14 @@ void rt_canvas_disc_alpha(
             x1 = clip_x1;
         for (int64_t px = x0; px <= x1; px++) {
             if (alpha >= 255)
-                rt_canvas_pset_clipped(
-                    canvas, px, py, rt_canvas_color_to_vgfx_rgb(color), clip_x, clip_y, clip_w, clip_h);
+                rt_canvas_pset_clipped(canvas,
+                                       px,
+                                       py,
+                                       rt_canvas_color_to_vgfx_rgb(color),
+                                       clip_x,
+                                       clip_y,
+                                       clip_w,
+                                       clip_h);
             else if (rt_canvas_point_in_clip_i64(px, py, clip_x, clip_y, clip_w, clip_h))
                 vgfx_pset_alpha(canvas->gfx_win, (int32_t)px, (int32_t)py, argb);
             if (px == INT64_MAX)

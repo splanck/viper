@@ -87,8 +87,13 @@ static void test_pack_bone_palette_keeps_highest_supported_bone(void) {
     memset(dst, 0, sizeof(dst));
     vgfx3d_metal_pack_bone_palette(dst, src, VGFX3D_METAL_MAX_BONES);
 
-    EXPECT_NEAR(dst[tail + 0], src[tail + 0], 1e-6f, "Metal bone packing preserves the final supported bone");
-    EXPECT_NEAR(dst[tail + 15], src[tail + 15], 1e-6f,
+    EXPECT_NEAR(dst[tail + 0],
+                src[tail + 0],
+                1e-6f,
+                "Metal bone packing preserves the final supported bone");
+    EXPECT_NEAR(dst[tail + 15],
+                src[tail + 15],
+                1e-6f,
                 "Metal bone packing preserves the tail matrix element of the final supported bone");
 }
 
@@ -108,16 +113,24 @@ static void test_fill_instance_data_transposes_and_tracks_history(void) {
 
     memset(instances, 0, sizeof(instances));
     vgfx3d_metal_fill_instance_data(instances, 2, models, prev_models, 1);
-    EXPECT_NEAR(instances[0].model[12], 2.0f, 1e-6f,
+    EXPECT_NEAR(instances[0].model[12],
+                2.0f,
+                1e-6f,
                 "Instance staging transposes model matrices to Metal column-major layout");
-    EXPECT_NEAR(instances[0].prev_model[12], 1.0f, 1e-6f,
+    EXPECT_NEAR(instances[0].prev_model[12],
+                1.0f,
+                1e-6f,
                 "Instance staging preserves previous model matrices");
-    EXPECT_NEAR(instances[1].prev_model[12], -6.0f, 1e-6f,
+    EXPECT_NEAR(instances[1].prev_model[12],
+                -6.0f,
+                1e-6f,
                 "Instance staging preserves the second previous model matrix");
 
     memset(instances, 0, sizeof(instances));
     vgfx3d_metal_fill_instance_data(instances, 2, models, NULL, 0);
-    EXPECT_NEAR(instances[1].prev_model[12], instances[1].model[12], 1e-6f,
+    EXPECT_NEAR(instances[1].prev_model[12],
+                instances[1].model[12],
+                1e-6f,
                 "Instance staging falls back to the current matrix when no history exists");
 }
 
@@ -144,32 +157,51 @@ static void test_frame_history_preserves_scene_state_across_overlay_passes(void)
 
     vgfx3d_metal_update_frame_history(&history, scene_vp0, inv0, cam0, 0, 0);
     EXPECT_TRUE(history.scene_history_valid == 1, "Main-pass history becomes valid on first scene");
-    EXPECT_NEAR(history.scene_prev_vp[0], scene_vp0[0], 1e-6f,
+    EXPECT_NEAR(history.scene_prev_vp[0],
+                scene_vp0[0],
+                1e-6f,
                 "First main pass seeds prevViewProjection from the current scene");
-    EXPECT_NEAR(history.draw_prev_vp[0], scene_vp0[0], 1e-6f,
+    EXPECT_NEAR(history.draw_prev_vp[0],
+                scene_vp0[0],
+                1e-6f,
                 "First main pass uses the current VP as draw-time history");
 
     vgfx3d_metal_update_frame_history(&history, scene_vp1, inv1, cam1, 0, 0);
-    EXPECT_NEAR(history.scene_prev_vp[0], scene_vp0[0], 1e-6f,
+    EXPECT_NEAR(history.scene_prev_vp[0],
+                scene_vp0[0],
+                1e-6f,
                 "Second main pass preserves the previous scene VP");
-    EXPECT_NEAR(history.scene_vp[0], scene_vp1[0], 1e-6f, "Second main pass updates the current scene VP");
-    EXPECT_NEAR(history.draw_prev_vp[0], scene_vp0[0], 1e-6f,
+    EXPECT_NEAR(
+        history.scene_vp[0], scene_vp1[0], 1e-6f, "Second main pass updates the current scene VP");
+    EXPECT_NEAR(history.draw_prev_vp[0],
+                scene_vp0[0],
+                1e-6f,
                 "Second main pass draws against the prior scene VP");
-    EXPECT_NEAR(history.scene_inv_vp[0], inv1[0], 1e-6f,
-                "Second main pass updates the scene inverse VP");
-    EXPECT_NEAR(history.scene_cam_pos[0], cam1[0], 1e-6f,
+    EXPECT_NEAR(
+        history.scene_inv_vp[0], inv1[0], 1e-6f, "Second main pass updates the scene inverse VP");
+    EXPECT_NEAR(history.scene_cam_pos[0],
+                cam1[0],
+                1e-6f,
                 "Second main pass updates the scene camera position");
 
     vgfx3d_metal_update_frame_history(&history, overlay_vp, overlay_inv, cam0, 1, 1);
-    EXPECT_NEAR(history.scene_vp[0], scene_vp1[0], 1e-6f,
+    EXPECT_NEAR(history.scene_vp[0],
+                scene_vp1[0],
+                1e-6f,
                 "Overlay pass preserves the scene VP for later postfx");
-    EXPECT_NEAR(history.scene_prev_vp[0], scene_vp0[0], 1e-6f,
+    EXPECT_NEAR(history.scene_prev_vp[0],
+                scene_vp0[0],
+                1e-6f,
                 "Overlay pass preserves the previous scene VP");
-    EXPECT_NEAR(history.scene_inv_vp[0], inv1[0], 1e-6f,
-                "Overlay pass preserves the scene inverse VP");
-    EXPECT_NEAR(history.scene_cam_pos[0], cam1[0], 1e-6f,
+    EXPECT_NEAR(
+        history.scene_inv_vp[0], inv1[0], 1e-6f, "Overlay pass preserves the scene inverse VP");
+    EXPECT_NEAR(history.scene_cam_pos[0],
+                cam1[0],
+                1e-6f,
                 "Overlay pass preserves the scene camera position");
-    EXPECT_NEAR(history.draw_prev_vp[0], overlay_vp[0], 1e-6f,
+    EXPECT_NEAR(history.draw_prev_vp[0],
+                overlay_vp[0],
+                1e-6f,
                 "Overlay pass uses its own VP for draw-time history");
     EXPECT_TRUE(history.overlay_used_this_frame == 1,
                 "Overlay pass marks the separate overlay target as used");
@@ -237,24 +269,21 @@ static void test_target_kind_blend_motion_and_readback_helpers(void) {
 
     EXPECT_TRUE(vgfx3d_metal_choose_readback_kind(0) == VGFX3D_METAL_READBACK_BACKBUFFER,
                 "Direct rendering reads back the backbuffer");
-    EXPECT_TRUE(vgfx3d_metal_choose_readback_kind(1) ==
-                    VGFX3D_METAL_READBACK_POSTFX_COMPOSITE,
+    EXPECT_TRUE(vgfx3d_metal_choose_readback_kind(1) == VGFX3D_METAL_READBACK_POSTFX_COMPOSITE,
                 "GPU postfx readback uses the composited postfx path");
 }
 
 static void test_capacity_mip_and_morph_cache_helpers(void) {
     vgfx3d_draw_cmd_t cmd;
 
-    EXPECT_TRUE(vgfx3d_metal_compute_mip_count(1, 1) == 1,
-                "1x1 textures use a single mip level");
+    EXPECT_TRUE(vgfx3d_metal_compute_mip_count(1, 1) == 1, "1x1 textures use a single mip level");
     EXPECT_TRUE(vgfx3d_metal_compute_mip_count(4, 2) == 3,
                 "Mip-count helper follows the full downsample chain");
     EXPECT_TRUE(vgfx3d_metal_next_capacity(0, 65, 64) == 128,
                 "Capacity helper grows beyond the old fixed cache size");
     EXPECT_TRUE(vgfx3d_metal_next_capacity(16, 8, 16) == 16,
                 "Capacity helper keeps existing storage when it is already large enough");
-    EXPECT_TRUE(vgfx3d_metal_clamp_morph_shape_count(1024u, 64) ==
-                    VGFX3D_METAL_MAX_MORPH_SHAPES,
+    EXPECT_TRUE(vgfx3d_metal_clamp_morph_shape_count(1024u, 64) == VGFX3D_METAL_MAX_MORPH_SHAPES,
                 "Morph count helper clamps to the shader-visible shape limit");
     EXPECT_TRUE(vgfx3d_metal_clamp_morph_shape_count((uint32_t)INT_MAX, 1) == 0,
                 "Morph count helper rejects vertex counts that would overflow int indexing");
@@ -335,16 +364,20 @@ static void test_metal_shader_source_uses_safe_normalization(void) {
     char path[1024];
     char *source;
 
-    snprintf(path, sizeof(path), "%s/src/runtime/graphics/3d/backend/vgfx3d_backend_metal.m",
+    snprintf(path,
+             sizeof(path),
+             "%s/src/runtime/graphics/3d/backend/vgfx3d_backend_metal.m",
              VIPER_SOURCE_DIR);
     source = read_text_file(path);
-    EXPECT_TRUE(source != NULL, "Metal backend source is readable for shader-source regression checks");
+    EXPECT_TRUE(source != NULL,
+                "Metal backend source is readable for shader-source regression checks");
     if (!source)
         return;
 
-    EXPECT_TRUE(strstr(source, "return (len2 > 1e-12 && len2 < 1e20) ? v * rsqrt(len2) : fallback;") !=
-                    NULL,
-                "Metal safe_normalize3 rejects non-finite and huge vector lengths");
+    EXPECT_TRUE(
+        strstr(source, "return (len2 > 1e-12 && len2 < 1e20) ? v * rsqrt(len2) : fallback;") !=
+            NULL,
+        "Metal safe_normalize3 rejects non-finite and huge vector lengths");
     EXPECT_TRUE(strstr(source, "skybox_safe_normalize3") != NULL,
                 "Metal skybox shader defines a safe normalization helper");
     EXPECT_TRUE(strstr(source, "worldDir = skybox_safe_normalize3") != NULL,

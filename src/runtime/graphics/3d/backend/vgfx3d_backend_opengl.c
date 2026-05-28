@@ -528,8 +528,7 @@ typedef struct {
     GLint uMetallicRoughnessTex, uAOTex;
     GLint uSplatTex, uSplatLayer0, uSplatLayer1, uSplatLayer2, uSplatLayer3, uSplatScales;
     GLint uLightType[VGFX3D_MAX_LIGHTS], uLightShadowIndex[VGFX3D_MAX_LIGHTS],
-        uLightDir[VGFX3D_MAX_LIGHTS],
-        uLightPos[VGFX3D_MAX_LIGHTS], uLightColor[VGFX3D_MAX_LIGHTS],
+        uLightDir[VGFX3D_MAX_LIGHTS], uLightPos[VGFX3D_MAX_LIGHTS], uLightColor[VGFX3D_MAX_LIGHTS],
         uLightIntensity[VGFX3D_MAX_LIGHTS];
     GLint uShadowVP[VGFX3D_MAX_SHADOW_LIGHTS];
     GLint uLightAtten[VGFX3D_MAX_LIGHTS], uLightInnerCos[VGFX3D_MAX_LIGHTS],
@@ -916,351 +915,382 @@ static const char *const glsl_vertex_src[] = {
     "}\n",
 };
 
-static const char *const glsl_fragment_src[] = {
-    "#version 330 core\n"
-    "in vec3 vWorldPos;\n"
-    "in vec3 vNormal;\n"
-    "in vec4 vTangent;\n"
-    "in vec2 vUV;\n"
-    "in vec2 vUV1;\n"
-    "in vec4 vColor;\n"
-    "in vec4 vCurrClip;\n"
-    "in vec4 vPrevClip;\n"
-    "flat in float vHasObjectHistory;\n"
-    "layout(location=0) out vec4 FragColor;\n"
-    "layout(location=1) out vec4 MotionColor;\n"
-    "uniform vec3 uCameraPos;\n"
-    "uniform vec3 uCameraForward;\n"
-    "uniform vec3 uAmbientColor;\n"
-    "uniform vec4 uDiffuseColor;\n"
-    "uniform vec4 uSpecularColor;\n"
-    "uniform vec3 uEmissiveColor;\n"
-    "uniform float uAlpha;\n"
-    "uniform vec4 uPbrScalars0;\n"
-    "uniform vec4 uPbrScalars1;\n"
-    "uniform int uUnlit;\n"
-    "uniform int uShadingModel;\n"
-    "uniform int uLightCount;\n"
-    "uniform int uHasTexture;\n"
-    "uniform int uHasNormalMap;\n"
-    "uniform int uHasSpecularMap;\n"
-    "uniform int uHasEmissiveMap;\n"
-    "uniform int uHasEnvMap;\n"
-    "uniform float uReflectivity;\n"
-    "uniform float uEnvMaxLod;\n"
-    "uniform int uWorkflow;\n"
-    "uniform int uAlphaMode;\n"
-    "uniform int uCameraIsOrtho;\n"
-    "uniform int uHasMetallicRoughnessMap;\n"
-    "uniform int uHasAOMap;\n"
-    "uniform int uHasSplat;\n"
-    "uniform int uFogEnabled;\n"
-    "uniform float uFogNear;\n"
-    "uniform float uFogFar;\n"
-    "uniform vec3 uFogColor;\n"
-    "uniform int uShadowCount;\n"
-    "uniform mat4 uShadowVP[" VGFX3D_STR(VGFX3D_MAX_SHADOW_LIGHTS) "];\n"
-    "uniform float uShadowBias;\n"
-    "uniform int uLightType[" VGFX3D_STR(VGFX3D_MAX_LIGHTS) "];\n"
-    "uniform int uLightShadowIndex[" VGFX3D_STR(VGFX3D_MAX_LIGHTS) "];\n"
-    "uniform vec3 uLightDir[" VGFX3D_STR(VGFX3D_MAX_LIGHTS) "];\n"
-    "uniform vec3 uLightPos[" VGFX3D_STR(VGFX3D_MAX_LIGHTS) "];\n"
-    "uniform vec3 uLightColor[" VGFX3D_STR(VGFX3D_MAX_LIGHTS) "];\n"
-    "uniform float uLightIntensity[" VGFX3D_STR(VGFX3D_MAX_LIGHTS) "];\n"
-    "uniform float uLightAtten[" VGFX3D_STR(VGFX3D_MAX_LIGHTS) "];\n"
-    "uniform float uLightInnerCos[" VGFX3D_STR(VGFX3D_MAX_LIGHTS) "];\n"
-    "uniform float uLightOuterCos[" VGFX3D_STR(VGFX3D_MAX_LIGHTS) "];\n"
-    "uniform sampler2D uDiffuseTex;\n"
-    "uniform sampler2D uNormalTex;\n"
-    "uniform sampler2D uSpecularTex;\n"
-    "uniform sampler2D uEmissiveTex;\n"
-    "uniform sampler2D uShadowTex0;\n"
-    "uniform sampler2D uShadowTex1;\n"
-    "uniform samplerCube uEnvMap;\n"
-    "uniform sampler2D uMetallicRoughnessTex;\n"
-    "uniform sampler2D uAOTex;\n"
-    "uniform sampler2D uSplatTex;\n"
-    "uniform sampler2D uSplatLayer0;\n"
-    "uniform sampler2D uSplatLayer1;\n"
-    "uniform sampler2D uSplatLayer2;\n"
-    "uniform sampler2D uSplatLayer3;\n"
-    "uniform vec4 uSplatScales;\n"
-    "uniform float uCustomParams[8];\n"
-    "uniform ivec4 uTextureUvSets0;\n"
-    "uniform ivec4 uTextureUvSets1;\n"
-    "uniform vec4 uTextureUvTransform0[" VGFX3D_STR(RT_MATERIAL3D_TEXTURE_SLOT_COUNT) "];\n"
-    "uniform vec4 uTextureUvTransform1[" VGFX3D_STR(RT_MATERIAL3D_TEXTURE_SLOT_COUNT) "];\n"
-    "float distributionGGX(float NdotH, float roughness) {\n"
-    "    float a = roughness * roughness;\n"
-    "    float a2 = a * a;\n"
-    "    float denom = NdotH * NdotH * (a2 - 1.0) + 1.0;\n"
-    "    return a2 / (3.14159265 * denom * denom + 1e-6);\n"
-    "}\n"
-    "float geometrySchlickGGX(float NdotV, float roughness) {\n"
-    "    float r = roughness + 1.0;\n"
-    "    float k = (r * r) / 8.0;\n"
-    "    return NdotV / (NdotV * (1.0 - k) + k + 1e-6);\n"
-    "}\n"
-    "float geometrySmith(float NdotV, float NdotL, float roughness) {\n"
-    "    return geometrySchlickGGX(NdotV, roughness) * geometrySchlickGGX(NdotL, roughness);\n"
-    "}\n"
-    "vec3 fresnelSchlick(float cosTheta, vec3 F0) {\n"
-    "    return F0 + (1.0 - F0) * pow(clamp(1.0 - cosTheta, 0.0, 1.0), 5.0);\n"
-    "}\n"
-    "vec3 srgbToLinear(vec3 c) {\n"
-    "    vec3 low = c / 12.92;\n"
-    "    vec3 high = pow((c + vec3(0.055)) / 1.055, vec3(2.4));\n"
-    "    return mix(low, high, step(vec3(0.04045), c));\n"
-    "}\n"
-    "vec3 safeNormalize3(vec3 v, vec3 fallback) {\n"
-    "    float len2 = dot(v, v);\n"
-    "    return (len2 > 1e-12) ? v * inversesqrt(len2) : fallback;\n"
-    "}\n"
-    "vec3 envSample(vec3 dir, float roughness) {\n"
-    "    float lod = clamp(roughness, 0.0, 1.0) * max(uEnvMaxLod, 0.0);\n"
-    "    return textureLod(uEnvMap, safeNormalize3(dir, vec3(0.0, 0.0, 1.0)), lod).rgb;\n"
-    "}\n",
-    "int textureUvSetAt(int slot) {\n"
-    "    return slot < 4 ? uTextureUvSets0[slot] : uTextureUvSets1[slot - 4];\n"
-    "}\n"
-    "vec2 materialUv(int slot) {\n"
-    "    vec2 uv = textureUvSetAt(slot) != 0 ? vUV1 : vUV;\n"
-    "    vec4 m = uTextureUvTransform0[slot];\n"
-    "    vec4 t = uTextureUvTransform1[slot];\n"
-    "    return vec2(uv.x * m.x + uv.y * m.y + t.x,\n"
-    "                uv.x * m.z + uv.y * m.w + t.y);\n"
-    "}\n",
-    "float sampleShadowMap(int shadowIndex, vec3 worldPos) {\n"
-    "    if (shadowIndex < 0 || shadowIndex >= uShadowCount) return 1.0;\n"
-    "    mat4 shadowVP = (shadowIndex == 0) ? uShadowVP[0] : uShadowVP[1];\n"
-    "    vec4 lc = shadowVP * vec4(worldPos, 1.0);\n"
-    "    if (lc.w <= 0.0001) return 1.0;\n"
-    "    float invW = 1.0 / lc.w;\n"
-    "    vec3 ndc = lc.xyz * invW;\n"
-    "    vec2 uv = ndc.xy * 0.5 + 0.5;\n"
-    "    float depth = ndc.z * 0.5 + 0.5;\n"
-    "    if (uv.x < 0.0 || uv.x > 1.0 || uv.y < 0.0 || uv.y > 1.0 || depth < 0.0 || depth > 1.0) return 1.0;\n"
-    "    vec2 texel = (shadowIndex == 0)\n"
-    "        ? 1.0 / vec2(textureSize(uShadowTex0, 0))\n"
-    "        : 1.0 / vec2(textureSize(uShadowTex1, 0));\n"
-    "    float lit = 0.0;\n"
-    "    for (int y = -1; y <= 1; y++) {\n"
-    "        for (int x = -1; x <= 1; x++) {\n"
-    "            float smp = (shadowIndex == 0)\n"
-    "                ? texture(uShadowTex0, uv + vec2(x, y) * texel).r\n"
-    "                : texture(uShadowTex1, uv + vec2(x, y) * texel).r;\n"
-    "            lit += (depth - uShadowBias <= smp) ? 1.0 : 0.0;\n"
-    "        }\n"
-    "    }\n"
-    "    return lit / 9.0;\n"
-    "}\n",
-    "void main() {\n"
-    "    vec3 baseColor = uDiffuseColor.rgb * vColor.rgb;\n"
-    "    float texAlpha = 1.0;\n"
-    "    float materialAlpha = uDiffuseColor.a * uAlpha * vColor.a;\n"
-    "    if (uHasTexture != 0) {\n"
-    "        vec4 texSample = texture(uDiffuseTex, materialUv(0));\n"
-    "        if (uWorkflow != 0) texSample.rgb = srgbToLinear(texSample.rgb);\n"
-    "        baseColor *= texSample.rgb;\n"
-    "        texAlpha = texSample.a;\n"
-    "    }\n"
-    "    if (uHasSplat != 0) {\n"
-    "        vec4 sp = texture(uSplatTex, vUV);\n"
-    "        float sum = sp.r + sp.g + sp.b + sp.a;\n"
-    "        if (sum > 0.0001) {\n"
-    "            sp /= sum;\n"
-    "            vec3 splatColor = texture(uSplatLayer0, vUV * uSplatScales.x).rgb * sp.r +\n"
-    "                              texture(uSplatLayer1, vUV * uSplatScales.y).rgb * sp.g +\n"
-    "                              texture(uSplatLayer2, vUV * uSplatScales.z).rgb * sp.b +\n"
-    "                              texture(uSplatLayer3, vUV * uSplatScales.w).rgb * sp.a;\n"
-    "            baseColor = splatColor * uDiffuseColor.rgb * vColor.rgb;\n"
-    "        }\n"
-    "    }\n"
-    "    vec3 N = safeNormalize3(vNormal, vec3(0.0, 0.0, 1.0));\n"
-    "    if (uHasNormalMap != 0) {\n"
-    "        vec3 mapN = texture(uNormalTex, materialUv(1)).xyz * 2.0 - 1.0;\n"
-    "        mapN.xy *= uPbrScalars1.x;\n"
-    "        vec3 T = safeNormalize3(vTangent.xyz - N * dot(vTangent.xyz, N), vec3(1.0, 0.0, 0.0));\n"
-    "        vec3 B = safeNormalize3(cross(N, T), vec3(0.0, 1.0, 0.0)) * (vTangent.w < 0.0 ? -1.0 : 1.0);\n"
-    "        N = safeNormalize3(mat3(T, B, N) * mapN, N);\n"
-    "    }\n"
-    "    vec3 emissive = uEmissiveColor * uPbrScalars0.w;\n"
-    "    if (uHasEmissiveMap != 0) {\n"
-    "        vec3 emissiveSample = texture(uEmissiveTex, materialUv(3)).rgb;\n"
-    "        if (uWorkflow != 0) emissiveSample = srgbToLinear(emissiveSample);\n"
-    "        emissive *= emissiveSample;\n"
-    "    }\n"
-    "    vec3 cameraToWorld = uCameraPos - vWorldPos;\n"
-    "    vec3 V = safeNormalize3((uCameraIsOrtho != 0) ? -uCameraForward : cameraToWorld, vec3(0.0, 0.0, 1.0));\n"
-    "    float viewDistance = (uCameraIsOrtho != 0)\n"
-    "        ? abs(dot(vWorldPos - uCameraPos, uCameraForward))\n"
-    "        : length(cameraToWorld);\n"
-    "    float envRoughness = clamp(uPbrScalars0.y, 0.0, 1.0);\n"
-    "    float finalAlpha = materialAlpha * texAlpha;\n"
-    "    if (uAlphaMode == 1) {\n"
-    "        if (finalAlpha < uPbrScalars1.y) discard;\n"
-    "        finalAlpha = 1.0;\n"
-    "    } else if (uAlphaMode == 0) {\n"
-    "        finalAlpha = 1.0;\n"
-    "    }\n"
-    "    if (uUnlit != 0) {\n"
-    "        vec3 unlitColor = baseColor + emissive;\n"
-    "        if (uHasEnvMap != 0) {\n"
-    "            vec3 R = reflect(-V, N);\n"
-    "            vec3 envColor = envSample(R, envRoughness);\n"
-    "            unlitColor = mix(unlitColor, envColor, clamp(uReflectivity, 0.0, 1.0));\n"
-    "        }\n"
-    "        if (uFogEnabled != 0) {\n"
-    "            float fogFactor = clamp((viewDistance - uFogNear) / max(uFogFar - uFogNear, "
-    "0.001), 0.0, "
-    "1.0);\n"
-    "            unlitColor = mix(unlitColor, uFogColor, fogFactor);\n"
-    "        }\n"
-    "        FragColor = vec4(unlitColor, finalAlpha);\n"
-    "        vec2 currNdc = vCurrClip.xy / max(vCurrClip.w, 0.0001);\n"
-    "        vec2 prevNdc = vPrevClip.xy / max(vPrevClip.w, 0.0001);\n"
-    "        vec2 velocity = (currNdc - prevNdc) * 0.5;\n"
-    "        MotionColor = vec4(clamp(velocity * 0.5 + 0.5, 0.0, 1.0), vHasObjectHistory, 1.0);\n"
-    "        return;\n"
-    "    }\n",
-    "    vec3 result = vec3(0.0);\n"
-    "    if (uWorkflow != 0) {\n"
-    "        float metallic = clamp(uPbrScalars0.x, 0.0, 1.0);\n"
-    "        float roughness = clamp(uPbrScalars0.y, 0.045, 1.0);\n"
-    "        float ao = clamp(uPbrScalars0.z, 0.0, 1.0);\n"
-    "        if (uHasMetallicRoughnessMap != 0) {\n"
-    "            vec4 mr = texture(uMetallicRoughnessTex, materialUv(4));\n"
-    "            roughness = clamp(roughness * mr.g, 0.045, 1.0);\n"
-    "            metallic = clamp(metallic * mr.b, 0.0, 1.0);\n"
-    "            envRoughness = roughness;\n"
-    "        }\n"
-    "        if (uHasAOMap != 0) {\n"
-    "            vec4 aoSample = texture(uAOTex, materialUv(5));\n"
-    "            ao = clamp(ao * aoSample.r, 0.0, 1.0);\n"
-    "        }\n"
-    "        result = uAmbientColor * baseColor * ao;\n"
-    "        for (int i = 0; i < uLightCount; i++) {\n"
-    "            vec3 L = vec3(0.0);\n"
-    "            float atten = 1.0;\n"
-    "            if (uLightType[i] == 0) {\n"
-    "                L = safeNormalize3(-uLightDir[i], vec3(0.0));\n"
-    "                atten *= mix(0.15, 1.0, sampleShadowMap(uLightShadowIndex[i], vWorldPos));\n"
-    "            } else if (uLightType[i] == 1) {\n"
-    "                vec3 toLight = uLightPos[i] - vWorldPos;\n"
-    "                float d = length(toLight);\n"
-    "                L = safeNormalize3(toLight, vec3(0.0));\n"
-    "                atten = 1.0 / (1.0 + uLightAtten[i] * d * d);\n"
-    "            } else if (uLightType[i] == 2) {\n"
-    "                result += uLightColor[i] * uLightIntensity[i] * baseColor * ao;\n"
-    "                continue;\n"
-    "            } else if (uLightType[i] == 3) {\n"
-    "                vec3 toLight = uLightPos[i] - vWorldPos;\n"
-    "                float d = length(toLight);\n"
-    "                L = safeNormalize3(toLight, vec3(0.0));\n"
-    "                float spotDot = dot(safeNormalize3(-uLightDir[i], vec3(0.0)), L);\n"
-    "                if (spotDot < uLightOuterCos[i]) {\n"
-    "                    atten = 0.0;\n"
-    "                } else if (spotDot < uLightInnerCos[i]) {\n"
-    "                    float coneRange = uLightInnerCos[i] - uLightOuterCos[i];\n"
-    "                    float t = (coneRange > 0.0001) ? clamp((spotDot - uLightOuterCos[i]) / coneRange, 0.0, 1.0) : 0.0;\n"
-    "                    atten = (t * t * (3.0 - 2.0 * t)) / (1.0 + uLightAtten[i] * d * d);\n"
-    "                } else {\n"
-    "                    atten = 1.0 / (1.0 + uLightAtten[i] * d * d);\n"
-    "                }\n"
-    "            } else {\n"
-    "                continue;\n"
-    "            }\n"
-    "            float NdotL = max(dot(N, L), 0.0);\n"
-    "            if (NdotL <= 0.0) continue;\n"
-    "            vec3 H = safeNormalize3(L + V, N);\n"
-    "            float NdotV = max(dot(N, V), 0.001);\n"
-    "            float NdotH = max(dot(N, H), 0.0);\n"
-    "            float VdotH = max(dot(V, H), 0.0);\n"
-    "            vec3 F0 = mix(vec3(0.04), baseColor, metallic);\n"
-    "            vec3 F = fresnelSchlick(VdotH, F0);\n"
-    "            float D = distributionGGX(NdotH, roughness);\n"
-    "            float G = geometrySmith(NdotV, NdotL, roughness);\n"
-    "            vec3 specular = (D * G * F) / max(4.0 * NdotV * NdotL, 0.0001);\n"
-    "            vec3 kS = F;\n"
-    "            vec3 kD = (1.0 - kS) * (1.0 - metallic);\n"
-    "            vec3 diffuse = kD * baseColor / 3.14159265;\n"
-    "            vec3 radiance = uLightColor[i] * uLightIntensity[i] * atten;\n"
-    "            result += (diffuse + specular) * radiance * NdotL;\n"
-    "        }\n"
-    "    } else {\n",
-    "        vec3 specColor = uSpecularColor.rgb;\n"
-    "        if (uHasSpecularMap != 0) specColor *= texture(uSpecularTex, materialUv(2)).rgb;\n"
-    "        result = uAmbientColor * baseColor;\n"
-    "        for (int i = 0; i < uLightCount; i++) {\n"
-    "            vec3 L = vec3(0.0);\n"
-    "            float atten = 1.0;\n"
-    "            if (uLightType[i] == 0) {\n"
-    "                L = safeNormalize3(-uLightDir[i], vec3(0.0));\n"
-    "                atten *= mix(0.15, 1.0, sampleShadowMap(uLightShadowIndex[i], vWorldPos));\n"
-    "            } else if (uLightType[i] == 1) {\n"
-    "                vec3 toLight = uLightPos[i] - vWorldPos;\n"
-    "                float d = length(toLight);\n"
-    "                L = safeNormalize3(toLight, vec3(0.0));\n"
-    "                atten = 1.0 / (1.0 + uLightAtten[i] * d * d);\n"
-    "            } else if (uLightType[i] == 2) {\n"
-    "                result += uLightColor[i] * uLightIntensity[i] * baseColor;\n"
-    "                continue;\n"
-    "            } else if (uLightType[i] == 3) {\n"
-    "                vec3 toLight = uLightPos[i] - vWorldPos;\n"
-    "                float d = length(toLight);\n"
-    "                L = safeNormalize3(toLight, vec3(0.0));\n"
-    "                float spotDot = dot(safeNormalize3(-uLightDir[i], vec3(0.0)), L);\n"
-    "                float coneRange = uLightInnerCos[i] - uLightOuterCos[i];\n"
-    "                float cone = (coneRange > 0.0001) ? clamp((spotDot - uLightOuterCos[i]) / coneRange, 0.0, 1.0) : (spotDot >= uLightInnerCos[i] ? 1.0 : 0.0);\n"
-    "                cone = cone * cone * (3.0 - 2.0 * cone);\n"
-    "                atten = cone / (1.0 + uLightAtten[i] * d * d);\n"
-    "            } else {\n"
-    "                continue;\n"
-    "            }\n"
-    "            float NdotL = max(dot(N, L), 0.0);\n"
-    "            if (uShadingModel == 1) {\n"
-    "                float bands = max(uCustomParams[0], 2.0);\n"
-    "                NdotL = floor(NdotL * bands) / max(bands - 1.0, 1.0);\n"
-    "            }\n"
-    "            result += uLightColor[i] * uLightIntensity[i] * NdotL * baseColor * atten;\n"
-    "            if (NdotL > 0.0 && uSpecularColor.w > 0.0) {\n"
-    "                vec3 H = safeNormalize3(L + V, N);\n"
-    "                float spec = pow(max(dot(N, H), 0.0), uSpecularColor.w);\n"
-    "                if (uShadingModel == 1) spec = spec >= max(uCustomParams[1], 0.5) ? 1.0 : 0.0;\n"
-    "                result += uLightColor[i] * uLightIntensity[i] * spec * specColor * atten;\n"
-    "            }\n"
-    "        }\n"
-    "    }\n",
-    "    result += emissive;\n"
-    "    if (uHasEnvMap != 0) {\n"
-    "        vec3 R = reflect(-V, N);\n"
-    "        vec3 envColor = envSample(R, envRoughness);\n"
-    "        result = mix(result, envColor, clamp(uReflectivity, 0.0, 1.0));\n"
-    "    }\n"
-    "    if (uShadingModel == 1 && uWorkflow != 0) {\n"
-    "        float bands = max(uCustomParams[0], 2.0);\n"
-    "        result = floor(result * bands) / bands;\n"
-    "    } else if (uShadingModel == 4) {\n"
-    "        float ndv = clamp(dot(N, V), 0.0, 1.0);\n"
-    "        float power = max(uCustomParams[0], 1.0);\n"
-    "        float bias = uCustomParams[1];\n"
-    "        finalAlpha *= clamp(pow(1.0 - ndv, power) + bias, 0.0, 1.0);\n"
-    "    } else if (uShadingModel == 5) {\n"
-    "        float strength = max(uCustomParams[0], 1.0);\n"
-    "        result += emissive * (strength - 1.0);\n"
-    "    }\n"
-    "    if (uFogEnabled != 0) {\n"
-    "        float fogFactor = clamp((viewDistance - uFogNear) / max(uFogFar - uFogNear, 0.001), "
-    "0.0, "
-    "1.0);\n"
-    "        result = mix(result, uFogColor, fogFactor);\n"
-    "    }\n"
-    "    FragColor = vec4(result, finalAlpha);\n"
-    "    vec2 currNdc = vCurrClip.xy / max(vCurrClip.w, 0.0001);\n"
-    "    vec2 prevNdc = vPrevClip.xy / max(vPrevClip.w, 0.0001);\n"
-    "    vec2 velocity = (currNdc - prevNdc) * 0.5;\n"
-    "    MotionColor = vec4(clamp(velocity * 0.5 + 0.5, 0.0, 1.0), vHasObjectHistory, 1.0);\n"
-    "}\n",
+static const char *const
+    glsl_fragment_src[] =
+        {
+            "#version 330 core\n"
+            "in vec3 vWorldPos;\n"
+            "in vec3 vNormal;\n"
+            "in vec4 vTangent;\n"
+            "in vec2 vUV;\n"
+            "in vec2 vUV1;\n"
+            "in vec4 vColor;\n"
+            "in vec4 vCurrClip;\n"
+            "in vec4 vPrevClip;\n"
+            "flat in float vHasObjectHistory;\n"
+            "layout(location=0) out vec4 FragColor;\n"
+            "layout(location=1) out vec4 MotionColor;\n"
+            "uniform vec3 uCameraPos;\n"
+            "uniform vec3 uCameraForward;\n"
+            "uniform vec3 uAmbientColor;\n"
+            "uniform vec4 uDiffuseColor;\n"
+            "uniform vec4 uSpecularColor;\n"
+            "uniform vec3 uEmissiveColor;\n"
+            "uniform float uAlpha;\n"
+            "uniform vec4 uPbrScalars0;\n"
+            "uniform vec4 uPbrScalars1;\n"
+            "uniform int uUnlit;\n"
+            "uniform int uShadingModel;\n"
+            "uniform int uLightCount;\n"
+            "uniform int uHasTexture;\n"
+            "uniform int uHasNormalMap;\n"
+            "uniform int uHasSpecularMap;\n"
+            "uniform int uHasEmissiveMap;\n"
+            "uniform int uHasEnvMap;\n"
+            "uniform float uReflectivity;\n"
+            "uniform float uEnvMaxLod;\n"
+            "uniform int uWorkflow;\n"
+            "uniform int uAlphaMode;\n"
+            "uniform int uCameraIsOrtho;\n"
+            "uniform int uHasMetallicRoughnessMap;\n"
+            "uniform int uHasAOMap;\n"
+            "uniform int uHasSplat;\n"
+            "uniform int uFogEnabled;\n"
+            "uniform float uFogNear;\n"
+            "uniform float uFogFar;\n"
+            "uniform vec3 uFogColor;\n"
+            "uniform int uShadowCount;\n"
+            "uniform mat4 uShadowVP[" VGFX3D_STR(
+                VGFX3D_MAX_SHADOW_LIGHTS) "];\n"
+                                          "uniform float uShadowBias;\n"
+                                          "uniform int uLightType[" VGFX3D_STR(
+                                              VGFX3D_MAX_LIGHTS) "];\n"
+                                                                 "uniform int "
+                                                                 "uLightShadowIndex[" VGFX3D_STR(VGFX3D_MAX_LIGHTS) "];\n"
+                                                                                                                    "uniform vec3 uLightDir[" VGFX3D_STR(VGFX3D_MAX_LIGHTS) "];\n"
+                                                                                                                                                                            "uniform vec3 uLightPos[" VGFX3D_STR(VGFX3D_MAX_LIGHTS) "];\n"
+                                                                                                                                                                                                                                    "uniform vec3 uLightColor[" VGFX3D_STR(
+                                                                                                                                                                                                                                        VGFX3D_MAX_LIGHTS) "];\n"
+                                                                                                                                                                                                                                                           "uniform float uLightIntensity[" VGFX3D_STR(VGFX3D_MAX_LIGHTS) "];\n"
+                                                                                                                                                                                                                                                                                                                          "uniform float uLightAtten[" VGFX3D_STR(VGFX3D_MAX_LIGHTS) "];\n"
+                                                                                                                                                                                                                                                                                                                                                                                     "uniform float uLightInnerCos[" VGFX3D_STR(VGFX3D_MAX_LIGHTS) "];\n"
+                                                                                                                                                                                                                                                                                                                                                                                                                                                   "uniform float uLightOuterCos[" VGFX3D_STR(
+                                                                                                                                                                                                                                                                                                                                                                                                                                                       VGFX3D_MAX_LIGHTS) "];\n"
+                                                                                                                                                                                                                                                                                                                                                                                                                                                                          "uniform sampler2D uDiffuseTex;\n"
+                                                                                                                                                                                                                                                                                                                                                                                                                                                                          "uniform sampler2D uNormalTex;\n"
+                                                                                                                                                                                                                                                                                                                                                                                                                                                                          "uniform sampler2D uSpecularTex;\n"
+                                                                                                                                                                                                                                                                                                                                                                                                                                                                          "uniform sampler2D uEmissiveTex;\n"
+                                                                                                                                                                                                                                                                                                                                                                                                                                                                          "uniform sampler2D uShadowTex0;\n"
+                                                                                                                                                                                                                                                                                                                                                                                                                                                                          "uniform sampler2D uShadowTex1;\n"
+                                                                                                                                                                                                                                                                                                                                                                                                                                                                          "uniform samplerCube uEnvMap;\n"
+                                                                                                                                                                                                                                                                                                                                                                                                                                                                          "uniform sampler2D uMetallicRoughnessTex;\n"
+                                                                                                                                                                                                                                                                                                                                                                                                                                                                          "uniform sampler2D uAOTex;\n"
+                                                                                                                                                                                                                                                                                                                                                                                                                                                                          "uniform sampler2D uSplatTex;\n"
+                                                                                                                                                                                                                                                                                                                                                                                                                                                                          "uniform sampler2D uSplatLayer0;\n"
+                                                                                                                                                                                                                                                                                                                                                                                                                                                                          "uniform sampler2D uSplatLayer1;\n"
+                                                                                                                                                                                                                                                                                                                                                                                                                                                                          "uniform sampler2D uSplatLayer2;\n"
+                                                                                                                                                                                                                                                                                                                                                                                                                                                                          "uniform sampler2D uSplatLayer3;\n"
+                                                                                                                                                                                                                                                                                                                                                                                                                                                                          "uniform vec4 uSplatScales;\n"
+                                                                                                                                                                                                                                                                                                                                                                                                                                                                          "uniform float uCustomParams[8];\n"
+                                                                                                                                                                                                                                                                                                                                                                                                                                                                          "uniform ivec4 uTextureUvSets0;\n"
+                                                                                                                                                                                                                                                                                                                                                                                                                                                                          "uniform ivec4 uTextureUvSets1;\n"
+                                                                                                                                                                                                                                                                                                                                                                                                                                                                          "uniform vec4 uTextureUvTransform0[" VGFX3D_STR(
+                                                                                                                                                                                                                                                                                                                                                                                                                                                                              RT_MATERIAL3D_TEXTURE_SLOT_COUNT) "];\n"
+                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                "uniform vec4 uTextureUvTransform1[" VGFX3D_STR(
+                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                    RT_MATERIAL3D_TEXTURE_SLOT_COUNT) "];\n"
+                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                      "float distributionGGX(float NdotH, float roughness) {\n"
+                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                      "    float a = roughness * roughness;\n"
+                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                      "    float a2 = a * a;\n"
+                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                      "    float denom = NdotH * NdotH * (a2 - 1.0) + 1.0;\n"
+                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                      "    return a2 / (3.14159265 * denom * denom + 1e-6);\n"
+                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                      "}\n"
+                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                      "float geometrySchlickGGX(float NdotV, float roughness) {\n"
+                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                      "    float r = roughness + 1.0;\n"
+                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                      "    float k = (r * r) / 8.0;\n"
+                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                      "    return NdotV / (NdotV * (1.0 - k) + k + 1e-6);\n"
+                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                      "}\n"
+                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                      "float geometrySmith(float NdotV, float NdotL, float roughness) {\n"
+                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                      "    return geometrySchlickGGX(NdotV, roughness) * geometrySchlickGGX(NdotL, roughness);\n"
+                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                      "}\n"
+                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                      "vec3 fresnelSchlick(float cosTheta, vec3 F0) {\n"
+                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                      "    return F0 + (1.0 - F0) * pow(clamp(1.0 - cosTheta, 0.0, 1.0), 5.0);\n"
+                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                      "}\n"
+                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                      "vec3 srgbToLinear(vec3 c) {\n"
+                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                      "    vec3 low = c / 12.92;\n"
+                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                      "    vec3 high = pow((c + vec3(0.055)) / 1.055, vec3(2.4));\n"
+                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                      "    return mix(low, high, step(vec3(0.04045), c));\n"
+                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                      "}\n"
+                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                      "vec3 safeNormalize3(vec3 v, vec3 fallback) {\n"
+                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                      "    float len2 = dot(v, v);\n"
+                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                      "    return (len2 > 1e-12) ? v * inversesqrt(len2) : fallback;\n"
+                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                      "}\n"
+                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                      "vec3 envSample(vec3 dir, float roughness) {\n"
+                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                      "    float lod = clamp(roughness, 0.0, 1.0) * max(uEnvMaxLod, 0.0);\n"
+                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                      "    return textureLod(uEnvMap, safeNormalize3(dir, vec3(0.0, 0.0, 1.0)), lod).rgb;\n"
+                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                      "}\n",
+            "int textureUvSetAt(int slot) {\n"
+            "    return slot < 4 ? uTextureUvSets0[slot] : uTextureUvSets1[slot - 4];\n"
+            "}\n"
+            "vec2 materialUv(int slot) {\n"
+            "    vec2 uv = textureUvSetAt(slot) != 0 ? vUV1 : vUV;\n"
+            "    vec4 m = uTextureUvTransform0[slot];\n"
+            "    vec4 t = uTextureUvTransform1[slot];\n"
+            "    return vec2(uv.x * m.x + uv.y * m.y + t.x,\n"
+            "                uv.x * m.z + uv.y * m.w + t.y);\n"
+            "}\n",
+            "float sampleShadowMap(int shadowIndex, vec3 worldPos) {\n"
+            "    if (shadowIndex < 0 || shadowIndex >= uShadowCount) return 1.0;\n"
+            "    mat4 shadowVP = (shadowIndex == 0) ? uShadowVP[0] : uShadowVP[1];\n"
+            "    vec4 lc = shadowVP * vec4(worldPos, 1.0);\n"
+            "    if (lc.w <= 0.0001) return 1.0;\n"
+            "    float invW = 1.0 / lc.w;\n"
+            "    vec3 ndc = lc.xyz * invW;\n"
+            "    vec2 uv = ndc.xy * 0.5 + 0.5;\n"
+            "    float depth = ndc.z * 0.5 + 0.5;\n"
+            "    if (uv.x < 0.0 || uv.x > 1.0 || uv.y < 0.0 || uv.y > 1.0 || depth < 0.0 || depth "
+            "> 1.0) return 1.0;\n"
+            "    vec2 texel = (shadowIndex == 0)\n"
+            "        ? 1.0 / vec2(textureSize(uShadowTex0, 0))\n"
+            "        : 1.0 / vec2(textureSize(uShadowTex1, 0));\n"
+            "    float lit = 0.0;\n"
+            "    for (int y = -1; y <= 1; y++) {\n"
+            "        for (int x = -1; x <= 1; x++) {\n"
+            "            float smp = (shadowIndex == 0)\n"
+            "                ? texture(uShadowTex0, uv + vec2(x, y) * texel).r\n"
+            "                : texture(uShadowTex1, uv + vec2(x, y) * texel).r;\n"
+            "            lit += (depth - uShadowBias <= smp) ? 1.0 : 0.0;\n"
+            "        }\n"
+            "    }\n"
+            "    return lit / 9.0;\n"
+            "}\n",
+            "void main() {\n"
+            "    vec3 baseColor = uDiffuseColor.rgb * vColor.rgb;\n"
+            "    float texAlpha = 1.0;\n"
+            "    float materialAlpha = uDiffuseColor.a * uAlpha * vColor.a;\n"
+            "    if (uHasTexture != 0) {\n"
+            "        vec4 texSample = texture(uDiffuseTex, materialUv(0));\n"
+            "        if (uWorkflow != 0) texSample.rgb = srgbToLinear(texSample.rgb);\n"
+            "        baseColor *= texSample.rgb;\n"
+            "        texAlpha = texSample.a;\n"
+            "    }\n"
+            "    if (uHasSplat != 0) {\n"
+            "        vec4 sp = texture(uSplatTex, vUV);\n"
+            "        float sum = sp.r + sp.g + sp.b + sp.a;\n"
+            "        if (sum > 0.0001) {\n"
+            "            sp /= sum;\n"
+            "            vec3 splatColor = texture(uSplatLayer0, vUV * uSplatScales.x).rgb * sp.r "
+            "+\n"
+            "                              texture(uSplatLayer1, vUV * uSplatScales.y).rgb * sp.g "
+            "+\n"
+            "                              texture(uSplatLayer2, vUV * uSplatScales.z).rgb * sp.b "
+            "+\n"
+            "                              texture(uSplatLayer3, vUV * uSplatScales.w).rgb * "
+            "sp.a;\n"
+            "            baseColor = splatColor * uDiffuseColor.rgb * vColor.rgb;\n"
+            "        }\n"
+            "    }\n"
+            "    vec3 N = safeNormalize3(vNormal, vec3(0.0, 0.0, 1.0));\n"
+            "    if (uHasNormalMap != 0) {\n"
+            "        vec3 mapN = texture(uNormalTex, materialUv(1)).xyz * 2.0 - 1.0;\n"
+            "        mapN.xy *= uPbrScalars1.x;\n"
+            "        vec3 T = safeNormalize3(vTangent.xyz - N * dot(vTangent.xyz, N), vec3(1.0, "
+            "0.0, 0.0));\n"
+            "        vec3 B = safeNormalize3(cross(N, T), vec3(0.0, 1.0, 0.0)) * (vTangent.w < 0.0 "
+            "? -1.0 : 1.0);\n"
+            "        N = safeNormalize3(mat3(T, B, N) * mapN, N);\n"
+            "    }\n"
+            "    vec3 emissive = uEmissiveColor * uPbrScalars0.w;\n"
+            "    if (uHasEmissiveMap != 0) {\n"
+            "        vec3 emissiveSample = texture(uEmissiveTex, materialUv(3)).rgb;\n"
+            "        if (uWorkflow != 0) emissiveSample = srgbToLinear(emissiveSample);\n"
+            "        emissive *= emissiveSample;\n"
+            "    }\n"
+            "    vec3 cameraToWorld = uCameraPos - vWorldPos;\n"
+            "    vec3 V = safeNormalize3((uCameraIsOrtho != 0) ? -uCameraForward : cameraToWorld, "
+            "vec3(0.0, 0.0, 1.0));\n"
+            "    float viewDistance = (uCameraIsOrtho != 0)\n"
+            "        ? abs(dot(vWorldPos - uCameraPos, uCameraForward))\n"
+            "        : length(cameraToWorld);\n"
+            "    float envRoughness = clamp(uPbrScalars0.y, 0.0, 1.0);\n"
+            "    float finalAlpha = materialAlpha * texAlpha;\n"
+            "    if (uAlphaMode == 1) {\n"
+            "        if (finalAlpha < uPbrScalars1.y) discard;\n"
+            "        finalAlpha = 1.0;\n"
+            "    } else if (uAlphaMode == 0) {\n"
+            "        finalAlpha = 1.0;\n"
+            "    }\n"
+            "    if (uUnlit != 0) {\n"
+            "        vec3 unlitColor = baseColor + emissive;\n"
+            "        if (uHasEnvMap != 0) {\n"
+            "            vec3 R = reflect(-V, N);\n"
+            "            vec3 envColor = envSample(R, envRoughness);\n"
+            "            unlitColor = mix(unlitColor, envColor, clamp(uReflectivity, 0.0, 1.0));\n"
+            "        }\n"
+            "        if (uFogEnabled != 0) {\n"
+            "            float fogFactor = clamp((viewDistance - uFogNear) / max(uFogFar - "
+            "uFogNear, "
+            "0.001), 0.0, "
+            "1.0);\n"
+            "            unlitColor = mix(unlitColor, uFogColor, fogFactor);\n"
+            "        }\n"
+            "        FragColor = vec4(unlitColor, finalAlpha);\n"
+            "        vec2 currNdc = vCurrClip.xy / max(vCurrClip.w, 0.0001);\n"
+            "        vec2 prevNdc = vPrevClip.xy / max(vPrevClip.w, 0.0001);\n"
+            "        vec2 velocity = (currNdc - prevNdc) * 0.5;\n"
+            "        MotionColor = vec4(clamp(velocity * 0.5 + 0.5, 0.0, 1.0), vHasObjectHistory, "
+            "1.0);\n"
+            "        return;\n"
+            "    }\n",
+            "    vec3 result = vec3(0.0);\n"
+            "    if (uWorkflow != 0) {\n"
+            "        float metallic = clamp(uPbrScalars0.x, 0.0, 1.0);\n"
+            "        float roughness = clamp(uPbrScalars0.y, 0.045, 1.0);\n"
+            "        float ao = clamp(uPbrScalars0.z, 0.0, 1.0);\n"
+            "        if (uHasMetallicRoughnessMap != 0) {\n"
+            "            vec4 mr = texture(uMetallicRoughnessTex, materialUv(4));\n"
+            "            roughness = clamp(roughness * mr.g, 0.045, 1.0);\n"
+            "            metallic = clamp(metallic * mr.b, 0.0, 1.0);\n"
+            "            envRoughness = roughness;\n"
+            "        }\n"
+            "        if (uHasAOMap != 0) {\n"
+            "            vec4 aoSample = texture(uAOTex, materialUv(5));\n"
+            "            ao = clamp(ao * aoSample.r, 0.0, 1.0);\n"
+            "        }\n"
+            "        result = uAmbientColor * baseColor * ao;\n"
+            "        for (int i = 0; i < uLightCount; i++) {\n"
+            "            vec3 L = vec3(0.0);\n"
+            "            float atten = 1.0;\n"
+            "            if (uLightType[i] == 0) {\n"
+            "                L = safeNormalize3(-uLightDir[i], vec3(0.0));\n"
+            "                atten *= mix(0.15, 1.0, sampleShadowMap(uLightShadowIndex[i], "
+            "vWorldPos));\n"
+            "            } else if (uLightType[i] == 1) {\n"
+            "                vec3 toLight = uLightPos[i] - vWorldPos;\n"
+            "                float d = length(toLight);\n"
+            "                L = safeNormalize3(toLight, vec3(0.0));\n"
+            "                atten = 1.0 / (1.0 + uLightAtten[i] * d * d);\n"
+            "            } else if (uLightType[i] == 2) {\n"
+            "                result += uLightColor[i] * uLightIntensity[i] * baseColor * ao;\n"
+            "                continue;\n"
+            "            } else if (uLightType[i] == 3) {\n"
+            "                vec3 toLight = uLightPos[i] - vWorldPos;\n"
+            "                float d = length(toLight);\n"
+            "                L = safeNormalize3(toLight, vec3(0.0));\n"
+            "                float spotDot = dot(safeNormalize3(-uLightDir[i], vec3(0.0)), L);\n"
+            "                if (spotDot < uLightOuterCos[i]) {\n"
+            "                    atten = 0.0;\n"
+            "                } else if (spotDot < uLightInnerCos[i]) {\n"
+            "                    float coneRange = uLightInnerCos[i] - uLightOuterCos[i];\n"
+            "                    float t = (coneRange > 0.0001) ? clamp((spotDot - "
+            "uLightOuterCos[i]) / coneRange, 0.0, 1.0) : 0.0;\n"
+            "                    atten = (t * t * (3.0 - 2.0 * t)) / (1.0 + uLightAtten[i] * d * "
+            "d);\n"
+            "                } else {\n"
+            "                    atten = 1.0 / (1.0 + uLightAtten[i] * d * d);\n"
+            "                }\n"
+            "            } else {\n"
+            "                continue;\n"
+            "            }\n"
+            "            float NdotL = max(dot(N, L), 0.0);\n"
+            "            if (NdotL <= 0.0) continue;\n"
+            "            vec3 H = safeNormalize3(L + V, N);\n"
+            "            float NdotV = max(dot(N, V), 0.001);\n"
+            "            float NdotH = max(dot(N, H), 0.0);\n"
+            "            float VdotH = max(dot(V, H), 0.0);\n"
+            "            vec3 F0 = mix(vec3(0.04), baseColor, metallic);\n"
+            "            vec3 F = fresnelSchlick(VdotH, F0);\n"
+            "            float D = distributionGGX(NdotH, roughness);\n"
+            "            float G = geometrySmith(NdotV, NdotL, roughness);\n"
+            "            vec3 specular = (D * G * F) / max(4.0 * NdotV * NdotL, 0.0001);\n"
+            "            vec3 kS = F;\n"
+            "            vec3 kD = (1.0 - kS) * (1.0 - metallic);\n"
+            "            vec3 diffuse = kD * baseColor / 3.14159265;\n"
+            "            vec3 radiance = uLightColor[i] * uLightIntensity[i] * atten;\n"
+            "            result += (diffuse + specular) * radiance * NdotL;\n"
+            "        }\n"
+            "    } else {\n",
+            "        vec3 specColor = uSpecularColor.rgb;\n"
+            "        if (uHasSpecularMap != 0) specColor *= texture(uSpecularTex, "
+            "materialUv(2)).rgb;\n"
+            "        result = uAmbientColor * baseColor;\n"
+            "        for (int i = 0; i < uLightCount; i++) {\n"
+            "            vec3 L = vec3(0.0);\n"
+            "            float atten = 1.0;\n"
+            "            if (uLightType[i] == 0) {\n"
+            "                L = safeNormalize3(-uLightDir[i], vec3(0.0));\n"
+            "                atten *= mix(0.15, 1.0, sampleShadowMap(uLightShadowIndex[i], "
+            "vWorldPos));\n"
+            "            } else if (uLightType[i] == 1) {\n"
+            "                vec3 toLight = uLightPos[i] - vWorldPos;\n"
+            "                float d = length(toLight);\n"
+            "                L = safeNormalize3(toLight, vec3(0.0));\n"
+            "                atten = 1.0 / (1.0 + uLightAtten[i] * d * d);\n"
+            "            } else if (uLightType[i] == 2) {\n"
+            "                result += uLightColor[i] * uLightIntensity[i] * baseColor;\n"
+            "                continue;\n"
+            "            } else if (uLightType[i] == 3) {\n"
+            "                vec3 toLight = uLightPos[i] - vWorldPos;\n"
+            "                float d = length(toLight);\n"
+            "                L = safeNormalize3(toLight, vec3(0.0));\n"
+            "                float spotDot = dot(safeNormalize3(-uLightDir[i], vec3(0.0)), L);\n"
+            "                float coneRange = uLightInnerCos[i] - uLightOuterCos[i];\n"
+            "                float cone = (coneRange > 0.0001) ? clamp((spotDot - "
+            "uLightOuterCos[i]) / coneRange, 0.0, 1.0) : (spotDot >= uLightInnerCos[i] ? 1.0 : "
+            "0.0);\n"
+            "                cone = cone * cone * (3.0 - 2.0 * cone);\n"
+            "                atten = cone / (1.0 + uLightAtten[i] * d * d);\n"
+            "            } else {\n"
+            "                continue;\n"
+            "            }\n"
+            "            float NdotL = max(dot(N, L), 0.0);\n"
+            "            if (uShadingModel == 1) {\n"
+            "                float bands = max(uCustomParams[0], 2.0);\n"
+            "                NdotL = floor(NdotL * bands) / max(bands - 1.0, 1.0);\n"
+            "            }\n"
+            "            result += uLightColor[i] * uLightIntensity[i] * NdotL * baseColor * "
+            "atten;\n"
+            "            if (NdotL > 0.0 && uSpecularColor.w > 0.0) {\n"
+            "                vec3 H = safeNormalize3(L + V, N);\n"
+            "                float spec = pow(max(dot(N, H), 0.0), uSpecularColor.w);\n"
+            "                if (uShadingModel == 1) spec = spec >= max(uCustomParams[1], 0.5) ? "
+            "1.0 : 0.0;\n"
+            "                result += uLightColor[i] * uLightIntensity[i] * spec * specColor * "
+            "atten;\n"
+            "            }\n"
+            "        }\n"
+            "    }\n",
+            "    result += emissive;\n"
+            "    if (uHasEnvMap != 0) {\n"
+            "        vec3 R = reflect(-V, N);\n"
+            "        vec3 envColor = envSample(R, envRoughness);\n"
+            "        result = mix(result, envColor, clamp(uReflectivity, 0.0, 1.0));\n"
+            "    }\n"
+            "    if (uShadingModel == 1 && uWorkflow != 0) {\n"
+            "        float bands = max(uCustomParams[0], 2.0);\n"
+            "        result = floor(result * bands) / bands;\n"
+            "    } else if (uShadingModel == 4) {\n"
+            "        float ndv = clamp(dot(N, V), 0.0, 1.0);\n"
+            "        float power = max(uCustomParams[0], 1.0);\n"
+            "        float bias = uCustomParams[1];\n"
+            "        finalAlpha *= clamp(pow(1.0 - ndv, power) + bias, 0.0, 1.0);\n"
+            "    } else if (uShadingModel == 5) {\n"
+            "        float strength = max(uCustomParams[0], 1.0);\n"
+            "        result += emissive * (strength - 1.0);\n"
+            "    }\n"
+            "    if (uFogEnabled != 0) {\n"
+            "        float fogFactor = clamp((viewDistance - uFogNear) / max(uFogFar - uFogNear, "
+            "0.001), "
+            "0.0, "
+            "1.0);\n"
+            "        result = mix(result, uFogColor, fogFactor);\n"
+            "    }\n"
+            "    FragColor = vec4(result, finalAlpha);\n"
+            "    vec2 currNdc = vCurrClip.xy / max(vCurrClip.w, 0.0001);\n"
+            "    vec2 prevNdc = vPrevClip.xy / max(vPrevClip.w, 0.0001);\n"
+            "    vec2 velocity = (currNdc - prevNdc) * 0.5;\n"
+            "    MotionColor = vec4(clamp(velocity * 0.5 + 0.5, 0.0, 1.0), vHasObjectHistory, "
+            "1.0);\n"
+            "}\n",
 };
 
 static const char *glsl_shadow_vertex_src =
@@ -1316,93 +1346,137 @@ static const char *glsl_shadow_vertex_src =
     "    vShadowColor = aColor;\n"
     "}\n";
 
-static const char *glsl_shadow_fragment_src = "#version 330 core\n"
-                                              "in vec2 vShadowUV;\n"
-                                              "in vec2 vShadowUV1;\n"
-                                              "in vec4 vShadowColor;\n"
-                                              "uniform sampler2D uShadowDiffuseTex;\n"
-                                              "uniform int uShadowHasTexture;\n"
-                                              "uniform int uShadowAlphaMode;\n"
-                                              "uniform float uShadowAlphaCutoff;\n"
-                                              "uniform float uShadowAlpha;\n"
-                                              "uniform vec4 uShadowDiffuseColor;\n"
-                                              "uniform ivec4 uShadowTextureUvSets0;\n"
-                                              "uniform ivec4 uShadowTextureUvSets1;\n"
-                                              "uniform vec4 uShadowTextureUvTransform0["
-                                              VGFX3D_STR(RT_MATERIAL3D_TEXTURE_SLOT_COUNT) "];\n"
-                                              "uniform vec4 uShadowTextureUvTransform1["
-                                              VGFX3D_STR(RT_MATERIAL3D_TEXTURE_SLOT_COUNT) "];\n"
-                                              "int shadowTextureUvSetAt(int slot) {\n"
-                                              "    return slot < 4 ? uShadowTextureUvSets0[slot] : "
-                                              "uShadowTextureUvSets1[slot - 4];\n"
-                                              "}\n"
-                                              "vec2 shadowMaterialUv() {\n"
-                                              "    int slot = 0;\n"
-                                              "    vec2 uv = shadowTextureUvSetAt(slot) != 0 ? "
-                                              "vShadowUV1 : vShadowUV;\n"
-                                              "    vec4 m = uShadowTextureUvTransform0[slot];\n"
-                                              "    vec4 t = uShadowTextureUvTransform1[slot];\n"
-                                              "    return vec2(uv.x * m.x + uv.y * m.y + t.x,\n"
-                                              "                uv.x * m.z + uv.y * m.w + t.y);\n"
-                                              "}\n"
-                                              "void main() {\n"
-                                              "    float alpha = uShadowDiffuseColor.a * "
-                                              "uShadowAlpha * vShadowColor.a;\n"
-                                              "    if (uShadowHasTexture != 0)\n"
-                                              "        alpha *= texture(uShadowDiffuseTex, "
-                                              "shadowMaterialUv()).a;\n"
-                                              "    if (uShadowAlphaMode == 1 && alpha < "
-                                              "uShadowAlphaCutoff)\n"
-                                              "        discard;\n"
-                                              "}\n";
-
-static const char *glsl_skybox_vertex_src =
+static const char *glsl_shadow_fragment_src =
     "#version 330 core\n"
-    "layout(location=0) in vec3 aPosition;\n"
-    "out vec2 vNdc;\n"
+    "in vec2 vShadowUV;\n"
+    "in vec2 vShadowUV1;\n"
+    "in vec4 vShadowColor;\n"
+    "uniform sampler2D uShadowDiffuseTex;\n"
+    "uniform int uShadowHasTexture;\n"
+    "uniform int uShadowAlphaMode;\n"
+    "uniform float uShadowAlphaCutoff;\n"
+    "uniform float uShadowAlpha;\n"
+    "uniform vec4 uShadowDiffuseColor;\n"
+    "uniform ivec4 uShadowTextureUvSets0;\n"
+    "uniform ivec4 uShadowTextureUvSets1;\n"
+    "uniform vec4 uShadowTextureUvTransform0[" VGFX3D_STR(
+        RT_MATERIAL3D_TEXTURE_SLOT_COUNT) "];\n"
+                                          "uniform vec4 uShadowTextureUvTransform1[" VGFX3D_STR(
+                                              RT_MATERIAL3D_TEXTURE_SLOT_COUNT) "];\n"
+                                                                                "int "
+                                                                                "shadowTextureUvSet"
+                                                                                "At(int slot) {\n"
+                                                                                "    return slot < "
+                                                                                "4 ? "
+                                                                                "uShadowTextureUvSe"
+                                                                                "ts0[slot] : "
+                                                                                "uShadowTextureUvSe"
+                                                                                "ts1[slot - 4];\n"
+                                                                                "}\n"
+                                                                                "vec2 "
+                                                                                "shadowMaterialUv()"
+                                                                                " {\n"
+                                                                                "    int slot = "
+                                                                                "0;\n"
+                                                                                "    vec2 uv = "
+                                                                                "shadowTextureUvSet"
+                                                                                "At(slot) != 0 ? "
+                                                                                "vShadowUV1 : "
+                                                                                "vShadowUV;\n"
+                                                                                "    vec4 m = "
+                                                                                "uShadowTextureUvTr"
+                                                                                "ansform0[slot];\n"
+                                                                                "    vec4 t = "
+                                                                                "uShadowTextureUvTr"
+                                                                                "ansform1[slot];\n"
+                                                                                "    return "
+                                                                                "vec2(uv.x * m.x + "
+                                                                                "uv.y * m.y + "
+                                                                                "t.x,\n"
+                                                                                "                "
+                                                                                "uv.x * m.z + uv.y "
+                                                                                "* m.w + t.y);\n"
+                                                                                "}\n"
+                                                                                "void main() {\n"
+                                                                                "    float alpha = "
+                                                                                "uShadowDiffuseColo"
+                                                                                "r.a * "
+                                                                                "uShadowAlpha * "
+                                                                                "vShadowColor.a;\n"
+                                                                                "    if "
+                                                                                "(uShadowHasTexture"
+                                                                                " != 0)\n"
+                                                                                "        alpha *= "
+                                                                                "texture("
+                                                                                "uShadowDiffuseTex,"
+                                                                                " "
+                                                                                "shadowMaterialUv()"
+                                                                                ").a;\n"
+                                                                                "    if "
+                                                                                "(uShadowAlphaMode "
+                                                                                "== 1 && alpha < "
+                                                                                "uShadowAlphaCutoff"
+                                                                                ")\n"
+                                                                                "        discard;\n"
+                                                                                "}\n";
+
+static const char *glsl_skybox_vertex_src = "#version 330 core\n"
+                                            "layout(location=0) in vec3 aPosition;\n"
+                                            "out vec2 vNdc;\n"
+                                            "void main() {\n"
+                                            "    vNdc = aPosition.xy;\n"
+                                            "    gl_Position = vec4(aPosition.xy, 1.0, 1.0);\n"
+                                            "}\n";
+
+static const char *glsl_skybox_fragment_src =
+    "#version 330 core\n"
+    "in vec2 vNdc;\n"
+    "out vec4 FragColor;\n"
+    "uniform mat4 uInverseProjection;\n"
+    "uniform mat4 uInverseViewRotation;\n"
+    "uniform vec3 uDirection;\n"
+    "uniform int uIsOrtho;\n"
+    "uniform samplerCube uSkybox;\n"
     "void main() {\n"
-    "    vNdc = aPosition.xy;\n"
-    "    gl_Position = vec4(aPosition.xy, 1.0, 1.0);\n"
+    "    vec3 worldDir;\n"
+    "    if (uIsOrtho != 0) {\n"
+    "        worldDir = normalize(uDirection);\n"
+    "    } else {\n"
+    "        vec4 view = uInverseProjection * vec4(vNdc, 1.0, 1.0);\n"
+    "        vec3 viewDir = normalize(view.xyz / max(abs(view.w), 0.0001));\n"
+    "        worldDir = normalize((uInverseViewRotation * vec4(viewDir, 0.0)).xyz);\n"
+    "    }\n"
+    "    FragColor = texture(uSkybox, worldDir);\n"
     "}\n";
 
-static const char *glsl_skybox_fragment_src = "#version 330 core\n"
-                                              "in vec2 vNdc;\n"
-                                              "out vec4 FragColor;\n"
-                                              "uniform mat4 uInverseProjection;\n"
-                                              "uniform mat4 uInverseViewRotation;\n"
-                                              "uniform vec3 uDirection;\n"
-                                              "uniform int uIsOrtho;\n"
-                                              "uniform samplerCube uSkybox;\n"
-                                              "void main() {\n"
-                                              "    vec3 worldDir;\n"
-                                              "    if (uIsOrtho != 0) {\n"
-                                              "        worldDir = normalize(uDirection);\n"
-                                              "    } else {\n"
-                                              "        vec4 view = uInverseProjection * vec4(vNdc, 1.0, 1.0);\n"
-                                              "        vec3 viewDir = normalize(view.xyz / max(abs(view.w), 0.0001));\n"
-                                              "        worldDir = normalize((uInverseViewRotation * vec4(viewDir, 0.0)).xyz);\n"
-                                              "    }\n"
-                                              "    FragColor = texture(uSkybox, worldDir);\n"
-                                              "}\n";
-
 static const float gl_skybox_vertices[] = {
-    -1.0f, -1.0f, 1.0f, 3.0f, -1.0f, 1.0f, -1.0f, 3.0f, 1.0f,
+    -1.0f,
+    -1.0f,
+    1.0f,
+    3.0f,
+    -1.0f,
+    1.0f,
+    -1.0f,
+    3.0f,
+    1.0f,
 };
 
 static const float gl_fullscreen_triangle[] = {
-    -1.0f, -1.0f,
-    3.0f,  -1.0f,
-    -1.0f, 3.0f,
+    -1.0f,
+    -1.0f,
+    3.0f,
+    -1.0f,
+    -1.0f,
+    3.0f,
 };
 
-static const char *glsl_postfx_vertex_src =
-    "#version 330 core\n"
-    "layout(location = 0) in vec2 aPosition;\n"
-    "out vec2 vUV;\n"
-    "void main() {\n"
-    "    vUV = aPosition * 0.5 + 0.5;\n"
-    "    gl_Position = vec4(aPosition, 0.0, 1.0);\n"
-    "}\n";
+static const char *glsl_postfx_vertex_src = "#version 330 core\n"
+                                            "layout(location = 0) in vec2 aPosition;\n"
+                                            "out vec2 vUV;\n"
+                                            "void main() {\n"
+                                            "    vUV = aPosition * 0.5 + 0.5;\n"
+                                            "    gl_Position = vec4(aPosition, 0.0, 1.0);\n"
+                                            "}\n";
 
 static const char *const glsl_postfx_fragment_src[] = {
     "#version 330 core\n"
@@ -1650,10 +1724,8 @@ static int ensure_buffer_capacity(GLenum target,
         needed = 4;
     if (*capacity >= needed)
         return 0;
-    if (!vgfx3d_opengl_compute_buffer_capacity(*capacity,
-                                               needed,
-                                               initial_capacity,
-                                               &new_capacity) ||
+    if (!vgfx3d_opengl_compute_buffer_capacity(
+            *capacity, needed, initial_capacity, &new_capacity) ||
         new_capacity > (size_t)PTRDIFF_MAX) {
         return -1;
     }
@@ -1751,8 +1823,9 @@ static void texture_cache_prune(gl_context_t *ctx) {
     for (int32_t i = 0; i < ctx->texture_cache_count; i++) {
         int keep = 1;
         if (ctx->texture_cache_count - write_index > GL_TEXTURE_CACHE_MAX_RESIDENT &&
-            vgfx3d_opengl_should_prune_cache_entry(
-                ctx->frame_serial, ctx->texture_cache[i].last_used_frame, GL_TEXTURE_CACHE_PRUNE_AGE)) {
+            vgfx3d_opengl_should_prune_cache_entry(ctx->frame_serial,
+                                                   ctx->texture_cache[i].last_used_frame,
+                                                   GL_TEXTURE_CACHE_PRUNE_AGE)) {
             keep = 0;
         }
         if (!keep) {
@@ -1776,8 +1849,9 @@ static void cubemap_cache_prune(gl_context_t *ctx) {
     for (int32_t i = 0; i < ctx->cubemap_cache_count; i++) {
         int keep = 1;
         if (ctx->cubemap_cache_count - write_index > GL_CUBEMAP_CACHE_MAX_RESIDENT &&
-            vgfx3d_opengl_should_prune_cache_entry(
-                ctx->frame_serial, ctx->cubemap_cache[i].last_used_frame, GL_CUBEMAP_CACHE_PRUNE_AGE)) {
+            vgfx3d_opengl_should_prune_cache_entry(ctx->frame_serial,
+                                                   ctx->cubemap_cache[i].last_used_frame,
+                                                   GL_CUBEMAP_CACHE_PRUNE_AGE)) {
             keep = 0;
         }
         if (!keep) {
@@ -1976,7 +2050,8 @@ static GLuint gl_get_cached_cubemap(gl_context_t *ctx, const rt_cubemap3d *cubem
                 gl.TexParameteri(GL_TEXTURE_CUBE_MAP, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
                 gl.TexParameteri(GL_TEXTURE_CUBE_MAP, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
                 gl.TexParameteri(GL_TEXTURE_CUBE_MAP, GL_TEXTURE_WRAP_R, GL_CLAMP_TO_EDGE);
-                gl.TexParameteri(GL_TEXTURE_CUBE_MAP, GL_TEXTURE_MIN_FILTER, GL_LINEAR_MIPMAP_LINEAR);
+                gl.TexParameteri(
+                    GL_TEXTURE_CUBE_MAP, GL_TEXTURE_MIN_FILTER, GL_LINEAR_MIPMAP_LINEAR);
                 gl.TexParameteri(GL_TEXTURE_CUBE_MAP, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
             }
             gl.BindTexture(GL_TEXTURE_CUBE_MAP, ctx->cubemap_cache[i].tex);
@@ -2338,8 +2413,8 @@ static void gl_recompute_shadow_count(gl_context_t *ctx) {
     if (!ctx)
         return;
     for (int32_t slot = 0; slot < VGFX3D_MAX_SHADOW_LIGHTS; slot++) {
-        if (!ctx->shadow_complete[slot] || !ctx->shadow_depth_tex[slot] ||
-            !ctx->shadow_fbo[slot] || ctx->shadow_width[slot] <= 0 || ctx->shadow_height[slot] <= 0)
+        if (!ctx->shadow_complete[slot] || !ctx->shadow_depth_tex[slot] || !ctx->shadow_fbo[slot] ||
+            ctx->shadow_width[slot] <= 0 || ctx->shadow_height[slot] <= 0)
             break;
         count = slot + 1;
     }
@@ -2443,8 +2518,7 @@ static void gl_configure_draw_output(gl_context_t *ctx, const vgfx3d_draw_cmd_t 
     blend_mode = vgfx3d_opengl_choose_blend_mode(cmd);
     motion_mode = vgfx3d_opengl_choose_motion_attachment_mode(ctx->active_target_kind, cmd);
 
-    if (blend_mode == VGFX3D_OPENGL_BLEND_ALPHA ||
-        blend_mode == VGFX3D_OPENGL_BLEND_ADDITIVE)
+    if (blend_mode == VGFX3D_OPENGL_BLEND_ALPHA || blend_mode == VGFX3D_OPENGL_BLEND_ADDITIVE)
         gl.Enable(GL_BLEND);
     else
         gl.Disable(GL_BLEND);
@@ -2452,7 +2526,13 @@ static void gl_configure_draw_output(gl_context_t *ctx, const vgfx3d_draw_cmd_t 
         gl.BlendFunc(GL_SRC_ALPHA, GL_ONE);
     else
         gl.BlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
-    gl.DepthMask(blend_mode == VGFX3D_OPENGL_BLEND_OPAQUE ? GL_TRUE : GL_FALSE);
+    if (cmd && cmd->disable_depth_test) {
+        gl.Disable(GL_DEPTH_TEST);
+        gl.DepthMask(GL_FALSE);
+    } else {
+        gl.Enable(GL_DEPTH_TEST);
+        gl.DepthMask(blend_mode == VGFX3D_OPENGL_BLEND_OPAQUE ? GL_TRUE : GL_FALSE);
+    }
 
     if (ctx->active_target_kind == VGFX3D_OPENGL_TARGET_SCENE) {
         gl.BindFramebuffer(GL_FRAMEBUFFER, ctx->scene_fbo);
@@ -2489,8 +2569,10 @@ static void gl_apply_postfx_uniforms(gl_context_t *ctx, const vgfx3d_postfx_snap
     gl.Uniform2f(ctx->postfx_uInvResolution,
                  1.0f / (float)ctx->scene_width,
                  1.0f / (float)ctx->scene_height);
-    gl.Uniform3f(
-        ctx->postfx_uCameraPos, ctx->scene_cam_pos[0], ctx->scene_cam_pos[1], ctx->scene_cam_pos[2]);
+    gl.Uniform3f(ctx->postfx_uCameraPos,
+                 ctx->scene_cam_pos[0],
+                 ctx->scene_cam_pos[1],
+                 ctx->scene_cam_pos[2]);
     gl.UniformMatrix4fv(ctx->postfx_uInvViewProjection, 1, GL_TRUE, ctx->scene_inv_vp);
     gl.UniformMatrix4fv(ctx->postfx_uPrevViewProjection, 1, GL_TRUE, ctx->scene_prev_vp);
 
@@ -2653,8 +2735,13 @@ static int gl_apply_postfx_chain(gl_context_t *ctx,
             dst_draw_buffer = GL_COLOR_ATTACHMENT0;
         }
 
-        gl_draw_texture_to_target(
-            ctx, source_tex, dst_framebuffer, dst_draw_buffer, width, height, &chain->effects[i].snapshot);
+        gl_draw_texture_to_target(ctx,
+                                  source_tex,
+                                  dst_framebuffer,
+                                  dst_draw_buffer,
+                                  width,
+                                  height,
+                                  &chain->effects[i].snapshot);
 
         last_framebuffer = dst_framebuffer;
         last_read_buffer = dst_draw_buffer;
@@ -2701,7 +2788,8 @@ static int gl_sync_render_target_color(void *ctx_ptr, vgfx3d_rendertarget_t *rt)
     size_t pixel_count;
     size_t float_bytes;
 
-    if (!ctx || !rt || rt->width <= 0 || rt->height <= 0 || !ctx->rtt_fbo || ctx->rtt_target != rt) {
+    if (!ctx || !rt || rt->width <= 0 || rt->height <= 0 || !ctx->rtt_fbo ||
+        ctx->rtt_target != rt) {
         return 0;
     }
     if (!vgfx3d_rendertarget_ensure_color(rt)) {
@@ -2733,8 +2821,7 @@ static int gl_sync_render_target_color(void *ctx_ptr, vgfx3d_rendertarget_t *rt)
         }
         gl.ReadPixels(0, 0, rt->width, rt->height, GL_RGBA, GL_FLOAT, tmpf);
         for (int32_t y = 0; y < rt->height; y++) {
-            const float *src_row =
-                tmpf + (size_t)(rt->height - 1 - y) * (size_t)rt->width * 4u;
+            const float *src_row = tmpf + (size_t)(rt->height - 1 - y) * (size_t)rt->width * 4u;
             float *dst_row = rt->hdr_color_buf + (size_t)y * (size_t)rt->width * 4u;
             memcpy(dst_row, src_row, (size_t)rt->width * 4u * sizeof(float));
         }
@@ -2952,14 +3039,16 @@ static void configure_mesh_attributes(gl_context_t *ctx, GLuint mesh_vbo, GLuint
     gl.BindVertexArray(ctx->vao);
     gl.BindBuffer(GL_ARRAY_BUFFER, mesh_vbo);
     gl.BindBuffer(GL_ELEMENT_ARRAY_BUFFER, mesh_ibo);
-    gl.VertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, stride, (void *)offsetof(vgfx3d_vertex_t, pos));
+    gl.VertexAttribPointer(
+        0, 3, GL_FLOAT, GL_FALSE, stride, (void *)offsetof(vgfx3d_vertex_t, pos));
     gl.EnableVertexAttribArray(0);
     gl.VertexAttribPointer(
         1, 3, GL_FLOAT, GL_FALSE, stride, (void *)offsetof(vgfx3d_vertex_t, normal));
     gl.EnableVertexAttribArray(1);
     gl.VertexAttribPointer(2, 2, GL_FLOAT, GL_FALSE, stride, (void *)offsetof(vgfx3d_vertex_t, uv));
     gl.EnableVertexAttribArray(2);
-    gl.VertexAttribPointer(15, 2, GL_FLOAT, GL_FALSE, stride, (void *)offsetof(vgfx3d_vertex_t, uv1));
+    gl.VertexAttribPointer(
+        15, 2, GL_FLOAT, GL_FALSE, stride, (void *)offsetof(vgfx3d_vertex_t, uv1));
     gl.EnableVertexAttribArray(15);
     gl.VertexAttribPointer(
         3, 4, GL_FLOAT, GL_FALSE, stride, (void *)offsetof(vgfx3d_vertex_t, color));
@@ -3032,8 +3121,10 @@ static int configure_instance_attributes(gl_context_t *ctx,
                                    GL_STREAM_DRAW) != 0) {
             return 0;
         }
-        orphan_stream_buffer(
-            GL_ARRAY_BUFFER, ctx->prev_instance_vbo, ctx->prev_instance_vbo_capacity, GL_STREAM_DRAW);
+        orphan_stream_buffer(GL_ARRAY_BUFFER,
+                             ctx->prev_instance_vbo,
+                             ctx->prev_instance_vbo_capacity,
+                             GL_STREAM_DRAW);
         gl.BindBuffer(GL_ARRAY_BUFFER, ctx->prev_instance_vbo);
         gl.BufferSubData(GL_ARRAY_BUFFER, 0, (GLsizeiptr)bytes, prev_instance_matrices);
         gl.EnableVertexAttribArray(11);
@@ -3304,10 +3395,10 @@ static void bind_morph_payload(gl_context_t *ctx,
     GLuint morph_tbo = 0;
     GLuint morph_normal_tbo = 0;
     int use_skinning = (cmd->bone_palette && cmd->bone_count > 0) ? 1 : 0;
-    int morph_count = (cmd->morph_deltas && cmd->morph_weights && cmd->morph_shape_count > 0)
-                          ? vgfx3d_opengl_clamp_morph_shape_count(cmd->vertex_count,
-                                                                   cmd->morph_shape_count)
-                          : 0;
+    int morph_count =
+        (cmd->morph_deltas && cmd->morph_weights && cmd->morph_shape_count > 0)
+            ? vgfx3d_opengl_clamp_morph_shape_count(cmd->vertex_count, cmd->morph_shape_count)
+            : 0;
 
     gl.Uniform1i(uHasSkinning, use_skinning);
 
@@ -3363,7 +3454,7 @@ static void bind_morph_payload(gl_context_t *ctx,
     if (uHasMorphNormalDeltas >= 0) {
         gl.Uniform1i(uHasMorphNormalDeltas,
                      (morph_count > 0 && cmd->morph_normal_deltas && morph_normal_tbo != 0) ? 1
-                                                                                             : 0);
+                                                                                            : 0);
     }
     if (morph_count > 0 && cmd->morph_normal_deltas && uMorphNormalDeltas >= 0) {
         gl.BindTexture(GL_TEXTURE_BUFFER, morph_normal_tbo);
@@ -3426,7 +3517,8 @@ static int gl_sampler_wrap_index(int32_t mode) {
     return 0;
 }
 
-/// @brief Return a cached or newly-created OpenGL sampler object for the given draw command and texture slot.
+/// @brief Return a cached or newly-created OpenGL sampler object for the given draw command and
+/// texture slot.
 /// @details Resolves wrap_s, wrap_t, and filter from the per-slot or primary material parameters,
 ///          maps them to cache indices via `gl_sampler_wrap_index`, and returns the cached sampler
 ///          when available. Otherwise generates a new GL sampler, configures WRAP_S/T and
@@ -3443,10 +3535,8 @@ static GLuint gl_get_material_sampler(gl_context_t *ctx,
     GLuint sampler;
     if (!ctx || !cmd)
         return 0;
-    wrap_s =
-        gl_sampler_wrap_index(use_slot ? cmd->texture_slot_wrap_s[slot] : cmd->texture_wrap_s);
-    wrap_t =
-        gl_sampler_wrap_index(use_slot ? cmd->texture_slot_wrap_t[slot] : cmd->texture_wrap_t);
+    wrap_s = gl_sampler_wrap_index(use_slot ? cmd->texture_slot_wrap_s[slot] : cmd->texture_wrap_s);
+    wrap_t = gl_sampler_wrap_index(use_slot ? cmd->texture_slot_wrap_t[slot] : cmd->texture_wrap_t);
     filter = (use_slot ? cmd->texture_slot_filter[slot] : cmd->texture_filter) ==
                      RT_MATERIAL3D_TEXTURE_FILTER_NEAREST
                  ? 1
@@ -3600,16 +3690,13 @@ static void upload_main_uniforms(gl_context_t *ctx,
                  cmd->emissive_color[0],
                  cmd->emissive_color[1],
                  cmd->emissive_color[2]);
-    gl.Uniform4f(ctx->uPbrScalars0,
-                 cmd->metallic,
-                 cmd->roughness,
-                 cmd->ao,
-                 cmd->emissive_intensity);
+    gl.Uniform4f(
+        ctx->uPbrScalars0, cmd->metallic, cmd->roughness, cmd->ao, cmd->emissive_intensity);
     gl.Uniform4f(ctx->uPbrScalars1, cmd->normal_scale, cmd->alpha_cutoff, 0.0f, 0.0f);
     gl.Uniform1i(ctx->uHasEnvMap, (cmd->env_map && cmd->reflectivity > 0.0001f) ? 1 : 0);
     gl.Uniform1f(ctx->uReflectivity, cmd->reflectivity);
-    gl.Uniform1f(ctx->uEnvMaxLod, cmd->env_map ? gl_cubemap_max_lod((const rt_cubemap3d *)cmd->env_map)
-                                               : 0.0f);
+    gl.Uniform1f(ctx->uEnvMaxLod,
+                 cmd->env_map ? gl_cubemap_max_lod((const rt_cubemap3d *)cmd->env_map) : 0.0f);
     gl.Uniform1f(ctx->uAlpha, cmd->alpha);
     gl.Uniform1i(ctx->uUnlit, cmd->unlit);
     gl.Uniform1i(ctx->uShadingModel, cmd->shading_model);
@@ -3620,11 +3707,8 @@ static void upload_main_uniforms(gl_context_t *ctx,
                  cmd->texture_slot_uv_set[1],
                  cmd->texture_slot_uv_set[2],
                  cmd->texture_slot_uv_set[3]);
-    gl.Uniform4i(ctx->uTextureUvSets1,
-                 cmd->texture_slot_uv_set[4],
-                 cmd->texture_slot_uv_set[5],
-                 0,
-                 0);
+    gl.Uniform4i(
+        ctx->uTextureUvSets1, cmd->texture_slot_uv_set[4], cmd->texture_slot_uv_set[5], 0, 0);
     {
         float uv_transform0[RT_MATERIAL3D_TEXTURE_SLOT_COUNT][4];
         float uv_transform1[RT_MATERIAL3D_TEXTURE_SLOT_COUNT][4];
@@ -3638,12 +3722,10 @@ static void upload_main_uniforms(gl_context_t *ctx,
             uv_transform1[slot][2] = 0.0f;
             uv_transform1[slot][3] = 0.0f;
         }
-        gl.Uniform4fv(ctx->uTextureUvTransform0,
-                      RT_MATERIAL3D_TEXTURE_SLOT_COUNT,
-                      &uv_transform0[0][0]);
-        gl.Uniform4fv(ctx->uTextureUvTransform1,
-                      RT_MATERIAL3D_TEXTURE_SLOT_COUNT,
-                      &uv_transform1[0][0]);
+        gl.Uniform4fv(
+            ctx->uTextureUvTransform0, RT_MATERIAL3D_TEXTURE_SLOT_COUNT, &uv_transform0[0][0]);
+        gl.Uniform4fv(
+            ctx->uTextureUvTransform1, RT_MATERIAL3D_TEXTURE_SLOT_COUNT, &uv_transform1[0][0]);
     }
     gl.Uniform1i(ctx->uCameraIsOrtho, ctx->cam_is_ortho ? 1 : 0);
     gl.Uniform1fv(ctx->uCustomParams, 8, cmd->custom_params);
@@ -3720,13 +3802,8 @@ static void bind_material_textures(gl_context_t *ctx, const vgfx3d_draw_cmd_t *c
                                    diffuse_tex,
                                    cmd,
                                    RT_MATERIAL3D_TEXTURE_SLOT_BASE_COLOR);
-    bind_texture_unit_with_sampler(ctx,
-                                   ctx->uNormalTex,
-                                   1,
-                                   GL_TEXTURE_2D,
-                                   normal_tex,
-                                   cmd,
-                                   RT_MATERIAL3D_TEXTURE_SLOT_NORMAL);
+    bind_texture_unit_with_sampler(
+        ctx, ctx->uNormalTex, 1, GL_TEXTURE_2D, normal_tex, cmd, RT_MATERIAL3D_TEXTURE_SLOT_NORMAL);
     bind_texture_unit_with_sampler(ctx,
                                    ctx->uSpecularTex,
                                    2,
@@ -3758,13 +3835,8 @@ static void bind_material_textures(gl_context_t *ctx, const vgfx3d_draw_cmd_t *c
                                    metallic_roughness_tex,
                                    cmd,
                                    RT_MATERIAL3D_TEXTURE_SLOT_METALLIC_ROUGHNESS);
-    bind_texture_unit_with_sampler(ctx,
-                                   ctx->uAOTex,
-                                   15,
-                                   GL_TEXTURE_2D,
-                                   ao_tex,
-                                   cmd,
-                                   RT_MATERIAL3D_TEXTURE_SLOT_AO);
+    bind_texture_unit_with_sampler(
+        ctx, ctx->uAOTex, 15, GL_TEXTURE_2D, ao_tex, cmd, RT_MATERIAL3D_TEXTURE_SLOT_AO);
     if (ctx->uSplatScales >= 0) {
         gl.Uniform4f(ctx->uSplatScales,
                      cmd->splat_layer_scales[0],
@@ -4007,8 +4079,7 @@ static void query_shadow_uniforms(gl_context_t *ctx) {
     ctx->shadow_uAlphaMode = gl.GetUniformLocation(ctx->shadow_program, "uShadowAlphaMode");
     ctx->shadow_uAlphaCutoff = gl.GetUniformLocation(ctx->shadow_program, "uShadowAlphaCutoff");
     ctx->shadow_uAlpha = gl.GetUniformLocation(ctx->shadow_program, "uShadowAlpha");
-    ctx->shadow_uDiffuseColor =
-        gl.GetUniformLocation(ctx->shadow_program, "uShadowDiffuseColor");
+    ctx->shadow_uDiffuseColor = gl.GetUniformLocation(ctx->shadow_program, "uShadowDiffuseColor");
     ctx->shadow_uTextureUvSets0 =
         gl.GetUniformLocation(ctx->shadow_program, "uShadowTextureUvSets0");
     ctx->shadow_uTextureUvSets1 =
@@ -4190,17 +4261,21 @@ static void *gl_create_ctx(vgfx_window_t win, int32_t w, int32_t h) {
     memcpy(ctx->scene_inv_vp, kIdentity4x4, sizeof(ctx->scene_inv_vp));
     ctx->active_target_kind = VGFX3D_OPENGL_TARGET_SWAPCHAIN;
 
-    GLuint vs = compile_shader_parts(
-        GL_VERTEX_SHADER, glsl_vertex_src, (GLsizei)(sizeof(glsl_vertex_src) / sizeof(glsl_vertex_src[0])));
-    GLuint fs = compile_shader_parts(
-        GL_FRAGMENT_SHADER, glsl_fragment_src, (GLsizei)(sizeof(glsl_fragment_src) / sizeof(glsl_fragment_src[0])));
+    GLuint vs =
+        compile_shader_parts(GL_VERTEX_SHADER,
+                             glsl_vertex_src,
+                             (GLsizei)(sizeof(glsl_vertex_src) / sizeof(glsl_vertex_src[0])));
+    GLuint fs =
+        compile_shader_parts(GL_FRAGMENT_SHADER,
+                             glsl_fragment_src,
+                             (GLsizei)(sizeof(glsl_fragment_src) / sizeof(glsl_fragment_src[0])));
     GLuint svs = compile_shader(GL_VERTEX_SHADER, glsl_shadow_vertex_src);
     GLuint sfs = compile_shader(GL_FRAGMENT_SHADER, glsl_shadow_fragment_src);
     GLuint pvs = compile_shader(GL_VERTEX_SHADER, glsl_postfx_vertex_src);
-    GLuint pfs = compile_shader_parts(GL_FRAGMENT_SHADER,
-                                      glsl_postfx_fragment_src,
-                                      (GLsizei)(sizeof(glsl_postfx_fragment_src) /
-                                                sizeof(glsl_postfx_fragment_src[0])));
+    GLuint pfs = compile_shader_parts(
+        GL_FRAGMENT_SHADER,
+        glsl_postfx_fragment_src,
+        (GLsizei)(sizeof(glsl_postfx_fragment_src) / sizeof(glsl_postfx_fragment_src[0])));
     GLuint skyvs = compile_shader(GL_VERTEX_SHADER, glsl_skybox_vertex_src);
     GLuint skyfs = compile_shader(GL_FRAGMENT_SHADER, glsl_skybox_fragment_src);
     if (!vs || !fs || !svs || !sfs || !pvs || !pfs || !skyvs || !skyfs) {
@@ -4332,16 +4407,12 @@ static void *gl_create_ctx(vgfx_window_t win, int32_t w, int32_t h) {
     ctx->morph_normal_capacity_bytes = 64u * 1024u;
 
     gl.BindBuffer(GL_UNIFORM_BUFFER, ctx->bone_ubo);
-    gl.BufferData(GL_UNIFORM_BUFFER,
-                  (GLsizeiptr)VGFX3D_OPENGL_BONE_PALETTE_BYTES,
-                  NULL,
-                  GL_DYNAMIC_DRAW);
+    gl.BufferData(
+        GL_UNIFORM_BUFFER, (GLsizeiptr)VGFX3D_OPENGL_BONE_PALETTE_BYTES, NULL, GL_DYNAMIC_DRAW);
     gl.BindBufferBase(GL_UNIFORM_BUFFER, 0, ctx->bone_ubo);
     gl.BindBuffer(GL_UNIFORM_BUFFER, ctx->prev_bone_ubo);
-    gl.BufferData(GL_UNIFORM_BUFFER,
-                  (GLsizeiptr)VGFX3D_OPENGL_BONE_PALETTE_BYTES,
-                  NULL,
-                  GL_DYNAMIC_DRAW);
+    gl.BufferData(
+        GL_UNIFORM_BUFFER, (GLsizeiptr)VGFX3D_OPENGL_BONE_PALETTE_BYTES, NULL, GL_DYNAMIC_DRAW);
     gl.BindBufferBase(GL_UNIFORM_BUFFER, 1, ctx->prev_bone_ubo);
 
     gl.BindVertexArray(ctx->fullscreen_vao);
@@ -4723,25 +4794,23 @@ static int gl_readback_rgba(
         return 0;
 
     glx.MakeCurrent(ctx->display, ctx->window, ctx->glxCtx);
-    use_postfx_readback =
-        !ctx->scene_composited_to_backbuffer &&
-        vgfx3d_opengl_choose_readback_kind(
-            (ctx->gpu_postfx_enabled && ctx->scene_postfx_pending) ? 1 : 0) ==
-            VGFX3D_OPENGL_READBACK_POSTFX_COMPOSITE;
+    use_postfx_readback = !ctx->scene_composited_to_backbuffer &&
+                          vgfx3d_opengl_choose_readback_kind(
+                              (ctx->gpu_postfx_enabled && ctx->scene_postfx_pending) ? 1 : 0) ==
+                              VGFX3D_OPENGL_READBACK_POSTFX_COMPOSITE;
     if (use_postfx_readback) {
         if (!ctx->scene_fbo || ctx->scene_width <= 0 || ctx->scene_height <= 0)
             return 0;
-        if (!ctx->gpu_postfx_chain_valid ||
-            !gl_apply_postfx_chain(ctx,
-                                   ctx->scene_color_tex,
-                                   ctx->scene_width,
-                                   ctx->scene_height,
-                                   &ctx->gpu_postfx_chain,
-                                   0,
-                                   GL_BACK,
-                                   1,
-                                   &readback_framebuffer,
-                                   &readback_buffer)) {
+        if (!ctx->gpu_postfx_chain_valid || !gl_apply_postfx_chain(ctx,
+                                                                   ctx->scene_color_tex,
+                                                                   ctx->scene_width,
+                                                                   ctx->scene_height,
+                                                                   &ctx->gpu_postfx_chain,
+                                                                   0,
+                                                                   GL_BACK,
+                                                                   1,
+                                                                   &readback_framebuffer,
+                                                                   &readback_buffer)) {
             readback_framebuffer = ctx->scene_fbo;
             readback_buffer = GL_COLOR_ATTACHMENT0;
         }
@@ -4794,7 +4863,8 @@ static void gl_present_impl(gl_context_t *ctx, const vgfx3d_postfx_chain_t *chai
                   ctx->gpu_postfx_enabled && ctx->scene_postfx_pending)
                      ? 1
                      : 0;
-    if (ctx->gpu_postfx_enabled && ctx->scene_postfx_pending && !ctx->scene_composited_to_backbuffer) {
+    if (ctx->gpu_postfx_enabled && ctx->scene_postfx_pending &&
+        !ctx->scene_composited_to_backbuffer) {
         if (draw_scene_texture(ctx, use_postfx ? chain : NULL))
             ctx->scene_composited_to_backbuffer = 1;
     }
@@ -4995,11 +5065,10 @@ static void gl_shadow_end(void *ctx_ptr, int32_t slot, float bias) {
     if (ctx->shadow_pass_slot != slot)
         return;
     ctx->shadow_bias = bias;
-    ctx->shadow_complete[slot] =
-        (ctx->shadow_depth_tex[slot] && ctx->shadow_fbo[slot] && ctx->shadow_width[slot] > 0 &&
-         ctx->shadow_height[slot] > 0)
-            ? 1
-            : 0;
+    ctx->shadow_complete[slot] = (ctx->shadow_depth_tex[slot] && ctx->shadow_fbo[slot] &&
+                                  ctx->shadow_width[slot] > 0 && ctx->shadow_height[slot] > 0)
+                                     ? 1
+                                     : 0;
     ctx->shadow_pass_slot = -1;
     gl_recompute_shadow_count(ctx);
     bind_main_framebuffer(ctx);
