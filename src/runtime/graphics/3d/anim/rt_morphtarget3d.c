@@ -748,6 +748,8 @@ static void morphtarget_draw_mesh_matrix(void *canvas,
         rt_mesh3d tmp;
         if (mt->shape_count > 0 && !packed_deltas)
             return;
+        if (rt_heap_is_payload(mesh) && !rt_canvas3d_add_temp_object(canvas, mesh))
+            return;
         if (!rt_canvas3d_add_temp_object(canvas, mt))
             return;
 

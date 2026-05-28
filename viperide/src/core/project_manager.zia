@@ -362,9 +362,9 @@ class ProjectManager {
         var root = project.rootPath;
         var prefix = root + Path.Sep();
         if Str.StartsWith(fullPath, prefix) {
-            return Str.Mid(fullPath, Str.Length(prefix) + 1);
+            return NormalizeBindSeparators(Str.Mid(fullPath, Str.Length(prefix) + 1));
         }
-        return fullPath;
+        return NormalizeBindSeparators(fullPath);
     }
 
     func UpdateEntryAfterRename(oldPath: String, newPath: String, oldWasDir: Boolean) {

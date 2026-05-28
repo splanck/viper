@@ -275,9 +275,15 @@ extern "C" void *rt_videoplayer_open(rt_string) {
     auto *frame = static_cast<StubPixels *>(std::calloc(1, sizeof(StubPixels)));
     frame->width = g_open_width;
     frame->height = g_open_height;
-    frame->data = static_cast<uint32_t *>(
-        std::calloc(static_cast<size_t>(g_open_width * g_open_height), sizeof(uint32_t)));
-    frame->data[0] = 0x11223344u;
+    if (g_open_width > 0 && g_open_height > 0 &&
+        g_open_width <= std::numeric_limits<int32_t>::max() &&
+        g_open_height <= std::numeric_limits<int32_t>::max()) {
+        const auto pixel_count =
+            static_cast<size_t>(g_open_width) * static_cast<size_t>(g_open_height);
+        frame->data = static_cast<uint32_t *>(std::calloc(pixel_count, sizeof(uint32_t)));
+        if (frame->data)
+            frame->data[0] = 0x11223344u;
+    }
     player->frame = frame;
     return player;
 }

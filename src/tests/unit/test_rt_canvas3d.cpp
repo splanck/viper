@@ -1893,6 +1893,8 @@ static int g_canvas_submit_draw_instanced_calls = 0;
 static int g_last_instanced_count = 0;
 static int g_last_instanced_has_prev = 0;
 static float g_last_instanced_prev_x = 0.0f;
+static int g_tracked_prev_model_count = 0;
+static float g_tracked_prev_model_x[16] = {0.0f};
 static vgfx3d_camera_params_t g_canvas_begin_frame_params = {};
 static vgfx3d_draw_cmd_t g_last_draw_cmd = {};
 } // namespace
@@ -1954,8 +1956,14 @@ static void tracked_submit_draw(void *,
                                 int8_t,
                                 int8_t) {
     g_canvas_submit_draw_calls++;
-    if (cmd)
+    if (cmd) {
         g_last_draw_cmd = *cmd;
+        if (cmd->has_prev_model_matrix &&
+            g_tracked_prev_model_count < (int)(sizeof(g_tracked_prev_model_x) /
+                                               sizeof(g_tracked_prev_model_x[0]))) {
+            g_tracked_prev_model_x[g_tracked_prev_model_count++] = cmd->prev_model_matrix[3];
+        }
+    }
 }
 
 static void tracked_submit_draw_instanced(void *,
@@ -3238,13 +3246,24 @@ static void test_canvas_instanced_motion_history_separates_batches() {
     batch_a[3] = 1.0f;
     batch_b[3] = 11.0f;
     memset(&g_last_draw_cmd, 0, sizeof(g_last_draw_cmd));
+    g_tracked_prev_model_count = 0;
+    memset(g_tracked_prev_model_x, 0, sizeof(g_tracked_prev_model_x));
     rt_canvas3d_begin(&canvas, cam);
     rt_canvas3d_queue_instanced_batch(&canvas, mesh, mat, batch_a, 1, NULL, 0);
     rt_canvas3d_queue_instanced_batch(&canvas, mesh, mat, batch_b, 1, NULL, 0);
     rt_canvas3d_end(&canvas);
 
-    EXPECT_EQ(g_last_draw_cmd.has_prev_model_matrix, 1);
-    EXPECT_NEAR(g_last_draw_cmd.prev_model_matrix[3], 10.0, 0.0001);
+    EXPECT_EQ(g_tracked_prev_model_count, 2);
+    bool saw_batch_a_prev = false;
+    bool saw_batch_b_prev = false;
+    for (int i = 0; i < g_tracked_prev_model_count; i++) {
+        saw_batch_a_prev =
+            saw_batch_a_prev || std::fabs(g_tracked_prev_model_x[i] - 0.0f) < 0.0001f;
+        saw_batch_b_prev =
+            saw_batch_b_prev || std::fabs(g_tracked_prev_model_x[i] - 10.0f) < 0.0001f;
+    }
+    EXPECT_TRUE(saw_batch_a_prev, "first batch keeps its own previous transform");
+    EXPECT_TRUE(saw_batch_b_prev, "second batch keeps its own previous transform");
     PASS();
 }
 

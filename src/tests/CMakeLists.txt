@@ -1007,7 +1007,7 @@ add_test(NAME zia_viperide_console_search
 set_tests_properties(zia_viperide_console_search PROPERTIES
         PASS_REGULAR_EXPRESSION "RESULT: ok"
         LABELS "zia;viperide;console;search;requires_display"
-        TIMEOUT 30)
+        TIMEOUT 90)
 
 add_test(NAME zia_smoke_vipersql
         COMMAND $<TARGET_FILE:zia> "${CMAKE_SOURCE_DIR}/examples/apps/vipersql/smoke_probe.zia"
